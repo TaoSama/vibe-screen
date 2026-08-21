@@ -1,6 +1,7 @@
 import CoreMedia
 import CoreVideo
 import Foundation
+import VideoToolbox
 
 enum VideoEncoderSelfTest {
     private static let width = 640
@@ -34,6 +35,10 @@ enum VideoEncoderSelfTest {
     }
 
     static func run() -> Bool {
+        guard validateSDRColorMetadata() else {
+            return false
+        }
+
         guard let pixelBuffer = makePixelBuffer() else {
             FileHandle.standardError.write(Data("video encoder self-test: pixel buffer creation failed\n".utf8))
             return false
@@ -106,6 +111,45 @@ enum VideoEncoderSelfTest {
             ))
         }
         return passed
+    }
+
+    private static func validateSDRColorMetadata() -> Bool {
+        let properties = Dictionary(
+            uniqueKeysWithValues: VideoEncoderSDRColorMetadata.compressionProperties.map { property in
+                (property.key as String, property.value as Any)
+            }
+        )
+        let checks: [(Bool, String)] = [
+            (
+                properties[kVTCompressionPropertyKey_ColorPrimaries as String] as? String
+                    == kCMFormatDescriptionColorPrimaries_ITU_R_709_2 as String,
+                "color primaries are not BT.709"
+            ),
+            (
+                properties[kVTCompressionPropertyKey_TransferFunction as String] as? String
+                    == kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String,
+                "transfer function is not BT.709"
+            ),
+            (
+                properties[kVTCompressionPropertyKey_YCbCrMatrix as String] as? String
+                    == kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2 as String,
+                "YCbCr matrix is not BT.709"
+            ),
+            (
+                (properties[kVTCompressionPropertyKey_OutputBitDepth as String] as? NSNumber)?.intValue == 8,
+                "output bit depth is not 8"
+            ),
+            (
+                properties[kVTCompressionPropertyKey_HDRMetadataInsertionMode as String] as? String
+                    == kVTHDRMetadataInsertionMode_None as String,
+                "HDR metadata insertion is not disabled"
+            )
+        ]
+        guard let failedCheck = checks.first(where: { !$0.0 }) else { return true }
+        FileHandle.standardError.write(Data(
+            "video encoder self-test failed: SDR metadata \(failedCheck.1)\n".utf8
+        ))
+        return false
     }
 
     private static func makePixelBuffer() -> CVPixelBuffer? {

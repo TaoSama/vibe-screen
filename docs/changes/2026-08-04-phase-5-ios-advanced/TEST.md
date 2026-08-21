@@ -51,6 +51,18 @@ and feedback/digest rejection, managed deny-wins policy, safe filenames,
 sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
 fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
 and every advanced Envelope branch used by the client.
+
+Host-side HDR/color negotiation now has offline source coverage: the macOS
+Protocol v1 session advertises `CAPABILITY_HDR_VIDEO` only behind an explicit
+Host availability flag, chooses `VideoConfig.color_description` from the
+negotiated client capabilities and decode profiles, falls back to BT.709 SDR
+when HDR is unsupported, and keeps the existing client-rejection fallback on a
+bumped `config_epoch`. The VideoToolbox encoder config has explicit BT.709
+8-bit SDR metadata and disables automatic HDR metadata insertion for the
+current SDR path. Local MacHost XCTest execution is blocked in this environment
+because only Command Line Tools are selected and `XCTest` is unavailable; see
+the 2026-08-21 blocked evidence record.
+
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
@@ -206,7 +218,7 @@ The following remain unproved until their dedicated gates produce evidence:
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
-  color retry, actions, and wake helper;
+  actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over
   audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
   Android/macOS raw product-session record hooks, owner-scoped admission,

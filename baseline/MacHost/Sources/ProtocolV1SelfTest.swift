@@ -14,6 +14,7 @@ enum ProtocolV1SelfTest {
         testGoldenBytes(failures: &failures)
         testSharedGoldenFixtures(failures: &failures)
         testNegotiationAndMediaGate(failures: &failures)
+        testHDRColorNegotiation(failures: &failures)
         testManagedPolicyGate(failures: &failures)
         testMultiDisplaySelection(failures: &failures)
         testVirtualDisplayCatalog(failures: &failures)
@@ -251,6 +252,124 @@ enum ProtocolV1SelfTest {
             }
         } catch {
             failures.append("negotiation test failed: \(error)")
+        }
+    }
+
+    private static func testHDRColorNegotiation(failures: inout [String]) {
+        do {
+            guard !ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.hdrVideo),
+                  ProtocolV1SessionConfiguration.productionHostCapabilities(
+                    touchEnabled: true,
+                    hdrVideoAvailable: true
+                  ).contains(.hdrVideo) else {
+                failures.append("HDR capability was not fail-closed behind host availability")
+                return
+            }
+
+            let explicitHDR = HostVideoColorNegotiator(
+                clientCapabilities: [.colorManagement, .hdrVideo],
+                decodeCapabilities: [hdrDecodeCapability(codec: .hevc)]
+            )
+            guard case .accepted(let acceptedColor) = explicitHDR.evaluate(
+                hdrColor(),
+                codec: .hevc,
+                encodedSize: dimensions(),
+                framesPerSecond: 60
+            ), acceptedColor == hdrColor() else {
+                failures.append("HDR color was not accepted with negotiated capability and decode profile")
+                return
+            }
+
+            let missingProfile = HostVideoColorNegotiator(
+                clientCapabilities: [.colorManagement, .hdrVideo],
+                decodeCapabilities: []
+            )
+            guard case .fallback(let profileFallback, _) = missingProfile.evaluate(
+                hdrColor(),
+                codec: .hevc,
+                encodedSize: dimensions(),
+                framesPerSecond: 60
+            ), isLegacySDR(profileFallback) else {
+                failures.append("HDR color without an explicit decode profile did not fall back to SDR")
+                return
+            }
+
+            let sdrOnlySession = makeHDRColorSession()
+            var sdrOnlyHello = clientHelloEnvelope()
+            sdrOnlyHello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+            sdrOnlyHello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+            _ = sdrOnlySession.handleControl(try sdrOnlyHello.serializedData())
+            let sdrOnlyAccepted = try responseEnvelopes(sdrOnlySession.completeCodecNegotiation())
+            guard case .sessionAccepted(let accepted)? = sdrOnlyAccepted[1].payload,
+                  !accepted.negotiatedCapabilities.contains(.hdrVideo) else {
+                failures.append("HDR capability negotiated without client HDR support")
+                return
+            }
+            let sdrOnlyStart = try responseEnvelopes(sdrOnlySession.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData()))
+            guard case .videoConfig(let sdrConfig)? = sdrOnlyStart[1].payload,
+                  sdrConfig.configEpoch == 1,
+                  isLegacySDR(sdrConfig.colorDescription) else {
+                failures.append("Host did not pre-fallback HDR preference to SDR for an SDR-only client")
+                return
+            }
+
+            let hdrSession = makeHDRColorSession()
+            var hdrHello = clientHelloEnvelope()
+            hdrHello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+            hdrHello.clientHello.videoDecodeCapabilities = [hdrDecodeCapability(codec: .hevc)]
+            _ = hdrSession.handleControl(try hdrHello.serializedData())
+            _ = hdrSession.completeCodecNegotiation()
+            let hdrStart = try responseEnvelopes(hdrSession.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData()))
+            guard case .videoConfig(let firstConfig)? = hdrStart[1].payload,
+                  firstConfig.colorDescription == hdrColor() else {
+                failures.append("Host did not advertise negotiated HDR color")
+                return
+            }
+
+            var rejection = VSVideoConfigResult()
+            rejection.configEpoch = firstConfig.configEpoch
+            rejection.streamID = firstConfig.streamID
+            rejection.accepted = false
+            rejection.rejectionReason = HostVideoColorNegotiator.unsupportedHDRFallbackReason
+            rejection.selectedColorDescription = HostVideoColorNegotiator.legacySDRColor
+            let fallback = try responseEnvelopes(hdrSession.handleControl(try envelope(
+                id: 3,
+                payload: .videoConfigResult(rejection)
+            ).serializedData()))
+            guard case .videoConfig(let fallbackConfig)? = fallback.first?.payload,
+                  fallbackConfig.configEpoch == firstConfig.configEpoch + 1,
+                  isLegacySDR(fallbackConfig.colorDescription) else {
+                failures.append("Rejected HDR config did not renegotiate SDR with a bumped config epoch")
+                return
+            }
+
+            try acceptVideoConfig(
+                hdrSession,
+                configEpoch: fallbackConfig.configEpoch,
+                streamID: fallbackConfig.streamID,
+                messageID: 4
+            )
+            guard let media = try hdrSession.makeMediaFrame(
+                payload: Data([0, 0, 0, 1, 0x26]),
+                timestamp: 99,
+                keyframe: true
+            ) else {
+                failures.append("media did not resume after SDR fallback acceptance")
+                return
+            }
+            let decoded = try decodeMedia(media)
+            guard decoded.header.configEpoch == fallbackConfig.configEpoch else {
+                failures.append("media used the rejected HDR config epoch after SDR fallback")
+                return
+            }
+        } catch {
+            failures.append("HDR color negotiation test failed: \(error)")
         }
     }
 
@@ -1859,6 +1978,31 @@ enum ProtocolV1SelfTest {
         ))
     }
 
+    private static func makeHDRColorSession() -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        )
+        configuration.preferredColorDescription = hdrColor()
+        return ProtocolV1SessionCoordinator(configuration: configuration)
+    }
+
     private static func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
         ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -1975,6 +2119,48 @@ enum ProtocolV1SelfTest {
         request.mode = .existing
         request.sourceDisplayID = sourceDisplayID
         return request
+    }
+
+    private static func dimensions() -> VSDimensions {
+        var dimensions = VSDimensions()
+        dimensions.width = 1_920
+        dimensions.height = 1_080
+        return dimensions
+    }
+
+    private static func sdrDecodeCapabilities() -> [VSVideoDecodeCapability] {
+        [.hevc, .h264].map { sdrDecodeCapability(codec: $0) }
+    }
+
+    private static func sdrDecodeCapability(codec: VSCodec) -> VSVideoDecodeCapability {
+        var capability = VSVideoDecodeCapability()
+        capability.codec = codec
+        capability.maximumWidth = 3_840
+        capability.maximumHeight = 2_160
+        capability.maximumFramesPerSecond = 120
+        capability.bitDepths = [8]
+        capability.transferFunctions = [.bt709, .srgb]
+        return capability
+    }
+
+    private static func hdrDecodeCapability(codec: VSCodec) -> VSVideoDecodeCapability {
+        var capability = sdrDecodeCapability(codec: codec)
+        capability.bitDepths = [8, 10]
+        capability.transferFunctions = [.bt709, .srgb, .pq]
+        return capability
+    }
+
+    private static func hdrColor() -> VSColorDescription {
+        var color = VSColorDescription()
+        color.primaries = .bt2020
+        color.transferFunction = .pq
+        color.matrixCoefficients = .bt2020NonConstant
+        color.bitDepth = 10
+        return color
+    }
+
+    private static func isLegacySDR(_ color: VSColorDescription) -> Bool {
+        color == HostVideoColorNegotiator.legacySDRColor
     }
 
     /// Ack a pending VideoConfig so the session returns to STREAMING, mirroring

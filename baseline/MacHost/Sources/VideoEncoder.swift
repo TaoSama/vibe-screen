@@ -141,6 +141,24 @@ final class VideoEncoderCallbackOwner {
     }
 }
 
+enum VideoEncoderSDRColorMetadata {
+    static var compressionProperties: [(key: CFString, value: CFTypeRef)] {
+        [
+            (kVTCompressionPropertyKey_ColorPrimaries, kCMFormatDescriptionColorPrimaries_ITU_R_709_2),
+            (kVTCompressionPropertyKey_TransferFunction, kCMFormatDescriptionTransferFunction_ITU_R_709_2),
+            (kVTCompressionPropertyKey_YCbCrMatrix, kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2),
+            (kVTCompressionPropertyKey_OutputBitDepth, 8 as CFNumber),
+            (kVTCompressionPropertyKey_HDRMetadataInsertionMode, kVTHDRMetadataInsertionMode_None)
+        ]
+    }
+
+    static func apply(to session: VTCompressionSession) -> [OSStatus] {
+        compressionProperties.map { property in
+            VTSessionSetProperty(session, key: property.key, value: property.value)
+        }
+    }
+}
+
 final class VideoEncoderFrameRegistry {
     struct ClaimedFrame {
         let context: VideoEncoder.FrameContext
@@ -425,6 +443,10 @@ class VideoEncoder {
             ? kVTProfileLevel_HEVC_Main_AutoLevel
             : kVTProfileLevel_H264_Main_AutoLevel
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
+
+        for status in VideoEncoderSDRColorMetadata.apply(to: session) where status != noErr {
+            debugLog("VideoToolbox SDR color metadata property rejected: \(status)")
+        }
 
         // The target SM-P610 has a USB-C connector but only a USB 2.0 data link.
         // Respect the configured bitrate instead of silently forcing 60 Mbps.

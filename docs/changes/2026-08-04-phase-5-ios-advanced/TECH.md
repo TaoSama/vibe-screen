@@ -147,6 +147,13 @@ Negotiation rules:
   staging files on cancel, digest mismatch, disk error, or disconnect.
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
+- The macOS Host now fail-closes HDR/color negotiation: production capabilities
+  advertise HDR only when an explicit Host availability check enables it,
+  `VideoConfig` color metadata is selected through the client's negotiated
+  capabilities and decode profiles, unsupported HDR falls back to BT.709 SDR,
+  and client rejection sends the SDR fallback with a bumped `config_epoch`.
+  The VideoToolbox encoder also sets explicit BT.709 8-bit SDR metadata and
+  disables automatic HDR metadata insertion for the current SDR path.
 - Gesture mappings are local Codable state and may invoke only catalogued host
   action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
   produces the standard 102-byte packet only after local authorization/policy.
@@ -161,8 +168,11 @@ video configuration acknowledgement and media framing, heartbeat, targeted
 touch, protocol error, and disconnect. It does not implement or prove advanced
 host behavior. A compatible advanced host still must provide per-client
 resource allocation, multi-display stream IDs, PCM capture, advanced control
-handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
-an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
+handlers, WebRTC bulk streaming, a finite host-action catalog, and an
+authenticated wake helper. HDR Main10/PQ/BT.2020 encoding and HDR/EDR panel
+playback remain separate hardware gates; the current Host still defaults to SDR
+and does not advertise HDR in production without an explicit availability
+signal. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
 channels. Shared fixed vectors prove offline record interoperability only. The
