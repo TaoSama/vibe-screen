@@ -183,7 +183,7 @@ final class PlatformSessionPacketCipher {
 
     func close() {
         lock.withPacketCipherLock {
-            keys?.zeroize()
+            keys?.close()
             keys = nil
             replay.removeAll()
             sessionHash.zeroize()
@@ -192,7 +192,7 @@ final class PlatformSessionPacketCipher {
 
     /// Fallback zeroization if close() was never called.
     deinit {
-        keys?.zeroize()
+        keys?.close()
         sessionHash.zeroize()
     }
 
