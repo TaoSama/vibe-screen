@@ -1,0 +1,11 @@
+git fetch origin --prune
+git rev-parse --short HEAD
+git rev-parse --short origin/main
+git merge-base --is-ancestor origin/main HEAD
+gh pr list --state open --search clipboard --json number,title,headRefName,isDraft,url
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+cd baseline/MacHost && swift build -c release && .build/release/Vibe\ Screen --protocol-v1-self-test
+xcode-select -p; xcrun --find xcodebuild; cd baseline/MacHost && swift test --filter Clipboard
+if [ -e /tmp/vibe-screen-device-android.lock ]; then ls -la /tmp/vibe-screen-device-android.lock; else echo 'no android device lock present'; fi
+security find-identity -v -p codesigning
