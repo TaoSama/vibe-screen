@@ -128,19 +128,28 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertIn("expected configured identity", "\n".join(errors))
 
-    def test_preflight_command_refuses_ad_hoc_before_reading_bundle_or_tcc(self) -> None:
-        args = mock.Mock(
-            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-            sign_identity="-",
-            tcc_db=Path("TCC.db"),
-            report=Path("report.txt"),
-        )
-        with (
-            mock.patch.object(macos_dev_host, "collect_signing_metadata") as metadata_mock,
-            mock.patch.object(macos_dev_host, "query_tcc_rows") as tcc_mock,
-        ):
-            with self.assertRaisesRegex(SystemExit, "stable signing identity"):
-                macos_dev_host.preflight_command(args)
+    def test_preflight_command_reports_ad_hoc_blocker_before_reading_bundle_or_tcc(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="-",
+                tcc_db=Path("TCC.db"),
+                report=report,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "collect_signing_metadata") as metadata_mock,
+                mock.patch.object(macos_dev_host, "query_tcc_rows") as tcc_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.preflight_command(args)
+            report_text = report.read_text(encoding="utf-8")
+
+            self.assertEqual(result, 2)
+            self.assertIn("Host signing prerequisite", report_text)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("stable signing identity", report_text)
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
@@ -182,27 +191,64 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
 
-    def test_preflight_command_resolves_configured_identity_before_reading_bundle(self) -> None:
-        args = mock.Mock(
-            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-            sign_identity="Missing Dev",
-            tcc_db=Path("TCC.db"),
-            report=Path("report.txt"),
-        )
-        with (
-            mock.patch.object(
-                macos_dev_host.package_macos,
-                "resolve_sign_identity",
-                side_effect=SystemExit("missing identity"),
-            ) as resolve_mock,
-            mock.patch.object(macos_dev_host, "collect_signing_metadata") as metadata_mock,
-            mock.patch.object(macos_dev_host, "query_tcc_rows") as tcc_mock,
-        ):
-            with self.assertRaisesRegex(SystemExit, "missing identity"):
-                macos_dev_host.preflight_command(args)
-        resolve_mock.assert_called_once_with("Missing Dev")
-        metadata_mock.assert_not_called()
-        tcc_mock.assert_not_called()
+    def test_preflight_command_does_not_require_identity_in_keychain(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Missing Dev",
+                tcc_db=Path("TCC.db"),
+                report=report,
+            )
+            with (
+                mock.patch.object(
+                    macos_dev_host.package_macos,
+                    "resolve_sign_identity",
+                    side_effect=SystemExit("missing identity"),
+                ) as resolve_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    return_value=self.metadata(authorities=("Missing Dev",)),
+                ) as metadata_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "query_tcc_rows",
+                    return_value=macos_dev_host.PermissionStatus(
+                        database_path=Path("TCC.db"),
+                        readable=True,
+                        rows=(
+                            macos_dev_host.TCCRow(
+                                "kTCCServiceScreenCapture",
+                                "dev.telemachus.display",
+                                0,
+                                2,
+                                4,
+                                1,
+                            ),
+                            macos_dev_host.TCCRow(
+                                "kTCCServiceAccessibility",
+                                "dev.telemachus.display",
+                                0,
+                                2,
+                                4,
+                                2,
+                            ),
+                        ),
+                    ),
+                ) as tcc_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.preflight_command(args)
+            report_text = report.read_text(encoding="utf-8")
+
+            self.assertEqual(result, 0)
+            self.assertIn("Status: PASS", report_text)
+            self.assertIn("Identity: Missing Dev", report_text)
+        resolve_mock.assert_not_called()
+        metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
+        tcc_mock.assert_called_once()
 
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -241,6 +287,36 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             Path("TCC.db"),
             expected_sign_identity="Vibe Screen Dev",
         )
+
+    def test_install_command_reports_missing_signing_identity_without_installing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path("TCC.db"),
+                report=report,
+            )
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "package_dev_app",
+                    side_effect=SystemExit("codesign identity 'Vibe Screen Dev' not found in the keychain"),
+                ) as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+            report_text = report.read_text(encoding="utf-8")
+
+            self.assertEqual(result, 2)
+            self.assertIn("Host signing prerequisite", report_text)
+            self.assertIn("Vibe Screen Dev", report_text)
+            self.assertIn("not an Android device identity or Xiaomi/fuxi result", " ".join(report_text.split()))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_not_called()
 
     @staticmethod
     def metadata(

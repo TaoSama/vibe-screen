@@ -59,6 +59,12 @@ codesign:
 security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 ```
 
+In Keychain Access, use **Certificate Assistant -> Create a Certificate**, set
+the name to `Vibe Screen Dev`, identity type to **Self Signed Root**, and
+certificate type to **Code Signing**. Missing this identity blocks rebuilding or
+installing a new stable Host, but a read-only preflight can still inspect an
+already-installed bundle and report its actual signing/TCC state.
+
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current
@@ -102,12 +108,17 @@ make baseline-macos-touch-preflight
 
 `baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity, the designated requirement, and read-only Screen
-Recording plus Accessibility rows in the user's TCC database. It exits non-zero
-if any check is missing. When blocked, open **System Settings → Privacy &
-Security → Screen & System Audio Recording** and **Accessibility**, grant the
-installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again.
+ad-hoc signing identity matching `VIBE_SCREEN_SIGN_IDENTITY` or `Vibe Screen Dev`,
+the designated requirement, and read-only Screen Recording plus Accessibility
+rows in the user's and system TCC databases. It does not require the signing
+identity to still be present in the current Keychain; that requirement belongs
+to `baseline-macos-dev-install`, where a missing `Vibe Screen Dev` identity means
+the Host cannot be rebuilt or reinstalled as a stable signed binary. The
+preflight exits non-zero if any installed-bundle or permission check is missing.
+When blocked on TCC, open **System Settings -> Privacy & Security -> Screen &
+System Audio Recording** and **Accessibility**, grant the installed
+`/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
+preflight again.
 
 ## USB quick start
 

@@ -109,6 +109,17 @@ substitute device. It does not replace or relabel Xiaomi 13/fuxi evidence, and
 the formal native HID mouse confirmation plus physical-finger/manual UX pass
 remain separate gates.
 
+On 2026-08-21 a follow-up P0110/pacific USB/touch rerun setup was blocked before
+Host launch while preparing a rebuilt stable Host: `Vibe Screen Dev` was not
+present in the Keychain, so the Host could not be rebuilt or reinstalled as a
+stable signed binary. ADB reverse succeeded and the Android app was already
+foregrounded on the Nubia P0110/pacific Android 16 device, but `lsof` showed no
+Host listener on TCP `54321`. This is a stable Host signing prerequisite, not a
+device blocker and not Xiaomi 13/fuxi evidence; do not run or claim touch
+gesture instrumentation until the stable signing identity is restored, the Host
+is rebuilt/installed, and the read-only preflight confirms Screen Recording plus
+Accessibility for the resulting `dev.telemachus.display` bundle.
+
 The evidence summary is now generated with a fail-closed verifier. A pass requires
 the ready preflight, expected Android identity, opt-in instrumentation `OK (1
 test)`, Host Protocol v1/touch and gesture markers, and listen-only event-tap
