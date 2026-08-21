@@ -1,12 +1,12 @@
 $ date -u +%Y-%m-%dT%H:%M:%SZ
-2026-08-20T22:54:01Z
+2026-08-21T20:02:26Z
 
 $ git rev-parse HEAD
-a9b05002dde33b7b972f6bcf8131305bedd8548e
+55a78526b7616a8bbb7631dcccde350bebc342d3
 
 $ if [ -e /tmp/vibe-screen-device-android.lock ]; then stat ...; sed ...; else echo absent; fi
-/tmp/vibe-screen-device-android.lock size=186 mtime=Aug 21 06:47:17 2026
-owner=codex-touch-gesture-fixed-binary-rerun
-pid=81965
-worktree=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/touch-gesture-fixed-binary-rerun
-created_at=2026-08-20T22:47:17Z
+size=156 mtime=Aug 22 04:01:03 2026
+owner=phase2-hardware-keyboard-gate
+pid=42640
+worktree=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/671b/vibe-screen
+created_at=2026-08-21T20:01:03Z

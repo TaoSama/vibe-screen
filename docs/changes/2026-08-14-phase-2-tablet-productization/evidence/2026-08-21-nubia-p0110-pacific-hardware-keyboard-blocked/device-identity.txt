@@ -1,0 +1,10 @@
+$ adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+nubia
+$ adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+P0110
+$ adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+pacific
+$ adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+16
+$ adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+36

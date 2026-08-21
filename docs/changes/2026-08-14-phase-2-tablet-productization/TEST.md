@@ -115,12 +115,14 @@ keyboard workflows, and the eight-hour sample series required by
 ## 2026-08-21 hardware-keyboard blocked preflight
 
 This follow-up added a schema-backed hardware-keyboard workflow evidence summary
-for the Phase 2 peripheral gate. The target serial for a future run is
-`EP0110PZ0B9110300B`, which must be recorded as nubia P0110 / pacific /
-Android 16 when used. The real-device workflow did not start because the shared
-Android lock already existed, no Host listener was present on TCP `54321`, and
-the local keychain reported `0 valid identities found` for code signing. No ADB
-commands were run and no physical keyboard condition was evaluated.
+for the Phase 2 peripheral gate. The target serial `EP0110PZ0B9110300B` was
+checked with `adb -s EP0110PZ0B9110300B` after acquiring the shared Android
+device lock and is recorded as nubia P0110 / pacific / Android 16. The run
+stopped before hardware-keyboard input because `dumpsys input` did not show an
+external Android-attached physical keyboard, and the local keychain reported
+`0 valid identities found` for code signing, so stable signed Host
+Accessibility/TCC readiness could not be established. ADB `input keyevent` was
+not used as substitute evidence.
 
 Evidence is under
 [`evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked`](evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked/README.md).
