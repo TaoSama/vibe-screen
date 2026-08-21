@@ -21,6 +21,20 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## Trusted LAN smoke evidence
+
+Use the trusted-LAN smoke checker before changing README or release notes based
+on a LAN run. A passing real-device record must include the non-legacy encrypted
+LAN markers from both peers, Protocol v1 over `TRANSPORT_KIND_LAN`, HEVC decode,
+and reconnect evidence. A blocked record is valid only when it names the Nubia
+P0110 / pacific / Android 16 device, records the concrete Wi-Fi/route and Host
+signing/preflight blocker, and explicitly says no real trusted-LAN stream was
+observed.
+
+```sh
+make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/<run-dir>
+```
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

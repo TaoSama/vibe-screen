@@ -103,3 +103,28 @@ serial `EP0110PZ0B9110300B`.
 - Trusted-LAN reconnect with preserved Host PID.
 - LAN glass-to-glass latency with external-camera evidence.
 - Any long soak or host RSS no-growth claim.
+
+## 2026-08-21 second recheck
+
+A fresh branch from `origin/main` (`codex/trusted-lan-p0110-smoke`, source
+commit `c5add121d4ebebaa0083db64551a81ec7899696e`) rechecked the same Nubia
+P0110 / pacific / Android 16 device (`EP0110PZ0B9110300B`). The environment
+still blocked before Host launch or pairing: the device remained USB-reachable
+but had no Wi-Fi association (`wlan0` `NO-CARRIER`, `state DOWN`, `Wifi is not
+connected`), `ip route` was empty, pinging the Mac LAN candidate returned
+`Network is unreachable`, TCP `54321` had no Mac listener, and
+`scripts/macos_dev_host.py preflight` failed because the local keychain had no
+valid `Vibe Screen Dev` signing identity.
+
+No trusted-LAN socket admission, secure-record negotiation, decoder output,
+reconnect, latency, or stability evidence was observed. The retained artifact
+bundle is
+[`evidence/2026-08-21-p0110-lan-smoke-second-recheck/README.md`](evidence/2026-08-21-p0110-lan-smoke-second-recheck/README.md).
+
+Additional current-source checks for this second recheck:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest` | PASS | Covers Android token admission, secure-record negotiation, protected control/media records, and default wireless Protocol v1 probe protection. |
+| `make protocol` | PASS | Covers Protocol v1 schemas, fixtures, and security contract checks. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-second-recheck` | PASS as `blocked` | Verifies the evidence package is explicitly blocked, not a passing LAN claim, and keeps Nubia P0110/pacific identity distinct from Xiaomi/fuxi evidence. |
