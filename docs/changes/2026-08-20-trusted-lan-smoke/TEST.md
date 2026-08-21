@@ -48,6 +48,35 @@ Additional current-source checks for this recheck:
 | `make protocol` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Protocol v1 schemas, fixtures, and security contract checks. |
 | `python3 scripts/macos_dev_host.py preflight` | BLOCKED | Stable Host bundle validation cannot proceed without the configured `Vibe Screen Dev` signing identity. |
 
+## 2026-08-22 current-base successor recheck
+
+A fresh branch from `origin/main` (`codex/trusted-lan-p0110-current-base-successor`,
+source commit `79ef30ac7d3b50d3e0129f88823e7be238417bc0`) rechecked the
+same Nubia P0110 / pacific / Android 16 device (`EP0110PZ0B9110300B`). The
+check did not install, force-stop, or reconnect the Android app. It first
+confirmed `/tmp/vibe-screen-device-android.lock` was absent, then acquired and
+released that lock around read-only `adb -s EP0110PZ0B9110300B` probes.
+
+The real trusted-LAN smoke remained blocked before Host launch, pairing, or
+streaming. The device was USB-reachable and its identity was recorded, but
+`cmd wifi status` reported `Wifi is not connected`, `wlan0` reported
+`NO-CARRIER` and `state DOWN`, `ip route` returned no route, and pinging the
+Mac LAN candidate failed with `Network is unreachable`. The Mac had a local
+Vibe Screen listener only on loopback TCP 54321, and
+`scripts/macos_dev_host.py preflight` failed because the required stable
+`Vibe Screen Dev` codesigning identity was still absent from the keychain.
+
+No trusted-LAN socket admission, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS no-growth evidence was observed.
+The retained artifact bundle is
+[`evidence/2026-08-22-p0110-current-base-successor/README.md`](evidence/2026-08-22-p0110-current-base-successor/README.md).
+
+Additional current-base successor checks:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Verifies the evidence package is explicitly blocked, cannot close stream/reconnect gates, and retains the Nubia P0110/pacific/Android 16 identity boundary. |
+
 ## Source-level checks
 
 The current code path was still checked offline so the next device owner has a

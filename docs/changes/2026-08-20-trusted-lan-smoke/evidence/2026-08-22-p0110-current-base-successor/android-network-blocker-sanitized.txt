@@ -1,0 +1,12 @@
+$ adb -s EP0110PZ0B9110300B shell cmd wifi status
+Wifi is enabled
+Wifi scanning is always available
+==== ClientModeManager instance: ConcreteClientModeManager{id=623838927 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====
+Wifi is not connected
+$ adb -s EP0110PZ0B9110300B shell ip addr show wlan0
+23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000
+    link/ether <redacted-mac> brd <redacted-broadcast>
+$ adb -s EP0110PZ0B9110300B shell ip route
+mac_lan_candidate=<redacted-cgnat-ip>
+$ adb -s EP0110PZ0B9110300B shell ping -c 1 -W 1 <redacted-cgnat-ip>
+connect: Network is unreachable
