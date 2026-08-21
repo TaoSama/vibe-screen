@@ -491,3 +491,32 @@ open.
 Evidence:
 
 - [`evidence/2026-08-20-p0110-host-display-rotation-blocked/`](evidence/2026-08-20-p0110-host-display-rotation-blocked/)
+
+## P0110 rotated host-display preflight follow-up
+
+On 2026-08-22, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
+serial EP0110PZ0B9110300B) was checked again after the branch was rebased to
+origin/main cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b. The initial Android
+coordination lock path existed as an empty stale marker with no lsof holder, so
+the run recorded that state, acquired a non-blocking fcntl exclusive lock on the
+same path, and kept the device lease for limited read-only sampling only.
+
+The device-side USB smoke preconditions were healthy: adb reverse still mapped
+tcp:54321, dev.telemachus.display was foreground, the device loopback
+connection to 127.0.0.1:54321 was ESTABLISHED, stream_stats stayed around
+55-60 fps, decoder dropped frames were 0, and PID-filtered E-level logcat search
+found no current app errors. No install, launch, force-stop, reverse change,
+host display rotation, or input injection was performed by this run.
+
+The attempt remained blocked before rotated host-display acceptance because the
+installed Host could not pass stable signing/TCC preflight: the `Vibe Screen Dev`
+codesigning identity was not visible in the current keychain, ad-hoc signing is
+refused for local device reruns, and a read-only TCC database query returned
+authorization denied. The retained host-display-rotation.json therefore still
+contains no completed physical or virtual display run; the offline gate output
+is expected to remain status=failed with missing physical and virtual rotated
+host-display evidence.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/)

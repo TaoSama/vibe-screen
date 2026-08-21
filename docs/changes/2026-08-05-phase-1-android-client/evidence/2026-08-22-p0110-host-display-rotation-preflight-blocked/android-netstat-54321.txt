@@ -1,0 +1,3 @@
+tcp6       0      0 ::ffff:127.0.0.1:54321  ::ffff:127.0.0.1:60308  ESTABLISHED
+tcp6       0      0 ::ffff:127.0.0.1:60308  ::ffff:127.0.0.1:54321  ESTABLISHED
+exit=0
