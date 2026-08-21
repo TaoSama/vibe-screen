@@ -68,6 +68,14 @@ execution when Authority reports unauthorized or conflicting active source
 allocations. That helper test does not prove a production coturn exporter,
 scheduled loop, provider billing reconciliation, or real data-plane allocation
 termination.
+The Phase 3 revocation propagation verifier now pins the evidence contract for
+Authority/signaling/relay/coturn propagation. It passes only when a report proves
+active allocation disconnect, stale credential rejection, and zero relayed
+post-revocation packets; a missing live deployment observation returns a blocked
+status. The 2026-08-21 blocked record documents that the local process
+integration path covers Authority-backed signaling, future relay credential
+rejection, and Authority coturn usage rejection, but not deployed coturn
+allocation teardown or packet-denial behavior.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code

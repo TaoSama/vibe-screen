@@ -1,0 +1,37 @@
+{
+  "schema": "dev.vibescreen.phase3-revocation-propagation/v1",
+  "observed_at": "2026-08-21T00:00:00Z",
+  "source": {
+    "commit": "22da26816465257b4a09f95de47be8567e448b74",
+    "topology": "blocked",
+    "authority_url_kind": "local-process-integration",
+    "coturn_source_id": "turn-integration-1",
+    "deployment_id": "no-live-coturn-disconnect-executor"
+  },
+  "authority_revocation": {
+    "device_revoked": true,
+    "session_revoked": true,
+    "revocation_status": 204,
+    "audit_event_observed": false
+  },
+  "signaling": {
+    "active_session_rejected": true,
+    "rejection_status": 404,
+    "long_poll_woke_fail_closed": true
+  },
+  "relay_credential": {
+    "new_credential_rejected": true,
+    "new_credential_status": 403,
+    "credential_ttl_seconds": 60
+  },
+  "coturn_allocation": {
+    "active_before_revocation": true,
+    "allocation_id": "allocation-before-device-revoke"
+  },
+  "data_plane": {
+    "traffic_established_before_revocation": true
+  },
+  "notes": [
+    "Local control-plane contract exists; live stale credential denial, active allocation disconnect, and post-revocation data-plane packet denial remain unproved."
+  ]
+}

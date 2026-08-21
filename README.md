@@ -528,6 +528,12 @@ reconciliation API, and requires an external active-allocation disconnect execut
 for unauthorized or conflicting source allocations. It is a contract and local
 test target for the exporter/reconciliation/executor boundary, not a deployed
 coturn exporter or proof of production enforcement.
+`scripts/phase3/revocation_propagation_verifier.py` adds a fail-closed evidence
+contract for the full revocation chain: Authority tombstone, active signaling
+session rejection, future and stale TURN credential rejection, active coturn
+allocation disconnect, and post-revocation data-plane denial. It returns a
+blocked result when live allocation teardown or packet-denial evidence is absent;
+it does not close the production gate by itself.
 
 See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/PRD.md),
 [technical status](docs/changes/2026-08-04-phase-3-secure-internet/TECH.md),
@@ -551,6 +557,10 @@ coturn reconcile helper can fail closed when active source allocations require a
 disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
 remain release gates.
+A local revocation propagation verifier now fixes the required evidence schema
+for active allocation disconnect, stale credential rejection, and post-revocation
+traffic denial; the current blocked evidence still lacks those live deployment
+observations.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.
