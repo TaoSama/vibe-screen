@@ -12,9 +12,10 @@ not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
 multi-instance operation is not proved, no authoritative usage exporter or
 active-allocation disconnect executor is bundled, Mac/Android automatic
-invocation of Authority profile issuance is not wired, production relay/coturn
-Authority admission and reconciliation wiring is not proved, and no integrated
-implementation has run on a public host in this environment.
+invocation of Authority profile issuance is not wired, the bundled coturn
+deployment does not run a usage exporter, reconciliation scheduler, or concrete
+data-plane disconnect executor, and no integrated implementation has run on a
+public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -36,7 +37,8 @@ PostgreSQL-backed routing state in production. Dependency or malformed-response
 failures return `502` without falling back to locally minted tokens; signaling
 storage failures return `503`; authority policy rejections remain denials.
 Relay credential
-admission now delegates to the authority before TURN credential issuance, and
+admission now delegates to the authority before TURN credential issuance when
+`services/relay/` is run in its Authority-backed production mode, and
 Authority owns coturn usage/reconciliation APIs. The repository also includes
 `scripts/phase3/coturn_reconcile.py`, a bounded helper that submits a trusted
 structured coturn allocation snapshot to Authority, can call an external exporter
