@@ -1,3 +1,4 @@
+import unittest
 from pathlib import Path
 ROOT = Path(__file__).parents[2]
 ANDROID_GATE = ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/security/AdvancedChannelSecurityGate.kt"
@@ -8,50 +9,49 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_advanced_channel_gate_exists_on_android_and_macos() -> None:
-    android = _read(ANDROID_GATE)
-    swift = _read(SWIFT_GATE)
+class AdvancedChannelSecurityGateStaticTests(unittest.TestCase):
+    def test_advanced_channel_gate_exists_on_android_and_macos(self) -> None:
+        android = _read(ANDROID_GATE)
+        swift = _read(SWIFT_GATE)
 
-    for source in (android, swift):
-        assert "AdvancedChannelOwner" in source
-        assert "AdvancedChannelBinding" in source
-        assert "AdvancedChannelAdmission" in source
-        assert "AdvancedChannelSecurityGate" in source
-        assert "sessionEpoch > 0" in source
-        assert "generation > 0" in source
-        assert "replaceOwner" in source
-        assert "admissions.clear" in source or "admissions.removeAll" in source
-
-
-def test_advanced_channel_gate_is_limited_to_audio_and_bulk_channels() -> None:
-    android = _read(ANDROID_GATE)
-    swift = _read(SWIFT_GATE)
-
-    assert "override val channel = SecurityChannel.AUDIO" in android
-    assert "override val channel = SecurityChannel.BULK" in android
-    assert "case .audio: return .audio" in swift
-    assert "case .bulk: return .bulk" in swift
-    assert "SecurityChannel.CONTROL" not in android
-    assert "SecurityChannel.MEDIA" not in android
-    assert "case .control" not in swift
-    assert "case .media" not in swift
+        for source in (android, swift):
+            self.assertIn("AdvancedChannelOwner", source)
+            self.assertIn("AdvancedChannelBinding", source)
+            self.assertIn("AdvancedChannelAdmission", source)
+            self.assertIn("AdvancedChannelSecurityGate", source)
+            self.assertIn("sessionEpoch > 0", source)
+            self.assertIn("generation > 0", source)
+            self.assertIn("replaceOwner", source)
+            self.assertTrue("admissions.clear" in source or "admissions.removeAll" in source)
 
 
-def test_advanced_channel_gate_limits_match_record_contracts() -> None:
-    android_gate = _read(ANDROID_GATE)
-    swift_gate = _read(SWIFT_GATE)
+    def test_advanced_channel_gate_is_limited_to_audio_and_bulk_channels(self) -> None:
+        android = _read(ANDROID_GATE)
+        swift = _read(SWIFT_GATE)
 
-    assert "InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES" in android_gate
-    assert "InternetBulkRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES" in android_gate
-    assert "InternetAudioRecordContract.maximumPlaintextRecordBytes" in swift_gate
-    assert "InternetBulkRecordContract.maximumPlaintextRecordBytes" in swift_gate
-    assert "maximumAudioBacklogBytes = 1024 * 1024" in android_gate
-    assert "maximumBulkBacklogBytes = 4 * 1024 * 1024" in android_gate
-    assert "maximumAudioBacklogBytes: 1024 * 1_024" in swift_gate
-    assert "maximumBulkBacklogBytes: 4 * 1024 * 1024" in swift_gate
+        self.assertIn("override val channel = SecurityChannel.AUDIO", android)
+        self.assertIn("override val channel = SecurityChannel.BULK", android)
+        self.assertIn("case .audio: return .audio", swift)
+        self.assertIn("case .bulk: return .bulk", swift)
+        self.assertNotIn("SecurityChannel.CONTROL", android)
+        self.assertNotIn("SecurityChannel.MEDIA", android)
+        self.assertNotIn("case .control", swift)
+        self.assertNotIn("case .media", swift)
+
+
+    def test_advanced_channel_gate_limits_match_record_contracts(self) -> None:
+        android_gate = _read(ANDROID_GATE)
+        swift_gate = _read(SWIFT_GATE)
+
+        self.assertIn("InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES", android_gate)
+        self.assertIn("InternetBulkRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES", android_gate)
+        self.assertIn("InternetAudioRecordContract.maximumPlaintextRecordBytes", swift_gate)
+        self.assertIn("InternetBulkRecordContract.maximumPlaintextRecordBytes", swift_gate)
+        self.assertIn("maximumAudioBacklogBytes = 1024 * 1024", android_gate)
+        self.assertIn("maximumBulkBacklogBytes = 4 * 1024 * 1024", android_gate)
+        self.assertIn("maximumAudioBacklogBytes: 1024 * 1_024", swift_gate)
+        self.assertIn("maximumBulkBacklogBytes: 4 * 1024 * 1024", swift_gate)
 
 
 if __name__ == "__main__":
-    test_advanced_channel_gate_exists_on_android_and_macos()
-    test_advanced_channel_gate_is_limited_to_audio_and_bulk_channels()
-    test_advanced_channel_gate_limits_match_record_contracts()
+    unittest.main()

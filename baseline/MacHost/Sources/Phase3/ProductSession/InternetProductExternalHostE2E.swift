@@ -11,7 +11,7 @@ enum InternetProductExternalHostE2E {
         do {
             let values = try Environment(environment)
             let configuration = try values.configuration()
-            var derived = try TrafficKeyDerivation.initial(
+            let derived = try TrafficKeyDerivation.initial(
                 sharedSecret: values.sharedSecret,
                 bootstrapSecret: values.bootstrapSecret,
                 context: configuration.boundTranscriptContext
