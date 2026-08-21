@@ -1950,11 +1950,11 @@ class MainActivity : AppCompatActivity() {
     private fun applyDisconnectedSettingsEntryPolicy() {
         val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
         binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
-        // Stream overlay opacity can be very low; the disconnected settings
-        // entry remains a primary recovery affordance and must stay readable.
-        binding.settingsButton.alpha = 1f
         binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
         if (!useInlineSettingsButton) {
+            // Stream overlay opacity can be very low; the disconnected settings
+            // entry remains a primary recovery affordance and must stay readable.
+            binding.settingsButton.alpha = 1f
             binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
             binding.settingsButton.bringToFront()
         }

@@ -183,6 +183,7 @@ class MainActivityTerminalGuidanceContractTest {
         val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
         val entryPolicy = extractMethod(source, "private fun applyDisconnectedSettingsEntryPolicy")
         val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+        val floatingSettingsBranch = extractBlockAfterMarker(entryPolicy, "if (!useInlineSettingsButton)")
 
         assertTrue(
             "Disconnected state should use the resource policy for inline settings",
@@ -202,11 +203,15 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "Wide disconnected settings button must sit above the connection panel",
-            entryPolicy.contains("settingsButton.bringToFront()"),
+            floatingSettingsBranch.contains("settingsButton.bringToFront()"),
         )
         assertTrue(
             "Wide disconnected settings button must have a higher z-order than the connection panel",
-            entryPolicy.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+            floatingSettingsBranch.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+        )
+        assertTrue(
+            "Wide disconnected settings button must ignore overlay opacity and stay readable",
+            floatingSettingsBranch.contains("binding.settingsButton.alpha = 1f"),
         )
         assertTrue(
             "Disconnected entry policy must apply when the disconnected panel is first shown",
@@ -235,16 +240,13 @@ class MainActivityTerminalGuidanceContractTest {
             "The inner icon should not duplicate the parent accessibility node",
             settingsButton.contains("android:importantForAccessibility=\"no\""),
         )
-        assertTrue(
-            "Wide disconnected settings button must ignore overlay opacity and stay readable",
-            disconnected.contains("binding.settingsButton.alpha = 1f"),
-        )
     }
 
     @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
+        val updateOverlayOpacity = extractMethod(source, "private fun updateOverlayOpacity")
         val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
         val opacitySliderListener =
             showSettingsDialog.substring(
@@ -260,9 +262,18 @@ class MainActivityTerminalGuidanceContractTest {
             "Changing overlay opacity from Settings should still update the stats overlay",
             opacitySliderListener.contains("updateOverlayOpacity(value)"),
         )
+        assertTrue(
+            "Overlay opacity must target only the stream stats overlay",
+            updateOverlayOpacity.contains("binding.statusBar.alpha = opacity"),
+        )
+        assertFalse(
+            "Overlay opacity must not target the disconnected floating settings entry",
+            updateOverlayOpacity.contains("settingsButton"),
+        )
         assertFalse(
             "Restoring overlay state must not dim the disconnected floating settings entry",
-            restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
+            restoreOverlayPosition.contains("settingsButton") ||
+                restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
         )
         assertFalse(
             "Changing overlay opacity from Settings must not dim the disconnected floating settings entry",
@@ -812,6 +823,27 @@ class MainActivityTerminalGuidanceContractTest {
             }
         }
         error("Callback closing brace not found: $startMarker")
+    }
+
+    private fun extractBlockAfterMarker(
+        source: String,
+        marker: String,
+    ): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "Block marker not found: $marker" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Block body not found: $marker" }
+        var depth = 0
+        for (index in bodyStart until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Block closing brace not found: $marker")
     }
 
     private fun mainActivitySource(): String {
