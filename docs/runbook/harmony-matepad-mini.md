@@ -16,6 +16,23 @@ For a readiness or blocked dry run, `--allow-blocked` may validate the manifest
 shape, but the resulting output is not acceptance evidence and must not close
 the README gate.
 
+Host resume interoperability has a narrower verifier for the recoverable
+Protocol v1 flow. Before claiming that HarmonyOS interoperates with the Host for
+resume, keep `harmony-host-interop.json` beside the raw logs and validate it:
+
+```bash
+python3 scripts/harmony_host_interop_preflight.py --template > /tmp/harmony-host-interop.json
+# Fill it from the exact signed HAP, MatePad Mini, and resume-capable Host run.
+python3 scripts/harmony_host_interop_preflight.py /path/to/evidence/harmony-host-interop.json
+```
+
+For a local blocked preflight that records missing DevEco/HDC/device/Host
+prerequisites without closing any gate:
+
+```bash
+make harmony-host-interop-preflight EVIDENCE_DIR=/path/to/evidence
+```
+
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
 2. Run `pnpm verify` and `make release`; verify the signed HAP and
@@ -32,7 +49,9 @@ the README gate.
    keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
 8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
    and wake the Mac, and restart the host. Confirm reconnect within the target
-   and that no prior-epoch frame renders.
+   and that no prior-epoch frame or control is accepted. Record both an accepted
+   `ResumeSessionResult` path and a rejected resume path that falls back to a
+   fresh ClientHello after Host restart.
 9. Run eight hours at the target mode. Archive timestamped logs and metrics;
    reject any unbounded latency, queue, RSS, or thermal throttling trend.
 10. Measure glass-to-glass and input latency with an external high-frame-rate
