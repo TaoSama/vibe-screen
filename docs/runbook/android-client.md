@@ -60,6 +60,37 @@ adb -s DEVICE_HOST:5555 install -r -t \
 The lease-controlled endpoint has previously identified as a
 Nubia P0110, not Xiaomi 13 (2211133C). Recheck rather than assuming its identity.
 
+## Read-only USB live-stream smoke
+
+Use this helper after the Host and Android app are already connected and
+streaming. It is safe for an observation-only pass because it does not install,
+launch, stop, clear logs, change ADB reverse mappings, probe the Host port, or
+inject input:
+
+```bash
+test ! -e /tmp/vibe-screen-device-android.lock
+test ! -e /tmp/vibe-screen-device-soak.lock
+make evidence-usb-live-smoke \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_PACKAGE=dev.telemachus.display \
+  EVIDENCE_DIR=.build/evidence/usb-live-smoke
+```
+
+If you own an existing coordinated lock, invoke the module directly with
+`--allow-existing-device-lock`. If another task owns the lock, use
+`--write-blocked-on-lock` to preserve a blocked JSON record and exit non-zero
+without running ADB. A `pass` result requires the device identity, `tcp:54321`
+reverse mapping, foreground MainActivity, running package PID, positive
+current-process `VibeScreenTelemetry` `stream_stats`, and active MediaCodec
+decoder output from current-process `logcat` lines. Fresh sessions may include
+decoder setup and first-output lines; long-running sessions may instead prove
+decoder activity through continuing frame counters. The private diagnostic log
+is context only and cannot independently support a `pass`. It is a
+reproducibility smoke only: keep all README soak, Host RSS, latency,
+native-pointer, stylus, and controller gates open unless their dedicated
+evidence is present. Nubia P0110/pacific summaries are general Android
+substitute evidence and must not be relabeled as Xiaomi 13/fuxi.
+
 ## Viewport checks
 
 Open the in-stream settings button:

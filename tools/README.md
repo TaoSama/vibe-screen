@@ -41,6 +41,38 @@ make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
+### USB live-stream smoke
+
+The read-only USB live-stream smoke collector inspects an already-running
+Android streaming session without installing, launching, stopping, or
+reconfiguring anything. It records device identity, the ADB reverse mapping,
+the foreground Activity, the application PID, VibeScreenTelemetry events, and
+MediaCodec decoder stats, then writes a structured JSON summary.
+
+```sh
+make evidence-usb-live-smoke \
+  EVIDENCE_SERIAL="$ADB_ENDPOINT" \
+  EVIDENCE_PACKAGE=dev.telemachus.display \
+  EVIDENCE_PORT=54321 \
+  EVIDENCE_DIR=.build/evidence/usb-live-smoke
+```
+
+The tool refuses to run ADB while `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock` exists unless
+`--allow-existing-device-lock` is supplied. When `--write-blocked-on-lock` is
+set, it writes a `blocked` summary and exits non-zero. A `pass` verdict requires
+the device to be ready, the `tcp:54321` reverse mapping to be present, the
+Vibe Screen package to be installed and running in the foreground, at least one
+current-process `stream_stats` telemetry event with positive FPS, and active
+MediaCodec decoder output from current-process `logcat` lines. Fresh sessions
+may include decoder setup and first-output lines; long-running sessions may
+instead prove decoder activity through continuing frame counters. The app
+private diagnostic log is recorded as context only. The summary always carries
+`claims.readme_gate_closure=false` and a device-identity label guard so a Nubia
+P0110/pacific run can never be relabeled as Xiaomi 13/fuxi evidence. To record
+a blocked summary without touching ADB when another run holds the device lock,
+invoke the module directly with `--write-blocked-on-lock`.
+
 Outputs go under `.build/evidence/` by default. Each soak writes raw JSONL and
 an atomic JSON summary containing connection coverage, process liveness,
 reconnects, memory, thermal, battery, power, and optional host RSS series. Use

@@ -125,6 +125,14 @@ class ADBClient:
     def shell(self, *arguments: str) -> str:
         return self._run(("shell", *arguments)).stdout
 
+    def command(self, *arguments: str) -> str:
+        """Run a non-shell ADB command scoped to this device serial."""
+        return self._run(arguments).stdout
+
+    def exec_out(self, *arguments: str) -> str:
+        """Run ``adb exec-out`` scoped to this device serial."""
+        return self._run(("exec-out", *arguments)).stdout
+
     def identity(self) -> dict[str, Any]:
         properties = {
             "manufacturer": "ro.product.manufacturer",
