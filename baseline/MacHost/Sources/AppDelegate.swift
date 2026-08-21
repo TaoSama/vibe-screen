@@ -1455,7 +1455,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if version.majorVersion >= 26 {
                 do {
                     let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                    debugLog("SCShareableContent verification OK — \(content.displays.count) displays found")
+                    if content.displays.isEmpty {
+                        debugLog(
+                            "WARNING: CGPreflight OK but ScreenCaptureKit returned no displays; " +
+                            "unlock the Mac session or attach a physical, dummy, or Screen Sharing display"
+                        )
+                    } else {
+                        debugLog("SCShareableContent verification OK — \(content.displays.count) displays found")
+                    }
                 } catch {
                     debugLog("WARNING: CGPreflight OK but SCShareableContent failed on macOS 26: \(error.localizedDescription)")
                     debugLog("CGDisplayStream fallback will likely activate at capture time")
@@ -1717,8 +1724,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let size = configuration.resolutionSize(rotation: settings.rotation)
-            let captureDisplayID: CGDirectDisplayID
-            let streamSize: (width: Int, height: Int)
+            var captureDisplayID: CGDirectDisplayID
+            var streamSize: (width: Int, height: Int)
 
             switch configuration.displaySource {
             case .extended:
@@ -1889,6 +1896,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 followsMainDisplay: configuration.displaySource == .currentMain
             )
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
+            if configuration.displaySource == .currentMain,
+               let resolvedDisplayID = screenCapture?.activeCaptureDisplayID,
+               resolvedDisplayID != captureDisplayID {
+                debugLog(
+                    "Current-main capture adopted display \(resolvedDisplayID) instead of requested \(captureDisplayID)"
+                )
+                captureDisplayID = resolvedDisplayID
+                activeDisplayID = resolvedDisplayID
+                streamSize = Self.aspectFitStreamSize(
+                    sourceWidth: CGDisplayPixelsWide(resolvedDisplayID),
+                    sourceHeight: CGDisplayPixelsHigh(resolvedDisplayID),
+                    maximumWidth: size.width,
+                    maximumHeight: size.height
+                )
+            }
 
             if configuration.connectionMode == .internet {
                 try await startInternetProductSession(

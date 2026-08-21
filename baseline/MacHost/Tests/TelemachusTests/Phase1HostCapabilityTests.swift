@@ -693,6 +693,118 @@ final class Phase1HostCapabilityTests: XCTestCase {
         ), 10)
     }
 
+    func testEmptyShareableDisplayCatalogCanFallbackToCurrentMainDisplay() {
+        XCTAssertEqual(
+            ScreenCapture.ShareableDisplayReadiness.evaluate(
+                shareableDisplayIDs: [],
+                requestedDisplayID: 10,
+                followsMainDisplay: true,
+                currentMainDisplayID: 10,
+                currentMainPixelSize: (width: 1920, height: 1080)
+            ),
+            .fallbackToCurrentMain
+        )
+    }
+
+    func testCurrentMainCaptureResolvesReplacementBeforeEmptyCatalogFallback() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 11)
+        XCTAssertEqual(evaluation.readiness, .fallbackToCurrentMain)
+    }
+
+    func testCurrentMainCaptureResolvesReplacementBeforeNonEmptyCatalogReadiness() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [11],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 11)
+        XCTAssertEqual(evaluation.readiness, .ready)
+    }
+
+    func testExplicitDisplayCaptureDoesNotResolveToCurrentMainReplacement() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [11],
+            requestedDisplayID: 10,
+            followsMainDisplay: false,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 10)
+        XCTAssertEqual(
+            evaluation.readiness,
+            .unavailable("Display 10 was not returned by ScreenCaptureKit.")
+        )
+    }
+
+    func testEmptyShareableDisplayCatalogFailsClosedWithoutUsableMainDisplay() {
+        XCTAssertEqual(
+            ScreenCapture.ShareableDisplayReadiness.evaluate(
+                shareableDisplayIDs: [],
+                requestedDisplayID: 10,
+                followsMainDisplay: true,
+                currentMainDisplayID: 0,
+                currentMainPixelSize: (width: 0, height: 0)
+            ),
+            .unavailable(
+                "ScreenCaptureKit returned no capturable displays, and CoreGraphics does not expose a usable current main display. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+            )
+        )
+    }
+
+    func testEmptyShareableDisplayCatalogFailsClosedForNonMainDisplayCapture() {
+        XCTAssertEqual(
+            ScreenCapture.ShareableDisplayReadiness.evaluate(
+                shareableDisplayIDs: [],
+                requestedDisplayID: 10,
+                followsMainDisplay: false,
+                currentMainDisplayID: 10,
+                currentMainPixelSize: (width: 1920, height: 1080)
+            ),
+            .unavailable(
+                "ScreenCaptureKit returned no capturable displays. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+            )
+        )
+    }
+
+    func testMissingRequestedShareableDisplayFailsClosedWhenCatalogIsNonEmpty() {
+        XCTAssertEqual(
+            ScreenCapture.ShareableDisplayReadiness.evaluate(
+                shareableDisplayIDs: [11],
+                requestedDisplayID: 10,
+                followsMainDisplay: true,
+                currentMainDisplayID: 10,
+                currentMainPixelSize: (width: 1920, height: 1080)
+            ),
+            .unavailable(
+                "Display 10 was not returned by ScreenCaptureKit."
+            )
+        )
+    }
+
+    func testMissingConfiguredStreamFallsBackOnlyForCurrentMainCapture() {
+        XCTAssertEqual(
+            ScreenCapture.MissingConfiguredStreamReadiness.evaluate(
+                followsMainDisplay: true
+            ),
+            .fallbackToCurrentMain
+        )
+        XCTAssertEqual(
+            ScreenCapture.MissingConfiguredStreamReadiness.evaluate(
+                followsMainDisplay: false
+            ),
+            .unavailable("Capture stream was not configured.")
+        )
+    }
+
     private func descriptor(
         id: CGDirectDisplayID,
         uuid: String,
