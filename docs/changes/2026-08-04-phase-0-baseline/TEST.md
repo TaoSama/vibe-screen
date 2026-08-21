@@ -287,10 +287,12 @@ Evidence is retained under
 Main commit be9381179a7f5b6a9ea5e97d6a77ad486a026ca7 was rechecked on the
 connected Nubia P0110 (pacific) device, serial EP0110PZ0B9110300B, Android 16.
 The read-only `make evidence-usb-smoke-preflight` path correctly failed closed:
-the device identity matched the expected Nubia/P0110/pacific values, but no
-ADB reverse existed, the Android app was not running in the foreground, no Mac
-Host was listening on TCP `54321`, and the stable Host preflight failed because
-the local keychain did not contain the `Vibe Screen Dev` codesigning identity.
+the device identity matched the expected Nubia/P0110/pacific values, ADB reverse
+was configured as `UsbFfs tcp:54321 tcp:54321`, and the Android app was running
+in the foreground as `dev.telemachus.display/.MainActivity` with PID `11385`;
+however, no Mac Host was listening on TCP `54321`, and the stable Host preflight
+failed because the local keychain did not contain the `Vibe Screen Dev`
+codesigning identity.
 
 No USB stream, reconnect, input, latency, soak, or Host RSS pass is claimed from
 this blocked preflight. Evidence is retained under

@@ -15,19 +15,20 @@ stable-signed Host/TCC preflight.
 ## Result
 
 The preflight result is `blocked`. No Host was launched, no ADB reverse mapping
-was changed, no Android app state was modified, and no TCC or Keychain state was
-changed.
+was changed by the tool, no Android app state was modified by the tool, and no
+TCC or Keychain state was changed.
 
 Recorded device identity: `nubia / P0110 / pacific / Android 16`.
 This is Nubia P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence.
 
 ## Blockers
 
-- ADB reverse tcp:54321 -> tcp:54321 is not configured for EP0110PZ0B9110300B
-- Android app process is not running: dev.telemachus.display
-- Android app is not foreground: dev.telemachus.display
 - Mac Host is not listening on TCP 54321
 - macOS Host stable-signing/TCC preflight failed: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the documented stable Code Signing identity or set $VIBE_SCREEN_SIGN_IDENTITY to an existing codesigning identity. For local device reruns, do not use ad-hoc signing; create or select one stable Code Signing identity, then grant Screen Recording and Accessibility to /Applications/Vibe Screen.app.
+
+ADB reverse was already configured as `UsbFfs tcp:54321 tcp:54321`, and the
+Android app was running in the foreground as `dev.telemachus.display/.MainActivity`
+with PID `11385`; those preconditions are no longer blockers for this run.
 
 ## Recovery steps
 
@@ -38,9 +39,10 @@ This is Nubia P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence.
 3. Grant `/Applications/Vibe Screen.app` Screen Recording and Accessibility in
    System Settings, then relaunch the app.
 4. Run `make baseline-macos-touch-preflight` and require it to pass.
-5. Start the Host, configure `adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321`,
-   launch `dev.telemachus.display/.MainActivity`, then rerun
-   `make evidence-usb-smoke-preflight` before collecting smoke evidence.
+5. Start the Host, keep `adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321`
+   configured, keep `dev.telemachus.display/.MainActivity` in the foreground,
+   then rerun `make evidence-usb-smoke-preflight` before collecting smoke
+   evidence.
 
 ## Open gates
 

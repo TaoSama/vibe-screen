@@ -1,6 +1,6 @@
 {
   "adb_reverse": {
-    "configured": false,
+    "configured": true,
     "probe": {
       "command": [
         "adb",
@@ -12,15 +12,15 @@
       "error": null,
       "returncode": 0,
       "stderr": "",
-      "stdout": ""
+      "stdout": "UsbFfs tcp:54321 tcp:54321"
     }
   },
   "android_app": {
     "focus_lines": [
-      "mCurrentFocus=Window{d80e9b7 u0 com.android.launcher3/com.obric.feature.ObricLauncher}",
-      "mFocusedApp=ActivityRecord{94028885 u0 com.android.launcher3/com.obric.feature.ObricLauncher t299}"
+      "mCurrentFocus=Window{b0ccf39 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
+      "mFocusedApp=ActivityRecord{227500635 u0 dev.telemachus.display/.MainActivity t403}"
     ],
-    "foreground": false,
+    "foreground": true,
     "package": "dev.telemachus.display",
     "pidof": {
       "command": [
@@ -32,12 +32,14 @@
         "dev.telemachus.display"
       ],
       "error": null,
-      "returncode": 1,
+      "returncode": 0,
       "stderr": "",
-      "stdout": ""
+      "stdout": "11385"
     },
-    "pids": [],
-    "running": false,
+    "pids": [
+      11385
+    ],
+    "running": true,
     "window_probe": {
       "command": [
         "adb",
@@ -49,8 +51,8 @@
       ],
       "error": null,
       "focus_lines": [
-        "mCurrentFocus=Window{d80e9b7 u0 com.android.launcher3/com.obric.feature.ObricLauncher}",
-        "mFocusedApp=ActivityRecord{94028885 u0 com.android.launcher3/com.obric.feature.ObricLauncher t299}"
+        "mCurrentFocus=Window{b0ccf39 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
+        "mFocusedApp=ActivityRecord{227500635 u0 dev.telemachus.display/.MainActivity t403}"
       ],
       "returncode": 0
     }
@@ -68,13 +70,10 @@
     "sdk": 36
   },
   "blockers": [
-    "ADB reverse tcp:54321 -> tcp:54321 is not configured for EP0110PZ0B9110300B",
-    "Android app process is not running: dev.telemachus.display",
-    "Android app is not foreground: dev.telemachus.display",
     "Mac Host is not listening on TCP 54321",
     "macOS Host stable-signing/TCC preflight failed: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the documented stable Code Signing identity or set $VIBE_SCREEN_SIGN_IDENTITY to an existing codesigning identity. For local device reruns, do not use ad-hoc signing; create or select one stable Code Signing identity, then grant Screen Recording and Accessibility to /Applications/Vibe Screen.app."
   ],
-  "collected_at": "2026-08-21T00:30:48.697636+00:00",
+  "collected_at": "2026-08-21T01:05:43.983913+00:00",
   "expected_device": {
     "android_release": "16",
     "device": "pacific",
