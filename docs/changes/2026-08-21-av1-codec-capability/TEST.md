@@ -24,16 +24,17 @@ The covered contract is:
 
 - Host VideoToolbox capability probing distinguishes H.264, HEVC, and AV1
   hardware encoder availability, but Protocol v1 Host advertisement still
-  filters out AV1 until a real AV1 encoder and frame packaging implementation
-  exists.
+  flows through the local stream-admission policy and filters out AV1 until a
+  real AV1 encoder and frame packaging implementation exists.
 - Protocol v1 Host session selection ignores AV1 when the local Host has no
   stream encoder mapping and falls back to HEVC/H.264 when the client also
   supports them.
 - Protocol v1 Host session fails closed with an actionable unsupported-capability
   error when the only mutually offered client codec is AV1.
 - Android MediaCodec capability probing can observe AV1 decoder availability as
-  diagnostic state, but default USB/LAN/Internet offers remain HEVC/H.264 only;
-  a received AV1 Internet VideoConfig is rejected as av1_decoder_unavailable.
+  diagnostic state behind an explicit disabled admission flag, but default
+  USB/LAN/Internet offers remain HEVC/H.264 only; a received AV1 Internet
+  VideoConfig is rejected as av1_decoder_unavailable.
 - iOS validates CODEC_AV1 as a known protocol enum but rejects AV1 unless an
   explicit local decode capability is present, and the current VideoToolbox
   decoder implementation still throws unsupportedCodec(.av1).
@@ -60,3 +61,14 @@ The retained blocked evidence record is
   - Result: blocked in this local Command Line Tools environment before test
     execution with `no such module 'XCTest'`; the MacHost product target
     compiled successfully with `swift build`.
+
+## 2026-08-22 code-gate update
+
+- macOS production Protocol v1 sessions now obtain their advertised codec list
+  from `VideoCodecAdmissionPolicy.productionSupportedCodecs()`, which uses the
+  VideoToolbox capability snapshot and the same local stream-encoder admission
+  policy as the offline tests. AV1 remains filtered because there is no
+  `StreamCodec` mapping, encoder implementation, or frame packaging path.
+- Android AV1 decoder probing remains diagnostic-only behind
+  `CodecFallbackPolicy.AV1_ADMISSION_ENABLED = false`; the existing protocol and
+  product-codec mappings still drop AV1 from USB/LAN/Internet offers.

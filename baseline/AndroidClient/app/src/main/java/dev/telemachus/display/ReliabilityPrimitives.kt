@@ -167,6 +167,8 @@ enum class StreamCodec {
 object CodecFallbackPolicy {
     @Volatile private var hevcFailedAtRuntime = false
 
+    const val AV1_ADMISSION_ENABLED = false
+
     internal fun recordStructuralUnsupported(codec: StreamCodec) {
         if (codec == StreamCodec.HEVC) hevcFailedAtRuntime = true
     }
@@ -181,6 +183,8 @@ object CodecFallbackPolicy {
     ): List<StreamCodec> =
         if (shouldUseH264(hasUsableHevcDecoder)) {
             listOf(StreamCodec.H264)
+        } else if (AV1_ADMISSION_ENABLED && hasUsableAv1Decoder) {
+            listOf(StreamCodec.AV1, StreamCodec.HEVC, StreamCodec.H264)
         } else {
             listOf(StreamCodec.HEVC, StreamCodec.H264)
         }

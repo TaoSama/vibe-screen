@@ -20,6 +20,28 @@ final class CodecLimitsTests: XCTestCase {
         XCTAssertNil(VideoCodecAdmissionPolicy.streamCodec(for: .av1))
     }
 
+    func testProductionCodecOfferUsesAdmissionPolicyAndKeepsAV1Disabled() {
+        let allHardwareSnapshot = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: true,
+            hevcHardwareEncoderAvailable: true,
+            av1HardwareEncoderAvailable: true
+        )
+        let av1OnlySnapshot = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: false,
+            hevcHardwareEncoderAvailable: false,
+            av1HardwareEncoderAvailable: true
+        )
+
+        XCTAssertEqual(
+            VideoCodecAdmissionPolicy.productionSupportedCodecs(capabilities: allHardwareSnapshot),
+            [.hevc, .h264]
+        )
+        XCTAssertEqual(
+            VideoCodecAdmissionPolicy.productionSupportedCodecs(capabilities: av1OnlySnapshot),
+            []
+        )
+    }
+
     func testBooxPanelClampsToFitAvcLimit() {
         // Boox Nova Air C panel: 1872x1404. AVC HW decoder max: 1920x1088.
         let r = CodecLimits.clampForAvc(width: 1872, height: 1404)

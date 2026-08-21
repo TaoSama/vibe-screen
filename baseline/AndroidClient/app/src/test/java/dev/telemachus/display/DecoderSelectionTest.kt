@@ -91,6 +91,7 @@ class DecoderSelectionTest {
 
     @Test
     fun av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled() {
+        assertFalse(CodecFallbackPolicy.AV1_ADMISSION_ENABLED)
         assertEquals(
             listOf(StreamCodec.HEVC, StreamCodec.H264),
             CodecFallbackPolicy.candidates(hasUsableHevcDecoder = true, hasUsableAv1Decoder = true),

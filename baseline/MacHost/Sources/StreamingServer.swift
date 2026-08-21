@@ -1999,7 +1999,7 @@ class StreamingServer: EncodedFrameSink {
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: hostCapabilities,
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
-            supportedCodecs: [.hevc, .h264],
+            supportedCodecs: VideoCodecAdmissionPolicy.productionSupportedCodecs(),
             hostID: "macos-host",
             hostName: Host.current().localizedName ?? "Mac",
             displayID: protocolV1DisplayID,
