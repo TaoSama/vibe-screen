@@ -1,0 +1,44 @@
+# Verification
+
+Passed:
+
+```bash
+python3 -m unittest scripts.tests.test_release_tools.MacOSSigningIdentityTests
+# Ran 7 tests in 0.004s - OK
+```
+
+```bash
+PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_release_tools.MacOSSigningIdentityTests
+# Ran 19 tests in 0.189s - OK
+```
+
+```bash
+cd baseline/MacHost && swift build
+# Build complete! (0.39s)
+```
+
+```bash
+cd baseline/AndroidClient && ./gradlew --no-daemon --quiet testDebugUnitTest \
+  --tests dev.telemachus.display.ControllerInputMapperTest \
+  --tests dev.telemachus.display.ControllerSessionFeedbackTest \
+  --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest \
+  --tests dev.telemachus.display.MainActivityControllerForwardingContractTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+# exit code 0
+```
+
+```bash
+git diff --check
+# exit code 0
+```
+
+Blocked locally:
+
+```bash
+cd baseline/MacHost && swift test --filter "GameControllerInjectorTests|IOKitVirtualGamepadDeviceTests|GameControllerRuntimeAvailabilityTests|GameControllerHIDReportTests"
+# fails before running tests: no such module 'XCTest'
+```
+
+No physical Android controller, entitled Host runtime, or Mac-side controller
+observer run was available in this local environment, so runtime acceptance was
+not attempted and remains blocked.
