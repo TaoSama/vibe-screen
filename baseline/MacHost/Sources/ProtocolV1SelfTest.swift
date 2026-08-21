@@ -1256,6 +1256,33 @@ enum ProtocolV1SelfTest {
                 failures.append("host action catalog did not carry the exact move/return action ids")
                 return
             }
+
+            // A local managed-policy deny removes HOST_ACTIONS before
+            // negotiation, so the client neither negotiates the capability nor
+            // receives a catalog to map gestures against.
+            let deniedPolicy = ManagedPolicy(
+                isManaged: true,
+                clipboardAllowed: true,
+                fileTransferAllowed: true,
+                audioAllowed: true,
+                wakeAllowed: true,
+                customGesturesAllowed: true,
+                hostActionsAllowed: false,
+                maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+                allowedHosts: []
+            )
+            let deniedSession = makeSession(managedPolicy: deniedPolicy)
+            var deniedHello = clientHelloEnvelope()
+            deniedHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = deniedSession.handleControl(try deniedHello.serializedData())
+            let deniedNegotiation = try responseEnvelopes(deniedSession.completeCodecNegotiation())
+            guard deniedNegotiation.count == 2,
+                  case .sessionAccepted(let deniedAccepted)? = deniedNegotiation[1].payload,
+                  !deniedAccepted.negotiatedCapabilities.contains(VSCapability.hostActions),
+                  !deniedNegotiation.contains(where: { if case .hostActionCatalog = $0.payload { true } else { false } }) else {
+                failures.append("managed-policy-denied HOST_ACTIONS still negotiated or emitted a catalog")
+                return
+            }
             // Drive to streaming, then invoke move-window. The session forwards
             // exactly one hostAction intent echoing the invocation id and emits
             // no HostActionResult until the host confirms.
@@ -1812,8 +1839,8 @@ enum ProtocolV1SelfTest {
         ))
     }
 
-    private static func makeSession() -> ProtocolV1SessionCoordinator {
-        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+    private static func makeSession(managedPolicy: ManagedPolicy = .unmanaged) -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
             displayWidth: 1920,
@@ -1822,7 +1849,8 @@ enum ProtocolV1SelfTest {
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: true
+                touchEnabled: true,
+                managedPolicy: managedPolicy
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -1831,7 +1859,9 @@ enum ProtocolV1SelfTest {
             displayID: "active-display",
             displayName: "Display",
             displayIsVirtual: true
-        ))
+        )
+        configuration.managedPolicy = managedPolicy
+        return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
     private static func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {

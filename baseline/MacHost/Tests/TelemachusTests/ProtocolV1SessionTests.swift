@@ -1041,6 +1041,35 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(ungatedResponses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
     }
 
+    func testHostActionCatalogIsSuppressedByLocalManagedPolicy() throws {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: false,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        )
+        let session = makeSession(managedPolicy: policy)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+
+        XCTAssertFalse(responses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+        guard case .sessionAccepted(let accepted)? = responses.first(where: {
+            if case .sessionAccepted = $0.payload { return true }
+            return false
+        })?.payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.hostActions))
+    }
+
     func testHostActionInvokeForwardsIntentAndResultRidesSessionFIFO() throws {
         let session = try readyHostActionSession()
         let invocationID = Data([0xA1, 0xB2, 0xC3])

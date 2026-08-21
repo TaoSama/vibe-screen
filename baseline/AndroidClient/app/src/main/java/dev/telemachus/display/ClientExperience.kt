@@ -742,10 +742,17 @@ internal class ThreeFingerGestureClassifier(
  * it never adds a dead tap target to the compact capsule.
  */
 internal object HostActionMenuPolicy {
+    fun supportedActions(actions: List<HostActionOption>): List<HostActionOption> {
+        val seen = mutableSetOf<String>()
+        return actions.filter { option ->
+            option.id in KNOWN_ACTION_IDS && seen.add(option.id)
+        }
+    }
+
     fun isAvailable(
         hostActions: Boolean,
         actions: List<HostActionOption>,
-    ): Boolean = hostActions && actions.isNotEmpty()
+    ): Boolean = hostActions && supportedActions(actions).isNotEmpty()
 
     fun selectionMode(option: HostActionOption): HostActionSelectionMode =
         if (option.requiresConfirmation) HostActionSelectionMode.CONFIRM else HostActionSelectionMode.INVOKE
@@ -771,6 +778,7 @@ internal object HostActionMenuPolicy {
 
     const val ACTION_MOVE_WINDOW = "move-window"
     const val ACTION_RETURN_WINDOWS = "return-windows"
+    private val KNOWN_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
 }
 
 /**

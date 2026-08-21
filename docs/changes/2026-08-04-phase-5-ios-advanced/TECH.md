@@ -84,9 +84,11 @@ Negotiation rules:
 - **HDR/color:** video negotiation adds profile, bit depth, primaries,
   transfer, matrix, range, and static metadata, all guarded by `config_epoch`.
   Unsupported Main10/HDR is explicitly renegotiated to SDR.
-- **Custom gestures:** mappings stay on-device. The host exposes a capability-
-  gated action catalog/invocation API; UI gesture definitions never enter the
-  protocol.
+- **Custom gestures:** mappings stay on-device. The baseline MacHost exposes a
+  capability- and managed-policy-gated finite action catalog, and clients send
+  only `HostActionInvoke` records for catalogued action IDs. Android and iOS
+  both filter unknown catalog entries before exposing them to local gesture/UI
+  policy. UI gesture definitions never enter the protocol.
 - **Wake:** only an already paired device may request wake with replay-safe
   proof. Wake-on-LAN is transport behavior, not authentication.
 - **Managed devices:** Apple MDM configuration is read locally. The protocol
@@ -147,9 +149,10 @@ Negotiation rules:
   staging files on cancel, digest mismatch, disk error, or disconnect.
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
-- Gesture mappings are local Codable state and may invoke only catalogued host
-  action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
-  produces the standard 102-byte packet only after local authorization/policy.
+- Gesture mappings are local Codable state and may invoke only known, catalogued
+  host action IDs while both custom-gesture and host-action policy allow them.
+  Managed policy is parsed fail-closed and merged deny-wins. WOL produces the
+  standard 102-byte packet only after local authorization/policy.
 
 ## Host and security TODO
 
@@ -159,10 +162,13 @@ two-process loopback uses the production iOS Core control outbox and covers
 Hello/capability negotiation, display list/start,
 video configuration acknowledgement and media framing, heartbeat, targeted
 touch, protocol error, and disconnect. It does not implement or prove advanced
-host behavior. A compatible advanced host still must provide per-client
-resource allocation, multi-display stream IDs, PCM capture, advanced control
-handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
-an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
+host behavior. The baseline MacHost now provides the finite host-action catalog
+and invocation/result boundary for `move-window` and `return-windows`, including
+capability gating, managed-policy denial, unknown action rejection, active
+target matching, and bounded pending invocation state. A compatible advanced
+host still must provide per-client resource allocation, multi-display stream
+IDs, PCM capture, advanced control handlers, WebRTC bulk streaming, color retry,
+and an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
 channels. Shared fixed vectors prove offline record interoperability only.

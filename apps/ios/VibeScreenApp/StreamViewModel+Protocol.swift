@@ -108,7 +108,11 @@ extension StreamViewModel {
         case .hostActionCatalog(let catalog):
             if negotiatedCapabilities.contains(.hostActions),
                managedConfiguration.policy.hostActionsAllowed {
-                availableHostActions = catalog.actions.map(\.actionID)
+                availableHostActions = HostActionCatalogPolicy.supportedActionIDs(
+                    from: catalog.actions.map(\.actionID)
+                )
+            } else {
+                availableHostActions = []
             }
         case .managedPolicyStatus(let status):
             if negotiatedCapabilities.contains(.managedConfiguration) {

@@ -31,6 +31,23 @@ public enum GestureMappingError: Error, Equatable {
     case unavailableHostAction(String)
 }
 
+public enum HostActionCatalogPolicy {
+    public static let moveWindowActionID = "move-window"
+    public static let returnWindowsActionID = "return-windows"
+    public static let knownActionIDs: Set<String> = [
+        moveWindowActionID,
+        returnWindowsActionID,
+    ]
+
+    public static func supportedActionIDs(from identifiers: [String]) -> [String] {
+        var seen: Set<String> = []
+        return identifiers.compactMap { identifier in
+            guard knownActionIDs.contains(identifier), seen.insert(identifier).inserted else { return nil }
+            return identifier
+        }
+    }
+}
+
 public struct GestureProfile: Codable, Equatable, Sendable {
     public var mappings: [GestureMapping]
 
@@ -48,9 +65,12 @@ public struct GestureProfile: Codable, Equatable, Sendable {
             guard seen.insert(mapping.trigger).inserted else {
                 throw GestureMappingError.duplicateTrigger(mapping.trigger)
             }
-            if case let .invokeHostAction(identifier) = mapping.action,
-               !availableHostActions.contains(identifier) {
-                throw GestureMappingError.unavailableHostAction(identifier)
+            if case let .invokeHostAction(identifier) = mapping.action {
+                guard policy.hostActionsAllowed else { throw GestureMappingError.policyDenied }
+                guard availableHostActions.contains(identifier),
+                      HostActionCatalogPolicy.knownActionIDs.contains(identifier) else {
+                    throw GestureMappingError.unavailableHostAction(identifier)
+                }
             }
         }
         return self

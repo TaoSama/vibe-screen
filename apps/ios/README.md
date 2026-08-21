@@ -212,8 +212,9 @@ currently no key migration step.
 - touch, hardware-keyboard capture, and hover-pointer input are exposed in the
   app, but have no signed iPhone/iPad or physical-accessory evidence yet;
 - PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
-  fallback, gestures, WOL, and managed restrictions are implemented, but have
-  no iOS-device evidence in this environment;
+  fallback, local gesture-to-catalogued-host-action mapping, WOL, and managed
+  restrictions are implemented, but have no iOS-device evidence in this
+  environment;
 - no AAC/Opus, background audio, zero-copy HDR/EDR output, arbitrary clipboard
   MIME UI, Internet transport, or production E2EE;
 - frame rendering currently creates a Core Image display image per decoded
@@ -231,8 +232,9 @@ must still preserve these client semantics:
 - multi-display allocation/input routing and bounded PCM audio capture;
 - clipboard control, bulk file chunks, limits, cancellation, and digests;
 - color-aware reject/retry using a newer config epoch;
-- finite host action catalogs, authenticated/replay-safe wake helpers, and
-  deny-wins managed policy;
+- finite host action catalogs and deny-wins managed policy are covered by the
+  baseline MacHost/Android/iOS offline gates; authenticated/replay-safe wake
+  helpers remain required host work;
 - separate control/video/audio/bulk keys, sequences, and replay windows before
   enabling advanced channels on Internet transport.
 
