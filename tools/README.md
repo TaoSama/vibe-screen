@@ -429,7 +429,10 @@ older reconnect logs:
 
 ```sh
 make evidence-reconnect-timing-blocked \
-  EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
+  RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable" --blocker "Host is not listening on 127.0.0.1:54321"' \
+  RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
+  RECONNECT_TIMING_NOTES_ARG='--notes "Blocked readiness record only; no real Protocol v1 reconnect timing attempt was run."'
 ```
 
 or pass exact blockers directly:

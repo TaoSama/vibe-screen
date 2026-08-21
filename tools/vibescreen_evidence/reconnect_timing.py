@@ -42,6 +42,8 @@ _DIAG_LINE = re.compile(r"^\[(?P<timestamp>\d+(?:\.\d+)?)\]\s+(?P<body>.*)$")
 _HOST_EPOCH = re.compile(r"Protocol v1 selected for connection epoch\s+(?P<epoch>\d+)")
 _ANDROID_SESSION_EPOCH_JSON = re.compile(r'"event"\s*:\s*"connection_opened".*?"session_epoch"\s*:\s*(?P<epoch>\d+)')
 _CONFIG_EPOCH = re.compile(r"\bepoch=(?P<epoch>\d+)\b")
+_SESSION_EPOCH_FIELD = re.compile(r"\bsession_epoch=(?P<epoch>\d+)\b")
+_CONFIG_EPOCH_FIELD = re.compile(r"\bconfig_epoch=(?P<epoch>\d+)\b")
 _JSON_OBJECT = re.compile(r"\{.*\}")
 
 
@@ -60,6 +62,8 @@ def load_record(stream: TextIO) -> dict[str, Any]:
 
 
 def _finite_number(value: Any, field: str) -> float:
+    if isinstance(value, bool):
+        raise ReconnectTimingEvidenceError(f"{field} must be a finite number")
     try:
         number = float(value)
     except (TypeError, ValueError) as error:
@@ -129,8 +133,17 @@ def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> di
             events["protocol_v1_accepted_ms"] = timestamp_ms
         if "First frame:" in body and "first_frame_ms" not in events:
             events["first_frame_ms"] = timestamp_ms
+            epoch = _SESSION_EPOCH_FIELD.search(body)
+            if epoch:
+                events["first_frame_session_epoch"] = int(epoch.group("epoch"))
+            config_epoch = _CONFIG_EPOCH_FIELD.search(body)
+            if config_epoch:
+                events.setdefault("config_epoch", int(config_epoch.group("epoch")))
         if "First output frame!" in body and "first_output_frame_ms" not in events:
             events["first_output_frame_ms"] = timestamp_ms
+            epoch = _SESSION_EPOCH_FIELD.search(body)
+            if epoch:
+                events["first_output_frame_session_epoch"] = int(epoch.group("epoch"))
         if "session ended" in body and "session_ended_ms" not in events:
             events["session_ended_ms"] = timestamp_ms
         if "connection_opened" in body and "android_session_epoch" not in events:
@@ -177,11 +190,17 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
                 events["android_session_epoch"] = epoch
         elif event == "first_frame_received" and "first_frame_ms" not in events:
             events["first_frame_ms"] = timestamp_ms
+            epoch = _optional_positive_int(payload.get("session_epoch"), "session_epoch")
+            if epoch is not None:
+                events["first_frame_session_epoch"] = epoch
             config_epoch = _optional_positive_int(payload.get("config_epoch"), "config_epoch")
             if config_epoch is not None:
                 events.setdefault("config_epoch", config_epoch)
         elif event == "first_output_frame" and "first_output_frame_ms" not in events:
             events["first_output_frame_ms"] = timestamp_ms
+            epoch = _optional_positive_int(payload.get("session_epoch"), "session_epoch")
+            if epoch is not None:
+                events["first_output_frame_session_epoch"] = epoch
     return events
 
 
@@ -247,6 +266,10 @@ def _validate_attempt(
     transport = attempt.get("transport")
     if transport not in TRANSPORTS:
         raise ReconnectTimingEvidenceError("attempt transport must be usb or lan")
+    if disruption == DISRUPTION_ADB_REVERSE and transport != TRANSPORT_USB:
+        raise ReconnectTimingEvidenceError("adb-reverse-disconnect requires usb transport")
+    if disruption == DISRUPTION_LAN_NETWORK and transport != TRANSPORT_LAN:
+        raise ReconnectTimingEvidenceError("lan-network-interrupt requires lan transport")
 
     explicit_status = attempt.get("status")
     if explicit_status == "blocked":
@@ -306,6 +329,16 @@ def _validate_attempt(
         attempt.get("config_epoch", events.get("config_epoch")),
         "config_epoch",
     )
+    if android_epoch is None:
+        reasons.append("missing android_session_epoch")
+    if config_epoch is None:
+        reasons.append("missing config_epoch")
+    for field in ("first_frame_session_epoch", "first_output_frame_session_epoch"):
+        marker_epoch = _optional_positive_int(events.get(field), field)
+        if marker_epoch is None:
+            reasons.append(f"missing {field}")
+        elif android_epoch is not None and marker_epoch != android_epoch:
+            reasons.append(f"{field} does not match android_session_epoch")
 
     if disruption == DISRUPTION_ADB_REVERSE:
         restored = _optional_bool(attempt.get("adb_reverse_restored"), "adb_reverse_restored")
@@ -402,6 +435,7 @@ def summarize(
     run_id: str | None = None,
     base_dir: Path | None = None,
 ) -> dict[str, Any]:
+    threshold_ms = _finite_number(threshold_ms, "threshold_ms")
     if threshold_ms <= 0:
         raise ReconnectTimingEvidenceError("threshold_ms must be positive")
     blocked_reasons = record.get("blocked_reasons") or record.get("blockers") or []

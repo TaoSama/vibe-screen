@@ -48,8 +48,8 @@ ADB reverse removal/restoration, and trusted-LAN network interruption. Evaluate
 the record with:
 
 ```bash
-PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \\
-  "$EVIDENCE_DIR/reconnect-timing-observations.json" \\
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  "$EVIDENCE_DIR/reconnect-timing-observations.json" \
   --output "$EVIDENCE_DIR/reconnect-timing-summary.json"
 ```
 
