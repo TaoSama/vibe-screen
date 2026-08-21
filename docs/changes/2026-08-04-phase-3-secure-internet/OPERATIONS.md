@@ -47,6 +47,49 @@ for the migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
+## Public Internet deployment prerequisites
+
+Before any Phase 3 result can be called public Internet or real remote TURN
+evidence, operators must satisfy and archive a fail-closed preflight for the
+production deployment. A local loopback profile, forced local coturn run, or
+synthetic Protocol v1 peer cannot satisfy these prerequisites.
+
+- Review and deploy an ignored production relay configuration using
+  `production_authority`, PostgreSQL storage, a stable Authority TURN source
+  identifier, and public TURN URIs including TLS on the production TLS port.
+- Run relay, signaling, and Authority with externally managed PostgreSQL URLs
+  using certificate and hostname verification, plus separate migration/runtime
+  roles where applicable.
+- Provision runtime secret files through the deployment secret manager: relay
+  client, usage, metrics, admin, Authority, database, and shared TURN REST
+  secret material. Never pass these values in command arguments or tracked
+  evidence.
+- Install a public certificate chain and private key for coturn and keep relay
+  HTTP behind authenticated TLS rather than exposing plaintext control-plane
+  traffic.
+- Configure coturn with a public realm, public external address, bounded relay
+  port range, quota limits, TLS, fingerprints, short nonces, and private/CGNAT/
+  loopback/link-local/ULA peer denies. Never add a broad peer allow override.
+- Verify Authority and relay readiness immediately before routing clients.
+  `/healthz` alone is insufficient because it does not prove database, schema,
+  Authority, or clock-skew readiness.
+- Require monitored NTP, DDoS controls, provider firewall rules for TURN ports,
+  redacted logs, alerting, and rollback procedures that never roll back logical
+  revocation or session epochs.
+- Build macOS Host and Android artifacts from the recorded source revision and
+  retain hashes outside tracked evidence until privacy review.
+- Run the remote TURN verifier against an independently reachable public peer so
+  the evidence contains a real relayed packet exchange, not a local loopback
+  allocation.
+- Run the two-hour Internet soak with direct and relay samples, at least one
+  network handoff, nonce-reuse checks, and RSS, queue, loss, RTT, FPS, bitrate,
+  relay-byte, ICE-restart, drop, thermal, and battery metric families.
+
+The repository target `phase3-public-internet-preflight` checks the local view of
+these deployment inputs and writes BLOCKED evidence when they are missing. The
+verifier and soak targets require a passed preflight and intentionally fail
+closed rather than falling back to local evidence.
+
 ## Authority deployment gates
 
 Use `deploy/phase3/docker-compose.authority.yml` only for a reproducible local or

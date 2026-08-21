@@ -218,6 +218,26 @@ and database clock skew to be inside the configured bound. A database outage or
 schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
 
+Before treating any run as public Internet or real remote TURN evidence, run the
+repository preflight from the source revision under test. Supply the ignored
+production relay config, coturn policy, secret file paths, TLS material, public
+external address, and Authority plus relay readiness endpoints through the
+`PHASE3_PUBLIC_INTERNET_*` variables, then run:
+
+```bash
+make phase3-public-internet-preflight
+make phase3-remote-turn-verifier
+make phase3-internet-manifest
+make phase3-internet-soak
+```
+
+The preflight and verifier intentionally reject local, private, placeholder, or
+loopback TURN hosts. `phase3-internet-soak` requires a passed preflight, passed
+remote TURN verifier, and private two-hour mixed-route summary. Without those
+inputs, set `PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED=1` only to archive a BLOCKED
+record; do not substitute the local Compose profile or forced local coturn
+results for public evidence.
+
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
 allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies

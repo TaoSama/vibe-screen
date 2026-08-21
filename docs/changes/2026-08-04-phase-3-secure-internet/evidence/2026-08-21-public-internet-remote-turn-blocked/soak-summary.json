@@ -1,0 +1,36 @@
+{
+  "blocker": "public Internet deployment, TLS certificate, runtime secrets, readiness endpoints, remote TURN peer, and private soak summary are not available in this local workspace",
+  "created_at": "2026-08-21T03:46:50.833584+00:00",
+  "deployment_prerequisites": [
+    "production relay config with authority_mode=production_authority",
+    "PostgreSQL storage with sslmode=verify-full for relay and authority",
+    "public TURN DNS name resolving only to globally routable addresses",
+    "TURN TLS on turns: port 5349 with a deployed certificate chain",
+    "file-backed TURN REST secret shared only by relay and coturn",
+    "coturn production ACL with private, CGNAT, loopback, link-local, and ULA denies",
+    "Authority and relay readiness verified before routing clients",
+    "Android device and macOS Host artifacts built from the recorded source revision",
+    "two-hour mixed direct/relay/network-change soak with nonce-reuse checks"
+  ],
+  "kind": "phase3_public_internet_soak",
+  "limitations": [
+    "blocked_before_two_hour_public_internet_soak"
+  ],
+  "preflight": {
+    "provided": true,
+    "result": "blocked"
+  },
+  "preset": "2h",
+  "privacy": {
+    "raw_device_identifiers_recorded": false,
+    "raw_endpoints_recorded": false,
+    "sensitive_values_recorded": false
+  },
+  "required_duration_seconds": 7200,
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-public-internet-soak/v1",
+  "verifier": {
+    "provided": false,
+    "result": "blocked"
+  }
+}

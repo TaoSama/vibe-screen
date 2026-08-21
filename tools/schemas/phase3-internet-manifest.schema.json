@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-internet-manifest.schema.json",
+  "title": "Vibe Screen Phase 3 public Internet manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "deployment",
+    "session",
+    "deployment_prerequisites",
+    "evidence_boundaries",
+    "required_gates",
+    "required_artifacts",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_public_internet_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn_realm_hash",
+        "turn_uris",
+        "authority_source_id_hash",
+        "tls_certificate_sha256",
+        "signaling_origin_hash",
+        "relay_origin_hash"
+      ],
+      "properties": {
+        "turn_realm_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "turn_uris": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheme", "host_hash", "resolved_address_hashes", "port", "transport"],
+            "properties": {
+              "scheme": {"enum": ["turn", "turns"]},
+              "host_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "resolved_address_hashes": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+              "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+              "transport": {"enum": ["udp", "tcp", "tls"]}
+            }
+          }
+        },
+        "authority_source_id_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "tls_certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signaling_origin_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "relay_origin_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "duration_seconds", "planned_network_handoffs"],
+      "properties": {
+        "transport": {"const": "internet"},
+        "duration_seconds": {"type": "integer", "minimum": 7200},
+        "planned_network_handoffs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "deployment_prerequisites": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "evidence_boundaries": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "required_gates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "required_artifacts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_endpoints_recorded", "sensitive_values_recorded", "raw_device_identifiers_recorded"],
+      "properties": {
+        "raw_endpoints_recorded": {"const": false},
+        "sensitive_values_recorded": {"const": false},
+        "raw_device_identifiers_recorded": {"const": false}
+      }
+    },
+    "notes": {"type": ["string", "null"]}
+  }
+}

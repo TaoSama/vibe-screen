@@ -22,11 +22,36 @@ TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
+PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR ?= .build/phase3-public-internet
+PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED ?=
+PHASE3_PUBLIC_INTERNET_RELAY_CONFIG ?= deploy/phase3/config/relay.production.json
+PHASE3_PUBLIC_INTERNET_COTURN_CONFIG ?= deploy/phase3/coturn/production.conf
+PHASE3_PUBLIC_INTERNET_TURN_SECRET_FILE ?= deploy/phase3/secrets/turn_secret.txt
+PHASE3_PUBLIC_INTERNET_TLS_CERTIFICATE ?= deploy/phase3/tls/fullchain.pem
+PHASE3_PUBLIC_INTERNET_TLS_PRIVATE_KEY ?= deploy/phase3/tls/privkey.pem
+PHASE3_PUBLIC_INTERNET_COTURN_EXTERNAL_IP ?=
+PHASE3_PUBLIC_INTERNET_TURN_REALM ?=
+PHASE3_PUBLIC_INTERNET_TURN_URI ?=
+PHASE3_PUBLIC_INTERNET_TURN_URIS ?= $(PHASE3_PUBLIC_INTERNET_TURN_URI)
+PHASE3_PUBLIC_INTERNET_AUTHORITY_SOURCE_ID ?=
+PHASE3_PUBLIC_INTERNET_AUTHORITY_READY_URL ?=
+PHASE3_PUBLIC_INTERNET_RELAY_READY_URL ?=
+PHASE3_PUBLIC_INTERNET_RELAY_URL ?=
+PHASE3_PUBLIC_INTERNET_SIGNALING_ORIGIN ?=
+PHASE3_PUBLIC_INTERNET_RELAY_ORIGIN ?=
+PHASE3_PUBLIC_INTERNET_CLIENT_TOKEN_FILE ?= deploy/phase3/secrets/client_token.txt
+PHASE3_PUBLIC_INTERNET_DEVICE_ID ?=
+PHASE3_PUBLIC_INTERNET_SESSION_ID ?=
+PHASE3_PUBLIC_INTERNET_ALLOCATION_ID ?=
+PHASE3_PUBLIC_INTERNET_PEER_HOST ?=
+PHASE3_PUBLIC_INTERNET_PEER_PORT ?=
+PHASE3_PUBLIC_INTERNET_PRIVATE_SOAK_SUMMARY ?=
+PHASE3_PUBLIC_INTERNET_PLANNED_HANDOFFS ?=
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-public-internet-preflight phase3-remote-turn-verifier phase3-internet-manifest phase3-internet-soak baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -72,6 +97,66 @@ phase3-local-synthetic-public-artifacts-check:
 phase3-local-product-e2e:
 	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness only; no Android device or ScreenCaptureKit capture).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
+
+phase3-public-internet-preflight:
+	mkdir -p "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/remote_turn_preflight.py \
+		--relay-config "$(PHASE3_PUBLIC_INTERNET_RELAY_CONFIG)" \
+		--coturn-config "$(PHASE3_PUBLIC_INTERNET_COTURN_CONFIG)" \
+		--turn-secret-file "$(PHASE3_PUBLIC_INTERNET_TURN_SECRET_FILE)" \
+		--tls-certificate "$(PHASE3_PUBLIC_INTERNET_TLS_CERTIFICATE)" \
+		--tls-private-key "$(PHASE3_PUBLIC_INTERNET_TLS_PRIVATE_KEY)" \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_COTURN_EXTERNAL_IP)),--coturn-external-ip "$(PHASE3_PUBLIC_INTERNET_COTURN_EXTERNAL_IP)",) \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_AUTHORITY_READY_URL)),--authority-ready-url "$(PHASE3_PUBLIC_INTERNET_AUTHORITY_READY_URL)",) \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_RELAY_READY_URL)),--relay-ready-url "$(PHASE3_PUBLIC_INTERNET_RELAY_READY_URL)",) \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED)),--allow-blocked,) \
+		--output "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/preflight.json"
+
+phase3-remote-turn-verifier: phase3-public-internet-preflight
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_RELAY_URL))" || (echo "error: set PHASE3_PUBLIC_INTERNET_RELAY_URL" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_DEVICE_ID))" || (echo "error: set PHASE3_PUBLIC_INTERNET_DEVICE_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_SESSION_ID))" || (echo "error: set PHASE3_PUBLIC_INTERNET_SESSION_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_ALLOCATION_ID))" || (echo "error: set PHASE3_PUBLIC_INTERNET_ALLOCATION_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_PEER_HOST))" || (echo "error: set PHASE3_PUBLIC_INTERNET_PEER_HOST" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_PEER_PORT))" || (echo "error: set PHASE3_PUBLIC_INTERNET_PEER_PORT" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/remote_turn_verifier.py \
+		--preflight "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/preflight.json" \
+		--relay-url "$(PHASE3_PUBLIC_INTERNET_RELAY_URL)" \
+		--client-token-file "$(PHASE3_PUBLIC_INTERNET_CLIENT_TOKEN_FILE)" \
+		--device-id "$(PHASE3_PUBLIC_INTERNET_DEVICE_ID)" \
+		--session-id "$(PHASE3_PUBLIC_INTERNET_SESSION_ID)" \
+		--allocation-id "$(PHASE3_PUBLIC_INTERNET_ALLOCATION_ID)" \
+		--peer-host "$(PHASE3_PUBLIC_INTERNET_PEER_HOST)" \
+		--peer-port "$(PHASE3_PUBLIC_INTERNET_PEER_PORT)" \
+		--output "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/remote-turn-verifier.json"
+
+phase3-internet-manifest:
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_TURN_REALM))" || (echo "error: set PHASE3_PUBLIC_INTERNET_TURN_REALM" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_TURN_URIS))" || (echo "error: set PHASE3_PUBLIC_INTERNET_TURN_URIS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_PUBLIC_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_PUBLIC_INTERNET_SIGNALING_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_PUBLIC_INTERNET_RELAY_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_PLANNED_HANDOFFS))" || (echo "error: set PHASE3_PUBLIC_INTERNET_PLANNED_HANDOFFS" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_manifest \
+		--output "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/phase3-internet-manifest.json" \
+		--repo . \
+		--turn-realm "$(PHASE3_PUBLIC_INTERNET_TURN_REALM)" \
+		$(foreach uri,$(PHASE3_PUBLIC_INTERNET_TURN_URIS),--turn-uri "$(uri)" ) \
+		--authority-source-id "$(PHASE3_PUBLIC_INTERNET_AUTHORITY_SOURCE_ID)" \
+		--tls-certificate "$(PHASE3_PUBLIC_INTERNET_TLS_CERTIFICATE)" \
+		--signaling-origin "$(PHASE3_PUBLIC_INTERNET_SIGNALING_ORIGIN)" \
+		--relay-origin "$(PHASE3_PUBLIC_INTERNET_RELAY_ORIGIN)" \
+		--planned-network-handoffs "$(PHASE3_PUBLIC_INTERNET_PLANNED_HANDOFFS)" \
+		-- make phase3-internet-soak
+
+phase3-internet-soak:
+	mkdir -p "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/internet_soak.py \
+		$(if $(wildcard $(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/preflight.json),--preflight "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/preflight.json",) \
+		$(if $(wildcard $(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/remote-turn-verifier.json),--verifier "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/remote-turn-verifier.json",) \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_PRIVATE_SOAK_SUMMARY)),--private-summary "$(PHASE3_PUBLIC_INTERNET_PRIVATE_SOAK_SUMMARY)",) \
+		$(if $(strip $(PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED)),--allow-blocked,) \
+		--output "$(PHASE3_PUBLIC_INTERNET_EVIDENCE_DIR)/soak-summary.json"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release

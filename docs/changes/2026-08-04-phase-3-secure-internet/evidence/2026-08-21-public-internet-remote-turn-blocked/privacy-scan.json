@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1745,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "06778c1e0dfde84853d9e0588546b104fd28a6494e2ded6286336edd341d1a79"
+    },
+    {
+      "bytes": 1283,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "deployment-prerequisites.md",
+      "result": "pass",
+      "sha256": "59a27d3717f09e1c567b37a0c745ca5dddb61597abaf1a981ef87762aceb0a49"
+    },
+    {
+      "bytes": 2536,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "preflight.json",
+      "result": "pass",
+      "sha256": "5d51b5f923031c20a70ac7d19e4022bd5751d238423ecaa101e7a324a70afd84"
+    },
+    {
+      "bytes": 1489,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "soak-summary.json",
+      "result": "pass",
+      "sha256": "1b5d1e5bbf5c93bf70b281ee60649fd251dd4126124330a30968f6a2e9314587"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

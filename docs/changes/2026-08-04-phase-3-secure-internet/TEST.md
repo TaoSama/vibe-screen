@@ -69,6 +69,44 @@ allocations. That helper test does not prove a production coturn exporter,
 scheduled loop, provider billing reconciliation, or real data-plane allocation
 termination.
 
+## Public Internet remote TURN preflight and soak evidence
+
+The public Internet release gate has separate fail-closed tools. They are not a
+wrapper around the local synthetic runner, and they do not accept loopback,
+private, CGNAT, link-local, ULA, placeholder, or local-domain TURN hosts as
+public evidence.
+
+```bash
+make phase3-public-internet-preflight
+make phase3-remote-turn-verifier
+make phase3-internet-manifest
+make phase3-internet-soak
+```
+
+`phase3-public-internet-preflight` requires the ignored production relay config,
+production coturn policy, file-backed TURN REST secret, TLS certificate chain,
+TLS private key, public coturn external address, and Authority plus relay
+readiness probes. Missing or local-only production prerequisites produce a
+BLOCKED report and a nonzero exit unless
+`PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED=1` is set for explicitly archiving blocked
+evidence.
+
+`phase3-remote-turn-verifier` requires a passed preflight, relay client token
+file, session/device/allocation identifiers, and an independently reachable
+public peer. It obtains a short-lived credential from the relay control plane,
+runs `turnutils_uclient`, and requires positive sent and received relay message
+counts. The output hashes endpoint, session, device, credential, and peer
+identities rather than archiving raw values.
+
+`phase3-internet-manifest` declares the intended public evidence boundary: public
+TURN URI, production Authority source, TLS certificate fingerprint, signaling
+and relay origins, planned handoffs, required artifacts, and privacy policy.
+`phase3-internet-soak` requires a passed preflight, passed remote TURN verifier,
+and private two-hour soak summary with both direct and relay samples, at least
+one handoff, nonce-reuse absence, and the required RSS, queue, loss, RTT, FPS,
+bitrate, relay-byte, ICE-restart, drop, thermal, and battery metric families.
+Without those inputs it writes only BLOCKED evidence when explicitly allowed.
+
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
 is added, add deterministic Make targets rather than relying on undocumented IDE
@@ -431,6 +469,18 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.
+
+- A 2026-08-21 public Internet remote TURN preflight is archived as BLOCKED
+  under
+  [`evidence/2026-08-21-public-internet-remote-turn-blocked/`](evidence/2026-08-21-public-internet-remote-turn-blocked/README.md).
+  The preflight found the checked-in static coturn production policy readable,
+  but no ignored production relay config, runtime TURN REST secret, TLS
+  certificate chain, TLS private key, public coturn external address, Authority
+  readiness probe, relay readiness probe, remote TURN verifier, or private
+  two-hour Internet soak summary was available in this local workspace. The
+  record intentionally proves only the fail-closed boundary and does not close
+  the public Internet, real remote TURN, Android-device, real-capture, handoff,
+  latency, or soak release gates.
 
 ### Main CI follow-up snapshot (2026-08-06)
 
