@@ -115,12 +115,8 @@ class StreamClient(
     internal val actualPort: Int = port
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
-    @Volatile private var isConnected = false
-    @Volatile private var sessionReady = false
-    @Volatile private var stopRequested = false
     /** Process-local decoder/attempt generation. Never assigned from a wire session epoch. */
-    @Volatile private var connectionEpoch = 0L
-    @Volatile private var lastTerminationFailure: SessionFailure? = null
+    private val localSessionState = StreamClientLocalSessionState(STREAM_CLIENT_EPOCHS)
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
     @Volatile private var protocolSession: ProtocolV1Session? = null
@@ -144,7 +140,6 @@ class StreamClient(
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
-    private val reconnectBackoff = ReconnectBackoff()
     // Protocol request ids must be unpredictable so a result cannot be spoofed
     // by replaying a guessed id.
     private val protocolRequestRandom = SecureRandom()
@@ -271,8 +266,7 @@ class StreamClient(
         OnceAsyncDispatcher(
             executor = terminationExecutor,
             onClaim = { request ->
-                lastTerminationFailure = request.failure
-                isConnected = false
+                localSessionState.markTerminationClaimed(request.failure)
             },
             complete = ::completeConnectionEnd,
         )
@@ -280,8 +274,7 @@ class StreamClient(
     suspend fun connect() =
         withContext(Dispatchers.IO) {
             if (terminationDispatcher.isClaimed()) return@withContext
-            sessionReady = false
-            stopRequested = false
+            localSessionState.prepareConnectionStart()
             pendingOutboundFailure.set(null)
             pendingDecoderFailure.set(null)
             pendingInboundFailure.set(null)
@@ -301,14 +294,14 @@ class StreamClient(
                 }
                 streamCodecIsHevc = true
                 codecNegotiated = false
-                connectionEpoch = SESSION_EPOCHS.beginSession()
+                localSessionState.beginSession()
                 val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_USB)
                 if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
-                    reopenUsbAsLegacy(connectionEpoch)
+                    reopenUsbAsLegacy(localSessionState.connectionEpoch)
                 }
-                isConnected = true
+                localSessionState.markConnected()
                 if (terminationDispatcher.isClaimed()) {
-                    isConnected = false
+                    localSessionState.markDisconnected()
                     closeTransport()
                     outboundScheduler.shutdownNow()
                     return@withContext
@@ -322,23 +315,23 @@ class StreamClient(
                 diagLog("Connected to $host:$port")
                 emitTelemetry(
                     "connection_opened",
-                    mapOf("host" to host, "port" to port, "session_epoch" to connectionEpoch),
+                    mapOf("host" to host, "port" to port, "session_epoch" to localSessionState.connectionEpoch),
                 )
                 receiveData()
-                if (!sessionReady && !stopRequested) {
-                    val failure = lastTerminationFailure
+                if (!localSessionState.isReady && !localSessionState.stopRequested) {
+                    val failure = localSessionState.lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     throw IOException("Mac connection closed before display configuration")
                 }
             } catch (e: SessionProtocolException) {
                 Log.e(TAG, "Session protocol failure", e)
                 completeConnectionEndNow(e.failure)
-                if (!sessionReady && !stopRequested) throw e
+                if (!localSessionState.isReady && !localSessionState.stopRequested) throw e
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
                 completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
-                if (!sessionReady && !stopRequested) {
-                    val failure = lastTerminationFailure
+                if (!localSessionState.isReady && !localSessionState.stopRequested) {
+                    val failure = localSessionState.lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     if (e.message.orEmpty().contains("before display configuration")) throw e
                     throw IOException("Mac connection closed before display configuration", e)
@@ -366,8 +359,7 @@ class StreamClient(
         allowPlaintextLegacyFallback: Boolean = false,
     ) = withContext(Dispatchers.IO) {
         if (terminationDispatcher.isClaimed()) return@withContext
-        sessionReady = false
-        stopRequested = false
+        localSessionState.prepareConnectionStart()
         pendingOutboundFailure.set(null)
         pendingDecoderFailure.set(null)
         pendingInboundFailure.set(null)
@@ -496,7 +488,7 @@ class StreamClient(
                 val startupSucceeded =
                     try {
                         s.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                        connectionEpoch = SESSION_EPOCHS.beginSession()
+                        localSessionState.beginSession()
                         val protection =
                             if (allowPlaintextLegacyFallback) {
                                 LanSecureRecordClientNegotiation(
@@ -533,9 +525,9 @@ class StreamClient(
                             outboundScheduler.shutdownNow()
                             return@withContext
                         }
-                        isConnected = true
+                        localSessionState.markConnected()
                         if (terminationDispatcher.isClaimed()) {
-                            isConnected = false
+                            localSessionState.markDisconnected()
                             closeTransport()
                             outboundScheduler.shutdownNow()
                             return@withContext
@@ -547,7 +539,7 @@ class StreamClient(
                             reopenWirelessAsLegacy(
                                 token,
                                 deviceName,
-                                connectionEpoch,
+                                localSessionState.connectionEpoch,
                                 allowPlaintextLegacyFallback,
                             )
                         }
@@ -569,7 +561,7 @@ class StreamClient(
                     mapOf(
                         "host" to host,
                         "port" to port,
-                        "session_epoch" to connectionEpoch,
+                        "session_epoch" to localSessionState.connectionEpoch,
                         "trusted_lan_encrypted" to (lanRecordProtectionState == LanRecordProtectionState.ENCRYPTED),
                         "trusted_lan_legacy_plaintext" to
                             (lanRecordProtectionState == LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK),
@@ -788,8 +780,7 @@ class StreamClient(
 
     private fun ownsAttempt(attemptGeneration: Long): Boolean =
         !terminationDispatcher.isClaimed() &&
-            connectionEpoch == attemptGeneration &&
-            SESSION_EPOCHS.accepts(attemptGeneration)
+            localSessionState.ownsAttempt(attemptGeneration)
 
     private fun closeTransport() {
         logTransportCloseFailures(transportOwner.closeAll())
@@ -925,7 +916,7 @@ class StreamClient(
         diagLog("Queued AVC-only advertisement (HEVC unavailable or failed at runtime)")
         emitTelemetry(
             "codec_fallback_requested",
-            mapOf("from" to "HEVC", "to" to "H264", "session_epoch" to connectionEpoch),
+            mapOf("from" to "HEVC", "to" to "H264", "session_epoch" to localSessionState.connectionEpoch),
         )
     }
 
@@ -942,7 +933,7 @@ class StreamClient(
             var terminalFailure: SessionFailure? = null
 
             try {
-                while (isConnected) {
+                while (localSessionState.isConnected) {
                     if (wireMode == WireMode.V1) {
                         receiveV1Frame(input)
                         continue
@@ -955,7 +946,7 @@ class StreamClient(
                             if (heartbeat.isExpired(System.nanoTime())) {
                                 emitTelemetry(
                                     "heartbeat_timeout",
-                                    mapOf("session_epoch" to connectionEpoch),
+                                    mapOf("session_epoch" to localSessionState.connectionEpoch),
                                 )
                                 throw SessionProtocolException(SessionFailure.heartbeat("heartbeat timeout"))
                             }
@@ -988,9 +979,7 @@ class StreamClient(
                                 )
                             }
                             diagLog("Display config: ${width}x$height @ $rotation°")
-                            if (!sessionReady) {
-                                sessionReady = true
-                                reconnectBackoff.reset()
+                            if (localSessionState.markReady()) {
                                 onConnectionStatus?.invoke(true)
                             }
                             val configuration =
@@ -1000,7 +989,7 @@ class StreamClient(
                                     rotation = rotation,
                                     configEpoch = LEGACY_CONFIG_EPOCH,
                                 )
-                            val callbackEpoch = connectionEpoch
+                            val callbackEpoch = localSessionState.connectionEpoch
                             val callback = onVideoConfiguration
                             if (callback != null) {
                                 callback.invoke(
@@ -1034,7 +1023,7 @@ class StreamClient(
                                 "codec_selected",
                                 mapOf(
                                     "codec" to if (streamCodecIsHevc) "HEVC" else "H264",
-                                    "session_epoch" to connectionEpoch,
+                                    "session_epoch" to localSessionState.connectionEpoch,
                                 ),
                             )
                             onCodecSelected?.invoke(streamCodecIsHevc)
@@ -1047,7 +1036,7 @@ class StreamClient(
                         }
 
                         MESSAGE_SERVER_SHUTDOWN -> {
-                            stopRequested = true
+                            localSessionState.requestStop()
                             terminalFailure = SessionFailure.serverShutdown()
                             completeConnectionEndNow(checkNotNull(terminalFailure))
                             diagLog("Server shut down gracefully — closing")
@@ -1083,7 +1072,7 @@ class StreamClient(
                         ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
-                if (isConnected) {
+                if (localSessionState.isConnected) {
                     Log.e(TAG, "❌ Read error", e)
                 }
             } finally {
@@ -1172,7 +1161,7 @@ class StreamClient(
                         mapOf(
                             "reason" to mediaDisposition.name.lowercase(),
                             "config_epoch" to payload.header.configEpoch,
-                            "session_epoch" to connectionEpoch,
+                            "session_epoch" to localSessionState.connectionEpoch,
                         ),
                     )
                     return
@@ -1188,7 +1177,7 @@ class StreamClient(
                         payload.annexB.size,
                         receiveTimestamp,
                         payload.header.keyframe,
-                        connectionEpoch,
+                        localSessionState.connectionEpoch,
                         payload.header.configEpoch,
                     )
                 }
@@ -1231,7 +1220,7 @@ class StreamClient(
         val isProtocolV1 = wireMode == WireMode.V1
         val session = if (isProtocolV1) protocolSession else null
         return StreamInputSessionState(
-            connected = isConnected,
+            connected = localSessionState.isConnected,
             protocolV1 = isProtocolV1,
             canSendTouch = session?.canSendTouch == true,
             canSendPointer = session?.canSendPointer == true,
@@ -1317,7 +1306,7 @@ class StreamClient(
 
     /** True when clipboard transfer is available on the active Protocol v1 session. */
     val canSendClipboard: Boolean
-        get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
+        get() = localSessionState.isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
 
     /** Negotiated clipboard byte limit for the active session; 0 when not negotiated. */
     val negotiatedMaxClipboardBytes: Long
@@ -1329,7 +1318,7 @@ class StreamClient(
      * negotiated, the session is not streaming, or the text exceeds the limit.
      */
     fun offerClipboard(text: String): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendClipboard) return false
         val byteCount = text.toByteArray(StandardCharsets.UTF_8).size.toLong()
@@ -1350,7 +1339,7 @@ class StreamClient(
      * exists or clipboard was not negotiated.
      */
     fun requestClipboard(changeId: ByteArray): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendClipboard) return false
         val id = ByteString.copyFrom(changeId)
@@ -1373,7 +1362,7 @@ class StreamClient(
         changeId: ByteArray,
         completion: (Boolean) -> Unit,
     ): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendClipboard) return false
         val id = ByteString.copyFrom(changeId)
@@ -1394,7 +1383,7 @@ class StreamClient(
      * known, non-current display.
      */
     fun selectDisplay(displayId: String) {
-        if (!isConnected || wireMode != WireMode.V1) return
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return
         val session = protocolSession ?: return
         if (!session.isStreaming) return
         submitOutbound(
@@ -1412,7 +1401,7 @@ class StreamClient(
      * request so the eventual HostActionResult can be correlated.
      */
     fun invokeHostAction(actionId: String) {
-        if (!isConnected || wireMode != WireMode.V1) return
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return
         val session = protocolSession ?: return
         if (!session.canInvokeHostActions) return
         val invocationId = ByteString.copyFrom(ByteArray(HOST_ACTION_INVOCATION_ID_BYTES).also(protocolRequestRandom::nextBytes))
@@ -1437,7 +1426,7 @@ class StreamClient(
         targetMacAddress: ByteString,
         secureOnPassword: ByteString = ByteString.EMPTY,
     ): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canRequestWakeHost) return false
         val submission =
@@ -1462,7 +1451,7 @@ class StreamClient(
         qualityPreset: dev.vibescreen.protocol.v1.VideoQualityPreset,
         resetQualityToAuto: Boolean = false,
     ) {
-        if (!isConnected || wireMode != WireMode.V1) return
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return
         // Do not gate on isStreaming here: the session coalesces a request that
         // arrives mid-reconfiguration and sends the newest intent once the
         // replacement VideoConfig commits, so dropping it now would lose the
@@ -1490,7 +1479,7 @@ class StreamClient(
         force: Boolean = false,
         reason: String = "client request",
     ) {
-        if (!isConnected) return
+        if (!localSessionState.isConnected) return
         val now = System.nanoTime()
         val shouldSend =
             synchronized(keyframeRequestLock) {
@@ -1529,7 +1518,7 @@ class StreamClient(
      * Send a ping to measure round-trip latency through the USB connection
      */
     fun sendPing() {
-        if (!isConnected) return
+        if (!localSessionState.isConnected) return
         if (wireMode == WireMode.V1) {
             val session = protocolSession ?: return
             if (!session.isStreaming) return
@@ -1713,7 +1702,7 @@ class StreamClient(
                         onHostActionResult?.invoke(action.accepted, action.rejectionReason)
                     }
                     is ProtocolV1Session.Action.ClipboardOffered -> {
-                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        if (!isCurrentProtocolSession(session, localSessionState.connectionEpoch)) return@forEach
                         onClipboardOffered?.invoke(
                             ClipboardOfferData(
                                 changeId = action.changeId.toByteArray(),
@@ -1725,7 +1714,7 @@ class StreamClient(
                         )
                     }
                     is ProtocolV1Session.Action.ClipboardContentReceived -> {
-                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        if (!isCurrentProtocolSession(session, localSessionState.connectionEpoch)) return@forEach
                         onClipboardContentReceived?.invoke(
                             ClipboardContentData(
                                 changeId = action.changeId.toByteArray(),
@@ -1783,7 +1772,7 @@ class StreamClient(
                     is ProtocolV1Session.Action.WakeHost -> {
                         dispatchWakeHostRequest(
                             session = session,
-                            connectionGeneration = connectionEpoch,
+                            connectionGeneration = localSessionState.connectionEpoch,
                             action = action,
                         )
                     }
@@ -1792,7 +1781,11 @@ class StreamClient(
                     }
                    is ProtocolV1Session.Action.Disconnected -> {
                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
-                        stopRequested = !action.mayResume
+                        if (action.mayResume) {
+                            localSessionState.allowResumeAfterFailure()
+                        } else {
+                            localSessionState.requestStop()
+                        }
                         val failure =
                             if (action.mayResume) {
                                 SessionFailure.transport("Host ended Protocol v1 session and allowed resume")
@@ -2016,7 +2009,7 @@ class StreamClient(
         val pending =
             PendingVideoConfigurationCommit(
                 session = session,
-                connectionGeneration = connectionEpoch,
+                connectionGeneration = localSessionState.connectionEpoch,
                 configuration = configuration,
                 configurationToken = configurationToken,
             )
@@ -2081,9 +2074,7 @@ class StreamClient(
                 is ProtocolV1Session.Action.VideoConfigurationCommitted -> {
                     configurationCommitted = true
                     appliesClientVideoPreferences = action.appliesClientVideoPreferences
-                    if (!sessionReady) {
-                        sessionReady = true
-                        reconnectBackoff.reset()
+                    if (localSessionState.markReady()) {
                         onConnectionStatus?.invoke(true)
                     }
                 }
@@ -2132,9 +2123,9 @@ class StreamClient(
         expectedSession: ProtocolV1Session,
         expectedConnectionGeneration: Long,
     ): Boolean =
-        isConnected &&
-            connectionEpoch == expectedConnectionGeneration &&
-            SESSION_EPOCHS.accepts(expectedConnectionGeneration) &&
+        localSessionState.isConnected &&
+            localSessionState.connectionEpoch == expectedConnectionGeneration &&
+            localSessionState.acceptsEpoch(expectedConnectionGeneration) &&
             protocolSession === expectedSession
 
     private fun writeProtocolEnvelope(
@@ -2183,7 +2174,7 @@ class StreamClient(
             emitTelemetry(
                 "stream_stats",
                 mapOf(
-                    "session_epoch" to connectionEpoch,
+                    "session_epoch" to localSessionState.connectionEpoch,
                     "fps" to fps,
                     "mbps" to mbps,
                 ),
@@ -2223,15 +2214,15 @@ class StreamClient(
 
         // Capture timestamp after full frame received for accurate age tracking.
         val receiveTimestamp = System.nanoTime()
-        val epoch = connectionEpoch
-        if (!SESSION_EPOCHS.accepts(epoch)) {
+        val epoch = localSessionState.connectionEpoch
+        if (!localSessionState.acceptsEpoch(epoch)) {
             releaseBuffer(frameData)
             emitTelemetry(
                 "frame_dropped",
                 mapOf(
                     "reason" to "stale_session_epoch",
                     "frame_epoch" to epoch,
-                    "current_epoch" to SESSION_EPOCHS.currentEpoch(),
+                    "current_epoch" to localSessionState.currentEpoch(),
                 ),
             )
             return
@@ -2285,17 +2276,17 @@ class StreamClient(
     }
 
     fun disconnect() {
-        stopRequested = true
+        localSessionState.requestStop()
         requestConnectionEnd(SessionFailure.userRequested())
     }
 
     fun failCurrentSession(reason: String) {
-        stopRequested = false
+        localSessionState.allowResumeAfterFailure()
         requestConnectionEnd(SessionFailure.codec(reason))
     }
 
     fun offerFile(file: File, mimeType: String = "application/octet-stream") {
-        if (!isConnected || wireMode != WireMode.V1) return
+        if (!localSessionState.isConnected || wireMode != WireMode.V1) return
         val transfer =
             try {
                 OutgoingFileTransfer(
@@ -2330,19 +2321,19 @@ class StreamClient(
     }
 
     private fun requestConnectionEnd(failure: SessionFailure) {
-        terminationDispatcher.dispatch(TerminationRequest(failure, isConnected))
+        terminationDispatcher.dispatch(TerminationRequest(failure, localSessionState.isConnected))
     }
 
     private fun completeConnectionEndNow(failure: SessionFailure) {
-        terminationDispatcher.completeNow(TerminationRequest(failure, isConnected))
+        terminationDispatcher.completeNow(TerminationRequest(failure, localSessionState.isConnected))
     }
 
     private fun completeConnectionEnd(request: TerminationRequest) {
         val failure = request.failure
         val wasConnected = request.wasConnected
         cleanup()
-        if (!wasConnected && connectionEpoch == 0L) return
-        val ownsCurrentEpoch = connectionEpoch == 0L || SESSION_EPOCHS.accepts(connectionEpoch)
+        if (!wasConnected && localSessionState.connectionEpoch == 0L) return
+        val ownsCurrentEpoch = localSessionState.ownsCurrentEpoch()
         if (ownsCurrentEpoch) {
             onSessionEnded?.invoke(failure)
             if (failure.kind == SessionFailureKind.SERVER_SHUTDOWN) {
@@ -2357,16 +2348,16 @@ class StreamClient(
                     "reason" to failure.detail,
                     "failure_kind" to failure.kind.name,
                     "retryable" to failure.retryable,
-                    "session_epoch" to connectionEpoch,
+                    "session_epoch" to localSessionState.connectionEpoch,
                     "intentional" to failure.intentional,
                 ),
             )
         }
         if (failure.retryable && ownsCurrentEpoch) {
-            val delayMs = reconnectBackoff.nextDelayMs()
+            val delayMs = localSessionState.nextReconnectDelayMs()
             emitTelemetry(
                 "reconnect_scheduled",
-                mapOf("delay_ms" to delayMs, "session_epoch" to connectionEpoch),
+                mapOf("delay_ms" to delayMs, "session_epoch" to localSessionState.connectionEpoch),
             )
             onReconnectSuggested?.invoke(delayMs)
         }
@@ -2605,18 +2596,18 @@ class StreamClient(
         override fun isPending(): Boolean =
             synchronized(stateLock) {
                 state in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES &&
-                    isConnected &&
-                    connectionEpoch == connectionGeneration &&
-                    SESSION_EPOCHS.accepts(connectionGeneration)
+                    localSessionState.isConnected &&
+                    localSessionState.connectionEpoch == connectionGeneration &&
+                    localSessionState.acceptsEpoch(connectionGeneration)
             }
 
         override fun tryPublish(publish: () -> Boolean): Boolean {
             val claimed =
                 synchronized(stateLock) {
                     if (state != VideoConfigurationCommitState.PENDING ||
-                        !isConnected ||
-                        connectionEpoch != connectionGeneration ||
-                        !SESSION_EPOCHS.accepts(connectionGeneration)
+                        !localSessionState.isConnected ||
+                        localSessionState.connectionEpoch != connectionGeneration ||
+                        !localSessionState.acceptsEpoch(connectionGeneration)
                     ) {
                         return@synchronized false
                     }
@@ -2650,7 +2641,7 @@ class StreamClient(
                     state = VideoConfigurationCommitState.COMPLETED
                     true
                 }
-            if (!claimed || !isConnected || connectionEpoch != connectionGeneration) return
+            if (!claimed || !localSessionState.isConnected || localSessionState.connectionEpoch != connectionGeneration) return
             if (decision.accepted) {
                 requestKeyframe(force = true, reason = "decoder_configuration_committed")
             } else {
@@ -2726,7 +2717,7 @@ class StreamClient(
         private const val MESSAGE_SERVER_SHUTDOWN = 3
         private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
-        private val SESSION_EPOCHS = SessionEpochGate()
+        private val STREAM_CLIENT_EPOCHS = SessionEpochGate()
         private val VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR =
             Executors.newSingleThreadScheduledExecutor { runnable ->
                 Thread(runnable, "VibeVideoConfigurationTimeout").apply { isDaemon = true }
