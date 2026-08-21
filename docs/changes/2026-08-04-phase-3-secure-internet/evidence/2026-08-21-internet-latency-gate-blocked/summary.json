@@ -1,0 +1,47 @@
+{
+  "gate": {
+    "can_close_performance_gate": true,
+    "metric": "p95",
+    "min_sample_count": 5,
+    "observed_ms": 128.0,
+    "profile": "internet-glass-to-glass-sub150",
+    "reason": "all samples were measured on one external-camera timebase",
+    "reasons": [],
+    "requires_external_hardware": true,
+    "sample_count": 5,
+    "threshold_ms": 150.0,
+    "verdict": "pass"
+  },
+  "kind": "glass_to_glass",
+  "latency_kind": "glass-to-glass",
+  "measurement_method": "external-camera",
+  "metrics": {
+    "count": 5,
+    "max": 130.0,
+    "mean": 110.0,
+    "median": 110.0,
+    "min": 90.0,
+    "p95": 128.0
+  },
+  "run_id": "2026-08-21-internet-latency-gate-blocked",
+  "samples_ms": [
+    90.0,
+    100.0,
+    110.0,
+    120.0,
+    130.0
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "statistics": {
+    "count": 5,
+    "max": 130.0,
+    "mean": 110.0,
+    "median": 110.0,
+    "min": 90.0,
+    "p95": 128.0
+  },
+  "status": "complete",
+  "transport": "internet",
+  "unit": "ms",
+  "verdict": "pass"
+}

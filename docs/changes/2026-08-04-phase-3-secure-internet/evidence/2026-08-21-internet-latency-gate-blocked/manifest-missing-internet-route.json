@@ -1,0 +1,53 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-21-internet-latency-gate-blocked",
+  "latency_kind": "glass-to-glass",
+  "transport": "internet",
+  "measurement_method": "external-camera",
+  "gate_profile": "internet-glass-to-glass-sub150",
+  "camera": {
+    "manufacturer": "Fixture Camera Co",
+    "model": "Synthetic 240",
+    "mode": "1080p240",
+    "frame_rate_fps": 240,
+    "shutter_mode": "fixed"
+  },
+  "recording": {
+    "raw_video": "raw-camera-placeholder.mov",
+    "recorded_at": "2026-08-21T00:00:00Z",
+    "operator": "fixture",
+    "sha256": "0546abb2918a12f19272358da702e20dac867f9be34717f07d8eb854c021d054"
+  },
+  "samples": {
+    "file": "samples.csv",
+    "format": "csv",
+    "sha256": "f2c044dd3aab769a89986c14499a91fb1c1fa4cac0a9c87bd7429366ed6ca0aa",
+    "annotation_method": "direct-latency-ms",
+    "annotator": "fixture"
+  },
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "os_version": "Android 16"
+  },
+  "host": {
+    "model": "Mac fixture",
+    "macos_version": "fixture"
+  },
+  "build": {
+    "repository_revision": "22da26816465257b4a09f95de47be8567e448b74",
+    "host_artifact": "not-built-for-public-internet-latency",
+    "client_artifact": "not-built-for-public-internet-latency"
+  },
+  "measurement_setup": {
+    "stimulus": "synthetic verifier fixture only",
+    "start_event_definition": "direct fixture latency value",
+    "end_event_definition": "direct fixture latency value",
+    "lighting": "not applicable; no real camera package",
+    "mounting": "not applicable; no real camera package",
+    "clock_domain": "single-external-camera-timebase",
+    "max_frame_annotation_uncertainty_ms": 0,
+    "notes": "Blocked readiness fixture only. The sample values would pass the numeric Internet threshold, but the manifest intentionally omits internet_route to prove the formal checker fails closed without public TURN and remote-peer provenance."
+  }
+}
