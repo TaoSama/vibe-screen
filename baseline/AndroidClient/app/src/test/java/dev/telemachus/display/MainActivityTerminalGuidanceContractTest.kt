@@ -205,6 +205,44 @@ class MainActivityTerminalGuidanceContractTest {
             "Wide disconnected settings button must have a higher z-order than the connection panel",
             disconnected.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
         )
+        assertTrue(
+            "Wide disconnected settings button must ignore overlay opacity and stay readable",
+            disconnected.contains("binding.settingsButton.alpha = 1f"),
+        )
+    }
+
+    @Test
+    fun overlayOpacityOnlyDimsTheStatsOverlay() {
+        val source = mainActivitySource()
+        val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
+        val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
+        val opacitySliderListener =
+            showSettingsDialog.substring(
+                showSettingsDialog.indexOf("opacitySlider.addOnChangeListener"),
+                showSettingsDialog.indexOf("scaleFitButton.setOnClickListener"),
+            )
+
+        assertTrue(
+            "Saved overlay opacity should still apply to the stats overlay",
+            restoreOverlayPosition.contains("updateOverlayOpacity(prefs.overlayOpacity)"),
+        )
+        assertTrue(
+            "Changing overlay opacity from Settings should still update the stats overlay",
+            opacitySliderListener.contains("updateOverlayOpacity(value)"),
+        )
+        assertFalse(
+            "Restoring overlay state must not dim the disconnected floating settings entry",
+            restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
+        )
+        assertFalse(
+            "Changing overlay opacity from Settings must not dim the disconnected floating settings entry",
+            opacitySliderListener.contains("settingsButton") ||
+                opacitySliderListener.contains("updateSettingsButtonOpacity"),
+        )
+        assertFalse(
+            "No settings-button opacity helper should re-bind the affordance to overlay opacity",
+            source.contains("private fun updateSettingsButtonOpacity"),
+        )
     }
 
     @Test

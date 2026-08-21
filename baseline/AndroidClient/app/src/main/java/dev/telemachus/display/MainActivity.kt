@@ -1862,6 +1862,9 @@ class MainActivity : AppCompatActivity() {
         binding.settingsPanel.visibility = View.VISIBLE
         val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
         binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
+        // Stream overlay opacity can be very low; the disconnected settings
+        // entry remains a primary recovery affordance and must stay readable.
+        binding.settingsButton.alpha = 1f
         binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
         if (!useInlineSettingsButton) {
             binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
@@ -2880,10 +2883,7 @@ class MainActivity : AppCompatActivity() {
             positionOverlayAt(x, y)
         }
 
-        // Apply opacity to both overlay and settings button
-        val opacity = prefs.overlayOpacity
-        updateOverlayOpacity(opacity)
-        updateSettingsButtonOpacity(opacity)
+        updateOverlayOpacity(prefs.overlayOpacity)
 
         // Apply visibility
         updateOverlayVisibility(prefs.showStatsOverlay)
@@ -3200,7 +3200,6 @@ class MainActivity : AppCompatActivity() {
         opacitySlider.addOnChangeListener { _, value, _ ->
             prefs.overlayOpacity = value
             updateOverlayOpacity(value)
-            updateSettingsButtonOpacity(value)
             opacityValue.text = "${(value * 100).toInt()}%"
         }
 
@@ -3367,10 +3366,6 @@ class MainActivity : AppCompatActivity() {
                 SettingsDialogLayoutApplier::applyAfterNextLayout,
             )
         }
-    }
-
-    private fun updateSettingsButtonOpacity(opacity: Float) {
-        binding.settingsButton.alpha = opacity
     }
 
     private fun setupSettingsButton() {
