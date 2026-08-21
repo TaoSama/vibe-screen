@@ -6,16 +6,44 @@ import org.junit.Test
 
 class MainActivityControllerForwardingContractTest {
     @Test
+    fun foregroundReturnRequestsFreshFrameForEveryActiveSessionType() {
+        val source = mainActivitySource()
+        val onStart = extractMethod(source, "override fun onStart")
+
+        assertContains(onStart, "isInForeground = true")
+        assertContains(onStart, "setStreamingWindowState(true)")
+        assertContains(onStart, "streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)")
+        assertContains(onStart, "internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)")
+        assertBefore(onStart, "setStreamingWindowState(true)", "streamClient?.requestKeyframe(force = true")
+        assertBefore(onStart, "streamClient?.requestKeyframe(force = true", "internetSession?.requestKeyframe")
+    }
+
+    @Test
+    fun backgroundLifecycleCancelsInputAndPausesRetryBeforeStopping() {
+        val source = mainActivitySource()
+        val onStop = extractMethod(source, "override fun onStop")
+
+        assertContains(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)")
+        assertContains(onStop, "isInForeground = false")
+        assertContains(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)")
+        assertContains(onStop, "autoConnectHandler.removeCallbacks(autoConnectRunnable)")
+        assertContains(onStop, "wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)")
+        assertBefore(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)", "isInForeground = false")
+        assertBefore(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)", "super.onStop()")
+    }
+
+    @Test
     fun controllerKeyEventsEnterProductionDispatchBeforeKeyboardFallback() {
         val source = mainActivitySource()
         val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
 
-        assertContains(dispatchKeyEvent, "if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)")
+        assertContains(dispatchKeyEvent, "if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)")
         assertContains(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)?.let { change ->")
         assertContains(dispatchKeyEvent, "streamControllerSessionState.applyKey(change)")
         assertContains(dispatchKeyEvent, "sendStreamControllerDispatch(dispatch,")
         assertContains(dispatchKeyEvent, "controller key")
         assertContains(dispatchKeyEvent, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
+        assertBefore(dispatchKeyEvent, "if (!isInForeground", "ControllerInputMapper.keyChange(event)")
         assertBefore(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)", "AndroidKeyInputMapper.map(")
     }
 
@@ -26,6 +54,7 @@ class MainActivityControllerForwardingContractTest {
 
         assertContains(source, "binding.inputViewport.setOnGenericMotionListener { view, event ->")
         assertContains(source, "handleGenericMotion(view, event)")
+        assertContains(genericMotion, "if (!isInForeground) return false")
         assertContains(genericMotion, "if (!isConnected) return false")
         assertContains(genericMotion, "ControllerInputMapper.snapshot(event)?.let { snapshot ->")
         assertContains(genericMotion, "streamControllerSessionState.applyMotion(snapshot)")
@@ -34,6 +63,17 @@ class MainActivityControllerForwardingContractTest {
         assertContains(genericMotion, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
         assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "StylusInputMapper.snapshot(event)")
         assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "ClientPointerInput(")
+    }
+
+    @Test
+    fun touchEventsAreDroppedBeforeAnyTransportDispatchWhenBackgrounded() {
+        val source = mainActivitySource()
+        val touchHandler = extractMethod(source, "private fun handleTouch")
+
+        assertContains(touchHandler, "if (!isInForeground) return")
+        assertBefore(touchHandler, "if (!isInForeground) return", "consumeHiddenControlRevealGesture(event)")
+        assertBefore(touchHandler, "if (!isInForeground) return", "prefs.connectionMode == ConnectionMode.INTERNET")
+        assertBefore(touchHandler, "if (!isInForeground) return", "streamClient?.sendMotionTouch(")
     }
 
     @Test

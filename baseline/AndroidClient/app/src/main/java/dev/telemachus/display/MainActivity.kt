@@ -366,7 +366,8 @@ class MainActivity : AppCompatActivity() {
         if (scannerLaunched) return
         if (isConnected) {
             setStreamingWindowState(true)
-            streamClient?.requestKeyframe(force = true, reason = "client returned to foreground")
+            streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
+            internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingWirelessReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
@@ -381,7 +382,7 @@ class MainActivity : AppCompatActivity() {
         finishPendingRightClick()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         mainDiag("lifecycle background connected=$isConnected; retries paused")
@@ -475,7 +476,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
         ControllerInputMapper.keyChange(event)?.let { change ->
             val dispatch = streamControllerSessionState.applyKey(change)
             if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
@@ -716,19 +717,23 @@ class MainActivity : AppCompatActivity() {
     private fun secureFlagIfProtected(): Int =
         if (screenCaptureAllowedForDebug()) 0 else WindowManager.LayoutParams.FLAG_SECURE
 
-    /** Keep the tablet awake and its streamed Mac pixels out of screenshots only while connected. */
+    /** Keep the tablet awake only while foregrounded, while preserving screenshot protection when connected. */
     private fun setStreamingWindowState(enabled: Boolean) {
-        val streamingFlags =
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                secureFlagIfProtected()
-        if (enabled) {
-            window.addFlags(streamingFlags)
-        } else {
-            window.clearFlags(
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_SECURE,
+        applyStreamingWindowState(connected = enabled, foreground = isInForeground)
+    }
+
+    private fun applyStreamingWindowState(
+        connected: Boolean,
+        foreground: Boolean,
+    ) {
+        val update =
+            StreamingWindowStatePolicy.update(
+                connected = connected,
+                foreground = foreground,
+                secureFlag = secureFlagIfProtected(),
             )
-        }
+        if (update.clearFlags != 0) window.clearFlags(update.clearFlags)
+        if (update.addFlags != 0) window.addFlags(update.addFlags)
     }
 
     /**
@@ -3554,12 +3559,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 isConnected = connected
-                if (connected && !isInForeground) {
-                    window.addFlags(secureFlagIfProtected())
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    setStreamingWindowState(connected)
-                }
+                applyStreamingWindowState(connected = connected, foreground = isInForeground)
                 if (connected) {
                     nativeInputSessionState.admit(callbackClient, callbackGeneration)
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
@@ -4825,12 +4825,13 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
+        if (!isInForeground) return
         if (consumeHiddenControlRevealGesture(event)) return
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             handleInternetTouch(view, event)
             return
         }
-        if (!isConnected || !isInForeground) return
+        if (!isConnected) return
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
         if (streamStylusGestureRouter.routesToStylus(stylusSnapshot, client?.canSendStylus() == true)) {
@@ -5341,6 +5342,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
+        private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
 

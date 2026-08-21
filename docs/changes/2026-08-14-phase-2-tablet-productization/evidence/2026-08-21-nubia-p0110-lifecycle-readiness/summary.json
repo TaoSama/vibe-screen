@@ -1,0 +1,111 @@
+{
+  "schema_version": "phase2-readiness-v1",
+  "collected_at_utc": "2026-08-20T21:18:23Z",
+  "verdict": "blocked_readiness_only",
+  "base_commit_sha": "0bf426dc657d2068f82cb93d897d89226b3c0524",
+  "rebased_validation_head_sha": "38752d65a3dca02699500836dccf35aaaf34b409",
+  "branch": "codex/phase2-p0110-readiness-recovery",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "device_class": "android_substitute",
+    "physical_size": "1264x2800",
+    "physical_density": 560
+  },
+  "android_artifact": {
+    "apk_path": "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "apk_sha256": "112ceac607210546dfd8f7a8d4e8f7c0644ef9e67f35e94f7d4de83770d3e1e5"
+  },
+  "host_preflight": {
+    "tcp_54321_listener": false,
+    "adb_reverse": "UsbFfs tcp:54321 tcp:54321",
+    "stream_blocker": "Protocol upgrade probe closed before a response"
+  },
+  "results": {
+    "local_gradle_focused_tests": "BUILD SUCCESSFUL in 10s",
+    "target_device_settings_layout_tests": 7,
+    "target_device_settings_layout_failures": 0,
+    "target_device_settings_layout_result": "OK (7 tests)",
+    "battery_before": {
+      "ac_powered": true,
+      "usb_powered": false,
+      "level_percent": 100,
+      "temperature_deci_celsius": 340,
+      "status": 5
+    },
+    "battery_after": {
+      "ac_powered": true,
+      "usb_powered": false,
+      "level_percent": 100,
+      "temperature_deci_celsius": 340,
+      "status": 2
+    },
+    "power_saver": "off in captured dumpsys power snapshots",
+    "thermal_before_status": 1,
+    "thermal_after_status": 1,
+    "lifecycle_observed": [
+      "foreground connected=false",
+      "background connected=false; retries paused",
+      "foreground connected=false"
+    ],
+    "streaming_recovery_proven": false,
+    "eight_hour_sample_series_present": false
+  },
+  "artifacts": [
+    "README.md",
+    "device-info.json",
+    "device-info.pretty.json",
+    "host.txt",
+    "build.txt",
+    "apk-sha256-final.txt",
+    "phase2-tablet-manifest.json",
+    "p0110-settings-layout-test-final-policy.txt",
+    "adb-battery-final-policy-before.txt",
+    "adb-battery-final-policy-after.txt",
+    "lifecycle-summary.txt",
+    "thermal-final-policy-before.txt",
+    "thermal-final-policy-before.err",
+    "thermal-final-policy-after.txt",
+    "thermal-final-policy-after.err",
+    "vibescreen-logcat-final-policy.txt",
+    "screenshots/sustained-use-portrait.png",
+    "screenshots/sustained-use-landscape.png",
+    "screenshots/foreground.png",
+    "screenshots/returned-foreground.png",
+    "screenshots/final-returned-foreground.png"
+  ],
+  "blocked_gates": [
+    {
+      "gate": "physical_8_9_inch_tablet",
+      "reason": "P0110 is an Android phone substitute, not a physical 8-9 inch tablet."
+    },
+    {
+      "gate": "stand_mounted_charging",
+      "reason": "No physical stand, dock, charger model, ambient setup, or all-day charging geometry was verified."
+    },
+    {
+      "gate": "thermal_power_sampling",
+      "reason": "Only short platform dumps were captured; no controlled thermal load or long sample series was run."
+    },
+    {
+      "gate": "foreground_background_recovery",
+      "reason": "Foreground/background lifecycle logs were captured, but no live Host stream was available to prove keyframe, first returned frame, stale-frame rejection, stale-input rejection, or bounded reconnect behavior."
+    },
+    {
+      "gate": "transport_reconnect_recovery",
+      "reason": "No live Host stream was available for a transport interruption and recovery pass."
+    },
+    {
+      "gate": "login_startup_or_headless_recovery",
+      "reason": "Not exercised in this run."
+    },
+    {
+      "gate": "eight_hour_sustained_stream",
+      "reason": "No eight-hour samples.jsonl or exact-window report was collected."
+    }
+  ]
+}

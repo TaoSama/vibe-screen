@@ -1,0 +1,31 @@
+Source: app-filtered logcat plus activity/window/power dumps collected with adb -s EP0110PZ0B9110300B.
+
+Device:
+- manufacturer: nubia
+- model: P0110
+- codename: pacific
+- Android: 16 / SDK 36
+
+Final app lifecycle observations:
+- Foreground launch: dev.telemachus.display/.MainActivity was RESUMED.
+- Background transition: HOME became the resumed activity and Vibe Screen moved out of foreground.
+- Foreground return: dev.telemachus.display/.MainActivity was RESUMED again.
+- App log sequence:
+  - 08-21 05:23:23.787 D MA: lifecycle foreground connected=false
+  - 08-21 05:23:26.491 D MA: lifecycle background connected=false; retries paused
+  - 08-21 05:23:28.268 D MA: lifecycle foreground connected=false
+
+Host transport blocker:
+- host-transport-preflight.txt found no local TCP 54321 listener.
+- adb reverse listed UsbFfs tcp:54321 tcp:54321.
+- app-filtered logcat recorded Protocol upgrade probe closed before a response.
+
+Power and thermal observations:
+- Battery before final lifecycle check: 100%, AC powered true, USB powered false, 34.0 C.
+- Battery after final lifecycle check: 100%, AC powered true, USB powered false, 34.0 C.
+- Power saver: off in the captured dumpsys power snapshots.
+- Thermal service after final lifecycle check: Thermal Status 1, with battery HAL temperature 34.0 C.
+
+Interpretation:
+- This proves only a short foreground/background lifecycle readiness path on an Android phone substitute while disconnected from the Host stream.
+- It does not prove live-stream foreground recovery, fresh keyframe delivery, first returned frame timing, stale input/frame rejection, bounded reconnect, stand-mounted charging, controlled thermal-load behavior, or the eight-hour Phase 2 gate.

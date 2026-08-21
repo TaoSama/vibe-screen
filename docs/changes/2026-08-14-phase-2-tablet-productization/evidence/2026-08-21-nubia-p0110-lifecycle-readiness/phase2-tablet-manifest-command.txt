@@ -1,0 +1,20 @@
+mkdir -p docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-lifecycle-readiness
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
+		--output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-lifecycle-readiness/phase2-tablet-manifest.json \
+		--device-info docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-lifecycle-readiness/device-info.json \
+		--device-class android_substitute \
+		 \
+		--stand-setup "no physical stand available; short desk/handheld P0110 readiness only" \
+		--charger "AC powered state observed by dumpsys battery; charger model not verified" \
+		--cable-or-dock "USB data cable with adb reverse tcp:54321; no dock verified" \
+		 \
+		--transport usb \
+		--video-preferences "default debug APK automatic USB preferences; no stable Host stream established" \
+		--thermal-limit-status 2 \
+		 \
+		 \
+		--recovery-scenarios "background_foreground,usb_reconnect_preflight" \
+		--host-identity "macOS 26.4.1 on arm64; host listener unavailable during run" \
+		--host-build "not launched for streaming acceptance; lsof found no TCP 54321 listener" \
+		--apk-sha256 "112ceac607210546dfd8f7a8d4e8f7c0644ef9e67f35e94f7d4de83770d3e1e5" \
+		-- make soak-8h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-lifecycle-readiness
