@@ -226,6 +226,38 @@ this source tree, and this change introduces no new production memory fix. The
 formal two-hour Host RSS no-growth gate remains open until a matching
 `host_rss_gate` run reports `pass`.
 
+### Host TCP socket FD diagnostic
+
+When USB or LAN smoke evidence shows stale Host TCP entries on port `54321`,
+sample the Host process with `lsof` and preserve the full output, including
+`CLOSED`, `ESTABLISHED`, and `LISTEN` rows. The PID and TCP filters must be
+combined with `-a`; otherwise `lsof` treats them as a broad OR query.
+
+To summarize saved snapshots:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_socket_fd \
+  --input /tmp/vibe-screen-p0110-e2e/root-usb-smoke-20260821-223447/host_lsof_before.txt \
+  --output /tmp/vibe-screen-p0110-e2e/root-usb-smoke-20260821-223447/host-socket-fd.json
+```
+
+To collect a short read-only series from a running Host:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_socket_fd \
+  --pid "$HOST_PID" \
+  --port 54321 \
+  --samples 13 \
+  --interval-seconds 5 \
+  --output .build/evidence/host-socket-fd.json
+```
+
+The report fails when the Host process still owns any TCP socket FD whose TCP
+state is `CLOSED`, and it records whether the CLOSED count increased across
+the sample window. This is a socket-lifecycle diagnostic only: its gate field
+always keeps `can_close_host_rss_no_growth_gate=false`, and it cannot replace
+the formal two-hour `host_rss_gate`.
+
 ## Latency evidence
 
 Latency evidence is split by what the measurement can prove:
