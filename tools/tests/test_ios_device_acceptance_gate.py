@@ -150,6 +150,43 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
             result["failures"],
         )
 
+    def test_short_android_markers_require_token_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["gates"]["device_install"]["evidence"] = ["artifacts/ipadbuild.log"]
+            write_artifacts(evidence_root, ["artifacts/ipadbuild.log"])
+
+            valid_result = evaluate(document, evidence_root)
+
+            document["gates"]["device_install"]["evidence"] = ["artifacts/adb-log.txt"]
+            write_artifacts(evidence_root, ["artifacts/adb-log.txt"])
+            invalid_result = evaluate(document, evidence_root)
+
+        self.assertEqual(valid_result["verdict"], "pass")
+        self.assertEqual(invalid_result["verdict"], "fail")
+        self.assertIn(
+            "gates.device_install.evidence[0]: must not reference Android evidence for an iOS gate",
+            invalid_result["failures"],
+        )
+
+    def test_non_string_status_is_reported_as_null(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["status"] = {"bad": "shape"}
+
+            result = evaluate(document, evidence_root)
+
+        self.assertIsNone(result["acceptance_status"])
+        self.assertEqual(result["verdict"], "insufficient")
+
     def test_simulator_identity_or_encrypted_lan_claim_fails(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)

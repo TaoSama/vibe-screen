@@ -125,7 +125,7 @@ summaries are useful for tracking prerequisites, but they are expected to return
 `insufficient` and cannot close the iOS trusted-LAN or real-device acceptance
 gate.
 
-~~~json
+```json
 {
   "schema_version": "vibescreen.evidence/v1",
   "kind": "ios_device_acceptance",
@@ -189,7 +189,7 @@ gate.
   "android_evidence_used_for_ios_gates": false,
   "notes": []
 }
-~~~
+```
 
 Store raw logs under the active Phase 5 evidence directory or an external
 release bundle, depending on privacy review. Commit only sanitized summaries,

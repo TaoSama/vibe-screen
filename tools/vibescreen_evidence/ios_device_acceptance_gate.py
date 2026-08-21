@@ -58,13 +58,15 @@ REQUIRED_DEVICE_FIELDS = (
 )
 ANDROID_MARKERS = (
     "android",
-    "adb",
-    "apk",
     "nubia",
     "p0110",
     "pacific",
     "xiaomi",
     "fuxi",
+)
+ANDROID_TOKEN_MARKERS = ("adb", "apk")
+ANDROID_TOKEN_PATTERN = re.compile(
+    r"(?<![0-9a-z])(?:" + "|".join(ANDROID_TOKEN_MARKERS) + r")(?![0-9a-z])"
 )
 SIMULATOR_MARKERS = ("simulator", "iphonesimulator")
 UNSIGNED_MARKERS = ("unsigned", "simulator")
@@ -120,7 +122,9 @@ def _contains_android_marker(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     lowered = value.lower()
-    return any(marker in lowered for marker in ANDROID_MARKERS)
+    if any(marker in lowered for marker in ANDROID_MARKERS):
+        return True
+    return ANDROID_TOKEN_PATTERN.search(lowered) is not None
 
 
 def _contains_marker(value: Any, markers: Sequence[str]) -> bool:
@@ -379,12 +383,15 @@ def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
         verdict = FAIL
     elif missing:
         verdict = INSUFFICIENT
+    acceptance_status = document.get("status")
+    if not isinstance(acceptance_status, str):
+        acceptance_status = None
 
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": GATE_KIND,
         "verdict": verdict,
-        "acceptance_status": document.get("status"),
+        "acceptance_status": acceptance_status,
         "covered_devices": covered_devices,
         "required_devices": list(REQUIRED_DEVICE_ROLES),
         "completed_gates": completed_gates,
