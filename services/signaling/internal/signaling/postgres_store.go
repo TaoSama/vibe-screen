@@ -16,7 +16,7 @@ import (
 
 const (
 	requiredSignalingSchemaVersion  int64 = 1
-	requiredSignalingSchemaChecksum       = "10d8417ba2f7ecba631db9e6c076befd5a8beb9e6e06af9cbe133e20a5278ee1"
+	requiredSignalingSchemaChecksum       = "0ae6188c613207a070a40664243447d55b8e584826e9bdbdfc29a6690bf738f4"
 	authorityReservationPrefix            = "pending-authority-"
 	postgresNotifyTimeout                 = 250 * time.Millisecond
 	postgresBackgroundTimeout             = 10 * time.Second
@@ -47,6 +47,12 @@ type storedSession struct {
 	DeviceEnded bool
 	HostCount   int
 	DeviceCount int
+}
+
+type waiterLease struct {
+	ID               string
+	BackendPID       int
+	BackendStartedAt time.Time
 }
 
 func OpenPostgresStore(ctx context.Context, cfg Config, authority *AuthorityClient) (*PostgresStore, error) {
@@ -93,13 +99,13 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		return fmt.Errorf("%w: schema version/checksum mismatch", ErrStorage)
 	}
 	var complete bool
-	if err := s.pool.QueryRow(ctx, "SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name", []string{"signaling_schema_migrations", "signaling_sessions", "signaling_messages", "signaling_role_rates", "signaling_waiters"}).Scan(&complete); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name", []string{"signaling_schema_migrations", "signaling_sessions", "signaling_messages", "signaling_role_rates", "signaling_waiter_leases"}).Scan(&complete); err != nil {
 		return fmt.Errorf("%w: structure probe: %v", ErrStorage, err)
 	}
 	if !complete {
 		return fmt.Errorf("%w: required signaling relation is missing", ErrStorage)
 	}
-	if _, err := s.pool.Exec(ctx, "SELECT s.session_id,s.request_id,s.ttl_seconds,s.expires_at,s.host_token,s.device_token,s.invalidated,s.created_at,m.session_id,m.sender_role,m.message_id,m.message_type,m.sdp,m.candidate,m.sequence,m.created_at,r.session_id,r.role,r.window_started_at,r.message_count,w.session_id,w.role,w.waiter_count FROM signaling_sessions s,signaling_messages m,signaling_role_rates r,signaling_waiters w LIMIT 0"); err != nil {
+	if _, err := s.pool.Exec(ctx, "SELECT s.session_id,s.request_id,s.ttl_seconds,s.expires_at,s.host_token,s.device_token,s.invalidated,s.created_at,m.session_id,m.sender_role,m.message_id,m.message_type,m.sdp,m.candidate,m.sequence,m.created_at,r.session_id,r.role,r.window_started_at,r.message_count,w.session_id,w.role,w.lease_id,w.backend_pid,w.backend_started_at,w.registered_at FROM signaling_sessions s,signaling_messages m,signaling_role_rates r,signaling_waiter_leases w LIMIT 0"); err != nil {
 		return fmt.Errorf("%w: required signaling column is missing: %v", ErrStorage, err)
 	}
 	requiredConstraints := []string{
@@ -117,10 +123,10 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"signaling_role_rates_role_check",
 		"signaling_role_rates_message_count_check",
 		"signaling_role_rates_pkey",
-		"signaling_waiters_session_id_fkey",
-		"signaling_waiters_role_check",
-		"signaling_waiters_waiter_count_check",
-		"signaling_waiters_pkey",
+		"signaling_waiter_leases_session_id_fkey",
+		"signaling_waiter_leases_role_check",
+		"signaling_waiter_leases_backend_pid_check",
+		"signaling_waiter_leases_pkey",
 	}
 	var constraints int
 	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM pg_constraint WHERE connamespace=current_schema()::regnamespace AND conname=ANY($1)", requiredConstraints).Scan(&constraints); err != nil || constraints != len(requiredConstraints) {
@@ -131,28 +137,28 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"signaling_sessions", "signaling_sessions", "signaling_sessions", "signaling_sessions", "signaling_sessions", "signaling_sessions", "signaling_sessions",
 		"signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages",
 		"signaling_role_rates", "signaling_role_rates", "signaling_role_rates", "signaling_role_rates",
-		"signaling_waiters", "signaling_waiters", "signaling_waiters",
+		"signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases",
 	}
 	columns := []string{
 		"version", "checksum_sha256",
 		"session_id", "request_id", "ttl_seconds", "expires_at", "host_token", "device_token", "invalidated",
 		"session_id", "sender_role", "message_id", "message_type", "sdp", "candidate", "sequence",
 		"session_id", "role", "window_started_at", "message_count",
-		"session_id", "role", "waiter_count",
+		"session_id", "role", "lease_id", "backend_pid", "backend_started_at", "registered_at",
 	}
 	types := []string{
 		"bigint", "text",
 		"text", "text", "bigint", "timestamp with time zone", "text", "text", "boolean",
 		"text", "text", "text", "text", "text", "jsonb", "bigint",
 		"text", "text", "timestamp with time zone", "integer",
-		"text", "text", "integer",
+		"text", "text", "text", "integer", "timestamp with time zone", "timestamp with time zone",
 	}
 	nullable := []string{
 		"NO", "NO",
 		"NO", "NO", "NO", "NO", "YES", "YES", "NO",
 		"NO", "NO", "NO", "NO", "NO", "YES", "NO",
 		"NO", "NO", "NO", "NO",
-		"NO", "NO", "NO",
+		"NO", "NO", "NO", "NO", "NO", "NO",
 	}
 	if err := s.pool.QueryRow(ctx, "SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable", tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
 		return fmt.Errorf("%w: required signaling column signature mismatch", ErrStorage)
@@ -505,18 +511,20 @@ func (s *PostgresStore) AddMessageAuthorized(ctx context.Context, sessionID stri
 func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, role Role, after uint64, wait bool) ([]Event, uint64, error) {
 	waiting := false
 	var listener *postgresNotificationListener
+	var lease waiterLease
 	defer func() {
 		if listener != nil {
 			listener.close()
 		}
-		if waiting {
+		if lease.ID != "" {
 			releaseCtx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
 			defer cancel()
-			_ = s.releaseWaiter(releaseCtx, sessionID, role)
+			_ = s.releaseWaiter(releaseCtx, sessionID, role, lease.ID)
 		}
 	}()
 	for {
-		events, next, err := s.pollOnce(ctx, sessionID, role, after, wait && !waiting)
+		acquireWaiter := wait && listener != nil && !waiting
+		events, next, err := s.pollOnce(ctx, sessionID, role, after, acquireWaiter, lease)
 		if err != nil {
 			return nil, after, err
 		}
@@ -526,16 +534,23 @@ func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, ro
 		if !wait {
 			return []Event{}, after, nil
 		}
-		if !waiting {
-			waiting = true
-		}
 		if listener == nil {
 			var err error
 			listener, err = s.openNotificationListener(ctx)
 			if err != nil {
 				return nil, after, storageError("open signaling notification listener", err)
 			}
+			leaseID, err := randomToken(16)
+			if err != nil {
+				return nil, after, fmt.Errorf("generate waiter lease ID: %w", err)
+			}
+			lease = waiterLease{ID: leaseID, BackendPID: listener.backendPID, BackendStartedAt: listener.backendStartedAt}
+			// Recheck the session after LISTEN is active, then register a lease if
+			// there is still nothing to return. This avoids relying on process-local
+			// ownership while still letting a crashed listener be reclaimed later.
+			continue
 		}
+		waiting = true
 		waitCtx, cancel := context.WithTimeout(ctx, postgresNotifyTimeout)
 		waitErr := listener.wait(waitCtx, sessionID)
 		cancel()
@@ -551,7 +566,7 @@ func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, ro
 	}
 }
 
-func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Role, after uint64, acquireWaiter bool) ([]Event, uint64, error) {
+func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Role, after uint64, acquireWaiter bool, lease waiterLease) ([]Event, uint64, error) {
 	var events []Event
 	next := after
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
@@ -569,14 +584,14 @@ func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Rol
 		if err != nil || next > after || !acquireWaiter {
 			return err
 		}
-		waiters, err := s.waitersTx(ctx, tx, sessionID, role)
+		waiters, err := s.waitersTx(ctx, tx, sessionID, role, lease.ID)
 		if err != nil {
 			return err
 		}
 		if waiters >= s.maxWaiters {
 			return ErrTooManyWaiters
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO signaling_waiters(session_id,role,waiter_count) VALUES ($1,$2,1) ON CONFLICT (session_id,role) DO UPDATE SET waiter_count=signaling_waiters.waiter_count+1", sessionID, role)
+		_, err = tx.Exec(ctx, "INSERT INTO signaling_waiter_leases(session_id,role,lease_id,backend_pid,backend_started_at,registered_at) VALUES ($1,$2,$3,$4,$5,now()) ON CONFLICT (session_id,role,lease_id) DO NOTHING", sessionID, role, lease.ID, lease.BackendPID, lease.BackendStartedAt)
 		return err
 	})
 	return events, next, err
@@ -612,7 +627,7 @@ func (s *PostgresStore) stats(ctx context.Context) (StoreStats, error) {
 	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FILTER (WHERE NOT invalidated), COUNT(*) FILTER (WHERE invalidated), COUNT(*) FROM signaling_sessions").Scan(&stats.ActiveSessions, &stats.Tombstones, &stats.ReservedRecords); err != nil {
 		return StoreStats{}, err
 	}
-	if err := s.pool.QueryRow(ctx, "SELECT COALESCE(SUM(waiter_count),0)::bigint FROM signaling_waiters").Scan(&stats.BlockedWaiters); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases").Scan(&stats.BlockedWaiters); err != nil {
 		return StoreStats{}, err
 	}
 	return stats, nil
@@ -810,23 +825,28 @@ func (s *PostgresStore) eventsAfterTx(ctx context.Context, tx pgx.Tx, sessionID 
 	return events, next, rows.Err()
 }
 
-func (s *PostgresStore) waitersTx(ctx context.Context, tx pgx.Tx, sessionID string, role Role) (int, error) {
+func (s *PostgresStore) waitersTx(ctx context.Context, tx pgx.Tx, sessionID string, role Role, leaseID string) (int, error) {
 	var waiters int
-	err := tx.QueryRow(ctx, "SELECT waiter_count FROM signaling_waiters WHERE session_id=$1 AND role=$2 FOR UPDATE", sessionID, role).Scan(&waiters)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil
+	if _, err := tx.Exec(ctx, "DELETE FROM signaling_waiter_leases l WHERE NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid=l.backend_pid AND a.backend_start=l.backend_started_at)"); err != nil {
+		return 0, err
 	}
+	err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases WHERE session_id=$1 AND role=$2 AND lease_id<>$3", sessionID, role, leaseID).Scan(&waiters)
 	return waiters, err
 }
 
-func (s *PostgresStore) releaseWaiter(ctx context.Context, sessionID string, role Role) error {
-	_, err := s.pool.Exec(ctx, "UPDATE signaling_waiters SET waiter_count=GREATEST(waiter_count-1,0) WHERE session_id=$1 AND role=$2", sessionID, role)
+func (s *PostgresStore) releaseWaiter(ctx context.Context, sessionID string, role Role, leaseID string) error {
+	if leaseID == "" {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, "DELETE FROM signaling_waiter_leases WHERE session_id=$1 AND role=$2 AND lease_id=$3", sessionID, role, leaseID)
 	return err
 }
 
 type postgresNotificationListener struct {
-	connection *pgxpool.Conn
-	release    func()
+	connection       *pgxpool.Conn
+	release          func()
+	backendPID       int
+	backendStartedAt time.Time
 }
 
 func (s *PostgresStore) openNotificationListener(ctx context.Context) (*postgresNotificationListener, error) {
@@ -850,9 +870,19 @@ func (s *PostgresStore) openNotificationListener(ctx context.Context) (*postgres
 		s.releaseNotificationSlot()
 		return nil, err
 	}
+	var backendPID int
+	var backendStartedAt time.Time
+	if err := connection.QueryRow(ctx, "SELECT pg_backend_pid(), backend_start FROM pg_stat_activity WHERE pid=pg_backend_pid()").Scan(&backendPID, &backendStartedAt); err != nil {
+		_, _ = connection.Exec(context.Background(), "UNLISTEN signaling_events")
+		connection.Release()
+		s.releaseNotificationSlot()
+		return nil, err
+	}
 	return &postgresNotificationListener{
-		connection: connection,
-		release:    s.releaseNotificationSlot,
+		connection:       connection,
+		release:          s.releaseNotificationSlot,
+		backendPID:       backendPID,
+		backendStartedAt: backendStartedAt,
 	}, nil
 }
 
