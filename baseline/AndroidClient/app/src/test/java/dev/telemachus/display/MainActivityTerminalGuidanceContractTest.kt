@@ -179,31 +179,61 @@ class MainActivityTerminalGuidanceContractTest {
 
     @Test
     fun disconnectedStreamUiKeepsSettingsReachableWithoutSmallScreenOcclusion() {
-        val disconnected = extractMethod(mainActivitySource(), "private fun showDisconnectedStreamUi")
+        val source = mainActivitySource()
+        val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
+        val entryPolicy = extractMethod(source, "private fun applyDisconnectedSettingsEntryPolicy")
+        val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
 
         assertTrue(
             "Disconnected state should use the resource policy for inline settings",
-            disconnected.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
+            entryPolicy.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
         )
         assertTrue(
             "Narrow layouts should show the inline connection settings button",
-            disconnected.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
+            entryPolicy.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
         )
         assertTrue(
             "Narrow layouts should hide the floating settings button",
-            disconnected.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
+            entryPolicy.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
         )
         assertTrue(
             "Wide layouts should keep the floating button above the connection panel",
-            disconnected.contains("if (!useInlineSettingsButton)"),
+            entryPolicy.contains("if (!useInlineSettingsButton)"),
         )
         assertTrue(
             "Wide disconnected settings button must sit above the connection panel",
-            disconnected.contains("settingsButton.bringToFront()"),
+            entryPolicy.contains("settingsButton.bringToFront()"),
         )
         assertTrue(
             "Wide disconnected settings button must have a higher z-order than the connection panel",
-            disconnected.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+            entryPolicy.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+        )
+        assertTrue(
+            "Disconnected entry policy must apply when the disconnected panel is first shown",
+            disconnected.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+        assertTrue(
+            "Configuration changes must re-evaluate inline versus floating settings entry while disconnected",
+            configurationChanged.contains("if (!isConnected)") &&
+                configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+    }
+
+    @Test
+    fun floatingDisconnectedSettingsButtonExposesAccessibleClickTarget() {
+        val settingsButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsButton\"")
+
+        assertTrue(
+            "The clickable floating settings container needs the accessible label",
+            settingsButton.contains("android:contentDescription=\"@string/display_settings\""),
+        )
+        assertTrue(
+            "The floating settings container should be keyboard focusable",
+            settingsButton.contains("android:focusable=\"true\""),
+        )
+        assertTrue(
+            "The inner icon should not duplicate the parent accessibility node",
+            settingsButton.contains("android:importantForAccessibility=\"no\""),
         )
     }
 
@@ -739,11 +769,45 @@ class MainActivityTerminalGuidanceContractTest {
         error("MainActivity.kt not found from " + System.getProperty("user.dir"))
     }
 
+    private fun mainActivityLayoutSource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            ACTIVITY_MAIN_LAYOUT_PATHS
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("activity_main.xml not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun extractXmlElement(
+        source: String,
+        idAttribute: String,
+    ): String {
+        val idIndex = source.indexOf(idAttribute)
+        require(idIndex >= 0) { "XML element not found: $idAttribute" }
+        val openStart = source.lastIndexOf('<', idIndex)
+        require(openStart >= 0) { "XML element start not found: $idAttribute" }
+        val elementName =
+            source.substring(openStart + 1)
+                .takeWhile { !it.isWhitespace() && it != '>' }
+        val closeMarker = "</$elementName>"
+        val closeEnd = source.indexOf(closeMarker, idIndex)
+        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, closeEnd + closeMarker.length)
+    }
+
     private companion object {
         val MAIN_ACTIVITY_PATHS =
             listOf(
                 "app/src/main/java/dev/telemachus/display/MainActivity.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+            )
+        val ACTIVITY_MAIN_LAYOUT_PATHS =
+            listOf(
+                "app/src/main/res/layout/activity_main.xml",
+                "baseline/AndroidClient/app/src/main/res/layout/activity_main.xml",
             )
     }
 }
