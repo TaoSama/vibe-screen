@@ -542,6 +542,12 @@ final class ProtocolV1SessionCoordinator {
         withSessionLock { negotiatedFileTransferPolicy }
     }
 
+    var canTransferFiles: Bool {
+        withSessionLock {
+            isNegotiated && negotiatedCapabilities.contains(.fileTransfer)
+        }
+    }
+
     func completeWakeHost(
         requestID: Data,
         accepted: Bool,

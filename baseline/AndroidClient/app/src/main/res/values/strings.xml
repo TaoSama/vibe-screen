@@ -119,6 +119,7 @@
     <string name="host_action_rejected_with_reason">Couldn\u2019t complete that action: %1$s</string>
     <!-- Clipboard control in the streaming control bar. -->
     <string name="control_clipboard">Clipboard</string>
+    <string name="control_file_transfer">File transfer</string>
     <string name="control_clipboard_pending">Clipboard, Mac content available</string>
     <string name="clipboard_send_to_mac">Send to Mac</string>
     <string name="clipboard_get_from_mac">Get from Mac</string>
@@ -320,4 +321,18 @@
     <string name="open_source_licenses_description">View copyright notices and third-party dependency licenses</string>
     <string name="open_source_notices_title">Open-source notices</string>
     <string name="open_source_notices_unavailable">The packaged notices could not be read. Reinstall the app or report this build as incomplete.</string>
+    <string name="file_transfer_unavailable">File transfer is not available for this session</string>
+    <string name="file_transfer_pick_failed">Could not prepare the selected file</string>
+    <string name="file_transfer_sent_to_mac">File transfer started</string>
+    <string name="file_transfer_send_failed">File transfer could not start</string>
+    <string name="file_transfer_offer_title">Receive file?</string>
+    <string name="file_transfer_offer_message">%1$s (%2$s) will be stored in Vibe Screen app storage.</string>
+    <string name="file_transfer_accept">Receive</string>
+    <string name="file_transfer_reject">Reject</string>
+    <string name="file_transfer_unknown_name">Unnamed file</string>
+    <string name="file_transfer_size_bytes">%1$d B</string>
+    <string name="file_transfer_received">Received %1$s</string>
+    <string name="file_transfer_completed">File transfer completed</string>
+    <string name="file_transfer_failed">File transfer failed</string>
+    <string name="file_transfer_failed_with_reason">File transfer failed: %1$s</string>
 </resources>
