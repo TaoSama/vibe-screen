@@ -107,11 +107,15 @@ matching the current clean repository HEAD, and read-only Screen Recording plus
 Accessibility rows in the user's and system TCC databases. It exits non-zero if
 any check is missing. A Host bundle built before source metadata was added, a
 Host built from a different commit, or a Host packaged from a dirty tree is
-blocked evidence for current-source Android gate work. When blocked only by
-permissions, open **System Settings → Privacy & Security → Screen & System Audio
-Recording** and **Accessibility**, grant the installed
-`/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
-preflight again.
+blocked evidence for current-source Android gate work. If the configured
+identity is absent from the keychain, the preflight blocks with
+`codesign identity 'Vibe Screen Dev' not found in the keychain`; create the
+self-signed Code Signing certificate named `Vibe Screen Dev` in Keychain Access,
+or set `VIBE_SCREEN_SIGN_IDENTITY` to an existing stable codesigning identity,
+then reinstall and rerun the preflight. When blocked only by permissions, open
+**System Settings → Privacy & Security → Screen & System Audio Recording** and
+**Accessibility**, grant the installed `/Applications/Vibe Screen.app`, quit and
+reopen Vibe Screen, then run the preflight again.
 
 `baseline-macos-touch-preflight` remains as a compatibility alias for older
 touch-gesture instructions.

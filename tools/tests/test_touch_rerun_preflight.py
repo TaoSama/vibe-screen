@@ -118,6 +118,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
             host={
                 "binary_sha256": "abc",
                 "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             tcc={
                 "screen_recording": {"authorized": True},
@@ -150,6 +151,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
             host={
                 "binary_sha256": "abc",
                 "source": {"commit": "c" * 40, "tree": "d" * 40, "dirty": False},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             **base,
         )
@@ -161,6 +163,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
             host={
                 "binary_sha256": "abc",
                 "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": True},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             tcc={
                 "screen_recording": {"authorized": True},
@@ -173,6 +176,25 @@ class TouchRerunPreflightTests(unittest.TestCase):
         )
 
         self.assertIn("repository source root is dirty", "\n".join(blockers))
+
+    def test_current_source_requirement_blocks_ad_hoc_host(self) -> None:
+        blockers = _blockers(
+            host={
+                "binary_sha256": "abc",
+                "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+                "codesign": {"authorities": []},
+            },
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256=None,
+            current_source={"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+            require_current_source=True,
+        )
+
+        self.assertIn("Host is ad-hoc signed", "\n".join(blockers))
 
     def test_current_source_is_not_required_for_historical_fixed_binary_preflight(self) -> None:
         blockers = _blockers(

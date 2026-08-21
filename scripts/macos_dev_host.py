@@ -33,6 +33,19 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+DEFAULT_IDENTITY_REMEDIATION = """Required remediation
+--------------------
+1. Confirm the configured signing identity is available:
+   security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
+2. If it is missing, create a self-signed Code Signing certificate named
+   'Vibe Screen Dev' in Keychain Access, or set VIBE_SCREEN_SIGN_IDENTITY to an
+   existing stable codesigning identity.
+3. Rebuild and install the Host with make baseline-macos-dev-install, grant
+   Screen Recording and Accessibility to /Applications/Vibe Screen.app, then
+   rerun this preflight.
+Ad-hoc signing is intentionally rejected for local device reruns because it
+changes the code-signing identity that macOS TCC grants are bound to.
+"""
 
 
 @dataclass(frozen=True)
@@ -628,6 +641,8 @@ Blocking issues:
 {error_lines}
 System permission path: {SYSTEM_SETTINGS_PATH}
 
+{DEFAULT_IDENTITY_REMEDIATION}
+
 Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
@@ -683,7 +698,11 @@ def collect_signing_identity_errors(sign_identity: str) -> list[str]:
     try:
         package_macos.resolve_sign_identity(sign_identity)
     except SystemExit as error:
-        return [str(error)]
+        message = str(error).replace(
+            ", or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+            ". Ad-hoc signing is not allowed for local device reruns because it changes the code-signing identity that macOS privacy grants are bound to.",
+        )
+        return [message]
     return []
 
 

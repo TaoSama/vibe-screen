@@ -26,6 +26,24 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 xcodebuild -version
 ```
 
+## macOS Host signing preflight
+
+Before any Host-backed Android device gate, install and verify the current-source
+Host with a stable signing identity:
+
+```bash
+make baseline-macos-dev-install
+make baseline-macos-host-preflight
+```
+
+If the configured identity is missing, the preflight blocks with
+`codesign identity 'Vibe Screen Dev' not found in the keychain`. Create a
+self-signed Code Signing certificate named `Vibe Screen Dev` in Keychain Access,
+or set `VIBE_SCREEN_SIGN_IDENTITY` to an existing stable codesigning identity,
+then reinstall, grant Screen Recording and Accessibility, and rerun the
+preflight. Do not use ad-hoc signing for current-source device evidence because
+macOS TCC grants are bound to the signing identity.
+
 ## Real-device evidence
 
 For every device run, record:

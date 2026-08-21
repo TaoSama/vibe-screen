@@ -228,6 +228,11 @@ def _blockers(
         )
     if require_current_source:
         host_source = host.get("source") or {}
+        authorities = (host.get("codesign") or {}).get("authorities") or []
+        if not authorities:
+            blockers.append(
+                "Host is ad-hoc signed; current-source reruns require a stable signing identity so TCC grants survive rebuilds"
+            )
         if current_source is None:
             blockers.append("current repository source identity was not recorded")
         elif current_source.get("dirty"):

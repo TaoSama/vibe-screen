@@ -90,6 +90,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("kTCCServiceAccessibility|dev.telemachus.display|0|0|4|1786811429", report)
         self.assertIn("Status: FAIL", report)
         self.assertIn("System Settings -> Privacy & Security", report)
+        self.assertIn("Required remediation", report)
+        self.assertIn("security find-identity -v -p codesigning", report)
 
     def test_validate_preflight_rejects_ad_hoc_and_missing_permissions(self) -> None:
         metadata = self.metadata(authorities=(), signature="adhoc")
@@ -113,6 +115,27 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_refuse_ad_hoc_identity_for_local_install(self) -> None:
         with self.assertRaisesRegex(SystemExit, "stable signing identity"):
             macos_dev_host.refuse_ad_hoc_identity("-")
+
+    def test_missing_identity_error_removes_ad_hoc_escape_hatch(self) -> None:
+        original = (
+            "codesign identity 'Vibe Screen Dev' not found in the keychain. "
+            "Create the 'Vibe Screen Dev' self-signed identity (or set "
+            "$VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass "
+            "'--sign-identity -' for an ad-hoc build. Ad-hoc signing changes "
+            "the code-signing hash on every rebuild and invalidates macOS "
+            "Screen Recording/Accessibility grants."
+        )
+        with mock.patch.object(
+            macos_dev_host.package_macos,
+            "resolve_sign_identity",
+            side_effect=SystemExit(original),
+        ):
+            errors = macos_dev_host.collect_signing_identity_errors("Vibe Screen Dev")
+
+        joined = "\n".join(errors)
+        self.assertIn("codesign identity 'Vibe Screen Dev' not found", joined)
+        self.assertIn("Ad-hoc signing is not allowed for local device reruns", joined)
+        self.assertNotIn("or pass '--sign-identity -'", joined)
 
     def test_validate_preflight_rejects_unexpected_named_identity(self) -> None:
         errors = macos_dev_host.validate_preflight(
