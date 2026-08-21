@@ -45,3 +45,20 @@ jobs:
           PY
           python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
           python3 scripts/harmony_device_gate.py --allow-blocked /tmp/harmony-device-gates.json
+          mkdir -p /tmp/harmony-matepad-acceptance
+          cp /tmp/harmony-readiness.json /tmp/harmony-matepad-acceptance/harmony-readiness.json
+          set +e
+          python3 scripts/harmony_matepad_acceptance.py --evidence-dir /tmp/harmony-matepad-acceptance --write-blocked
+          status=$?
+          set -e
+          test "$status" = "2"
+          python3 - <<'PY'
+          import json
+          with open("/tmp/harmony-matepad-acceptance/harmony-matepad-acceptance.json", encoding="utf-8") as handle:
+              package = json.load(handle)
+          assert package["schema_version"] == "vibescreen.evidence/v1"
+          assert package["kind"] == "harmony_matepad_mini_acceptance_package"
+          assert package["verdict"] == "blocked"
+          assert package["device_gate_manifest"]["allow_blocked_valid"] is True
+          assert package["device_gate_manifest"]["strict_valid"] is False
+          PY

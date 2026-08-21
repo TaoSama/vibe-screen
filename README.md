@@ -604,6 +604,11 @@ network quality may increase it.
   `harmony-readiness.json`. It fails closed while any prerequisite is missing
   and is not HAP, installation, streaming, secure-pairing, soak, latency, or
   MatePad Mini acceptance evidence.
+- `make harmony-matepad-acceptance EVIDENCE_DIR=...` validates the final
+  redacted MatePad Mini evidence package after the readiness and device-gate
+  manifests are complete. The helper can also write a blocked package for
+  missing-device readiness tracking, but that output is not real-device
+  acceptance evidence and does not close the HarmonyOS gate.
 
 ### Phase 5 — iOS and advanced capabilities
 
