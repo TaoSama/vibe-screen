@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/macos-startup-recovery-gate.schema.json",
+  "title": "Vibe Screen macOS startup and recovery gate evidence summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_close_phase1_phase2_startup_recovery_gate": {"const": true},
+          "missing_requirements": {"maxItems": 0},
+          "blocking_reasons": {"maxItems": 0},
+          "artifact_paths": {"minItems": 1}
+        }
+      }
+    }
+  ],
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_login_item_gate",
+    "can_close_automatic_startup_gate",
+    "can_close_headless_startup_gate",
+    "can_close_unattended_listener_recovery_gate",
+    "can_close_android_reconnect_gate",
+    "can_close_phase1_phase2_startup_recovery_gate",
+    "requires_real_macos_login_or_reboot",
+    "readiness_preflight_is_not_acceptance",
+    "android_device_scope",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "macos_startup_recovery_gate"},
+    "profile": {"const": "phase1-macos-login-headless-recovery"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_login_item_gate": {"type": "boolean"},
+    "can_close_automatic_startup_gate": {"type": "boolean"},
+    "can_close_headless_startup_gate": {"type": "boolean"},
+    "can_close_unattended_listener_recovery_gate": {"type": "boolean"},
+    "can_close_android_reconnect_gate": {"type": "boolean"},
+    "can_close_phase1_phase2_startup_recovery_gate": {"type": "boolean"},
+    "requires_real_macos_login_or_reboot": {"const": true},
+    "readiness_preflight_is_not_acceptance": {"const": true},
+    "android_device_scope": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_signed_host_identity_recorded",
+        "screen_recording_permission_recorded",
+        "accessibility_permission_recorded",
+        "launch_at_login_enabled_not_approval_required",
+        "macos_reboot_or_logout_login_performed",
+        "login_launch_timestamp_recorded",
+        "manual_launch_excluded",
+        "startup_mode_recorded",
+        "host_listener_started_without_user_action",
+        "automatic_stream_start_observed",
+        "headless_configuration_recorded",
+        "headless_display_identity_recorded",
+        "headless_capture_first_frame_observed",
+        "unattended_failure_trigger_recorded",
+        "recovery_retry_schedule_observed",
+        "recovery_bounded_exhaustion_or_success_observed",
+        "no_full_speed_retry_loop_observed",
+        "android_device_lock_acquired",
+        "android_device_identity_recorded",
+        "android_device_identity_matches_claim",
+        "android_reconnect_within_3s_observed",
+        "android_post_reconnect_render_observed",
+        "host_logs_retained",
+        "android_logs_retained",
+        "raw_artifacts_retained"
+      ],
+      "properties": {
+        "stable_signed_host_identity_recorded": {"type": "boolean"},
+        "screen_recording_permission_recorded": {"type": "boolean"},
+        "accessibility_permission_recorded": {"type": "boolean"},
+        "launch_at_login_enabled_not_approval_required": {"type": "boolean"},
+        "macos_reboot_or_logout_login_performed": {"type": "boolean"},
+        "login_launch_timestamp_recorded": {"type": "boolean"},
+        "manual_launch_excluded": {"type": "boolean"},
+        "startup_mode_recorded": {"type": "boolean"},
+        "host_listener_started_without_user_action": {"type": "boolean"},
+        "automatic_stream_start_observed": {"type": "boolean"},
+        "headless_configuration_recorded": {"type": "boolean"},
+        "headless_display_identity_recorded": {"type": "boolean"},
+        "headless_capture_first_frame_observed": {"type": "boolean"},
+        "unattended_failure_trigger_recorded": {"type": "boolean"},
+        "recovery_retry_schedule_observed": {"type": "boolean"},
+        "recovery_bounded_exhaustion_or_success_observed": {"type": "boolean"},
+        "no_full_speed_retry_loop_observed": {"type": "boolean"},
+        "android_device_lock_acquired": {"type": "boolean"},
+        "android_device_identity_recorded": {"type": "boolean"},
+        "android_device_identity_matches_claim": {"type": "boolean"},
+        "android_reconnect_within_3s_observed": {"type": "boolean"},
+        "android_post_reconnect_render_observed": {"type": "boolean"},
+        "host_logs_retained": {"type": "boolean"},
+        "android_logs_retained": {"type": "boolean"},
+        "raw_artifacts_retained": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}

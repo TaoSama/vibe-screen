@@ -1,0 +1,187 @@
+{
+  "android_device_scope": "No Android device identity was supplied; Android reconnect evidence cannot close.",
+  "artifact_paths": [
+    "macos-startup-recovery-observations.json",
+    "macos-startup-recovery-summary.json",
+    "commands.txt"
+  ],
+  "blocking_notes": [
+    "No macOS logout/login or reboot was performed for this current-base evidence package.",
+    "No Launch at Login System Settings approval state was captured.",
+    "No headless physical, dummy-plug, or Screen Sharing display capture was observed after reboot.",
+    "No unattended listener failure/retry run or Android reconnect timing run was executed for this package."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "stable_signed_host_identity_recorded",
+      "requirement": "record the installed /Applications/Vibe Screen.app bundle identity, signing identity, CDHash, and binary SHA-256"
+    },
+    {
+      "field": "screen_recording_permission_recorded",
+      "requirement": "record Screen Recording authorization for the installed Host identity"
+    },
+    {
+      "field": "launch_at_login_enabled_not_approval_required",
+      "requirement": "record that Launch at Login is enabled and not waiting for System Settings approval"
+    },
+    {
+      "field": "macos_reboot_or_logout_login_performed",
+      "requirement": "perform a real macOS logout/login or reboot after enabling Launch at Login"
+    },
+    {
+      "field": "host_listener_started_without_user_action",
+      "requirement": "observe the Host listener starting after login without a post-login user click"
+    },
+    {
+      "field": "headless_configuration_recorded",
+      "requirement": "record the intended headless display setup: physical monitor, dummy plug, or Screen Sharing virtual display"
+    },
+    {
+      "field": "android_device_lock_acquired",
+      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
+    },
+    {
+      "field": "android_device_identity_recorded",
+      "requirement": "record Android serial, manufacturer, model, codename, Android version, SDK, and ABI"
+    }
+  ],
+  "can_close_android_reconnect_gate": false,
+  "can_close_automatic_startup_gate": false,
+  "can_close_headless_startup_gate": false,
+  "can_close_login_item_gate": false,
+  "can_close_phase1_phase2_startup_recovery_gate": false,
+  "can_close_unattended_listener_recovery_gate": false,
+  "kind": "macos_startup_recovery_gate",
+  "missing_requirements": [
+    {
+      "field": "stable_signed_host_identity_recorded",
+      "requirement": "record the installed /Applications/Vibe Screen.app bundle identity, signing identity, CDHash, and binary SHA-256"
+    },
+    {
+      "field": "screen_recording_permission_recorded",
+      "requirement": "record Screen Recording authorization for the installed Host identity"
+    },
+    {
+      "field": "accessibility_permission_recorded",
+      "requirement": "record Accessibility authorization when validating window return or input recovery"
+    },
+    {
+      "field": "launch_at_login_enabled_not_approval_required",
+      "requirement": "record that Launch at Login is enabled and not waiting for System Settings approval"
+    },
+    {
+      "field": "macos_reboot_or_logout_login_performed",
+      "requirement": "perform a real macOS logout/login or reboot after enabling Launch at Login"
+    },
+    {
+      "field": "login_launch_timestamp_recorded",
+      "requirement": "retain a timestamped Host launch log from after the login/reboot boundary"
+    },
+    {
+      "field": "manual_launch_excluded",
+      "requirement": "show the run was not started by manually opening the app from Finder, Dock, or CLI"
+    },
+    {
+      "field": "startup_mode_recorded",
+      "requirement": "record the configured startup transport/display mode used by automatic startup"
+    },
+    {
+      "field": "host_listener_started_without_user_action",
+      "requirement": "observe the Host listener starting after login without a post-login user click"
+    },
+    {
+      "field": "automatic_stream_start_observed",
+      "requirement": "observe the configured automatic stream start path after login"
+    },
+    {
+      "field": "headless_configuration_recorded",
+      "requirement": "record the intended headless display setup: physical monitor, dummy plug, or Screen Sharing virtual display"
+    },
+    {
+      "field": "headless_display_identity_recorded",
+      "requirement": "record the post-login display UUID and logical/physical dimensions for the headless setup"
+    },
+    {
+      "field": "headless_capture_first_frame_observed",
+      "requirement": "observe a first captured frame from the selected headless display setup"
+    },
+    {
+      "field": "unattended_failure_trigger_recorded",
+      "requirement": "state the forced unattended failure trigger: listener startup failure, capture stop, client disconnect, or display disappearance"
+    },
+    {
+      "field": "recovery_retry_schedule_observed",
+      "requirement": "retain logs showing the scheduled recovery retry delays"
+    },
+    {
+      "field": "recovery_bounded_exhaustion_or_success_observed",
+      "requirement": "retain logs showing either successful recovery or bounded exhaustion after the maximum attempts"
+    },
+    {
+      "field": "no_full_speed_retry_loop_observed",
+      "requirement": "prove recovery did not loop at full speed"
+    },
+    {
+      "field": "android_device_lock_acquired",
+      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
+    },
+    {
+      "field": "android_device_identity_recorded",
+      "requirement": "record Android serial, manufacturer, model, codename, Android version, SDK, and ABI"
+    },
+    {
+      "field": "android_device_identity_matches_claim",
+      "requirement": "label Android evidence with the observed identity, without relabeling P0110/pacific as Xiaomi/fuxi"
+    },
+    {
+      "field": "android_reconnect_within_3s_observed",
+      "requirement": "measure reconnect completion within three seconds after the forced interruption"
+    },
+    {
+      "field": "android_post_reconnect_render_observed",
+      "requirement": "observe rendered Android client frames after reconnect, not only process liveness"
+    },
+    {
+      "field": "host_logs_retained",
+      "requirement": "retain Host logs covering login startup, listener start, display capture, recovery, and reconnect"
+    },
+    {
+      "field": "android_logs_retained",
+      "requirement": "retain Android logcat/diagnostics covering reconnect timing and post-reconnect rendering"
+    }
+  ],
+  "notes": "Blocked evidence package for the newly added macOS startup/recovery gate verifier. It records current-base insufficiency only and does not close login item, headless Mac mini, unattended listener recovery, or Android reconnect acceptance.",
+  "observations": {
+    "accessibility_permission_recorded": false,
+    "android_device_identity_matches_claim": false,
+    "android_device_identity_recorded": false,
+    "android_device_lock_acquired": false,
+    "android_logs_retained": false,
+    "android_post_reconnect_render_observed": false,
+    "android_reconnect_within_3s_observed": false,
+    "automatic_stream_start_observed": false,
+    "headless_capture_first_frame_observed": false,
+    "headless_configuration_recorded": false,
+    "headless_display_identity_recorded": false,
+    "host_listener_started_without_user_action": false,
+    "host_logs_retained": false,
+    "launch_at_login_enabled_not_approval_required": false,
+    "login_launch_timestamp_recorded": false,
+    "macos_reboot_or_logout_login_performed": false,
+    "manual_launch_excluded": false,
+    "no_full_speed_retry_loop_observed": false,
+    "raw_artifacts_retained": true,
+    "recovery_bounded_exhaustion_or_success_observed": false,
+    "recovery_retry_schedule_observed": false,
+    "screen_recording_permission_recorded": false,
+    "stable_signed_host_identity_recorded": false,
+    "startup_mode_recorded": false,
+    "unattended_failure_trigger_recorded": false
+  },
+  "profile": "phase1-macos-login-headless-recovery",
+  "readiness_preflight_is_not_acceptance": true,
+  "requires_real_macos_login_or_reboot": true,
+  "run_id": "2026-08-22-login-headless-recovery-gate-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

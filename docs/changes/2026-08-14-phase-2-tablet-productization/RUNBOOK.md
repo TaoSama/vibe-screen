@@ -147,7 +147,17 @@ the goal is to prove recovery under disturbance:
 - apply a controlled thermal load only if it is safe for the device and charger,
   then confirm the UI, `dumpsys power`, and thermal service agree;
 - reboot the Mac and verify login startup or headless Mac mini recovery when that
-  gate is in scope.
+  gate is in scope. After collecting the raw Host, login-item, display,
+  recovery, and Android reconnect artifacts, run
+  `make macos-startup-recovery-gate EVIDENCE_DIR="$RUN_DIR"`.
+
+The macOS startup/recovery gate is closed only when
+`macos-startup-recovery-summary.json` reports the relevant `can_close_*` fields
+as true. Phase 2 login/headless evidence needs
+`can_close_login_item_gate`, `can_close_automatic_startup_gate`,
+`can_close_headless_startup_gate`, and
+`can_close_unattended_listener_recovery_gate`; if Android reconnect is part of
+the same run, `can_close_android_reconnect_gate` must also be true.
 
 ## Hardware-keyboard workflow
 
@@ -266,6 +276,11 @@ Each run directory should include at minimum:
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states.
+- for login-startup, headless Mac, unattended listener recovery, or Android
+  reconnect passes, `macos-startup-recovery-observations.json`,
+  `macos-startup-recovery-summary.json`, and the raw Host launch, login-item,
+  display identity/capture, recovery retry, and reconnect timing logs that
+  justify every true observation;
 - for hardware-keyboard passes, `hardware-keyboard-observations.json`,
   `hardware-keyboard-summary.json`, `dumpsys-input.txt`, `android-keyboard.log`,
   `host-keyboard.log`, `host-listener.txt`, `host-signing-and-permissions.txt`,

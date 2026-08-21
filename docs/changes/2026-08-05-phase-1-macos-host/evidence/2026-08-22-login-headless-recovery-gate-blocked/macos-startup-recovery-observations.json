@@ -1,0 +1,41 @@
+{
+  "run_id": "2026-08-22-login-headless-recovery-gate-blocked",
+  "stable_signed_host_identity_recorded": false,
+  "screen_recording_permission_recorded": false,
+  "accessibility_permission_recorded": false,
+  "launch_at_login_enabled_not_approval_required": false,
+  "macos_reboot_or_logout_login_performed": false,
+  "login_launch_timestamp_recorded": false,
+  "manual_launch_excluded": false,
+  "startup_mode_recorded": false,
+  "host_listener_started_without_user_action": false,
+  "automatic_stream_start_observed": false,
+  "headless_configuration_recorded": false,
+  "headless_display_identity_recorded": false,
+  "headless_capture_first_frame_observed": false,
+  "unattended_failure_trigger_recorded": false,
+  "recovery_retry_schedule_observed": false,
+  "recovery_bounded_exhaustion_or_success_observed": false,
+  "no_full_speed_retry_loop_observed": false,
+  "android_device_lock_acquired": false,
+  "android_device_identity_recorded": false,
+  "android_device_identity_matches_claim": false,
+  "android_reconnect_within_3s_observed": false,
+  "android_post_reconnect_render_observed": false,
+  "host_logs_retained": false,
+  "android_logs_retained": false,
+  "raw_artifacts_retained": true,
+  "android_device": {},
+  "artifact_paths": [
+    "macos-startup-recovery-observations.json",
+    "macos-startup-recovery-summary.json",
+    "commands.txt"
+  ],
+  "blocking_notes": [
+    "No macOS logout/login or reboot was performed for this current-base evidence package.",
+    "No Launch at Login System Settings approval state was captured.",
+    "No headless physical, dummy-plug, or Screen Sharing display capture was observed after reboot.",
+    "No unattended listener failure/retry run or Android reconnect timing run was executed for this package."
+  ],
+  "notes": "Blocked evidence package for the newly added macOS startup/recovery gate verifier. It records current-base insufficiency only and does not close login item, headless Mac mini, unattended listener recovery, or Android reconnect acceptance."
+}

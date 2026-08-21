@@ -85,3 +85,19 @@ The summary closes the hardware-keyboard workflow gate only when
 be kept here when the Android device lock, physical keyboard, Host listener, or
 stable signed/TCC Host prerequisite is missing; blocked evidence must not run
 ADB when the shared Android lock is already held.
+
+Login-startup, headless Mac, unattended listener recovery, and reconnect
+evidence can be summarized with:
+
+```bash
+make macos-startup-recovery-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The gate reads `macos-startup-recovery-observations.json` and writes
+`macos-startup-recovery-summary.json`. It can close the macOS gates only with
+real logout/login or reboot evidence, Launch at Login enabled without pending
+approval, post-login automatic Host listener and stream startup, headless
+display identity plus first captured frame, and bounded recovery logs. Android
+evidence, including Nubia P0110/pacific/Android 16 reconnect evidence, can
+support only the Android reconnect endpoint and never proves macOS login or
+headless behavior.

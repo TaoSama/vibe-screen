@@ -214,8 +214,9 @@ Observed short-device evidence:
 Still open after this result: real 8-9 inch tablet panel behavior, stand-mounted
 charging stability, controlled thermal-load behavior, live foreground/background
 recovery with fresh keyframe or bounded reconnect, transport interruption
-recovery, login startup, headless Mac recovery, stylus and hardware-keyboard
-workflows, and the eight-hour sample series required by [RUNBOOK.md](RUNBOOK.md).
+recovery, login startup, headless Mac recovery, unattended listener recovery,
+stylus and hardware-keyboard workflows, and the eight-hour sample series
+required by [RUNBOOK.md](RUNBOOK.md).
 
 ## 2026-08-21 stand-mounted charging / thermal / power gate readiness
 
@@ -246,5 +247,24 @@ readiness smoke uses the retained Nubia P0110/pacific Android 16 identity as
 `android_substitute`, and the gate correctly blocks it from becoming formal
 physical 8-9 inch tablet evidence. Stand-mounted charging stability, controlled
 thermal-load behavior, power stability, background/transport recovery, login
-startup, headless Mac recovery, and the eight-hour physical-tablet sample series
-remain open.
+startup, headless Mac recovery, unattended listener recovery, and the eight-hour
+physical-tablet sample series remain open.
+
+## 2026-08-22 macOS startup/recovery gate wiring
+
+The Phase 2 runbook now requires `make macos-startup-recovery-gate` for any run
+that claims login startup, automatic startup, headless Mac recovery, unattended
+listener recovery, or Android reconnect closure. The gate reads
+`macos-startup-recovery-observations.json` and writes
+`macos-startup-recovery-summary.json`; each true observation must be backed by
+raw Host launch, login-item, display, recovery, or Android reconnect artifacts.
+
+Validation performed for this tooling/readiness update is recorded in the Phase
+1 macOS Host evidence package
+[`../2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked`](../2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked/README.md).
+That package reports `verdict=blocked`, with `can_close_login_item_gate=false`,
+`can_close_automatic_startup_gate=false`, `can_close_headless_startup_gate=false`,
+`can_close_unattended_listener_recovery_gate=false`, and
+`can_close_android_reconnect_gate=false`. It does not include a macOS
+logout/login, reboot, headless display capture, forced listener failure, or
+Android reconnect timing run.

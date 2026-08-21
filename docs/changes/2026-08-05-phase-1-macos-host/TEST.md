@@ -107,3 +107,26 @@ latency, or sustained memory behavior.
 - Phase 1 two-hour no-growth result and external input/glass-to-glass latency.
 
 None of these gates is inferred from compilation or private-symbol presence.
+
+## 2026-08-22 macOS startup/recovery evidence gate
+
+This follow-up adds a fail-closed evidence summary for the remaining Launch at
+Login, automatic startup, headless startup, unattended listener recovery, and
+Android reconnect endpoint evidence. The tool consumes explicit observations in
+`macos-startup-recovery-observations.json` and writes
+`macos-startup-recovery-summary.json`. A pass requires retained raw evidence for
+real macOS logout/login or reboot launch, non-approval-required Launch at Login,
+post-login automatic listener/stream startup, headless display identity and
+first capture, bounded recovery logs, and Android reconnect/render evidence.
+
+Validation performed for this tooling/readiness update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.macos_startup_recovery_gate ...`
+  against
+  [`evidence/2026-08-22-login-headless-recovery-gate-blocked`](evidence/2026-08-22-login-headless-recovery-gate-blocked/README.md)
+  wrote `macos-startup-recovery-summary.json` with `verdict=blocked`.
+
+No macOS logout/login, reboot, headless display capture, unattended listener
+failure/retry run, or Android reconnect timing run was performed for this
+package. The gate keeps all login item, headless Mac mini, unattended recovery,
+and Android reconnect acceptance claims open until those raw artifacts exist.

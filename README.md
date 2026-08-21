@@ -309,8 +309,8 @@ The output is a maintainable product mainline rather than a disposable demo.
 identity/fallback, on-device-verified virtual extension and HiDPI
 configuration, on-device screen mirroring, window migration/recovery, validated
 touch-derived pointer
-handling, permission onboarding, login startup, and bounded unattended
-listener recovery are implemented. Pure display/input geometry, identity, and
+handling, permission onboarding, and source-level login startup/unattended
+listener recovery policy wiring are present. Pure display/input geometry, identity, and
 startup policies are covered by host self-tests; at main commit `c639caa` on
 2026-08-09, the MacHost XCTest suite ran in CI with 312 tests executed, 1
 skipped, and 0 failures. System integration is not thereby proved.
@@ -322,7 +322,8 @@ device: because macOS 26.4.1 rejects hardware-mirroring a physical display onto
 a virtual display (CGError 1001), mirror mode now degrades gracefully to direct
 main-display capture, so the client shows the Mac's main screen at 60 FPS with
 zero drops instead of looping unattended recovery (see Phase 1). Login-item
-approval and headless reboot still require gated macOS integration evidence.
+approval, automatic startup after login, headless reboot, and forced unattended
+listener recovery still require gated macOS integration evidence.
 Real CGEvent
 injection under Accessibility is now exercised on device for keyboard and
 mouse-wheel scroll (see Phase 1). The legacy compatibility session
@@ -444,7 +445,7 @@ evaluator that checks the raw battery, power, thermal, log, screenshot, and
 eight-hour sampling artifacts before it can report `pass`. The latest tooling
 readiness smoke uses the Nubia P0110/pacific Android 16 phone substitute only,
 so the physical 8-9 inch tablet, stand-mounted charging stability, thermal-load,
-power, login startup, and headless Mac mini gates all remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+power, login startup, unattended recovery, and headless Mac mini gates all remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access
