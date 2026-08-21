@@ -62,6 +62,7 @@ services:
       COTURN_REALM: ${COTURN_REALM:?set the public relay hostname}
     secrets:
       - turn_secret
+      - coturn_cli_password
       - tls_certificate
       - tls_private_key
     volumes:
@@ -83,6 +84,8 @@ services:
 secrets:
   turn_secret:
     file: ./secrets/turn_secret.txt
+  coturn_cli_password:
+    file: ./secrets/coturn_cli_password.txt
   client_token:
     file: ./secrets/client_token.txt
   usage_token:

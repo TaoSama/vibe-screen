@@ -44,6 +44,10 @@ class AndroidAcceptanceTests(unittest.TestCase):
         )
         self.assertTrue(serial_action.required)
         self.assertIsNone(serial_action.default)
+        expected_model_action = next(
+            action for action in build_parser()._actions if action.dest == "expected_model"
+        )
+        self.assertIsNone(expected_model_action.default)
 
     def test_mandatory_locks_cannot_be_replaced_by_additional_lock(self) -> None:
         args = build_parser().parse_args(

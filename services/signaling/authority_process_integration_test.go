@@ -182,7 +182,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		t.Fatalf("host and device tokens must differ: %#v", firstSession)
 	}
 	credentialPasswords := []string{}
-	assertCredential := func(body string) {
+	assertCredential := func(body string, expectedSessionID string, expectedAllocationID string) {
 		t.Helper()
 		credentialResp := relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, body, http.StatusOK)
 		var credential struct {
@@ -192,7 +192,8 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		if err := json.Unmarshal(credentialResp, &credential); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasSuffix(credential.Username, ":"+clientDeviceID) || credential.Password == "" {
+		parts := strings.Split(credential.Username, ":")
+		if len(parts) != 4 || parts[1] != clientDeviceID || parts[2] != expectedSessionID || parts[3] != expectedAllocationID || credential.Password == "" {
 			t.Fatalf("relay returned incomplete TURN credential: %#v", credential)
 		}
 		credentialPasswords = append(credentialPasswords, credential.Password)
@@ -213,7 +214,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	// Relay credentials are issued only after relay asks the shared authority to
 	// reserve capacity for this signaling session/device/allocation tuple.
 	credentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
-	assertCredential(credentialBody)
+	assertCredential(credentialBody, firstSession.SessionID, "allocation-before-session-invalidate")
 
 	// Session-only invalidation must also propagate to relay admission. The
 	// device is still registered and not revoked, so this proves the authority
@@ -231,6 +232,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		firstSession.HostToken,
 		`{"message_id":"offer-after-session-invalidate","type":"offer","sdp":"v=0\r\n"}`,
 		http.StatusNotFound)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialBody, http.StatusForbidden)
 	credentialAfterSessionInvalidate := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterSessionInvalidate, http.StatusForbidden)
 
@@ -254,7 +256,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		t.Fatalf("incomplete second session response: %#v", secondSession)
 	}
 	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-device-revoke"}`, clientDeviceID, secondSession.SessionID)
-	assertCredential(secondCredentialBody)
+	assertCredential(secondCredentialBody, secondSession.SessionID, "allocation-before-device-revoke")
 
 	// Revoke the client device through the authority admin API. The session
 	// epoch is the revocation epoch; the authority marks every session that
@@ -278,6 +280,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	// The same authority tombstone must propagate to relay admission: a new TURN
 	// credential for the revoked device/session fails closed instead of falling
 	// back to the relay-local JSON store.
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, secondCredentialBody, http.StatusForbidden)
 	credentialAfterRevokeBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-revoke"}`, clientDeviceID, secondSession.SessionID)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterRevokeBody, http.StatusForbidden)
 

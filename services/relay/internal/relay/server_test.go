@@ -105,7 +105,7 @@ func TestStorageFailuresFailClosed(t *testing.T) {
 	}
 }
 
-func TestCredentialsUseStableDeviceQuotaPrincipalAcrossSessionsAndExpiries(t *testing.T) {
+func TestCredentialsEncodeDeviceSessionAndAllocationPrincipals(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.CredentialRequestsPerMinute = 10
 	server, err := NewServer(cfg)
@@ -134,11 +134,11 @@ func TestCredentialsUseStableDeviceQuotaPrincipalAcrossSessionsAndExpiries(t *te
 	}
 	for _, username := range []string{first, second} {
 		parts := strings.Split(username, ":")
-		if len(parts) != 2 || parts[1] != "device-1" {
-			t.Fatalf("username %q does not map to one stable device quota principal", username)
-		}
-		if strings.Contains(username, "session-") {
-			t.Fatalf("username %q leaks session into coturn quota principal", username)
+		// username is expiry:device_id:session_id:allocation_id; in local mode
+		// the allocation_id falls back to the session id so the coturn exporter
+		// can map every active TURN allocation to Authority ledger fields.
+		if len(parts) != 4 || parts[1] != "device-1" || parts[2] != parts[3] {
+			t.Fatalf("username %q does not encode device, session, and allocation principals", username)
 		}
 	}
 }
@@ -421,6 +421,93 @@ func TestRevokedDeviceCannotReceiveCredentialsOrReportUsage(t *testing.T) {
 	update := `{"event_id":"event-after-restart","device_id":"device-1","session_id":"session-1","kind":"update","ingress_bytes":1,"egress_bytes":1}`
 	if got := requestJSON(t, restarted.Handler(), http.MethodPost, "/v1/usage", testUsageToken, update); got.Code != http.StatusForbidden {
 		t.Fatalf("usage after restart = %d: %s", got.Code, got.Body.String())
+	}
+}
+
+func TestRevokeInProductionModePropagatesToAuthority(t *testing.T) {
+	var revokedDeviceID string
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		if !strings.HasSuffix(r.URL.Path, "/revoke") || !strings.Contains(r.URL.Path, "/v1/relay/devices/") {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/relay/devices/"), "/")
+		if len(parts) != 2 || parts[1] != "revoke" {
+			t.Fatalf("unexpected authority revoke path %s", r.URL.Path)
+		}
+		revokedDeviceID = parts[0]
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authority.URL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/devices/device-1/revoke", testAdminToken, "{}")
+	if response.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d: %s", response.Code, response.Body.String())
+	}
+	if revokedDeviceID != "device-1" {
+		t.Fatalf("authority revoked device %q, want device-1", revokedDeviceID)
+	}
+
+	// The device is also revoked locally so new credentials are rejected.
+	credential := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"alloc-1"}`)
+	if credential.Code != http.StatusForbidden {
+		t.Fatalf("credential after revoke = %d", credential.Code)
+	}
+}
+
+func TestRevokeInProductionModeFailsClosedWhenAuthorityUnavailable(t *testing.T) {
+	for name, status := range map[string]int{
+		"unavailable":      http.StatusServiceUnavailable,
+		"missing endpoint": http.StatusNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer authority.Close()
+
+			cfg := testConfig(t)
+			cfg.AuthorityMode = AuthorityModeProd
+			cfg.AuthorityURL = authority.URL
+			cfg.AuthoritySourceID = "turn-node-1"
+			cfg.AuthorityToken = testAuthorityToken
+			server, err := NewServer(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/devices/device-1/revoke", testAdminToken, "{}")
+			if response.Code != http.StatusBadGateway {
+				t.Fatalf("revoke status = %d, want 502: %s", response.Code, response.Body.String())
+			}
+
+			// The device must NOT be revoked locally when the authority does not prove
+			// it accepted the revocation, so local state cannot diverge from Authority.
+			revoked, err := server.store.IsRevoked(context.Background(), "device-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if revoked {
+				t.Fatal("device was revoked locally despite authority failure")
+			}
+		})
 	}
 }
 

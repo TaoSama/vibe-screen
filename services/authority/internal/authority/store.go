@@ -430,29 +430,22 @@ func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID strin
 func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRequest, now time.Time) error {
 	return s.transaction(ctx, func(tx pgx.Tx) error {
 		var existingDeviceID, existingSessionID string
-		err := tx.QueryRow(ctx, `SELECT device_id,session_id FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, request.SourceID, request.AllocationID).Scan(&existingDeviceID, &existingSessionID)
+		var existingClosedAt *time.Time
+		err := tx.QueryRow(ctx, `SELECT device_id,session_id,closed_at FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, request.SourceID, request.AllocationID).Scan(&existingDeviceID, &existingSessionID, &existingClosedAt)
 		if err == nil {
-			if existingDeviceID == request.DeviceID && existingSessionID == request.SessionID {
-				return nil
+			if existingDeviceID != request.DeviceID || existingSessionID != request.SessionID {
+				return ErrConflict
 			}
-			return ErrConflict
+			if existingClosedAt != nil {
+				return ErrRevoked
+			}
+			return validateRelayAdmissionActive(ctx, tx, request, now)
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if err := lockActiveDevice(ctx, tx, request.DeviceID); err != nil {
+		if err := validateRelayAdmissionActive(ctx, tx, request, now); err != nil {
 			return err
-		}
-		var sessionRevokedAt *time.Time
-		var sessionExpiresAt time.Time
-		if err := tx.QueryRow(ctx, `SELECT revoked_at,expires_at FROM authority_signaling_sessions WHERE session_id=$1 AND (host_device_id=$2 OR client_device_id=$2) FOR UPDATE`, request.SessionID, request.DeviceID).Scan(&sessionRevokedAt, &sessionExpiresAt); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return ErrNotFound
-			}
-			return err
-		}
-		if sessionRevokedAt != nil || !now.Before(sessionExpiresAt) {
-			return ErrRevoked
 		}
 		var quotaExceeded bool
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(ingress_bytes+egress_bytes,0)>=$1::numeric FROM authority_relay_daily_usage WHERE device_id=$2 AND usage_day=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date`, strconv.FormatUint(s.dailyLimit, 10), request.DeviceID).Scan(&quotaExceeded); err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -471,6 +464,24 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,admitted_at,last_observed_at) VALUES ($1,$2,$3,$4,$5,$5)`, request.AllocationID, request.SourceID, request.DeviceID, request.SessionID, now)
 		return err
 	})
+}
+
+func validateRelayAdmissionActive(ctx context.Context, tx pgx.Tx, request RelayAdmissionRequest, now time.Time) error {
+	if err := lockActiveDevice(ctx, tx, request.DeviceID); err != nil {
+		return err
+	}
+	var sessionRevokedAt *time.Time
+	var sessionExpiresAt time.Time
+	if err := tx.QueryRow(ctx, `SELECT revoked_at,expires_at FROM authority_signaling_sessions WHERE session_id=$1 AND (host_device_id=$2 OR client_device_id=$2) FOR UPDATE`, request.SessionID, request.DeviceID).Scan(&sessionRevokedAt, &sessionExpiresAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if sessionRevokedAt != nil || !now.Before(sessionExpiresAt) {
+		return ErrRevoked
+	}
+	return nil
 }
 
 func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage) (bool, error) {

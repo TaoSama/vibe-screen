@@ -156,3 +156,53 @@ Protocol v1, AES-256-GCM control and media records, synthetic video config plus
 keyframe/delta delivery, and authenticated touch. They do not prove the product
 UI, rotation, ScreenCaptureKit, visible Mac input effects, disconnect/reconnect,
 revocation propagation, public Internet traversal, or soak.
+
+## Public Internet soak manifest gate
+
+`scripts/phase3/internet_soak_manifest.py` is the fail-closed verifier for the
+public NAT/TURN/Internet soak evidence manifest. A passing manifest must prove a
+real Android device on a public Internet/NAT/TURN path plus a mixed-route soak.
+If public credentials, a public TURN host, or physical-device evidence are
+unavailable, the manifest may be validated only with `--allow-blocked` and
+cannot close the release gate.
+
+The manifest schema is `dev.vibescreen.phase3-public-internet-soak/v1`. The
+verifier fails closed when:
+
+- the schema is wrong or the result is not `pass`;
+- any local-only or synthetic marker appears in a passing record
+  (`local_loopback_only`, `synthetic_protocol_v1_device`,
+  `no_android_device_or_ui`, `no_real_screen_capture`,
+  `no_public_internet_path`, `127.0.0.1`, `localhost`, `loopback`);
+- the repository tree is dirty;
+- the device identity is missing, redacted, or mislabelled (Xiaomi 13/fuxi
+  cannot be labelled as an Android substitute);
+- the signaling or TURN origin is a local or placeholder endpoint;
+- the direct, forced-TURN, or NAT-fallback route does not prove the expected
+  candidate pair;
+- the handoff recovered epoch does not strictly advance;
+- revocation does not actively disconnect the PeerConnection and TURN
+  allocation and reject post-revocation reconnect;
+- the soak duration is below 7200 seconds, the route mix is not direct+relay,
+  or nonce reuse, steadily increasing latency, or queue-bound violations are
+  detected;
+- the latency method is not an external camera;
+- the privacy scan fails or packet capture shows plaintext application payload.
+
+Run it against a manifest outside Git:
+
+```bash
+python3 scripts/phase3/internet_soak_manifest.py   /tmp/vibe-screen-phase3/public-internet-soak.json
+```
+
+When public infrastructure is unavailable, generate a blocked readiness
+manifest and validate it explicitly as non-closing:
+
+```bash
+python3 scripts/phase3/internet_soak_manifest.py --template   > /tmp/vibe-screen-phase3/blocked-soak-manifest.json
+python3 scripts/phase3/internet_soak_manifest.py --allow-blocked   /tmp/vibe-screen-phase3/blocked-soak-manifest.json
+```
+
+A blocked manifest exits non-zero without `--allow-blocked`. The local
+synthetic product E2E evidence under `scripts/phase3_webrtc/` is intentionally
+a different schema and must not be passed to this gate.

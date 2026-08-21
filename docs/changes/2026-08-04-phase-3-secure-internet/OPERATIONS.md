@@ -312,9 +312,10 @@ shipped:
 - Mac and Android automatic profile/account/session issuance is not wired to the
   authority.
 - Automatic account and device registration is not wired.
-- Relay credential admission is wired to the authority; the structured reconcile
-  helper is locally tested, but coturn exporter, scheduled reconciliation loop,
-  and active-allocation disconnect are not production proven.
+- Relay credential admission is wired to the authority. The coturn
+  exporter/reconcile/disconnect helper contract is locally tested, but scheduled
+  reconciliation, multi-node collection, and active-allocation disconnect are not
+  production proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped

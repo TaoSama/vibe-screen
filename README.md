@@ -522,12 +522,13 @@ Start/configure signaling through [`services/signaling`](services/signaling/READ
 and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). Both
 services require deployment TLS, secret management, monitoring and limits
 described in their runbooks; the example local profile is loopback-only.
-`scripts/phase3/coturn_reconcile.py` now provides a bounded operator helper that
-accepts a trusted structured coturn allocation snapshot, submits it to Authority's
-reconciliation API, and requires an external active-allocation disconnect executor
-for unauthorized or conflicting source allocations. It is a contract and local
-test target for the exporter/reconciliation/executor boundary, not a deployed
-coturn exporter or proof of production enforcement.
+`scripts/phase3/coturn_exporter.py`,
+`scripts/phase3/coturn_reconcile.py`, and
+`scripts/phase3/coturn_disconnect_executor.py` now provide a bounded local
+contract for listing active coturn allocations, submitting them to Authority,
+and cancelling unauthorized or conflicting source allocations. This is not yet a
+production-proven scheduled reconciliation loop, multi-node collector, provider
+billing reconciliation, or real public deployment enforcement record.
 
 See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/PRD.md),
 [technical status](docs/changes/2026-08-04-phase-3-secure-internet/TECH.md),
@@ -540,17 +541,20 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
-Automatic account/session-authority issuance, real
-encoded ScreenCaptureKit output through the device, automatic fresh-session
-recovery after network handoff, public NAT/TURN deployment, cross-service
-revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
-coturn reconcile helper can fail closed when active source allocations require a
-disconnect executor, but the coturn exporter, production reconciliation loop,
-active-allocation disconnect executor, and production end-to-end enforcement
-remain release gates.
+Automatic account/session-authority issuance, real encoded ScreenCaptureKit
+output through the device, automatic fresh-session recovery after network
+handoff, public NAT/TURN deployment, production active-transport revocation
+enforcement, and soak remain release gates rather than shipped features.
+Signaling and relay stores are currently single-node implementations. Relay
+credential admission is wired to Authority; relay-initiated device revocation now
+propagates to Authority and closes Authority signaling plus relay-allocation
+ledger entries, while Authority can debit accepted coturn usage into the
+control-plane daily-byte ledger. The coturn exporter/reconcile/disconnect
+scripts are covered as local contracts, but scheduled production operation and
+real active TURN allocation/PeerConnection termination evidence remain open.
+`scripts/phase3/internet_soak_manifest.py` fails closed for public Internet soak
+evidence and only permits blocked readiness manifests with `--allow-blocked`;
+blocked manifests do not close release gates.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.

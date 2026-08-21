@@ -22,11 +22,12 @@ TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
+PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST ?=
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-public-internet-soak-gate phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -51,6 +52,10 @@ phase3-go-test:
 
 phase3-authority-container-test:
 	deploy/phase3/scripts/test-authority-stack.sh
+
+phase3-public-internet-soak-gate:
+	@test -n "$(strip $(PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST))" || (echo "error: set PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST to a public Internet soak manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/internet_soak_manifest.py "$(PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST)"
 
 phase3-local-synthetic-product-e2e:
 	@test -n "$(strip $(PHASE3_TURNSERVER))" || (echo "error: turnserver is unavailable; install coturn or set PHASE3_TURNSERVER" >&2; exit 2)
