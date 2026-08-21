@@ -117,23 +117,23 @@ func TestAuthorityClientAuthorizeRole(t *testing.T) {
 			role = "host"
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"role": role})
+		_ = json.NewEncoder(w).Encode(map[string]any{"role": role, "expires_at": time.Now().Add(time.Hour).UTC()})
 	})
 
-	role, err := client.AuthorizeRole(context.Background(), "sess-1", "host-token")
+	authorization, err := client.AuthorizeRole(context.Background(), "sess-1", "host-token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if role != "host" {
-		t.Errorf("expected host role, got %q", role)
+	if authorization.Role != "host" {
+		t.Errorf("expected host role, got %#v", authorization)
 	}
 
-	role, err = client.AuthorizeRole(context.Background(), "sess-1", "client-token")
+	authorization, err = client.AuthorizeRole(context.Background(), "sess-1", "client-token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if role != "client" {
-		t.Errorf("expected client role, got %q", role)
+	if authorization.Role != "client" {
+		t.Errorf("expected client role, got %#v", authorization)
 	}
 }
 

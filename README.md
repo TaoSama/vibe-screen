@@ -540,11 +540,16 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
-Automatic account/session-authority issuance, real
-encoded ScreenCaptureKit output through the device, automatic fresh-session
-recovery after network handoff, public NAT/TURN deployment, cross-service
-revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
+Authority now exposes an admin-only session-profile issuance endpoint that can
+atomically ensure the account, register the host/client devices, create the
+signaling admission, and return an unsigned Android lease for the paired Mac to
+sign with its local Keychain identity. That Authority-side path is covered by
+local and PostgreSQL tests, but Mac/Android automatic invocation, real encoded
+ScreenCaptureKit output through the device, automatic fresh-session recovery
+after network handoff, public NAT/TURN deployment, cross-service revocation
+propagation and soak remain release gates rather than shipped
+features.
+Signaling and relay stores are currently single-node implementations.
 Relay credential admission is wired to Authority, and Authority can debit
 accepted coturn usage into the control-plane daily-byte ledger. The structured
 coturn reconcile helper can fail closed when active source allocations require a

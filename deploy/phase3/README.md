@@ -11,10 +11,11 @@ This directory contains two deliberately separate deployment slices:
   relay credential service beside coturn.
 
 They are not an integrated public Internet stack. Authority-backed signaling and
-relay credential admission can both call the shared Authority service, but these
-profiles still do not provide automatic account/session issuance, public ingress,
-multi-instance routing, or active revocation of an established PeerConnection/TURN
-allocation.
+relay credential admission can both call the shared Authority service, and the
+local Authority endpoint can issue account/device-backed unsigned session
+profiles, but these profiles still do not provide Mac/Android automatic
+invocation, public ingress, multi-instance routing, or active revocation of an
+established PeerConnection/TURN allocation.
 
 ## Authority local profile
 

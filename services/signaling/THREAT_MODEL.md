@@ -56,8 +56,9 @@ mandatory even when signaling authentication succeeds.
   its own events by advancing it, but cannot access another role/session.
 - v0.1 supports one offer/answer negotiation per rendezvous. ICE restart uses a
   fresh session to avoid mixing candidate generations.
-- The authority's per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch operate in different scopes; their interaction is not yet unified.
+- The authority's per-device `session_epoch` floor supplies the lease epoch, and
+  the Mac pairing-scoped issuer reserves that exact value before signing. This
+  source-level reconciliation still lacks real-device proof.
 - Signaling and authority require synchronized clocks (NTP). Expiry checks must
   not be relaxed to compensate for clock skew.
 - Go's standard JSON decoder rejects unknown fields and trailing values but does

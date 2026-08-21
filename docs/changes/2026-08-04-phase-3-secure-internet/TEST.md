@@ -348,8 +348,8 @@ named by that run:
   deletion failure/retry. Added deterministic XCTest source covers an N open
   transaction latched across a concurrent N+1 reservation, post-persist pairing
   business failure plus deletion failure across coordinator restart, and lease
-  issuance across concurrent callers and authority restart while ignoring an
-  abnormal caller epoch. These XCTest cases executed in the 2026-08-06 main CI
+  issuance reserving Authority-supplied epochs while rejecting stale repeats.
+  These XCTest cases executed in the 2026-08-06 main CI
   run recorded below; the local Command Line Tools environment remains unable
   to run them.
 - The macOS executable Internet self-test keeps a selected route explicitly
@@ -359,7 +359,7 @@ named by that run:
   restart-safe secret-cleanup state. The lease self-test matches Android's
   canonical digest, mutates every signed field, rejects malformed input, and
   signs/verifies with a temporary real Keychain identity. It additionally proves
-  pairing-scoped durable authority allocation across restart/concurrency, rejects
+  Authority-supplied epoch reservation across restart/concurrency, rejects
   stale cipher seal/open after the durable epoch advances, and uses a deterministic
   latch to prove N+1 reservation waits while N open owns the durable epoch lock.
   The historical local run could not execute XCTest, while the 2026-08-06 main
@@ -431,6 +431,17 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.
+
+- A 2026-08-21 local Authority profile issuance run is archived under
+  [`evidence/2026-08-21-authority-profile-issuance-local/`](evidence/2026-08-21-authority-profile-issuance-local/README.md).
+  It passed the Authority Go package, the Signaling Go package, the Phase 3
+  Python static contract suite, and the macOS release build from this worktree.
+  The Go process integration tests skipped PostgreSQL-backed scenarios because
+  no test database URLs were configured, and local Swift XCTest remains blocked
+  by the current command-line XCTest environment. The evidence is local and
+  source-level only: it does not prove public TLS ingress, real Android UI
+  import, ScreenCaptureKit media, public TURN routing, active data-plane
+  disconnect, handoff, latency, or soak gates.
 
 ### Main CI follow-up snapshot (2026-08-06)
 

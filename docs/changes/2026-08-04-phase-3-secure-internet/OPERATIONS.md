@@ -11,9 +11,9 @@ WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
 multi-instance operation is not proved, no authoritative usage exporter is
-bundled, automatic issuance is not wired to Authority, the current relay/coturn
-deployment does not call Authority relay admission or coturn usage APIs, and no
-integrated implementation has run on a public host in this environment.
+bundled, Mac/Android clients do not automatically call Authority profile
+issuance, the current public stack has not run on a public host in this
+environment, and active coturn allocation disconnect is still external.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -83,8 +83,8 @@ the recovery point and ledger invariants are verified.
 
 The supplied production profile runs one Authority process. It does not prove
 multi-process Authority operation, public ingress, NTP monitoring, database
-backup automation, automatic account/session issuance, relay/coturn wiring, or
-active disconnection after revocation.
+backup automation, Mac/Android automatic invocation of session-profile issuance,
+production coturn reconciliation, or active disconnection after revocation.
 
 The signaling service accepts one offer/answer per session and exposes an
 issuer-only idempotent invalidation operation. In `production_authority` mode
@@ -140,15 +140,16 @@ swift build -c release
 ```
 
 The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
-`pinned_host_id`, `signaling_url`, `signaling_session_id`, `session_epoch`,
-`identity_epoch`, `transcript_context`, `protocol_session_id`,
+`pinned_host_id`, `pinned_device_id`, `lease_device_key_id`, `signaling_url`,
+`signaling_session_id`, `session_epoch`, `host_identity_epoch`,
+`device_identity_epoch`, `transcript_context`, `protocol_session_id`,
 `signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
 server contains exactly `urls`, `username`, and `credential`; nullable values
-must be JSON `null`. The issuer adds `lease_host_key_id` and the DER ECDSA
-`lease_signature` over the Android canonical transcript. `session_epoch` in the
-unsigned input is an untrusted compatibility field: the issuer ignores its value,
-atomically reserves the next epoch from pairing-scoped durable Keychain state,
-replaces the field, and only then signs. Input JSON cannot select or reset it.
+must be JSON `null`. The issuer adds `expires_at`, `lease_host_key_id`, and the
+DER ECDSA `lease_signature` over the Android canonical transcript. The issuer
+first verifies the local pairing and identity bindings, then atomically reserves
+the Authority-supplied `session_epoch` from the unsigned lease. Values at or
+below the durable local high-water mark fail closed and are never signed.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line
@@ -309,16 +310,18 @@ session creation, offer/poll exchange, device revocation rejecting both role
 tokens, and log redaction). The following remain open and must not be treated as
 shipped:
 
-- Mac and Android automatic profile/account/session issuance is not wired to the
-  authority.
-- Automatic account and device registration is not wired.
+- Authority-side automatic account/device registration plus unsigned
+  session-profile issuance is implemented and locally/PostgreSQL tested.
+  Mac/Android automatic invocation, Mac signing handoff, Android UI import, and
+  real-device proof of the full flow remain open gates.
 - Relay credential admission is wired to the authority; the structured reconcile
   helper is locally tested, but coturn exporter, scheduled reconciliation loop,
   and active-allocation disconnect are not production proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
-- The authority per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch operate in different scopes and are not yet unified.
+- The authority per-device `session_epoch` floor supplies the lease epoch, and
+  the Mac pairing-scoped issuer reserves that exact value before signing. This
+  source-level reconciliation still lacks real-device proof.
 - PostgreSQL durable signaling routing is implemented, but multi-instance
   operation, global create-rate enforcement, and throughput under multiple
   replicas remain unproved.

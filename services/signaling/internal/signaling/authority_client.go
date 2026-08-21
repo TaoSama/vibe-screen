@@ -47,6 +47,11 @@ type authoritySignalingAdmission struct {
 	Created     bool      `json:"created"`
 }
 
+type authoritySignalingAuthorization struct {
+	Role      string    `json:"role"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // AuthorityClient is the strict HTTP client used to delegate session
 // lifecycle decisions to the authority service. It enforces a safe URL
 // policy, bounded responses, strict JSON decoding, and never includes
@@ -163,42 +168,43 @@ func (c *AuthorityClient) CreateSession(ctx context.Context, request authoritySi
 // It returns the resolved role ("host" or "client"). A 404 or 403 from the
 // authority means the token or session was definitively rejected and maps to
 // ErrUnauthorized; any other non-2xx maps to ErrAuthorityUnavailable.
-func (c *AuthorityClient) AuthorizeRole(ctx context.Context, sessionID, roleToken string) (string, error) {
+func (c *AuthorityClient) AuthorizeRole(ctx context.Context, sessionID, roleToken string) (authoritySignalingAuthorization, error) {
 	ctx, cancel := context.WithTimeout(ctx, authorityRequestTimeout)
 	defer cancel()
 	if !validIdentifier(sessionID) || !validIdentifier(roleToken) {
-		return "", ErrUnauthorized
+		return authoritySignalingAuthorization{}, ErrUnauthorized
 	}
 	body, err := json.Marshal(map[string]string{"role_token": roleToken})
 	if err != nil {
-		return "", fmt.Errorf("%w: encode request", ErrAuthorityUnavailable)
+		return authoritySignalingAuthorization{}, fmt.Errorf("%w: encode request", ErrAuthorityUnavailable)
 	}
 	endpoint := c.baseURL.JoinPath("v1", "signaling", "sessions", url.PathEscape(sessionID), "authorize")
 	authorityResponse, err := c.doRequest(ctx, http.MethodPost, endpoint.String(), body)
 	if err != nil {
-		return "", err
+		return authoritySignalingAuthorization{}, err
 	}
 	switch authorityResponse.status {
 	case http.StatusOK:
-		var roleResponse struct {
-			Role string `json:"role"`
-		}
+		var roleResponse authoritySignalingAuthorization
 		if err := decodeStrictJSON(authorityResponse, &roleResponse); err != nil {
-			return "", fmt.Errorf("%w: invalid authorization response", ErrAuthorityUnavailable)
+			return authoritySignalingAuthorization{}, fmt.Errorf("%w: invalid authorization response", ErrAuthorityUnavailable)
 		}
 		switch roleResponse.Role {
 		case "host", "client":
-			return roleResponse.Role, nil
+			if !roleResponse.ExpiresAt.After(time.Now()) {
+				return authoritySignalingAuthorization{}, fmt.Errorf("%w: incomplete authorization", ErrAuthorityUnavailable)
+			}
+			return roleResponse, nil
 		default:
-			return "", fmt.Errorf("%w: unexpected role", ErrAuthorityUnavailable)
+			return authoritySignalingAuthorization{}, fmt.Errorf("%w: unexpected role", ErrAuthorityUnavailable)
 		}
 	case http.StatusNotFound, http.StatusForbidden:
 		// The authority definitively rejected the token or revoked the
 		// session. Map to ErrUnauthorized so the signaling service returns
 		// 404 without disclosing whether the session exists.
-		return "", ErrUnauthorized
+		return authoritySignalingAuthorization{}, ErrUnauthorized
 	default:
-		return "", fmt.Errorf("%w: status %d", ErrAuthorityUnavailable, authorityResponse.status)
+		return authoritySignalingAuthorization{}, fmt.Errorf("%w: status %d", ErrAuthorityUnavailable, authorityResponse.status)
 	}
 }
 

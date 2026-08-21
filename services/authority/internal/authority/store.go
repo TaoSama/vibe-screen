@@ -25,8 +25,9 @@ type Store interface {
 	SuspendAccount(context.Context, string, time.Time) error
 	RegisterDevice(context.Context, string, string) error
 	RevokeDevice(context.Context, string, uint64, time.Time) error
+	IssueSessionProfile(context.Context, SessionProfileRequest, time.Time) (SessionProfileResponse, error)
 	CreateSignaling(context.Context, SignalingRequest, time.Time) (SignalingAdmission, error)
-	AuthorizeSignaling(context.Context, string, string, time.Time) (string, error)
+	AuthorizeSignaling(context.Context, string, string, time.Time) (SignalingAuthorization, error)
 	InvalidateSignaling(context.Context, string, time.Time) error
 	AdmitRelay(context.Context, RelayAdmissionRequest, time.Time) error
 	ApplyCoturnUsage(context.Context, CoturnUsage) (bool, error)
@@ -45,7 +46,7 @@ type PostgresStore struct {
 
 const (
 	requiredSchemaVersion  int64 = 1
-	requiredSchemaChecksum       = "7c7842d178498bf78513f32090b11c1384a8b54515c51b37fbe7ad245979a1b7"
+	requiredSchemaChecksum       = "8c10390258422ef7427cb9888395f7b57f6bbbacb234ba35ac0ad0e008e3f94d"
 )
 
 func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
@@ -90,13 +91,13 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		return fmt.Errorf("%w: schema version/checksum mismatch", ErrStorage)
 	}
 	var complete bool
-	if err := s.pool.QueryRow(ctx, `SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name`, []string{"authority_schema_migrations", "authority_accounts", "authority_devices", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_relay_daily_usage", "authority_relay_allocations", "authority_coturn_events", "authority_audit_events"}).Scan(&complete); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name`, []string{"authority_schema_migrations", "authority_accounts", "authority_devices", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_session_profile_issuance", "authority_relay_daily_usage", "authority_relay_allocations", "authority_coturn_events", "authority_audit_events"}).Scan(&complete); err != nil {
 		return fmt.Errorf("%w: structure probe: %v", ErrStorage, err)
 	}
 	if !complete {
 		return fmt.Errorf("%w: required authority relation is missing", ErrStorage)
 	}
-	if _, err := s.pool.Exec(ctx, `SELECT m.version,m.checksum_sha256,m.applied_at,a.account_id,a.suspended_at,a.created_at,d.device_id,d.account_id,d.revocation_epoch,d.revoked_at,d.created_at,f.device_id,f.highest_epoch,s.session_id,s.request_id,s.account_id,s.host_device_id,s.client_device_id,s.session_epoch,s.expires_at,s.revoked_at,s.created_at,u.device_id,u.usage_day,u.ingress_bytes,u.egress_bytes,r.allocation_id,r.source_id,r.device_id,r.session_id,r.observed_sequence,r.ingress_bytes,r.egress_bytes,r.admitted_at,r.last_observed_at,r.closed_at,e.source_id,e.event_id,e.payload_sha256,e.received_at,x.audit_id,x.event_type,x.account_id,x.device_id,x.session_id,x.occurred_at FROM authority_schema_migrations m,authority_accounts a,authority_devices d,authority_session_epoch_floors f,authority_signaling_sessions s,authority_relay_daily_usage u,authority_relay_allocations r,authority_coturn_events e,authority_audit_events x LIMIT 0`); err != nil {
+	if _, err := s.pool.Exec(ctx, `SELECT m.version,m.checksum_sha256,m.applied_at,a.account_id,a.suspended_at,a.created_at,d.device_id,d.account_id,d.revocation_epoch,d.revoked_at,d.created_at,f.device_id,f.highest_epoch,s.session_id,s.request_id,s.account_id,s.host_device_id,s.client_device_id,s.session_epoch,s.expires_at,s.revoked_at,s.created_at,p.request_id,p.request_sha256,p.account_id,p.host_device_id,p.client_device_id,p.signaling_session_id,p.created_at,u.device_id,u.usage_day,u.ingress_bytes,u.egress_bytes,r.allocation_id,r.source_id,r.device_id,r.session_id,r.observed_sequence,r.ingress_bytes,r.egress_bytes,r.admitted_at,r.last_observed_at,r.closed_at,e.source_id,e.event_id,e.payload_sha256,e.received_at,x.audit_id,x.event_type,x.account_id,x.device_id,x.session_id,x.occurred_at FROM authority_schema_migrations m,authority_accounts a,authority_devices d,authority_session_epoch_floors f,authority_signaling_sessions s,authority_session_profile_issuance p,authority_relay_daily_usage u,authority_relay_allocations r,authority_coturn_events e,authority_audit_events x LIMIT 0`); err != nil {
 		return fmt.Errorf("%w: required authority column is missing: %v", ErrStorage, err)
 	}
 	var constraints int
@@ -117,6 +118,11 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"authority_signaling_sessions_client_device_id_fkey",
 		"authority_signaling_sessions_session_epoch_check",
 		"authority_signaling_sessions_host_device_id_client_device_i_key",
+		"authority_session_profile_issuance_pkey",
+		"authority_session_profile_issuance_account_id_fkey",
+		"authority_session_profile_issuance_host_device_id_fkey",
+		"authority_session_profile_issuance_client_device_id_fkey",
+		"authority_session_profile_issuance_signaling_session_id_fkey",
 		"authority_relay_daily_usage_pkey",
 		"authority_relay_daily_usage_device_id_fkey",
 		"authority_relay_daily_usage_ingress_bytes_check",
@@ -139,6 +145,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"authority_devices", "authority_devices",
 		"authority_session_epoch_floors", "authority_session_epoch_floors",
 		"authority_signaling_sessions", "authority_signaling_sessions", "authority_signaling_sessions",
+		"authority_session_profile_issuance", "authority_session_profile_issuance",
 		"authority_relay_daily_usage", "authority_relay_daily_usage", "authority_relay_daily_usage",
 		"authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations",
 		"authority_coturn_events", "authority_coturn_events",
@@ -148,6 +155,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"device_id", "revocation_epoch",
 		"device_id", "highest_epoch",
 		"session_id", "session_epoch", "expires_at",
+		"request_id", "request_sha256",
 		"usage_day", "ingress_bytes", "egress_bytes",
 		"allocation_id", "session_id", "ingress_bytes", "egress_bytes",
 		"event_id", "payload_sha256",
@@ -157,11 +165,13 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"text", "bigint",
 		"text", "bigint",
 		"text", "bigint", "timestamp with time zone",
+		"text", "bytea",
 		"date", "numeric", "numeric",
 		"text", "text", "bigint", "bigint",
 		"text", "bytea",
 	}
 	nullable := []string{
+		"NO", "NO",
 		"NO", "NO",
 		"NO", "NO",
 		"NO", "NO",
@@ -292,12 +302,46 @@ func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch
 	})
 }
 
-func (s *PostgresStore) CreateSignaling(ctx context.Context, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
-	if request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 {
-		return SignalingAdmission{}, ErrConflict
+func (s *PostgresStore) IssueSessionProfile(ctx context.Context, request SessionProfileRequest, now time.Time) (SessionProfileResponse, error) {
+	digest, err := profileRequestDigest(request)
+	if err != nil {
+		return SessionProfileResponse{}, err
 	}
-	var result SignalingAdmission
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	var result SessionProfileResponse
+	err = s.transaction(ctx, func(tx pgx.Tx) error {
+		var existingDigest []byte
+		var existingSessionID string
+		err := tx.QueryRow(ctx, `SELECT request_sha256,signaling_session_id FROM authority_session_profile_issuance WHERE request_id=$1 FOR UPDATE`, request.RequestID).Scan(&existingDigest, &existingSessionID)
+		if err == nil {
+			if !hmac.Equal(existingDigest, digest[:]) {
+				return ErrConflict
+			}
+			expiresAt, err := activeSessionExpiresAt(ctx, tx, existingSessionID, now)
+			if err != nil {
+				return err
+			}
+			admission := s.admission(existingSessionID, expiresAt, false)
+			unsignedLease, err := unsignedAndroidLease(request, admission)
+			if err != nil {
+				return err
+			}
+			result = SessionProfileResponse{
+				AccountID:            request.AccountID,
+				PairingID:            request.PairingID,
+				SignalingSessionID:   existingSessionID,
+				HostSignalingToken:   admission.HostToken,
+				ExpiresAt:            expiresAt,
+				Created:              false,
+				UnsignedAndroidLease: unsignedLease,
+			}
+			return nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO authority_accounts(account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`, request.AccountID); err != nil {
+			return err
+		}
 		var suspendedAt *time.Time
 		if err := tx.QueryRow(ctx, `SELECT suspended_at FROM authority_accounts WHERE account_id=$1 FOR UPDATE`, request.AccountID).Scan(&suspendedAt); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -308,104 +352,225 @@ func (s *PostgresStore) CreateSignaling(ctx context.Context, request SignalingRe
 		if suspendedAt != nil {
 			return ErrRevoked
 		}
-		devices := []string{request.HostDeviceID, request.ClientDeviceID}
+		devices := []string{request.HostIdentity.DeviceID, request.ClientIdentity.DeviceID}
 		sort.Strings(devices)
-		rows, err := tx.Query(ctx, `SELECT device_id,account_id,revoked_at FROM authority_devices WHERE device_id=ANY($1) ORDER BY device_id FOR UPDATE`, devices)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		seen := 0
-		for rows.Next() {
-			var deviceID, accountID string
-			var revokedAt *time.Time
-			if err := rows.Scan(&deviceID, &accountID, &revokedAt); err != nil {
+		for _, deviceID := range uniqueStrings(devices) {
+			tag, err := tx.Exec(ctx, `INSERT INTO authority_devices(device_id, account_id) VALUES ($1,$2) ON CONFLICT (device_id) DO UPDATE SET account_id=EXCLUDED.account_id WHERE authority_devices.account_id=EXCLUDED.account_id`, deviceID, request.AccountID)
+			if err != nil {
 				return err
 			}
-			if accountID != request.AccountID || revokedAt != nil {
-				return ErrRevoked
-			}
-			seen++
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		if seen != len(uniqueStrings(devices)) {
-			return ErrNotFound
-		}
-		var existingRequest SignalingRequest
-		var sessionID string
-		var expiresAt time.Time
-		err = tx.QueryRow(ctx, `SELECT session_id,account_id,host_device_id,client_device_id,session_epoch,extract(epoch from expires_at-created_at)::bigint,expires_at FROM authority_signaling_sessions WHERE request_id=$1`, request.RequestID).Scan(&sessionID, &existingRequest.AccountID, &existingRequest.HostDeviceID, &existingRequest.ClientDeviceID, &existingRequest.SessionEpoch, &existingRequest.TTLSeconds, &expiresAt)
-		if err == nil {
-			if existingRequest.AccountID != request.AccountID || existingRequest.HostDeviceID != request.HostDeviceID || existingRequest.ClientDeviceID != request.ClientDeviceID || existingRequest.SessionEpoch != request.SessionEpoch || existingRequest.TTLSeconds != request.TTLSeconds {
-				return ErrConflict
-			}
-			result = s.admission(sessionID, expiresAt, false)
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		floorDevices := uniqueStrings(devices)
-		floorRows, err := tx.Query(ctx, `SELECT device_id,highest_epoch FROM authority_session_epoch_floors WHERE device_id=ANY($1) ORDER BY device_id FOR UPDATE`, floorDevices)
-		if err != nil {
-			return err
-		}
-		for floorRows.Next() {
-			var deviceID string
-			var highestEpoch int64
-			if err := floorRows.Scan(&deviceID, &highestEpoch); err != nil {
-				floorRows.Close()
-				return err
-			}
-			if request.SessionEpoch <= uint64(highestEpoch) {
-				floorRows.Close()
+			if tag.RowsAffected() == 0 {
 				return ErrConflict
 			}
 		}
-		if err := floorRows.Err(); err != nil {
-			floorRows.Close()
-			return err
+		signalingRequest := SignalingRequest{
+			RequestID:      profileSignalingRequestID(request.RequestID),
+			AccountID:      request.AccountID,
+			HostDeviceID:   request.HostIdentity.DeviceID,
+			ClientDeviceID: request.ClientIdentity.DeviceID,
+			SessionEpoch:   request.SessionEpoch,
+			TTLSeconds:     request.TTLSeconds,
 		}
-		floorRows.Close()
-		if _, err = tx.Exec(ctx, `INSERT INTO authority_session_epoch_floors(device_id,highest_epoch) SELECT unnest($1::text[]),$2 ON CONFLICT (device_id) DO UPDATE SET highest_epoch=EXCLUDED.highest_epoch WHERE authority_session_epoch_floors.highest_epoch<EXCLUDED.highest_epoch`, floorDevices, int64(request.SessionEpoch)); err != nil {
-			return err
-		}
-		sessionID, err = randomIdentifier()
+		admission, err := s.createSignalingTx(ctx, tx, signalingRequest, now)
 		if err != nil {
 			return err
 		}
-		expiresAt = now.Add(time.Duration(request.TTLSeconds) * time.Second)
-		_, err = tx.Exec(ctx, `INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, sessionID, request.RequestID, request.AccountID, request.HostDeviceID, request.ClientDeviceID, int64(request.SessionEpoch), expiresAt, now)
+		if !admission.Created {
+			return ErrConflict
+		}
+		unsignedLease, err := unsignedAndroidLease(request, admission)
 		if err != nil {
 			return err
 		}
-		result = s.admission(sessionID, expiresAt, true)
+		if _, err := tx.Exec(ctx, `INSERT INTO authority_session_profile_issuance(request_id,request_sha256,account_id,host_device_id,client_device_id,signaling_session_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, request.RequestID, digest[:], request.AccountID, request.HostIdentity.DeviceID, request.ClientIdentity.DeviceID, admission.SessionID, now); err != nil {
+			return err
+		}
+		result = SessionProfileResponse{
+			AccountID:            request.AccountID,
+			PairingID:            request.PairingID,
+			SignalingSessionID:   admission.SessionID,
+			HostSignalingToken:   admission.HostToken,
+			ExpiresAt:            admission.ExpiresAt,
+			Created:              true,
+			UnsignedAndroidLease: unsignedLease,
+		}
 		return nil
 	})
 	return result, err
 }
 
-func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token string, now time.Time) (string, error) {
+func (s *PostgresStore) CreateSignaling(ctx context.Context, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
+	if request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 {
+		return SignalingAdmission{}, ErrConflict
+	}
+	var result SignalingAdmission
+	err := s.transaction(ctx, func(tx pgx.Tx) error {
+		var err error
+		result, err = s.createSignalingTx(ctx, tx, request, now)
+		return err
+	})
+	return result, err
+}
+
+func (s *PostgresStore) createSignalingTx(ctx context.Context, tx pgx.Tx, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
+	var suspendedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT suspended_at FROM authority_accounts WHERE account_id=$1 FOR UPDATE`, request.AccountID).Scan(&suspendedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SignalingAdmission{}, ErrNotFound
+		}
+		return SignalingAdmission{}, err
+	}
+	if suspendedAt != nil {
+		return SignalingAdmission{}, ErrRevoked
+	}
+	devices := []string{request.HostDeviceID, request.ClientDeviceID}
+	sort.Strings(devices)
+	rows, err := tx.Query(ctx, `SELECT device_id,account_id,revoked_at FROM authority_devices WHERE device_id=ANY($1) ORDER BY device_id FOR UPDATE`, devices)
+	if err != nil {
+		return SignalingAdmission{}, err
+	}
+	defer rows.Close()
+	seen := 0
+	for rows.Next() {
+		var deviceID, accountID string
+		var revokedAt *time.Time
+		if err := rows.Scan(&deviceID, &accountID, &revokedAt); err != nil {
+			return SignalingAdmission{}, err
+		}
+		if accountID != request.AccountID || revokedAt != nil {
+			return SignalingAdmission{}, ErrRevoked
+		}
+		seen++
+	}
+	if err := rows.Err(); err != nil {
+		return SignalingAdmission{}, err
+	}
+	if seen != len(uniqueStrings(devices)) {
+		return SignalingAdmission{}, ErrNotFound
+	}
+	var existingRequest SignalingRequest
+	var sessionID string
+	var expiresAt time.Time
+	err = tx.QueryRow(ctx, `SELECT session_id,account_id,host_device_id,client_device_id,session_epoch,extract(epoch from expires_at-created_at)::bigint,expires_at FROM authority_signaling_sessions WHERE request_id=$1`, request.RequestID).Scan(&sessionID, &existingRequest.AccountID, &existingRequest.HostDeviceID, &existingRequest.ClientDeviceID, &existingRequest.SessionEpoch, &existingRequest.TTLSeconds, &expiresAt)
+	if err == nil {
+		if existingRequest.AccountID != request.AccountID || existingRequest.HostDeviceID != request.HostDeviceID || existingRequest.ClientDeviceID != request.ClientDeviceID || existingRequest.SessionEpoch != request.SessionEpoch || existingRequest.TTLSeconds != request.TTLSeconds {
+			return SignalingAdmission{}, ErrConflict
+		}
+		return s.admission(sessionID, expiresAt, false), nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return SignalingAdmission{}, err
+	}
+	floorDevices := uniqueStrings(devices)
+	floorRows, err := tx.Query(ctx, `SELECT device_id,highest_epoch FROM authority_session_epoch_floors WHERE device_id=ANY($1) ORDER BY device_id FOR UPDATE`, floorDevices)
+	if err != nil {
+		return SignalingAdmission{}, err
+	}
+	for floorRows.Next() {
+		var deviceID string
+		var highestEpoch int64
+		if err := floorRows.Scan(&deviceID, &highestEpoch); err != nil {
+			floorRows.Close()
+			return SignalingAdmission{}, err
+		}
+		if request.SessionEpoch <= uint64(highestEpoch) {
+			floorRows.Close()
+			return SignalingAdmission{}, ErrConflict
+		}
+	}
+	if err := floorRows.Err(); err != nil {
+		floorRows.Close()
+		return SignalingAdmission{}, err
+	}
+	floorRows.Close()
+	if _, err = tx.Exec(ctx, `INSERT INTO authority_session_epoch_floors(device_id,highest_epoch) SELECT unnest($1::text[]),$2 ON CONFLICT (device_id) DO UPDATE SET highest_epoch=EXCLUDED.highest_epoch WHERE authority_session_epoch_floors.highest_epoch<EXCLUDED.highest_epoch`, floorDevices, int64(request.SessionEpoch)); err != nil {
+		return SignalingAdmission{}, err
+	}
+	sessionID, err = randomIdentifier()
+	if err != nil {
+		return SignalingAdmission{}, err
+	}
+	expiresAt = now.Add(time.Duration(request.TTLSeconds) * time.Second)
+	_, err = tx.Exec(ctx, `INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, sessionID, request.RequestID, request.AccountID, request.HostDeviceID, request.ClientDeviceID, int64(request.SessionEpoch), expiresAt, now)
+	if err != nil {
+		return SignalingAdmission{}, err
+	}
+	return s.admission(sessionID, expiresAt, true), nil
+}
+
+func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token string, now time.Time) (SignalingAuthorization, error) {
 	var revokedAt, accountSuspended, hostRevoked, clientRevoked *time.Time
 	var expiresAt time.Time
 	err := s.pool.QueryRow(ctx, `SELECT s.expires_at,s.revoked_at,a.suspended_at,h.revoked_at,c.revoked_at FROM authority_signaling_sessions s JOIN authority_accounts a ON a.account_id=s.account_id JOIN authority_devices h ON h.device_id=s.host_device_id JOIN authority_devices c ON c.device_id=s.client_device_id WHERE s.session_id=$1`, sessionID).Scan(&expiresAt, &revokedAt, &accountSuspended, &hostRevoked, &clientRevoked)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return SignalingAuthorization{}, ErrNotFound
 	}
 	if err != nil {
-		return "", storageError("authorize signaling", err)
+		return SignalingAuthorization{}, storageError("authorize signaling", err)
 	}
 	if revokedAt != nil || accountSuspended != nil || hostRevoked != nil || clientRevoked != nil || !now.Before(expiresAt) {
-		return "", ErrRevoked
+		return SignalingAuthorization{}, ErrRevoked
 	}
 	for _, role := range []string{"host", "client"} {
 		if hmac.Equal([]byte(token), []byte(s.roleToken(sessionID, role))) {
-			return role, nil
+			return SignalingAuthorization{Role: role, ExpiresAt: expiresAt}, nil
 		}
 	}
-	return "", ErrNotFound
+	return SignalingAuthorization{}, ErrNotFound
+}
+
+func activeSessionExpiresAt(ctx context.Context, tx pgx.Tx, sessionID string, now time.Time) (time.Time, error) {
+	var revokedAt, accountSuspended, hostRevoked, clientRevoked *time.Time
+	var expiresAt time.Time
+	err := tx.QueryRow(ctx, `SELECT s.expires_at,s.revoked_at,a.suspended_at,h.revoked_at,c.revoked_at FROM authority_signaling_sessions s JOIN authority_accounts a ON a.account_id=s.account_id JOIN authority_devices h ON h.device_id=s.host_device_id JOIN authority_devices c ON c.device_id=s.client_device_id WHERE s.session_id=$1 FOR UPDATE`, sessionID).Scan(&expiresAt, &revokedAt, &accountSuspended, &hostRevoked, &clientRevoked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	if revokedAt != nil || accountSuspended != nil || hostRevoked != nil || clientRevoked != nil || !now.Before(expiresAt) {
+		return time.Time{}, ErrRevoked
+	}
+	return expiresAt, nil
+}
+
+func profileRequestDigest(request SessionProfileRequest) ([sha256.Size]byte, error) {
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(encoded), nil
+}
+
+func profileSignalingRequestID(requestID string) string {
+	digest := sha256.Sum256([]byte(requestID))
+	return "profile-" + fmt.Sprintf("%x", digest[:16])
+}
+
+func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmission) (json.RawMessage, error) {
+	root := map[string]any{
+		"version":                    1,
+		"pairing_id":                 request.PairingID,
+		"pinned_host_id":             request.HostIdentity.DeviceID,
+		"pinned_device_id":           request.ClientIdentity.DeviceID,
+		"lease_device_key_id":        request.ClientIdentity.KeyID,
+		"signaling_url":              request.SignalingURL,
+		"signaling_session_id":       admission.SessionID,
+		"session_epoch":              request.SessionEpoch,
+		"host_identity_epoch":        request.HostIdentity.KeyEpoch,
+		"device_identity_epoch":      request.ClientIdentity.KeyEpoch,
+		"transcript_context":         request.TranscriptContext,
+		"protocol_session_id":        request.ProtocolSessionID,
+		"signaling_token":            admission.ClientToken,
+		"ice_servers":                request.ICEServers,
+		"allow_insecure_for_testing": request.AllowInsecureForTesting,
+	}
+	encoded, err := json.Marshal(root)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(encoded), nil
 }
 
 func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID string, now time.Time) error {
