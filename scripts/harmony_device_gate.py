@@ -45,6 +45,7 @@ REQUIRED_ARTIFACT_KEYS = (
     "signature_certificate_sha256",
     "sha256sums_sha256",
 )
+SECURE_PAIRING_MANIFEST_SCHEMA = "dev.vibescreen.harmony-secure-pairing-gate/v1"
 REQUIRED_TOOLCHAIN_KEYS = (
     "deveco_studio_version",
     "harmony_sdk_api",
@@ -157,6 +158,15 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
         evidence = gate.get("evidence")
         if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
             raise ManifestError(f"gates[{index}].evidence: expected non-empty string array")
+        if gate_id == "huks_backed_secure_pairing":
+            manifest = _mapping(gate.get("secure_pairing_manifest"), f"gates[{index}].secure_pairing_manifest")
+            if manifest.get("schema") != SECURE_PAIRING_MANIFEST_SCHEMA:
+                raise ManifestError(
+                    f"gates[{index}].secure_pairing_manifest.schema: expected {SECURE_PAIRING_MANIFEST_SCHEMA}"
+                )
+            if manifest.get("status") != status:
+                raise ManifestError(f"gates[{index}].secure_pairing_manifest.status: must match gate status")
+            _string(manifest.get("path"), f"gates[{index}].secure_pairing_manifest.path")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":
             message = f"{gate_id}: {status}"
             if allow_blocked and status == "blocked":
@@ -206,7 +216,18 @@ def template_manifest() -> dict[str, Any]:
         },
         "host": {"commit": placeholder_commit, "build_sha256": placeholder_hash, "protocol": "Protocol v1"},
         "gates": [
-            {"id": gate_id, "status": "blocked", "evidence": ["replace with redacted raw evidence path or artifact id"]}
+            {
+                "id": gate_id,
+                "status": "blocked",
+                "evidence": ["replace with redacted raw evidence path or artifact id"],
+                **({
+                    "secure_pairing_manifest": {
+                        "schema": SECURE_PAIRING_MANIFEST_SCHEMA,
+                        "path": "harmony-secure-pairing.json",
+                        "status": "blocked",
+                    }
+                } if gate_id == "huks_backed_secure_pairing" else {}),
+            }
             for gate_id in REQUIRED_GATE_IDS
         ],
         "notes": ["Do not commit raw serials, credentials, IP addresses, or screen content."],

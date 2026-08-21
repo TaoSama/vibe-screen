@@ -48,7 +48,7 @@ boundary.
 | Old-session injection | authenticated `session_epoch`; stale media/input dropped | reconnect and inject prior control/media/input |
 | Rotation rollback | current-key authorization, monotonic persisted epoch, bounded overlap | reordered/duplicate/old-key rotations and restart |
 | Revoked-device reconnect | durable signed tombstone, active disconnect, signaling/TURN credential invalidation | direct and relay reconnect before/after service restart |
-| Credential extraction | Keychain/Keystore protection, backup exclusion, redacted logs/evidence | backup/restore, log/crash/evidence scan |
+| Credential extraction | Keychain/Keystore/HUKS protection, non-exportable endpoint identity keys, backup exclusion, redacted logs/evidence | backup/restore, private-key export attempt, log/crash/evidence scan |
 | Memory/backlog exhaustion | strict envelope/frame/candidate/channel/allocation caps; latest-frame media queue | oversized/flood/fuzz and sustained slow consumer |
 | Relay cost abuse | short-lived scoped credentials, stable per-device coturn quota principal, auth rate limits, allocation/bandwidth caps and alerts; non-authoritative byte ledger is never an admission boundary | different-session/expiry concurrent allocations, 486 limit, allocation expiry/release, rate and billing drill |
 | TURN peer-address SSRF | production CREATE_PERMISSION denies loopback, RFC1918, CGNAT, link-local, ULA, mapped and provider-internal ranges; deployment inventory extends the deny set | authenticated CREATE_PERMISSION matrix plus allowed-public control |

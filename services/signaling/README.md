@@ -127,6 +127,16 @@ they must also use a larger `session_epoch`.
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
 
+HarmonyOS HUKS-backed secure pairing uses this same `production_authority`
+path. The Harmony client proves its HUKS-backed device identity to the Host,
+but service credentials stay server-side: clients receive only their
+session-scoped role token after the paired Host/backend has created the
+Authority admission. A revoked Harmony device, expired admission, stale session
+epoch, unreachable Authority, malformed Authority response, old peer, or
+no-HUKS device path must fail closed; Signaling must not mint local replacement
+tokens in production mode and the Harmony app must not treat trusted-LAN address
+import as secure pairing.
+
 ```bash
 curl --fail-with-body -X DELETE \
   -H "Authorization: Bearer $VIBE_SIGNALING_ISSUER_TOKEN" \
