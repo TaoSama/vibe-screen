@@ -85,7 +85,6 @@
     <string name="stream_status_usb_label">USB</string>
     <string name="stream_status_usb_detail">ADB reverse</string>
     <string name="stream_status_lan_label">LAN</string>
-    <string name="stream_status_lan_detail">Encrypted records</string>
     <string name="stream_status_lan_encrypted_detail">Encrypted records</string>
     <string name="stream_status_lan_legacy_plaintext_detail">Legacy plaintext</string>
     <string name="stream_status_lan_negotiating_detail">Checking protection</string>

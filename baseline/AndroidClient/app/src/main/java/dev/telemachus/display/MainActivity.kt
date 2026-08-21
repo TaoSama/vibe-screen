@@ -2585,6 +2585,7 @@ class MainActivity : AppCompatActivity() {
                 bitrateKbps = 0,
                 framesPerSecond = fps,
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                resetQualityToAuto = true,
             )
             syncQualityAutoForExplicitVideoSetting()
             prefs.videoFrameRate = fps
@@ -2605,6 +2606,7 @@ class MainActivity : AppCompatActivity() {
                         bitrateKbps = mbps * ClientVideoBounds.KBPS_PER_MBPS,
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                        resetQualityToAuto = true,
                     )
                     syncQualityAutoForExplicitVideoSetting()
                     prefs.videoBitrateMbps = mbps

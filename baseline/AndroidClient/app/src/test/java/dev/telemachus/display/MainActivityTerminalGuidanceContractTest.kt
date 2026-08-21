@@ -522,11 +522,13 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "Explicit frame-rate requests should make the quality buttons reflect preset-free wire semantics",
-            compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoFrameRate=fps"),
+            compact.contains("framesPerSecond=fps,qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoFrameRate=fps"),
         )
         assertTrue(
             "Explicit bitrate requests should make the quality buttons reflect preset-free wire semantics",
-            compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoBitrateMbps=mbps"),
+            compact.contains("qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoBitrateMbps=mbps"),
         )
     }
 
