@@ -3906,12 +3906,7 @@ class MainActivity : AppCompatActivity() {
                 deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH),
                 supportedCodecs =
                     CodecCapabilities.advertisedStreamCodecs
-                        .mapTo(linkedSetOf()) { codec ->
-                            when (codec) {
-                                StreamCodec.HEVC -> ProductVideoCodec.HEVC
-                                StreamCodec.H264 -> ProductVideoCodec.H264
-                            }
-                        },
+                        .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
             )
         val callbacks =
             object : InternetProductSessionCallbacks {

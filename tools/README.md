@@ -15,6 +15,12 @@ Producers should write a manifest beside raw JSONL/CSV and derived summaries so
 the exact command, repository state, host, device, and measurement method remain
 auditable.
 
+Codec capability evidence must record the negotiated Protocol v1 codec, the
+Host encoder capability and implementation path, the client decoder name, and
+the first decoded output frame before it is used to close a codec gate. AV1 is
+currently a planned codec only: offline fail-closed/admission tests and blocked
+runbooks do not prove an AV1 stream.
+
 Run the tests without installing third-party packages:
 
 ```sh
