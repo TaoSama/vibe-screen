@@ -1,0 +1,9 @@
+test_blocked_preflight_is_a_valid_blocked_record (tools.tests.test_trusted_lan_smoke.TrustedLANSmokeEvidenceTest.test_blocked_preflight_is_a_valid_blocked_record) ... ok
+test_nubia_record_must_not_be_labeled_as_xiaomi_or_fuxi (tools.tests.test_trusted_lan_smoke.TrustedLANSmokeEvidenceTest.test_nubia_record_must_not_be_labeled_as_xiaomi_or_fuxi) ... ok
+test_open_reconnect_gate_does_not_count_as_pass (tools.tests.test_trusted_lan_smoke.TrustedLANSmokeEvidenceTest.test_open_reconnect_gate_does_not_count_as_pass) ... ok
+test_pass_requires_non_legacy_encrypted_lan_markers (tools.tests.test_trusted_lan_smoke.TrustedLANSmokeEvidenceTest.test_pass_requires_non_legacy_encrypted_lan_markers) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.227s
+
+OK

@@ -1,0 +1,38 @@
+# Commands
+
+Working directory: /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/trusted-lan-p0110-smoke
+Date UTC: 2026-08-21T03:08:03Z
+Branch: codex/trusted-lan-p0110-smoke
+HEAD: c5add121d4ebebaa0083db64551a81ec7899696e
+
+All ADB commands used explicit -s EP0110PZ0B9110300B.
+
+git fetch origin main --prune
+git worktree add -b codex/trusted-lan-p0110-smoke .claude/worktrees/trusted-lan-p0110-smoke origin/main
+test ! -e /tmp/vibe-screen-device-soak.lock && atomically create /tmp/vibe-screen-device-android.lock
+adb devices -l
+adb -s EP0110PZ0B9110300B shell getprop ro.serialno
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+adb -s EP0110PZ0B9110300B shell wm size
+adb -s EP0110PZ0B9110300B shell wm density
+adb -s EP0110PZ0B9110300B shell dumpsys battery
+adb -s EP0110PZ0B9110300B shell getprop sys.boot_completed
+adb -s EP0110PZ0B9110300B shell ip addr show wlan0
+adb -s EP0110PZ0B9110300B shell cmd wifi status
+adb -s EP0110PZ0B9110300B shell ip route
+adb -s EP0110PZ0B9110300B shell ping -c 1 <redacted-mac-lan-ip>
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+security find-identity -v -p codesigning
+python3 scripts/macos_dev_host.py preflight
+sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "select service, client, client_type, auth_value, auth_reason from access where client='dev.telemachus.display';"
+sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "select service, client, client_type, auth_value, auth_reason from access where client='dev.telemachus.display';"
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest
+make protocol
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_smoke -v
+make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-second-recheck
+shasum -a 256 -c docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-second-recheck/SHA256SUMS

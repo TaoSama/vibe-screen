@@ -1,0 +1,85 @@
+/opt/homebrew/bin/bash: line 97: printf: --: invalid option
+printf: usage: printf [-v var] format [arguments]
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        6c2dc48 dev.telemachus.display/.MainActivity filter 7c5eae1
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        7dbc006 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter 955541d
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        7dbc006 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter 7b6c6c7
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      androidx.profileinstaller.action.SKIP_FILE:
+        7dbc006 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter e4d74f4
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        7dbc006 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter 463d692
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+
+Domain verification status:
+
+Permissions:
+  Permission [dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (3742d81):
+    sourcePackage=dev.telemachus.display
+    uid=10239 gids=[] type=0 prot=signature
+    perm=PermissionInfo{11ade26 dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  dev.telemachus.display/androidx.startup.InitializationProvider:
+    Provider{f845a67 dev.telemachus.display/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [dev.telemachus.display.androidx-startup]:
+    Provider{f845a67 dev.telemachus.display/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{1901014 dev.telemachus.display}
+
+Key Set Manager:
+  [dev.telemachus.display]
+      Signing KeySets: 33
+
+Packages:
+  Package [dev.telemachus.display] (698efb7):
+    appId=10239
+    pkg=Package{2b520bd dev.telemachus.display}
+    codePath=/data/app/~~mpxYdfqrTo8LBbZRZco4Tw==/dev.telemachus.display-cOVRWqQCeMkH1VxiFHGzAg==
+    resourcePath=/data/app/~~mpxYdfqrTo8LBbZRZco4Tw==/dev.telemachus.display-cOVRWqQCeMkH1VxiFHGzAg==
+    legacyNativeLibraryDir=/data/app/~~mpxYdfqrTo8LBbZRZco4Tw==/dev.telemachus.display-cOVRWqQCeMkH1VxiFHGzAg==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=100000 minSdk=26 targetSdk=34
+    minExtensionVersions=[]
+    versionName=0.0.0
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    pageSizeCompat=0
+    scannedAsStoppedSystemApp=false
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-08-21 10:31:45
+    lastUpdateTime=2026-08-21 10:31:45
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    appMetadataSource=0
+    signatures=PackageSignatures{e896b09 version:2, signatures:[2088cf51], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+
+--- current apk sha256 ---
+debug APK not present in this worktree.
