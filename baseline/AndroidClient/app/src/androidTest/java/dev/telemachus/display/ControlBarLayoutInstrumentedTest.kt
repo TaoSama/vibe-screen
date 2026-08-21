@@ -289,6 +289,28 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun smallTabletWidthKeepsStreamControlsInlineWithReadableLabels() {
+        val context = widthClassContext(screenWidthDp = 600, screenHeightDp = 960)
+        withLayout(context = context, widthDp = 600, applyLayout = false) { layout ->
+            val mode = layout.apply(layout.dp(600), SafeAreaGeometry.Insets.NONE)
+            layout.measureAndLayout(layout.dp(600))
+
+            assertEquals(ControlBarLayoutPolicy.Mode.INLINE, mode)
+            assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
+            assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+            assertTrue(
+                "Display selector should have tablet-width room for the active display name",
+                layout.views.displaySelector.measuredWidth >= layout.dp(180),
+            )
+            assertTrue(
+                "Connection status should have tablet-width room for transport/security state",
+                layout.views.connectionStatus.measuredWidth >= layout.dp(112),
+            )
+            assertActionGeometry(layout)
+        }
+    }
+
+    @Test
     fun resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries() {
         val context = densityContext(DENSITY_DPI_FOR_2_75)
         val geometry = ControlBarLayoutApplier.geometry(context.resources)
@@ -391,6 +413,11 @@ class ControlBarLayoutInstrumentedTest {
                     assertEquals(0, layout.cardParams.width)
                     assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
                     assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+                    assertEquals(
+                        ControlBarLayoutApplier.geometry(layout.context.resources).statusMinimumWidthPx,
+                        layout.statusParams.width,
+                    )
+                    assertEquals(0f, layout.statusParams.weight)
                     assertEquals(0, layout.selectorParams.width)
                     assertEquals(1f, layout.selectorParams.weight)
                 }
@@ -575,6 +602,22 @@ class ControlBarLayoutInstrumentedTest {
         return applicationContext().createConfigurationContext(configuration)
     }
 
+    private fun widthClassContext(
+        screenWidthDp: Int,
+        screenHeightDp: Int,
+    ): Context {
+        val configuration = Configuration(applicationContext().resources.configuration)
+        configuration.screenWidthDp = screenWidthDp
+        configuration.screenHeightDp = screenHeightDp
+        configuration.orientation =
+            if (screenWidthDp > screenHeightDp) {
+                Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                Configuration.ORIENTATION_PORTRAIT
+            }
+        return applicationContext().createConfigurationContext(configuration)
+    }
+
     private fun display(
         id: String,
         name: String,
@@ -619,6 +662,8 @@ class ControlBarLayoutInstrumentedTest {
             get() = views.card.layoutParams as ViewGroup.MarginLayoutParams
         val selectorParams: LinearLayout.LayoutParams
             get() = views.displaySelector.layoutParams as LinearLayout.LayoutParams
+        val statusParams: LinearLayout.LayoutParams
+            get() = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
 
         fun apply(
             windowWidthPx: Int,

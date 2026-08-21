@@ -2939,14 +2939,14 @@ class MainActivity : AppCompatActivity() {
             val availableHeight =
                 (resources.displayMetrics.heightPixels -
                     safeAreaInsets.top - safeAreaInsets.bottom - margin * 2).coerceAtLeast(1)
-            val dialogWidth = minOf((SETTINGS_DIALOG_MAX_WIDTH_DP * density).toInt(), availableWidth)
+            val dialogWidth = minOf(resources.getDimensionPixelSize(R.dimen.settings_dialog_max_width), availableWidth)
             val dialogHeight =
                 minOf(
                     (resources.displayMetrics.heightPixels * SETTINGS_DIALOG_MAX_HEIGHT_RATIO).toInt(),
                     availableHeight,
                 )
             win.setLayout(dialogWidth, dialogHeight)
-            dialog.findViewById<View>(R.id.settingsContent)?.let(
+            dialog.findViewById<View>(android.R.id.content)?.let(
                 SettingsDialogLayoutApplier::applyAfterNextLayout,
             )
         }
@@ -5465,7 +5465,6 @@ class MainActivity : AppCompatActivity() {
         // floating chrome (control bar, settings panel, settings button) and the
         // draggable overlay clamp. Matches the settings button's resting margin.
         private const val SETTINGS_CHROME_MARGIN_DP = 24f
-        private const val SETTINGS_DIALOG_MAX_WIDTH_DP = 680f
         private const val SETTINGS_DIALOG_MAX_HEIGHT_RATIO = 0.85f
         private val DECODER_LIFECYCLE_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
