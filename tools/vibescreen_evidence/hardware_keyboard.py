@@ -109,6 +109,10 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
         return []
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise HardwareKeyboardEvidenceError(f"{field} must be a list of strings")
+    if any(not item.strip() for item in value):
+        raise HardwareKeyboardEvidenceError(
+            f"{field} must contain only non-empty strings"
+        )
     return value
 
 
@@ -121,6 +125,14 @@ def _string_value(record: dict[str, Any], field: str) -> str:
 
 def _optional_run_id(record: dict[str, Any]) -> str | None:
     value = record.get("run_id")
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip():
+        return value
+    raise HardwareKeyboardEvidenceError("run_id must be a non-empty string")
+
+
+def _explicit_run_id(value: str | None) -> str | None:
     if value is None:
         return None
     if isinstance(value, str) and value.strip():
@@ -147,7 +159,9 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "run_id": run_id or _optional_run_id(record) or str(uuid.uuid4()),
+        "run_id": (
+            _explicit_run_id(run_id) or _optional_run_id(record) or str(uuid.uuid4())
+        ),
         "kind": "phase2_hardware_keyboard_workflow",
         "profile": GATE_PROFILE,
         "verdict": verdict,

@@ -160,9 +160,12 @@ Before touching the Android device, acquire the shared device coordination lock:
 
 ```bash
 lock=/tmp/vibe-screen-device-android.lock
-set -o noclobber
-printf 'owner=phase2-hardware-keyboard\npid=%s\nworktree=%s\ncreated_at=%s\n' \
-  "$$" "$(pwd)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock"
+if ! (set -o noclobber; printf 'owner=phase2-hardware-keyboard\npid=%s\nworktree=%s\ncreated_at=%s\n' \
+  "$$" "$(pwd)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock"); then
+  echo "Android device lock is already held: $lock" >&2
+  exit 2
+fi
+trap 'rm -f "$lock"' EXIT HUP INT TERM
 ```
 
 If the lock already exists, stop and record a blocked evidence directory without

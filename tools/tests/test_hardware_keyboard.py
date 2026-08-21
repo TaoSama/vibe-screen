@@ -97,12 +97,34 @@ class HardwareKeyboardEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "must be true or false"):
             summarize(record)
 
+    def test_rejects_empty_artifact_paths(self) -> None:
+        record = self.complete_record()
+        record["artifact_paths"] = ["device-lock.txt", ""]
+
+        with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "artifact_paths"):
+            summarize(record)
+
+    def test_rejects_blank_blocking_notes(self) -> None:
+        record = self.complete_record()
+        record["blocking_notes"] = ["lock held", "   "]
+
+        with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "blocking_notes"):
+            summarize(record)
+
     def test_rejects_empty_input_run_id(self) -> None:
         record = self.complete_record()
         record["run_id"] = ""
 
         with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "run_id"):
             summarize(record)
+
+    def test_rejects_empty_explicit_run_id(self) -> None:
+        with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "run_id"):
+            summarize(self.complete_record(), run_id="")
+
+    def test_rejects_non_string_explicit_run_id(self) -> None:
+        with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "run_id"):
+            summarize(self.complete_record(), run_id=123)  # type: ignore[arg-type]
 
 
 class HardwareKeyboardCliTest(unittest.TestCase):
@@ -121,6 +143,18 @@ class HardwareKeyboardCliTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_hardware_keyboard_gate"])
         self.assertTrue(summary["adb_input_is_not_physical_keyboard_evidence"])
+
+    def test_cli_rejects_empty_run_id(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", ""],
+            input=json.dumps({"device_identity_recorded": True}),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("run_id must be a non-empty string", result.stderr)
 
 
 if __name__ == "__main__":
