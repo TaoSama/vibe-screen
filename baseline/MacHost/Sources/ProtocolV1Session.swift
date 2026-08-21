@@ -1223,6 +1223,9 @@ final class ProtocolV1SessionCoordinator {
             guard !context.hostID.isEmpty, context.hostID == configuration.hostID else {
                 return invalidState("WakeHostRequest targets a different host.", envelope.messageID)
             }
+            guard !context.deviceID.isEmpty, context.deviceID == clientDeviceID else {
+                return invalidState("WakeHostRequest device identity does not match this session.", envelope.messageID)
+            }
             guard pendingWakeHostRequests[context.requestID] == nil else { return [] }
             guard pendingWakeHostRequests.count < Self.maximumPendingWakeHostRequests else {
                 return invalidState("Too many wake-host requests are awaiting confirmation.", envelope.messageID)

@@ -88,7 +88,14 @@ Negotiation rules:
   gated action catalog/invocation API; UI gesture definitions never enter the
   protocol.
 - **Wake:** only an already paired device may request wake with replay-safe
-  proof. Wake-on-LAN is transport behavior, not authentication.
+  proof. The macOS and Android USB/LAN clients share the same canonical
+  HMAC-SHA256 proof over request ID, target MAC, host/device identity, key ID,
+  authorization window, and nonce; wireless pairing tokens are the current
+  shared secret source, while USB/default sessions remain deny-only. A request
+  that passes the proof, replay, device-identity, and broadcast-target gates is
+  converted to a standard UDP Wake-on-LAN magic packet. Wake-on-LAN remains
+  transport behavior, not authentication, and sleeping-host/router/firmware
+  behavior is still a real-device acceptance gate.
 - **Managed devices:** Apple MDM configuration is read locally. The protocol
   carries product restrictions/results, not vendor-specific MDM payloads.
 

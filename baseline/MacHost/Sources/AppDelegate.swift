@@ -1939,12 +1939,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Setup server. USB is loopback-only; wireless authenticates every
             // candidate before it can replace the active client.
             let serverMode: StreamingServerMode
+            let wakeHostAuthorizer: any WakeHostAuthorizing
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
             if configuration.connectionMode == .wireless {
                 do {
+                    let authToken = try WirelessAuth.loadOrCreate()
                     serverMode = .wireless(
-                        authToken: try WirelessAuth.loadOrCreate()
+                        authToken: authToken
                     )
+                    wakeHostAuthorizer = SharedSecretWakeHostAuthorizer(secret: authToken)
                     settings.wirelessTokenError = nil
                 } catch {
                     settings.wirelessTokenError = error.localizedDescription
@@ -1953,10 +1956,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else {
                 serverMode = .usb
+                wakeHostAuthorizer = DenyWakeHostAuthorizer()
             }
             streamingServer = StreamingServer(
                 port: settings.port,
-                mode: serverMode
+                mode: serverMode,
+                wakeHostAuthorizer: wakeHostAuthorizer
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled

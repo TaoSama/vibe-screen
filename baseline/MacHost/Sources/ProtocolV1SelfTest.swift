@@ -1667,6 +1667,7 @@ enum ProtocolV1SelfTest {
             wakeRequest.requestID = Data([0x31])
             wakeRequest.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
             wakeRequest.hostID = "host"
+            wakeRequest.deviceID = "device"
             let ungatedError = try protocolError(ungated.handleControl(try envelope(
                 id: 4,
                 payload: .wakeHostRequest(wakeRequest)
