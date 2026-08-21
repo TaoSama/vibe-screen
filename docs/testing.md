@@ -100,10 +100,11 @@ foregrounded on the streaming view. Then run:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \
-  --serial "$ADB_SERIAL" \
+  --serial EP0110PZ0B9110300B \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
-  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
+  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid \
+  --write-blocked-on-lock
 ```
 
 While the script waits, move the physical mouse over the Android stream, then
@@ -116,6 +117,17 @@ device with a mouse, relative mouse, touchpad, or trackball source is present,
 the script exits with code `2` and writes a `blocked` evidence bundle instead of
 fabricating a device result. Evidence from a Nubia P0110 must remain labeled
 P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
+
+Before any ADB command, the script checks `/tmp/vibe-screen-device-soak.lock`
+and `/tmp/vibe-screen-device-android.lock`. With `--write-blocked-on-lock`, an
+existing lock produces `blocked_device_coordination_lock` evidence without
+touching ADB; use `--allow-existing-device-lock` only when you own the current
+lease.
+
+Native pointer move/click uses the existing Protocol v1 `PointerEvent` guarded by
+`CAPABILITY_POINTER`. Do not create or claim a separate `native_pointer` generic
+peripheral kind for this gate; generic `PeripheralEvent` admission is only a
+future extension boundary and must fail closed for unsupported kinds.
 
 ## Pass criteria
 

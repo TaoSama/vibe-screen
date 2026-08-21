@@ -425,6 +425,39 @@ Evidence:
 
 - [`evidence/2026-08-21-p0110-native-pointer-hid-readiness/`](evidence/2026-08-21-p0110-native-pointer-hid-readiness/)
 
+## P0110 native pointer HID current-worktree follow-up
+
+On 2026-08-21, the native pointer HID acceptance command was rerun against the
+connected Nubia P0110 (`pacific`, Android 16 / SDK 36) with the required
+explicit ADB serial. No shared Android device coordination lock was present, so
+the script used `adb -s EP0110PZ0B9110300B` to collect redacted device identity
+and `dumpsys input`. It found no external Android input device with a `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source, returned `blocked`
+(`exit_code=2`), and did not wait for pointer movement/click observation.
+
+The native pointer move/click gate therefore remains open. A passing run still
+requires a real USB or Bluetooth mouse attached to the Android device during an
+active Protocol v1 session, Android `native pointer forwarded` lines for
+`MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE`, newly appended Host `Pointer
+injected` lines for `changed`, `began`, and `ended`, and an operator note for
+the visible Mac pointer/click result. Synthetic ADB pointer events remain
+excluded from gate closure.
+
+That runtime path is the existing Protocol v1 `PointerEvent` /
+`CAPABILITY_POINTER` transport, not the generic peripheral-input framework from
+PR #217. A placeholder `native_pointer` `PeripheralEvent` kind must not be used
+to close this gate; the peripheral framework remains a separate fail-closed
+extension boundary for unsupported generic peripheral kinds.
+
+The script also supports lock-aware coordination: with
+`--write-blocked-on-lock`, an existing `/tmp/vibe-screen-device-android.lock`
+or `/tmp/vibe-screen-device-soak.lock` produces a
+`blocked_device_coordination_lock` bundle before any ADB command is run.
+
+Evidence:
+
+- [`evidence/2026-08-21-p0110-native-pointer-hid-blocked-current/`](evidence/2026-08-21-p0110-native-pointer-hid-blocked-current/)
+
 ## P0110 rotated host-display readiness follow-up
 
 On 2026-08-20, the connected Nubia P0110 (pacific, Android 16 / SDK 36)
