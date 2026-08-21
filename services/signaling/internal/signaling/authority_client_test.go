@@ -245,6 +245,21 @@ func TestAuthorityClientMapsDefinitiveAuthorizationRejection(t *testing.T) {
 	}
 }
 
+func TestAuthorityClientCreateSessionMapsRejectionToUnauthorized(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+		_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		})
+		_, err := client.CreateSession(context.Background(), authoritySignalingRequest{
+			RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1",
+			ClientDeviceID: "client-1", SessionEpoch: 1, TTLSeconds: 60,
+		})
+		if !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("authority CreateSession status %d did not map to ErrUnauthorized: %v", status, err)
+		}
+	}
+}
+
 func TestAuthorityClientReady(t *testing.T) {
 	ready := true
 	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {

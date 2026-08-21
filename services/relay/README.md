@@ -121,14 +121,15 @@ configured `authority_source_id`, `device_id`, `session_id`, and
 or session, quota rejection, or conflicting allocation identity fails closed and
 no credential is returned.
 
-The username is `<unix-expiry>:<device-id>` and the password is the base64
-HMAC-SHA1 required by TURN REST authentication. `session_id` and
-`allocation_id` remain in the authenticated control-plane request but are
-excluded from the TURN username. After coturn removes the expiry prefix, every
-credential for a device shares one stable `user-quota` principal across
-sessions and expiries. Device IDs cannot contain the `:` separator. SHA-1 is
-used only for this
-TURN compatibility MAC with a high-entropy server secret; it is not content
+The username is `<expiry>:<device-id>:<session-id>:<allocation-id>` and the
+password is the base64 HMAC-SHA1 required by TURN REST authentication. The
+`session_id` also stays in the authenticated control-plane request. After coturn
+strips the expiry prefix, each session/allocation gets its own `user-quota`
+principal and can be mapped back to Authority reconciliation records. Per-device
+allocation limits are enforced by Authority `maximum_allocations_per_device` and
+the relay `max_concurrent_sessions_per_device` gate. Device, session, and
+allocation identifiers cannot contain the `:` separator. SHA-1 is used only for
+this TURN compatibility MAC with a high-entropy server secret; it is not content
 encryption or a password hash.
 
 Report lifecycle and cumulative byte deltas (trusted usage collector):
@@ -179,10 +180,11 @@ collector into `/v1/usage`; coturn does not call this custom HTTP API itself.
 That collector is the authoritative source for enforcement: missed or delayed
 events temporarily weaken byte and concurrency limits. Alert on collector lag
 and enforce matching `user-quota`, `total-quota`, and `max-bps` limits in TURN.
-`user-quota` is the immediate atomic per-device allocation boundary because the
-signed TURN principal is device-only. It is an allocation cap, not a product
-session cap; size it for the ICE transports a legitimate device needs. Multiple
-TURN nodes require device-sticky routing or a distributed admission authority.
+`user-quota` bounds allocations per `device-id:session-id:allocation-id` principal.
+Per-device allocation limits are enforced by Authority and the relay session
+gate; size `user-quota` for the ICE transports a single allocation needs.
+Multiple TURN nodes require device-sticky routing or a distributed admission
+authority.
 
 This component is not a WebRTC signaling/rendezvous server and does not
 implement SDP exchange, ICE restart, P2P path selection, network handoff, or
@@ -204,13 +206,15 @@ additionally requires blocking the device at signaling policy and disconnecting
 its TURN allocation; rotating the shared TURN secret affects every device.
 
 The `/v1/usage` daily-byte and active-session ledger is not authoritative until
-a trusted coturn collector and reconciliation loop are deployed. It must not be
-used as the real-time allocation security boundary; coturn's stable-device
-`user-quota` remains that boundary in the current deployment.
-For Authority-backed deployments, `scripts/phase3/coturn_reconcile.py` can submit
-a trusted structured snapshot to Authority and require an external disconnect
-executor for unauthorized or conflicting active source allocations. It is a local
-contract helper only; deployments still need a production exporter, durable
+a trusted coturn collector and scheduled reconciliation loop are deployed. It
+must not be used as the real-time allocation security boundary; coturn's
+`user-quota` plus Authority per-device allocation limits remain that boundary.
+For Authority-backed deployments, `scripts/phase3/coturn_exporter.py` reads
+active coturn allocations through the loopback admin CLI and emits the
+structured snapshot that `scripts/phase3/coturn_reconcile.py` submits to
+Authority. `scripts/phase3/coturn_disconnect_executor.py` cancels unauthorized
+or conflicting allocations through the same admin CLI. This remains a contract helper only:
+deployments still need a production exporter, durable
 collector loop, provider/billing reconciliation, and concrete coturn allocation
 termination before the release gate closes.
 

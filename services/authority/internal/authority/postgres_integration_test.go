@@ -295,6 +295,9 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if err := store.RevokeDevice(ctx, "client", 1, now); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AdmitRelay(ctx, exactRetry, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("same relay allocation after device revocation error=%v, want ErrRevoked", err)
+	}
 	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
 	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("final usage after revocation error=%v, want ErrRevoked", err)
@@ -329,6 +332,9 @@ func TestPostgresSignalingInvalidationClosesRelayAllocationLedgerOnly(t *testing
 	}
 	if err := store.InvalidateSignaling(ctx, session.SessionID, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("same relay allocation after signaling invalidation error=%v, want ErrRevoked", err)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "blocked", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("invalidated session relay admission error=%v", err)
@@ -376,6 +382,9 @@ func TestPostgresRevocationClosesRelayAllocationsForLedgerOnly(t *testing.T) {
 	}
 	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("same relay allocation after device revoke error=%v, want ErrRevoked", err)
 	}
 	final := CoturnUsage{SourceID: "node", EventID: "final-after-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 9, EgressBytes: 4, ObservedAt: now.Add(2 * time.Second), Closed: true}
 	if _, err := store.ApplyCoturnUsage(ctx, final); !errors.Is(err, ErrRevoked) {

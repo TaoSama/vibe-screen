@@ -105,7 +105,13 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("use-auth-secret", lines)
         self.assertIn("fingerprint", lines)
         self.assertIn("no-multicast-peers", lines)
-        self.assertIn("no-cli", lines)
+        # The admin CLI is enabled so the coturn exporter and disconnect
+        # executor can enumerate and cancel active allocations. It binds to
+        # the loopback-only Compose network and requires a secret password.
+        self.assertIn("cli", lines)
+        self.assertIn("cli-ip=127.0.0.1", lines)
+        self.assertIn("cli-port=5766", lines)
+        self.assertNotIn("no-cli", lines)
         self.assertIn("no-tlsv1", lines)
         self.assertIn("no-tlsv1_1", lines)
         self.assertIn("tls-listening-port=5349", lines)
@@ -160,6 +166,16 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("_FILE:", combined)
         self.assertIn("file: ./secrets/turn_secret.txt", combined)
         self.assertIn("file: ${VIBE_AUTHORITY_DATABASE_URL_FILE", combined)
+
+    def test_public_internet_soak_gate_is_explicit_and_not_default_phase3_test(self) -> None:
+        makefile = read(ROOT / "Makefile")
+
+        self.assertIn("PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST ?=", makefile)
+        self.assertIn("phase3-public-internet-soak-gate:", makefile)
+        self.assertIn("scripts/phase3/internet_soak_manifest.py", makefile)
+        phase3_test = re.search(r"(?ms)^phase3-test:.*?(?=^\S|\Z)", makefile)
+        self.assertIsNotNone(phase3_test)
+        self.assertNotIn("internet_soak_manifest.py", phase3_test.group(0))
 
 
 if __name__ == "__main__":

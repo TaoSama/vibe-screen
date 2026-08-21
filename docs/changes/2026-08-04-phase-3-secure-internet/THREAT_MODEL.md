@@ -50,7 +50,7 @@ boundary.
 | Revoked-device reconnect | durable signed tombstone, active disconnect, signaling/TURN credential invalidation | direct and relay reconnect before/after service restart |
 | Credential extraction | Keychain/Keystore protection, backup exclusion, redacted logs/evidence | backup/restore, log/crash/evidence scan |
 | Memory/backlog exhaustion | strict envelope/frame/candidate/channel/allocation caps; latest-frame media queue | oversized/flood/fuzz and sustained slow consumer |
-| Relay cost abuse | short-lived scoped credentials, stable per-device coturn quota principal, auth rate limits, allocation/bandwidth caps and alerts; non-authoritative byte ledger is never an admission boundary | different-session/expiry concurrent allocations, 486 limit, allocation expiry/release, rate and billing drill |
+| Relay cost abuse | short-lived scoped credentials, `device:session:allocation` coturn quota principal, Authority/relay per-device allocation gates, auth rate limits, allocation/bandwidth caps and alerts; non-authoritative byte ledger is never an admission boundary | same-allocation quota exhaustion, different-session/device allocation limits, 486 limit, allocation expiry/release, rate and billing drill |
 | TURN peer-address SSRF | production CREATE_PERMISSION denies loopback, RFC1918, CGNAT, link-local, ULA, mapped and provider-internal ranges; deployment inventory extends the deny set | authenticated CREATE_PERMISSION matrix plus allowed-public control |
 | ICE/SDP privacy leak | minimal retention, access control, redaction, no routine raw candidate logging | telemetry/log inventory and deletion test |
 | Network-switch hijack | re-authenticated resume, new session epoch/keys, peer identity pin | adversarial candidate during ICE restart |

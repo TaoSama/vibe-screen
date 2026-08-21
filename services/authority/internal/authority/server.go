@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/accounts/{account_id}/suspend", s.suspendAccount)
 	mux.HandleFunc("PUT /v1/accounts/{account_id}/devices/{device_id}", s.device)
 	mux.HandleFunc("POST /v1/devices/{device_id}/revoke", s.revokeDevice)
+	mux.HandleFunc("POST /v1/relay/devices/{device_id}/revoke", s.revokeDeviceByRelay)
 	mux.HandleFunc("POST /v1/signaling/sessions", s.createSignaling)
 	mux.HandleFunc("DELETE /v1/signaling/sessions/{session_id}", s.invalidateSignaling)
 	mux.HandleFunc("POST /v1/signaling/sessions/{session_id}/authorize", s.authorizeSignaling)
@@ -128,6 +129,30 @@ func (s *Server) revokeDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.RevokeDevice(r.Context(), deviceID, request.Epoch, s.now().UTC()); err != nil {
+		s.storeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// revokeDeviceByRelay allows the relay service to revoke a device using its
+// relay bearer token. The authority owns the revocation epoch, so the relay
+// does not supply one: this endpoint uses a high-watermark epoch to make the
+// revocation durable without trusting relay-provided epoch state.
+// Revoking through this endpoint also closes the device's signaling sessions
+// and relay allocations in the authority ledger, so signaling and relay
+// admission fail closed for the device.
+func (s *Server) revokeDeviceByRelay(w http.ResponseWriter, r *http.Request) {
+	if !authorized(r, s.cfg.RelayToken) {
+		s.reject(w, 401, "unauthorized")
+		return
+	}
+	deviceID := r.PathValue("device_id")
+	if !validIdentifier(deviceID) {
+		s.reject(w, 400, "invalid device_id")
+		return
+	}
+	if err := s.store.RevokeDevice(r.Context(), deviceID, math.MaxInt64, s.now().UTC()); err != nil {
 		s.storeError(w, err)
 		return
 	}

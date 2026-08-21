@@ -230,21 +230,24 @@ duplicates or already-ahead entries on retry. Operators must disconnect
 unauthorized allocations and close ledger-only allocations only after the
 configured consecutive-snapshot policy in their collector.
 
-The repository does **not** yet contain a production-proven coturn exporter.
-Launch remains blocked until the pinned coturn build or provider API proves it
-exports a stable allocation ID, the complete REST username mapping, monotonic
-cumulative counters, close events, boot identity and snapshot support. Parsing
-human-oriented coturn logs may run in shadow mode but is not an authoritative
-quota or billing source.
+The repository now contains a local coturn exporter and disconnect executor
+contract. Launch remains blocked until the pinned coturn build or provider API
+proves the exporter observes a stable allocation ID, the complete REST username
+mapping, monotonic cumulative counters, close events, boot identity and snapshot
+support in production. Parsing human-oriented coturn logs may run in shadow mode
+but is not an authoritative quota or billing source until that deployed evidence
+exists.
 
-`scripts/phase3/coturn_reconcile.py` is the current operator-side contract for a
-future trusted exporter. It accepts only the structured snapshot shape above,
-submits it to `/v1/coturn/reconcile`, and requires a configured idempotent
-disconnect executor for every unauthorized or conflicting source allocation. A
-missing ledger-only allocation exits non-zero so the caller's consecutive-snapshot
-policy must decide whether to close the ledger record. This helper does not parse
-coturn logs, does not create a durable collector cursor/WAL, and does not prove a
-production disconnect mechanism.
+`scripts/phase3/coturn_exporter.py` and
+`scripts/phase3/coturn_disconnect_executor.py` are the current local helpers for
+the trusted exporter/reconcile boundary. The exporter emits only the structured
+snapshot shape above, `scripts/phase3/coturn_reconcile.py` submits it to
+`/v1/coturn/reconcile`, and the disconnect executor is required for every
+unauthorized or conflicting source allocation. A missing ledger-only allocation
+exits non-zero so the caller's consecutive-snapshot policy must decide whether
+to close the ledger record. These helpers do not create a durable collector
+cursor/WAL, scheduled production worker, multi-node collector, or production
+disconnect proof by themselves.
 
 ## Clock synchronization and TTL consistency
 
@@ -283,16 +286,18 @@ separate production requirement.
 - migration checksum/required-schema/database-clock readiness and database
   credentials from a secret manager;
 - signaling and relay integration that fails closed on authority errors
-  (signaling `production_authority` mode is implemented and covered by a
-  two-process PostgreSQL test; relay/coturn integration remains open);
+  (signaling `production_authority` mode and relay credential/revocation
+  delegation are implemented and covered by tests; active transport disconnect
+  evidence remains open);
 - ledger-side closure of relay allocations when an account is suspended, a
   device is revoked, or a signaling admission is invalidated is implemented;
   later coturn usage for revoked, suspended, expired, or closed allocations
   fails closed without advancing daily counters;
 - collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
   close reconciliation;
-- mapping from issued allocation IDs to complete coturn REST usernames;
-- active-allocation disconnect executor and outbox delivery;
+- production proof that issued allocation IDs map to complete coturn REST
+  usernames;
+- scheduled active-allocation disconnect executor and outbox delivery;
 - edge authentication, DDoS/rate limiting, audit retention/deletion policy,
   dashboards, cost reconciliation and public-region canaries.
 

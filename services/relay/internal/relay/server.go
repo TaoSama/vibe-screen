@@ -241,7 +241,16 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeCredential(w http.ResponseWriter, request credentialRequest, ttl int64) {
 	expires := s.now().UTC().Add(time.Duration(ttl) * time.Second).Unix()
-	username := fmt.Sprintf("%d:%s", expires, request.DeviceID)
+	allocationID := request.AllocationID
+	if allocationID == "" {
+		allocationID = request.SessionID
+	}
+	// The TURN principal is device:session:allocation so the coturn exporter can
+	// map each active allocation back to its Authority ledger entry. Per-device
+	// allocation limits are enforced by Authority MaximumAllocationsPerDevice
+	// and the relay max_concurrent_sessions_per_device gate; coturn user-quota
+	// bounds allocations per allocation principal.
+	username := fmt.Sprintf("%d:%s:%s:%s", expires, request.DeviceID, request.SessionID, allocationID)
 	mac := hmac.New(sha1.New, []byte(s.cfg.TurnSecret))
 	if _, err := mac.Write([]byte(username)); err != nil {
 		s.reject(w, http.StatusInternalServerError, "credential generation failed")
@@ -261,6 +270,17 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 	if !validIdentifier(deviceID) {
 		s.reject(w, http.StatusBadRequest, "invalid device_id")
 		return
+	}
+	// In production authority mode, the authority is the source of truth for
+	// revocation. Propagate the revocation to the authority first so it can
+	// close the device's signaling sessions and relay allocations atomically.
+	// If the authority is unavailable, fail closed rather than revoking only
+	// locally, which would leave signaling sessions and relay admissions open.
+	if s.authority != nil {
+		if err := s.authority.RevokeDevice(r.Context(), deviceID); err != nil {
+			s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
+			return
+		}
 	}
 	s.revokeMu.Lock()
 	defer s.revokeMu.Unlock()

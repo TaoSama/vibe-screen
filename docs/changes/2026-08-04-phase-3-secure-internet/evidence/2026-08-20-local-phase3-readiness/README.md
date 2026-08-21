@@ -33,9 +33,12 @@ local PostgreSQL-backed Compose stack, verified migration order, readiness,
 restart-persistent admission state, fail-closed storage behavior, runtime
 hardening, and secret-log scanning. The relay data-plane scripts verified
 short-lived control-plane TURN credentials, authenticated allocation,
-ChannelBind and relayed packet exchange, stable per-device quota principal,
-quota `486`, authenticated `Refresh` release, and explicit `403` peer-policy
-denial for private, CGNAT, link-local, internal, and IPv6 loopback ranges.
+ChannelBind and relayed packet exchange, the then-current per-device coturn
+quota principal, quota `486`, authenticated `Refresh` release, and explicit
+`403` peer-policy denial for private, CGNAT, link-local, internal, and IPv6
+loopback ranges. Later source changed TURN usernames to
+`expiry:device:session:allocation`; this historical record remains bound to its
+recorded commit and does not prove the current principal format.
 
 ## Artifact hashes
 

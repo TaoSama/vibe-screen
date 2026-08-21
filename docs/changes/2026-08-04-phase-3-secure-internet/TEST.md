@@ -61,13 +61,25 @@ invariants: production relay and Authority profiles require digest-pinned images
 secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
-or prove public reachability. The same target validates the structured coturn
-snapshot reconciliation helper: strict JSON input, loopback-only plaintext
-Authority URLs, exact token-source selection, and fail-closed external disconnect
-execution when Authority reports unauthorized or conflicting active source
-allocations. That helper test does not prove a production coturn exporter,
-scheduled loop, provider billing reconciliation, or real data-plane allocation
-termination.
+or prove public reachability. The same target validates the coturn
+exporter/reconciliation/disconnect contract: strict structured snapshot input,
+loopback-only plaintext Authority URLs, exact token-source selection, parsing of
+active coturn allocations from the admin CLI, and fail-closed external
+disconnect execution when Authority reports unauthorized or conflicting active
+source allocations. These tests do not prove a scheduled production loop,
+provider billing reconciliation, multi-node collection, or real public
+data-plane allocation termination.
+
+The public NAT/TURN/Internet soak gate is intentionally separate from the local
+synthetic WebRTC checks. `make phase3-public-internet-soak-gate` requires
+`PHASE3_PUBLIC_INTERNET_SOAK_MANIFEST` and validates it with
+`scripts/phase3/internet_soak_manifest.py`. A passing manifest must include a
+clean source revision, artifact hashes, real Android identity, public signaling
+and TURN origins, direct and forced-relay paths, NAT fallback, handoff epoch
+advance, active PeerConnection/TURN allocation revocation, two-hour mixed-route
+soak, external-camera latency evidence, and privacy scans. Blocked readiness
+manifests may be checked only with the script's `--allow-blocked` flag and do
+not close release gates.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
@@ -304,11 +316,11 @@ named by that run:
 - `services/relay/integration/test-turn-rest.sh` passed short-term control-plane
   credential issuance, authenticated coturn allocation, ChannelBind and relayed
   messages. A deterministic one-socket TURN helper filled `user-quota=2` with
-  two exact allocations whose credentials used different sessions and expiries;
-  the next allocation received 486. One holder then sent an authenticated
-  Refresh with `LIFETIME=0`, after which a new allocation succeeded and was also
-  released. The complete check passed five consecutive runs after removing the
-  scheduler-sensitive multi-allocation client assumption.
+  two exact allocations for one `device:session:allocation` principal; the next
+  allocation for that same principal received 486. One holder then sent an
+  authenticated Refresh with `LIFETIME=0`, after which a new allocation succeeded
+  and was also released. The complete check passed five consecutive runs after
+  removing the scheduler-sensitive multi-allocation client assumption.
 - `services/relay/integration/test-turn-peer-acl.sh` parsed the production ACL
   and used authenticated CREATE_PERMISSION requests to prove explicit 403 denial
   for private, CGNAT, link-local and internal peers, including IPv6 loopback; a
@@ -316,12 +328,14 @@ named by that run:
 - The relay control plane's race suite passed after separating usage and metrics
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
-- `scripts/phase3/coturn_reconcile.py` has focused unit coverage for strict
-  structured snapshot ingestion, sanitized token-source selection, loopback-only
-  plaintext Authority URLs, Authority response validation, and fail-closed
-  handling of unauthorized/conflicting active allocations when no disconnect
-  executor exists or when the executor fails. This is a local contract test, not
-  production coturn exporter or data-plane disconnect evidence.
+- `scripts/phase3/coturn_exporter.py`, `scripts/phase3/coturn_reconcile.py`,
+  and `scripts/phase3/coturn_disconnect_executor.py` have focused unit coverage
+  for strict structured snapshot ingestion, sanitized token-source selection,
+  loopback-only plaintext Authority URLs, Authority response validation, active
+  coturn allocation parsing, and fail-closed handling of
+  unauthorized/conflicting active allocations when no disconnect executor exists
+  or when the executor fails. This is a local contract test, not scheduled
+  production operation or public data-plane disconnect evidence.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until

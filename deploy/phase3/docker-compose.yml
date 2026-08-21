@@ -64,6 +64,7 @@ services:
       COTURN_CONFIG_FILE: /etc/vibe-coturn/local.conf
     secrets:
       - turn_secret
+      - coturn_cli_password
     volumes:
       - ./coturn:/etc/vibe-coturn:ro
       - ./scripts/start-coturn.sh:/opt/vibe/start-coturn.sh:ro
@@ -87,6 +88,8 @@ services:
 secrets:
   turn_secret:
     file: ./secrets/turn_secret.txt
+  coturn_cli_password:
+    file: ./secrets/coturn_cli_password.txt
   client_token:
     file: ./secrets/client_token.txt
   usage_token:

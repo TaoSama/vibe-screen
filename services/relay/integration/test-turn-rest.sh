@@ -156,8 +156,12 @@ username=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])'
 password=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])' <<< "$credential_response")
 realm=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["realm"])' <<< "$credential_response")
 
-if [[ "$username" != *:integration-device || "$username" == *:integration-session ]]; then
-  echo "credential username did not use the stable device quota principal" >&2
+# The TURN principal is expiry:device_id:session_id:allocation_id so the coturn
+# exporter can map every active allocation back to its Authority ledger entry.
+# Per-device allocation limits are enforced by Authority and the relay session
+# gate.
+if [[ "$username" != *:integration-device:integration-session:integration-session ]]; then
+  echo "credential username did not encode device, session, and allocation principals" >&2
   exit 1
 fi
 if [[ "$realm" != 'vibe-screen.integration' || ${#password} -lt 20 ]]; then
@@ -196,9 +200,10 @@ issue_credential() {
     "http://127.0.0.1:$relay_port/v1/credentials"
 }
 
-first_quota_credential=$(issue_credential quota-session-1 120)
-second_quota_credential=$(issue_credential quota-session-2 121)
-third_quota_credential=$(issue_credential quota-session-3 122)
+quota_session_id=quota-session
+first_quota_credential=$(issue_credential "$quota_session_id" 120)
+second_quota_credential=$(issue_credential "$quota_session_id" 121)
+third_quota_credential=$(issue_credential "$quota_session_id" 122)
 
 quota_username_1=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])' <<< "$first_quota_credential")
 quota_password_1=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])' <<< "$first_quota_credential")
@@ -215,8 +220,8 @@ if [[ "$quota_username_1" == "$quota_username_2" || "$quota_username_2" == "$quo
   exit 1
 fi
 for quota_username in "$quota_username_1" "$quota_username_2" "$quota_username_3"; do
-  if [[ "$quota_username" != *:quota-device || "$quota_username" == *:quota-session-* ]]; then
-    echo "session or expiry changed the device quota principal: $quota_username" >&2
+  if [[ "$quota_username" != *:quota-device:$quota_session_id:$quota_session_id ]]; then
+    echo "credential username did not encode the expected quota allocation principal: $quota_username" >&2
     exit 1
   fi
 done
@@ -291,4 +296,4 @@ python3 "$script_dir/turn_allocation_helper.py" \
   --expect-code 200 --transient-code 486 --wait-deadline-seconds 3 \
   > "$work_dir/quota-after-release.log" 2>&1
 
-echo "PASS: exact single allocations share one coturn device principal; quota 486 and graceful Refresh lifetime=0 release are data-plane enforced"
+echo "PASS: exact single allocations share one coturn allocation principal; quota 486 and graceful Refresh lifetime=0 release are data-plane enforced"

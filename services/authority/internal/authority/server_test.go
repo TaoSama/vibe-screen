@@ -188,11 +188,25 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	defer s.mu.Unlock()
 	allocationKey := memoryAllocationKey(request.SourceID, request.AllocationID)
 	if existing := s.allocations[allocationKey]; existing != nil {
-		if existing.request == request {
-			return nil
+		if existing.request != request {
+			return ErrConflict
 		}
-		return ErrConflict
+		if existing.closed {
+			return ErrRevoked
+		}
+		return s.relayAdmissionIdentityActiveLocked(request, now)
 	}
+	if err := s.relayAdmissionIdentityActiveLocked(request, now); err != nil {
+		return err
+	}
+	if err := s.relayAdmissionQuotaAvailableLocked(request, now); err != nil {
+		return err
+	}
+	s.allocations[allocationKey] = &memoryAllocation{request: request, observed: now}
+	return nil
+}
+
+func (s *memoryStore) relayAdmissionIdentityActiveLocked(request RelayAdmissionRequest, now time.Time) error {
 	if s.revoked[request.DeviceID] > 0 || s.accounts[s.devices[request.DeviceID]] {
 		return ErrRevoked
 	}
@@ -206,6 +220,10 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	if session.revoked || !now.Before(session.admission.ExpiresAt) {
 		return ErrRevoked
 	}
+	return nil
+}
+
+func (s *memoryStore) relayAdmissionQuotaAvailableLocked(request RelayAdmissionRequest, now time.Time) error {
 	if s.daily[dailyUsageKey(request.DeviceID, now)] >= s.dailyLimit {
 		return ErrQuotaExceeded
 	}
@@ -218,7 +236,6 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	if active >= s.allocationLimit {
 		return ErrQuotaExceeded
 	}
-	s.allocations[allocationKey] = &memoryAllocation{request: request, observed: now}
 	return nil
 }
 func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bool, error) {
@@ -611,6 +628,9 @@ func TestRelayAdmissionRequiresActiveBoundSession(t *testing.T) {
 	if err := store.InvalidateSignaling(context.Background(), session.SessionID, now); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AdmitRelay(context.Background(), RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "active", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("invalidated session exact retry error=%v", err)
+	}
 	if err := store.AdmitRelay(context.Background(), RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "revoked", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("revoked session error=%v", err)
 	}
@@ -630,9 +650,11 @@ func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	if err := store.AdmitRelay(context.Background(), request, now); err != nil {
 		t.Fatal(err)
 	}
+	store.allocationLimit = 1
 	if err := store.AdmitRelay(context.Background(), request, now.Add(time.Second)); err != nil {
 		t.Fatalf("exact retry failed after quota was consumed: %v", err)
 	}
+	store.allocationLimit = 2
 	otherSource := request
 	otherSource.SourceID = "other-node"
 	if err := store.AdmitRelay(context.Background(), otherSource, now); err != nil {
@@ -670,6 +692,9 @@ func TestCoturnCountersAreIdempotentAndFailClosedAfterRevocation(t *testing.T) {
 	}
 	if err := store.RevokeDevice(ctx, "device", 1, now); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, admission, now.Add(time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("same allocation after revoke error=%v, want ErrRevoked", err)
 	}
 	final := first
 	final.EventID = "event-2"
@@ -710,6 +735,9 @@ func TestCoturnUsageFailsClosedAfterSessionOrAccountRevocation(t *testing.T) {
 			}
 			if err := test.mutate(ctx, store, session, now.Add(time.Second)); err != nil {
 				t.Fatal(err)
+			}
+			if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+				t.Fatalf("same allocation admission error=%v, want ErrRevoked", err)
 			}
 			usage := CoturnUsage{SourceID: "node", EventID: "event", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 1, ObservedAt: now.Add(2 * time.Second)}
 			if _, err := store.ApplyCoturnUsage(ctx, usage); !errors.Is(err, ErrRevoked) {
@@ -1039,6 +1067,52 @@ func TestHTTPSuspendAccountRevokesAllSessions(t *testing.T) {
 		authorize := `{"role_token":"` + admission.ClientToken + `"}`
 		request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+admission.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 	}
+}
+
+func TestHTTPRelayRevokeDevicePropagatesToSignalingAndRelay(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
+
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken,
+		`{"request_id":"request","account_id":"account","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`,
+		http.StatusCreated)
+	var admission SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
+		t.Fatal(err)
+	}
+
+	// Admit a relay allocation for the client device.
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken,
+		`{"device_id":"client","session_id":"`+admission.SessionID+`","allocation_id":"alloc-1","source_id":"node"}`,
+		http.StatusNoContent)
+
+	// The relay service revokes the device using its relay token. The authority
+	// must close the signaling session and the relay allocation atomically.
+	request(t, handler, http.MethodPost, "/v1/relay/devices/client/revoke", cfg.RelayToken, "", http.StatusNoContent)
+
+	// The signaling session is now revoked: both role tokens are rejected.
+	hostAuthorize := `{"role_token":"` + admission.HostToken + `"}`
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+admission.SessionID+"/authorize", cfg.SignalingToken, hostAuthorize, http.StatusForbidden)
+	clientAuthorize := `{"role_token":"` + admission.ClientToken + `"}`
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+admission.SessionID+"/authorize", cfg.SignalingToken, clientAuthorize, http.StatusForbidden)
+
+	// New relay admissions for the revoked device are rejected.
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken,
+		`{"device_id":"client","session_id":"`+admission.SessionID+`","allocation_id":"alloc-2","source_id":"node"}`,
+		http.StatusForbidden)
+
+	// The admin and signaling tokens cannot use the relay revocation endpoint.
+	request(t, handler, http.MethodPost, "/v1/relay/devices/client/revoke", cfg.AdminToken, "", http.StatusUnauthorized)
+	request(t, handler, http.MethodPost, "/v1/relay/devices/client/revoke", cfg.SignalingToken, "", http.StatusUnauthorized)
 }
 
 func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) {

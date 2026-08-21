@@ -23,6 +23,7 @@ var ErrAuthorityUnavailable = errors.New("authority service unavailable")
 
 type relayAuthority interface {
 	AdmitRelay(context.Context, relayAdmissionRequest) error
+	RevokeDevice(context.Context, string) error
 	Ready(context.Context) error
 }
 
@@ -115,6 +116,33 @@ func (c *AuthorityClient) AdmitRelay(ctx context.Context, request relayAdmission
 		return ErrConflict
 	case http.StatusTooManyRequests:
 		return ErrQuotaExceeded
+	default:
+		return fmt.Errorf("%w: status %d", ErrAuthorityUnavailable, status)
+	}
+}
+
+// RevokeDevice asks the authority to revoke a device. The authority owns the
+// revocation epoch and closes the device's signaling sessions and relay
+// allocations atomically. Only a 204 is accepted as proof that the authority
+// applied the revocation; any other response maps to ErrAuthorityUnavailable so
+// the relay cannot silently diverge from the authority's source of truth.
+func (c *AuthorityClient) RevokeDevice(ctx context.Context, deviceID string) error {
+	ctx, cancel := context.WithTimeout(ctx, authorityRequestTimeout)
+	defer cancel()
+	if !validIdentifier(deviceID) {
+		return fmt.Errorf("%w: invalid device id", ErrAuthorityUnavailable)
+	}
+	endpoint := c.baseURL.JoinPath("v1", "relay", "devices", url.PathEscape(deviceID), "revoke")
+	status, responseBody, err := c.doRequest(ctx, http.MethodPost, endpoint.String(), nil)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case http.StatusNoContent:
+		if len(responseBody) != 0 {
+			return fmt.Errorf("%w: unexpected revocation body", ErrAuthorityUnavailable)
+		}
+		return nil
 	default:
 		return fmt.Errorf("%w: status %d", ErrAuthorityUnavailable, status)
 	}

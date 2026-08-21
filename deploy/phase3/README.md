@@ -219,8 +219,8 @@ schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
-short nonces, stable per-device and total allocation quotas, a 20 MB/s
-allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies
+short nonces, per-allocation and total coturn quotas, a 20 MB/s allocation cap,
+and a bounded relay range. Its CREATE_PERMISSION policy denies
 unspecified, RFC1918, CGNAT, loopback, IPv4/IPv6 link-local, ULA, deprecated
 IPv6 site-local, protocol-assignment, and benchmark/internal ranges; multicast
 peers are also denied. Add every provider VPC, metadata, container, Pod,
@@ -256,17 +256,28 @@ limits issuance and exposes `/metrics` behind a dedicated metrics token. Place
 both behind host/provider connection limits and alert on authentication failures,
 allocation growth, relay bytes, port exhaustion, and credential rejections.
 
-TURN REST usernames use `<expiry>:<device-id>`, so coturn strips the expiry and
-atomically counts all session/expiry credentials under one device principal.
-`user-quota=12` is therefore a per-device allocation cap. In
-`production_authority` mode, relay also asks Authority to admit each
+TURN REST usernames use `<expiry>:<device-id>:<session-id>:<allocation-id>`.
+coturn strips the expiry and applies `user-quota` to the
+`device-id:session-id:allocation-id` principal, so each Vibe Screen allocation
+gets its own coturn allocation budget and can be reconciled back to Authority.
+Per-device allocation limits are enforced by Authority
+`maximum_allocations_per_device` and the relay
+`max_concurrent_sessions_per_device` gate; revalidate `user-quota` against
+legitimate UDP/TCP/TLS ICE allocation counts per allocation before changing it.
+In `production_authority` mode, relay also asks Authority to admit each
 `device_id/session_id/allocation_id/source_id` tuple before returning that TURN
-credential; revoked or expired Authority sessions and revoked devices fail closed
-before coturn sees a credential. Revalidate `user-quota` against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
-no coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
-per-device concurrent-session accounting is not authoritative for this
-deployment; coturn's own limits remain the immediate enforcement boundary.
+credential; revoked or expired Authority sessions and revoked devices fail
+closed before coturn sees a credential.
+
+The coturn admin CLI is enabled on `127.0.0.1:5766` with a secret password so
+`scripts/phase3/coturn_exporter.py` can list active allocations and
+`scripts/phase3/coturn_disconnect_executor.py` can cancel unauthorized or
+conflicting ones. `coturn_reconcile.py` submits the exporter snapshot to
+Authority and invokes the disconnect executor for any allocation Authority
+rejects. This is a local contract implementation, not a production-proven
+scheduled reconciliation loop, provider billing reconciliation, or multi-node
+allocation collector; the control plane's daily-byte accounting is still not
+authoritative until those are deployed.
 Postgres removes the previous local-state blocker for multiple relay
 control-plane processes, but it does not provide TURN usage collection, billing
 reconciliation, production database backups, NTP monitoring, or multi-region
