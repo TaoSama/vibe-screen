@@ -6,16 +6,22 @@ is P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence.
 
 ## Verdict
 
-BLOCKED. The device-side preconditions were present, but the USB smoke could
-not safely start because the running macOS Host never opened the required
-127.0.0.1:54321 listener after a low-risk restart. The Host logs show the
-server start path was reached, Screen Recording preflight passed, and ADB
-reverse/client launch were attempted, but ScreenCaptureKit returned zero
-shareable displays and the Host failed before creating the TCP listener.
+SUPERSEDED readiness blocker. At this collection time, the device-side
+preconditions were present, but the USB smoke could not safely start because the
+running macOS Host never opened the required 127.0.0.1:54321 listener after a
+low-risk restart. The Host logs show the server start path was reached, Screen
+Recording preflight passed, and ADB reverse/client launch were attempted, but
+ScreenCaptureKit returned zero shareable displays and the Host failed before
+creating the TCP listener.
 
-This is readiness/blocker evidence only. It does not claim a successful USB
-connection, first frame, decoder output, reconnect, input forwarding, latency,
-or soak result.
+This historical readiness record does not claim a successful USB connection,
+first frame, decoder output, reconnect, input forwarding, latency, or soak
+result. A later 2026-08-21 22:35 Asia/Shanghai short USB smoke on the same
+Nubia P0110/pacific device did observe Host LISTEN, adb-to-Host ESTABLISHED
+connections, stream telemetry, and zero decoder drops; see
+../2026-08-21-nubia-p0110-root-usb-smoke/README.md. That later run clears the
+specific Host-listener/connection-start blocker for a short smoke, but it is
+not a full USB acceptance pass.
 
 ## 2026-08-21 controller refresh
 
@@ -26,14 +32,35 @@ configured successfully, adb reverse --list reported UsbFfs tcp:54321
 tcp:54321, and dev.telemachus.display/.MainActivity was foreground with PID
 11385 and mCurrentFocus pointing at dev.telemachus.display.MainActivity.
 
-The remaining blocker is the macOS Host side. lsof -nP -iTCP:54321
--sTCP:LISTEN still returned no listener, so the USB smoke still could not be
-started. A read-only local rerun of make baseline-macos-touch-preflight also
-failed with exit 2 because codesign identity 'Vibe Screen Dev' was not found in
-the keychain. Existing TCC rows for the installed signed Host were recorded as
-allowed in the original evidence, but a stable source-bound Host rerun still
-requires restoring the Vibe Screen Dev identity so Screen Recording and
-Accessibility grants remain tied to a stable signing identity.
+At that refresh, the remaining blocker was the macOS Host side. lsof -nP
+-iTCP:54321 -sTCP:LISTEN still returned no listener, so the USB smoke still
+could not be started in that pass. A read-only local rerun of make
+baseline-macos-touch-preflight also failed with exit 2 because codesign identity
+'Vibe Screen Dev' was not found in the keychain. Existing TCC rows for the
+installed signed Host were recorded as allowed in the original evidence, but a
+stable source-bound Host rerun still requires restoring the Vibe Screen Dev
+identity so Screen Recording and Accessibility grants remain tied to a stable
+signing identity.
+
+## 2026-08-21 22:35 short-smoke follow-up
+
+The controller later ran a 60-second root-orchestrated USB smoke on the same
+Nubia P0110/pacific Android 16 device. In that run, adb reverse was present,
+the installed Host PID 92943 listened on 127.0.0.1:54321, and every sample from
+5 seconds through 60 seconds showed an adb-to-Host ESTABLISHED connection.
+Filtered logcat retained 9 VibeScreenTelemetry stream_stats events with FPS
+56.97-60.22 and Mbps 0.36-0.37, plus decoder stats with dropped=0 and no FATAL
+or AndroidRuntime crash. The evidence is recorded in
+../2026-08-21-nubia-p0110-root-usb-smoke/README.md.
+
+The follow-up is intentionally narrow: it proves a short USB stream smoke and
+removes the prior current blocker that Host 54321 did not listen or no
+connection could start. It does not close long soak, host RSS no-growth,
+external-camera latency, input-latency, Accessibility/input, UI foreground,
+lifecycle, native pointer HID, physical stylus, controller runtime, LAN,
+Internet, login-startup, or headless Mac gates. The screenshot and dumpsys
+activity top showed the Nubia launcher in the foreground while the app process
+continued streaming in the background, so UI/lifecycle remains a follow-up.
 
 ## Recorded facts
 
@@ -59,10 +86,12 @@ Accessibility grants remain tied to a stable signing identity.
   identities, so Vibe Screen Dev could not be resolved for a stable
   source-bound install/preflight.
 
-## Blocker
+## Historical blocker
 
-The active blocker is Host listener and stable Host signing readiness, not USB
-device reachability or Android foreground state.
+At this collection time, the active blocker was Host listener and stable Host
+signing readiness, not USB device reachability or Android foreground state. The
+later short-smoke follow-up above supersedes the Host-listener/connection-start
+part of this blocker for a short USB smoke only.
 Recent Host log lines show repeated automatic start attempts:
 
     Screen recording permission granted (CGPreflight)
@@ -80,9 +109,10 @@ found after 5 attempts still prevented the listener from appearing. The
 temporary displaySource preference change was restored to selectedDisplay after
 the readiness capture; see restored-host-defaults.txt.
 
-Because the Host never listened on 54321, the E2E smoke was not run. Forcing
-additional UI/TCC or ad-hoc signing paths would not be a reliable current-main
-USB evidence run.
+Because the Host never listened on 54321 during this readiness capture, the E2E
+smoke was not run in this record. The later 22:35 short smoke should be used for
+the current USB stream-start status, with its explicit 60-second scope and
+UI/lifecycle caveats.
 
 ## Files
 

@@ -1,0 +1,26 @@
+{
+  "outdir": "<external-evidence-root>/root-usb-smoke-20260821-223447",
+  "established_observed_seconds": [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60
+  ],
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "ro.product.manufacturer": "nubia",
+    "ro.product.model": "P0110",
+    "ro.product.device": "pacific",
+    "ro.build.version.release": "16",
+    "ro.build.version.sdk": "36"
+  },
+  "screenshot": "screen.png"
+}
