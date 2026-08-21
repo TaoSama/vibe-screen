@@ -139,6 +139,57 @@ or interoperate with the Host. It exists to keep those external observations
 complete and correctly scoped once a MatePad Mini and signing environment are
 available.
 
+## 2026-08-21 authenticated-record portable verifier
+
+The Harmony source now includes a transport-neutral AES-256-GCM record-layer
+contract in apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts
+and Node-backed portable tests in apps/harmony/tests/channel-record-security.test.mjs.
+The tests consume the same contracts/fixtures/security/v1/channel-records.json
+fixture used by the macOS Host and Android client security suites.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 36 semantic project files; 125/125 portable tests
+```
+
+The added checks cover:
+
+- exact initial and rotated key IDs plus 256 bytes of split directional key
+  material for host/device control, media, audio, and bulk channels;
+- byte-for-byte record sealing against the shared fixed AES-256-GCM fixture;
+- opening the corresponding Host/Android fixture records on the opposite role;
+- fail-closed replay, channel relabeling, wrong key, stale session epoch,
+  tampering, non-positive nonce sequence, wrong nonce channel, closed session,
+  and active-epoch rejection;
+- explicit legacy plaintext response encoding, and rejection of that response by
+  the secure-verifier path when fallback was not explicitly allowed.
+
+This is source/contract evidence only. It does not prove a production Harmony
+socket sends encrypted records, does not exercise HUKS, does not run the DevEco
+ArkTS/API checker, does not build or sign a HAP, and does not interoperate with
+a Mac Host or MatePad device. The production Harmony trusted-LAN path remains
+plaintext until those gates pass.
+
+Additional focused checks on 2026-08-21:
+
+```text
+make protocol
+  PASS: Buf format/lint/build/breaking and 36/36 protocol contract tests
+make evidence-tools-test release-tools-test
+  PASS: 198/198 evidence-tool tests and 73/73 release-tool tests
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.LanSecureRecordAdapterTest \
+  --tests dev.telemachus.display.StreamClientWirelessSecurityTest \
+  --tests dev.telemachus.display.AuthHandshakeTest \
+  --tests dev.telemachus.display.internet.security.ChannelRecordSecurityTest
+  PASS: focused Android trusted-LAN and shared channel-record tests
+cd apps/harmony && make doctor
+  BLOCKED: hvigor: not found; ohpm: not found
+cd baseline/MacHost && swift test --filter LANSecureRecordAdapterTests
+  BLOCKED: active developer directory is /Library/Developer/CommandLineTools;
+  test target cannot import XCTest
+```
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

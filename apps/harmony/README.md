@@ -13,9 +13,13 @@ Protocol v1 base stylus (position, pressure, tilt) and extended stylus
 gating. This is still a development preview. The portable core also implements
 fail-closed ResumeSessionResult,
 single-use PairingOffer/Request/Result processing, and durable credential,
-control-replay, and revocation state. No DevEco SDK was available for this
-record, so ArkTS compilation, HAP output, platform API behavior, and device
-interoperability are not claimed.
+control-replay, and revocation state. The portable core also includes a
+transport-neutral AES-256-GCM application-record verifier that matches the
+macOS/Android security fixture for directional control/media/audio/bulk keys,
+session/key epochs, channel-bound nonces, replay windows, wrong-key rejection,
+and explicit legacy fallback handling. No DevEco SDK was available for this
+record, so ArkTS compilation, HAP output, platform API behavior, production
+authenticated transport, and device interoperability are not claimed.
 
 ## Requirements
 
@@ -85,16 +89,21 @@ checksum manifest.
 This mode is authenticated neither by the imported link nor by the current
 Harmony controller and is not encrypted. Use it only on a trusted LAN. The
 portable security core validates PairingOffer/PairingRequest/PairingResult,
-consumes every offer once even on failure, and can persist either a verified
-credential or a revocation tombstone. The production Harmony cryptography
-provider, controller/UI exchange, record layer, and compatible Mac host remain
-integration gates; the UI does not present address import as secure pairing.
+consumes every offer once even on failure, can persist either a verified
+credential or a revocation tombstone, and now verifies the shared
+AES-256-GCM record-layer contract against the macOS/Android fixture. The
+production Harmony HUKS cryptography provider, controller/UI exchange,
+record-layer socket integration, and compatible Mac host remain integration
+gates; the UI does not present address import as secure pairing and legacy
+plaintext fallback must be reported separately from encrypted LAN evidence.
 
 ## Architecture
 
 - `core/protocol`: dependency-free Protocol v1 codec with formal golden vectors;
 - `core/session`: product negotiation, message/epoch validation, and backoff;
 - `core/transport`: streaming upgrade parser and control/video framing;
+- `core/security`: pairing/credential lifecycle plus transport-neutral
+  authenticated-record contracts for the shared AES-256-GCM record format;
 - `core/media`: media packet parser and capacity-one latest-frame queue;
 - `core/input`: letterbox/rotation mapping and USB HID helpers;
 - `platform`: TCP, Asset Store, AVCodec, lifecycle, and session controller seams;
@@ -148,18 +157,21 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
 
 ## Known gates
 
-Some gates are implementation gaps, not merely missing lab time. The HUKS
-cryptography provider, secure-pairing controller/UI integration, authenticated
-transport record layer, and Mac Host resume interoperability must exist before
-MatePad evidence can close the corresponding security and resume gates. The
-portable checks below only keep the source boundaries honest while that work is
-incomplete.
+Some gates are implementation gaps, not merely missing lab time. The portable
+AES-256-GCM verifier proves the record format and fail-closed behavior, but not
+that HarmonyOS production sockets use HUKS-backed keys or encrypt bytes on the
+wire. The HUKS cryptography provider, secure-pairing controller/UI integration,
+record-layer socket integration, and Mac Host resume interoperability must exist
+before MatePad evidence can close the corresponding security and resume gates.
+The portable checks below only keep the source boundaries honest while that work
+is incomplete.
 
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
-  authenticated record layer, QR camera import, and Mac interoperability;
+  authenticated record-layer socket integration, QR camera import, and Mac
+  interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
 - Mac Host resume registry/first-message support and resume interoperability;
 - controller-specific input on-device confirmation, extended stylus (eraser,

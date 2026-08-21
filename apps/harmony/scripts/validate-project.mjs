@@ -24,6 +24,7 @@ const REQUIRED_FILES = [
   'entry/src/main/ets/core/session/ProgressWatchdog.ts',
   'entry/src/main/ets/core/session/ProductSession.ts',
   'entry/src/main/ets/core/security/PairingSecurity.ts',
+  'entry/src/main/ets/core/security/ChannelRecordSecurity.ts',
   'entry/src/main/ets/core/transport/TransportCloseOwner.ts',
   'entry/src/main/ets/platform/HarmonySessionController.ets',
   'entry/src/main/ets/platform/PairingStore.ets',
@@ -701,6 +702,16 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(securityPath, 'PendingPairing', 'complete', 'this.crypto', 'verify');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'install', 'this.store', 'save');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'revoke', 'this.store', 'save');
+
+  const recordSecurityPath = 'entry/src/main/ets/core/security/ChannelRecordSecurity.ts';
+  requireImport(recordSecurityPath, '../protocol/Utf8', 'encodeUtf8');
+  requireCallInMethod(recordSecurityPath, 'TrafficKeyDerivation', 'initial', 'crypto', 'hkdfSha256');
+  requireCallInMethod(recordSecurityPath, 'TrafficKeyDerivation', 'rotate', 'current', 'legacyMaterial');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'seal', 'this.options.crypto', 'sealAes256Gcm');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'this.options.crypto', 'openAes256Gcm');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'window', 'canAccept');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'window', 'commit');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'close', 'this.sessionIdHash', 'fill');
 
   const pairingStorePath = 'entry/src/main/ets/platform/PairingStore.ets';
   requireCallInMethod(pairingStorePath, 'PairingStore', 'save', 'this', 'upsert');
