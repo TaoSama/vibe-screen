@@ -33,9 +33,17 @@ from vibescreen_evidence.controller_runtime import summarize  # noqa: E402
 BLOCKED_EXIT = 2
 DEFAULT_PACKAGE = "dev.telemachus.display"
 DEFAULT_HOST_LOG = Path.home() / "Library/Logs/Telemachus/telemachus.log"
+DEVICE_LOCKS = (
+    Path("/tmp/vibe-screen-device-soak.lock"),
+    Path("/tmp/vibe-screen-device-android.lock"),
+)
 
 
 class ReadinessError(Exception):
+    pass
+
+
+class DeviceCoordinationLockError(ReadinessError):
     pass
 
 
@@ -142,8 +150,39 @@ def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def describe_device_locks() -> list[dict[str, Any]]:
+    descriptions: list[dict[str, Any]] = []
+    for path in DEVICE_LOCKS:
+        if not path.exists():
+            continue
+        try:
+            stat = path.stat()
+            detail = path.read_text(encoding="utf-8", errors="replace").strip()
+            descriptions.append(
+                {
+                    "path": str(path),
+                    "size_bytes": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    "detail": detail,
+                }
+            )
+        except OSError as error:
+            descriptions.append({"path": str(path), "read_error": str(error)})
+    return descriptions
+
+
+def enforce_device_lock_policy(allow_existing: bool) -> list[dict[str, Any]]:
+    locks = describe_device_locks()
+    if locks and not allow_existing:
+        raise DeviceCoordinationLockError(
+            "device coordination lock exists; no ADB command was run: "
+            + ", ".join(str(lock.get("path", "")) for lock in locks)
+        )
+    return locks
+
+
 def read_device_identity(serial: str) -> tuple[DeviceIdentity, str]:
-    devices_text = run_command(["adb", "devices", "-l"]).stdout
+    devices_text = adb(serial, ["devices", "-l"]).stdout
     devices = devices_text.splitlines()
     endpoint = next(
         (line for line in devices if line.startswith(serial + "\t") or line.startswith(serial + " ")),
@@ -455,6 +494,75 @@ def write_readme(path: Path, result: ReadinessResult) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_lock_blocked_evidence(
+    evidence_dir: Path,
+    *,
+    requested_serial: str,
+    created_at: str,
+    run_id: str,
+    locks: Sequence[dict[str, Any]],
+) -> None:
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    observations = {
+        "notes": (
+            "ADB was not run because a shared Android device coordination lock already exists. "
+            "This is readiness evidence only; a pass still requires live controller samples, "
+            "Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect."
+        ),
+        "artifact_paths": [
+            "scripts/controller_runtime_readiness.py",
+            "docs/runbook/controller-runtime-acceptance.md",
+            "docs/testing.md",
+        ],
+    }
+    summary = summarize(observations, run_id=run_id)
+    write_json(evidence_dir / "controller-runtime-observations.json", observations)
+    write_json(evidence_dir / "controller-runtime-summary.json", summary)
+    write_json(
+        evidence_dir / "controller-runtime-readiness.json",
+        {
+            "created_at": created_at,
+            "requested_serial": requested_serial,
+            "lock_blocked": True,
+            "existing_locks": list(locks),
+            "observations": observations,
+            "summary": summary,
+        },
+    )
+    write_json(evidence_dir / "device-locks.json", list(locks))
+    lines = [
+        "# Controller runtime readiness: blocked",
+        "",
+        f"Created: {created_at}",
+        f"Run ID: {run_id}",
+        f"Requested serial: {requested_serial}",
+        "",
+        "## Blocking condition",
+        "",
+        "A shared Android device coordination lock existed before collection, so no ADB command was run.",
+        "",
+        "## Device coordination locks",
+        "",
+    ]
+    for lock in locks:
+        detail = str(lock.get("detail") or lock.get("read_error") or "present")
+        lines.append(f"- {lock.get('path', '')}: {detail}")
+    lines.extend(
+        [
+            "",
+            "## Evidence files",
+            "",
+            "- controller-runtime-readiness.json: structured lock-blocked readiness state.",
+            "- controller-runtime-observations.json: boolean gate inputs; missing runtime observations remain false.",
+            "- controller-runtime-summary.json: gate summary from vibescreen_evidence.controller_runtime.",
+            "- device-locks.json: lock paths and contents that blocked ADB use.",
+            "",
+            "This readiness bundle is not a controller runtime pass unless controller-runtime-summary.json has can_close_runtime_gate=true.",
+        ]
+    )
+    (evidence_dir / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", required=True, help="ADB serial for the Android device under test.")
@@ -483,6 +591,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Maximum trailing Host log bytes to scan for controller availability.",
     )
     parser.add_argument("--run-id", help="Identifier shared with the evidence manifest.")
+    parser.add_argument(
+        "--allow-existing-device-lock",
+        action="store_true",
+        help="Continue despite a shared Android device coordination lock. Use only when you own that lock.",
+    )
+    parser.add_argument(
+        "--write-blocked-on-lock",
+        action="store_true",
+        help="When a shared Android device lock exists, write blocked readiness evidence instead of running ADB.",
+    )
     return parser.parse_args(argv)
 
 
@@ -493,6 +611,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     created_at = utc_timestamp()
     run_id = args.run_id or created_at.replace(":", "").replace("-", "")
     try:
+        try:
+            enforce_device_lock_policy(args.allow_existing_device_lock)
+        except DeviceCoordinationLockError as error:
+            if not args.write_blocked_on_lock:
+                raise
+            locks = describe_device_locks()
+            write_lock_blocked_evidence(
+                args.evidence_dir,
+                requested_serial=args.serial,
+                created_at=created_at,
+                run_id=run_id,
+                locks=locks,
+            )
+            print(str(error), file=sys.stderr)
+            print("controller runtime readiness: blocked")
+            print(f"summary: {args.evidence_dir / 'controller-runtime-summary.json'}")
+            return BLOCKED_EXIT
         device, adb_devices_text = read_device_identity(args.serial)
         dumpsys_input = adb(args.serial, ["shell", "dumpsys", "input"], timeout=30.0).stdout
         package, package_raw = read_package_identity(args.serial, args.package)
@@ -543,6 +678,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if verdict == "blocked":
             return BLOCKED_EXIT
         return 1
+    except DeviceCoordinationLockError as error:
+        print(str(error), file=sys.stderr)
+        return BLOCKED_EXIT
     except ReadinessError as error:
         print(str(error), file=sys.stderr)
         return 1
