@@ -217,34 +217,29 @@ recovery with fresh keyframe or bounded reconnect, transport interruption
 recovery, login startup, headless Mac recovery, stylus and hardware-keyboard
 workflows, and the eight-hour sample series required by [RUNBOOK.md](RUNBOOK.md).
 
-## 2026-08-21 stand-mounted charging / thermal / power gate readiness
+## 2026-08-21 Phase 2 device-memory gate tooling
 
-This follow-up made the Phase 2 tablet gate package-aware. The evaluator now
-requires the pre-run `phase2-tablet-manifest.json`, validates that it declares a
-physical 8-9 inch tablet before allowing a pass, checks the expected raw
-README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts,
-and uses the manifest-declared thermal, battery-temperature, and maximum net
-battery-drain thresholds for the verdict. The soak report now carries Android
-`dumpsys battery` `plugged` and `status` statistics plus internal count
-breakdowns so the gate can fail runs that lose external power or report
-non-charging battery status during the sustained-use window.
+This follow-up split the Phase 2 device-memory requirement into its own
+fail-closed verifier and kept the broader package-aware tablet gate. The
+verifiers consume `phase2-tablet-manifest.json`, the exact-window soak report,
+and raw evidence artifacts. Before either can return `pass`, the evidence must
+declare a physical 8-9 inch tablet, provide an eight-hour window, include
+manifested Host PID sampling, Android app PSS samples, Host RSS samples,
+charging/full-state samples, thermal-status samples, and the required raw
+battery, power, thermal, log, screenshot, build, APK, and device identity
+artifacts. Nubia P0110/pacific is explicitly rejected as a tablet substitute
+even if a manifest is mislabeled.
 
-Validation performed for this tooling/readiness update:
+Validation performed for this tooling-only update:
 
-- `make evidence-tools-test` - 205 tests passed.
-- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate ...`
-  against the new readiness smoke directory wrote
-  `evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json` with
-  `verdict=insufficient`.
-- `shasum -a 256` over the readiness README, retained Nubia P0110/pacific
-  `device-info.json`, synthetic exact-window report, generated manifest, and
-  gate outputs is recorded in
-  `evidence/2026-08-21-phase2-gate-readiness/SHA256SUMS`.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_device_memory_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_soak_report tools.tests.test_schemas -v`
+- `make evidence-tools-test`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_device_memory_gate --manifest docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/phase2-tablet-manifest.json --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/exact-window-report.json --output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
 
-No ADB command or new Android device run was performed for this update. The
-readiness smoke uses the retained Nubia P0110/pacific Android 16 identity as
-`android_substitute`, and the gate correctly blocks it from becoming formal
-physical 8-9 inch tablet evidence. Stand-mounted charging stability, controlled
-thermal-load behavior, power stability, background/transport recovery, login
-startup, headless Mac recovery, and the eight-hour physical-tablet sample series
-remain open.
+The blocked fixture under
+[`evidence/2026-08-21-device-memory-gate-blocked`](evidence/2026-08-21-device-memory-gate-blocked/README.md)
+reports `verdict=insufficient` because it has only the Nubia P0110/pacific
+phone substitute, a 30-second placeholder window, no Host PID, no Host RSS
+series, no charging/full-state series, and no thermal-status series. No new
+physical-tablet run or eight-hour soak was performed, so the Phase 2
+device-memory gate remains open.

@@ -13,6 +13,10 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── phase2-tablet-manifest.json
 ├── samples.jsonl
 ├── summary.json
+├── soak-8h/exact-window-report.json
+├── soak-8h/phase2-device-memory-gate.json
+├── soak-8h/phase2-tablet-gate.json
+├── host-telemetry.jsonl
 ├── samples.csv              # optional derived conversion; keep raw JSONL
 ├── adb-battery-before.txt
 ├── adb-battery-after.txt
@@ -40,7 +44,9 @@ Before starting the eight-hour timer, create the Phase 2 manifest with
 `make phase2-tablet-manifest EVIDENCE_DIR="$RUN_DIR" ...` and fill in the
 stand, charger, host build, APK hash, transport, video preferences, thresholds,
 and planned recovery scenarios. The file must validate against
-`tools/schemas/phase2-tablet-manifest.schema.json`.
+`tools/schemas/phase2-tablet-manifest.schema.json`. It also records the Android
+PSS source, Host RSS source, Host PID, minimum eight-hour duration, sample
+cadence, and required memory/charging/thermal fields.
 
 The artifact must validate against `tools/schemas/device-info.schema.json`;
 `device.txt` and `phase2-tablet-manifest.json` are supporting records, not substitutes for the
@@ -61,13 +67,15 @@ SHA, APK SHA-256, transport, video preferences, predeclared pass/fail thresholds
 exact collection commands, raw-log links, first failure if any, measured
 duration/cadence, and final result. A `phase2-8h` directory can close the
 eight-hour gate only when `summary.json` records `duration_seconds >= 28800`,
-`interval_seconds <= 60`, and zero missing sample gaps; any app or host crash,
+`interval_seconds <= 60`, zero missing sample gaps, and
+`soak-8h/phase2-device-memory-gate.json` reports `pass` from Android PSS, Host
+RSS, charging/full-state, and thermal samples. Any app or host crash,
 unrecovered interruption, stale frame/input acceptance, sustained severe or
-critical thermal state, charging failure, or untrustworthy sample/transport data
-must record `first_failure_at` and fail the run. A phone run, emulator run,
-synthetic layout test, focused unit test, or short soak belongs in its own
-evidence record but does not close the 8-9 inch tablet or eight-hour
-sustained-use gates.
+critical thermal state, charging failure, missing Host PID/RSS, missing Android
+PSS, or untrustworthy sample/transport data must record `first_failure_at` and
+fail the run. A phone run, emulator run, synthetic layout test, focused unit
+test, or short soak belongs in its own evidence record but does not close the
+8-9 inch tablet, eight-hour sustained-use, or device-memory gates.
 
 Hardware-keyboard workflow evidence uses a focused gate summary alongside any
 tablet or substitute-device records. A passing directory must include

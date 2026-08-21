@@ -1,0 +1,53 @@
+{
+  "derivation_status": "complete",
+  "errors": [],
+  "kind": "soak_exact_window_report",
+  "metrics": {
+    "battery": {
+      "level_percent": {
+        "count": 1,
+        "final": 100.0,
+        "first": 100.0,
+        "max": 100.0,
+        "mean": 100.0,
+        "min": 100.0
+      }
+    },
+    "memory_kib": {
+      "client_total_pss": {
+        "count": 1,
+        "final": 210000.0,
+        "first": 210000.0,
+        "max": 210000.0,
+        "mean": 210000.0,
+        "min": 210000.0,
+        "slope_kib_per_minute": {
+          "full_window": null,
+          "second_half": null,
+          "second_half_sample_count": 1
+        }
+      }
+    },
+    "samples": {
+      "gaps": {
+        "count": 1,
+        "maximum_interval_seconds": null,
+        "maximum_window_gap_seconds": 30.0
+      }
+    },
+    "thermal": {}
+  },
+  "run_id": "blocked-device-memory",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_summary": {
+    "errors": [],
+    "status": "complete"
+  },
+  "window": {
+    "duration_seconds": 30.0,
+    "finished_at": "2026-08-21T00:00:30Z",
+    "sample_records_in_window": 1,
+    "started_at": "2026-08-21T00:00:00Z",
+    "telemetry_records_in_window": 1
+  }
+}

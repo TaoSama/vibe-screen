@@ -40,6 +40,7 @@ adb -s "$ADB_SERIAL" shell dumpsys power > adb-power-before.txt
 adb -s "$ADB_SERIAL" shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
 adb -s "$ADB_SERIAL" shell dumpsys SurfaceFlinger --latency-clear || true
 adb -s "$ADB_SERIAL" shell pidof dev.telemachus.display > android-pid.txt
+pgrep -f 'Vibe Screen' > host-pid.txt
 ```
 
 Then write the Phase 2 manifest from the evidence root. Use
@@ -63,6 +64,7 @@ make phase2-tablet-manifest \
   PHASE2_APK_SHA256="<debug or release APK SHA-256>" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS="<battery temperature limit>" \
   PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT="<maximum net battery drain>" \
+  EVIDENCE_HOST_PID="$(cat host-pid.txt)" \
   PHASE2_RECOVERY_SCENARIOS="background_foreground,transport_reconnect"
 ```
 
@@ -104,6 +106,16 @@ charging, `3` discharging, `4` not charging, and `5` full. The gate treats only
 charging/full samples as compatible with stand-mounted charging, requires the
 derived `plugged` value to stay nonzero, and compares net battery drain against
 the predeclared manifest threshold.
+Use the same Host PID that was written into `phase2-tablet-manifest.json`; if
+the PID changes outside an intentional restart/recovery scenario, mark the run
+failed and keep the partial evidence.
+
+```bash
+make soak-8h \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
+  EVIDENCE_DIR="$RUN_DIR" \
+  EVIDENCE_HOST_PID="$(cat host-pid.txt)"
+```
 
 A directory named `phase2-8h` closes the sustained-use gate only when
 `summary.json` records `duration_seconds >= 28800`, `interval_seconds <= 60`,
@@ -111,16 +123,16 @@ and zero missing sample gaps over the measured interval. The run README must
 include the exact collection commands, links to `samples.jsonl`,
 `summary.json`, `phase2-tablet-manifest.json`, and raw logs, plus the measured
 duration, cadence, and first-failure fields.
-After deriving the exact-window report, run:
-
-```bash
-make phase2-tablet-gate EVIDENCE_DIR="$RUN_DIR"
-```
-
-The gate reads the manifest and raw evidence root as well as the soak report, so
-a short run, phone substitute, missing raw battery / power / thermal files,
-missing screenshots, or undeclared threshold remains `insufficient` instead of
-closing Phase 2.
+After the timer completes, run `make phase2-device-memory-gate` before the
+broader `make phase2-tablet-gate`. The device-memory gate writes
+`soak-8h/phase2-device-memory-gate.json` and must report `pass` before the
+Phase 2 device-memory item can be marked covered. Missing Android PSS, missing
+Host RSS, missing charging/full-state samples, missing thermal status, a phone
+substitute such as Nubia P0110/pacific, or a sub-eight-hour window is
+`insufficient`, not a pass. The broader tablet gate also reads the manifest and
+raw evidence root, so missing raw battery, power, thermal, log, screenshot, or
+undeclared threshold artifacts also remain `insufficient` instead of closing
+Phase 2.
 
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are
@@ -259,6 +271,9 @@ Each run directory should include at minimum:
   `tools/schemas/phase2-tablet-manifest.schema.json`;
 - `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
+- `host-telemetry.jsonl`, `soak-8h/exact-window-report.json`,
+  `soak-8h/phase2-device-memory-gate.json`, and
+  `soak-8h/phase2-tablet-gate.json`;
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
   `adb-power-after.txt`, thermal dumps before/after, and the corresponding
   `thermal-*.err` stderr captures;

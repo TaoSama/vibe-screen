@@ -1,0 +1,91 @@
+{
+  "android_artifact": {
+    "apk_sha256": "not-run"
+  },
+  "command": [
+    "make",
+    "phase2-device-memory-gate",
+    "EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked"
+  ],
+  "created_at": "2026-08-21T00:00:00Z",
+  "device": {
+    "device_class": "android_substitute",
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "EP0110PZ0B9110300B",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/not-run",
+      "codename": "pacific",
+      "device_serial": "EP0110PZ0B9110300B",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": "36"
+    },
+    "tablet_size_inches": null
+  },
+  "host": {
+    "build": "not-run",
+    "identity": "not-run"
+  },
+  "kind": "phase2_tablet_sustained_use_manifest",
+  "limitations": [
+    "This blocked record has no physical 8-9 inch tablet and no eight-hour samples.",
+    "Nubia P0110/pacific/Android 16 is recorded as an Android substitute only and must not be relabeled as Xiaomi 13/fuxi or as 8-9 inch tablet evidence."
+  ],
+  "memory_sampling": {
+    "android_pss_source": "ADB dumpsys meminfo dev.telemachus.display TOTAL PSS",
+    "host_pid": null,
+    "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+    "minimum_duration_seconds": 28800,
+    "require_host_pid": true,
+    "required_fields": [
+      "device.memory.app_total_pss_kb",
+      "host.rss_kb",
+      "device.battery.level",
+      "device.battery.status",
+      "device.thermal.status"
+    ],
+    "sample_interval_seconds": 30
+  },
+  "notes": "Blocked verifier fixture: demonstrates fail-closed behavior when only the P0110 phone substitute and no 8h joint Android PSS/Host RSS samples are available.",
+  "physical_setup": {
+    "ambient_temperature_celsius": null,
+    "cable_or_dock": "not-run",
+    "charger": "not-run",
+    "stand_setup": "not-run"
+  },
+  "recovery_scenarios": [],
+  "repository": {
+    "dirty": true,
+    "revision": "22da26816465257b4a09f95de47be8567e448b74",
+    "status_porcelain": []
+  },
+  "required_artifacts": [
+    "phase2-tablet-manifest.json",
+    "soak-8h/samples.jsonl",
+    "soak-8h/summary.json",
+    "soak-8h/host-telemetry.jsonl",
+    "soak-8h/exact-window-report.json",
+    "soak-8h/phase2-device-memory-gate.json"
+  ],
+  "required_gates": [
+    "physical_8_9_inch_tablet",
+    "stand_mounted_charging",
+    "thermal_power_sampling",
+    "device_memory_sampling",
+    "eight_hour_sustained_stream"
+  ],
+  "run_id": "22222222-2222-4222-8222-222222222222",
+  "schema_version": "vibescreen.evidence/v1",
+  "session": {
+    "duration_seconds": 28800,
+    "sample_interval_seconds": 30,
+    "transport": "usb",
+    "video_preferences": "not-run"
+  },
+  "thresholds": {
+    "battery_temperature_limit_celsius": 45.0,
+    "maximum_net_battery_drain_percent": 5,
+    "thermal_limit_status": 2
+  }
+}

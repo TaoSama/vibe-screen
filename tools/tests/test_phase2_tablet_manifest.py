@@ -56,6 +56,10 @@ def make_manifest(**overrides):
         "video_preferences": "Balanced, 60 FPS, AUTO bitrate",
         "duration_seconds": 28800,
         "sample_interval_seconds": 30,
+        "host_pid": 4242,
+        "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+        "android_pss_source": "ADB dumpsys meminfo app TOTAL PSS",
+        "require_host_pid": True,
         "thermal_limit_status": 2,
         "battery_temperature_limit_celsius": 45.0,
         "maximum_net_battery_drain_percent": 5,
@@ -83,8 +87,16 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(manifest["physical_setup"]["charger"], "vendor 45W USB-C charger")
         self.assertEqual(manifest["session"]["duration_seconds"], 28800)
         self.assertIn("stand_mounted_charging", manifest["required_gates"])
+        self.assertIn("device_memory_sampling", manifest["required_gates"])
         self.assertIn("phase2-tablet-manifest.json", manifest["required_artifacts"])
-        self.assertIn("samples.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/samples.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/phase2-device-memory-gate.json", manifest["required_artifacts"])
+        self.assertEqual(
+            manifest["memory_sampling"]["android_pss_source"],
+            "ADB dumpsys meminfo app TOTAL PSS",
+        )
+        self.assertTrue(manifest["memory_sampling"]["require_host_pid"])
+        self.assertEqual(manifest["memory_sampling"]["host_pid"], 4242)
         self.assertTrue(any("does not close" in item for item in manifest["limitations"]))
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
@@ -124,6 +136,12 @@ class Phase2TabletManifestTests(unittest.TestCase):
             make_manifest(device_info={"device": {"model": "P0110"}})
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_rejects_required_missing_host_pid(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with self.assertRaisesRegex(ManifestError, "host-pid"):
+            make_manifest(host_pid=None)
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_cli_writes_manifest_with_device_info(self, state):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         with tempfile.TemporaryDirectory() as directory_name:
@@ -151,6 +169,8 @@ class Phase2TabletManifestTests(unittest.TestCase):
                     "usb",
                     "--video-preferences",
                     "Balanced 60 FPS",
+                    "--host-pid",
+                    "4242",
                     "--host-identity",
                     "Mac mini",
                     "--host-build",

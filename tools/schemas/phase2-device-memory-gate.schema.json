@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-device-memory-gate.schema.json",
+  "title": "Vibe Screen Phase 2 device memory gate v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "manifest",
+    "report",
+    "thresholds",
+    "sufficiency",
+    "criteria",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase2_device_memory_gate"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "fail", "insufficient"]},
+    "manifest": {"type": "object"},
+    "report": {"type": "object"},
+    "thresholds": {"type": "object"},
+    "sufficiency": {"type": "object"},
+    "criteria": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "interpretation": {"type": "string"}
+  }
+}

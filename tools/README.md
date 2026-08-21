@@ -144,6 +144,7 @@ scenarios:
 ```sh
 make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/evidence \
   PHASE2_DEVICE_CLASS=physical_8_9_inch_tablet \
+  PHASE2_TABLET_SIZE_INCHES="8.8" \
   PHASE2_STAND_SETUP="desktop stand, portrait" \
   PHASE2_CHARGER="vendor USB-C charger" \
   PHASE2_CABLE_OR_DOCK="USB-C data cable" \
@@ -152,7 +153,8 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_HOST_BUILD="host build command, signing identity, and SHA" \
   PHASE2_APK_SHA256="debug or release APK SHA-256" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
-  PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5
+  PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5 \
+  EVIDENCE_HOST_PID="$HOST_PID"
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
@@ -160,24 +162,46 @@ or another phone substitute. That records useful readiness data, but it cannot
 close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi
 evidence.
 
+Run the eight-hour soak with the same Host process ID so each sample carries
+both Android app PSS and Host RSS:
+
+```sh
+make soak-8h EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/evidence \
+  EVIDENCE_HOST_PID="$HOST_PID"
+```
+
+The Phase 2 device-memory gate is intentionally independent from the broader
+tablet productization gate. It consumes the pre-run manifest plus the
+exact-window report and fails closed when the manifest is not a physical
+8-9 inch tablet, the run is shorter than eight hours, Android PSS is missing,
+Host RSS is missing, charging/full-state samples are missing or not continuous,
+or thermal status samples are missing:
+
+```sh
+make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
+```
+
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 ```
 
-The gate consumes `.build/evidence/soak-8h/exact-window-report.json`,
+The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
 `.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
-`.build/evidence/`, then writes
+`.build/evidence/`, then write
+`.build/evidence/soak-8h/phase2-device-memory-gate.json` and
 `.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
-client and host memory growth, battery/thermal readings below the Phase 2
+Android PSS and Host RSS growth, and battery/thermal readings below the Phase 2
 thresholds, a manifest declaring `physical_8_9_inch_tablet`, and the required
 raw README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
 readiness records and intentionally evaluate as `insufficient` for the formal
-8-9 inch tablet gate.
+8-9 inch tablet gate. The commands do not replace the raw physical-tablet,
+stand-mounted charging, login, headless, and background-recovery artifacts
+required by the Phase 2 runbook.
 
 ### Short Host memory regression gate
 

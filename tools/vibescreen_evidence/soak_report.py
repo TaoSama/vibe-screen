@@ -276,6 +276,7 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
     thermal_by_sensor: dict[str, list[float]] = defaultdict(list)
     battery_values: dict[str, list[float]] = defaultdict(list)
     battery_counts: dict[str, Counter[int]] = {"plugged": Counter(), "status": Counter()}
+    battery_charging_or_full: list[float] = []
     power_values: dict[str, list[float]] = defaultdict(list)
     for timestamp, sample in exact_samples:
         host_value = _number(_get(sample, "host", "rss_kb"))
@@ -298,6 +299,18 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                     thermal_by_sensor[name].append(celsius)
         battery = _get(sample, "device", "battery")
         if isinstance(battery, dict):
+            powered = any(
+                battery.get(name) is True
+                for name in ("AC_powered", "USB_powered", "Wireless_powered", "Dock_powered")
+            )
+            # Android battery status uses 2 for charging and 5 for full. Treat
+            # either a powered source or an explicit full/charging state as
+            # acceptable stand-mounted charging evidence.
+            status = _number(battery.get("status"))
+            if powered or status is not None:
+                battery_charging_or_full.append(
+                    1.0 if powered or status in (2.0, 5.0) else 0.0
+                )
             for name in ("level", "plugged", "status", "temperature", "voltage", "charge_counter"):
                 value = _number(battery.get(name))
                 if value is not None:
@@ -442,6 +455,9 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                 "status_counts": {
                     str(key): count for key, count in sorted(battery_counts["status"].items())
                 },
+                "charging_or_full": _statistics(
+                    battery_charging_or_full, "battery.charging_or_full"
+                ),
             },
             "power": {
                 name: _statistics(values, f"power.{name}")
