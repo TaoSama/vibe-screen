@@ -402,8 +402,8 @@ enum InternetSessionLeaseIssuer {
             )
         }
         let identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
-        let epoch = try lifecycle.advanceSessionEpoch(
-            pairingIdentifier: requested.pairingIdentifier
+        let epoch = try lifecycle.reserveSessionEpoch(
+            requested.authoritativeSessionEpoch
         )
         let nowSeconds = now().timeIntervalSince1970
         guard nowSeconds >= 0,
@@ -519,7 +519,7 @@ enum InternetSessionLeaseSelfTest {
             ) as? [String: Any],
                   let issuedEpoch = (signedRoot["session_epoch"] as? NSNumber)?.uint64Value,
                   let expiresAt = (signedRoot["expires_at"] as? NSNumber)?.uint64Value,
-                  issuedEpoch == 1,
+                  issuedEpoch == fixture.authoritativeSessionEpoch,
                   signedRoot["lease_host_key_id"] as? String ==
                     keychainIdentity.publicIdentity.keyID,
                   let encodedKeychainSignature =
@@ -541,7 +541,7 @@ enum InternetSessionLeaseSelfTest {
 
             let highCallerJSON = leaseJSON.replacingOccurrences(
                 of: "\"session_epoch\":7",
-                with: "\"session_epoch\":9223372036854775806"
+                with: "\"session_epoch\":100"
             )
             let restarted = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(highCallerJSON.utf8),
@@ -549,27 +549,30 @@ enum InternetSessionLeaseSelfTest {
                 secretStore: bindingStore,
                 stateStoreFactory: leaseStateStoreFactory
             )
-            guard try signedEpoch(restarted) == 2 else { return false }
+            guard try signedEpoch(restarted) == 100 else { return false }
 
-            let resultLock = NSLock()
-            var concurrentEpochs: [UInt64] = []
-            var concurrentFailures = 0
-            DispatchQueue.concurrentPerform(iterations: 8) { _ in
-                do {
-                    let issued = try InternetSessionLeaseIssuer.issue(
-                        unsignedJSON: Data(leaseJSON.utf8),
-                        identityStore: keychainStore,
-                        secretStore: bindingStore,
-                        stateStoreFactory: leaseStateStoreFactory
-                    )
-                    let epoch = try signedEpoch(issued)
-                    resultLock.lock(); concurrentEpochs.append(epoch); resultLock.unlock()
-                } catch {
-                    resultLock.lock(); concurrentFailures += 1; resultLock.unlock()
-                }
+            for nextEpoch in UInt64(101)...UInt64(108) {
+                let nextJSON = highCallerJSON.replacingOccurrences(
+                    of: "\"session_epoch\":100",
+                    with: "\"session_epoch\":\(nextEpoch)"
+                )
+                let issued = try InternetSessionLeaseIssuer.issue(
+                    unsignedJSON: Data(nextJSON.utf8),
+                    identityStore: keychainStore,
+                    secretStore: bindingStore,
+                    stateStoreFactory: leaseStateStoreFactory
+                )
+                guard try signedEpoch(issued) == nextEpoch else { return false }
             }
-            guard concurrentFailures == 0,
-                  Set(concurrentEpochs) == Set(UInt64(3)...UInt64(10)) else { return false }
+            do {
+                _ = try InternetSessionLeaseIssuer.issue(
+                    unsignedJSON: Data(leaseJSON.utf8),
+                    identityStore: keychainStore,
+                    secretStore: bindingStore,
+                    stateStoreFactory: leaseStateStoreFactory
+                )
+                return false
+            } catch {}
 
             let missingDurableState = SelfTestPairingValidationFailureStore()
             let unreadCredentials = SelfTestCountingLeaseSecretStore()
@@ -662,9 +665,10 @@ enum InternetSessionLeaseSelfTest {
                 secretStore: bindingStore,
                 stateStoreFactory: leaseStateStoreFactory
             )
-            guard try signedEpoch(otherPairingLease) == 1 else { return false }
+            guard try signedEpoch(otherPairingLease) == 7 else { return false }
 
-            let cipherLifecycle = SecurityLifecycle(store: leaseStateStore)
+            let cipherStateStore = SelfTestLeaseStateStore()
+            let cipherLifecycle = SecurityLifecycle(store: cipherStateStore)
             let stalePair = try PlatformSessionPacketCipher.selfTestPair(
                 sessionIdentifier: "lease-self-test-epoch-10",
                 sharedSecret: Data(repeating: 0x41, count: 32),

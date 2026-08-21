@@ -3,7 +3,10 @@ package signaling_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -150,17 +153,8 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	requestID := "req-" + randomSuffix(t)
 	const sessionEpoch uint64 = 1
 
-	// Register the account and both devices through the authority admin API.
-	authorityRequest(t, http.MethodPut, authorityBase+"/v1/accounts/"+accountID,
-		run.authorityAdminToken, "", http.StatusNoContent)
-	authorityRequest(t, http.MethodPut,
-		authorityBase+"/v1/accounts/"+accountID+"/devices/"+hostDeviceID,
-		run.authorityAdminToken, "", http.StatusNoContent)
-	authorityRequest(t, http.MethodPut,
-		authorityBase+"/v1/accounts/"+accountID+"/devices/"+clientDeviceID,
-		run.authorityAdminToken, "", http.StatusNoContent)
-
-	// Create an authority-backed signaling session.
+	// Production signaling remains fail-closed before authority profile issuance
+	// has registered the account and both paired devices.
 	createBody := fmt.Sprintf(`{
   "request_id": %q,
   "account_id": %q,
@@ -169,17 +163,37 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
   "session_epoch": %d,
   "ttl_seconds": 60
 }`, requestID, accountID, hostDeviceID, clientDeviceID, sessionEpoch)
-	createResp := postJSON(t, signalingBase+"/v1/sessions", run.signalingIssuerToken,
-		createBody, http.StatusCreated)
-	var firstSession sessionResponse
-	if err := json.Unmarshal(createResp, &firstSession); err != nil {
+	postJSON(t, signalingBase+"/v1/sessions", run.signalingIssuerToken,
+		createBody, http.StatusNotFound)
+
+	// Issue the session-authority profile directly from pairing output. The
+	// authority atomically creates the account, registers the two devices, and
+	// admits a signaling session without giving signaling account-admin powers.
+	profile := authorityProfileRequest(t, requestID, accountID, hostDeviceID, clientDeviceID, sessionEpoch, signalingBase)
+	profileResp := authorityPostJSON(t, authorityBase+"/v1/session-authority/profiles", run.authorityAdminToken, profile, http.StatusCreated)
+	var issued authorityProfileResponse
+	if err := json.Unmarshal(profileResp, &issued); err != nil {
 		t.Fatal(err)
 	}
-	if firstSession.SessionID == "" || firstSession.HostToken == "" || firstSession.DeviceToken == "" {
-		t.Fatalf("incomplete session response: %#v", firstSession)
+	if issued.SignalingSessionID == "" || issued.HostSignalingToken == "" {
+		t.Fatalf("incomplete profile issuance response: %#v", issued)
 	}
-	if firstSession.HostToken == firstSession.DeviceToken {
-		t.Fatalf("host and device tokens must differ: %#v", firstSession)
+	var unsignedLease map[string]any
+	if err := json.Unmarshal(issued.UnsignedAndroidLease, &unsignedLease); err != nil {
+		t.Fatal(err)
+	}
+	deviceToken, ok := unsignedLease["signaling_token"].(string)
+	if !ok || deviceToken == "" || deviceToken == issued.HostSignalingToken {
+		t.Fatalf("unsigned lease did not carry a distinct client token: %#v", unsignedLease)
+	}
+	firstSession := sessionResponse{SessionID: issued.SignalingSessionID, HostToken: issued.HostSignalingToken, DeviceToken: deviceToken}
+	replayResp := authorityPostJSON(t, authorityBase+"/v1/session-authority/profiles", run.authorityAdminToken, profile, http.StatusOK)
+	var replayed authorityProfileResponse
+	if err := json.Unmarshal(replayResp, &replayed); err != nil {
+		t.Fatal(err)
+	}
+	if replayed.SignalingSessionID != issued.SignalingSessionID || replayed.HostSignalingToken != issued.HostSignalingToken || string(replayed.UnsignedAndroidLease) != string(issued.UnsignedAndroidLease) {
+		t.Fatalf("profile issuance replay changed the session authority response")
 	}
 	credentialPasswords := []string{}
 	assertCredential := func(body string) {
@@ -331,7 +345,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 
 func resetAuthorityDatabase(t *testing.T, databaseURL string) {
 	t.Helper()
-	const statement = "TRUNCATE authority_coturn_events, authority_relay_allocations, authority_relay_daily_usage, authority_signaling_sessions, authority_session_epoch_floors, authority_devices, authority_accounts, authority_audit_events RESTART IDENTITY CASCADE"
+	const statement = "TRUNCATE authority_coturn_events, authority_relay_allocations, authority_relay_daily_usage, authority_session_profile_issuance, authority_signaling_sessions, authority_session_epoch_floors, authority_devices, authority_accounts, authority_audit_events RESTART IDENTITY CASCADE"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "psql", databaseURL, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", "--command", statement)
@@ -349,6 +363,68 @@ func resetSignalingDatabase(t *testing.T, databaseURL string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("reset signaling integration database: %v\n%s", err, output)
 	}
+}
+
+type authorityProfileResponse struct {
+	AccountID            string          `json:"account_id"`
+	PairingID            string          `json:"pairing_id"`
+	SignalingSessionID   string          `json:"signaling_session_id"`
+	HostSignalingToken   string          `json:"host_signaling_token"`
+	UnsignedAndroidLease json.RawMessage `json:"unsigned_android_lease"`
+}
+
+func authorityProfileRequest(t *testing.T, requestID, accountID, hostDeviceID, clientDeviceID string, sessionEpoch uint64, signalingURL string) string {
+	t.Helper()
+	turnUser := "turn-user"
+	turnCredential := "turn-credential"
+	body := map[string]any{
+		"request_id":                 requestID,
+		"account_id":                 accountID,
+		"pairing_id":                 "pairing-" + randomSuffix(t),
+		"host_identity":              authorityPublicIdentity(t, hostDeviceID, 1),
+		"client_identity":            authorityPublicIdentity(t, clientDeviceID, 1),
+		"signaling_url":              signalingURL,
+		"session_epoch":              sessionEpoch,
+		"ttl_seconds":                60,
+		"transcript_context":         base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)),
+		"protocol_session_id":        base64.StdEncoding.EncodeToString([]byte("protocol-session")),
+		"ice_servers":                []map[string]any{{"urls": []string{"stun:stun.example.test"}, "username": nil, "credential": nil}, {"urls": []string{"turn:turn.example.test?transport=udp"}, "username": turnUser, "credential": turnCredential}},
+		"allow_insecure_for_testing": true,
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func authorityPublicIdentity(t *testing.T, deviceID string, epoch uint64) map[string]any {
+	t.Helper()
+	privateKey, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := privateKey.PublicKey().Bytes()
+	digest := sha256.Sum256(publicKey)
+	return map[string]any{
+		"device_id":           deviceID,
+		"key_id":              fmt.Sprintf("%x", digest[:]),
+		"key_epoch":           epoch,
+		"signature_algorithm": "ECDSA_P256_SHA256",
+		"signing_public_key":  base64.RawURLEncoding.EncodeToString(publicKey),
+	}
+}
+
+func authorityPostJSON(t *testing.T, url, token, body string, expectedStatus int) []byte {
+	t.Helper()
+	status, responseBody, err := requestStatus(http.MethodPost, url, token, body)
+	if err != nil {
+		t.Fatalf("authority request POST %s: %v", url, err)
+	}
+	if status != expectedStatus {
+		t.Fatalf("authority POST %s status=%d want=%d body=%s", url, status, expectedStatus, responseBody)
+	}
+	return responseBody
 }
 
 func buildAuthority(t *testing.T, binaryPath string) {

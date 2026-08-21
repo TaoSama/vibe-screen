@@ -338,20 +338,21 @@ risks.
 The following are explicit limitations of the current `production_authority`
 slice, not accepted production behavior:
 
-- Mac and Android automatic profile/account/session issuance is not wired to the
-  authority; the local development flows still require operator-supplied
-  credentials and epoch.
-- Automatic account and device registration is not wired; accounts and devices
-  must be registered through the authority admin API before a session can be
-  created.
+- Authority-side automatic account/device registration plus unsigned
+  session-profile issuance is implemented and locally/PostgreSQL tested.
+  Mac/Android automatic invocation, Mac signing handoff, Android UI import, and
+  real-device proof of the full flow remain open gates; local flows still require
+  an operator-supplied unsigned lease to the Mac signer and the resulting signed
+  lease to Android.
 - Relay credential admission is wired to the authority, but the coturn exporter,
   reconciliation loop, and active-allocation disconnect path are not production
   proven.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a session is revoked at the authority; signaling invalidation only stops new
   rendezvous access.
-- The authority's per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch operate in different scopes; their interaction is not yet unified.
+- The authority's per-device `session_epoch` floor supplies the lease epoch, and
+  the Mac pairing-scoped issuer reserves that exact value before signing. This
+  source-level reconciliation still lacks real-device proof.
 - PostgreSQL durable routing is implemented for `production_authority`, but
   multi-instance operation is not proven. `session_creates_per_minute` remains a
   process-local cap, throughput has not been validated across replicas, and no

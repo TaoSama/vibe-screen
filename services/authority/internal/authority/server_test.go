@@ -3,7 +3,10 @@ package authority
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +47,7 @@ type memoryStore struct {
 	revoked         map[string]uint64
 	sessions        map[string]*memorySession
 	requests        map[string]string
+	profileRequests map[string]memoryProfileRequest
 	allocations     map[string]*memoryAllocation
 	events          map[string][sha256.Size]byte
 	daily           map[string]uint64
@@ -53,8 +57,13 @@ type memoryStore struct {
 	dailyLimit      uint64
 }
 
+type memoryProfileRequest struct {
+	digest    [sha256.Size]byte
+	sessionID string
+}
+
 func newMemoryStore() *memoryStore {
-	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, now: time.Now, allocationLimit: 1, dailyLimit: 100}
+	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, profileRequests: map[string]memoryProfileRequest{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, now: time.Now, allocationLimit: 1, dailyLimit: 100}
 }
 func (s *memoryStore) Close()                      {}
 func (s *memoryStore) Ready(context.Context) error { return s.readyError }
@@ -122,9 +131,64 @@ func (s *memoryStore) RevokeDevice(_ context.Context, id string, epoch uint64, _
 	}
 	return nil
 }
+func (s *memoryStore) IssueSessionProfile(_ context.Context, request SessionProfileRequest, now time.Time) (SessionProfileResponse, error) {
+	digest, err := profileRequestDigest(request)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.profileRequests[request.RequestID]; ok {
+		if existing.digest != digest {
+			return SessionProfileResponse{}, ErrConflict
+		}
+		session := s.sessions[existing.sessionID]
+		if session == nil {
+			return SessionProfileResponse{}, ErrNotFound
+		}
+		if session.revoked || !now.Before(session.admission.ExpiresAt) || s.accounts[session.request.AccountID] || s.revoked[session.request.HostDeviceID] > 0 || s.revoked[session.request.ClientDeviceID] > 0 {
+			return SessionProfileResponse{}, ErrRevoked
+		}
+		admission := session.admission
+		admission.Created = false
+		unsignedLease, err := unsignedAndroidLease(request, admission)
+		if err != nil {
+			return SessionProfileResponse{}, err
+		}
+		return SessionProfileResponse{AccountID: request.AccountID, PairingID: request.PairingID, SignalingSessionID: admission.SessionID, HostSignalingToken: admission.HostToken, ExpiresAt: admission.ExpiresAt, Created: false, UnsignedAndroidLease: unsignedLease}, nil
+	}
+	if suspended, ok := s.accounts[request.AccountID]; ok && suspended {
+		return SessionProfileResponse{}, ErrRevoked
+	}
+	if _, ok := s.accounts[request.AccountID]; !ok {
+		s.accounts[request.AccountID] = false
+	}
+	for _, deviceID := range []string{request.HostIdentity.DeviceID, request.ClientIdentity.DeviceID} {
+		if existing, ok := s.devices[deviceID]; ok && existing != request.AccountID {
+			return SessionProfileResponse{}, ErrConflict
+		}
+		s.devices[deviceID] = request.AccountID
+	}
+	signalingRequest := SignalingRequest{RequestID: profileSignalingRequestID(request.RequestID), AccountID: request.AccountID, HostDeviceID: request.HostIdentity.DeviceID, ClientDeviceID: request.ClientIdentity.DeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: request.TTLSeconds}
+	admission, err := s.createSignalingLocked(signalingRequest, now)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	unsignedLease, err := unsignedAndroidLease(request, admission)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	s.profileRequests[request.RequestID] = memoryProfileRequest{digest: digest, sessionID: admission.SessionID}
+	return SessionProfileResponse{AccountID: request.AccountID, PairingID: request.PairingID, SignalingSessionID: admission.SessionID, HostSignalingToken: admission.HostToken, ExpiresAt: admission.ExpiresAt, Created: true, UnsignedAndroidLease: unsignedLease}, nil
+}
+
 func (s *memoryStore) CreateSignaling(_ context.Context, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createSignalingLocked(request, now)
+}
+
+func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.Time) (SignalingAdmission, error) {
 	if s.accounts[request.AccountID] || s.revoked[request.HostDeviceID] > 0 || s.revoked[request.ClientDeviceID] > 0 {
 		return SignalingAdmission{}, ErrRevoked
 	}
@@ -1010,6 +1074,143 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 }
 
+func TestHTTPSessionProfileIssuanceAutoRegistersAndReturnsUnsignedLease(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
+	server.now = func() time.Time { return now }
+	handler := server.Handler()
+
+	body := mustJSON(t, testProfileRequest(t, "profile-request", 3))
+	created := request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusCreated)
+	var response SessionProfileResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.Created || response.AccountID != "account" || response.PairingID != "pairing-authority-test" || response.SignalingSessionID == "" || response.HostSignalingToken == "" {
+		t.Fatalf("incomplete profile issuance response: %#v", response)
+	}
+	var lease map[string]any
+	if err := json.Unmarshal(response.UnsignedAndroidLease, &lease); err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := []string{"allow_insecure_for_testing", "device_identity_epoch", "host_identity_epoch", "ice_servers", "lease_device_key_id", "pairing_id", "pinned_device_id", "pinned_host_id", "protocol_session_id", "session_epoch", "signaling_session_id", "signaling_token", "signaling_url", "transcript_context", "version"}
+	gotKeys := slices.Sorted(maps.Keys(lease))
+	if !slices.Equal(gotKeys, wantKeys) {
+		t.Fatalf("unsigned lease keys=%v, want %v", gotKeys, wantKeys)
+	}
+	if lease["signaling_token"] == response.HostSignalingToken {
+		t.Fatal("unsigned Android lease used the host signaling token")
+	}
+	if lease["signaling_session_id"] != response.SignalingSessionID || uint64(lease["session_epoch"].(float64)) != 3 {
+		t.Fatalf("lease session binding mismatch: %#v", lease)
+	}
+	if role, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, response.HostSignalingToken, now); err != nil || role != "host" {
+		t.Fatalf("host token authorization=%q/%v", role, err)
+	}
+	if role, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, lease["signaling_token"].(string), now); err != nil || role != "client" {
+		t.Fatalf("client token authorization=%q/%v", role, err)
+	}
+	directBody := `{"request_id":"direct","account_id":"missing","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, directBody, http.StatusNotFound)
+}
+
+func TestHTTPSessionProfileIssuanceIsExactlyIdempotent(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	body := mustJSON(t, testProfileRequest(t, "profile-request", 4))
+	first := request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusCreated)
+	second := request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusOK)
+	var a, b SessionProfileResponse
+	if err := json.Unmarshal(first.Body.Bytes(), &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(second.Body.Bytes(), &b); err != nil {
+		t.Fatal(err)
+	}
+	a.Created, b.Created = false, false
+	if a.AccountID != b.AccountID || a.PairingID != b.PairingID || a.SignalingSessionID != b.SignalingSessionID || a.HostSignalingToken != b.HostSignalingToken || a.ExpiresAt != b.ExpiresAt || string(a.UnsignedAndroidLease) != string(b.UnsignedAndroidLease) {
+		t.Fatalf("idempotent profile response changed: %#v %#v", a, b)
+	}
+	changed := testProfileRequest(t, "profile-request", 5)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, changed), http.StatusConflict)
+}
+
+func TestHTTPSessionProfileIssuanceFailsClosedForRevokedSuspendedAndStaleEpoch(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.SignalingToken, mustJSON(t, testProfileRequest(t, "wrong-token", 1)), http.StatusUnauthorized)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, testProfileRequest(t, "first", 10)), http.StatusCreated)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, testProfileRequest(t, "stale", 10)), http.StatusConflict)
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":11}`, http.StatusNoContent)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, testProfileRequest(t, "after-revoke", 12)), http.StatusForbidden)
+
+	suspendedStore := newMemoryStore()
+	suspendedServer, err := NewServer(cfg, suspendedStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suspendedHandler := suspendedServer.Handler()
+	request(t, suspendedHandler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, suspendedHandler, http.MethodPost, "/v1/accounts/account/suspend", cfg.AdminToken, `{}`, http.StatusNoContent)
+	request(t, suspendedHandler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, testProfileRequest(t, "after-suspend", 1)), http.StatusForbidden)
+}
+
+func TestHTTPSessionProfileIssuanceRejectsInvalidContracts(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, func() SessionProfileRequest {
+		value := testProfileRequest(t, "same-device", 1)
+		value.ClientIdentity = value.HostIdentity
+		return value
+	}()), http.StatusBadRequest)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, func() SessionProfileRequest {
+		value := testProfileRequest(t, "bad-key", 1)
+		value.ClientIdentity.KeyID = strings.Repeat("0", 64)
+		return value
+	}()), http.StatusBadRequest)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, func() SessionProfileRequest {
+		value := testProfileRequest(t, "bad-url", 1)
+		value.SignalingURL = "http://example.test"
+		value.AllowInsecureForTesting = true
+		return value
+	}()), http.StatusBadRequest)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, func() SessionProfileRequest {
+		value := testProfileRequest(t, "bad-turn", 1)
+		value.ICEServers = []LeaseICEServer{{URLs: []string{"turn:turn.example.test"}}}
+		return value
+	}()), http.StatusBadRequest)
+	request(t, handler, http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, `{"request_id":"unknown","extra":true}`, http.StatusBadRequest)
+
+	conflicting := newMemoryStore()
+	conflicting.accounts["other"] = false
+	conflicting.devices["client"] = "other"
+	conflictServer, err := NewServer(cfg, conflicting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request(t, conflictServer.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, testProfileRequest(t, "conflict", 1)), http.StatusConflict)
+}
+
 func TestHTTPSuspendAccountRevokesAllSessions(t *testing.T) {
 	store := newMemoryStore()
 	cfg := testAuthorityConfig()
@@ -1159,6 +1360,49 @@ func mustJSON(t *testing.T, value any) string {
 	}
 	return string(encoded)
 }
+
+func testProfileRequest(t *testing.T, requestID string, epoch uint64) SessionProfileRequest {
+	t.Helper()
+	turnUser := "turn-user"
+	turnCredential := "turn-credential"
+	return SessionProfileRequest{
+		RequestID:         requestID,
+		AccountID:         "account",
+		PairingID:         "pairing-authority-test",
+		HostIdentity:      testPublicDeviceIdentity(t, "host", 1),
+		ClientIdentity:    testPublicDeviceIdentity(t, "client", 7),
+		SignalingURL:      "https://signal.example.test",
+		SessionEpoch:      epoch,
+		TTLSeconds:        60,
+		TranscriptContext: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)),
+		ProtocolSessionID: base64.StdEncoding.EncodeToString([]byte("protocol-session")),
+		ICEServers: []LeaseICEServer{
+			{URLs: []string{"stun:stun.example.test"}},
+			{URLs: []string{"turn:turn.example.test?transport=udp"}, Username: &turnUser, Credential: &turnCredential},
+		},
+	}
+}
+
+func testPublicDeviceIdentity(t *testing.T, deviceID string, epoch uint64) PublicDeviceIdentity {
+	t.Helper()
+	privateKey, err := ecdh.P256().GenerateKey(randReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := privateKey.PublicKey().Bytes()
+	digest := sha256.Sum256(publicKey)
+	return PublicDeviceIdentity{
+		DeviceID:           deviceID,
+		KeyID:              fmt.Sprintf("%x", digest[:]),
+		KeyEpoch:           epoch,
+		SignatureAlgorithm: "ECDSA_P256_SHA256",
+		SigningPublicKey:   base64.RawURLEncoding.EncodeToString(publicKey),
+	}
+}
+
+type randReader struct{}
+
+func (randReader) Read(target []byte) (int, error) { return rand.Read(target) }
 
 func TestConfigBoundsPreventDurationAndUint64Overflow(t *testing.T) {
 	cfg := testAuthorityConfig()

@@ -2,6 +2,7 @@ package authority
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -39,7 +40,7 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_session_profile_issuance,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
@@ -146,6 +147,68 @@ func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
 	}
 	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
+func TestPostgresSessionProfileIssuanceRegistersAndReplaysDurably(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	request := testProfileRequest(t, "profile-request", 11)
+
+	if _, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "direct", AccountID: request.AccountID, HostDeviceID: request.HostIdentity.DeviceID, ClientDeviceID: request.ClientIdentity.DeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: request.TTLSeconds}, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("direct signaling before profile issuance error=%v, want ErrNotFound", err)
+	}
+	issued, err := store.IssueSessionProfile(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !issued.Created || issued.SignalingSessionID == "" || issued.HostSignalingToken == "" {
+		t.Fatalf("incomplete issued profile: %#v", issued)
+	}
+	var lease map[string]any
+	if err := json.Unmarshal(issued.UnsignedAndroidLease, &lease); err != nil {
+		t.Fatal(err)
+	}
+	clientToken, ok := lease["signaling_token"].(string)
+	if !ok || clientToken == "" || clientToken == issued.HostSignalingToken {
+		t.Fatalf("invalid unsigned lease token binding: %#v", lease)
+	}
+	if role, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, issued.HostSignalingToken, now); err != nil || role != "host" {
+		t.Fatalf("host role authorization=%q/%v", role, err)
+	}
+	if role, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, clientToken, now); err != nil || role != "client" {
+		t.Fatalf("client role authorization=%q/%v", role, err)
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.IssueSessionProfile(ctx, request, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Created || replayed.SignalingSessionID != issued.SignalingSessionID || replayed.HostSignalingToken != issued.HostSignalingToken || string(replayed.UnsignedAndroidLease) != string(issued.UnsignedAndroidLease) {
+		t.Fatalf("durable profile replay changed response: replay=%#v issued=%#v", replayed, issued)
+	}
+	changed := request
+	changed.PairingID = "pairing-changed"
+	if _, err := restarted.IssueSessionProfile(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed profile request replay error=%v, want ErrConflict", err)
+	}
+	if _, err := restarted.IssueSessionProfile(ctx, testProfileRequest(t, "stale-profile", 11), now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale profile epoch error=%v, want ErrConflict", err)
+	}
+	if err := restarted.RevokeDevice(ctx, request.ClientIdentity.DeviceID, 12, now.Add(4*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.IssueSessionProfile(ctx, testProfileRequest(t, "after-revoke", 13), now.Add(5*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("revoked profile issuance error=%v, want ErrRevoked", err)
+	}
+	if _, err := restarted.IssueSessionProfile(ctx, request, now.Add(6*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("profile replay after revocation error=%v, want ErrRevoked", err)
 	}
 }
 

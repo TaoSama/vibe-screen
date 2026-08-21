@@ -110,16 +110,18 @@ Before a production rollout, require all of the following:
 
 Authority remains the durable source of truth for accepted per-device session
 epoch floors in production. Callers must never mint a local fallback epoch or
-credential when Authority is unavailable. This Compose profile does not add
-automatic account/session issuance, relay/coturn integration, active transport
-disconnect, public ingress, or horizontally shared signaling state.
+credential when Authority is unavailable. This Compose profile includes the
+local Authority endpoint for automatic account/device registration and unsigned
+session-profile issuance, but it does not add Mac/Android automatic invocation,
+relay/coturn production integration, active transport disconnect, public ingress,
+or horizontally shared signaling state.
 
 ## Internal API
 
 Tokens are independent and route-scoped:
 
-- admin: `PUT /v1/accounts/{id}`, account suspension, device registration and
-  monotonic device revocation;
+- admin: `PUT /v1/accounts/{id}`, account suspension, device registration,
+  monotonic device revocation, and session-profile issuance;
 - signaling: create/invalidate a signaling admission and introspect a role
   token;
 - relay: reserve an allocation before issuing its TURN credential;
@@ -129,6 +131,40 @@ Tokens are independent and route-scoped:
 All JSON decoders reject unknown fields/trailing values and cap request bodies.
 Identifiers are pseudonymous ASCII tokens, not email addresses, hardware serials
 or raw account names.
+
+### Session profile issuance
+
+`POST /v1/session-authority/profiles` (admin token) issues the minimum automatic
+Authority-side profile for a paired Mac/Android Internet session. In one
+serializable transaction it ensures the account, registers the host and client
+device IDs when they are not already present, creates a signaling admission, and
+records an issuance ledger keyed by `request_id`. The request must contain
+`request_id`, `account_id`, `pairing_id`, `host_identity`, `client_identity`,
+`signaling_url`, `session_epoch`, `ttl_seconds`, `transcript_context`,
+`protocol_session_id`, `ice_servers`, and `allow_insecure_for_testing`.
+
+Each identity carries `device_id`, `key_id`, `key_epoch`,
+`signature_algorithm`, and `signing_public_key`. The authority validates that
+the signing key is a canonical unpadded base64url P-256 public key, that
+`key_id` is its lowercase SHA-256 hex digest, and that the algorithm is
+`ECDSA_P256_SHA256`. It does not store the public key or sign for the Mac; the
+paired Mac remains responsible for signing the lease with its local Keychain
+identity. Existing suspended accounts, revoked devices, device/account conflicts,
+stale session epochs, malformed ICE/signaling data, and reused request IDs with a
+different request digest fail closed.
+
+The response contains `account_id`, `pairing_id`, `signaling_session_id`,
+`host_signaling_token`, `expires_at`, `created`, and `unsigned_android_lease`.
+The unsigned lease is strict and contains exactly `version`, `pairing_id`,
+`pinned_host_id`, `pinned_device_id`, `lease_device_key_id`, `signaling_url`,
+`signaling_session_id`, `session_epoch`, `host_identity_epoch`,
+`device_identity_epoch`, `transcript_context`, `protocol_session_id`,
+`signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. It never
+contains `expires_at`, `lease_host_key_id`, or `lease_signature`; the Mac adds
+those fields after verifying its local pairing and reserving the
+Authority-supplied epoch. An exact `request_id` replay with the same request
+digest returns the same response with `created=false`; a changed request with the
+same `request_id` returns `409`.
 
 ### Signaling admission
 
@@ -176,9 +212,9 @@ The `session_epoch` is checked against a per-device epoch floor stored in
 `authority_session_epoch_floors`. A new admission must use an epoch strictly
 greater than the floor for both the host and client devices; the floor is then
 raised to the admitted epoch. This prevents replay of an old session epoch after
-revocation. Note that this per-device floor is scoped to the authority's device
-identifiers, which is a different scope from the Mac pairing-scoped epoch; the
-two are not yet unified.
+revocation. Session-profile issuance supplies that same accepted epoch to the
+Mac lease issuer, which reserves it locally before signing and rejects any value
+at or below the local durable floor.
 
 Reserve relay capacity before returning a TURN credential:
 
@@ -298,11 +334,12 @@ separate production requirement.
 
 ### Remaining open items
 
-- Mac and Android automatic profile/account/session issuance is not wired to
-  the authority; local flows still require operator-supplied credentials.
-- Automatic account and device registration is not wired; accounts and devices
-  must be registered through the admin API before a signaling admission can be
-  created.
+- Authority-side automatic account/device registration plus unsigned
+  session-profile issuance is implemented and locally/PostgreSQL tested.
+  Mac/Android automatic invocation, Mac signing handoff, Android UI import, and
+  real-device proof of the full flow remain open gates; local flows still require
+  an operator-supplied unsigned lease to the Mac signer and the resulting signed
+  lease to Android.
 - Relay credential admission is wired to the authority, and the structured
   reconcile helper is locally tested. The coturn exporter, scheduled
   reconciliation loop, active-allocation disconnect executor, and production
@@ -310,8 +347,9 @@ separate production requirement.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a device is revoked or a signaling admission is invalidated; the current
   closure is an authority-ledger boundary, not a data-plane kill path.
-- The authority per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch operate in different scopes and are not yet unified.
+- The authority per-device `session_epoch` floor supplies the lease epoch, and
+  the Mac pairing-scoped issuer reserves that exact value before signing. This
+  source-level reconciliation still lacks real-device proof.
 - Signaling supports PostgreSQL-backed durable routing state. Multi-instance
   throughput remains an open production gate. Per-message remote authorization
   remains a fail-closed correctness choice rather than a high-throughput design.

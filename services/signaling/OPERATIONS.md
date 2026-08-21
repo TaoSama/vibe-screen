@@ -136,15 +136,17 @@ cleanup; Go heap reclamation does not guarantee immediate byte-level erasure.
 
 ## Production authority open items
 
-- Mac/Android automatic profile/account/session issuance is not wired to the
-  authority.
-- Automatic account/device registration is not wired.
+- Authority-side automatic account/device registration plus unsigned
+  session-profile issuance is implemented and locally/PostgreSQL tested, but
+  Mac/Android automatic invocation, Mac signing handoff, Android UI import, and
+  real-device proof of the full flow remain open gates.
 - Relay credential admission is wired to the authority; coturn exporter
   reconciliation and active-allocation disconnect are not production proven.
 - Active PeerConnection/TURN allocations are not actively disconnected on
   authority revocation.
-- The authority per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch have different scopes and are not yet unified.
+- The authority per-device `session_epoch` floor supplies the lease epoch, and
+  the Mac pairing-scoped issuer reserves that exact value before signing. This
+  source-level reconciliation still lacks real-device proof.
 - PostgreSQL durable routing is implemented for `production_authority`, but
   multi-instance operation, global create-rate enforcement, and throughput under
   multiple replicas remain unproved.

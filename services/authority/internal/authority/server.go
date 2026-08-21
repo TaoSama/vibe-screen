@@ -1,7 +1,11 @@
 package authority
 
 import (
+	"crypto/ecdh"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +13,8 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -41,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/accounts/{account_id}/suspend", s.suspendAccount)
 	mux.HandleFunc("PUT /v1/accounts/{account_id}/devices/{device_id}", s.device)
 	mux.HandleFunc("POST /v1/devices/{device_id}/revoke", s.revokeDevice)
+	mux.HandleFunc("POST /v1/session-authority/profiles", s.issueSessionProfile)
 	mux.HandleFunc("POST /v1/signaling/sessions", s.createSignaling)
 	mux.HandleFunc("DELETE /v1/signaling/sessions/{session_id}", s.invalidateSignaling)
 	mux.HandleFunc("POST /v1/signaling/sessions/{session_id}/authorize", s.authorizeSignaling)
@@ -53,6 +60,31 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		mux.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) issueSessionProfile(w http.ResponseWriter, r *http.Request) {
+	if !s.admin(w, r) {
+		return
+	}
+	var request SessionProfileRequest
+	if err := s.decode(w, r, &request); err != nil {
+		s.reject(w, 400, err.Error())
+		return
+	}
+	if err := validateSessionProfileRequest(request, s.cfg); err != nil {
+		s.reject(w, 400, err.Error())
+		return
+	}
+	result, err := s.store.IssueSessionProfile(r.Context(), request, s.now().UTC())
+	if err != nil {
+		s.storeError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
@@ -286,6 +318,152 @@ func validateUsage(value CoturnUsage, now time.Time, requireEventID bool) error 
 		return errors.New("invalid coturn usage")
 	}
 	return nil
+}
+
+func validateSessionProfileRequest(request SessionProfileRequest, cfg Config) error {
+	if !validIdentifier(request.RequestID) || !validIdentifier(request.AccountID) || !validIdentifier(request.PairingID) || request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 || request.TTLSeconds <= 0 || request.TTLSeconds > cfg.MaximumSessionTTLSeconds {
+		return errors.New("invalid session profile issuance")
+	}
+	if request.HostIdentity.DeviceID == request.ClientIdentity.DeviceID {
+		return errors.New("host and client identities must differ")
+	}
+	if err := validateProfileIdentity(request.HostIdentity); err != nil {
+		return fmt.Errorf("invalid host identity: %w", err)
+	}
+	if err := validateProfileIdentity(request.ClientIdentity); err != nil {
+		return fmt.Errorf("invalid client identity: %w", err)
+	}
+	if err := validateProfileSignalingURL(request.SignalingURL, request.AllowInsecureForTesting); err != nil {
+		return err
+	}
+	if _, err := decodeStandardBase64(request.TranscriptContext, 32, 32); err != nil {
+		return fmt.Errorf("invalid transcript_context: %w", err)
+	}
+	if _, err := decodeStandardBase64(request.ProtocolSessionID, 1, 256); err != nil {
+		return fmt.Errorf("invalid protocol_session_id: %w", err)
+	}
+	if len(request.ICEServers) < 1 || len(request.ICEServers) > 16 {
+		return errors.New("ICE server count is invalid")
+	}
+	for _, server := range request.ICEServers {
+		if err := validateProfileICE(server); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateProfileIdentity(identity PublicDeviceIdentity) error {
+	if !validIdentifier(identity.DeviceID) || identity.KeyEpoch == 0 || identity.KeyEpoch > math.MaxInt64 || identity.SignatureAlgorithm != "ECDSA_P256_SHA256" {
+		return errors.New("identity metadata is invalid")
+	}
+	if len(identity.KeyID) != sha256.Size*2 || strings.ToLower(identity.KeyID) != identity.KeyID {
+		return errors.New("key_id must be lowercase SHA-256 hex")
+	}
+	publicKey, err := decodeRawURLBase64(identity.SigningPublicKey)
+	if err != nil {
+		return err
+	}
+	if len(publicKey) != 65 || publicKey[0] != 0x04 {
+		return errors.New("signing_public_key must be an uncompressed P-256 public key")
+	}
+	if _, err := ecdh.P256().NewPublicKey(publicKey); err != nil {
+		return errors.New("signing_public_key is not on P-256")
+	}
+	digest := sha256.Sum256(publicKey)
+	if hex.EncodeToString(digest[:]) != identity.KeyID {
+		return errors.New("key_id does not match signing_public_key")
+	}
+	return nil
+}
+
+func validateProfileSignalingURL(value string, allowInsecure bool) error {
+	if strings.TrimSpace(value) == "" || len(value) > 2048 {
+		return errors.New("signaling_url is invalid")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("signaling_url is invalid")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if allowInsecure {
+		if scheme != "http" || !isLoopbackHost(parsed.Hostname()) {
+			return errors.New("insecure signaling is limited to explicit loopback testing")
+		}
+		return nil
+	}
+	if scheme != "https" {
+		return errors.New("production signaling requires HTTPS")
+	}
+	return nil
+}
+
+func validateProfileICE(server LeaseICEServer) error {
+	if len(server.URLs) < 1 || len(server.URLs) > 8 {
+		return errors.New("ICE URL count is invalid")
+	}
+	containsTURN := false
+	for _, raw := range server.URLs {
+		if strings.TrimSpace(raw) == "" || len(raw) > 2048 {
+			return errors.New("ICE URL is invalid")
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return errors.New("ICE URL is invalid")
+		}
+		switch strings.ToLower(parsed.Scheme) {
+		case "stun", "stuns":
+		case "turn", "turns":
+			containsTURN = true
+		default:
+			return errors.New("ICE URL scheme is invalid")
+		}
+	}
+	if containsTURN && (server.Username == nil || *server.Username == "" || server.Credential == nil || *server.Credential == "") {
+		return errors.New("TURN servers require username and credential")
+	}
+	for _, value := range []*string{server.Username, server.Credential} {
+		if value != nil && len(*value) > 4096 {
+			return errors.New("ICE credential is too large")
+		}
+	}
+	return nil
+}
+
+func decodeRawURLBase64(value string) ([]byte, error) {
+	if value == "" || strings.Contains(value, "=") {
+		return nil, errors.New("value must be unpadded base64url")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("value must be unpadded base64url")
+	}
+	if base64.RawURLEncoding.EncodeToString(decoded) != value {
+		return nil, errors.New("value must be canonical base64url")
+	}
+	return decoded, nil
+}
+
+func decodeStandardBase64(value string, minimumBytes, maximumBytes int) ([]byte, error) {
+	if value == "" || len(value) > 8192 {
+		return nil, errors.New("value is empty or too large")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("value is not valid base64")
+	}
+	if len(decoded) < minimumBytes || len(decoded) > maximumBytes {
+		return nil, errors.New("decoded length is invalid")
+	}
+	return decoded, nil
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address, err := netip.ParseAddr(host)
+	return err == nil && address.IsLoopback()
 }
 
 func (s *Server) admin(w http.ResponseWriter, r *http.Request) bool {
