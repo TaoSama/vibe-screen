@@ -217,6 +217,42 @@ Input Reader State:
         self.assertNotIn("host_log", summary)
         self.assertNotIn("operator", json.dumps(summary))
 
+    def test_write_evidence_normalizes_dumpsys_artifact_whitespace(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        args = argparse.Namespace(
+            host_log=Path("host-stylus.log"),
+            observed_physical_drawing=True,
+            observe_seconds=0,
+            drawing_observation="physical stylus produced visible ink",
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+
+            android_stylus_acceptance.write_evidence(
+                output_dir,
+                args,
+                [],
+                {},
+                "Input Reader State:  \n  UniqueId:  \n",
+                [candidate],
+                "Stylus forwarded: samples=1 extended=true rawSource=0x4002 rawAction=2 rawTools=[stylus] phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.5 tiltX=1 tiltY=-1  \n",
+                None,
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0  \n",
+                "pass",
+            )
+
+            dumpsys_text = (output_dir / "dumpsys-input.txt").read_text(encoding="utf-8")
+            self.assertTrue(dumpsys_text.endswith("\n"))
+            self.assertFalse(any(line.endswith(" ") for line in dumpsys_text.splitlines()))
+            self.assertIn("tiltY=-1  ", (output_dir / "android-diag.log").read_text(encoding="utf-8"))
+            self.assertIn("tiltY=-45.0  ", (output_dir / "host-stylus.log").read_text(encoding="utf-8"))
+
     def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(
             name="goodix_stylus_input",

@@ -50,6 +50,14 @@ Evidence:
   current fail-closed script output; status is
   `blocked_physical_stylus_not_observed` with one pass-eligible capability
   candidate but no physical drawing observation.
+- `evidence/2026-08-21-200005-nubia-p0110-pacific-stylus-preflight/`:
+  refreshed read-only preflight after rebasing onto `origin/main` at
+  `55a78526`; the device was online as nubia P0110 / pacific / Android 16 /
+  SDK 36, `adb reverse` listed `tcp:54321`, the Vibe Screen Activity was
+  `RESUMED`, and the script again reported
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate. No physical stylus drawing, Host stylus injection excerpt, or
+  visible drawing-app screenshot was captured, so the README gate remains open.
 
 ## Tooling change
 
@@ -64,7 +72,10 @@ same-session `Stylus forwarded:` samples with sample count, extended-stylus
 state, phase, contact state, tool kind, buttons, pressure, and signed tilt. The
 Host `Stylus injected:` debug line already includes `tiltX` and `tiltY`, and
 the Android stream and Internet forwarding paths now emit matching diagnostic
-summaries only after outbound stylus samples are admitted.
+summaries only after outbound stylus samples are admitted. `dumpsys input`
+artifacts now normalize line-ending whitespace so checked-in snapshots remain
+compatible with `git diff --check`, while runtime log excerpts keep their
+captured bytes.
 
 ## Verification
 
@@ -88,9 +99,9 @@ git diff --check
 
 Results:
 
-- Android stylus evidence tool unit tests: 16 tests passed after the 2026-08-21
-  fail-closed tightening, hover-only pass rejection coverage, and Host phase
-  requirement coverage.
+- Android stylus evidence tool unit tests: 20 tests passed after the 2026-08-21
+  fail-closed tightening, hover-only pass rejection coverage, Host phase
+  requirement coverage, and `dumpsys input` artifact whitespace normalization.
 - P0110 read-only preflight: `blocked_physical_stylus_not_observed` on nubia
   P0110 / pacific / Android 16 / SDK 36, with one pass-eligible
   `goodix_stylus_input` capability candidate but no physical drawing

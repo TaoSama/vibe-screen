@@ -496,6 +496,10 @@ def is_contact_pressure_sample(line: str) -> bool:
         return False
 
 
+def evidence_text(text: str) -> str:
+    return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+
+
 def write_evidence(
     output_dir: Path,
     args: argparse.Namespace,
@@ -509,7 +513,7 @@ def write_evidence(
     status: str,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
+    (output_dir / "dumpsys-input.txt").write_text(evidence_text(dumpsys_input), encoding="utf-8")
     if diag_log:
         (output_dir / "android-diag.log").write_text(diag_log, encoding="utf-8")
     if host_log_excerpt:
@@ -630,7 +634,7 @@ def render_readme(summary: dict[str, object]) -> str:
     ])
     if status != "blocked_device_coordination_lock":
         lines.extend([
-            "- dumpsys-input.txt: raw read-only Android input-device snapshot.",
+            "- dumpsys-input.txt: raw read-only Android input-device snapshot with line-ending whitespace normalized.",
             "- android-diag.log: app private diagnostic log, present only when run-as succeeded and required for a passing physical drawing run.",
         ])
     lines.extend([
