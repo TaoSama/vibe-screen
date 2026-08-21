@@ -54,7 +54,10 @@ must stay blocked until the strict device gate and readiness preflight both pass
 6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
 7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
-   keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
+   keyboard/modifiers, mouse buttons, stylus pressure, and controller input
+   (button mask, left/right stick axes, left/right triggers, hat,
+   CONNECTED/STATE/DISCONNECTED lifecycle, up to four active controllers, and
+   all-zero neutral release on disconnect) in both orientations.
 8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
    and wake the Mac, and restart the host. Confirm reconnect within the target
    and that no prior-epoch frame renders.

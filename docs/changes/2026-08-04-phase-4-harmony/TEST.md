@@ -113,6 +113,29 @@ HUKS-backed secure pairing, Host interoperability on a HarmonyOS device, or
 MatePad behavior. Controller-specific input still needs the MatePad Mini
 acceptance matrix before being claimed as device-verified.
 
+## 2026-08-21 controller input documentation drift guard
+
+The Phase 4 PRD and technical design now match the already-merged Harmony
+controller portable closure: the production Harmony source advertises
+`CAPABILITY_CONTROLLER`, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting state, validates lifecycle bounds, and sends
+all-zero neutral `DISCONNECTED` releases before teardown or resume. A new static
+validator check rejects the older pre-closure wording so README, app README, PRD,
+TECH, and TEST cannot drift back to claiming the source still lacks the
+capability, encoder, lifecycle, or platform route.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 35 semantic project files; 121/121 portable tests
+```
+
+This remains source and portable-test evidence only. It does not establish
+DevEco ArkTS/API-checker compatibility, a debug or release HAP, signing,
+installation, hardware decode, HUKS-backed secure pairing, Host interoperability
+on a HarmonyOS device, or MatePad behavior. Controller-specific input still
+requires the MatePad Mini acceptance matrix before it can be claimed as
+device-verified.
+
 ## 2026-08-20 HarmonyOS device-gate manifest validator
 
 The MatePad Mini runbook now requires a redacted `harmony-device-gates.json`
