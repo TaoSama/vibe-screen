@@ -73,9 +73,24 @@ the assigned message-ID high-water and sends ResumeSessionRequest. A result must
 correlate, retain the exact session ID, and advance both payload and envelope
 epoch. Rejection or malformed metadata closes the connection rather than falling
 through to ClientHello on the same transport. Accepted recovery re-enters display
-selection and decoder configuration before input or media reopen. The current
-Mac Host still requires ClientHello first, so this portable state machine does
-not establish resume interoperability.
+selection and decoder configuration before input or media reopen. Post-resume
+old-epoch control envelopes fail closed, while post-resume old-epoch media is
+dropped before current-epoch media is admitted. A rejected resume closes the
+transport scope; host restart is therefore represented by a fresh ClientHello
+on a new transport rather than a same-socket downgrade. These portable checks do
+not establish resume interoperability until the Mac Host has a recorded
+resume-capable run.
+
+`scripts/harmony_host_interop_preflight.py` is the fail-closed evidence boundary
+for that run. It validates a redacted manifest that binds a clean source tree,
+DevEco/Harmony SDK versions, a signed `dev.vibescreen.harmony` HAP, a MatePad
+Mini HarmonyOS identity, a Protocol v1 Host build with a resume-capable
+registry, authenticated transport mode, bounded recovery timing, and explicit
+pass artifacts for HostHello/session/display/video/control/media,
+background/foreground, Wi-Fi loss/restore, host restart fresh-session,
+resume-result success/failure, and old-epoch control/media rejection. Its local
+preflight mode writes blocked readiness evidence when those external
+prerequisites are missing.
 
 Transport close plus decoder stop/release are all attempted even if a sibling
 operation fails. Aggregated cleanup errors remain visible in status diagnostics

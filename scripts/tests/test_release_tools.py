@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
 import harmony_device_gate
+import harmony_host_interop_preflight
 import package_macos
 import prepare_release
 import android_stylus_acceptance
@@ -756,6 +757,142 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         )
         self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
+
+
+class HarmonyHostInteropPreflightTests(unittest.TestCase):
+    def passing_manifest(self) -> dict[str, object]:
+        manifest = harmony_host_interop_preflight.template_manifest()
+        manifest["repository"] = {"commit": "a" * 40, "tree": "b" * 40, "status": "clean"}
+        manifest["artifact"] = {
+            "bundle_name": "dev.vibescreen.harmony",
+            "version_name": "0.1.0",
+            "hap_sha256": "1" * 64,
+            "signature_certificate_sha256": "2" * 64,
+        }
+        manifest["device"] = {
+            "platform": "HarmonyOS NEXT",
+            "manufacturer": "Huawei",
+            "model": "MatePad Mini",
+            "product": "MatePad Mini",
+            "os_build": "HarmonyOS NEXT build 1",
+            "hdc_target": "redacted-hdc-target",
+            "serial_hash": "3" * 64,
+        }
+        manifest["host"] = {
+            "commit": "c" * 40,
+            "build_sha256": "4" * 64,
+            "protocol": "Protocol v1",
+            "resume_registry": "resume-capable",
+        }
+        manifest["transport"] = {"mode": "trusted_lan", "encrypted_records": True}
+        manifest["reconnect"] = {
+            "maximum_attempts": 8,
+            "maximum_delay_ms": 8000,
+            "maximum_observed_recovery_ms": 2500,
+        }
+        manifest["flows"] = [
+            {"id": flow_id, "status": "pass", "evidence": [f"evidence/{flow_id}.txt"]}
+            for flow_id in harmony_host_interop_preflight.REQUIRED_FLOW_IDS
+        ]
+        return manifest
+
+    def test_harmony_host_interop_manifest_passes_when_all_flows_pass(self) -> None:
+        self.assertEqual(harmony_host_interop_preflight.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_host_interop_rejects_android_substitute(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["device"] = {
+            "platform": "Android",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "product": "pacific",
+            "os_build": "Android 16",
+            "hdc_target": "not-applicable",
+            "serial_hash": "3" * 64,
+        }
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "Android evidence"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_requires_resume_capable_host(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["host"]["resume_registry"] = "client-hello-only"
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "resume-capable"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_requires_old_epoch_rejection_flows(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["flows"] = [flow for flow in manifest["flows"] if flow["id"] != "old_epoch_media_rejected"]
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "old_epoch_media_rejected"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_allows_blocked_structure_without_acceptance(self) -> None:
+        manifest = harmony_host_interop_preflight.template_manifest()
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "placeholder zero value"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+        warnings = harmony_host_interop_preflight.validate_manifest(manifest, allow_blocked=True)
+        self.assertEqual(len(warnings), len(harmony_host_interop_preflight.REQUIRED_FLOW_IDS))
+
+    def test_harmony_host_interop_rejects_unencrypted_trusted_lan(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["transport"]["encrypted_records"] = False
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "authenticated records"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_rejects_slow_reconnect(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["reconnect"]["maximum_observed_recovery_ms"] = 3001
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "<= 3000"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_preflight_writes_blocked_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with mock.patch.object(
+                harmony_host_interop_preflight,
+                "probe_command",
+                side_effect=lambda name, _version_args: harmony_host_interop_preflight.CommandProbe(
+                    name, None, "not found"
+                ),
+            ):
+                exit_code = harmony_host_interop_preflight.main(
+                    ["--evidence-dir", str(evidence_dir), "--run-id", "run-test"]
+                )
+
+            self.assertEqual(exit_code, harmony_host_interop_preflight.BLOCKED_EXIT)
+            summary = json.loads((evidence_dir / "harmony-host-interop-preflight.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["run_id"], "run-test")
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["can_close_harmony_host_interop_gate"])
+            self.assertTrue((evidence_dir / "harmony-host-interop-manifest-template.json").exists())
+            self.assertIn("not acceptance evidence", (evidence_dir / "README.md").read_text(encoding="utf-8"))
+
+    def test_harmony_host_interop_preflight_accepts_either_hvigor_binary(self) -> None:
+        def fake_probe(name: str, _version_args: list[str]) -> harmony_host_interop_preflight.CommandProbe:
+            path = "/usr/local/bin/hvigorw" if name == "hvigorw" else "/usr/local/bin/tool" if name in {"ohpm", "hdc"} else None
+            return harmony_host_interop_preflight.CommandProbe(name, path, "version")
+
+        with mock.patch.object(harmony_host_interop_preflight, "probe_command", side_effect=fake_probe):
+            summary = harmony_host_interop_preflight.local_preflight("run-test")
+
+        missing = next(
+            (reason["reason"] for reason in summary["blocking_reasons"] if reason["field"] == "missing_commands"),
+            "",
+        )
+        self.assertNotIn("hvigor", missing)
+
+    def test_harmony_host_interop_make_targets_use_manifest_validator(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("harmony-host-interop-preflight", makefile)
+        self.assertIn("harmony-host-interop-gate", makefile)
+        self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
+        self.assertIn("$(EVIDENCE_DIR)/harmony-host-interop.json", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):
