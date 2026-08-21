@@ -26,11 +26,16 @@ responsibilities separate.
 
 Portable checks now prove the independent codec and session sequence through
 VideoConfig, transport upgrade/channel framing, media fixture parsing, stale
-epoch filtering, bounded queues, input envelope encoding, reconnect policy, and
-the expected DevEco project file graph. ArkUI/platform sources connect those
-seams, but they have not been compiled by DevEco. None of the acceptance
-criteria requiring a HAP, Harmony SDK behavior, Mac interoperability, signing,
-secure pairing, or a device is complete.
+epoch filtering, bounded queues, input envelope encoding, reconnect policy,
+resume result success/failure handling, post-resume old-epoch control/media
+rejection, host-restart fresh-session fallback, and the expected DevEco project
+file graph. A Host interop preflight/manifest verifier now records the exact
+external evidence required for HostHello/session/display/video/control/media,
+background/foreground, Wi-Fi loss/restore, bounded reconnect, host restart, and
+old-epoch rejection. ArkUI/platform sources connect those seams, but they have
+not been compiled by DevEco. None of the acceptance criteria requiring a HAP,
+Harmony SDK behavior, Mac interoperability, signing, secure pairing, or a device
+is complete.
 
 ## Explicit contract gaps
 
