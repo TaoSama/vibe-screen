@@ -505,6 +505,13 @@ public Internet, real remote TURN (local loopback and forced local coturn are
 not public-Internet or real-deployment evidence), real
 ScreenCaptureKit-to-Android device decoder continuity, real network
 fluctuation, network handoff, and soak.
+The repository now includes a fail-closed composition gate for the full Internet
+soak boundary. `make phase3-internet-soak-manifest` predeclares the production
+TURN, signaling, relay, Authority, TLS, secret-source, remote-peer, artifact, and
+handoff inputs. `make phase3-internet-soak-gate` then requires matching public
+remote TURN, real media-continuity, network-handoff, revocation-propagation, and
+two-hour mixed-route soak reports. Missing deployment material or missing report
+families produce `blocked` evidence rather than a pass.
 
 Reproduce the local Mac integration checks with:
 
@@ -540,6 +547,8 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
+Current fail-closed Internet soak evidence is recorded under
+[`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-soak-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-soak-blocked/README.md).
 Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
