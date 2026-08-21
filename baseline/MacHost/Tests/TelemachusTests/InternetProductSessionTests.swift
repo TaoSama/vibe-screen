@@ -205,7 +205,7 @@ final class InternetProductSessionTests: XCTestCase {
         wait(for: [audioReceived, bulkReceived], timeout: 1)
     }
 
-    func testAdvancedChannelRecordsFailClosedWhenRejectedByProductAdmission() throws {
+    func testAdvancedChannelRecordsFailClosedWhenPayloadExceedsProductAdmissionLimit() throws {
         let harness = try Harness(limits: InternetTransportLimits(
             maximumControlMessageBytes: 256 * 1_024,
             maximumBufferedControlBytes: 2 * 1_024 * 1_024,
@@ -216,11 +216,45 @@ final class InternetProductSessionTests: XCTestCase {
 
         try reachStreaming(harness)
 
-        XCTAssertFalse(harness.session.sendBulkRecord(
+        let sent = harness.session.sendBulkRecord(
             Data([0x41, 0x42]),
+            transferID: Data(repeating: 0x55, count: 16)
+        )
+
+        XCTAssertFalse(sent)
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected product admission rejection to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("payload is 2 bytes; maximum is 1"),
+            "Expected payload limit rejection, got: " + reason
+        )
+    }
+
+    func testAdvancedChannelGateInitializationErrorIsReportedOnFirstRecord() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 0,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        XCTAssertFalse(harness.session.sendBulkRecord(
+            Data([0x41]),
             transferID: Data(repeating: 0x55, count: 16)
         ))
         XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected gate initialization failure to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("invalidLimits"),
+            "Expected gate initialization failure, got: " + reason
+        )
     }
 
     func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {

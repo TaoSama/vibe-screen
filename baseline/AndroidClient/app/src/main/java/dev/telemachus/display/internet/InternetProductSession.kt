@@ -317,7 +317,8 @@ class InternetProductSession internal constructor(
             limits =
                 AdvancedChannelSecurityGate.Limits(
                     maximumAudioRecordBytes = InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
-                    maximumAudioBacklogBytes = InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
+                    maximumAudioBacklogBytes =
+                        AUDIO_BACKLOG_RECORD_CAPACITY * InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
                     maximumBulkRecordBytes = InternetBulkRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
                     maximumBulkBacklogBytes = 4 * 1024 * 1024,
                 ),
@@ -1109,7 +1110,9 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         payload: ByteArray,
     ) {
-        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Audio(INTERNET_DISPLAY_ID, currentStreamId())) { record ->
+        val streamId = currentStreamId()
+        if (streamId <= 0) return
+        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Audio(INTERNET_DISPLAY_ID, streamId)) { record ->
             callbacks.onAudioRecord(record.copyOf())
         }
     }
@@ -1553,6 +1556,7 @@ class InternetProductSession internal constructor(
                 InternetProductSessionState.RECOVERING,
                 InternetProductSessionState.SUSPENDED,
             )
+        private const val AUDIO_BACKLOG_RECORD_CAPACITY = 2
         private const val INTERNET_DISPLAY_ID = "internet-display"
         private val DEFAULT_BULK_TRANSFER_ID = "internet-bulk-v1".toByteArray(Charsets.UTF_8)
         internal fun create(

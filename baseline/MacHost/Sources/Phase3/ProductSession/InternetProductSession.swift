@@ -141,6 +141,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
     private var advancedChannelGate: AdvancedChannelSecurityGate?
+    private var advancedChannelGateInitializationError: AdvancedChannelSecurityError?
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
@@ -1209,8 +1210,11 @@ final class InternetProductSession: EncodedFrameSink {
         payloadBytes: Int,
         binding: AdvancedChannelBinding
     ) throws -> AdvancedChannelAdmission {
-        guard let configuration, let gate = advancedChannelGate else {
+        guard let configuration else {
             throw AdvancedChannelSecurityError.staleOwner
+        }
+        guard let gate = advancedChannelGate else {
+            throw advancedChannelGateInitializationError ?? AdvancedChannelSecurityError.staleOwner
         }
         return try gate.reserve(
             payloadBytes: payloadBytes,
@@ -1441,21 +1445,31 @@ final class InternetProductSession: EncodedFrameSink {
                     limits.maximumBufferedBulkBytes
                 )
             )
-            advancedChannelGate = try? AdvancedChannelSecurityGate(
-                owner: advancedChannelOwner(
-                    generation: generation,
-                    sessionEpoch: sessionEpoch,
-                    sessionIdentifier: sessionIdentifier
-                ),
-                limits: .init(
-                    maximumAudioRecordBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
-                    maximumAudioBacklogBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
-                    maximumBulkRecordBytes: maximumBulkRecordBytes,
-                    maximumBulkBacklogBytes: limits.maximumBufferedBulkBytes
+            do {
+                advancedChannelGate = try AdvancedChannelSecurityGate(
+                    owner: advancedChannelOwner(
+                        generation: generation,
+                        sessionEpoch: sessionEpoch,
+                        sessionIdentifier: sessionIdentifier
+                    ),
+                    limits: .init(
+                        maximumAudioRecordBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                        maximumAudioBacklogBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                        maximumBulkRecordBytes: maximumBulkRecordBytes,
+                        maximumBulkBacklogBytes: limits.maximumBufferedBulkBytes
+                    )
                 )
-            )
+                advancedChannelGateInitializationError = nil
+            } catch let error as AdvancedChannelSecurityError {
+                advancedChannelGate = nil
+                advancedChannelGateInitializationError = error
+            } catch {
+                advancedChannelGate = nil
+                advancedChannelGateInitializationError = .invalidLimits
+            }
         } else {
             advancedChannelGate = nil
+            advancedChannelGateInitializationError = nil
         }
     }
 

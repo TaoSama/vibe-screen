@@ -809,6 +809,67 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun audioRecordBeforeVideoConfigurationIsDroppedWithoutFailingSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.audio(byteArrayOf(0x01))
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(0, peer.closeCalls)
+        assertTrue(callbacks.audio.isEmpty())
+        assertTrue(callbacks.failures.isEmpty())
+
+        peer.receive(videoConfigurationEnvelope(3))
+        peer.audio(byteArrayOf(0x02))
+
+        assertArrayEquals(byteArrayOf(0x02), callbacks.audio.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun overlappingAudioRecordAdmissionsDoNotFailActiveSession() {
+        val firstSendEntered = CountDownLatch(1)
+        val releaseFirstSend = CountDownLatch(1)
+        val audioSendCalls = AtomicInteger(0)
+        val peer =
+            ProductFakePeerEngine(
+                sendAudioHook = {
+                    if (audioSendCalls.incrementAndGet() == 1) {
+                        firstSendEntered.countDown()
+                        assertTrue(releaseFirstSend.await(2, TimeUnit.SECONDS))
+                    }
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+        val payload = ByteArray(InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES) { 0x11 }
+        val executor = Executors.newFixedThreadPool(2)
+
+        val first = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(firstSendEntered.await(2, TimeUnit.SECONDS))
+        val second = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(second.get(2, TimeUnit.SECONDS))
+        releaseFirstSend.countDown()
+
+        assertTrue(first.get(2, TimeUnit.SECONDS))
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS))
+        assertEquals(2, peer.audio.size)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
     fun advancedChannelRecordsAreRejectedOutsideActiveSessionAndFailClosedOnBacklogFailure() {
         val inactive = session(ProductFakePeerEngine(), ProductFakeNetworkMonitor(), ProductCallbacks())
         assertFalse(inactive.sendAudioRecord(byteArrayOf(1)))
@@ -2235,6 +2296,7 @@ private class ProductFakePeerEngine(
     private val startHook: () -> Unit = {},
     private val sendControlHook: (ByteArray) -> Unit = {},
     private val sendControlResult: (ByteArray) -> Boolean = { true },
+    private val sendAudioHook: (ByteArray) -> Unit = {},
     private val acceptBulkRecords: Boolean = true,
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
@@ -2258,7 +2320,11 @@ private class ProductFakePeerEngine(
         return accepted
     }
     override fun sendMedia(frame: OutboundMediaFrame): Boolean = true
-    override fun sendAudioRecord(payload: ByteArray): Boolean = audio.add(payload)
+    override fun sendAudioRecord(payload: ByteArray): Boolean {
+        val accepted = synchronized(audio) { audio.add(payload) }
+        if (accepted) sendAudioHook(payload)
+        return accepted
+    }
     override fun sendBulkRecord(payload: ByteArray): Boolean = acceptBulkRecords && bulk.add(payload)
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
