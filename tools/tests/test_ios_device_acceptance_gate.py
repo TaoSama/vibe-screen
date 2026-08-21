@@ -128,6 +128,20 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertIn("devices: missing ipad hardware evidence", result["missing"])
         self.assertIn("gates.reconnect.status: must be complete", result["missing"])
 
+    def test_failed_required_gate_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["gates"]["reconnect"]["status"] = "failed"
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn("gates.reconnect.status: is failed", result["failures"])
+
     def test_android_identity_or_android_artifact_fails(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
