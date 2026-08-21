@@ -1,0 +1,1 @@
+$ adb -s EP0110PZ0B9110300B logcat -d | grep -E AndroidRuntime|FATAL
