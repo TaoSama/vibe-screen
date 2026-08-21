@@ -7,7 +7,7 @@
     "commit": "cc26a84c829016fa61c721f73a128284fdf64f92",
     "base": "origin/main",
     "branch": "HEAD (detached)",
-    "worktree": "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/2824/vibe-screen"
+    "worktree": "<repo-root>"
   },
   "device": {
     "manufacturer": "nubia",
@@ -93,8 +93,10 @@
     "security find-identity -v -p codesigning | grep '\"Vibe Screen Dev\"'",
     "python3 scripts/macos_dev_host.py preflight --install-path \"/Applications/Vibe Screen.app\"",
     "lsof -nP -iTCP:54321 -sTCP:LISTEN",
-    "adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321",
-    "adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true"
+    "open -a \"/Applications/Vibe Screen.app\"",
+    "timeout 30 bash -lc 'until lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN; do sleep 1; done'",
+    "adb -s <DEVICE_SERIAL> reverse tcp:54321 tcp:54321",
+    "adb -s <DEVICE_SERIAL> shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true"
   ],
   "claims": {
     "nubia_p0110_identity_recorded": true,

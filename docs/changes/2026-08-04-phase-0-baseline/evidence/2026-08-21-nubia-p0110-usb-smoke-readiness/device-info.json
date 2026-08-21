@@ -18,6 +18,8 @@
   "packages": [
     {
       "package": "dev.telemachus.display",
+      "apk_signing_identity": "not_collected",
+      "installed_at": "not_collected",
       "version_code": 100000,
       "version_name": "0.0.0"
     }

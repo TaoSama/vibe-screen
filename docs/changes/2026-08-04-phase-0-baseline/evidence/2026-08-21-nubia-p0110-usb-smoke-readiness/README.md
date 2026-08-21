@@ -39,11 +39,13 @@ Accessibility grants remain tied to a stable signing identity.
 
 - Repository commit: cc26a84c829016fa61c721f73a128284fdf64f92, matching
   origin/main at collection time.
-- Worktree: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/2824/vibe-screen.
+- Worktree: `<WORKTREE_ROOT>`; the exact collection path is retained in
+  `readiness.json` as `<repo-root>` to avoid publishing machine-specific
+  reproduction paths.
 - Device: nubia P0110, codename/product pacific, Android 16, SDK 36, serial
-  EP0110PZ0B9110300B.
-- Device state: adb -s EP0110PZ0B9110300B get-state returned device; adb -s
-  EP0110PZ0B9110300B reverse --list contained UsbFfs tcp:54321 tcp:54321.
+  `<DEVICE_SERIAL>`. The exact serial is retained in raw evidence files.
+- Device state: `adb -s "$DEVICE_SERIAL" get-state` returned device;
+  `adb -s "$DEVICE_SERIAL" reverse --list` contained UsbFfs tcp:54321 tcp:54321.
 - Android package: dev.telemachus.display; the app process was present as PID
   32263 during final readiness capture.
 - Host process: /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen was
@@ -86,7 +88,8 @@ USB evidence run.
 
 - readiness.json - machine-readable blocked readiness summary.
 - device-info.json, device-state.txt, environment.txt - device and local
-  environment identity.
+  environment identity; Android APK signing identity and install timestamp were
+  not collected for this readiness record.
 - host-preflight-console.txt, codesign-identities.txt,
   installed-host-identity.txt, tcc-dev-telemachus-display.txt - signing,
   installed Host, and TCC evidence.
@@ -102,7 +105,8 @@ USB evidence run.
   Host listener was absent.
 - stale-lock-cleanup.txt, device-lock.txt, device-lock-active.txt,
   device-lock-released.txt, final-lock-status-v4.txt - device lock handling
-  records.
+  records; the final lock status demonstrates the lock was released after the
+  later holder PID `49848` acquired it.
 - restored-host-defaults.txt - local Host displaySource cleanup after the
   currentMain fallback check.
 
@@ -110,11 +114,14 @@ USB evidence run.
 
 Use the same device identity and serial, and keep every adb command explicit:
 
+    cd `<WORKTREE_ROOT>`
+    export DEVICE_SERIAL=`<DEVICE_SERIAL>`
     security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
     python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
-    lsof -nP -iTCP:54321 -sTCP:LISTEN
-    adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
-    adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+    open -a "/Applications/Vibe Screen.app"
+    timeout 30 bash -lc 'until lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN; do sleep 1; done'
+    adb -s "$DEVICE_SERIAL" reverse tcp:54321 tcp:54321
+    adb -s "$DEVICE_SERIAL" shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
 
 If SCShareableContent still returns zero displays, resolve the macOS display
 enumeration/TCC/runtime state first and rerun only after lsof shows the Host
