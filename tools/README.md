@@ -694,8 +694,9 @@ requires an identity-signed Host with current Screen Recording and Accessibility
 grants, login item enabled and not awaiting approval, reboot or logout/login
 launch evidence, automatic startup to a rendered client stream, capturable
 physical/dummy/headless or Screen Sharing display evidence, bounded unattended
-recovery logs, real window restore evidence, and a local or remote administrator
-path for FileVault, first-login, TCC, and display intervention. Missing hardware
+recovery logs, real window restore evidence, Android disconnect/reconnect with
+post-reconnect render evidence, and a local or remote administrator path for
+FileVault, first-login, TCC, and display intervention. Missing hardware
 or permission prerequisites return `blocked` with
 `can_close_login_headless_gate=false`; manual launches or relabeled display or
 device identities return `fail`.

@@ -1,0 +1,15 @@
+git fetch origin --prune
+git worktree add -b codex/login-headless-recovery-gate-current <worktree-path> origin/main
+git rebase origin/main
+git rev-parse origin/main
+# 1abc03b0287feba7b932f175a9e8ff1280495606
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_startup_recovery_gate tools.tests.test_schemas -v
+# 18 tests passed locally.
+make evidence-tools-test
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.macos_startup_recovery_gate --evidence docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked/macos-startup-recovery-evidence.json --output docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked/macos-startup-recovery-gate.json
+# The gate command exits 1 for this blocked package; verdict=pass is the only zero-exit result.
+make phase2-macos-startup-recovery-gate EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked
+# The make target exits 2 because make wraps the verifier's expected blocked exit 1.
+python3 -m json.tool docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked/macos-startup-recovery-gate.json >/dev/null
+cd docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked && shasum -a 256 README.md commands.txt macos-startup-recovery-evidence.json macos-startup-recovery-gate.json > SHA256SUMS
+cd docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-22-login-headless-recovery-gate-blocked && shasum -a 256 -c SHA256SUMS
