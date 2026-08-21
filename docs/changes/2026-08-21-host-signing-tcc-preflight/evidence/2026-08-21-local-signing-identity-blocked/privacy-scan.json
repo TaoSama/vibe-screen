@@ -1,0 +1,48 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1762,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "bf40b8ca63a7672000d80550e3619785efbe7191dc6cc25734e97cce6cdf60cf"
+    },
+    {
+      "bytes": 2052,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "signing-identity-preflight.json",
+      "result": "pass",
+      "sha256": "26d527010490803cf7e859c9a9691e5b8005ec14bca1e5a160081bacbd2d3985"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

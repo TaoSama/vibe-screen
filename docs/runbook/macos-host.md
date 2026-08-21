@@ -56,8 +56,19 @@ Signing certificate named `Vibe Screen Dev`, then confirm it is visible to
 codesign:
 
 ```bash
+python3 scripts/macos_signing_identity_preflight.py
 security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 ```
+
+If the preflight is blocked, create the certificate in **Keychain Access**:
+open **Certificate Assistant -> Create a Certificate**, set **Name** to
+`Vibe Screen Dev`, set **Identity Type** to **Self Signed Root**, set
+**Certificate Type** to **Code Signing**, and store it in the login keychain.
+Alternatively, set `VIBE_SCREEN_SIGN_IDENTITY` to the exact name of one existing
+local Code Signing identity that the developer owns. The preflight writes
+`.build/dev-macos-host-signing-identity/signing-identity-preflight.json` and a
+Markdown summary even when the identity is missing, so blocked device attempts
+can retain the prerequisite state without installing or launching the Host.
 
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
@@ -103,11 +114,11 @@ make baseline-macos-touch-preflight
 `baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
 ad-hoc signing identity, the designated requirement, and read-only Screen
-Recording plus Accessibility rows in the user's TCC database. It exits non-zero
-if any check is missing. When blocked, open **System Settings → Privacy &
-Security → Screen & System Audio Recording** and **Accessibility**, grant the
-installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again.
+Recording plus Accessibility rows in the current-user and system TCC databases.
+It exits non-zero if any check is missing. When blocked, open **System Settings
+→ Privacy & Security → Screen & System Audio Recording** and **Accessibility**,
+grant the installed `/Applications/Vibe Screen.app`, quit and reopen Vibe
+Screen, then run the preflight again.
 
 ## USB quick start
 
