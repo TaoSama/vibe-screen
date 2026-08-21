@@ -914,16 +914,16 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertFalse(harness.engine.didClose)
     }
 
-    func testNetworkChangeRequestsFreshSessionInsteadOfSecondOffer() throws {
+    func testNetworkChangeAttemptsBoundedICERestartBeforeFreshSession() throws {
         let harness = try Harness()
         let authenticating = expectation(description: "authenticating")
-        let recovery = expectation(description: "fresh recovery")
+        let recovery = expectation(description: "transport recovery")
         harness.session.onStateChanged = { state in
             if state == .authenticating { authenticating.fulfill() }
+            if state == .recovering(attempt: 1) { recovery.fulfill() }
         }
         harness.session.onFreshSessionRecoveryRequired = { attempt in
-            XCTAssertEqual(attempt, 1)
-            recovery.fulfill()
+            XCTFail("Fresh session should wait for ICE restart exhaustion, got attempt \(attempt)")
         }
 
         try harness.session.start(configuration: harness.configuration)
@@ -933,8 +933,40 @@ final class InternetProductSessionTests: XCTestCase {
         harness.engine.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-b"))
 
         wait(for: [recovery], timeout: 1)
-        XCTAssertEqual(harness.engine.restartICECount, 0)
+        XCTAssertEqual(harness.engine.restartICECount, 1)
         XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
+    }
+
+    func testFreshSessionFallbackCanSynchronouslyInstallReplacementAfterICERestartUnsupported() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            engineRecoveryDispositions: [
+                .requiresFreshSession("fresh signaling session required"),
+                .peerReplacementStarted,
+            ]
+        )
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let recovery = expectation(description: "fresh recovery")
+        harness.session.onFreshSessionRecoveryRequired = { attempt in
+            XCTAssertEqual(attempt, 1)
+            do {
+                try harness.session.provideFreshSession(configuration: replacementConfiguration)
+                recovery.fulfill()
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
+        }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.engine.emitConnection(.disconnected)
+
+        wait(for: [recovery], timeout: 1)
+        XCTAssertEqual(harness.engine.restartICECount, 1)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
     }
 
     func testRecoveringStateCallbackCanSynchronouslyInstallFreshSession() throws {
@@ -959,7 +991,7 @@ final class InternetProductSessionTests: XCTestCase {
         }
         harness.session.onFreshSessionRecoveryRequired = { attempt in
             freshSessionAttempts.append(attempt)
-            if attempt == 2 { secondRecoveryRequested.fulfill() }
+            if attempt == 1 { secondRecoveryRequested.fulfill() }
         }
 
         try harness.session.start(configuration: harness.configuration)
@@ -982,9 +1014,28 @@ final class InternetProductSessionTests: XCTestCase {
         replacement.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-d"))
 
         wait(for: [secondRecoveryRequested], timeout: 1)
-        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 2))
-        XCTAssertEqual(freshSessionAttempts, [2])
+        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
+        XCTAssertEqual(freshSessionAttempts, [1])
         XCTAssertTrue(replacement.didClose)
+    }
+
+    func testNonResumableDisconnectNoticeClosesWithoutFreshSessionRequest() throws {
+        let harness = try Harness()
+        var recoveryRequests = 0
+        harness.session.onFreshSessionRecoveryRequired = { _ in recoveryRequests += 1 }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.receiveControl(harness.disconnectNotice(messageID: 3, mayResume: false))
+
+        XCTAssertEqual(harness.session.snapshotState(), .closed)
+        XCTAssertEqual(recoveryRequests, 0)
+        XCTAssertTrue(harness.engine.didClose)
     }
 
     func testRecoveringCallbackClosePreventsFreshProfileRequest() throws {
@@ -2419,6 +2470,7 @@ private final class Harness {
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
         limits: InternetTransportLimits = .standard,
         engineCount: Int = 1,
+        engineRecoveryDispositions: [WebRTCEngineRecoveryDisposition] = [],
         freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
         videoConfigEpoch: UInt64 = 1,
         replacementSessionEpoch: UInt64? = nil,
@@ -2449,7 +2501,14 @@ private final class Harness {
                 packetCipher: pair.host
             )
         }
-        let engines = pairs.map { ProductFakeWebRTCEngine(remoteCipher: $0.device) }
+        let engines = pairs.enumerated().map { index, pair in
+            ProductFakeWebRTCEngine(
+                remoteCipher: pair.device,
+                recoveryDisposition: index < engineRecoveryDispositions.count
+                    ? engineRecoveryDispositions[index]
+                    : .peerReplacementStarted
+            )
+        }
         deviceCiphers = pairs.map(\.device)
         securitySession = securitySessions[0]
         engine = engines[0]
@@ -2668,6 +2727,19 @@ private final class Harness {
         return envelope
     }
 
+    func disconnectNotice(
+        messageID: UInt64,
+        mayResume: Bool,
+        reasonCode: String = "test_disconnect"
+    ) -> VSEnvelope {
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = reasonCode
+        notice.mayResume = mayResume
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.disconnectNotice = notice
+        return envelope
+    }
+
     func waitForSentControlCount(_ count: Int, engineIndex: Int = 0) -> Bool {
         waitUntil {
             self.selectedEngine(engineIndex).sentPlaintext
@@ -2836,6 +2908,7 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
 
     private let lock = NSLock()
     private let remoteCipher: PlatformSessionPacketCipher
+    private let recoveryDisposition: WebRTCEngineRecoveryDisposition
     private var callbacks: WebRTCEngineCallbacks?
     private var transmissionEpoch: UInt64 = 0
     private var activeTransmissionPath: InternetPathKind?
@@ -2867,8 +2940,12 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         lock.withLock { deferredControlSendCompletion != nil }
     }
 
-    init(remoteCipher: PlatformSessionPacketCipher) {
+    init(
+        remoteCipher: PlatformSessionPacketCipher,
+        recoveryDisposition: WebRTCEngineRecoveryDisposition = .peerReplacementStarted
+    ) {
         self.remoteCipher = remoteCipher
+        self.recoveryDisposition = recoveryDisposition
     }
 
     func invalidateTransmissionContextOnNextControlSend() {
@@ -2969,7 +3046,7 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         invalidateTransmissionContext()
         lock.withLock { storedRestartICECount += 1 }
         callbacks?.connectionStateChanged(.connecting)
-        return .peerReplacementStarted
+        return recoveryDisposition
     }
     func requestMediaKeyframe() {}
     func close() {

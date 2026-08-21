@@ -23,6 +23,7 @@ struct FreshSessionRecoveryBudget {
 final class InternetProductSession: EncodedFrameSink {
     private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
     private static let rawBulkAdmissionTransferID = Data("internet-bulk-v1".utf8)
+    private static let freshSessionRecoveryTimeoutMilliseconds: UInt32 = 120_000
 
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
@@ -184,6 +185,7 @@ final class InternetProductSession: EncodedFrameSink {
             }
             try configuration.validate()
             try startFreshSession(configuration)
+            freshSessionRecoveryBudget.reset()
         }
     }
 
@@ -548,8 +550,7 @@ final class InternetProductSession: EncodedFrameSink {
         let transport = WebRTCInternetTransport(
             engine: engineFactory(),
             packetCipher: securitySession.packetCipher,
-            limits: configuration.limits,
-            recoveryStrategy: .freshSession
+            limits: configuration.limits
         )
         installCallbacks(on: transport, generation: generation)
         self.configuration = configuration
@@ -812,9 +813,13 @@ final class InternetProductSession: EncodedFrameSink {
                     codec: &codec
                 )
 
-            case .disconnectNotice:
+            case .disconnectNotice(let notice):
                 self.codec = codec
-                beginFreshSessionRecovery(attempt: 1, generation: generation)
+                if notice.mayResume {
+                    beginFreshSessionRecovery(attempt: 1, generation: generation)
+                } else {
+                    close()
+                }
 
             default:
                 let payloadName: String
@@ -1404,6 +1409,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        configuration = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -1411,6 +1417,7 @@ final class InternetProductSession: EncodedFrameSink {
         if stateChanged { onStateChanged?(recoveringState) }
         guard sessionGeneration == recoveryGeneration,
               state == recoveringState else { return }
+        scheduleFreshSessionRecoveryDeadline(generation: recoveryGeneration)
         onFreshSessionRecoveryRequired?(sessionAttempt)
     }
 
@@ -1618,6 +1625,23 @@ final class InternetProductSession: EncodedFrameSink {
                 )))
             default: break
             }
+        }
+        negotiationTimer = timer
+        timer.resume()
+    }
+
+    private func scheduleFreshSessionRecoveryDeadline(generation: UInt64) {
+        stopNegotiationDeadline()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(
+            Int(Self.freshSessionRecoveryTimeoutMilliseconds)
+        ))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.sessionGeneration == generation else { return }
+            guard case .recovering = self.state else { return }
+            self.fail(.securityFailure(
+                "fresh-session recovery timed out before replacement credentials were supplied"
+            ))
         }
         negotiationTimer = timer
         timer.resume()

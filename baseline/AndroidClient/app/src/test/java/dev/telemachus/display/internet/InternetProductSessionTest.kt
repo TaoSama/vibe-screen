@@ -243,7 +243,7 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun negotiatesVideoDeliversKeyframeAndRequestsFreshSessionOnHandoff() {
+    fun negotiatesVideoDeliversKeyframeAndFallsBackToFreshSessionOnUnsupportedHandoff() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
@@ -327,7 +327,7 @@ class InternetProductSessionTest {
         assertEquals(InternetProductSessionState.RECOVERING, session.state)
         assertEquals(1, callbacks.freshReasons.size)
         assertEquals(1, callbacks.states.count { it == InternetProductSessionState.RECOVERING })
-        assertEquals(0, peer.restartCalls)
+        assertEquals(1, peer.restartCalls)
         assertFalse(session.sendTouch(ProductTouchEvent(2, 0, ProductInputPhase.ENDED, 0.5, 0.5)))
         session.close()
         session.close()
@@ -1351,6 +1351,26 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun freshSessionRecoveryClosesOldTransportBeforeCallback() {
+        val peer = ProductFakePeerEngine(
+            restartResult = WebRtcIceRestartResult.RequiresFreshSession("fresh lease required"),
+        )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        peer.observer.onConnectionFailed("ICE failed")
+
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertEquals(listOf("fresh lease required"), callbacks.freshReasons)
+        assertEquals(1, peer.restartCalls)
+        assertEquals(1, peer.closeCalls)
+        peer.media(media(frameId = 20, keyframe = true, payload = "stale".toByteArray()))
+        assertTrue(callbacks.frames.isEmpty())
+    }
+
+    @Test
     fun closeWaitsForAtomicStartTransactionThenReleasesResources() {
         val startEntered = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
@@ -2298,6 +2318,8 @@ private class ProductFakePeerEngine(
     private val sendControlResult: (ByteArray) -> Boolean = { true },
     private val sendAudioHook: (ByteArray) -> Unit = {},
     private val acceptBulkRecords: Boolean = true,
+    private val restartResult: WebRtcIceRestartResult =
+        WebRtcIceRestartResult.RequiresFreshSession("fresh signaling session required"),
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
@@ -2326,7 +2348,10 @@ private class ProductFakePeerEngine(
         return accepted
     }
     override fun sendBulkRecord(payload: ByteArray): Boolean = acceptBulkRecords && bulk.add(payload)
-    override fun restartIce() { restartCalls++ }
+    override fun restartIce(): WebRtcIceRestartResult {
+        restartCalls++
+        return restartResult
+    }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
     override fun close() {
         closeCalls++

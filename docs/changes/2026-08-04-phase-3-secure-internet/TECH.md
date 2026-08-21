@@ -158,13 +158,18 @@ routing metadata only after a successful role authorization, without retaining
 the role token. This is still a service-control-plane path, not Mac/Android
 automatic product invocation.
 
-The service still rejects a second offer. The product transport therefore does
-not attempt to reuse the old rendezvous after a network handoff: it suspends
-application traffic and asks its owner for a fresh signaling session, role token,
-TURN credential where needed, PeerConnection, and larger authority-agreed session
-epoch. The macOS UI currently fails closed and asks the operator to supply that
-fresh profile; Mac/Android automatic invocation of Authority profile issuance
-and device proof of the complete handoff remain release gates.
+The service still rejects a second offer. The product transport now enters a
+bounded ICE-recovery window for transports whose engine/signaling layer can
+actually perform a restart, and it keeps application traffic suspended during
+that window. If the engine reports that the active signaling session cannot
+renegotiate, or if the bounded restart window is exhausted, both product peers
+fail closed into fresh-session recovery: the old transport owner is invalidated,
+late callbacks and old-epoch traffic are ignored, and the owner must supply a
+fresh signaling session, role token, TURN credential where needed,
+PeerConnection, and larger authority-agreed session epoch. The macOS UI
+currently asks the operator to supply that fresh profile; Mac/Android automatic
+invocation of Authority profile issuance and device proof of the complete
+handoff remain release gates.
 
 ## TURN and ICE
 
@@ -352,11 +357,13 @@ These are release blockers, not accepted architecture:
   at main commit `4c2e908fe31af4c187684991301e163371444eab` (202/202 tests);
   that later CI result is not retroactive evidence for the device
   artifact's source commit.
-- Recovery now fails closed into a fresh-session request instead of sending a
-  second offer, but the local development UI requires manually supplied authority
-  credentials and epoch. Do not claim automatic network-handoff recovery until a
-  real Mac/Android run proves new signaling tokens, PeerConnection, record keys,
-  epoch advance, and rejection of old records.
+- Recovery now attempts a bounded transport-level ICE restart only when the
+  underlying engine/signaling path can perform one; otherwise, and after bounded
+  exhaustion, it fails closed into a fresh-session request. The local development
+  UI still requires manually supplied authority credentials and epoch. Do not
+  claim automatic network-handoff recovery until a real Mac/Android run proves
+  new signaling tokens, PeerConnection, record keys, epoch advance, stream
+  pause/resume, and rejection of old records.
 - Authority-backed signaling still performs remote authorization for every
   message publish and poll, and serializes creates through one global
   PostgreSQL advisory lock to prevent orphan admissions at store capacity. The
