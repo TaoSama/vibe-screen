@@ -18,6 +18,7 @@ PHASE2_RECOVERY_SCENARIOS ?=
 PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
+HOST_PID ?=
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
@@ -32,7 +33,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -125,6 +126,9 @@ release-tools-test:
 require-evidence-serial:
 	@test -n "$(strip $(EVIDENCE_SERIAL))" || (echo "error: set EVIDENCE_SERIAL explicitly" >&2; exit 2)
 
+require-host-pid:
+	@test -n "$(strip $(HOST_PID))" || (echo "error: set HOST_PID to the running Vibe Screen Host process id" >&2; exit 2)
+
 evidence-device-info: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --output $(EVIDENCE_DIR)/device-info.json
@@ -154,7 +158,15 @@ harmony-device-gate:
 
 soak-30m soak-2h soak-8h: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)/$@
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak --serial $(EVIDENCE_SERIAL) --preset $(@:soak-%=%) --interval 30s --package $(EVIDENCE_PACKAGE) --telemetry-jsonl $(EVIDENCE_DIR)/$@/host-telemetry.jsonl --require-stream-telemetry --output-jsonl $(EVIDENCE_DIR)/$@/samples.jsonl --summary-json $(EVIDENCE_DIR)/$@/summary.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak --serial $(EVIDENCE_SERIAL) --preset $(@:soak-%=%) --interval 30s --package $(EVIDENCE_PACKAGE) $(if $(strip $(HOST_PID)),--host-pid $(HOST_PID),) --telemetry-jsonl $(EVIDENCE_DIR)/$@/host-telemetry.jsonl --require-stream-telemetry --output-jsonl $(EVIDENCE_DIR)/$@/samples.jsonl --summary-json $(EVIDENCE_DIR)/$@/summary.json
+
+host-rss-gate:
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-2h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-2h/exact-window-report.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json
+
+soak-2h-host-rss-gate: require-evidence-serial require-host-pid
+	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)"
+	$(MAKE) host-rss-gate EVIDENCE_DIR="$(EVIDENCE_DIR)"
 
 phase2-tablet-manifest: require-evidence-serial
 	@test -f "$(EVIDENCE_DIR)/device-info.json" || (echo "error: collect $(EVIDENCE_DIR)/device-info.json with make evidence-device-info before phase2-tablet-manifest" >&2; exit 2)

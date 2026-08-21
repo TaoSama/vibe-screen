@@ -538,9 +538,7 @@ class ScreenCapture {
         newEncoder.requestKeyframe()
 
         stopFrameMonitor()
-        framePacingTimer?.cancel()
-        framePacingTimer = nil
-        latestPixelBuffer.clear()
+        clearFramePacer()
         restartAttempted = false
 
         // Tear down the current capture surface (SCStream or CGDisplayStream)
@@ -912,10 +910,8 @@ class ScreenCapture {
     /// buffer prevents that omission from becoming a 33 ms tablet presentation
     /// gap without ever building a stale-frame queue.
     private func configureFramePacer(on queue: DispatchQueue) {
+        clearFramePacer()
         encodeQueue = queue
-        framePacingTimer?.cancel()
-        framePacingTimer = nil
-        latestPixelBuffer.clear()
         stateLock.withLock { state in
             state.captureStatsStartTime = nil
             state.sourceFrameCount = 0
@@ -1433,70 +1429,70 @@ class ScreenCapture {
             queue: captureQueue,
             handler: { [weak self] status, _, frameSurface, _ in
                 guard let self else { return }
-                let disposition = self.fallbackLifecycle.disposition(
-                    status: status,
-                    generation: fallbackGeneration,
-                    hasSurface: frameSurface != nil
-                )
-                switch disposition {
-                case .terminalFailure:
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, !self.isStopping,
-                              self.fallbackLifecycle.claimTerminal(
-                                generation: fallbackGeneration
-                              ) else { return }
-                        self.framePacingTimer?.cancel()
-                        self.framePacingTimer = nil
-                        self.latestPixelBuffer.clear()
-                        self.cgDisplayStream = nil
-                        self.stopFrameMonitor()
-                        switch FallbackStoppedPolicy.action(
-                            followsMainDisplay: self.followsMainDisplay,
-                            capturedDisplayID: self.virtualDisplayID,
-                            currentMainDisplayID: CGMainDisplayID()
-                        ) {
-                        case .rebuild(let replacementID):
-                            debugLog(
-                                "Fallback display stopped; following replacement " +
-                                "main display \(replacementID)"
-                            )
-                            self.virtualDisplayID = replacementID
-                            self.onDisplayIDChanged?(replacementID)
-                            if self.attemptFallbackCapture(stopSCStream: false) {
-                                self.currentEncoder()?.requestKeyframe()
-                                self.startFrameMonitor()
-                            } else {
-                                self.restartStream()
+                autoreleasepool {
+                    let disposition = self.fallbackLifecycle.disposition(
+                        status: status,
+                        generation: fallbackGeneration,
+                        hasSurface: frameSurface != nil
+                    )
+                    switch disposition {
+                    case .terminalFailure:
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, !self.isStopping,
+                                  self.fallbackLifecycle.claimTerminal(
+                                    generation: fallbackGeneration
+                                  ) else { return }
+                            self.clearFramePacer()
+                            self.cgDisplayStream = nil
+                            self.stopFrameMonitor()
+                            switch FallbackStoppedPolicy.action(
+                                followsMainDisplay: self.followsMainDisplay,
+                                capturedDisplayID: self.virtualDisplayID,
+                                currentMainDisplayID: CGMainDisplayID()
+                            ) {
+                            case .rebuild(let replacementID):
+                                debugLog(
+                                    "Fallback display stopped; following replacement " +
+                                    "main display \(replacementID)"
+                                )
+                                self.virtualDisplayID = replacementID
+                                self.onDisplayIDChanged?(replacementID)
+                                if self.attemptFallbackCapture(stopSCStream: false) {
+                                    self.currentEncoder()?.requestKeyframe()
+                                    self.startFrameMonitor()
+                                } else {
+                                    self.restartStream()
+                                }
+                            case .terminalFailure:
+                                self.reportTerminalCaptureFailure()
                             }
-                        case .terminalFailure:
-                            self.reportTerminalCaptureFailure()
                         }
+                        return
+                    case .clearFrame:
+                        self.latestPixelBuffer.clear()
+                        return
+                    case .ignore:
+                        return
+                    case .consume:
+                        break
                     }
-                    return
-                case .clearFrame:
-                    self.latestPixelBuffer.clear()
-                    return
-                case .ignore:
-                    return
-                case .consume:
-                    break
+                    guard let surface = frameSurface else { return }
+                    self.recordSourceFrame(at: DispatchTime.now(), label: "CGDisplayStream")
+
+                    var unmanagedPB: Unmanaged<CVPixelBuffer>?
+                    let attrs: [String: Any] = [
+                        kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
+                    ]
+                    let cvReturn = CVPixelBufferCreateWithIOSurface(
+                        kCFAllocatorDefault,
+                        surface,
+                        attrs as CFDictionary,
+                        &unmanagedPB
+                    )
+
+                    guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
+                    self.latestPixelBuffer.store(pb)
                 }
-                guard let surface = frameSurface else { return }
-                self.recordSourceFrame(at: DispatchTime.now(), label: "CGDisplayStream")
-
-                var unmanagedPB: Unmanaged<CVPixelBuffer>?
-                let attrs: [String: Any] = [
-                    kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
-                ]
-                let cvReturn = CVPixelBufferCreateWithIOSurface(
-                    kCFAllocatorDefault,
-                    surface,
-                    attrs as CFDictionary,
-                    &unmanagedPB
-                )
-
-                guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
-                self.latestPixelBuffer.store(pb)
             }
         ) else {
             debugLog("Failed to create CGDisplayStream — fallback unavailable")
@@ -1522,6 +1518,8 @@ class ScreenCapture {
     private func clearFramePacer() {
         framePacingTimer?.cancel()
         framePacingTimer = nil
+        encodeQueue = nil
+        latestPixelBuffer.clear()
     }
 
     // MARK: - Settings update
@@ -1705,17 +1703,19 @@ class ScreenCapture {
             leeway: .microseconds(100)
         )
         pacingTimer.setEventHandler { [weak self] in
-            guard let self,
-                  let pixelBuffer = self.latestPixelBuffer.latest()?.value else {
-                return
+            guard let self else { return }
+            autoreleasepool {
+                guard let pixelBuffer = self.latestPixelBuffer.latest()?.value else {
+                    return
+                }
+                let pts = CMClockGetTime(CMClockGetHostTimeClock())
+                guard let encoder = self.currentEncoder() else { return }
+                encoder.encode(
+                    pixelBuffer: pixelBuffer,
+                    presentationTimeStamp: pts,
+                    sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
+                )
             }
-            let pts = CMClockGetTime(CMClockGetHostTimeClock())
-            guard let encoder = self.currentEncoder() else { return }
-            encoder.encode(
-                pixelBuffer: pixelBuffer,
-                presentationTimeStamp: pts,
-                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
-            )
         }
         pacingTimer.resume()
         framePacingTimer = pacingTimer
@@ -1732,9 +1732,7 @@ class ScreenCapture {
         guard currentEncoder() != nil else { return }  // not streaming yet; startStreaming will pick it up
 
         stopFrameMonitor()
-        framePacingTimer?.cancel()
-        framePacingTimer = nil
-        latestPixelBuffer.clear()
+        clearFramePacer()
 
         let (width, height) = encodeSize(for: newCodec)
         let frameSink = currentFrameSink
@@ -1770,9 +1768,7 @@ class ScreenCapture {
         onTerminalCaptureFailure = nil
         // Cancel frame flow monitor
         stopFrameMonitor()
-        framePacingTimer?.cancel()
-        framePacingTimer = nil
-        latestPixelBuffer.clear()
+        clearFramePacer()
 
         restartTask?.cancel()
         await restartTask?.value
@@ -1828,6 +1824,7 @@ class ScreenCapture {
         restartAttempted = false
         isRestarting = false
         isHealthCheckRunning = false
+        clearFramePacer()
         currentFrameSink = nil
     }
 

@@ -1,0 +1,91 @@
+Repository: /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/host-rss-no-growth-fix
+Base commit: e8fbed466581c4d20e59801e7d7c0a03af04ad51
+Branch: codex/host-rss-no-growth-fix
+Date: 2026-08-22
+
+Initial synchronization:
+
+  git fetch origin main --prune
+
+Outcome: origin/main fetched before implementation. The dedicated worktree was
+rebased onto origin/main at e8fbed466581c4d20e59801e7d7c0a03af04ad51.
+
+Historical source audit:
+
+  git branch -a | rg "host-rss|encoder|frame-mailbox|backpressure|readiness|frame-ownership|callback"
+  git log --all --oneline --decorate --grep="host rss" --grep="RSS" --grep="in-flight" --grep="frame ownership" --grep="callback" --grep="mailbox" --grep="encoder" --max-count=80
+  git diff origin/main..codex/host-rss-frame-ownership -- baseline/MacHost/Sources/ScreenCapture.swift baseline/MacHost/Tests/TelemachusTests/LatestRetainedSlotTests.swift
+  git diff origin/main..codex/host-rss-encoder-callback-bound -- baseline/MacHost/Sources/VideoEncoder.swift baseline/MacHost/Tests/TelemachusTests/VideoEncoderInFlightAdmissionTests.swift
+  gh pr view 195 --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup,files
+  gh pr view 222 --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup,files
+  gh pr view 158 --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup,files
+
+Outcome: the historical frame-mailbox, pixel-buffer ownership, callback
+admission, and diagnostic telemetry changes are already represented on current
+main. This branch only keeps the still-relevant cleanup consolidation, explicit
+autorelease pools around the remaining high-frequency CGDisplayStream fallback
+and frame-pacer encode handlers, and additional release-focused tests. PR #195
+is the relevant production fix PR; #222 is diagnostic telemetry, and #158 is
+blocked gate tooling/evidence.
+
+Build and tool verification:
+
+  cd baseline/MacHost && swift build
+
+Outcome: exit 0, build complete.
+
+  make baseline-macos-self-test
+
+Outcome: exit 0. The release Host, transport, reliability, Protocol v1, and
+VideoEncoder self-tests all reported PASS.
+
+  PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic
+
+Outcome: 62 tests ran, 0 failures.
+
+  make evidence-tools-test
+
+Outcome: 219 tests ran, 0 failures.
+
+  git diff --check
+
+Outcome: exit 0, no whitespace errors.
+
+Formal Host RSS rerun target check:
+
+  make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B HOST_PID=12345 EVIDENCE_DIR=.build/evidence/host-rss-dry-run
+
+Outcome: dry-run target expands to a two-hour soak with --host-pid 12345,
+followed by the host-rss-gate evaluator over the soak-2h artifacts.
+
+Blocked XCTest attempt:
+
+  cd baseline/MacHost && swift test --filter "VideoEncoderInFlightAdmissionTests|LatestRetainedSlotTests"
+
+Outcome: blocked before executing tests because XCTest is unavailable in the
+active Command Line Tools environment. xcode-select points to
+/Library/Developer/CommandLineTools, xcrun --find xctest fails, and the test
+target reports no such module XCTest.
+
+Host signing/TCC preflight:
+
+  python3 scripts/macos_dev_host.py preflight --report .build/evidence/host-rss-2026-08-22/host-preflight-output.txt
+  shasum -a 256 "baseline/MacHost/.build/release/Vibe Screen"
+  shasum -a 256 "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen"
+
+Outcome: preflight exited 1 because the configured `Vibe Screen Dev` signing
+identity is not present in the local keychain. The current worktree release
+binary hash was d323aa516a2da025febbe2924732f00db88a8f2c3f269506b3470fc6d87a64cf,
+while the installed /Applications binary hash was
+c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996, so the
+running installed Host is not matching-source evidence for this branch.
+
+Device identity check:
+
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+
+Outcome: nubia / P0110 / pacific / Android 16 / SDK 36. No soak was run.
