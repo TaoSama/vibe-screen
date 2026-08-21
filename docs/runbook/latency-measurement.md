@@ -1,8 +1,8 @@
 # External-camera latency measurement
 
-This runbook defines the minimum evidence package for USB/LAN
-glass-to-glass and input-latency claims. It does not record a pass by itself;
-it makes real high-frame-rate samples auditable and fail-closed.
+This runbook defines the minimum evidence package for USB, LAN, and Internet
+glass-to-glass claims plus input-latency claims. It does not record a pass by
+itself; it makes real high-frame-rate samples auditable and fail-closed.
 
 ## Capture setup
 
@@ -102,6 +102,55 @@ The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
 
+## Internet route provenance
+
+For the `internet-glass-to-glass-sub150` profile, the manifest must include an
+`internet_route` object that proves the run used a real public-Internet path
+rather than a local loopback, same-private-network, or synthetic-peer setup.
+The object is required for `transport: internet` and must not be present for
+USB or LAN runs. A minimal shape is:
+
+    {
+      "internet_route": {
+        "route": "forced-public-turn",
+        "turn_deployment": {
+          "provider": "TURN provider name",
+          "region": "deployment region",
+          "public_hostname": "public relay hostname",
+          "tls": "turns or TLS mode",
+          "credential_source": "authority-issued short-lived credential"
+        },
+        "remote_peer": {
+          "operator": "remote peer operator",
+          "network": "carrier or ISP",
+          "public_ip_asn": "ASN of the remote public address",
+          "location": "city or region"
+        },
+        "candidate_pair": {
+          "local_candidate_type": "host|srflx|relay",
+          "remote_candidate_type": "host|srflx|relay",
+          "relay_protocol": "turn-udp|turn-tcp|turn-tls"
+        },
+        "network_topology": {
+          "host_network": "host ISP or network",
+          "device_network": "device carrier or ISP",
+          "same_private_network": false
+        }
+      }
+    }
+
+`route` must be either `direct-public-internet` or `forced-public-turn`. Direct
+public-Internet evidence must record host/srflx candidate types; forced
+public-TURN evidence must record relay/relay candidate types and
+`turn-udp`, `turn-tcp`, or `turn-tls` as the relay protocol.
+`turn_deployment.public_hostname` must identify a public hostname or global IP;
+a loopback, link-local, private, or CGNAT range is not accepted.
+`network_topology.same_private_network` must be `false` for an Internet gate; a
+`true` value means the run belongs to the trusted-LAN profile instead. The
+remote peer must be independently operated and reachable over the public
+Internet; a second local process, a synthetic Protocol v1 peer, or a
+same-LAN device does not satisfy this field.
+
 ## Commands
 
 First summarize the samples with the matching profile:
@@ -122,6 +171,15 @@ Then validate the formal evidence package:
       --output latency-run/latency-evidence-report.json
 
 For LAN glass-to-glass, use `--transport lan` with `lan-glass-to-glass-sub80`.
+For Internet glass-to-glass, use `--transport internet` with
+`internet-glass-to-glass-sub150`. The Internet gate is separate from the
+trusted-LAN gate and requires a real public-Internet route: a deployed public
+STUN/TURN service and an independently operated remote peer. A local coturn
+loopback, a synthetic Protocol v1 peer, or a same-private-network run is not
+Internet evidence and must not be submitted against the Internet profile. The
+manifest must also include the `internet_route` object described above, which
+records the selected route, public TURN deployment, remote peer, candidate
+pair, and network topology.
 For input latency, use `--kind input` with `input-p95-sub50`. The checker exits 0 only
 when the profile verdict is pass and required external-camera provenance is
 complete. Missing raw video, mismatched manifest fields, changed sample
@@ -155,5 +213,9 @@ used as acceptance evidence.
 A pass applies only to the recorded device, transport, build, camera setup, and
 sample window. Telemetry-stage summaries, decoder timings, RTT, screen
 recordings, screenshots, and unsynchronized host/device timestamps can explain
-latency sources, but they do not close USB/LAN glass-to-glass or input-latency
-gates.
+latency sources, but they do not close USB, LAN, or Internet glass-to-glass or
+input-latency gates. For the Internet profile, a pass also requires the
+recorded public-Internet route, public TURN deployment, and remote peer in the
+`internet_route` object; a local coturn loopback, synthetic peer, or
+same-private-network run does not close the Internet gate and must remain a LAN
+or local-readiness record instead.

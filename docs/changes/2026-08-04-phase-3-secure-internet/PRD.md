@@ -177,8 +177,13 @@ cryptographic primitive may be introduced.
 
 ### Performance and operations
 
-- healthy direct Internet paths target 80–150 ms glass-to-glass; all latency
-  claims use an external camera, not cross-device clocks;
+- healthy direct public-Internet paths target 80–150 ms glass-to-glass under
+  the `internet-glass-to-glass-sub150` gate profile; all latency claims use a
+  single external-camera timebase, not cross-device clocks. The Internet gate
+  is separate from the trusted-LAN `lan-glass-to-glass-sub80` profile and
+  additionally requires a deployed public STUN/TURN service and an
+  independently operated remote peer; a local coturn loopback, synthetic
+  Protocol v1 peer, or same-private-network run is not Internet evidence;
 - recovery is measured for path change, transient loss, TURN failover, signaling
   reconnect, and process restart; target p95 is five seconds unless the test plan
   records and approves a stricter value;

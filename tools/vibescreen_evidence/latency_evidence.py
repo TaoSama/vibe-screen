@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 import re
@@ -20,6 +21,7 @@ from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
 from .latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_PROFILES,
@@ -34,6 +36,7 @@ from .latency import (
 FORMAL_LATENCY_PROFILES = (
     GATE_USB_GLASS_TO_GLASS_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
 )
 
@@ -100,6 +103,8 @@ def _json_type_matches(value: Any, expected_type: str) -> bool:
         return isinstance(value, str)
     if expected_type == "number":
         return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
     return True
 
 
@@ -110,6 +115,8 @@ def _describe_json_type(expected_type: str) -> str:
         return "an object"
     if expected_type == "string":
         return "a string"
+    if expected_type == "boolean":
+        return "a boolean"
     return expected_type
 
 
@@ -260,6 +267,81 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _looks_local_or_private_hostname(hostname: str) -> bool:
+    normalized = hostname.strip().lower().rstrip(".")
+    if normalized in {"localhost", "loopback"} or normalized.endswith(".local"):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized.strip("[]"))
+    except ValueError:
+        return False
+    return not address.is_global
+
+
+def _validate_internet_route(manifest: dict[str, Any], gate_profile: str) -> list[str]:
+    if gate_profile != GATE_INTERNET_GLASS_TO_GLASS_SUB150:
+        if "internet_route" in manifest:
+            return ["internet_route is only allowed for the internet-glass-to-glass-sub150 profile"]
+        return []
+
+    errors: list[str] = []
+    route = manifest.get("internet_route")
+    if not isinstance(route, dict):
+        return [
+            "internet_route is required for internet-glass-to-glass-sub150 and must "
+            "record the public TURN deployment, remote peer, selected candidate pair, "
+            "and non-LAN network topology"
+        ]
+
+    turn = route.get("turn_deployment") if isinstance(route.get("turn_deployment"), dict) else {}
+    public_hostname = turn.get("public_hostname")
+    if isinstance(public_hostname, str) and _looks_local_or_private_hostname(public_hostname):
+        errors.append(
+            "internet_route.turn_deployment.public_hostname must be a public Internet "
+            "TURN hostname or global IP, not localhost, .local, loopback, or private address"
+        )
+
+    remote_peer = route.get("remote_peer") if isinstance(route.get("remote_peer"), dict) else {}
+    for field in ("operator", "network", "public_ip_asn", "location"):
+        value = remote_peer.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"internet_route.remote_peer.{field} is required for Internet latency evidence")
+
+    topology = route.get("network_topology") if isinstance(route.get("network_topology"), dict) else {}
+    if topology.get("same_private_network") is not False:
+        errors.append(
+            "internet_route.network_topology.same_private_network must be false; "
+            "trusted LAN or loopback routes cannot close the Internet latency gate"
+        )
+
+    candidate_pair = route.get("candidate_pair") if isinstance(route.get("candidate_pair"), dict) else {}
+    selected_route = route.get("route")
+    local_type = candidate_pair.get("local_candidate_type")
+    remote_type = candidate_pair.get("remote_candidate_type")
+    relay_protocol = candidate_pair.get("relay_protocol")
+    if selected_route == "forced-public-turn":
+        if local_type != "relay" or remote_type != "relay":
+            errors.append(
+                "internet_route.candidate_pair must record relay/relay candidate types "
+                "for forced-public-turn evidence"
+            )
+        if relay_protocol not in ("turn-udp", "turn-tcp", "turn-tls"):
+            errors.append(
+                "internet_route.candidate_pair.relay_protocol must be turn-udp, turn-tcp, "
+                "or turn-tls for forced-public-turn evidence"
+            )
+    elif selected_route == "direct-public-internet":
+        if local_type in ("host", "srflx") and remote_type in ("host", "srflx"):
+            pass
+        else:
+            errors.append(
+                "internet_route.candidate_pair must record host/srflx candidate types "
+                "for direct-public-internet evidence"
+            )
+
+    return errors
+
+
 def _validate_manifest_matches_summary(
     manifest: dict[str, Any], summary: dict[str, Any], gate_profile: str
 ) -> list[str]:
@@ -391,6 +473,7 @@ def build_latency_evidence_report(
     schema_errors = _validate_manifest_schema(manifest)
     errors = list(schema_errors)
     errors.extend(_validate_required_metadata(manifest))
+    errors.extend(_validate_internet_route(manifest, gate_profile))
     reference_errors, references = _validate_referenced_files(manifest_path, manifest)
     errors.extend(reference_errors)
 

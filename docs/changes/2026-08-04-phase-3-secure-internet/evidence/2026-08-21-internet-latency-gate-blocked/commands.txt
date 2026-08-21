@@ -1,0 +1,26 @@
+# Commands
+
+Worktree: /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/phase3-internet-latency-gate
+Commit: 22da26816465257b4a09f95de47be8567e448b74
+
+## Summary fixture
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/samples.csv --kind glass-to-glass --transport internet --measurement-method external-camera --gate-profile internet-glass-to-glass-sub150 --run-id 2026-08-21-internet-latency-gate-blocked --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/summary.json
+
+exit=0
+
+## Formal evidence gate
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/manifest-missing-internet-route.json --gate-profile internet-glass-to-glass-sub150 --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/latency-evidence-report.json
+
+exit=1
+
+## Focused tests
+python3 -m unittest tools.tests.test_latency tools.tests.test_latency_evidence
+
+exit=0
+
+## Focused tests result
+..............................................
+----------------------------------------------------------------------
+Ran 46 tests in 1.014s
+
+OK
