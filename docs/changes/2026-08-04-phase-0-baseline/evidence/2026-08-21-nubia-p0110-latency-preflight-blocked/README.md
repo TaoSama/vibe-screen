@@ -59,7 +59,7 @@ worktree session:
 ## Reproducible next step
 
 After recording `raw-camera.mov` and annotating `samples.csv`, generate a
-schema-compatible manifest with:
+schema-compatible external-camera manifest with:
 
 ```bash
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
@@ -92,9 +92,9 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
 
 Then run the summary and formal checker commands from
 `docs/runbook/latency-measurement.md`. For LAN, switch the transport/profile to
-`lan` and `lan-glass-to-glass-sub80`. For input latency, switch to
-`--latency-kind input` and `input-p95-sub50`, with real physical input timing
-evidence.
+`lan` and `lan-glass-to-glass-sub80`. For synchronized-clock input latency, use
+that runbook path with `--measurement-method synchronized-clock`, real physical
+input timing evidence, and a reviewable sub-5 ms synchronization error budget.
 
 ## Artifacts
 

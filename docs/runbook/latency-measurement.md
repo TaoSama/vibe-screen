@@ -176,10 +176,11 @@ budget must be less than 5 ms, which is 10% of the sub-50 ms P95 input gate, or
 the claim remains `insufficient` even if the raw P95 is below 50 ms.
 
 The formal provenance checker now validates synchronized-clock input packages.
-The manifest must set `measurement_method` to `synchronized-clock`,
-`latency_kind` to `input`, and `measurement_setup.clock_domain` to
-`synchronized-host-device-clocks`. The `camera` and `recording` sections are
-not required; instead, a `synchronization` section must provide:
+The manifest generator can build this path with `--measurement-method
+synchronized-clock`; it sets `measurement_setup.clock_domain` to
+`synchronized-host-device-clocks`, omits the external-camera-only `camera` and
+`recording` sections, and writes the required `synchronization` section. That
+section must provide:
 
 - `host_clock_source` and `device_clock_source`: the clock domains used on each
   side.
@@ -195,7 +196,41 @@ The checker applies `total_error_budget_ms` directly to the observed P95
 (rather than doubling it, as it does for per-frame camera annotation
 uncertainty). A pass requires `p95 + total_error_budget_ms <= 50 ms`.
 
-Run the summarizer and checker the same way as for external-camera packages:
+After collecting direct-latency samples and synchronization evidence, generate
+the manifest, then run the summarizer and checker:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --measurement-method synchronized-clock \
+  --latency-kind input \
+  --transport usb \
+  --gate-profile input-p95-sub50 \
+  --samples "$EVIDENCE_DIR/samples.csv" \
+  --samples-format csv \
+  --annotation-method direct-latency-ms \
+  --annotator "annotator name" \
+  --device-info "$EVIDENCE_DIR/device-info.json" \
+  --host-artifact "host binary identity or hash" \
+  --client-artifact "APK identity or hash" \
+  --stimulus "physical input actuation" \
+  --start-event-definition "physical input timestamp source" \
+  --end-event-definition "visible Mac result timestamp source" \
+  --lighting "n/a for synchronized-clock" \
+  --mounting "n/a for synchronized-clock" \
+  --host-clock-source "host clock source" \
+  --device-clock-source "device clock source" \
+  --sync-procedure "clock synchronization procedure" \
+  --before-skew-ms 1.2 \
+  --after-skew-ms 1.5 \
+  --max-drift-ms 0.8 \
+  --total-error-budget-ms 3.5 \
+  --input-timestamp-method "physical input timestamp method" \
+  --result-timestamp-method "visible result timestamp method" \
+  --notes "run-specific notes"
+```
+
+Then run the summary and checker commands:
 
 ```bash
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \

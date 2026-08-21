@@ -73,9 +73,11 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --gate-profile "$GATE_PROFILE"
 ```
 
-See [External-camera latency measurement](runbook/latency-measurement.md). The
-checker requires the raw camera file, sample annotations, device/build metadata,
-and matching gate profile before it can return `pass`.
+See [External-camera latency measurement](runbook/latency-measurement.md). For
+external-camera packages, the checker requires the raw camera file, sample
+annotations, device/build metadata, and matching gate profile before it can
+return `pass`. Synchronized-clock input packages use direct-latency samples and
+manifest synchronization metadata instead of `camera` and `recording` sections.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
@@ -97,7 +99,8 @@ the focused Android view and cannot close the native-pointer gate.
 
 Before running the gate, start the matching macOS Host, grant Accessibility,
 establish a Protocol v1 USB or trusted-LAN session, and keep the Android client
-foregrounded on the streaming view. Then run:
+foregrounded on the streaming view. Replace `<target app>` with the observed
+Mac application name before running the command:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \

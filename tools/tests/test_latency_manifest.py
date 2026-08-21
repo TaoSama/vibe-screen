@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.vibescreen_evidence.latency import GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import GATE_INPUT_P95_SUB50, GATE_USB_GLASS_TO_GLASS_SUB50
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 from tools.vibescreen_evidence.latency_manifest import (
     LatencyManifestError,
@@ -71,6 +71,12 @@ def _write_fixture_files(root: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     return raw_video, samples
+
+
+def _write_synchronized_clock_samples(root: Path) -> Path:
+    samples = root / "samples.csv"
+    samples.write_text("latency_ms\n12.5\n18.3\n15.1\n22.4\n19.7\n", encoding="utf-8")
+    return samples
 
 
 class LatencyManifestBuilderTest(unittest.TestCase):
@@ -206,6 +212,78 @@ class LatencyManifestCliTest(unittest.TestCase):
             "Synthetic test package only.",
         ]
 
+    def valid_synchronized_clock_cli_args(self, root: Path, samples: Path) -> list[str]:
+        return [
+            "--evidence-dir",
+            str(root),
+            "--run-id",
+            "cli-synchronized-clock-manifest",
+            "--measurement-method",
+            "synchronized-clock",
+            "--latency-kind",
+            "input",
+            "--transport",
+            "usb",
+            "--gate-profile",
+            GATE_INPUT_P95_SUB50,
+            "--samples",
+            str(samples),
+            "--samples-format",
+            "csv",
+            "--annotation-method",
+            "direct-latency-ms",
+            "--annotator",
+            "fixture",
+            "--device-manufacturer",
+            "Fixture",
+            "--device-model",
+            "Fixture Device",
+            "--device-codename",
+            "fixture",
+            "--device-os-version",
+            "Android fixture",
+            "--host-model",
+            "Fixture Mac",
+            "--macos-version",
+            "fixture",
+            "--repository-revision",
+            "fixture-revision",
+            "--host-artifact",
+            "fixture-host",
+            "--client-artifact",
+            "fixture-client",
+            "--stimulus",
+            "physical touch on Android screen",
+            "--start-event-definition",
+            "Android touch event timestamp",
+            "--end-event-definition",
+            "macOS CGEvent injection timestamp",
+            "--lighting",
+            "n/a",
+            "--mounting",
+            "n/a",
+            "--host-clock-source",
+            "macOS system clock",
+            "--device-clock-source",
+            "Android elapsedRealtimeNanos",
+            "--sync-procedure",
+            "ADB round-trip calibration",
+            "--before-skew-ms",
+            "1.2",
+            "--after-skew-ms",
+            "1.5",
+            "--max-drift-ms",
+            "0.8",
+            "--total-error-budget-ms",
+            "3.5",
+            "--input-timestamp-method",
+            "Android MotionEvent.eventTime captured at touch dispatch",
+            "--result-timestamp-method",
+            "macOS CGEvent timestamp captured at injection",
+            "--notes",
+            "Synthetic synchronized-clock package only.",
+        ]
+
     def test_cli_writes_schema_compatible_manifest_from_device_info(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -241,6 +319,58 @@ class LatencyManifestCliTest(unittest.TestCase):
         self.assertEqual(manifest["device"]["manufacturer"], "nubia")
         self.assertEqual(manifest["device"]["codename"], "pacific")
         self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_writes_schema_compatible_synchronized_clock_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = _write_synchronized_clock_samples(root)
+
+            result = self.run_cli(*self.valid_synchronized_clock_cli_args(root, samples))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(manifest["measurement_method"], "synchronized-clock")
+        self.assertNotIn("camera", manifest)
+        self.assertNotIn("recording", manifest)
+        self.assertEqual(
+            manifest["measurement_setup"]["clock_domain"],
+            "synchronized-host-device-clocks",
+        )
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_rejects_non_finite_camera_frame_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            index = arguments.index("--camera-frame-rate-fps") + 1
+            arguments[index] = "nan"
+
+            result = self.run_cli(*arguments)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("camera.frame_rate_fps must be finite", result.stderr)
+
+    def test_cli_rejects_non_finite_annotation_uncertainty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            index = arguments.index("--max-frame-annotation-uncertainty-ms") + 1
+            arguments[index] = "inf"
+
+            result = self.run_cli(*arguments)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "measurement_setup.max_frame_annotation_uncertainty_ms must be finite",
+            result.stderr,
+        )
 
     def test_cli_rejects_output_outside_evidence_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
