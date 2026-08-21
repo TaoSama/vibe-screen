@@ -139,6 +139,42 @@ or interoperate with the Host. It exists to keep those external observations
 complete and correctly scoped once a MatePad Mini and signing environment are
 available.
 
+## 2026-08-21 AVCodecKit hardware-decode preflight
+
+The HarmonyOS H.264/HEVC hardware decode gate now has a dedicated structured
+preflight and manifest validator. A passing manifest must bind a clean source
+commit/tree, DevEco/Harmony SDK/Hvigor/OHPM/HDC provenance, a signed
+`dev.vibescreen.harmony` HAP and signature hash, a MatePad Mini HarmonyOS
+identity, a Protocol v1 Host build, and both codec records marked pass. For each
+of `h264` and `hevc`, the codec record must cover decoder capability, hardware
+decoder identity, XComponent surface, buffer callback, Protocol v1 media header,
+PTS preservation, input push, output render, output buffer free, flush,
+reconfigure, EOS, and release.
+
+```text
+python3 -m vibescreen_evidence.harmony_avcodec_preflight --template
+  PASS: prints a redaction-safe blocked template only
+make harmony-avcodec-preflight EVIDENCE_DIR=/path/to/evidence
+  BLOCKED in this environment when DevEco/HDC/HAP/MatePad evidence is absent
+make harmony-avcodec-validate EVIDENCE_DIR=/path/to/evidence
+  PASS only when /path/to/evidence/harmony-avcodec-preflight.json has both
+  hardware codec records marked pass with the required lifecycle evidence
+PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+  --allow-blocked --validate /path/to/evidence/harmony-avcodec-preflight.json
+  STRUCTURE-ONLY: may document blocked readiness, but is not acceptance evidence
+```
+
+The main Harmony device-gate manifest now requires `h264_hardware_decode` and
+`hevc_hardware_decode` pass entries to reference `harmony-avcodec-preflight.json`.
+That reference does not itself prove hardware decode; it ensures the broader
+device gate cannot close without the per-codec AVCodecKit manifest.
+
+A local blocked record is committed under
+[`evidence/2026-08-21-harmony-avcodec-preflight-blocked`](evidence/2026-08-21-harmony-avcodec-preflight-blocked/README.md).
+It records missing DevEco/HDC/Hvigor/OHPM/HAP/MatePad prerequisites and keeps
+both H.264 and HEVC hardware decode gates open. Android, emulator, simulator,
+portable source, and source-only static results remain invalid substitutes.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:
@@ -205,8 +241,10 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
 
 - clean OHPM sync with recorded lock/tool/SDK versions;
 - ArkTS/API checker for every `.ets` file and module schema;
-- confirmation/correction of AVCodecKit buffer callback, memory write, PTS,
-  render/free, flush, reconfigure, EOS, and release calls;
+- confirmation/correction of the commercial AVCodecKit declarations and a
+  passing `harmony-avcodec-preflight.json` covering buffer callback, memory
+  write, PTS, render/free, flush, reconfigure, EOS, and release for both H.264
+  and HEVC;
 - debug and signed release `assembleHap`, HAP contents/permissions/signature,
   SHA-256, install, in-place upgrade, rollback behavior, and uninstall cleanup;
 - Asset Store client/host record CRUD and malformed-version removal;
@@ -216,7 +254,8 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
 
 - real upgrade/HostHello/session/display/video/control/media interoperability;
 - secure PairingOffer/Request/Result proof, credential issue/revoke, replay and expiry;
-- H.264 and HEVC hardware render with decoder identity evidence;
+- H.264 and HEVC hardware render with decoder identity evidence bound to the
+  structured AVCodec preflight manifest;
 - multi-touch, Up/Cancel, keyboard/HID/modifiers, pointer/buttons, wheel/trackpad,
   stylus (base pressure/tilt and extended eraser/barrel/proximity under
   capability gating), focus, safe area, letterbox, and both orientations;
