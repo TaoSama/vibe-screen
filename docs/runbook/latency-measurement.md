@@ -95,12 +95,40 @@ and annotation method. A minimal shape is:
         "clock_domain": "single-external-camera-timebase",
         "max_frame_annotation_uncertainty_ms": 4.2,
         "notes": "run-specific notes"
+      },
+      "gate_artifacts": {
+        "usb_connection": "usb-connection.txt"
       }
     }
+
+Use `gate_artifacts.usb_connection` for `usb-glass-to-glass-sub50`,
+`gate_artifacts.lan_network_preflight` for `lan-glass-to-glass-sub80`, and
+`gate_artifacts.input_actuation_record` for `input-p95-sub50`. Each value must
+be a retained file path relative to the evidence directory. The checker rejects
+missing profile artifacts even when the sample statistics alone pass.
 
 The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
+
+## Readiness preflight
+
+When the camera, network, or physical input setup is incomplete, record a
+blocked preflight instead of hand-writing an ambiguous note:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_preflight \
+      --input latency-readiness-input.json \
+      --device-info device-info.json \
+      --repo . \
+      --output latency-preflight.json
+
+The input JSON may list `gate_profiles` with boolean `checks`; omitted checks
+default to false. The tool exits `0` only when all prerequisites for the
+selected profiles are ready to attempt formal validation. It exits `2` for a
+blocked preflight and writes per-profile `missing_requirements` with actionable
+next steps. A ready preflight still does not close a performance gate; it only
+means the formal `latency_evidence` checker can be run against retained real
+measurement artifacts.
 
 ## Commands
 

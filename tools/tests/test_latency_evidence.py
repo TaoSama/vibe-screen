@@ -23,6 +23,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         (root / "raw-camera-placeholder.mov").write_bytes(
             (source / "raw-camera-placeholder.mov").read_bytes()
         )
+        (root / "usb-connection.txt").write_bytes(
+            (source / "usb-connection.txt").read_bytes()
+        )
         return manifest
 
     def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
@@ -71,6 +74,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
             (root / "raw-camera-placeholder.mov").write_bytes(
                 (source / "raw-camera-placeholder.mov").read_bytes()
+            )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
             )
 
             report = build_latency_evidence_report(
@@ -308,6 +314,70 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertIn(
             "samples.file must stay within the evidence directory",
             report["gate"]["reasons"],
+        )
+
+    def test_profile_artifact_is_required_for_usb_glass_to_glass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest.pop("gate_artifacts", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn("manifest.gate_artifacts is required", report["gate"]["reasons"])
+        self.assertIn(
+            "gate_artifacts must be an object containing profile-specific retained artifacts",
+            report["gate"]["reasons"],
+        )
+        self.assertTrue(
+            any("gate_artifacts.usb_connection is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_lan_profile_requires_lan_preflight_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["latency_kind"] = "glass-to-glass"
+            manifest["transport"] = "lan"
+            manifest["gate_profile"] = "lan-glass-to-glass-sub80"
+            manifest["gate_artifacts"] = {"lan_network_preflight": "lan-preflight.txt"}
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile="lan-glass-to-glass-sub80",
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            str(root / "lan-preflight.txt"),
+            "\n".join(report["gate"]["reasons"]),
+        )
+
+    def test_input_profile_requires_physical_actuation_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["latency_kind"] = "input"
+            manifest["gate_profile"] = "input-p95-sub50"
+            manifest["gate_artifacts"] = {"input_actuation_record": "input-actuation.mov"}
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile="input-p95-sub50",
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            str(root / "input-actuation.mov"),
+            "\n".join(report["gate"]["reasons"]),
         )
 
 

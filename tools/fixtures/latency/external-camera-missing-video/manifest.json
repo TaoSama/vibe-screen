@@ -49,5 +49,8 @@
     "clock_domain": "single-external-camera-timebase",
     "max_frame_annotation_uncertainty_ms": 4.2,
     "notes": "Synthetic checker fixture only; not acceptance evidence."
+  },
+  "gate_artifacts": {
+    "usb_connection": "usb-connection.txt"
   }
 }

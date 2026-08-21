@@ -74,6 +74,27 @@ REQUIRED_TEXT_FIELDS = {
     ),
 }
 
+PROFILE_ARTIFACT_REQUIREMENTS = {
+    GATE_USB_GLASS_TO_GLASS_SUB50: (
+        (
+            "usb_connection",
+            "retain ADB reverse/USB connection setup and active stream proof for the run",
+        ),
+    ),
+    GATE_LAN_GLASS_TO_GLASS_SUB80: (
+        (
+            "lan_network_preflight",
+            "retain LAN network preflight proving both peers were on the measured network",
+        ),
+    ),
+    GATE_INPUT_P95_SUB50: (
+        (
+            "input_actuation_record",
+            "retain physical input actuation proof visible in the measurement timebase",
+        ),
+    ),
+}
+
 
 class LatencyEvidenceError(ValueError):
     """Raised when a formal latency evidence package cannot be read."""
@@ -315,6 +336,33 @@ def _validate_referenced_files(
     return errors, references
 
 
+def _validate_profile_artifacts(
+    manifest_path: Path, manifest: dict[str, Any], gate_profile: str
+) -> list[str]:
+    errors: list[str] = []
+    artifact_requirements = PROFILE_ARTIFACT_REQUIREMENTS.get(gate_profile, ())
+    if not artifact_requirements:
+        return errors
+
+    gate_artifacts = manifest.get("gate_artifacts")
+    if not isinstance(gate_artifacts, dict):
+        errors.append(
+            "gate_artifacts must be an object containing profile-specific retained artifacts"
+        )
+        gate_artifacts = {}
+
+    for field, requirement in artifact_requirements:
+        artifact_field = f"gate_artifacts.{field}"
+        path = _resolve_package_path(
+            manifest_path, gate_artifacts.get(field), artifact_field, errors
+        )
+        if path is None:
+            errors.append(f"{artifact_field} is required to {requirement}")
+        elif not path.is_file():
+            errors.append(f"{artifact_field} does not exist: {path}")
+    return errors
+
+
 def _validate_sample_annotations(
     manifest: dict[str, Any], rows: Sequence[dict[str, Any]]
 ) -> list[str]:
@@ -393,6 +441,7 @@ def build_latency_evidence_report(
     errors.extend(_validate_required_metadata(manifest))
     reference_errors, references = _validate_referenced_files(manifest_path, manifest)
     errors.extend(reference_errors)
+    errors.extend(_validate_profile_artifacts(manifest_path, manifest, gate_profile))
 
     samples_section = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
     sample_format = samples_section.get("format")

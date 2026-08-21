@@ -1,0 +1,29 @@
+{
+  "run_id": "2026-08-21-p0110-latency-gates-preflight-blocked",
+  "checked_at": "2026-08-21",
+  "gate_profiles": [
+    {
+      "profile": "usb-glass-to-glass-sub50",
+      "checks": {
+        "device_identity_recorded": true
+      }
+    },
+    {
+      "profile": "lan-glass-to-glass-sub80",
+      "checks": {
+        "device_identity_recorded": true
+      }
+    },
+    {
+      "profile": "input-p95-sub50",
+      "checks": {
+        "device_identity_recorded": true
+      }
+    }
+  ],
+  "notes": [
+    "No new Android device action was run for this preflight; the P0110 identity is copied from retained 2026-08-20 device-info evidence.",
+    "No real 120 FPS or higher external-camera footage is present in this worktree.",
+    "LAN stream setup and physical input actuation were not available for this run."
+  ]
+}
