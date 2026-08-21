@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import multiprocessing
 import os
 import plistlib
+import queue
 import re
 import shutil
 import sqlite3
@@ -24,6 +26,7 @@ DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+TCC_QUERY_TIMEOUT_SECONDS = 5.0
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
@@ -249,9 +252,65 @@ def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> P
     return PermissionStatus(database_path=label, rows=(), readable=False, error="; ".join(errors))
 
 
-def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
+def query_tcc_database(bundle_id: str, database_path: Path, *, timeout_seconds: float = TCC_QUERY_TIMEOUT_SECONDS) -> PermissionStatus:
     if not database_path.exists():
         return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error="TCC database not found")
+    context = _tcc_query_context()
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(target=_query_tcc_database_worker, args=(result_queue, bundle_id, database_path))
+    try:
+        process.start()
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(1.0)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            return PermissionStatus(
+                database_path=str(database_path),
+                rows=(),
+                readable=False,
+                error=f"TCC database query timed out after {timeout_seconds:g}s",
+            )
+        try:
+            status, payload = result_queue.get(timeout=1.0)
+        except queue.Empty:
+            exitcode = process.exitcode if process.exitcode is not None else "unknown"
+            return PermissionStatus(
+                database_path=str(database_path),
+                rows=(),
+                readable=False,
+                error=f"TCC database query exited without a result (exit {exitcode})",
+            )
+        if status == "ok":
+            return payload
+        return PermissionStatus(
+            database_path=str(database_path),
+            rows=(),
+            readable=False,
+            error=str(payload),
+        )
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _tcc_query_context() -> multiprocessing.context.BaseContext:
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context()
+
+
+def _query_tcc_database_worker(result_queue: multiprocessing.Queue, bundle_id: str, database_path: Path) -> None:
+    try:
+        result_queue.put(("ok", _query_tcc_database_direct(bundle_id, database_path)))
+    except Exception as error:
+        result_queue.put(("error", repr(error)))
+
+
+def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> PermissionStatus:
     try:
         connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
         try:
@@ -389,6 +448,47 @@ It only uses the configured codesign identity and reads TCC.db in read-only mode
 """
 
 
+def format_signing_prerequisite_report(*, install_path: Path, sign_identity: str, error: str) -> str:
+    return f"""Host signing prerequisite
+-------------------------
+Configured identity: {sign_identity}
+Install path: {install_path}
+
+Result
+------
+Status: FAIL
+Blocking issues:
+- Host signing prerequisite is not met: {error}
+
+Next action
+-----------
+Create or import the stable local codesigning identity, or set
+${package_macos.SIGN_IDENTITY_ENV} to an existing stable identity, then rebuild
+and reinstall the Host before rerunning touch evidence. Do not use ad-hoc
+signing for fixed-binary device reruns because it changes the code-signing hash
+and invalidates macOS Screen Recording/Accessibility grants.
+
+Safety
+------
+This blocked operation did not start the Host, run Android instrumentation,
+modify Keychain, modify TCC.db, clear Android app data, or change ADB state. This
+is a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi
+result.
+System permission path: {SYSTEM_SETTINGS_PATH}
+"""
+
+
+def write_signing_prerequisite_report(args: argparse.Namespace, error: BaseException) -> int:
+    report = format_signing_prerequisite_report(
+        install_path=args.install_path.resolve(),
+        sign_identity=args.sign_identity,
+        error=str(error),
+    )
+    write_report(args.report, report)
+    print(report, file=sys.stderr)
+    return 2
+
+
 def write_report(path: Path, report: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(report, encoding="utf-8")
@@ -477,7 +577,13 @@ def install_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
-    packaged_app = package_dev_app(args.output_dir, args.sign_identity)
+    try:
+        packaged_app = package_dev_app(args.output_dir, args.sign_identity)
+    except SystemExit as error:
+        message = str(error)
+        if "signing identity" in message or "codesign identity" in message:
+            return write_signing_prerequisite_report(args, error)
+        raise
     safe_replace_app(packaged_app, install_path, EXPECTED_BUNDLE_ID)
     metadata, permissions, errors = metadata_and_permissions(
         install_path,
@@ -500,8 +606,10 @@ def preflight_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
-    refuse_ad_hoc_identity(args.sign_identity)
-    package_macos.resolve_sign_identity(args.sign_identity)
+    try:
+        refuse_ad_hoc_identity(args.sign_identity)
+    except SystemExit as error:
+        return write_signing_prerequisite_report(args, error)
     metadata, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,

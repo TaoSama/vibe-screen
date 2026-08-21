@@ -19,6 +19,15 @@ PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER ?=
+TOUCH_RERUN_EXPECTED_ANDROID_MODEL ?=
+TOUCH_RERUN_EXPECTED_ANDROID_DEVICE ?=
+TOUCH_RERUN_EXPECTED_ANDROID_RELEASE ?=
+TOUCH_RERUN_EXPECTED_ANDROID_SDK ?=
+TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
+TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
+TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
+TOUCH_RERUN_EVENT_TAP ?= $(EVIDENCE_DIR)/listen-only-event-tap.log
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -26,7 +35,7 @@ PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight evidence-touch-rerun-summary harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -129,7 +138,27 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		python3 -m vibescreen_evidence.touch_rerun_preflight \
 		--serial $(EVIDENCE_SERIAL) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
-		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER)),--expected-android-manufacturer $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL)),--expected-android-model $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		--output $(TOUCH_RERUN_PREFLIGHT)
+
+evidence-touch-rerun-summary:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a touch rerun evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.touch_rerun_summary \
+		--preflight $(TOUCH_RERUN_PREFLIGHT) \
+		--instrumentation $(TOUCH_RERUN_INSTRUMENTATION) \
+		--host-log $(TOUCH_RERUN_HOST_LOG) \
+		--event-tap $(TOUCH_RERUN_EVENT_TAP) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER)),--expected-android-manufacturer $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL)),--expected-android-model $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		--output $(EVIDENCE_DIR)/result-summary.json
 
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)

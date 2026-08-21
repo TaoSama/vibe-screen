@@ -1,0 +1,217 @@
+{
+  "artifacts": [
+    {
+      "bytes": 5194,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "7ecf737ccd94461ea73596c50e481e64ad8d9202c61580c3f816b200b1647bfb"
+    },
+    {
+      "bytes": 252,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-launch.txt",
+      "result": "pass",
+      "sha256": "ad357e19b59d6b8dad3ac110b4438a8a20875df806f5abc7a58fac40989d83c5"
+    },
+    {
+      "bytes": 195512,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-screen-before-rerun.png",
+      "result": "pass",
+      "sha256": "ca7763fbdf4291b9ea9a402eca9f8f393794eda2a935baadd6e78d1f50760d27"
+    },
+    {
+      "bytes": 286,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "apk-sha256.txt",
+      "result": "pass",
+      "sha256": "3410ae1627bb741bd6c4aebce481385b64e81fd485913a567aa1f40abf5632ec"
+    },
+    {
+      "bytes": 592,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "cleanup.txt",
+      "result": "pass",
+      "sha256": "e5d765d9366b5ad4c9c9d1777411281ee3dc1cc99040598af7dba1ad28b61467"
+    },
+    {
+      "bytes": 164,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-identity.txt",
+      "result": "pass",
+      "sha256": "19fd4c52d13f54a4b9bf0fc0c903fa53c0b020e6d31cd62466ed2eaec53a2d7c"
+    },
+    {
+      "bytes": 37,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-lock-after-cleanup.txt",
+      "result": "pass",
+      "sha256": "5d9b24323f6e976cbeab419b328431b7388a6485f896061d62aca9eeeae3c418"
+    },
+    {
+      "bytes": 10343,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-log-after-launch.log",
+      "result": "pass",
+      "sha256": "736e7b6cb2c8902fd1540d8e7bf5906a1a7862dabb3fe6586552b3b58a403f7b"
+    },
+    {
+      "bytes": 12932,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-log-blocked-capture.log",
+      "result": "pass",
+      "sha256": "936cd00dd3233623ab49fa85a1e685533580926484230c58d17ba6913d376cea"
+    },
+    {
+      "bytes": 8539,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-restart-and-listen.txt",
+      "result": "pass",
+      "sha256": "51ea3219a5c433e0c21cb83ad91693de1726cd6bc6f09820155d23d1372afa9f"
+    },
+    {
+      "bytes": 491,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "install-and-reverse.txt",
+      "result": "pass",
+      "sha256": "15af34a8e0314e0464243cc036490fefec37f786299825ed9a79f4399f118290"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "listen-only-event-tap.log",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2703,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "result-summary.json",
+      "result": "pass",
+      "sha256": "8d00335ea5cb3b32edbd8377c6be48dded94f87bf95410095f0d7fe7300684ef"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "touch-gesture-instrumentation.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2634,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "touch-rerun-preflight.json",
+      "result": "pass",
+      "sha256": "8039b7b87837fc3b342370476445c5f27dd059ac55455c368fbddf9ec92ad124"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

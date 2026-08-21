@@ -1,4 +1,4 @@
-# Xiaomi 13 touch-gesture end-to-end verification
+# Xiaomi 13 touch-gesture verification with P0110 rerun addendum
 
 Date: 2026-08-13
 
@@ -109,6 +109,24 @@ substitute device. It does not replace or relabel Xiaomi 13/fuxi evidence, and
 the formal native HID mouse confirmation plus physical-finger/manual UX pass
 remain separate gates.
 
+On 2026-08-21 a follow-up P0110/pacific USB/touch rerun setup was blocked before
+Host launch while preparing a rebuilt stable Host: `Vibe Screen Dev` was not
+present in the Keychain, so the Host could not be rebuilt or reinstalled as a
+stable signed binary. ADB reverse succeeded and the Android app was already
+foregrounded on the Nubia P0110/pacific Android 16 device, but `lsof` showed no
+Host listener on TCP `54321`. This is a stable Host signing prerequisite, not a
+device blocker and not Xiaomi 13/fuxi evidence; do not run or claim touch
+gesture instrumentation until the stable signing identity is restored, the Host
+is rebuilt/installed, and the read-only preflight confirms Screen Recording plus
+Accessibility for the resulting `dev.telemachus.display` bundle.
+
+The evidence summary is now generated with a fail-closed verifier. A pass requires
+the ready preflight, expected Android identity, opt-in instrumentation `OK (1
+test)`, Host Protocol v1/touch and gesture markers, and listen-only event-tap
+markers for plain pointer/scroll without Command plus pinch zoom with Command.
+Any missing artifact or marker writes a blocked summary and cannot close the
+rerun gate.
+
 Before any future short rerun, collect a read-only preflight so a blocked state
 is recorded without launching the Host, running instrumentation, resetting TCC
 or Keychain state, clearing Android app data, or starting a soak:
@@ -117,7 +135,12 @@ or Keychain state, clearing Android app data, or starting a soak:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/<date-device-fixed-binary-preflight> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 The preflight reads both the current-user and system TCC databases by default,
@@ -131,3 +154,10 @@ and the explicit Android device identity is recorded. If any precondition is
 missing, keep the result as blocked evidence. A Nubia P0110/pacific may be used
 as a general Android substitute, but the evidence title, device table, and
 claims must name Nubia P0110/pacific rather than Xiaomi 13/fuxi.
+
+Name new evidence directories as
+`yyyy-mm-dd-<actual-device>-<actual-codename>-fixed-binary-preflight`,
+`yyyy-mm-dd-<actual-device>-<actual-codename>-fixed-binary-blocked`, or
+`yyyy-mm-dd-<actual-device>-<actual-codename>-fixed-binary-rerun`. The device and
+codename segments must come from the actual recorded device identity, not the
+target device family.

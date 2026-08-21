@@ -1,0 +1,10 @@
+# install 2026-08-20T22:49:52Z
+Performing Streamed Install
+Success
+Performing Streamed Install
+Success
+instrumentation:com.doubao.android.community/com.bytedance.common.component.CommonInstrumentation (target=com.doubao.android.community)
+instrumentation:com.luna.music/com.bytedance.common.component.CommonInstrumentation (target=com.luna.music)
+instrumentation:dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner (target=dev.telemachus.display)
+UsbFfs tcp:54321 tcp:54321
+

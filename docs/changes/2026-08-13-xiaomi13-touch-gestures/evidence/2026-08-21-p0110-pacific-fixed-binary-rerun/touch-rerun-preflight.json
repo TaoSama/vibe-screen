@@ -1,0 +1,76 @@
+{
+  "android_device": {
+    "abi": "arm64-v8a",
+    "adb_serial": "EP0110PZ0B9110300B",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "device": "pacific",
+    "device_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "product": "pacific",
+    "sdk": 36
+  },
+  "blockers": [],
+  "collected_at": "2026-08-20T23:01:12.411221+00:00",
+  "expected_android_device": {
+    "android_release": "16",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "expected_host_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+  "host": {
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "bundle_path": "/Applications/Vibe Screen.app",
+    "codesign": {
+      "authorities": [
+        "Vibe Screen Dev",
+        "Vibe Screen Dev Root"
+      ],
+      "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+      "verify": "--prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n--validated:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: valid on disk\n/Applications/Vibe Screen.app: satisfies its Designated Requirement"
+    },
+    "identifier": "dev.telemachus.display"
+  },
+  "kind": "touch_fixed_binary_rerun_preflight",
+  "result": "ready",
+  "safety": {
+    "modifies_android_app_data": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "runs_instrumentation": false,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "tcc": {
+    "accessibility": {
+      "auth_reason": 4,
+      "auth_value": 2,
+      "authorized": true,
+      "client": "dev.telemachus.display",
+      "client_type": 0,
+      "db_path": "/Library/Application Support/com.apple.TCC/TCC.db",
+      "last_modified": 1787122391,
+      "service": "kTCCServiceAccessibility"
+    },
+    "bundle_identifier": "dev.telemachus.display",
+    "db_paths": [
+      "<user-home>/Library/Application Support/com.apple.TCC/TCC.db",
+      "/Library/Application Support/com.apple.TCC/TCC.db"
+    ],
+    "missing_db_paths": [],
+    "screen_recording": {
+      "auth_reason": 4,
+      "auth_value": 2,
+      "authorized": true,
+      "client": "dev.telemachus.display",
+      "client_type": 0,
+      "db_path": "/Library/Application Support/com.apple.TCC/TCC.db",
+      "last_modified": 1787037984,
+      "service": "kTCCServiceScreenCapture"
+    }
+  }
+}

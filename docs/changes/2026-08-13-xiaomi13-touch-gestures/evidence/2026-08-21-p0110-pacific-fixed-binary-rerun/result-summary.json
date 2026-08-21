@@ -1,0 +1,67 @@
+{
+  "android_device": {
+    "abi": "arm64-v8a",
+    "adb_serial": "EP0110PZ0B9110300B",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "device": "pacific",
+    "device_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "product": "pacific",
+    "sdk": 36
+  },
+  "blockers": [
+    "instrumentation_ok",
+    "right_click_observed",
+    "drag_began_observed",
+    "drag_ended_observed",
+    "two_finger_scroll_observed",
+    "pinch_observed",
+    "event_tap_ready",
+    "event_tap_done",
+    "tap_left_down_up_observed",
+    "right_click_event_observed",
+    "drag_event_observed",
+    "plain_scroll_event_observed",
+    "pinch_zoom_event_observed",
+    "first_plain_pointer_command_clear"
+  ],
+  "can_close_touch_rerun_gate": false,
+  "checks": {
+    "drag_began_observed": false,
+    "drag_ended_observed": false,
+    "drag_event_observed": false,
+    "event_tap_done": false,
+    "event_tap_ready": false,
+    "expected_android_identity_observed": true,
+    "first_plain_pointer_command_clear": false,
+    "instrumentation_ok": false,
+    "pinch_observed": false,
+    "pinch_zoom_event_observed": false,
+    "plain_scroll_event_observed": false,
+    "preflight_ready": true,
+    "protocol_v1_selected": true,
+    "right_click_event_observed": false,
+    "right_click_observed": false,
+    "tap_left_down_up_observed": false,
+    "touch_input_enabled": true,
+    "two_finger_scroll_observed": false
+  },
+  "device_scope": "not_closed",
+  "inputs": {
+    "event_tap": "docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-21-p0110-pacific-fixed-binary-rerun/listen-only-event-tap.log",
+    "host_log": "docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-21-p0110-pacific-fixed-binary-rerun/host-log-blocked-capture.log",
+    "instrumentation": "docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-21-p0110-pacific-fixed-binary-rerun/touch-gesture-instrumentation.txt",
+    "preflight": "docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-21-p0110-pacific-fixed-binary-rerun/touch-rerun-preflight.json"
+  },
+  "kind": "touch_fixed_binary_rerun_summary",
+  "limitations": [
+    "A pass closes only the fixed stable-signed binary touch-gesture rerun for the recorded general Android substitute device.",
+    "A Nubia P0110/pacific result must not be relabeled as Xiaomi 13/fuxi evidence.",
+    "Physical-finger/manual UX and native HID mouse confirmations remain separate gates."
+  ],
+  "result": "blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "summarized_at": "2026-08-20T23:44:57.643816+00:00"
+}
