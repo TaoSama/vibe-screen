@@ -159,7 +159,7 @@
   ],
   "host": {
     "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "commit": "22da26816465257b4a09f95de47be8567e448b74",
+    "commit": "30e72dfb898d0aec1795ea9bd7f1a23f94137246",
     "protocol": "Protocol v1"
   },
   "notes": [
@@ -167,9 +167,9 @@
     "Validate with --allow-blocked unless every real-device gate has independent pass evidence."
   ],
   "repository": {
-    "commit": "22da26816465257b4a09f95de47be8567e448b74",
+    "commit": "30e72dfb898d0aec1795ea9bd7f1a23f94137246",
     "status": "dirty",
-    "tree": "a50bfe2961cd404dc42a5ce716dcf3066230fa52"
+    "tree": "c980f9286fbb061bb978b9763e3f1ee483ac6f0c"
   },
   "schema": "dev.vibescreen.harmony-device-gates/v1",
   "toolchain": {

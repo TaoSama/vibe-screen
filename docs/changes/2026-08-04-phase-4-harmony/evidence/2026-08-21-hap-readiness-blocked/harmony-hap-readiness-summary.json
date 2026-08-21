@@ -2,7 +2,7 @@
   "can_close_hap_lifecycle_readiness": false,
   "missing_requirements": [
     {
-      "detail": "M  Makefile\nM  README.md\nM  apps/harmony/README.md\nM  docs/changes/2026-08-04-phase-4-harmony/TEST.md\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/README.md\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-device-gates.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness-summary.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/hdc-targets.txt\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/package-prestate.txt\nM  docs/runbook/harmony-matepad-mini.md\nM  docs/testing.md\nM  scripts/harmony_device_gate.py\nA  scripts/harmony_hap_readiness.py\nA  scripts/tests/test_harmony_hap_readiness.py\nM  scripts/tests/test_release_tools.py\nAM tools/vibescreen_evidence/harmony_hap_readiness.py",
+      "detail": "M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/README.md\n M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-device-gates.json\n M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness-summary.json\n M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness.json\n M scripts/tests/test_harmony_hap_readiness.py\n M tools/vibescreen_evidence/harmony_hap_readiness.py",
       "evidence": [],
       "field": "repository_clean",
       "requirement": "clean git source state",
@@ -72,7 +72,7 @@
       "status": "insufficient"
     },
     {
-      "detail": "redacted-hdc-target-37a84ad404bc not\n# no HDC target listed",
+      "detail": "# hdc list targets failed with exit 127\n# no HDC target listed",
       "evidence": [],
       "field": "hdc_target_selected",
       "requirement": "exactly one HarmonyOS target selected or --hdc-target matched",

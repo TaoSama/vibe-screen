@@ -1,2 +1,2 @@
-redacted-hdc-target-37a84ad404bc not
+# hdc list targets failed with exit 127
 # no HDC target listed

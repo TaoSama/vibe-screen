@@ -223,6 +223,19 @@ def redact_hdc_targets_output(output: str) -> str:
     return "\n".join(lines) + ("\n" if output.endswith("\n") else "")
 
 
+def hdc_target_list_evidence(result: CommandResult, detail: str) -> str:
+    lines: list[str] = []
+    if result.stdout:
+        redacted_stdout = redact_hdc_targets_output(result.stdout).strip()
+        if redacted_stdout:
+            lines.append(redacted_stdout)
+    if result.returncode != 0:
+        lines.append(f"# hdc list targets failed with exit {result.returncode}")
+    if detail:
+        lines.append(f"# {detail}")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def hdc_executable() -> str:
     return shutil.which("hdc") or ""
 
@@ -435,9 +448,7 @@ def collect_device(hdc: ToolStatus, requested_target: str, package_name: str, hd
         prestate_recorded = bool(package_prestate)
     recorded_target = target if selected else ""
     serial_hash = hashlib.sha256(recorded_target.encode("utf-8")).hexdigest() if recorded_target else ""
-    targets_text = redact_hdc_targets_output(targets_result.stdout + targets_result.stderr)
-    if not selected and detail:
-        targets_text += f"\n# {detail}\n"
+    targets_text = hdc_target_list_evidence(targets_result, detail if not selected else "")
     return DeviceState(
         redact_hdc_target(recorded_target),
         selected,

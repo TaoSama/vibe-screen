@@ -180,6 +180,11 @@ class HarmonyHapReadinessTests(unittest.TestCase):
         output = readiness.redact_hdc_targets_output(f"{raw_target} device usb\n")
         self.assertIn(redacted, output)
         self.assertNotIn(raw_target, output)
+        failed_output = readiness.hdc_target_list_evidence(
+            readiness.CommandResult(["hdc", "list", "targets", "-v"], 127, "", "hdc not found"),
+            "no HDC target listed",
+        )
+        self.assertEqual(failed_output, "# hdc list targets failed with exit 127\n# no HDC target listed\n")
 
     def test_requested_missing_hdc_target_is_not_recorded_as_device_evidence(self) -> None:
         with (
