@@ -23,6 +23,7 @@ public enum TCPTransportError: Error, LocalizedError {
 
 public enum TCPTransportStartup: Sendable {
     case trustedLAN(token: Data, deviceName: String)
+    case trustedLANLegacyPlaintext(token: Data, deviceName: String)
     case usbNoAuthentication
 }
 
@@ -45,10 +46,17 @@ public final class TCPTransport: @unchecked Sendable {
     private var connectionOwner: ConnectionOwner?
     private var startupCancellation: (@Sendable () -> Void)?
     private var framer = TransportFramer()
+    private var lanRecordSession: LANSecureRecordSession?
+    private var lanRecordFramer = LANSecureRecordStreamFramer()
+    private var lanRecordProtectionState: LANRecordProtectionState = .notApplicable
     private let onFrame: FrameHandler
 
     public init(onFrame: @escaping FrameHandler) {
         self.onFrame = onFrame
+    }
+
+    public var recordProtectionState: LANRecordProtectionState {
+        lock.withLock { lanRecordProtectionState }
     }
 
     public func connect(host: String, port: UInt16) async throws {
@@ -93,7 +101,8 @@ public final class TCPTransport: @unchecked Sendable {
             try await withTaskCancellationHandler {
                 try await waitUntilReady(connection, timeout: timeout)
                 try Task.checkCancellation()
-                if case let .trustedLAN(token, deviceName) = startup {
+                switch startup {
+                case let .trustedLAN(token, deviceName):
                     let request = try TrustedLANHandshake.request(token: token, deviceName: deviceName)
                     try await sendRaw(request, on: connection, timeout: timeout, stage: "认证请求")
                     let response = try await readExactly(
@@ -103,12 +112,57 @@ public final class TCPTransport: @unchecked Sendable {
                         stage: "认证响应"
                     )
                     try TrustedLANHandshake.validateResponse(response)
+                    let negotiation = try await LANSecureRecordClient.negotiate(
+                        token: token,
+                        allowLegacyFallback: false,
+                        send: { data, stage in
+                            try await self.sendRaw(data, on: connection, timeout: timeout, stage: stage)
+                        },
+                        read: { count, stage in
+                            try await self.readExactly(count, from: connection, timeout: timeout, stage: stage)
+                        }
+                    )
+                    lock.withLock {
+                        guard self.connection === connection else { return }
+                        self.lanRecordSession = negotiation.session
+                        self.lanRecordProtectionState = negotiation.state
+                        self.lanRecordFramer = LANSecureRecordStreamFramer()
+                    }
+                case let .trustedLANLegacyPlaintext(token, deviceName):
+                    let request = try TrustedLANHandshake.request(token: token, deviceName: deviceName)
+                    try await sendRaw(request, on: connection, timeout: timeout, stage: "认证请求")
+                    let response = try await readExactly(
+                        TrustedLANHandshake.responseLength,
+                        from: connection,
+                        timeout: timeout,
+                        stage: "认证响应"
+                    )
+                    try TrustedLANHandshake.validateResponse(response)
+                    lock.withLock {
+                        guard self.connection === connection else { return }
+                        self.lanRecordSession = nil
+                        self.lanRecordProtectionState = .explicitLegacyFallback
+                        self.lanRecordFramer = LANSecureRecordStreamFramer()
+                    }
+                case .usbNoAuthentication:
+                    lock.withLock {
+                        guard self.connection === connection else { return }
+                        self.lanRecordSession = nil
+                        self.lanRecordProtectionState = .notApplicable
+                        self.lanRecordFramer = LANSecureRecordStreamFramer()
+                    }
                 }
                 try Task.checkCancellation()
-                try await sendRaw(ProtocolV1Upgrade.offer, on: connection, timeout: timeout, stage: "协议升级请求")
-                let acknowledgement = try await readExactly(
-                    ProtocolV1Upgrade.acknowledgement.count,
+                try await sendSessionPayload(
+                    ProtocolV1Upgrade.offer,
+                    channel: .control,
+                    on: connection,
+                    timeout: timeout,
+                    stage: "协议升级请求"
+                )
+                let acknowledgement = try await readSessionPayload(
                     from: connection,
+                    plaintextByteCount: ProtocolV1Upgrade.acknowledgement.count,
                     timeout: timeout,
                     stage: "协议升级响应"
                 )
@@ -150,11 +204,11 @@ public final class TCPTransport: @unchecked Sendable {
         owner: ConnectionOwner,
         timeout: TimeInterval = 3
     ) async throws {
-        let data = try frame.encoded()
         let connection = lock.withLock {
             connectionOwner == owner ? self.connection : nil
         }
         guard let connection else { throw TCPTransportError.notConnected }
+        let data = try sessionBytes(for: frame)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let gate = ContinuationGate()
             let timeoutWork = SendableWorkItem { [weak self, weak connection] in
@@ -180,6 +234,10 @@ public final class TCPTransport: @unchecked Sendable {
             defer { self.connection = nil }
             defer { connectionOwner = nil }
             defer { startupCancellation = nil }
+            defer { lanRecordSession?.close() }
+            defer { lanRecordSession = nil }
+            defer { lanRecordProtectionState = .notApplicable }
+            defer { lanRecordFramer = LANSecureRecordStreamFramer() }
             framer = TransportFramer()
             return (self.connection, startupCancellation)
         }
@@ -194,7 +252,7 @@ public final class TCPTransport: @unchecked Sendable {
             guard lock.withLock({ self.connection === connection && connectionOwner == owner }) else { return }
             if let data, !data.isEmpty {
                 do {
-                    for frame in try lock.withLock({ try framer.append(data) }) {
+                    for frame in try lock.withLock({ try appendSessionBytes(data) }) {
                         onFrame(TransportDelivery(owner: owner, result: .success(frame)))
                     }
                 } catch {
@@ -315,6 +373,92 @@ public final class TCPTransport: @unchecked Sendable {
         }
     }
 
+    private func sendSessionPayload(
+        _ payload: Data,
+        channel: LogicalChannel,
+        on connection: NWConnection,
+        timeout: TimeInterval,
+        stage: String
+    ) async throws {
+        let data = try protectedSessionPayload(payload, channel: channel)
+        try await sendRaw(data, on: connection, timeout: timeout, stage: stage)
+    }
+
+    private func readSessionPayload(
+        from connection: NWConnection,
+        plaintextByteCount: Int,
+        timeout: TimeInterval,
+        stage: String
+    ) async throws -> Data {
+        let protection = lock.withLock { lanRecordProtectionState }
+        switch protection {
+        case .encrypted:
+            let prefix = try await readExactly(
+                LANSecureRecordStreamFramer.lengthPrefixBytes,
+                from: connection,
+                timeout: timeout,
+                stage: stage
+            )
+            let length = Int(prefix.reduce(UInt32.zero) { ($0 << 8) | UInt32($1) })
+            guard length > 0, length <= LANSecureRecordStreamFramer.maximumRecordBytes else {
+                throw LANSecureRecordError.invalidRecordLength
+            }
+            let record = try await readExactly(length, from: connection, timeout: timeout, stage: stage)
+            return try lock.withLock {
+                guard let session = lanRecordSession else { throw LANSecureRecordError.encryptionRequired }
+                let opened = try session.openDeclaredChannel(record)
+                guard opened.channel == .control else { throw LANSecureRecordError.recordOpenFailed }
+                return opened.payload
+            }
+        case .explicitLegacyFallback, .notApplicable:
+            return try await readExactly(plaintextByteCount, from: connection, timeout: timeout, stage: stage)
+        case .negotiating:
+            throw LANSecureRecordError.encryptionRequired
+        }
+    }
+
+    private func protectedSessionPayload(_ payload: Data, channel: LogicalChannel) throws -> Data {
+        try lock.withLock {
+            switch lanRecordProtectionState {
+            case .encrypted:
+                guard let session = lanRecordSession else { throw LANSecureRecordError.encryptionRequired }
+                return try LANSecureRecordStreamFramer.encode(try session.seal(payload, channel: channel))
+            case .explicitLegacyFallback, .notApplicable:
+                return payload
+            case .negotiating:
+                throw LANSecureRecordError.encryptionRequired
+            }
+        }
+    }
+
+    private func sessionBytes(for frame: TransportFrame) throws -> Data {
+        let encoded = try frame.encoded()
+        return try protectedSessionPayload(encoded, channel: frame.channel)
+    }
+
+    private func appendSessionBytes(_ bytes: Data) throws -> [TransportFrame] {
+        switch lanRecordProtectionState {
+        case .encrypted:
+            guard let session = lanRecordSession else { throw LANSecureRecordError.encryptionRequired }
+            let plaintextFrames = try lanRecordFramer.append(bytes) { record in
+                try session.openDeclaredChannel(record)
+            }
+            var frames: [TransportFrame] = []
+            for plaintext in plaintextFrames {
+                let decodedFrames = try framer.append(plaintext.payload)
+                guard decodedFrames.count == 1, decodedFrames[0].channel == plaintext.channel else {
+                    throw LANSecureRecordError.recordOpenFailed
+                }
+                frames.append(decodedFrames[0])
+            }
+            return frames
+        case .explicitLegacyFallback, .notApplicable:
+            return try framer.append(bytes)
+        case .negotiating:
+            throw LANSecureRecordError.encryptionRequired
+        }
+    }
+
     private func readExactly(
         _ count: Int,
         from connection: NWConnection,
@@ -385,6 +529,10 @@ public final class TCPTransport: @unchecked Sendable {
             let cancellation = startupCancellation
             startupCancellation = nil
             framer = TransportFramer()
+            lanRecordSession?.close()
+            lanRecordSession = nil
+            lanRecordProtectionState = .notApplicable
+            lanRecordFramer = LANSecureRecordStreamFramer()
             return (expected, cancellation)
         }
         snapshot.1?()

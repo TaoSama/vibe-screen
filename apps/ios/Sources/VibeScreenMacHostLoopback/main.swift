@@ -48,7 +48,7 @@ private struct MacHostLoopbackClient {
     private let inbox = FrameInbox()
 
     @MainActor
-    func run(invalidTarget: Bool, port: UInt16) async throws {
+    func run(invalidTarget: Bool, port: UInt16, allowLegacyPlaintext: Bool) async throws {
         let connectionOwner = ConnectionOwner()
         let sessionOwner = SessionOwner(connectionOwner: connectionOwner)
         let transport = TCPTransport { delivery in
@@ -75,10 +75,14 @@ private struct MacHostLoopbackClient {
         var session = SessionState()
         try session.beginConnection()
         try await transport.connect(
-            pairing: pairing,
-            deviceName: "iOS Core Loopback",
+            host: pairing.host,
+            port: pairing.port,
+            startup: allowLegacyPlaintext
+                ? .trustedLANLegacyPlaintext(token: pairing.token, deviceName: "iOS Core Loopback")
+                : .trustedLAN(token: pairing.token, deviceName: "iOS Core Loopback"),
             owner: connectionOwner
         )
+        let protection = transport.recordProtectionState
         try session.transportConnected()
 
         let localCapabilities: Set<VSCapability> = [.touch, .telemetry]
@@ -212,7 +216,10 @@ private struct MacHostLoopbackClient {
             }
             print(
                 "iOS Core MacHost loopback: PASS " +
-                "(scenario=invalid-target, port=\(port), protocolError=invalidState)"
+                "(scenario=invalid-target, port=\(port), " +
+                "encryptedRecords=\(protection == .encrypted), " +
+                "explicitLegacyFallback=\(protection == .explicitLegacyFallback), " +
+                "protocolError=invalidState)"
             )
             return
         }
@@ -225,6 +232,8 @@ private struct MacHostLoopbackClient {
         print(
             "iOS Core MacHost loopback: PASS " +
             "(port=\(port), auth=SSWA/SSWR, upgrade=0D/0D01, " +
+            "encryptedRecords=\(protection == .encrypted), " +
+            "explicitLegacyFallback=\(protection == .explicitLegacyFallback), " +
             "hello=true, displays=true, " +
             "videoAck=true, media=true, pong=true, targetedTouch=true, disconnect=true)"
         )
@@ -246,10 +255,12 @@ Task {
         guard scenario == "lifecycle" || scenario == "invalid-target" else {
             throw LoopbackError.unexpected("unknown loopback scenario")
         }
+        let allowLegacyPlaintext = MacHostLoopbackTestConfiguration.allowsLegacyPlaintext(environment: environment)
         let port = try MacHostLoopbackTestConfiguration.port(environment: environment)
         try await MacHostLoopbackClient().run(
             invalidTarget: scenario == "invalid-target",
-            port: port
+            port: port,
+            allowLegacyPlaintext: allowLegacyPlaintext
         )
         exit(EXIT_SUCCESS)
     } catch {

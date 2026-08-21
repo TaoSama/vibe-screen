@@ -33,7 +33,7 @@ platform scaffolding under active development.
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-20 Nubia P0110 preflight was blocked by device Wi-Fi and Host signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
-| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; Simulator UI and device acceptance remain gated |
+| iOS trusted LAN | Core client now negotiates the same trusted-LAN AES-256-GCM application records as the baseline MacHost by default after `SSWA`/`SSWR`, covering directional keys, nonce/replay protection, and session-epoch record validation in self-test plus real two-process loopback. Plaintext old-peer compatibility requires an explicit legacy fallback and is reported separately; Simulator UI and device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
@@ -594,14 +594,17 @@ network quality may increase it.
   clipboard, bounded verified files, epoch filtering, native touch plus
   hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
   implemented and core-self-tested.
-- The trusted-LAN iOS Core client still uses the explicit plaintext legacy
-  fallback to interoperate with the baseline MacHost on TCP `54321`:
-  authenticated `SSWA`/`SSWR` admission and the `0D` upgrade lead into the
-  Protocol v1 main session, with Hello/capability negotiation, display
-  list/start, video-config acknowledgement, media framing, ping/pong,
-  display/stream-targeted touch, protocol error, and disconnect covered by a
-  real two-process loopback gate. This is not evidence for the current
-  macOS/Android secure-record LAN path.
+- The trusted-LAN iOS Core client now follows authenticated `SSWA`/`SSWR`
+  admission with a `VSLS`/`VSLR` secure-record negotiation before the `0D`
+  Protocol v1 upgrade. The default path requires AES-256-GCM application
+  records with the same directional key split, nonce format, replay windows,
+  and session-epoch validation used by the macOS/Android LAN record layer;
+  plaintext old-peer compatibility is a separate explicit fallback and is
+  reported as plaintext. A real two-process loopback covers Hello/capability
+  negotiation, display list/start, video-config acknowledgement, media framing,
+  ping/pong, display/stream-targeted touch, protocol error, and disconnect on
+  both secure-record and explicit legacy fallback paths. This is not iOS
+  device, UI, hardware decode, or real-network LAN evidence.
 - The iOS app serializes every outbound control envelope through a
   session-owner-scoped FIFO, rejects old connection/decoder deliveries, gates
   each stream on its sent video-config acknowledgement and exact media epochs,
