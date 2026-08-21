@@ -838,11 +838,17 @@ func testClipboardAndManagedPolicy() throws {
         "managed custom gestures deny must not disable host actions"
     )
 
-    var remoteDeniedStatus = ManagedPolicy.unmanaged.protocolStatus
-    remoteDeniedStatus.managed = true
-    remoteDeniedStatus.clipboardAllowed = false
-    remoteDeniedStatus.hostActionsAllowed = false
-    remoteDeniedStatus.maximumFileBytes = 128
+    let remoteDeniedStatus = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: false,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: false,
+        maximumFileBytes: 128,
+        allowedHosts: []
+    ).protocolStatus
     var resolver = ManagedPolicyResolver(localPolicy: managed)
     resolver.setRemote(ManagedPolicy(remoteStatus: remoteDeniedStatus))
     try require(
@@ -852,9 +858,17 @@ func testClipboardAndManagedPolicy() throws {
         "managed remote deny was not applied"
     )
 
-    var remoteAllowedStatus = ManagedPolicy.unmanaged.protocolStatus
-    remoteAllowedStatus.managed = true
-    remoteAllowedStatus.maximumFileBytes = 4_096
+    let remoteAllowedStatus = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: true,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: true,
+        maximumFileBytes: 4_096,
+        allowedHosts: []
+    ).protocolStatus
     resolver.setRemote(ManagedPolicy(remoteStatus: remoteAllowedStatus))
     try require(
         resolver.effectivePolicy.clipboardAllowed

@@ -112,7 +112,21 @@ extension StreamViewModel {
             }
         case .managedPolicyStatus(let status):
             if negotiatedCapabilities.contains(.managedConfiguration) {
+                guard ManagedPolicy.validateRestrictionResults(status) else {
+                    terminateSession(
+                        message: "ManagedPolicyStatus requires complete, consistent restriction_results.",
+                        failure: .permanent
+                    )
+                    return
+                }
                 managedConfiguration.applyRemote(status)
+                if let host = activePairing?.host, !managedConfiguration.policy.allows(host: host) {
+                    terminateSession(
+                        message: "Managed policy does not allow this host.",
+                        failure: .permanent
+                    )
+                    return
+                }
                 enforceCurrentPolicy()
             }
         case .clientHello, .resumeSessionRequest, .resumeSessionResult,

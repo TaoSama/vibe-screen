@@ -161,7 +161,8 @@ currently no key migration step.
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
   `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
-  `AllowedHosts`. Invalid types fail closed.
+  `AllowedHosts`, and `DeniedHosts`. Invalid types fail closed; `DeniedHosts`
+  wins after allowlist merging.
 
 ## Advanced feature use
 

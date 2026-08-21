@@ -47,10 +47,11 @@ a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
-fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-and every advanced Envelope branch used by the client.
+and feedback/digest rejection, managed deny-wins policy, explanatory
+restriction-result propagation, denylist-over-allowlist host matching, safe
+filenames, sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR
+config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte
+WOL vector, and every advanced Envelope branch used by the client.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
@@ -204,7 +205,10 @@ The following remain unproved until their dedicated gates produce evidence:
   and Protocol v1 boundary listed above);
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, UDP broadcast, and managed App Configuration injection;
+  file picker/export, UDP broadcast, real Apple MDM profile delivery, and
+  managed App Configuration injection; the offline deny-wins source work and
+  blocked evidence are tracked in
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TEST.md);
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio/bulk WebRTC DataChannel integration, admission/backlog limits, and

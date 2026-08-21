@@ -1,0 +1,17 @@
+{
+  "date": "2026-08-21",
+  "verdict": "blocked",
+  "blocked_gate": "real Apple MDM profile or managed App Configuration injection",
+  "offline_verified": [
+    "managed policy parse and fail-closed fallback",
+    "deny-wins boolean merge",
+    "maximum_file_bytes minimum merge",
+    "allowed_hosts intersection",
+    "denied_hosts union and denylist-over-allowlist precedence",
+    "complete restriction_results validation",
+    "Android managed-policy handshake wait before display listing"
+  ],
+  "not_device_evidence": true,
+  "android_device_commands_run": false,
+  "android_device_identity_if_needed": "nubia P0110 / pacific / Android 16 / SDK 36 / serial EP0110PZ0B9110300B"
+}

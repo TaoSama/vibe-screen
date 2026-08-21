@@ -621,6 +621,12 @@ network quality may increase it.
   progress-driven backpressure, and cancel/disconnect cleanup. This is offline
   and self-test evidence only: no Android real-device file-transfer acceptance,
   public-Internet run, or WebRTC bulk DataChannel path is claimed.
+- Managed configuration now has an offline-verified deny-wins product-policy
+  model across macOS Host, Android, and iOS: Protocol v1 carries complete
+  restriction results, local parse errors fail closed, allowlists intersect,
+  and `DeniedHosts` wins over `AllowedHosts`. This is source/unit/self-test
+  evidence only; real Apple MDM profile delivery and managed App Configuration
+  injection remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
