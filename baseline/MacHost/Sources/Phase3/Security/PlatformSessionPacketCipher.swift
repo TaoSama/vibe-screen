@@ -186,11 +186,15 @@ final class PlatformSessionPacketCipher {
             keys?.close()
             keys = nil
             replay.removeAll()
-            sessionHash.resetBytes(in: 0..<sessionHash.count)
+            sessionHash.zeroize()
         }
     }
 
-    deinit { close() }
+    /// Fallback zeroization if close() was never called.
+    deinit {
+        keys?.close()
+        sessionHash.zeroize()
+    }
 
     static func selfTestPair(
         sessionIdentifier: String,

@@ -106,6 +106,26 @@ class AndroidSessionPacketCipherTest {
         assertArrayEquals(byteArrayOf(3), device.open(SessionChannel.MEDIA, firstMedia))
     }
 
+
+    @Test
+    fun advancedChannelsUseIndependentKeysSequencesAndReplayWindows() {
+        val host = cipher(PeerRole.HOST)
+        val device = cipher(PeerRole.DEVICE)
+        val otherSession = cipher(PeerRole.DEVICE, sessionId = "phase5-other-session")
+        val audioOne = host.seal(SessionChannel.AUDIO, byteArrayOf(1))
+        val audioTwo = host.seal(SessionChannel.AUDIO, byteArrayOf(2))
+        val bulkOne = host.seal(SessionChannel.BULK, byteArrayOf(3))
+        val bulkTwo = host.seal(SessionChannel.BULK, byteArrayOf(4))
+
+        assertNull(device.open(SessionChannel.BULK, audioOne))
+        assertArrayEquals(byteArrayOf(2), device.open(SessionChannel.AUDIO, audioTwo))
+        assertArrayEquals(byteArrayOf(1), device.open(SessionChannel.AUDIO, audioOne))
+        assertArrayEquals(byteArrayOf(4), device.open(SessionChannel.BULK, bulkTwo))
+        assertNull(device.open(SessionChannel.BULK, bulkOne))
+        assertNull(device.open(SessionChannel.AUDIO, audioTwo))
+        assertNull(otherSession.open(SessionChannel.BULK, bulkTwo))
+    }
+
     @Test
     fun maximumPlaintextMediaRecordSealsWithinFourMiBAndroidBoundary() {
         val host = cipher(PeerRole.HOST)
