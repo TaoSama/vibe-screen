@@ -17,6 +17,33 @@ Android 本机 smoke 结果不得转述为 Android <-> Mac clipboard E2E 证据�
 
 ## 已运行
 
+### 2026-08-21 latest-main refresh
+
+PR #157 was rebased again onto current `origin/main`
+`22da26816465257b4a09f95de47be8567e448b74`
+(`test: record P0110 phase2 lifecycle readiness (#177)`) after main advanced.
+The rebase was clean, with no conflicts and no new device evidence. The
+Android ClipboardManager <-> macOS NSPasteboard device gate remains open.
+
+Re-run checks for this refresh:
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+make evidence-tools-test
+git diff --check origin/main...HEAD
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-android-device-lock-blocked/clipboard-evidence.json >/dev/null
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-device-attempt/clipboard-evidence.json >/dev/null
+```
+
+结果：Android focused clipboard JVM tests `BUILD SUCCESSFUL in 20s`；protocol
+fixture tests `Ran 16 tests in 133.644s OK`；evidence tools
+`Ran 198 tests in 7.604s OK`；diff whitespace and both retained JSON evidence
+files passed.
+
 ### 2026-08-21 PR #157 rescue rebase
 
 PR #157 was rebased cleanly onto current `origin/main`
