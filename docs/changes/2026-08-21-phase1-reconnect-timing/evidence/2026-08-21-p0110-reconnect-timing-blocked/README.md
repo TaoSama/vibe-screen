@@ -34,6 +34,7 @@ network-interruption timing sample.
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
+  --run-id dc16b339-f79c-44c7-a2d9-9596629cb7b6 \
   --target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
   --blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" \
   --blocker "Host is not listening on 127.0.0.1:54321 in this worktree" \
