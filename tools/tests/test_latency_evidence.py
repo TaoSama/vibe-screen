@@ -6,7 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.vibescreen_evidence.latency import GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
+)
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 
 
@@ -47,6 +50,133 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertTrue(report["gate"]["can_close_performance_gate"])
         self.assertEqual(report["gate"]["sample_count"], 5)
         self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_requires_public_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["transport"] = "internet"
+            manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n90\n100\n110\n120\n130\n",
+            )
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            samples["annotation_method"] = "direct-latency-ms"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertTrue(
+            any("internet_route is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_internet_latency_package_rejects_loopback_or_lan_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["transport"] = "internet"
+            manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            manifest["internet_route"] = {
+                "route": "forced-public-turn",
+                "turn_deployment": {
+                    "provider": "local fixture",
+                    "region": "loopback",
+                    "public_hostname": "127.0.0.1",
+                    "tls": "not deployed",
+                    "credential_source": "local fixture",
+                },
+                "remote_peer": {
+                    "operator": "fixture",
+                    "network": "same Wi-Fi",
+                    "public_ip_asn": "fixture ASN",
+                    "location": "fixture lab",
+                },
+                "candidate_pair": {
+                    "local_candidate_type": "relay",
+                    "remote_candidate_type": "relay",
+                    "relay_protocol": "turn-udp",
+                },
+                "network_topology": {
+                    "host_network": "lab Wi-Fi",
+                    "device_network": "lab Wi-Fi",
+                    "same_private_network": True,
+                },
+            }
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n90\n100\n110\n120\n130\n",
+            )
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            samples["annotation_method"] = "direct-latency-ms"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("public Internet TURN hostname" in reason for reason in reasons))
+        self.assertTrue(any("same_private_network must be false" in reason for reason in reasons))
+
+    def test_internet_latency_package_rejects_missing_remote_peer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["transport"] = "internet"
+            manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            manifest["internet_route"] = {
+                "route": "forced-public-turn",
+                "turn_deployment": {
+                    "provider": "example provider",
+                    "region": "us-west",
+                    "public_hostname": "turn.example.net",
+                    "tls": "turns",
+                    "credential_source": "authority-issued short-lived credential",
+                },
+                "candidate_pair": {
+                    "local_candidate_type": "relay",
+                    "remote_candidate_type": "relay",
+                    "relay_protocol": "turn-tls",
+                },
+                "network_topology": {
+                    "host_network": "home ISP",
+                    "device_network": "remote carrier",
+                    "same_private_network": False,
+                },
+            }
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n90\n100\n110\n120\n130\n",
+            )
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            samples["annotation_method"] = "direct-latency-ms"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("manifest.internet_route.remote_peer is required" in reason for reason in reasons))
+        self.assertTrue(any("internet_route.remote_peer.operator is required" in reason for reason in reasons))
 
     def test_missing_raw_camera_artifact_is_insufficient(self) -> None:
         report = build_latency_evidence_report(

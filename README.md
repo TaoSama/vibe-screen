@@ -552,8 +552,21 @@ disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
 remain release gates.
 
-The target is roughly 80–150 ms on healthy Internet paths; relay distance and
-network quality may increase it.
+The Internet glass-to-glass latency gate profile is
+`internet-glass-to-glass-sub150`: healthy direct public-Internet paths target
+80–150 ms, and forced public-TURN relay paths may exceed that depending on
+relay distance and network quality. Like the USB and LAN gates, this gate
+requires a single external-camera timebase that captures the Mac stimulus and
+the Android render result in the same frame; host, device, relay, and WebRTC
+telemetry are diagnostic only and cannot close it. The Internet gate is
+additionally bound to a real public-Internet route: it requires a deployed
+public STUN/TURN service and an independently operated remote peer, and a
+local coturn loopback or synthetic peer is not accepted as Internet evidence.
+The Internet transport is separate from the trusted-LAN transport and must not
+be relabeled as LAN. As of this record, no real external-camera Internet
+latency package, public TURN deployment, or remote peer is available in the
+repository, so the `internet-glass-to-glass-sub150` gate remains blocked; see
+[the blocked Internet latency record](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/README.md).
 
 ### Phase 4 — HarmonyOS NEXT
 

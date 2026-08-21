@@ -89,7 +89,7 @@ steps.
 | Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
-| Latency | external-camera direct and relay raw samples; never infer glass-to-glass from unsynchronized clocks |
+| Latency | external-camera direct and relay raw samples under the `internet-glass-to-glass-sub150` profile; never infer glass-to-glass from unsynchronized clocks. Requires a real public-Internet route (public STUN/TURN and an independent remote peer); local coturn loopback or synthetic peers are not Internet evidence |
 
 ## Protocol compatibility cases
 
@@ -163,6 +163,8 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     host-log-redacted.txt
     packet-capture-notes.md
     latency-method.md          # copy or link docs/runbook/latency-measurement.md
+    latency-manifest.json      # includes internet_route for the public route
+    latency-evidence-report.json
 ```
 
 Start by proving device identity, not merely that some ADB endpoint responded:
@@ -231,6 +233,14 @@ No Xiaomi 13 (2211133C) Phase 3 Internet acceptance evidence is recorded here. A
 Nubia P0110 local direct/forced-coturn product-session record is listed below;
 it does not close the target Xiaomi, public-Internet, real-capture, handoff,
 latency, or soak criteria.
+
+The
+[`2026-08-21-internet-latency-gate-blocked`](evidence/2026-08-21-internet-latency-gate-blocked/README.md)
+record exercises the new `internet-glass-to-glass-sub150` verifier path with a
+synthetic numeric sample set, then intentionally omits `internet_route` from
+the formal manifest. The formal checker returns `insufficient`, proving that a
+threshold-looking sample file cannot close the Internet latency gate without
+public TURN, independent remote-peer, and non-LAN topology provenance.
 
 Local verification on 2026-08-04 and 2026-08-05 proved the following layers in
 recorded shared-tree snapshots. A result applies only to the layer and tree state

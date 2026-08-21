@@ -8,6 +8,10 @@ used to claim a shipped latency result.
   `usb-glass-to-glass-sub50`.
 - `lan-glass-to-glass-fail.csv`: direct latency samples whose P95 fails
   `lan-glass-to-glass-sub80`.
+- `internet-glass-to-glass-pass.csv`: direct latency samples whose P95 passes
+  `internet-glass-to-glass-sub150` at the summary layer. This fixture is not a
+  formal evidence package and cannot close the Internet gate without public
+  route provenance.
 - `input-latency-pass.json`: JSON-wrapped external-camera input-latency samples
   whose P95 passes `input-p95-sub50`.
 - `usb-glass-to-glass-insufficient.csv`: too few samples to evaluate

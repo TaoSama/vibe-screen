@@ -1,0 +1,36 @@
+{
+  "derivation_status": "complete",
+  "gate": {
+    "can_close_performance_gate": false,
+    "min_sample_count": 5,
+    "observed_ms": 128.0,
+    "observed_with_uncertainty_ms": 128.0,
+    "profile": "internet-glass-to-glass-sub150",
+    "reasons": [
+      "internet_route is required for internet-glass-to-glass-sub150 and must record the public TURN deployment, remote peer, selected candidate pair, and non-LAN network topology"
+    ],
+    "requires_external_hardware": true,
+    "sample_count": 5,
+    "summary_verdict": "pass",
+    "threshold_ms": 150.0
+  },
+  "kind": "latency_evidence_gate",
+  "latency_kind": "glass-to-glass",
+  "measurement_method": "external-camera",
+  "metrics": {
+    "count": 5,
+    "max": 130.0,
+    "mean": 110.0,
+    "median": 110.0,
+    "min": 90.0,
+    "p95": 128.0
+  },
+  "run_id": "2026-08-21-internet-latency-gate-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "manifest": "docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-internet-latency-gate-blocked/manifest-missing-internet-route.json"
+  },
+  "status": "complete",
+  "transport": "internet",
+  "verdict": "insufficient"
+}
