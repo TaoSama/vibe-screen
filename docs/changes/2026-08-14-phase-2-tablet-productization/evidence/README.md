@@ -15,6 +15,7 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── summary.json
 ├── soak-8h/exact-window-report.json
 ├── soak-8h/phase2-device-memory-gate.json
+├── soak-8h/phase2-device-environment-summary.json
 ├── soak-8h/phase2-tablet-gate.json
 ├── host-telemetry.jsonl
 ├── samples.csv              # optional derived conversion; keep raw JSONL
@@ -46,7 +47,8 @@ stand, charger, host build, APK hash, transport, video preferences, thresholds,
 and planned recovery scenarios. The file must validate against
 `tools/schemas/phase2-tablet-manifest.schema.json`. It also records the Android
 PSS source, Host RSS source, Host PID, minimum eight-hour duration, sample
-cadence, and required memory/charging/thermal fields.
+cadence, required memory/charging/thermal/power fields, and the owner map for
+each Phase 2 gate.
 
 The artifact must validate against `tools/schemas/device-info.schema.json`;
 `device.txt` and `phase2-tablet-manifest.json` are supporting records, not substitutes for the
@@ -55,11 +57,17 @@ stderr captures created by the runbook commands on every run. Determine thermal
 collection failure from the command status and whether the corresponding dump is
 usable, not from stderr-file presence alone.
 
-After deriving the exact-window report, run `make phase2-tablet-gate` from the
-repository root. The gate consumes `phase2-tablet-manifest.json`, the eight-hour
-soak report, and this raw evidence directory before it can report `pass`. Missing
-raw artifacts, a phone substitute such as Nubia P0110/pacific/Android 16, or an
-undeclared threshold leaves the result `insufficient`.
+After deriving the exact-window report, write
+`phase2-device-environment-observations.json`, run
+`make phase2-device-environment-gate`, then run `make phase2-tablet-gate` from
+the repository root. The focused device-environment summary owns
+stand-mounted charging stability, controlled thermal-load behavior, and
+power-source stability; the broader tablet gate consumes that summary,
+`phase2-tablet-manifest.json`, the eight-hour soak report, and this raw evidence
+directory before it can report `pass`. Missing raw artifacts, a missing or
+blocked environment summary, a phone substitute such as Nubia
+P0110/pacific/Android 16, or an undeclared threshold leaves the result
+`insufficient`.
 
 The run `README.md` must state the real tablet model, OS build, density,
 orientation/window sizes, charger/cable/stand setup, Mac host identity, commit

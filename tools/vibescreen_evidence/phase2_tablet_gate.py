@@ -10,6 +10,7 @@ import sys
 from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
+from .phase2_device_environment import GATE_KIND as DEVICE_ENVIRONMENT_KIND
 from .phase2_tablet_manifest import KIND as MANIFEST_KIND
 from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS as MANIFEST_MINIMUM_DURATION_SECONDS
 from .soak_public_report import EvidenceInputError, read_json as _read_json
@@ -36,6 +37,7 @@ ANDROID_BATTERY_STATUS_CHARGING = 2
 ANDROID_BATTERY_STATUS_FULL = 5
 
 PHASE2_MANIFEST_NAME = "phase2-tablet-manifest.json"
+PHASE2_DEVICE_ENVIRONMENT_SUMMARY_NAME = "phase2-device-environment-summary.json"
 REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] = (
     ("readme", ("README.md",), True, "file"),
     ("device_info", ("device-info.json",), True, "file"),
@@ -64,7 +66,29 @@ REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] 
     ("reconnects_log", ("reconnects.log",), True, "file"),
     ("frame_drops_log", ("frame-drops.log",), True, "file"),
     ("decoder_telemetry", ("decoder-telemetry.jsonl",), True, "file"),
+    (
+        "device_environment_summary",
+        (
+            PHASE2_DEVICE_ENVIRONMENT_SUMMARY_NAME,
+            f"soak-8h/{PHASE2_DEVICE_ENVIRONMENT_SUMMARY_NAME}",
+        ),
+        True,
+        "file",
+    ),
     ("screenshots", ("screenshots",), False, "directory"),
+)
+REQUIRED_GATE_OWNERS = {
+    "physical_8_9_inch_tablet",
+    "stand_mounted_charging",
+    "thermal_power_sampling",
+    "device_memory_sampling",
+    "foreground_background_recovery",
+    "transport_reconnect_recovery",
+    "login_startup_or_headless_recovery",
+    "eight_hour_sustained_stream",
+}
+NON_TABLET_ANDROID_SUBSTITUTES = (
+    {"manufacturer": "nubia", "model": "p0110", "codename": "pacific"},
 )
 
 INTERPRETATION = (
@@ -231,6 +255,38 @@ def _boolean_check(passed: bool, expected: str) -> dict[str, Any]:
     return {"passed": passed, "expected": expected}
 
 
+def _is_known_non_tablet_substitute(identity: dict[str, Any]) -> bool:
+    normalized = {
+        "manufacturer": str(identity.get("manufacturer", "")).strip().lower(),
+        "model": str(identity.get("model", "")).strip().lower(),
+        "codename": str(identity.get("codename", "")).strip().lower(),
+    }
+    return any(
+        all(normalized.get(key) == value for key, value in substitute.items())
+        for substitute in NON_TABLET_ANDROID_SUBSTITUTES
+    )
+
+
+def _gate_owner_check(manifest: dict[str, Any]) -> dict[str, Any]:
+    gate_owners = manifest.get("gate_owners")
+    if not isinstance(gate_owners, dict):
+        return {
+            "passed": False,
+            "expected": "gate_owners maps every required Phase 2 gate to an owner",
+            "missing": sorted(REQUIRED_GATE_OWNERS),
+        }
+    missing = [
+        gate
+        for gate in sorted(REQUIRED_GATE_OWNERS)
+        if not isinstance(gate_owners.get(gate), str) or not gate_owners[gate].strip()
+    ]
+    return {
+        "passed": not missing,
+        "expected": "gate_owners maps every required Phase 2 gate to an owner",
+        "missing": missing,
+    }
+
+
 def _artifact_check(
     evidence_dir: Path,
     candidates: tuple[str, ...],
@@ -273,12 +329,77 @@ def _artifact_check(
     }
 
 
+def _read_optional_json(path: Path, label: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return None, f"failed to read {label} {path}: {error}"
+    if not isinstance(value, dict):
+        return None, f"{label} must be a JSON object: {path}"
+    return value, None
+
+
+def _find_device_environment_summary(evidence_dir: Path) -> Path | None:
+    candidates = (
+        evidence_dir / PHASE2_DEVICE_ENVIRONMENT_SUMMARY_NAME,
+        evidence_dir / "soak-8h" / PHASE2_DEVICE_ENVIRONMENT_SUMMARY_NAME,
+    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _evaluate_device_environment_summary(evidence_dir: Path) -> dict[str, Any]:
+    summary_path = _find_device_environment_summary(evidence_dir)
+    if summary_path is None:
+        return {
+            "passed": False,
+            "path": None,
+            "verdict": None,
+            "can_close_device_environment_gates": False,
+            "reasons": [
+                "insufficient device environment evidence: phase2-device-environment-summary.json is missing"
+            ],
+        }
+
+    summary, error = _read_optional_json(summary_path, "Phase 2 device environment summary")
+    if error is not None or summary is None:
+        return {
+            "passed": False,
+            "path": str(summary_path),
+            "verdict": None,
+            "can_close_device_environment_gates": False,
+            "reasons": [f"insufficient device environment evidence: {error}"],
+        }
+
+    reasons: list[str] = []
+    if summary.get("schema_version") != SCHEMA_VERSION:
+        reasons.append(f"insufficient device environment evidence: schema_version must be {SCHEMA_VERSION}")
+    if summary.get("kind") != DEVICE_ENVIRONMENT_KIND:
+        reasons.append(f"insufficient device environment evidence: kind must be {DEVICE_ENVIRONMENT_KIND}")
+    if summary.get("can_close_device_environment_gates") is not True:
+        verdict = summary.get("verdict")
+        reasons.append(
+            "insufficient device environment evidence: "
+            f"can_close_device_environment_gates is not true (verdict={verdict})"
+        )
+
+    return {
+        "passed": not reasons,
+        "path": str(summary_path),
+        "verdict": summary.get("verdict"),
+        "can_close_device_environment_gates": summary.get("can_close_device_environment_gates"),
+        "reasons": reasons,
+    }
+
+
 def _evaluate_evidence_package(
     *,
     manifest_path: Path,
     evidence_dir: Path,
 ) -> dict[str, Any]:
     manifest = _read_json(manifest_path, "Phase 2 tablet manifest")
+    identity = _manifest_get(manifest, "device", "identity")
+    if not isinstance(identity, dict):
+        identity = {}
     manifest_checks = {
         "schema_version": _boolean_check(
             manifest.get("schema_version") == SCHEMA_VERSION,
@@ -292,6 +413,11 @@ def _evaluate_evidence_package(
             _manifest_get(manifest, "device", "device_class") == "physical_8_9_inch_tablet",
             "device.device_class is physical_8_9_inch_tablet",
         ),
+        "known_phone_substitute_rejected": _boolean_check(
+            not _is_known_non_tablet_substitute(identity),
+            "known phone substitutes such as Nubia P0110/pacific are not physical tablet evidence",
+        ),
+        "gate_owners_declared": _gate_owner_check(manifest),
         "stand_setup_declared": _boolean_check(
             _non_empty_string(_manifest_get(manifest, "physical_setup", "stand_setup")),
             "physical_setup.stand_setup is non-empty",
@@ -348,6 +474,7 @@ def _evaluate_evidence_package(
         name: _artifact_check(evidence_dir, candidates, require_non_empty, artifact_type)
         for name, candidates, require_non_empty, artifact_type in REQUIRED_EVIDENCE_ARTIFACTS
     }
+    device_environment = _evaluate_device_environment_summary(evidence_dir)
     reasons = [
         f"insufficient evidence package: manifest.{name}"
         for name, item in manifest_checks.items()
@@ -358,6 +485,7 @@ def _evaluate_evidence_package(
         for name, item in artifacts.items()
         if not item["passed"]
     )
+    reasons.extend(device_environment["reasons"])
     passed = not reasons
     return {
         "passed": passed,
@@ -366,6 +494,7 @@ def _evaluate_evidence_package(
         "manifest_document": manifest,
         "manifest": manifest_checks,
         "artifacts": artifacts,
+        "device_environment": device_environment,
         "reasons": reasons,
     }
 
@@ -511,6 +640,14 @@ def derive_gate(
         ),
         "battery_plugged_samples": _minimum(
             _stats_count(report, "metrics", "battery", "plugged"),
+            MINIMUM_SAMPLE_COUNT,
+        ),
+        "power_current_samples": _minimum(
+            _stats_count(report, "metrics", "power", "current_now_ua"),
+            MINIMUM_SAMPLE_COUNT,
+        ),
+        "power_voltage_samples": _minimum(
+            _stats_count(report, "metrics", "power", "voltage_now_uv"),
             MINIMUM_SAMPLE_COUNT,
         ),
         "stream_fps_samples": _minimum(

@@ -20,6 +20,7 @@
     "thresholds",
     "recovery_scenarios",
     "required_gates",
+    "gate_owners",
     "required_artifacts",
     "limitations"
   ],
@@ -122,6 +123,30 @@
         "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60},
         "minimum_duration_seconds": {"type": "integer", "minimum": 28800},
         "required_fields": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "gate_owners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physical_8_9_inch_tablet",
+        "stand_mounted_charging",
+        "thermal_power_sampling",
+        "device_memory_sampling",
+        "foreground_background_recovery",
+        "transport_reconnect_recovery",
+        "login_startup_or_headless_recovery",
+        "eight_hour_sustained_stream"
+      ],
+      "properties": {
+        "physical_8_9_inch_tablet": {"type": "string", "minLength": 1},
+        "stand_mounted_charging": {"type": "string", "minLength": 1},
+        "thermal_power_sampling": {"type": "string", "minLength": 1},
+        "device_memory_sampling": {"type": "string", "minLength": 1},
+        "foreground_background_recovery": {"type": "string", "minLength": 1},
+        "transport_reconnect_recovery": {"type": "string", "minLength": 1},
+        "login_startup_or_headless_recovery": {"type": "string", "minLength": 1},
+        "eight_hour_sustained_stream": {"type": "string", "minLength": 1}
       }
     },
     "thresholds": {

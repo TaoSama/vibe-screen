@@ -51,6 +51,7 @@ REQUIRED_ARTIFACTS = [
     "soak-8h/host-telemetry.jsonl",
     "soak-8h/exact-window-report.json",
     "soak-8h/phase2-device-memory-gate.json",
+    "soak-8h/phase2-device-environment-summary.json",
     "soak-8h/phase2-tablet-gate.json",
     "adb-battery-before.txt",
     "adb-battery-after.txt",
@@ -66,6 +67,17 @@ REQUIRED_ARTIFACTS = [
     "frame-drops.log",
     "decoder-telemetry.jsonl",
 ]
+
+GATE_OWNERS = {
+    "physical_8_9_inch_tablet": "phase2-tablet-manifest",
+    "stand_mounted_charging": "phase2-device-environment",
+    "thermal_power_sampling": "phase2-device-environment",
+    "device_memory_sampling": "phase2-device-memory-gate",
+    "foreground_background_recovery": "phase2-tablet-runbook",
+    "transport_reconnect_recovery": "phase2-tablet-runbook",
+    "login_startup_or_headless_recovery": "phase2-tablet-runbook",
+    "eight_hour_sustained_stream": "phase2-tablet-gate",
+}
 
 DEFAULT_LIMITATIONS = [
     "This manifest is preparation metadata and does not close the Phase 2 gate without raw physical-device evidence.",
@@ -217,6 +229,8 @@ def build_manifest(
                 "device.battery.level",
                 "device.battery.status",
                 "device.thermal.status",
+                "device.power.current_now_ua",
+                "device.power.voltage_now_uv",
             ],
         },
         "thresholds": {
@@ -226,6 +240,7 @@ def build_manifest(
         },
         "recovery_scenarios": list(recovery_scenarios),
         "required_gates": REQUIRED_GATES,
+        "gate_owners": GATE_OWNERS,
         "required_artifacts": REQUIRED_ARTIFACTS,
         "limitations": limitations,
         "notes": notes,

@@ -217,6 +217,21 @@ or thermal status samples are missing:
 make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 ```
 
+The Phase 2 device-environment gate separately owns stand-mounted charging
+stability, controlled thermal-load behavior, and power-source stability. Write
+`.build/evidence/phase2-device-environment-observations.json` after reviewing
+the raw battery, power, thermal, stand, and UI artifacts, then run:
+
+```sh
+make phase2-device-environment-gate EVIDENCE_DIR=.build/evidence
+```
+
+The summary writes
+`.build/evidence/soak-8h/phase2-device-environment-summary.json`, which must
+validate against `tools/schemas/phase2-device-environment.schema.json`. A
+blocked or insufficient summary keeps those environment gates open and also
+prevents the broader tablet productization gate from passing.
+
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 ```
@@ -225,12 +240,14 @@ The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
 `.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
 `.build/evidence/`, then write
 `.build/evidence/soak-8h/phase2-device-memory-gate.json` and
+`.build/evidence/soak-8h/phase2-device-environment-summary.json`, then
 `.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
-Android PSS and Host RSS growth, and battery/thermal readings below the Phase 2
-thresholds, a manifest declaring `physical_8_9_inch_tablet`, and the required
-raw README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+Android PSS and Host RSS growth, battery/thermal/power readings below the Phase
+2 thresholds, a manifest declaring `physical_8_9_inch_tablet`, a passing
+device-environment summary, and the required raw
+README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful

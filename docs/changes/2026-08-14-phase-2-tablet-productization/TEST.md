@@ -243,3 +243,48 @@ phone substitute, a 30-second placeholder window, no Host PID, no Host RSS
 series, no charging/full-state series, and no thermal-status series. No new
 physical-tablet run or eight-hour soak was performed, so the Phase 2
 device-memory gate remains open.
+
+## 2026-08-23 Phase 2 environment owner gate tooling
+
+This follow-up audited open PRs #174, #189, #234, #240, #252, #255, and #274
+against current `origin/main` (`660dae5`). The audit found that #174 owns the
+soak runner, #189 owns tablet preflight artifact checks, #234 owns tablet UI
+layout, #240 owns hardware-keyboard blocked evidence, #252 owns the closest
+stand/thermal/power environment gate, #255 owns manifest gate-owner tightening,
+and #274 owns aggregate reporting. None of those PRs contains physical 8-9 inch
+tablet, stand-mounted charger, controlled thermal-load, power-source stability,
+and eight-hour stream evidence that can close Phase 2.
+
+This current-base slice adds the focused `phase2-device-environment` summary
+gate and wires it into the package-aware tablet gate. The new summary owns
+`stand_mounted_charging_stability`, `thermal_load`, and
+`power_source_stability`; it returns `blocked` when target tablet hardware,
+stand setup, the eight-hour environment window, or controlled thermal load is
+missing, `insufficient` when non-blocking observations or measurements are
+missing, and `fail` when complete evidence exceeds declared thresholds. The
+broader tablet gate now also requires the environment summary artifact and
+requires `can_close_device_environment_gates=true` before it can report `pass`.
+It also consumes `metrics.power.current_now_ua` and
+`metrics.power.voltage_now_uv`, so `thermal_power_sampling` no longer verifies
+only thermal readings.
+
+The Android device lock existed during this task, so no new ADB collection was
+performed from this branch. A parallel read-only audit reported the connected
+device as Nubia P0110 / pacific / Android 16 / SDK 36, with battery, thermal,
+thermal headroom, batterystats, and power dumps available for future sampling.
+Because that device is a phone substitute, the retained blocked fixture under
+[`evidence/2026-08-23-p0110-device-environment-readiness`](evidence/2026-08-23-p0110-device-environment-readiness/README.md)
+sets `physical_8_9_inch_tablet_observed=false` and does not include raw ADB
+artifacts from this task.
+
+Validation performed for this tooling-only update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_device_environment tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_phase2_device_memory_gate tools.tests.test_soak_report tools.tests.test_schemas -v`
+- `make evidence-tools-test`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_device_environment docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-23-p0110-device-environment-readiness/phase2-device-environment-observations.json --output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-23-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
+
+Still open after this result: physical 8-9 inch tablet hardware, stand-mounted
+charging stability, controlled thermal-load and recovery, full power-source
+sampling during an eight-hour run, live foreground/background recovery,
+transport interruption recovery, login startup, headless Mac recovery, stylus,
+and hardware-keyboard workflows.

@@ -32,6 +32,8 @@ def write_report(
     plugged_counts: dict[str, int] | None = None,
     include_battery_status: bool = True,
     include_battery_plugged: bool = True,
+    include_power_current: bool = True,
+    include_power_voltage: bool = True,
     client_slope: float = 0.0,
     client_final: float = 210_000.0,
     host_slope: float = 0.0,
@@ -137,6 +139,26 @@ def write_report(
             },
         }
 
+    power_metrics = {}
+    if include_power_current:
+        power_metrics["current_now_ua"] = {
+            "count": sample_count,
+            "first": -400_000.0,
+            "final": -380_000.0,
+            "min": -420_000.0,
+            "mean": -400_000.0,
+            "max": -380_000.0,
+        }
+    if include_power_voltage:
+        power_metrics["voltage_now_uv"] = {
+            "count": sample_count,
+            "first": 4_200_000.0,
+            "final": 4_210_000.0,
+            "min": 4_190_000.0,
+            "mean": 4_200_000.0,
+            "max": 4_210_000.0,
+        }
+
     report = {
         "schema_version": "vibescreen.evidence/v1",
         "kind": "soak_exact_window_report",
@@ -230,6 +252,7 @@ def write_report(
                 },
             },
             "battery": battery_metrics,
+            "power": power_metrics,
         },
         "errors": derivation_errors or [],
         "interpretation": "Trend metrics are descriptive evidence, not a no-leak determination.",
@@ -243,9 +266,13 @@ def write_manifest(
     directory: Path,
     *,
     device_class: str = "physical_8_9_inch_tablet",
+    manufacturer: str = "huawei",
+    model: str = "MatePad Mini",
+    codename: str = "matepad-mini",
     thermal_limit_status: int = 2,
     battery_temperature_limit_celsius: float = 45.0,
     maximum_net_battery_drain_percent: int = 5,
+    include_gate_owners: bool = True,
 ) -> Path:
     manifest = {
         "schema_version": "vibescreen.evidence/v1",
@@ -255,9 +282,9 @@ def write_manifest(
             "identity": {
                 "adb_serial": "EP0110PZ0B9110300B",
                 "device_serial": "EP0110PZ0B9110300B",
-                "manufacturer": "nubia",
-                "model": "P0110",
-                "codename": "pacific",
+                "manufacturer": manufacturer,
+                "model": model,
+                "codename": codename,
                 "android_release": "16",
                 "sdk": "36",
                 "build_fingerprint": "nubia/pacific/test",
@@ -282,6 +309,17 @@ def write_manifest(
             "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
         },
     }
+    if include_gate_owners:
+        manifest["gate_owners"] = {
+            "physical_8_9_inch_tablet": "phase2-tablet-manifest",
+            "stand_mounted_charging": "phase2-device-environment",
+            "thermal_power_sampling": "phase2-device-environment",
+            "device_memory_sampling": "phase2-device-memory-gate",
+            "foreground_background_recovery": "phase2-tablet-runbook",
+            "transport_reconnect_recovery": "phase2-tablet-runbook",
+            "login_startup_or_headless_recovery": "phase2-tablet-runbook",
+            "eight_hour_sustained_stream": "phase2-tablet-gate",
+        }
     path = directory / "phase2-tablet-manifest.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
@@ -308,6 +346,7 @@ def write_evidence_artifacts(directory: Path) -> None:
         "reconnects.log",
         "frame-drops.log",
         "decoder-telemetry.jsonl",
+        "soak-8h/phase2-device-environment-summary.json",
     ):
         path = directory / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -316,6 +355,17 @@ def write_evidence_artifacts(directory: Path) -> None:
         path = directory / relative_path
         path.write_text("", encoding="utf-8")
     (directory / "screenshots").mkdir()
+    (directory / "soak-8h" / "phase2-device-environment-summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "vibescreen.evidence/v1",
+                "kind": "phase2_device_environment_acceptance",
+                "verdict": "pass",
+                "can_close_device_environment_gates": True,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 class Phase2TabletGateTest(unittest.TestCase):
@@ -360,6 +410,100 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["verdict"], "insufficient")
         self.assertIn(
             "insufficient evidence package: manifest.physical_8_9_inch_tablet",
+            gate["reasons"],
+        )
+
+    def test_known_phone_substitute_is_insufficient_even_if_mislabeled(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(
+                directory,
+                device_class="physical_8_9_inch_tablet",
+                manufacturer="nubia",
+                model="P0110",
+                codename="pacific",
+            )
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient evidence package: manifest.known_phone_substitute_rejected",
+            gate["reasons"],
+        )
+
+    def test_missing_gate_owner_map_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory, include_gate_owners=False)
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient evidence package: manifest.gate_owners_declared",
+            gate["reasons"],
+        )
+
+    def test_missing_device_environment_summary_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            (directory / "soak-8h" / "phase2-device-environment-summary.json").unlink()
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient evidence package: artifact.device_environment_summary",
+            gate["reasons"],
+        )
+        self.assertIn(
+            "insufficient device environment evidence: phase2-device-environment-summary.json is missing",
+            gate["reasons"],
+        )
+
+    def test_blocked_device_environment_summary_keeps_package_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            (directory / "soak-8h" / "phase2-device-environment-summary.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "phase2_device_environment_acceptance",
+                        "verdict": "blocked",
+                        "can_close_device_environment_gates": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient device environment evidence: can_close_device_environment_gates is not true (verdict=blocked)",
             gate["reasons"],
         )
 
@@ -411,6 +555,8 @@ class Phase2TabletGateTest(unittest.TestCase):
                 include_host_rss=False,
                 include_battery_status=False,
                 include_battery_plugged=False,
+                include_power_current=False,
+                include_power_voltage=False,
             )
             gate = derive_gate(report_path)
 
@@ -427,6 +573,8 @@ class Phase2TabletGateTest(unittest.TestCase):
         )
         self.assertIn("insufficient evidence: battery_status_samples", gate["reasons"])
         self.assertIn("insufficient evidence: battery_plugged_samples", gate["reasons"])
+        self.assertIn("insufficient evidence: power_current_samples", gate["reasons"])
+        self.assertIn("insufficient evidence: power_voltage_samples", gate["reasons"])
 
     def test_manifest_thresholds_drive_thermal_temperature_and_drain_criteria(self):
         with tempfile.TemporaryDirectory() as raw_directory:

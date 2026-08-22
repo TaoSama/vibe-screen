@@ -124,15 +124,75 @@ include the exact collection commands, links to `samples.jsonl`,
 `summary.json`, `phase2-tablet-manifest.json`, and raw logs, plus the measured
 duration, cadence, and first-failure fields.
 After the timer completes, run `make phase2-device-memory-gate` before the
-broader `make phase2-tablet-gate`. The device-memory gate writes
+focused `make phase2-device-environment-gate`, then run the broader
+`make phase2-tablet-gate`. The device-memory gate writes
 `soak-8h/phase2-device-memory-gate.json` and must report `pass` before the
 Phase 2 device-memory item can be marked covered. Missing Android PSS, missing
 Host RSS, missing charging/full-state samples, missing thermal status, a phone
 substitute such as Nubia P0110/pacific, or a sub-eight-hour window is
-`insufficient`, not a pass. The broader tablet gate also reads the manifest and
-raw evidence root, so missing raw battery, power, thermal, log, screenshot, or
-undeclared threshold artifacts also remain `insufficient` instead of closing
+`insufficient`, not a pass. The device-environment gate writes
+`soak-8h/phase2-device-environment-summary.json` from
+`phase2-device-environment-observations.json`; it owns stand-mounted charging
+stability, controlled thermal-load behavior, and power-source stability. The
+broader tablet gate also reads the manifest, the device-environment summary, and
+the raw evidence root, so missing raw battery, power, thermal, log, screenshot,
+or undeclared threshold artifacts remain `insufficient` instead of closing
 Phase 2.
+
+`phase2-device-environment-observations.json` is written by the test owner after
+reviewing the raw run artifacts. Missing boolean fields default to false. A
+passing record must set every observation below to true and supply the matching
+measurements under the predeclared thresholds:
+
+```json
+{
+  "android_device_lock_checked": true,
+  "device_identity_recorded": true,
+  "device_identity_matches_claim": true,
+  "physical_8_9_inch_tablet_observed": true,
+  "stand_mounted_setup_observed": true,
+  "eight_hour_environment_window_observed": true,
+  "battery_power_samples_retained": true,
+  "thermal_samples_retained": true,
+  "raw_platform_dumps_retained": true,
+  "controlled_thermal_load_observed": true,
+  "thermal_load_recovery_observed": true,
+  "settings_status_matches_platform": true,
+  "run_readme_retained": true,
+  "thresholds": {
+    "maximum_sample_gap_seconds": 90,
+    "maximum_thermal_status": 2,
+    "maximum_battery_temperature_celsius": 45,
+    "maximum_net_battery_drain_percent": 0
+  },
+  "measurements": {
+    "environment_duration_seconds": 28800,
+    "maximum_sample_gap_seconds": 30,
+    "unplugged_sample_count": 0,
+    "non_charging_sample_count": 0,
+    "power_source_change_count": 0,
+    "maximum_thermal_status": 1,
+    "maximum_battery_temperature_celsius": 40,
+    "net_battery_drain_percent": 0
+  },
+  "artifact_paths": [
+    "phase2-device-environment-observations.json",
+    "soak-8h/samples.jsonl",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-after.txt"
+  ],
+  "blocking_notes": [],
+  "notes": "physical tablet stand-mounted environment run"
+}
+```
+
+A phone substitute such as Nubia P0110/pacific must leave
+`physical_8_9_inch_tablet_observed=false`; the summary then reports `blocked`
+and cannot close the Phase 2 device-environment gates.
 
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are
@@ -272,7 +332,8 @@ Each run directory should include at minimum:
 - `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
 - `host-telemetry.jsonl`, `soak-8h/exact-window-report.json`,
-  `soak-8h/phase2-device-memory-gate.json`, and
+  `soak-8h/phase2-device-memory-gate.json`,
+  `soak-8h/phase2-device-environment-summary.json`, and
   `soak-8h/phase2-tablet-gate.json`;
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
   `adb-power-after.txt`, thermal dumps before/after, and the corresponding
