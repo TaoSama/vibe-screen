@@ -19,3 +19,7 @@ used to claim a shipped latency result.
   sample CSV, and placeholder raw-camera artifact for the provenance checker.
 - external-camera-missing-video/: same synthetic samples, but the manifest
   references a missing raw-camera artifact and must remain insufficient.
+- synchronized-clock-input-valid/: synthetic formal evidence package for the
+  `input-p95-sub50` gate using the synchronized-clock measurement method. It
+  exercises the checker path without an external camera and is not real-device
+  evidence.

@@ -14,7 +14,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -53,9 +55,11 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
+import dev.telemachus.display.internet.ProductControllerEvent
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductStylusEvent
 import dev.vibescreen.protocol.v1.InputPhase
@@ -174,10 +178,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingInternetPairing: PendingInternetPairing? = null
     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
     @Volatile private var internetGeneration = 0L
-    private val nextInternetInputId = AtomicLong(0)
+    private val internetInputIds = SessionInputIdSequence()
     private val nextStreamStylusTrackingId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
-    private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
+    private val internetStylusInputIds = StylusInputIdTracker(internetInputIds::next)
     private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
     private val internetStylusGestureRouter = StylusGestureRouter()
     private val streamStylusGestureRouter = StylusGestureRouter()
@@ -199,8 +203,10 @@ class MainActivity : AppCompatActivity() {
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
+    private val internetControllerSessionState = ControllerSessionState()
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
+    private var nextNativePointerMoveDiagAtMs = 0L
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
     private lateinit var deviceHealthMonitor: AndroidDeviceHealthMonitor
@@ -476,12 +482,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        if (!isInForeground || event.isSystemKey()) return super.dispatchKeyEvent(event)
         ControllerInputMapper.keyChange(event)?.let { change ->
-            val dispatch = streamControllerSessionState.applyKey(change)
-            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
-            if (ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) return true
+            val active = canSendControllerInput()
+            if (active) {
+                val state = activeControllerSessionState()
+                val dispatch = state.applyKey(change)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
+                if (ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)) return true
+            }
         }
+        if (!isConnected) return super.dispatchKeyEvent(event)
         val clientEvent =
             AndroidKeyInputMapper.map(
                 keyCode = event.keyCode,
@@ -1071,6 +1082,12 @@ class MainActivity : AppCompatActivity() {
         if (!isInForeground) return false
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             val session = internetSession ?: return false
+            val active = canSendControllerInput(session)
+            if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->
+                val dispatch = internetControllerSessionState.applyMotion(snapshot)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
+                return ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)
+            }
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
@@ -1084,6 +1101,7 @@ class MainActivity : AppCompatActivity() {
         if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
             val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
             if (samples.isNotEmpty() && client.sendMotionStylus(samples)) {
+                mainDiagStylusForwarded("stream", event, samples, extended = true)
                 trackStreamStylus(samples)
                 return true
             }
@@ -1131,7 +1149,10 @@ class MainActivity : AppCompatActivity() {
             }
         if (nativePointerInput != null) {
             when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
-                ClientInputDispatchResult.SENT -> return true
+                ClientInputDispatchResult.SENT -> {
+                    logNativePointerForwarded(event, nativePointerInput)
+                    return true
+                }
                 ClientInputDispatchResult.REJECTED -> {
                     mainDiag("negotiated pointer sink rejected ${nativePointerInput.action}")
                     return true
@@ -1182,6 +1203,28 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun logNativePointerForwarded(
+        event: MotionEvent,
+        nativePointerInput: ClientPointerInput,
+    ) {
+        if (!shouldLogNativePointerForward(nativePointerInput.action)) return
+        mainDiag(
+            "native pointer forwarded action=${nativePointerInput.action} " +
+                "source=${NativeInputWire.mouseLikeSourceNames(event.source, event.device?.sources).joinToString("+").ifEmpty { "OTHER" }} " +
+                "buttonState=${event.buttonState} actionButton=${event.actionButton} " +
+                "wireButtons=${NativeInputWire.buttonMask(event.buttonState)} " +
+                "x=${nativePointerInput.x} y=${nativePointerInput.y}",
+        )
+    }
+
+    private fun shouldLogNativePointerForward(action: ClientPointerAction): Boolean {
+        if (action != ClientPointerAction.MOVE) return true
+        val now = SystemClock.elapsedRealtime()
+        if (now < nextNativePointerMoveDiagAtMs) return false
+        nextNativePointerMoveDiagAtMs = now + NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS
+        return true
+    }
+
     private fun synthesizeLegacyRightClick(
         view: View,
         event: MotionEvent,
@@ -1208,6 +1251,9 @@ class MainActivity : AppCompatActivity() {
         dispatch: ControllerDispatch,
         source: String,
     ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            return sendInternetControllerDispatch(dispatch, source)
+        }
         val result = ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))
         return when (result) {
             ClientInputDispatchResult.SENT -> true
@@ -1221,6 +1267,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun sendInternetControllerDispatch(
+        dispatch: ControllerDispatch,
+        source: String,
+        targetSession: InternetProductSession? = internetSession,
+    ): Boolean {
+        val session = targetSession ?: return false
+        val events = dispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val delivery =
+            when (dispatch.delivery) {
+                ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
+                ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
+            }
+        val accepted = session.sendController(events, delivery)
+        if (!accepted) mainDiag("internet controller sink rejected $source")
+        return accepted
+    }
+
+    private fun activeControllerSessionState(): ControllerSessionState =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            internetControllerSessionState
+        } else {
+            streamControllerSessionState
+        }
+
+    private fun canSendControllerInput(targetSession: InternetProductSession? = internetSession): Boolean =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            targetSession?.canSendController() == true
+        } else {
+            isConnected
+        }
 
     private fun finishPendingRightClick() {
         val release = pendingRightClickRelease ?: return
@@ -1912,7 +1989,7 @@ class MainActivity : AppCompatActivity() {
             )
         if (!selectable) return
         val displays = availableDisplays
-        val popup = PopupMenu(this, binding.controlDisplaysButton)
+        val popup = PopupMenu(this, binding.displayCapsuleGroup)
         val menu = popup.menu
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
@@ -1955,7 +2032,7 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        popup.show()
+        showControlPopupMenu(popup)
     }
 
     /**
@@ -2016,7 +2093,7 @@ class MainActivity : AppCompatActivity() {
         ) {
             return
         }
-        val popup = PopupMenu(this, binding.controlClipboardButton)
+        val popup = PopupMenu(this, binding.controlClipboardButton, Gravity.NO_GRAVITY)
         popup.menu.add(0, CLIPBOARD_MENU_SEND, 0, R.string.clipboard_send_to_mac).isEnabled = true
         popup.menu
             .add(0, CLIPBOARD_MENU_RECEIVE, 1, R.string.clipboard_get_from_mac)
@@ -2030,7 +2107,7 @@ class MainActivity : AppCompatActivity() {
         }
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         popup.setOnDismissListener { revealControlBar() }
-        popup.show()
+        showControlPopupMenu(popup)
     }
 
     private fun beginSendLocalClipboard(
@@ -2042,7 +2119,7 @@ class MainActivity : AppCompatActivity() {
             showImmersiveDialog(
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.clipboard_lan_confirm_title)
-                    .setMessage(R.string.clipboard_lan_confirm_message)
+                    .setMessage(LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState))
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
                         sendLocalClipboard(client, generation)
                     }
@@ -2125,7 +2202,7 @@ class MainActivity : AppCompatActivity() {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
-                .setMessage(R.string.clipboard_lan_receive_confirm_message)
+                .setMessage(LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState))
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     receiveRemoteClipboard(client, generation)
                 }
@@ -2144,7 +2221,7 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(R.string.clipboard_receive_confirm_title)
                 .setMessage(
                     if (prefs.connectionMode == ConnectionMode.WIRELESS) {
-                        R.string.clipboard_lan_direct_receive_confirm_message
+                        LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
                     } else {
                         R.string.clipboard_receive_confirm_message
                     },
@@ -2253,8 +2330,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun updateConnectionSecurityStatus() {
-        val presentation = ConnectionSecurityPresentationPolicy.presentation(prefs.connectionMode)
+    private fun updateConnectionSecurityStatus(
+        lanProtectionState: LanRecordProtectionState = streamClient?.currentLanProtectionState
+            ?: LanRecordProtectionState.NOT_APPLICABLE,
+    ) {
+        val presentation =
+            ConnectionSecurityPresentationPolicy.presentation(
+                mode = prefs.connectionMode,
+                lanProtectionState = lanProtectionState,
+            )
         val label = getString(presentation.labelResource)
         val detail = getString(presentation.detailResource)
         val detailColor =
@@ -2290,7 +2374,7 @@ class MainActivity : AppCompatActivity() {
         if (!available) return
         val moveDefault = getString(R.string.host_action_move_window)
         val returnDefault = getString(R.string.host_action_return_windows)
-        val popup = PopupMenu(this, binding.controlHostActionsButton)
+        val popup = PopupMenu(this, binding.controlHostActionsButton, Gravity.NO_GRAVITY)
         val menu = popup.menu
         actions.forEachIndexed { index, option ->
             menu.add(0, index, index, HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault))
@@ -2307,6 +2391,11 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
+        showControlPopupMenu(popup)
+    }
+
+    private fun showControlPopupMenu(popup: PopupMenu) {
+        popup.gravity = Gravity.END
         popup.show()
     }
 
@@ -2508,6 +2597,18 @@ class MainActivity : AppCompatActivity() {
 
         if (!available) return
 
+        var suppressQualityListener = false
+
+        fun syncQualityAutoForExplicitVideoSetting() {
+            if (prefs.videoQuality == VideoQualityChoice.AUTO) return
+            suppressQualityListener = true
+            qualityButtons[VideoQualityChoice.AUTO]?.let { autoButton ->
+                qualityGroup.check(autoButton.id)
+            }
+            suppressQualityListener = false
+            prefs.videoQuality = VideoQualityChoice.AUTO
+        }
+
         fun announceRequest(kind: VideoPreferenceFeedbackKind) {
             if (!VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = available && streamClient != null)) {
                 return
@@ -2522,6 +2623,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (suppressQualityListener) return@addOnButtonCheckedListener
             if (!isChecked) return@addOnButtonCheckedListener
             val choice =
                 qualityButtons.entries.firstOrNull { it.value.id == checkedId }?.key
@@ -2559,7 +2661,9 @@ class MainActivity : AppCompatActivity() {
                 bitrateKbps = 0,
                 framesPerSecond = fps,
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                resetQualityToAuto = true,
             )
+            syncQualityAutoForExplicitVideoSetting()
             prefs.videoFrameRate = fps
             announceRequest(VideoPreferenceFeedbackKind.FRAME_RATE)
         }
@@ -2578,7 +2682,9 @@ class MainActivity : AppCompatActivity() {
                         bitrateKbps = mbps * ClientVideoBounds.KBPS_PER_MBPS,
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                        resetQualityToAuto = true,
                     )
+                    syncQualityAutoForExplicitVideoSetting()
                     prefs.videoBitrateMbps = mbps
                     announceRequest(VideoPreferenceFeedbackKind.BITRATE)
                 }
@@ -3861,6 +3967,7 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = true
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
+        resetInternetInputStateForNewSession()
         val generation = ++internetGeneration
         internetVideoDecoderLifecycle?.invalidate()
         internetVideoDecoderLifecycle = null
@@ -3910,12 +4017,8 @@ class MainActivity : AppCompatActivity() {
                 deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH),
                 supportedCodecs =
                     CodecCapabilities.advertisedStreamCodecs
-                        .mapTo(linkedSetOf()) { codec ->
-                            when (codec) {
-                                StreamCodec.HEVC -> ProductVideoCodec.HEVC
-                                StreamCodec.H264 -> ProductVideoCodec.H264
-                            }
-                        },
+                        .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
+                advertiseController = true,
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -3946,6 +4049,16 @@ class MainActivity : AppCompatActivity() {
                     videoDecoderLifecycle.onVideoConfiguration(configuration, effect, completion)
                 }
 
+                override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        internetControllerSessionState.resynchronize()?.let { dispatch ->
+                            sendInternetControllerDispatch(dispatch, "internet controller video configuration")
+                        }
+                    }
+                }
+
                 override fun onVideoFrame(frame: ProductVideoFrame) {
                     if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
                     videoDecoder?.decode(
@@ -3955,6 +4068,25 @@ class MainActivity : AppCompatActivity() {
                         frame.keyframe,
                         frame.sessionEpoch,
                     )
+                }
+
+                override fun onInputAck(
+                    inputId: Long,
+                    controllerId: String?,
+                    controllerEpoch: Long?,
+                    accepted: Boolean,
+                    rejectionReason: String,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    val rejectedConnection =
+                        ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted) ?: return
+                    if (internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)) {
+                        mainDiag(
+                            "internet controller input rejected input_id=$inputId " +
+                                "controller=${rejectedConnection.controllerId} " +
+                                "epoch=${rejectedConnection.controllerEpoch} reason=$rejectionReason",
+                        )
+                    }
                 }
 
                 override fun onFreshSessionRequired(reason: String) {
@@ -4386,10 +4518,7 @@ class MainActivity : AppCompatActivity() {
         videoDecoder = null
         connectionAttemptInProgress = false
         internetRoute = null
-        activeInternetInputIds.clear()
-        internetStylusInputIds.clear()
-        internetStylusGestureRouter.reset()
-        internetStylusContactRouter.reset()
+        resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -4845,6 +4974,12 @@ class MainActivity : AppCompatActivity() {
                     extendedNegotiated = client?.canSendExtendedStylus() == true,
                 )
             if (stylusSamples.isNotEmpty() && client?.sendMotionStylus(stylusSamples) == true) {
+                mainDiagStylusForwarded(
+                    "stream",
+                    event,
+                    stylusSamples,
+                    extended = client.canSendExtendedStylus(),
+                )
                 trackStreamStylus(stylusSamples)
             }
             if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
@@ -4997,8 +5132,24 @@ class MainActivity : AppCompatActivity() {
         ) {
             streamStylusContactRouter.reset()
             internetStylusContactRouter.reset()
+            if (internet != null) {
+                internetControllerSessionState.takeRelease()?.let { release ->
+                    if (!sendInternetControllerDispatch(release, "internet controller release", internet)) {
+                        mainDiag("internet controller release was rejected")
+                    }
+                }
+            }
             completeNativeInputBoundary(client, generation, pointerPhase, afterRelease)
         }
+    }
+
+    private fun resetInternetInputStateForNewSession() {
+        activeInternetInputIds.clear()
+        internetStylusInputIds.clear()
+        internetStylusGestureRouter.reset()
+        internetStylusContactRouter.reset()
+        internetControllerSessionState.resetForNewSession()
+        internetInputIds.resetForNewSession()
     }
 
     private fun completeNativeInputBoundary(
@@ -5098,7 +5249,7 @@ class MainActivity : AppCompatActivity() {
             val pointerId = event.getPointerId(index)
             val inputId =
                 when (phase) {
-                    ProductInputPhase.BEGAN -> nextInternetInputId.incrementAndGet().also { activeInternetInputIds[pointerId] = it }
+                    ProductInputPhase.BEGAN -> internetInputIds.next().also { activeInternetInputIds[pointerId] = it }
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
@@ -5161,7 +5312,9 @@ class MainActivity : AppCompatActivity() {
         if (extendedOnly && samples.isEmpty()) return false
         samples.forEach { sample ->
             val inputId = internetStylusInputIds.resolve(sample) ?: return@forEach
-            session.sendStylus(sample.toProductStylusEvent(inputId, extended))
+            if (session.sendStylus(sample.toProductStylusEvent(inputId, extended))) {
+                mainDiagStylusForwarded("internet", event, listOf(sample), extended)
+            }
             internetStylusInputIds.complete(sample)
         }
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
@@ -5266,6 +5419,38 @@ class MainActivity : AppCompatActivity() {
                 } else null,
         )
 
+    private fun mainDiagStylusForwarded(
+        transport: String,
+        event: MotionEvent,
+        samples: List<StylusSample>,
+        extended: Boolean,
+    ) {
+        val sample = samples.firstOrNull() ?: return
+        mainDiag(
+            "Stylus forwarded: transport=$transport samples=${samples.size} extended=$extended " +
+                "rawSource=0x${event.source.toString(16)} rawAction=${event.actionMasked} " +
+                "rawTools=${event.toolTypesSummary()} " +
+                "phase=${sample.phase} contact=${sample.contactState} tool=${sample.toolKind} " +
+                "buttons=${sample.buttonMask} pressure=${sample.pressure} " +
+                "tiltX=${sample.tiltXDegrees} tiltY=${sample.tiltYDegrees}",
+        )
+    }
+
+    private fun MotionEvent.toolTypesSummary(): String =
+        (0 until pointerCount).joinToString(separator = ",", prefix = "[", postfix = "]") { index ->
+            toolTypeName(getToolType(index))
+        }
+
+    private fun toolTypeName(toolType: Int): String =
+        when (toolType) {
+            MotionEvent.TOOL_TYPE_STYLUS -> "stylus"
+            MotionEvent.TOOL_TYPE_ERASER -> "eraser"
+            MotionEvent.TOOL_TYPE_FINGER -> "finger"
+            MotionEvent.TOOL_TYPE_MOUSE -> "mouse"
+            MotionEvent.TOOL_TYPE_UNKNOWN -> "unknown"
+            else -> "other-$toolType"
+        }
+
     /**
      * Apply rotation by changing the Activity's screen orientation
      * This provides proper fullscreen portrait/landscape support
@@ -5350,6 +5535,7 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
+        private const val NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS = 250L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1

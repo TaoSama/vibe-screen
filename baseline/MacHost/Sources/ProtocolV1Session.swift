@@ -1107,11 +1107,11 @@ final class ProtocolV1SessionCoordinator {
             let token = nextVideoPreferencesToken
             nextVideoPreferencesToken &+= 1
             pendingVideoPreferencesToken = token
-            // An explicit bitrate wins over the preset intent. A reset request
-            // is honored only when no explicit bitrate is requested, matching
-            // the "explicit bitrate overrides quality" contract.
+            // An explicit bitrate wins over the preset intent, but it can still
+            // carry a quality reset so the client can show AUTO without leaving
+            // a stale preset active on the host.
             let resolvedPreset = prefs.bitrateKbps == 0 ? prefs.qualityPreset : .unspecified
-            let resolvedReset = prefs.bitrateKbps == 0 ? prefs.resetQualityToAuto : false
+            let resolvedReset = prefs.resetQualityToAuto
             return [
                 .applyVideoPreferences(
                     token: token,
@@ -1503,7 +1503,10 @@ final class ProtocolV1SessionCoordinator {
             clientCapabilities: configuration.hostCapabilities.intersection(offeredCapabilities),
             decodeCapabilities: clientDecodeCapabilities
         )
-        guard let codec = configuration.supportedCodecs.first(where: { codec in
+        let admissibleCodecs = VideoCodecAdmissionPolicy.protocolCodecs(
+            from: configuration.supportedCodecs
+        )
+        guard let codec = admissibleCodecs.first(where: { codec in
             hello.codecs.contains(codec)
                 && colorNegotiator.supportsLegacySDR(
                     codec: codec,
@@ -1513,7 +1516,7 @@ final class ProtocolV1SessionCoordinator {
         }) else {
             return fail(
                 code: .unsupportedCapability,
-                message: "Host and client have no common SDR video codec.",
+                message: "Host and client have no common locally encodable SDR video codec.",
                 correlationID: correlationID
             )
         }
@@ -1571,7 +1574,13 @@ final class ProtocolV1SessionCoordinator {
         }
 
         phase = .preparingCodec(correlationID: correlationID)
-        let streamCodec: StreamCodec = codec == .h264 ? .h264 : .hevc
+        guard let streamCodec = VideoCodecAdmissionPolicy.streamCodec(for: codec) else {
+            return fail(
+                code: .unsupportedCapability,
+                message: "Host has no stream encoder for negotiated codec \(codec).",
+                correlationID: correlationID
+            )
+        }
         return [.codecNegotiated(streamCodec)]
     }
 

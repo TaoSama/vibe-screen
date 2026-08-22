@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-08-20T19:38:41Z",
+  "claim_boundary": "This preflight records readiness and blockers only. It does not close USB, LAN, or input latency gates.",
+  "device": {
+    "adb_serial": "nubia-p0110-pacific-device-1",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "os_version": "Android 16",
+    "sdk": 36
+  },
+  "gate_profiles": [
+    {
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "raw high-frame-rate external-camera recording on one timebase",
+        "formal latency manifest bound to raw recording and samples",
+        "at least five annotated USB glass-to-glass samples"
+      ],
+      "profile": "usb-glass-to-glass-sub50",
+      "status": "blocked"
+    },
+    {
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "raw high-frame-rate external-camera recording on one timebase",
+        "formal latency manifest bound to raw recording and samples",
+        "at least five annotated LAN glass-to-glass samples"
+      ],
+      "profile": "lan-glass-to-glass-sub80",
+      "status": "blocked"
+    },
+    {
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "external-camera input recording or synchronized-clock proof",
+        "physical input actuation and visible Mac result samples",
+        "reviewable sub-5 ms total error budget for synchronized-clock claims"
+      ],
+      "profile": "input-p95-sub50",
+      "status": "blocked"
+    }
+  ],
+  "kind": "latency_gate_preflight",
+  "repository_revision": "cc26a84c829016fa61c721f73a128284fdf64f92",
+  "run_id": "2026-08-21-nubia-p0110-latency-preflight-blocked",
+  "safe_smoke": {
+    "adb_state": "device",
+    "adb_state_command": "adb -s $ADB_SERIAL get-state",
+    "device_info_command": "PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial $ADB_SERIAL --no-connect --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/device-info.json"
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "blocked"
+}

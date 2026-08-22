@@ -156,6 +156,7 @@ class ReconnectBackoff(
 enum class StreamCodec {
     HEVC,
     H264,
+    AV1,
 }
 
 /**
@@ -173,7 +174,11 @@ object CodecFallbackPolicy {
     fun shouldUseH264(hasUsableHevcDecoder: Boolean): Boolean =
         !hasUsableHevcDecoder || hevcFailedAtRuntime
 
-    fun candidates(hasUsableHevcDecoder: Boolean): List<StreamCodec> =
+    fun candidates(
+        hasUsableHevcDecoder: Boolean,
+        @Suppress("UNUSED_PARAMETER")
+        hasUsableAv1Decoder: Boolean = false,
+    ): List<StreamCodec> =
         if (shouldUseH264(hasUsableHevcDecoder)) {
             listOf(StreamCodec.H264)
         } else {

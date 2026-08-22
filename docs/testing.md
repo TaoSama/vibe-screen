@@ -44,11 +44,12 @@ as the device identity and soak artifacts:
   `vibescreen_evidence.latency` summary, device info, and an evidence manifest.
 - Input latency requires either the same external-camera single timebase or a
   documented synchronized-clock setup with an error budget small enough for the
-  sub-50 ms P95 gate. The current formal provenance checker validates
-  external-camera packages; any synchronized-clock input claim must carry its
-  own synchronization proof and reviewable error budget rather than using the
-  external-camera manifest path. Unsynchronized host/device timestamps are
-  diagnostic only.
+  sub-50 ms P95 gate. The formal provenance checker validates both
+  external-camera and synchronized-clock input packages; a synchronized-clock
+  claim must carry its own synchronization proof (clock sources, sync
+  procedure, before/after skew, drift, and a total error budget below 5 ms) in
+  the manifest's `synchronization` section. Unsynchronized host/device
+  timestamps are diagnostic only.
 - Host/client telemetry-stage summaries may be recorded from pipeline, decoder,
   queue, or RTT logs with `--kind telemetry-stage`. They explain where latency
   is spent, but their summary must retain
@@ -63,8 +64,8 @@ gate open. The CLI exits `0` only for a profile `pass` and exits nonzero for
 `fail` or `insufficient`. The synthetic examples under
 `tools/fixtures/latency/` are only CLI fixtures for exercising these verdicts;
 they are not real-device evidence.
-For formal external-camera runs, validate the full evidence directory with
-the stricter provenance checker:
+For formal external-camera or synchronized-clock input runs, validate the full
+evidence directory with the stricter provenance checker:
 
 ```bash
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
@@ -72,9 +73,11 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --gate-profile "$GATE_PROFILE"
 ```
 
-See [External-camera latency measurement](runbook/latency-measurement.md). The
-checker requires the raw camera file, sample annotations, device/build metadata,
-and matching gate profile before it can return `pass`.
+See [External-camera latency measurement](runbook/latency-measurement.md). For
+external-camera packages, the checker requires the raw camera file, sample
+annotations, device/build metadata, and matching gate profile before it can
+return `pass`. Synchronized-clock input packages use direct-latency samples and
+manifest synchronization metadata instead of `camera` and `recording` sections.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
@@ -96,22 +99,27 @@ the focused Android view and cannot close the native-pointer gate.
 
 Before running the gate, start the matching macOS Host, grant Accessibility,
 establish a Protocol v1 USB or trusted-LAN session, and keep the Android client
-foregrounded on the streaming view. Then run:
+foregrounded on the streaming view. Replace `<target app>` with the observed
+Mac application name before running the command:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \
   --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
 ```
 
 While the script waits, move the physical mouse over the Android stream, then
-left-click and release. A pass requires newly appended Host log lines for native
-pointer `changed`, `began`, and `ended` injection. If no external Android input
-device with a mouse, touchpad, or trackball source is present, the script exits
-with code `2` and writes a `blocked` evidence bundle instead of fabricating a
-device result. Evidence from a Nubia P0110 must remain labeled P0110/pacific;
-it must not be relabeled as Xiaomi 13/fuxi.
+left-click and release. A pass requires all three evidence layers from the same
+observation window: Android `MA` logcat lines showing forwarded native pointer
+`MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` from a mouse-like source; newly
+appended Host log lines for native pointer `changed`, `began`, and `ended`
+injection; and an operator-visible Mac result note. If no external Android input
+device with a mouse, relative mouse, touchpad, or trackball source is present,
+the script exits with code `2` and writes a `blocked` evidence bundle instead of
+fabricating a device result. Evidence from a Nubia P0110 must remain labeled
+P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
 
 ## Pass criteria
 
@@ -174,5 +182,11 @@ python3 scripts/controller_runtime_readiness.py \
   --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --host-app "/path/to/Vibe Screen.app" \
+  --write-blocked-on-lock \
   --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 ```
+
+Without `--allow-existing-device-lock`, the collector refuses to run ADB when a
+shared Android device lock is present. With `--write-blocked-on-lock`, that
+preflight writes a blocked bundle that records the lock state instead of using
+the device.

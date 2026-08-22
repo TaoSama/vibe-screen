@@ -117,42 +117,44 @@ internal class StreamInputDispatcher(
         if (!current.connected || !current.protocolV1 || !current.canSendStylus) return false
         val copied = samples.toList()
         if (copied.isEmpty()) return false
-        submitOutbound(
-            if (copied.all { it.delivery == StylusDelivery.MOTION }) {
-                OutboundCommandScheduler.Kind.MOVE
-            } else {
-                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-            },
-            StreamOutboundCommand.ProtocolBatch { activeSession ->
-                copied.map { sample ->
-                    activeSession.stylus(
-                        inputId = nextInputId.getAndIncrement(),
-                        pointerId = sample.pointerId,
-                        phase = sample.phase,
-                        x = sample.x,
-                        y = sample.y,
-                        pressure = sample.pressure,
-                        tiltXDegrees = sample.tiltXDegrees,
-                        tiltYDegrees = sample.tiltYDegrees,
-                        toolKind =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.toolKind.toProtocol()
-                            } else {
-                                null
-                            },
-                        buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
-                        contactState =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.contactState.toProtocol()
-                            } else {
-                                null
-                            },
-                    )
-                }
-            },
-            0,
-        )
-        return true
+        val submission =
+            submitOutbound(
+                if (copied.all { it.delivery == StylusDelivery.MOTION }) {
+                    OutboundCommandScheduler.Kind.MOVE
+                } else {
+                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                },
+                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    copied.map { sample ->
+                        activeSession.stylus(
+                            inputId = nextInputId.getAndIncrement(),
+                            pointerId = sample.pointerId,
+                            phase = sample.phase,
+                            x = sample.x,
+                            y = sample.y,
+                            pressure = sample.pressure,
+                            tiltXDegrees = sample.tiltXDegrees,
+                            tiltYDegrees = sample.tiltYDegrees,
+                            toolKind =
+                                if (activeSession.canSendExtendedStylus) {
+                                    sample.toolKind.toProtocol()
+                                } else {
+                                    null
+                                },
+                            buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
+                            contactState =
+                                if (activeSession.canSendExtendedStylus) {
+                                    sample.contactState.toProtocol()
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                },
+                0,
+            )
+        val admitted = submission.wasAdmitted()
+        return admitted
     }
 
     fun sendPointer(

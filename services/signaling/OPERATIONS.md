@@ -15,6 +15,11 @@
   `VIBE_SIGNALING_DATABASE_URL` from a secret manager, run
   `vibe-signaling --migrate /usr/share/vibe-screen/migrations/001_signaling.sql`
   before startup, and require `sslmode=verify-full` for non-loopback databases.
+- Run every signaling instance with one shared PostgreSQL runtime role, or grant
+  the runtime role `pg_read_all_stats`/`pg_monitor`, so orphan waiter leases can
+  verify live listener backends through `pg_stat_activity`. Use session pooling
+  for any database pooler; transaction pooling is incompatible with `LISTEN` and
+  stable backend identity.
 - Run UID/GID 65532, read-only root filesystem, no Linux capabilities, no core
   dumps, and a bounded memory/CPU/process budget.
 - Configure proxy body size at or below `max_request_body_bytes`, request read

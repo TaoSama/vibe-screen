@@ -1,0 +1,6 @@
+--- /tmp/vibe-screen-device-soak.lock absent
+--- /tmp/vibe-screen-device-android.lock
+-rw-r--r--@ 1 luwentao  wheel  0 Aug 22 00:25 /tmp/vibe-screen-device-android.lock
+mtime=Aug 22 00:25:45 2026 size=0 uid=501 gid=0 mode=-rw-r--r--
+contents:
+lsof:
