@@ -1,0 +1,31 @@
+test_all_adb_commands_include_serial (tools.tests.test_usb_live_smoke.CollectionTests.test_all_adb_commands_include_serial) ... ok
+test_fail_closed_when_reverse_missing (tools.tests.test_usb_live_smoke.CollectionTests.test_fail_closed_when_reverse_missing) ... ok
+test_lock_blocked_document_does_not_run_adb (tools.tests.test_usb_live_smoke.CollectionTests.test_lock_blocked_document_does_not_run_adb) ... ok
+test_lock_blocked_document_preserves_custom_log_limits (tools.tests.test_usb_live_smoke.CollectionTests.test_lock_blocked_document_preserves_custom_log_limits) ... ok
+test_missing_numeric_positive_fps_is_insufficient (tools.tests.test_usb_live_smoke.CollectionTests.test_missing_numeric_positive_fps_is_insufficient) ... ok
+test_old_pid_and_diag_logs_do_not_prove_current_live_stream (tools.tests.test_usb_live_smoke.CollectionTests.test_old_pid_and_diag_logs_do_not_prove_current_live_stream) ... ok
+test_pass_when_all_conditions_met (tools.tests.test_usb_live_smoke.CollectionTests.test_pass_when_all_conditions_met) ... ok
+test_recent_decoder_counters_without_startup_lines_can_pass (tools.tests.test_usb_live_smoke.CollectionTests.test_recent_decoder_counters_without_startup_lines_can_pass) ... ok
+test_schema_rejects_unknown_claim_fields (tools.tests.test_usb_live_smoke.CollectionTests.test_schema_rejects_unknown_claim_fields) ... ok
+test_allow_existing_lock_passes (tools.tests.test_usb_live_smoke.DeviceLockTests.test_allow_existing_lock_passes) ... ok
+test_lock_blocks_collection (tools.tests.test_usb_live_smoke.DeviceLockTests.test_lock_blocks_collection) ... ok
+test_fuxi_is_detected (tools.tests.test_usb_live_smoke.LabelGuardTests.test_fuxi_is_detected) ... ok
+test_none_identity_is_not_fuxi (tools.tests.test_usb_live_smoke.LabelGuardTests.test_none_identity_is_not_fuxi) ... ok
+test_p0110_is_not_fuxi (tools.tests.test_usb_live_smoke.LabelGuardTests.test_p0110_is_not_fuxi) ... ok
+test_decoder_counters_are_enough_when_startup_lines_rolled_out (tools.tests.test_usb_live_smoke.ParserTests.test_decoder_counters_are_enough_when_startup_lines_rolled_out) ... ok
+test_filter_logcat_by_pids_keeps_current_process_lines (tools.tests.test_usb_live_smoke.ParserTests.test_filter_logcat_by_pids_keeps_current_process_lines) ... ok
+test_parse_adb_reverse_absent (tools.tests.test_usb_live_smoke.ParserTests.test_parse_adb_reverse_absent) ... ok
+test_parse_adb_reverse_matches_expected_port (tools.tests.test_usb_live_smoke.ParserTests.test_parse_adb_reverse_matches_expected_port) ... ok
+test_parse_decoder_summary (tools.tests.test_usb_live_smoke.ParserTests.test_parse_decoder_summary) ... ok
+test_parse_foreground_state_absent (tools.tests.test_usb_live_smoke.ParserTests.test_parse_foreground_state_absent) ... ok
+test_parse_foreground_state_detects_package (tools.tests.test_usb_live_smoke.ParserTests.test_parse_foreground_state_detects_package) ... ok
+test_parse_foreground_state_prefers_matching_package_component (tools.tests.test_usb_live_smoke.ParserTests.test_parse_foreground_state_prefers_matching_package_component) ... ok
+test_parse_package_metadata (tools.tests.test_usb_live_smoke.ParserTests.test_parse_package_metadata) ... ok
+test_parse_pids (tools.tests.test_usb_live_smoke.ParserTests.test_parse_pids) ... ok
+test_parse_telemetry_summary (tools.tests.test_usb_live_smoke.ParserTests.test_parse_telemetry_summary) ... ok
+test_parse_telemetry_summary_counts_missing_or_non_positive_fps (tools.tests.test_usb_live_smoke.ParserTests.test_parse_telemetry_summary_counts_missing_or_non_positive_fps) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 0.008s
+
+OK

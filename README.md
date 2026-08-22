@@ -713,7 +713,15 @@ and
 [2026-08-10-xiaomi13-window-actions](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
 Earlier Android evidence also comes from Nubia
 P0110/pacific, and future P0110/pacific runs may close general Android gates when their
-evidence satisfies the same pass criteria. Final tablet
+evidence satisfies the same pass criteria. A 2026-08-23 current-base recheck at
+`5069404` on the connected P0110 installed the current APK and restored the
+`tcp:54321` USB reverse mapping, but it did not prove stream, reconnect,
+decoder, or app-lifecycle behavior: the supported stable-signing Host preflight
+was blocked by a missing `Vibe Screen Dev` codesigning identity, the ad-hoc
+current app did not expose a `54321` listener, and the read-only USB smoke helper
+returned `insufficient`. That record is retained under
+[2026-08-23-nubia-p0110-usb-current-base](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/README.md)
+and does not replace the earlier passing P0110 smoke. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal
