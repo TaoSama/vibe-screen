@@ -653,9 +653,16 @@ network quality may increase it.
   progress-driven backpressure, and cancel/disconnect cleanup. This is offline
   and self-test evidence only: no Android real-device file-transfer acceptance,
   public-Internet run, or WebRTC bulk DataChannel path is claimed.
+- The macOS Host now has an offline-tested Protocol v1 client/display routing
+  boundary: sessions register by `session_id` plus epoch, allocate bounded
+  display `stream_id` bindings, reject stale epochs and over-cap clients or
+  streams, validate targeted input against the owning session route, and release
+  routes on protocol close. Production USB/LAN transport still admits one active
+  Network.framework connection and one capture pipeline, so multi-device and
+  parallel multi-display capture acceptance remain open.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
-  carries additive Protocol v1 fields and client implementations for multiple
-  clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
+  carries additive Protocol v1 fields plus client and Host-session boundaries
+  for multiple clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current

@@ -361,6 +361,225 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(try protocolError(from: unknown).code, .invalidState)
     }
 
+    func testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+        let first = HostClientSessionKey(sessionID: Data([0x01]), epoch: 1)
+        let second = HostClientSessionKey(sessionID: Data([0x02]), epoch: 1)
+        let firstNextEpoch = HostClientSessionKey(sessionID: Data([0x01]), epoch: 2)
+
+        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data(), epoch: 1))) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
+        }
+        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data([0x09]), epoch: 0))) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
+        }
+
+        try router.register(first)
+        XCTAssertThrowsError(try router.allocateStream(for: "", in: first)) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .invalidBinding)
+        }
+        XCTAssertEqual(try router.allocateStream(for: "display-a", in: first), 1)
+        XCTAssertEqual(try router.allocateStream(for: "display-b", in: first), 2)
+        XCTAssertThrowsError(try router.rebind(streamID: 2, toDisplayID: "display-a", in: first)) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .duplicateDisplay("display-a"))
+        }
+        XCTAssertThrowsError(try router.allocateStream(for: "display-c", in: first)) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .streamLimitReached(2))
+        }
+
+        try router.register(second)
+        XCTAssertEqual(try router.allocateStream(for: "display-a", in: second), 1)
+        XCTAssertEqual(router.activeClientCount, 2)
+        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data([0x03]), epoch: 1))) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .clientLimitReached(2))
+        }
+
+        try router.register(firstNextEpoch)
+        XCTAssertNil(router.binding(streamID: 1, in: first))
+        XCTAssertEqual(router.binding(streamID: 1, in: firstNextEpoch)?.displayID, nil)
+        XCTAssertEqual(try router.allocateStream(for: "display-c", in: firstNextEpoch), 1)
+        XCTAssertEqual(router.activeClientCount, 2)
+
+        XCTAssertThrowsError(try router.register(first)) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
+        }
+        router.disconnect(second)
+        XCTAssertNil(router.binding(streamID: 1, in: second))
+        XCTAssertEqual(router.binding(streamID: 1, in: firstNextEpoch)?.displayID, "display-c")
+        XCTAssertEqual(router.activeClientCount, 1)
+        router.disconnect(firstNextEpoch)
+        XCTAssertEqual(router.activeClientCount, 0)
+    }
+
+    func testSharedHostRouterAdvertisesClientAndStreamCaps() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+        let session = makeMultiDisplaySession(displayRouter: router, maximumClients: 2, maximumVideoStreamsPerClient: 2)
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.multiClient)
+        var limits = VSResourceLimits()
+        limits.maximumClients = 2
+        limits.maximumDisplays = 2
+        limits.maximumVideoStreams = 2
+        hello.clientHello.resourceLimits = limits
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+
+        guard case .hostHello(let hostHello)? = responses[0].payload,
+              case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected HostHello + SessionAccepted")
+        }
+        XCTAssertEqual(hostHello.resourceLimits.maximumClients, 2)
+        XCTAssertEqual(hostHello.resourceLimits.maximumDisplays, 2)
+        XCTAssertEqual(hostHello.resourceLimits.maximumVideoStreams, 2)
+        XCTAssertTrue(hostHello.capabilities.contains(.multiClient))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.multiClient))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClients, 2)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumVideoStreams, 2)
+    }
+
+    func testRuntimeDisplayRebindRejectsDuplicateDisplayAsInvalidState() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+        let session = makeMultiDisplaySession(
+            displayRouter: router,
+            maximumClients: 2,
+            maximumVideoStreamsPerClient: 2
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.multiClient)
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(displayRequest(sourceDisplayID: "active-display"))
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        try router.bind(
+            HostDisplayStreamBinding(displayID: "second-display", streamID: 2),
+            to: HostClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
+        )
+
+        let actions = session.handleControl(try envelope(
+            id: 4,
+            payload: .startDisplayRequest(displayRequest(sourceDisplayID: "second-display"))
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+        XCTAssertFalse(actions.contains { if case .selectDisplay = $0 { true } else { false } })
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testInputTargetCannotCrossSharedClientRoutes() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+        let first = try readySession(
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            displayID: "first-display",
+            displayRouter: router,
+            maximumClients: 2
+        )
+        let second = try readySession(
+            sessionID: Data([0x02]),
+            sessionEpoch: 1,
+            displayID: "second-display",
+            displayRouter: router,
+            maximumClients: 2
+        )
+
+        var target = VSInputTarget()
+        target.displayID = "second-display"
+        target.streamID = 1
+        var touch = touchEvent()
+        touch.target = target
+        let rejected = first.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            payload: .touchEvent(touch)
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
+        XCTAssertTrue(rejected.containsClose)
+
+        var secondTouch = touchEvent()
+        secondTouch.target = target
+        XCTAssertTrue(second.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x02]),
+            sessionEpoch: 1,
+            payload: .touchEvent(secondTouch)
+        ).serializedData()).containsTouch)
+
+        let keyRouter = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+        let firstKeySession = try readySession(
+            sessionID: Data([0x03]),
+            sessionEpoch: 1,
+            displayID: "first-display",
+            displayRouter: keyRouter,
+            maximumClients: 2,
+            clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
+        )
+        _ = try readySession(
+            sessionID: Data([0x04]),
+            sessionEpoch: 1,
+            displayID: "second-display",
+            displayRouter: keyRouter,
+            maximumClients: 2,
+            clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
+        )
+
+        var key = VSKeyEvent()
+        key.inputID = 5
+        key.usbHidUsage = 0x04
+        key.pressed = true
+        key.target = target
+        let rejectedKey = firstKeySession.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x03]),
+            sessionEpoch: 1,
+            payload: .keyEvent(key)
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: rejectedKey).code, .invalidState)
+        XCTAssertTrue(rejectedKey.containsClose)
+    }
+
+    func testClientDisconnectReleasesSharedHostRoute() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 1)
+        let first = try readySession(
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            displayRouter: router
+        )
+        XCTAssertEqual(router.activeClientCount, 1)
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = "client_shutdown"
+        notice.mayResume = false
+        let actions = first.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            payload: .disconnectNotice(notice)
+        ).serializedData())
+
+        XCTAssertTrue(actions.containsClose)
+        XCTAssertEqual(router.activeClientCount, 0)
+
+        let second = makeSession(
+            sessionID: Data([0x02]),
+            sessionEpoch: 1,
+            displayRouter: router
+        )
+        _ = second.handleControl(try clientHello().serializedData())
+        let responses = try controlEnvelopes(second.completeCodecNegotiation())
+        XCTAssertTrue(responses.contains { if case .sessionAccepted = $0.payload { true } else { false } })
+        XCTAssertEqual(router.activeClientCount, 1)
+    }
+
     func testHandshakeRejectsVersionAndUnsupportedRequiredCapability() throws {
         let wrongVersion = makeSession()
         var hello = clientHello()
@@ -1919,11 +2138,17 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     private func makeSession(
         managedPolicy: ManagedPolicy = .unmanaged,
-        fileTransferAvailable: Bool = false
+        fileTransferAvailable: Bool = false,
+        sessionID: Data? = nil,
+        sessionEpoch: UInt64? = nil,
+        displayID: String = "active-display",
+        displayRouter: HostMultiClientDisplayRouter? = nil,
+        maximumClients: Int = 1,
+        maximumVideoStreamsPerClient: Int = 1
     ) -> ProtocolV1SessionCoordinator {
         var configuration = ProtocolV1SessionConfiguration(
-            sessionID: sessionID,
-            sessionEpoch: sessionEpoch,
+            sessionID: sessionID ?? self.sessionID,
+            sessionEpoch: sessionEpoch ?? self.sessionEpoch,
             displayWidth: 1920,
             displayHeight: 1080,
             rotation: 90,
@@ -1932,17 +2157,21 @@ final class ProtocolV1SessionTests: XCTestCase {
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 managedPolicy: managedPolicy,
-                fileTransferAllowed: fileTransferAvailable && managedPolicy.fileTransferAllowed
+                fileTransferAllowed: fileTransferAvailable && managedPolicy.fileTransferAllowed,
+                maximumClients: maximumClients
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
             hostID: "host",
             hostName: "Mac",
-            displayID: "active-display",
+            displayID: displayID,
             displayName: "Display",
             displayIsVirtual: true
         )
         configuration.managedPolicy = managedPolicy
+        configuration.maximumClients = maximumClients
+        configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
+        configuration.displayRouter = displayRouter
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -1992,8 +2221,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
-    private func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
-        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+    private func makeMultiDisplaySession(
+        displayRouter: HostMultiClientDisplayRouter? = nil,
+        maximumClients: Int = 1,
+        maximumVideoStreamsPerClient: Int = 1
+    ) -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
             displayWidth: 1920,
@@ -2002,7 +2235,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: true
+                touchEnabled: true,
+                maximumClients: maximumClients
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -2021,7 +2255,11 @@ final class ProtocolV1SessionTests: XCTestCase {
                     width: 3840, height: 2160, isPrimary: false, isVirtual: false
                 )
             ]
-        ))
+        )
+        configuration.maximumClients = maximumClients
+        configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
+        configuration.displayRouter = displayRouter
+        return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
     private func clientHello() -> VSEnvelope {
@@ -2080,12 +2318,17 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(color.bitDepth, 8, file: file, line: line)
     }
 
-    private func envelope(id: UInt64, payload: VSEnvelope.OneOf_Payload) -> VSEnvelope {
+    private func envelope(
+        id: UInt64,
+        sessionID: Data? = nil,
+        sessionEpoch: UInt64? = nil,
+        payload: VSEnvelope.OneOf_Payload
+    ) -> VSEnvelope {
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
         envelope.messageID = id
-        envelope.sessionID = sessionID
-        envelope.sessionEpoch = sessionEpoch
+        envelope.sessionID = sessionID ?? self.sessionID
+        envelope.sessionEpoch = sessionEpoch ?? self.sessionEpoch
         envelope.payload = payload
         return envelope
     }
@@ -2182,19 +2425,45 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
-    private func readySession() throws -> ProtocolV1SessionCoordinator {
-        let session = makeSession()
-        _ = session.handleControl(try clientHello().serializedData())
+    private func readySession(
+        sessionID: Data? = nil,
+        sessionEpoch: UInt64? = nil,
+        displayID: String = "active-display",
+        displayRouter: HostMultiClientDisplayRouter? = nil,
+        maximumClients: Int = 1,
+        maximumVideoStreamsPerClient: Int = 1,
+        clientCapabilities: [VSCapability] = [.touch, .multiDisplay]
+    ) throws -> ProtocolV1SessionCoordinator {
+        let resolvedSessionID = sessionID ?? self.sessionID
+        let resolvedSessionEpoch = sessionEpoch ?? self.sessionEpoch
+        let session = makeSession(
+            sessionID: resolvedSessionID,
+            sessionEpoch: resolvedSessionEpoch,
+            displayID: displayID,
+            displayRouter: displayRouter,
+            maximumClients: maximumClients,
+            maximumVideoStreamsPerClient: maximumVideoStreamsPerClient
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = clientCapabilities
+        _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,
-            payload: .startDisplayRequest(existingDisplayRequest())
+            sessionID: resolvedSessionID,
+            sessionEpoch: resolvedSessionEpoch,
+            payload: .startDisplayRequest(displayRequest(sourceDisplayID: displayID))
         ).serializedData())
         var result = VSVideoConfigResult()
         result.configEpoch = 1
         result.streamID = 1
         result.accepted = true
-        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        _ = session.handleControl(try envelope(
+            id: 3,
+            sessionID: resolvedSessionID,
+            sessionEpoch: resolvedSessionEpoch,
+            payload: .videoConfigResult(result)
+        ).serializedData())
         return session
     }
 

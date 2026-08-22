@@ -145,6 +145,17 @@ Negotiation rules:
   staging path is created, merge managed policy deny-wins, validate session
   epoch, offset, final flag, per-chunk SHA-256, and final SHA-256, and clean
   staging files on cancel, digest mismatch, disk error, or disconnect.
+- The macOS Host session layer now owns a transport-neutral display router for
+  Protocol v1 clients. Routes are keyed by `session_id` plus `session_epoch`,
+  stale lower epochs cannot re-register after a newer epoch, each client gets
+  bounded display-to-`stream_id` bindings, over-cap clients/streams fail closed
+  with `RESOURCE_EXHAUSTED`, and touch, pointer, scroll, key, controller, and
+  host-action targets must match the session-owned binding. Routes are released
+  on peer errors, disconnect notices, connection replacement, and server stop.
+  Production `StreamingServer` still configures `max_clients = 1`,
+  `max_virtual_displays = 1`, and one video stream per client until the
+  transport, capture, virtual-display, and UI ownership are split into true
+  concurrent client contexts.
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
@@ -158,10 +169,13 @@ port `54321` admission/upgrade with the Protocol v1 session for iOS. The real
 two-process loopback uses the production iOS Core control outbox and covers
 Hello/capability negotiation, display list/start,
 video configuration acknowledgement and media framing, heartbeat, targeted
-touch, protocol error, and disconnect. It does not implement or prove advanced
-host behavior. A compatible advanced host still must provide per-client
-resource allocation, multi-display stream IDs, PCM capture, advanced control
-handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
+touch, protocol error, and disconnect. The Host now provides the offline-tested
+per-client route registry, stream/display allocation, negotiated client/stream
+resource limits, input-target isolation, and route cleanup needed before the
+transport can admit more than one concurrent Protocol v1 client. It still does
+not prove advanced host runtime behavior. A compatible advanced host still must
+provide multi-connection transport ownership, parallel capture/display pipelines,
+PCM capture, advanced control handlers, WebRTC bulk streaming, color retry, and
 an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
