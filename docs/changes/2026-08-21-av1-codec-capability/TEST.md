@@ -25,7 +25,7 @@ The covered contract is:
 - Host VideoToolbox capability probing distinguishes H.264, HEVC, and AV1
   hardware encoder availability, but Protocol v1 Host advertisement still
   filters out AV1 until a real AV1 encoder and frame packaging implementation
-  exists.
+  exists; the current Host does not advertise AV1.
 - Protocol v1 Host session selection ignores AV1 when the local Host has no
   stream encoder mapping and falls back to HEVC/H.264 when the client also
   supports them.
