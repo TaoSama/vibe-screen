@@ -25,6 +25,7 @@ platform scaffolding under active development.
 | Capability | Current status |
 | --- | --- |
 | macOS host + Android client | Builds and runs from source |
+| macOS Host compatibility | Compatibility matrix gate is open. Apple silicon has local exercise and historical device evidence, but no `macos-hardware-compatibility-gate` summary is published yet; Intel Macs, additional macOS builds, and display topologies need exact-row evidence before support claims |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode. AV1 is protocol-enumerated and fail-closed in offline codec-admission tests, but no AV1 real-stream Host/device acceptance is recorded |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
@@ -55,8 +56,14 @@ limitations are summarized in [Security](SECURITY.md).
 
 ## System requirements
 
-- macOS 13 or newer; Apple silicon is locally exercised. Other Mac hardware
-  does not yet have a published compatibility matrix.
+- macOS 13 or newer is the source/runtime floor. Apple silicon is locally
+  exercised, but the published macOS Host compatibility matrix remains open
+  until rows pass the
+  [macOS Host compatibility gate](docs/runbook/macos-host-compatibility.md).
+  Intel Macs, additional Apple silicon model families, specific macOS builds,
+  built-in/external/multi-display, dummy/headless, and Screen Sharing display
+  setups must each be recorded as exact evidence rows before they are claimed as
+  supported.
 - Full Xcode is required for XCTest and a complete verification run. SwiftPM
   can build the executable with compatible Command Line Tools, but that is not
   equivalent to full validation.
@@ -258,8 +265,9 @@ These iOS and HarmonyOS jobs do not constitute real-device evidence. A historica
 An earlier 2026-08-06 CI run on `4c2e908fe31af4c187684991301e163371444eab`
 recorded a 202-test MacHost suite; the count has since grown as tests were
 added. Protocol v1 real-device interoperability is now verified on a Xiaomi 13,
-but a valid two-hour host RSS no-growth run, native-pointer HID confirmation,
-and controller runtime acceptance remain open gates.**
+but a published macOS Host hardware compatibility matrix, a valid two-hour host
+RSS no-growth run, native-pointer HID confirmation, and controller runtime
+acceptance remain open gates.**
 
 On 2026-08-08 a Xiaomi 13 (model 2211133C, codename fuxi, Android 16, USB)
 recorded the first Xiaomi 13 streaming evidence: a stale-Surface
@@ -692,6 +700,24 @@ selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal
 and power behavior under sustained decoding.
+
+## macOS Host Strategy
+
+Host compatibility claims are evidence-row scoped. A row is accepted only when a
+named owner records the implementation path, exact Mac model, CPU architecture,
+macOS version and build, display topology, capture backend, VideoToolbox path,
+Host build/signing/TCC state, a real Protocol v1 stream, display selection,
+physical/current-main capture, virtual-display or fallback behavior, mirror or
+fallback behavior, input smoke, reconnect, and retained artifacts, then runs the
+`macos-hardware-compatibility-gate` summary. CI `macos-15` build/test output is
+source-level evidence only and cannot close a real hardware row by itself.
+
+Until those rows exist, README support language stays limited to the current
+source requirements and recorded local exercise. Intel Macs, untested macOS
+minor releases, other Apple silicon model families, external-display layouts,
+multi-display layouts, dummy/headless setups, and Screen Sharing setups remain
+open compatibility gates. The required process and JSON input are documented in
+[the macOS Host compatibility runbook](docs/runbook/macos-host-compatibility.md).
 
 ## Engineering Principles
 
