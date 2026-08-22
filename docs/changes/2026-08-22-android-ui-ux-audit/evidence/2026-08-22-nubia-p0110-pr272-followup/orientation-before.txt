@@ -1,0 +1,2 @@
+before_auto=0
+before_rotation=0
