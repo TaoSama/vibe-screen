@@ -99,6 +99,20 @@ public enum NativeKeyCapturePolicy {
     }
 }
 
+public enum NativeKeyReleaseModifierPolicy {
+    public static func wireMaskForExplicitRelease(
+        standardModifierMask: UInt32,
+        standardByteNegotiated: Bool
+    ) -> UInt32? {
+        USBHIDModifierWire.encode(
+            standardMask: standardModifierMask,
+            standardByteNegotiated: standardByteNegotiated
+        )
+    }
+
+    public static var wireMaskForCleanupRelease: UInt32 { 0 }
+}
+
 public enum NativeInputTargetError: Error, Equatable, LocalizedError {
     case selectedStreamBindingMissing(UInt64)
 
