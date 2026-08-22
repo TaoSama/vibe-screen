@@ -1,11 +1,54 @@
 # Phase 5 verification record
 
-Date: 2026-08-05
+Date: 2026-08-05; updated 2026-08-21 for iOS PCM playback verifier
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
 
 ## Passed
+
+2026-08-21 local Command Line Tools run from branch
+`codex/ios-audio-pcm-verifier` added and verified the core playback queue
+policy used by the iOS AVFoundation adapter:
+
+```bash
+swift build --package-path apps/ios --configuration release
+apps/ios/.build/release/vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
+make protocol
+plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
+xmllint --noout apps/ios/VibeScreen.xcodeproj/xcshareddata/xcschemes/VibeScreen.xcscheme
+git diff --check
+```
+
+Observed local result:
+
+```text
+swift build: Build complete!
+vibescreen-ios-selftest: PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+verify-generated-protocol.sh: generated macOS and iOS Protocol v1 bindings are current
+make protocol: Ran 36 tests ... OK
+project.pbxproj: OK
+xmllint: exit 0
+git diff --check: exit 0
+```
+
+The same host still cannot run XCTest or the app-level AVFoundation verifier
+because only Command Line Tools are selected:
+
+```text
+swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
+
+xcodebuild -version
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+
+xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+```
+
+The blocked environment record is retained at
+`docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-21-ios-audio-playback-blocked/`.
 
 ```bash
 swift package --package-path apps/ios resolve
@@ -46,15 +89,27 @@ Command Line Tools installation cannot import XCTest; this suite is therefore
 a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
-stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
-fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-and every advanced Envelope branch used by the client.
+stream limits/routes, PCM validation and reorder, bounded playback queue
+policy, overrun/drop accounting, queue-empty accounting, stale-completion
+accounting, stop/restart reset,
+clipboard explicit-action and feedback/digest rejection, managed deny-wins
+policy, safe filenames, sequential chunks, file limits/final SHA-256/cleanup,
+HDR10→SDR config-epoch fallback, gesture persistence/catalog enforcement, the
+102-byte WOL vector, and every advanced Envelope branch used by the client.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
+
+The app target adds a focused `AVAudioSession`/`AVAudioEngine` verifier through
+`VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts`. The
+test launches the app with `--audio-playback-self-test`, configures PCM S16LE,
+schedules synthetic audio through `AVAudioPlayerNode`, observes bounded queue
+overrun/drop, queue-empty, and late-completion counters, stops, restarts on a
+newer config epoch, and waits for
+`AUDIO_PLAYBACK_SELF_TEST=PASS` in the UI. This closes only the executable
+playback-path check when run by full Xcode on a Simulator or signed device; it
+does not prove audible iPhone/iPad output without external audio confirmation.
 
 Project metadata also passes:
 
@@ -262,8 +317,9 @@ The following remain unproved until their dedicated gates produce evidence:
   explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
   LAN evidence;
 - cross-client golden bytes against the Android application;
-- AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, UDP broadcast, and managed App Configuration injection;
+- AVAudioEngine path execution beyond the launch-argument verifier, audible
+  iPhone/iPad output, UIPasteboard prompts/writes, security-scoped file
+  picker/export, UDP broadcast, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over

@@ -36,4 +36,18 @@ final class VibeScreenAppUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "配对链接无效")
         ).firstMatch.waitForExistence(timeout: 5))
     }
+
+    @MainActor
+    func testAudioPlaybackSelfTestSchedulesPCMAndRestarts() {
+        let app = XCUIApplication()
+        app.launchArguments.append("--audio-playback-self-test")
+        app.launch()
+
+        let result = app.staticTexts["audio-playback-self-test-result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        XCTAssertTrue(result.label.contains("AUDIO_PLAYBACK_SELF_TEST=PASS"), result.label)
+        XCTAssertTrue(result.label.contains("scheduled=9"), result.label)
+        XCTAssertTrue(result.label.contains("overruns=3"), result.label)
+        XCTAssertTrue(result.label.contains("stops=2"), result.label)
+    }
 }
