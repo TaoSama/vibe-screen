@@ -193,8 +193,8 @@ enum SelectedCandidatePathResolver {
 }
 
 enum InternetRecoveryStrategy: Equatable {
-    /// Retained for standalone adapter tests. This requires signaling support
-    /// for negotiation generations and is not used by the product session.
+    /// Attempts bounded ICE restart first. If the engine or signaling session
+    /// cannot renegotiate, product owners must provide a fresh session.
     case restartICE
     /// Closes the old cryptographic/signaling session and asks the product
     /// authority for a new session ID, role token, epoch, keys, and PeerConnection.
