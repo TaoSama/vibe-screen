@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
@@ -13,9 +14,11 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.Gravity
@@ -82,16 +85,18 @@ import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.IOException
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -261,6 +266,7 @@ class MainActivity : AppCompatActivity() {
     private var lastAppliedVideoPreferenceConfigEpoch = 0L
     private val controlBarHandler = Handler(Looper.getMainLooper())
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
+    private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
@@ -276,6 +282,7 @@ class MainActivity : AppCompatActivity() {
     private var availableHostActions = emptyList<HostActionOption>()
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var pendingOutgoingFileTransfer: File? = null
+    private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -2147,34 +2154,47 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
             return
         }
+        val maximumFileBytes = client.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
-            val staged = runCatching { stageOutgoingFileTransfer(uri) }
-            runOnUiThread {
-                if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
-                    staged.getOrNull()?.deleteRecursivelyBestEffort()
-                    Toast.makeText(this@MainActivity, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
-                    return@runOnUiThread
-                }
-                val file =
-                    staged.getOrElse { failure ->
-                        mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
-                        Toast.makeText(this@MainActivity, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
-                        return@runOnUiThread
+            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+            val sent =
+                runCatching {
+                    val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
+                    val registered = withContext(Dispatchers.Main) {
+                        if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                            discardPendingOutgoingFileTransfer()
+                            pendingOutgoingFileTransfer = file
+                            true
+                        } else {
+                            file.deleteRecursivelyBestEffort()
+                            false
+                        }
                     }
-                discardPendingOutgoingFileTransfer()
-                pendingOutgoingFileTransfer = file
-                val sent = client.offerFile(file, contentResolver.getType(uri) ?: "application/octet-stream")
+                    registered && client.offerFile(file, mimeType)
+            }
+            withContext(Dispatchers.Main) {
+                if (!isCurrentSession(client, generation)) return@withContext
+                val sentValue =
+                    sent.getOrElse { failure ->
+                        mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
+                        discardPendingOutgoingFileTransfer()
+                        Toast.makeText(this@MainActivity, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                        return@withContext
+                    }
                 Toast.makeText(
                     this@MainActivity,
-                    if (sent) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
+                    if (sentValue) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
                     Toast.LENGTH_SHORT,
                 ).show()
-                if (!sent) discardPendingOutgoingFileTransfer()
+                if (!sentValue) discardPendingOutgoingFileTransfer()
             }
         }
     }
 
-    private fun stageOutgoingFileTransfer(uri: Uri): File {
+    private fun stageOutgoingFileTransfer(
+        uri: Uri,
+        maximumFileBytes: Long,
+    ): File {
         val safeName = safeOutgoingFileName(displayNameForUri(uri))
         val directory = File(cacheDir, "vibescreen-outgoing-files/" + UUID.randomUUID())
         if (!directory.mkdirs()) throw IOException("Unable to create outgoing file staging directory")
@@ -2189,7 +2209,7 @@ class MainActivity : AppCompatActivity() {
                         val read = input.read(buffer)
                         if (read < 0) break
                         total += read.toLong()
-                        if (total > FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES) {
+                        if (total > maximumFileBytes) {
                             throw IOException("Selected file exceeds the file transfer limit")
                         }
                         output.write(buffer, 0, read)
@@ -2236,23 +2256,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmIncomingFileOffer(
+    private fun promptIncomingFileOffer(
         client: StreamClient,
         generation: Long,
         offer: dev.vibescreen.protocol.v1.FileOffer,
-    ): Boolean {
-        if (!isCurrentSession(client, generation) || !client.canTransferFiles) return false
-        val decision = AtomicBoolean(false)
-        val latch = CountDownLatch(1)
-        val dialogRef = AtomicReference<androidx.appcompat.app.AlertDialog?>()
+    ) {
         runOnUiThread {
             if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
-                latch.countDown()
+                client.respondToFileOffer(offer, accepted = false)
                 return@runOnUiThread
             }
-            dialogRef.set(
-                showImmersiveDialog(
-                    MaterialAlertDialogBuilder(this)
+            if (pendingIncomingFileDialog != null) {
+                client.respondToFileOffer(offer, accepted = false)
+                return@runOnUiThread
+            }
+
+            var decided = false
+            val timeout = Runnable {
+                if (pendingIncomingFileDialog == null || decided) return@Runnable
+                decided = true
+                pendingIncomingFileDialog?.dismiss()
+                pendingIncomingFileDialog = null
+                client.respondToFileOffer(offer, accepted = false)
+                Toast.makeText(this, R.string.file_transfer_offer_expired, Toast.LENGTH_SHORT).show()
+            }
+            val dialog =
+                MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.file_transfer_offer_title)
                     .setMessage(
                         getString(
@@ -2262,30 +2291,28 @@ class MainActivity : AppCompatActivity() {
                         ),
                     )
                     .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
-                        decision.set(true)
-                        latch.countDown()
+                        if (decided) return@setPositiveButton
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = true)
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ ->
-                        decision.set(false)
-                        latch.countDown()
+                        if (decided) return@setNegativeButton
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = false)
                     }
                     .setOnCancelListener {
-                        decision.set(false)
-                        latch.countDown()
-                    },
-                ),
-            )
-        }
-        return try {
-            val decided = latch.await(FILE_TRANSFER_APPROVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!decided) runOnUiThread { dialogRef.get()?.dismiss() }
-            decided &&
-                decision.get() &&
-                isCurrentSession(client, generation) &&
-                client.canTransferFiles
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            false
+                        if (decided) return@setOnCancelListener
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = false)
+                    }
+            pendingIncomingFileDialog = showImmersiveDialog(dialog)
+            fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
     }
 
@@ -2306,11 +2333,85 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
-        Toast.makeText(
-            this,
-            getString(R.string.file_transfer_received, safeIncomingDisplayName(completed.fileName)),
-            Toast.LENGTH_LONG,
-        ).show()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val displayName = safeIncomingDisplayName(completed.fileName)
+            val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }
+            runOnUiThread {
+                saved
+                    .onSuccess { uri ->
+                        val stagedBytes = completed.stagingFile.length()
+                        completed.stagingFile.deleteBestEffort()
+                        mainDiag(
+                            "file transfer saved name=$displayName bytes=$stagedBytes " +
+                                "sha256=${completed.sha256.toByteArray().toHex()} uri=$uri",
+                        )
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.file_transfer_saved_to_downloads, displayName),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    .onFailure { failure ->
+                        mainDiag("file transfer save failed: " + failure.javaClass.simpleName)
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.file_transfer_save_failed, displayName),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+            }
+        }
+    }
+
+    private fun saveIncomingFileToDownloads(
+        completed: dev.telemachus.display.protocol.CompletedIncomingFile,
+        displayName: String,
+    ): Uri {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values =
+                ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                    put(MediaStore.Downloads.MIME_TYPE, completed.mimeType.ifBlank { "application/octet-stream" })
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IOException("Unable to create downloads entry")
+            try {
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    copyFileTo(completed.stagingFile, output)
+                } ?: throw IOException("Unable to open downloads entry")
+                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.also {
+                    contentResolver.update(uri, it, null, null)
+                }
+                return uri
+            } catch (failure: Throwable) {
+                runCatching { contentResolver.delete(uri, null, null) }
+                throw failure
+            }
+        }
+
+        val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: throw IOException("Downloads directory is unavailable")
+        if (!downloads.exists() && !downloads.mkdirs()) {
+            throw IOException("Unable to create downloads directory")
+        }
+        val target = File(downloads, displayName)
+        FileOutputStream(target).use { output -> copyFileTo(completed.stagingFile, output) }
+        return Uri.fromFile(target)
+    }
+
+    private fun copyFileTo(source: File, output: OutputStream) {
+        BufferedInputStream(source.inputStream()).use { input ->
+            BufferedOutputStream(output).use { bufferedOutput ->
+                val buffer = ByteArray(FILE_TRANSFER_COPY_BUFFER_BYTES)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    bufferedOutput.write(buffer, 0, read)
+                }
+            }
+        }
     }
 
     private fun discardPendingOutgoingFileTransfer() {
@@ -2329,6 +2430,15 @@ class MainActivity : AppCompatActivity() {
             mainDiag("file transfer cleanup failed: " + failure.javaClass.simpleName)
         }
     }
+
+    private fun File.deleteBestEffort() {
+        runCatching { delete() }
+            .onFailure { failure ->
+                mainDiag("file transfer staging delete failed: " + failure.javaClass.simpleName)
+            }
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
     /**
      * Builds the menu without inspecting Android's clipboard. The local text is
@@ -4159,8 +4269,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         callbackClient.onFileOffer = fileOffer@{ offer ->
-            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileOffer false
-            confirmIncomingFileOffer(callbackClient, callbackGeneration, offer)
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileOffer
+            promptIncomingFileOffer(callbackClient, callbackGeneration, offer)
         }
         callbackClient.onIncomingFileCompleted = incomingFile@{ completed ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@incomingFile
@@ -5741,6 +5851,9 @@ class MainActivity : AppCompatActivity() {
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         cancelClipboardRequestTimeout()
+        fileTransferApprovalHandler.removeCallbacksAndMessages(null)
+        pendingIncomingFileDialog?.dismiss()
+        pendingIncomingFileDialog = null
         discardPendingOutgoingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()

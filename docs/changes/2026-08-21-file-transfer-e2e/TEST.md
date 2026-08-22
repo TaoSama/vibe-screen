@@ -5,10 +5,11 @@
 This change hardens the existing Protocol v1 single-file transfer path between
 the macOS Host and Android client. The Android client now has a negotiated
 control-bar entry point, Storage Access Framework picker for sending files, and
-receiver approval dialog for incoming offers. Received files remain in
-app-private staging; this change does not add a user-selected save/export flow
-for completed incoming files, and it does not claim real-device, TCC, signed
-Host, public Internet, or WebRTC bulk DataChannel acceptance.
+receiver approval dialog for incoming offers. Completed incoming Android files
+are now saved to the device Downloads directory; this change does not add a
+user-selected save/export flow for completed incoming files, and it does not
+claim real-device, TCC, signed Host, public Internet, or WebRTC bulk DataChannel
+acceptance.
 
 ## Verified locally
 
@@ -87,7 +88,31 @@ The MacHost package sources compiled before the test target failed to build.
 
 - Android real-device UI file send/receive acceptance remains open.
 - Android user-selected save/export for completed incoming files remains open;
-  completed incoming files currently stay in app-private staging.
+  automatic save to Downloads is implemented but user-selected destination is
+  not.
 - macOS signed Host, TCC permissions, and real Android-device file transfer
   acceptance remain open.
 - Public Internet/WebRTC bulk DataChannel file-transfer acceptance remains open.
+
+## 2026-08-22 Nubia P0110 readiness rerun
+
+Evidence:
+[evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked](evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked/README.md).
+
+Status remains open. This run adds minimal readiness code and local/device smoke
+coverage, but it is not a file-transfer device pass. Android receiver approval
+now resolves asynchronously instead of blocking outbound command processing,
+completed Android receives are saved to Downloads, MacHost has a file-transfer
+menu path with receiver approval/save handling, and both senders validate the
+final SHA-256 before accepting completion. Android senders also apply the
+negotiated peer file-size limit before emitting a wire offer, and selected-file
+staging plus digest preparation stays off the Android UI thread. Local
+verification passed for Android focused file-transfer tests, Android lint/build,
+protocol fixtures, evidence-tool tests, and MacHost swift build.
+
+The real-device file-transfer gate is still blocked: no stable-signed,
+TCC-authorized Host was available, security find-identity -v -p codesigning
+reported zero valid identities, xcodebuild is unavailable, and MacHost XCTest
+cannot import XCTest in this environment. A valid gate pass still requires a
+recorded USB and/or LAN session with sender file selection, receiver explicit
+approval, saved destination files, and matching SHA-256 on both sides.

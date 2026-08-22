@@ -1,10 +1,10 @@
 # Android + macOS 剪贴板验证记录
 
-Status: 本地离线门禁完成；Mac XCTest 受本机 SDK 环境阻断；无真机、USB/LAN
+Status: 本地离线门禁完成；Mac XCTest 受本机 SDK 环境阻断；无真机 USB/LAN
 端到端或发布证据
-Date: 2026-08-19
-Baseline: `origin/main` at `0a66aeb2` plus this PR branch's local clipboard
-commit, salvaged from `e989a1c833b85c4732c137b428504252f8c62d7e`
+Original run date: 2026-08-19
+Original baseline: `origin/main` at `0a66aeb2` plus that PR branch's local
+clipboard commit, salvaged from `e989a1c833b85c4732c137b428504252f8c62d7e`
 
 ## 证据边界
 
@@ -170,3 +170,22 @@ Xcode / CI 环境执行后才能声称通过。
 - 连接切换、进程重启和两小时以上长会话中的状态/内存稳定性。
 - 仅有 Command Line Tools 的本机无法执行 Mac clipboard XCTest；需完整 Xcode
   或 CI 补证。
+
+## 2026-08-22 Nubia P0110 readiness rerun
+
+Evidence:
+[evidence/2026-08-22-nubia-p0110-clipboard-file-transfer-readiness-blocked](evidence/2026-08-22-nubia-p0110-clipboard-file-transfer-readiness-blocked/README.md).
+
+Status remains open. The P0110 device identity was recorded as nubia P0110 /
+pacific / Android 16 / SDK 36, debug and androidTest APKs installed, and the
+Android local ClipboardManagerInstrumentedTest passed on device with OK (3
+tests). This is a local Android clipboard smoke only; no Android <-> Mac
+clipboard transfer over USB or LAN was executed.
+
+The same run verified local readiness improvements for bounded file transfer:
+Android focused file-transfer JVM tests, Android lint/build, protocol fixtures,
+evidence-tool tests, and MacHost swift build all passed. Real USB/LAN E2E is
+blocked by the current Mac environment: security find-identity -v -p
+codesigning reports zero valid identities, xcodebuild is unavailable under
+Command Line Tools, and MacHost XCTest still fails before execution with no
+such module XCTest.

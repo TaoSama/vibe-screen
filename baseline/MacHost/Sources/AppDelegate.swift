@@ -228,6 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// state machine. Created in setupMenuBar; bound to the active server
     /// on client connect and unbound on disconnect/teardown.
     private var clipboardController: ClipboardUIController?
+    private var fileTransferController: FileTransferUIController?
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -745,6 +746,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             shareMenuItem: shareClipboardItem,
             receiveMenuItem: receiveClipboardItem
         )
+        let sendFileItem = NSMenuItem(
+            title: "Send File to Android",
+            action: nil,
+            keyEquivalent: ""
+        )
+        menu.addItem(sendFileItem)
+        fileTransferController = FileTransferUIController(sendMenuItem: sendFileItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -2093,21 +2101,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.clipboardController?.handleDirectContent(content, generation: generation)
                 }
             }
+            streamingServer?.onFileTransferApprovalRequested = { [weak self, weak configuredServer] offer in
+                guard let self, let configuredServer,
+                      self.streamingServer === configuredServer else { return false }
+                return self.fileTransferController?.approveIncomingFileOffer(offer) ?? false
+            }
+            streamingServer?.onIncomingFileCompleted = { [weak self, weak configuredServer] completed in
+                DispatchQueue.main.async { [weak self, weak configuredServer] in
+                    guard let self, let configuredServer,
+                          self.streamingServer === configuredServer else { return }
+                    self.fileTransferController?.handleIncomingFileCompleted(completed)
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
                 DispatchQueue.main.async { [weak self, weak configuredServer, weak configuredCapture] in
                     guard let self, let configuredServer, let configuredCapture,
                           self.screenCapture === configuredCapture else { return }
-                    let clipboardAvailable = configuredServer.clipboardAvailable
+                    let activeServer = configuredServer
+                    let clipboardAvailable = activeServer.clipboardAvailable
                     self.performSessionCallback(
                             token: startToken,
-                            server: configuredServer,
+                            server: activeServer,
                             clientGeneration: clientGeneration
                     ) {
                         if let clipboardTransport {
                             self.clipboardController?.bind(
-                                server: configuredServer,
+                                server: activeServer,
                                 generation: clientGeneration,
                                 transport: clipboardTransport,
                                 clipboardAvailable: clipboardAvailable
@@ -2115,6 +2136,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         } else {
                             self.clipboardController?.unbind()
                         }
+                        self.fileTransferController?.bind(
+                            server: activeServer,
+                            fileTransferAvailable: activeServer.fileTransferAvailable
+                        )
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0
                         // Clear before the new client's type-11 arrives so a
@@ -2185,6 +2210,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     ) {
                         self.cancelSessionInput(releaseDrag: true)
                         self.clipboardController?.unbind()
+                        self.fileTransferController?.unbind()
                         self.reportWindowRecovery(
                             self.windowRecoveryManager.restoreManagedWindows()
                         )
@@ -3431,6 +3457,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// partial combination of display, capture, listener, or ADB setup.
     private func teardownStreamingComponents() async {
         clipboardController?.unbind()
+        fileTransferController?.unbind()
         if let teardownTask {
             await teardownTask.value
             return

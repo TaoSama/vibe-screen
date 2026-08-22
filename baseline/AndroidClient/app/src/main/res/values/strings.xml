@@ -335,12 +335,14 @@
     <string name="file_transfer_sent_to_mac">File transfer started</string>
     <string name="file_transfer_send_failed">File transfer could not start</string>
     <string name="file_transfer_offer_title">Receive file?</string>
-    <string name="file_transfer_offer_message">%1$s (%2$s) will be stored in Vibe Screen app storage.</string>
+    <string name="file_transfer_offer_message">%1$s (%2$s) will be saved to Downloads after verification.</string>
     <string name="file_transfer_accept">Receive</string>
     <string name="file_transfer_reject">Reject</string>
     <string name="file_transfer_unknown_name">Unnamed file</string>
     <string name="file_transfer_size_bytes">%1$d B</string>
-    <string name="file_transfer_received">Received %1$s</string>
+    <string name="file_transfer_offer_expired">File transfer request expired</string>
+    <string name="file_transfer_saved_to_downloads">Saved %1$s to Downloads</string>
+    <string name="file_transfer_save_failed">Could not save %1$s</string>
     <string name="file_transfer_completed">File transfer completed</string>
     <string name="file_transfer_failed">File transfer failed</string>
     <string name="file_transfer_failed_with_reason">File transfer failed: %1$s</string>

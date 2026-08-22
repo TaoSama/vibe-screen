@@ -304,6 +304,31 @@ final class ProtocolV1FileTransferTests: XCTestCase {
         XCTAssertEqual(first.payload, Data("he".utf8))
     }
 
+    func testOutgoingTransferValidatesProgressAndCompletionDigest() throws {
+        let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
+        let payload = Data("hello".utf8)
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+        let transfer = try ProtocolV1OutgoingFileTransfer(
+            fileURL: fileURL,
+            mimeType: "text/plain",
+            policy: ProtocolV1FileTransferPolicy(maximumChunkBytes: 5)
+        )
+
+        XCTAssertThrowsError(try transfer.validateAcknowledgedOffset(1)) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .unexpectedOffset(expected: 0, actual: 1))
+        }
+        _ = try XCTUnwrap(transfer.nextChunk(maximumBytes: 2, sessionEpoch: 7))
+        XCTAssertNoThrow(try transfer.validateAcknowledgedOffset(2))
+        XCTAssertThrowsError(try transfer.validateAcknowledgedOffset(1)) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .unexpectedOffset(expected: 2, actual: 1))
+        }
+        XCTAssertNoThrow(try transfer.validateCompletionDigest(Data(SHA256.hash(data: payload))))
+        XCTAssertThrowsError(try transfer.validateCompletionDigest(Data(repeating: 0xFF, count: SHA256.byteCount))) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .digestMismatch)
+        }
+    }
+
     func testBulkTransportFrameCarriesFileChunkPayload() throws {
         let offer = offer(payload: Data("hello".utf8))
         let fileChunk = chunk(offer: offer, offset: 0, payload: Data("hello".utf8), final: true)

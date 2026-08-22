@@ -1,0 +1,23 @@
+git fetch origin --prune
+git rev-parse HEAD
+git rev-parse origin/main
+security find-identity -v -p codesigning
+xcode-select -p
+xcrun --find xcodebuild
+cd baseline/MacHost && swift build
+cd baseline/MacHost && swift test --filter ProtocolV1FileTransferTests
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+make evidence-tools-test
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.hostFileOfferAcceptsBulkChunksAndCompletesStagedFile" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.hostFileOfferDoesNotBlockOutboundCommandsWhileAwaitingUserDecision" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.clientFileOfferSendsBulkChunksAndReportsCompletion" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.clientFileOfferRejectsCompletionWithMismatchedSha256" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.clientFileOfferRejectsFileLargerThanNegotiatedPeerLimitWithoutWireMessage" --tests dev.telemachus.display.protocol.FileTransferSessionTest
+cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+cd baseline/AndroidClient && ./gradlew --no-daemon lintDebug
+adb -s EP0110PZ0B9110300B get-state
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+cd baseline/AndroidClient && adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk
+cd baseline/AndroidClient && adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+cd baseline/AndroidClient && adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner

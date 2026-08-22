@@ -1478,10 +1478,12 @@ class StreamingServer: EncodedFrameSink {
         var creationResult: Result<ProtocolV1OutgoingFileTransfer, Error>!
         performOnNetworkQueue {
             creationResult = Result {
-                try ProtocolV1OutgoingFileTransfer(
+                let effectivePolicy = self.protocolV1Session?.negotiatedFileTransferPolicySnapshot()
+                    ?? self.protocolV1FileTransferPolicy
+                return try ProtocolV1OutgoingFileTransfer(
                     fileURL: fileURL,
                     mimeType: mimeType,
-                    policy: self.protocolV1FileTransferPolicy,
+                    policy: effectivePolicy,
                     remotePolicy: self.protocolV1RemoteManagedPolicy
                 )
             }
@@ -1635,6 +1637,13 @@ class StreamingServer: EncodedFrameSink {
         withNetworkQueue {
             connectionProtocolMode == .protocolV1
                 && (protocolV1Session?.hasClipboardCapability ?? false)
+        }
+    }
+
+    var fileTransferAvailable: Bool {
+        withNetworkQueue {
+            connectionProtocolMode == .protocolV1
+                && (protocolV1Session?.canTransferFiles ?? false)
         }
     }
 
@@ -2400,6 +2409,31 @@ class StreamingServer: EncodedFrameSink {
             case .fileTransferProgress(let progress):
                 guard let transfer = protocolV1OutgoingFiles[progress.transferID],
                       let session = protocolV1Session else { break }
+                do {
+                    try transfer.validateAcknowledgedOffset(progress.receivedBytes)
+                } catch let error as ProtocolV1FileTransferError {
+                    protocolV1OutgoingFiles.removeValue(forKey: progress.transferID)?.cancel()
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: progress.transferID,
+                            reasonCode: error.reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                    break
+                } catch {
+                    protocolV1OutgoingFiles.removeValue(forKey: progress.transferID)?.cancel()
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: progress.transferID,
+                            reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                    break
+                }
                 sendNextProtocolV1FileChunk(
                     transfer,
                     session: session,
@@ -2412,7 +2446,26 @@ class StreamingServer: EncodedFrameSink {
                 protocolV1ApprovedIncomingFileOffers.remove(cancellation.transferID)
                 protocolV1OutgoingFiles.removeValue(forKey: cancellation.transferID)?.cancel()
             case .fileTransferComplete(let result):
-                protocolV1OutgoingFiles.removeValue(forKey: result.transferID)?.cancel()
+                guard let session = protocolV1Session,
+                      let transfer = protocolV1OutgoingFiles.removeValue(forKey: result.transferID) else { break }
+                defer { transfer.cancel() }
+                guard result.accepted else {
+                    debugLog("File transfer rejected by peer: \(result.rejectionReason)")
+                    break
+                }
+                do {
+                    try transfer.validateCompletionDigest(result.sha256)
+                } catch {
+                    debugLog("File transfer completion digest mismatch for \(transfer.offer.fileName)")
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: result.transferID,
+                            reasonCode: ProtocolV1FileTransferError.digestMismatch.reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                }
             case .remoteManagedPolicyChanged(let status):
                 protocolV1RemoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
                 if !protocolV1RemoteManagedPolicy.fileTransferAllowed {
@@ -3245,3 +3298,4 @@ class StreamingServer: EncodedFrameSink {
 // MARK: - ClipboardServer conformance
 
 extension StreamingServer: ClipboardServer {}
+extension StreamingServer: FileTransferServer {}

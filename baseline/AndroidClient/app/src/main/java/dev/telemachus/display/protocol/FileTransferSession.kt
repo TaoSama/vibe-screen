@@ -83,6 +83,7 @@ internal data class RemoteManagedPolicy(
 internal data class CompletedIncomingFile(
     val transferId: ByteString,
     val fileName: String,
+    val mimeType: String,
     val stagingFile: File,
     val sha256: ByteString,
 )
@@ -226,7 +227,7 @@ internal class IncomingFileTransferManager(
             throw fileTransferFailure("io_failure", "Unable to close staging file", failure)
         }
         transfers.remove(transferId)
-        return CompletedIncomingFile(transferId, state.offer.fileName, state.file, digest)
+        return CompletedIncomingFile(transferId, state.offer.fileName, state.offer.mimeType, state.file, digest)
     }
 
     @Synchronized
@@ -375,6 +376,9 @@ internal class OutgoingFileTransfer(
 
     @Synchronized
     fun maximumChunkBytes(defaultBytes: Int): Int = acceptedMaximumChunkBytes ?: defaultBytes
+
+    @Synchronized
+    fun hasAcknowledgedOffset(receivedBytes: Long): Boolean = receivedBytes == offset
 
     companion object {
         private fun digest(file: File, chunkBytes: Int): ByteString {

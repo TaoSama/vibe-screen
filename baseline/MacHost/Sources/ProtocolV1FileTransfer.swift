@@ -167,6 +167,7 @@ struct ProtocolV1FileChunk: Equatable {
 struct ProtocolV1CompletedIncomingFile: Equatable {
     let transferID: Data
     let fileName: String
+    let mimeType: String
     let stagingURL: URL
     let sha256: Data
 }
@@ -416,6 +417,7 @@ final class ProtocolV1IncomingFileTransferManager {
             return ProtocolV1CompletedIncomingFile(
                 transferID: transferID,
                 fileName: state.offer.fileName,
+                mimeType: state.offer.mimeType,
                 stagingURL: state.url,
                 sha256: digest
             )
@@ -545,6 +547,18 @@ final class ProtocolV1OutgoingFileTransfer {
         lock.withLock {
             acceptedMaximumChunkBytes ?? defaultBytes
         }
+    }
+
+    func validateAcknowledgedOffset(_ receivedBytes: UInt64) throws {
+        try lock.withLock {
+            guard receivedBytes == offset else {
+                throw ProtocolV1FileTransferError.unexpectedOffset(expected: offset, actual: receivedBytes)
+            }
+        }
+    }
+
+    func validateCompletionDigest(_ sha256: Data) throws {
+        guard sha256 == offer.sha256 else { throw ProtocolV1FileTransferError.digestMismatch }
     }
 
     var isComplete: Bool {

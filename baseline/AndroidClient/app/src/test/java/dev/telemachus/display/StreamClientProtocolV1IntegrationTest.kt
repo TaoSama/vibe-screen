@@ -1286,10 +1286,10 @@ class StreamClientProtocolV1IntegrationTest {
                         assertEquals(ByteString.copyFrom(sha256(content)), result.fileTransferComplete.sha256)
                         write(peer, disconnect(7))
                     }
-                }
+            }
             val client = StreamClient("127.0.0.1", server.localPort)
             client.acceptVideoConfigurations()
-            client.onFileOffer = { true }
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
             client.onIncomingFileCompleted = { completed.set(it) }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
@@ -1300,6 +1300,53 @@ class StreamClientProtocolV1IntegrationTest {
             assertEquals(content.toList(), received.stagingFile.readBytes().toList())
             assertEquals(ByteString.copyFrom(sha256(content)), received.sha256)
             received.stagingFile.delete()
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferDoesNotBlockOutboundCommandsWhileAwaitingUserDecision() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 23).toByte() })
+            val content = "pending-host-file".toByteArray(Charsets.UTF_8)
+            val offered = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "pending.txt",
+                                content = content,
+                            ),
+                        )
+                        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offered.countDown() }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(offered.await(8, TimeUnit.SECONDS))
+                client.requestKeyframe(force = true, reason = "file_offer_pending_test")
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
@@ -1375,6 +1422,120 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun clientFileOfferRejectsFileLargerThanNegotiatedPeerLimitWithoutWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "too-large-for-peer".toByteArray(Charsets.UTF_8)
+            val source = File.createTempFile("vibescreen-peer-limit", ".txt")
+            source.writeBytes(content)
+            val streaming = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(true)
+            val reason = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxFileBytes = content.size.toLong() - 1,
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) streaming.countDown() }
+            client.onFileTransferResult = { accepted, rejectionReason ->
+                acceptedResult.set(accepted)
+                reason.set(rejectionReason)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertFalse(client.offerFile(source, "text/plain"))
+                assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                assertFalse(acceptedResult.get())
+                assertEquals("file_too_large", reason.get())
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                source.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clientFileOfferRejectsCompletionWithMismatchedSha256() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "from-client-file".toByteArray(Charsets.UTF_8)
+            val source = File.createTempFile("vibescreen-client-offer", ".txt")
+            source.writeBytes(content)
+            val connected = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(true)
+            val reason = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        val offer = offerEnvelope.fileOffer
+                        write(peer, fileAccept(6, offer.transferId, accepted = true))
+                        ProtocolV1Framing.read(peer.getInputStream())
+                        write(
+                            peer,
+                            fileComplete(
+                                id = 7,
+                                transferId = offer.transferId,
+                                accepted = true,
+                                sha256 = ByteString.copyFrom(ByteArray(32) { 7 }),
+                            ),
+                        )
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) connected.countDown() }
+            client.onFileTransferResult = { accepted, rejectionReason ->
+                acceptedResult.set(accepted)
+                reason.set(rejectionReason)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                assertTrue(client.offerFile(source, "text/plain"))
+                assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                assertFalse(acceptedResult.get())
+                assertEquals("digest_mismatch", reason.get())
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                source.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
     fun fileOfferReturnsFalseWhenCapabilityNotNegotiatedWithoutWireMessage() = runBlocking {
         ServerSocket(0).use { server ->
             val streaming = CountDownLatch(1)
@@ -1418,6 +1579,8 @@ class StreamClientProtocolV1IntegrationTest {
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        maxFileBytes: Long = 0L,
+        maxFileChunkBytes: Int = 0,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         beginHandshake(
@@ -1427,6 +1590,8 @@ class StreamClientProtocolV1IntegrationTest {
             negotiatedCapabilities,
             expectedClientCapabilities,
             maxClipboardBytes,
+            maxFileBytes,
+            maxFileChunkBytes,
             onClientHello,
         )
         val result = readEnvelope(peer)
@@ -1442,6 +1607,8 @@ class StreamClientProtocolV1IntegrationTest {
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        maxFileBytes: Long = 0L,
+        maxFileChunkBytes: Int = 0,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -1452,8 +1619,26 @@ class StreamClientProtocolV1IntegrationTest {
         onClientHello(clientHello.clientHello)
         assertEquals(expectedClientCapabilities.toSet(), clientHello.clientHello.capabilitiesList.toSet())
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
-        write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
-        write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
+        write(
+            peer,
+            hostHello(
+                1,
+                hostCapabilities,
+                maxClipboardBytes = maxClipboardBytes,
+                maxFileBytes = maxFileBytes,
+                maxFileChunkBytes = maxFileChunkBytes,
+            ),
+        )
+        write(
+            peer,
+            sessionAccepted(
+                2,
+                negotiatedCapabilities,
+                maxClipboardBytes = maxClipboardBytes,
+                maxFileBytes = maxFileBytes,
+                maxFileChunkBytes = maxFileChunkBytes,
+            ),
+        )
         assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(3))
@@ -1629,6 +1814,8 @@ class StreamClientProtocolV1IntegrationTest {
         advertisedCapabilities: List<Capability>,
         hostId: String = TEST_HOST_ID,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        maxFileBytes: Long = 0L,
+        maxFileChunkBytes: Int = 0,
     ): Envelope =
         Envelope.newBuilder()
             .setProtocolVersion(1)
@@ -1640,7 +1827,10 @@ class StreamClientProtocolV1IntegrationTest {
                     .addAllCapabilities(advertisedCapabilities)
                     .addCodecs(Codec.CODEC_HEVC)
                     .setResourceLimits(
-                        ResourceLimits.newBuilder().setMaximumClipboardBytes(maxClipboardBytes),
+                        ResourceLimits.newBuilder()
+                            .setMaximumClipboardBytes(maxClipboardBytes)
+                            .setMaximumFileBytes(maxFileBytes)
+                            .setMaximumFileChunkBytes(maxFileChunkBytes),
                     ),
             ).build()
 
@@ -1648,6 +1838,8 @@ class StreamClientProtocolV1IntegrationTest {
         id: Long,
         negotiatedCapabilities: List<Capability>,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        maxFileBytes: Long = 0L,
+        maxFileChunkBytes: Int = 0,
     ): Envelope =
         base(id)
             .setSessionAccepted(
@@ -1656,7 +1848,10 @@ class StreamClientProtocolV1IntegrationTest {
                     .setSessionEpoch(7)
                     .addAllNegotiatedCapabilities(negotiatedCapabilities)
                     .setNegotiatedResourceLimits(
-                        ResourceLimits.newBuilder().setMaximumClipboardBytes(maxClipboardBytes),
+                        ResourceLimits.newBuilder()
+                            .setMaximumClipboardBytes(maxClipboardBytes)
+                            .setMaximumFileBytes(maxFileBytes)
+                            .setMaximumFileChunkBytes(maxFileChunkBytes),
                     ),
             ).build()
 
