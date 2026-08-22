@@ -7,7 +7,21 @@ passes. Run all Python checks from the repository root:
 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 python3 scripts/phase3/network_profile.py --profile handoff --output /tmp/vibe-screen-phase3/handoff.json
 python3 scripts/phase3/security_vectors.py --output /tmp/vibe-screen-phase3/security-model.json
+python3 scripts/phase3/revocation_propagation_verifier.py \
+  --report /tmp/vibe-screen-phase3/revocation-propagation.json \
+  --write-summary /tmp/vibe-screen-phase3/revocation-propagation-summary.json
 ```
+
+`revocation_propagation_verifier.py` validates the cross-service revocation
+contract for Authority, signaling, relay credential issuance, active coturn
+allocation teardown, and post-revocation data-plane denial. It returns `0` only
+when the report proves all required observations, `4` when local/control-plane
+evidence exists but live allocation or data-plane proof is missing, `1` when the
+report proves unsafe post-revocation behavior, and `2` for malformed or unsafe
+evidence. The input schema is
+`dev.vibescreen.phase3-revocation-propagation/v1`; reports must not contain TURN
+passwords, bearer tokens, private keys, or other raw secret material. A blocked
+summary is evidence of the remaining deployment gap, not a release pass.
 
 The security command without `--sut` validates only the attack-vector policy
 model. Product coverage requires an implementation adapter, for example:

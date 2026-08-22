@@ -27,6 +27,8 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "accepted coturn usage into the control-plane daily-byte ledger",
             "structured\ncoturn reconcile helper can fail closed",
             "production end-to-end enforcement\nremain release gates",
+            "revocation propagation verifier now fixes the required evidence schema",
+            "current blocked evidence still lacks those live deployment\nobservations",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
