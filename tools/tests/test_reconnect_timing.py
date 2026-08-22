@@ -286,6 +286,24 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["first_output_frame_ms"], 10_850)
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
 
+    def test_parses_android_logcat_skips_zero_epoch_connection_opened(self) -> None:
+        events = parse_android_logcat_events(
+            "\n".join(
+                [
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10600,"session_epoch":0}',
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10650,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["android_session_epoch"], 4)
+        self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
+
     def test_logcat_connection_and_first_frame_without_decoder_output_do_not_pass(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
         attempt.pop("events")
@@ -301,6 +319,42 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertIn("missing first_output_frame_ms", summary["attempts"][0]["reasons"])
+        self.assertIn("missing first_output_frame_ms", summary["reasons"])
+
+    def test_rejects_mixed_android_diag_and_logcat_timebases(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["android_diag"] = '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":4}'
+        attempt["android_logcat"] = (
+            'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10600,"session_epoch":4}'
+        )
+
+        with self.assertRaisesRegex(ReconnectTimingEvidenceError, "android_diag or android_logcat"):
+            summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+    def test_empty_attempt_epoch_fields_fall_back_to_parsed_events(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt.pop("events")
+        attempt["host_connection_epoch"] = ""
+        attempt["android_session_epoch"] = None
+        attempt["config_epoch"] = ""
+        attempt["disruption_started_at_ms"] = 10_000
+        attempt["host_log"] = "Protocol v1 selected for connection epoch 2"
+        attempt["android_diag"] = "\n".join(
+            [
+                "[10600] SC: Protocol v1 upgrade accepted",
+                '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":1}',
+                "[10700] MA: onVideoConfiguration: 2000x1200 @ 0° epoch=1",
+                "[10800] VD: First frame: size=1, keyframe=true, session_epoch=1, config_epoch=1",
+                "[10850] VD: First output frame! size=1, flags=1, session_epoch=1",
+            ]
+        )
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(summary["attempts"][0]["host_connection_epoch"], 2)
+        self.assertEqual(summary["attempts"][0]["android_session_epoch"], 1)
+        self.assertEqual(summary["attempts"][0]["config_epoch"], 1)
 
     def test_relative_log_paths_are_resolved_from_record_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -400,7 +454,7 @@ class ReconnectTimingCliTest(unittest.TestCase):
     def test_cli_rejects_missing_input(self) -> None:
         result = self.run_cli()
 
-        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.returncode, 1)
         self.assertIn("input is required", result.stderr)
 
 
