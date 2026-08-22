@@ -251,7 +251,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             "\n".join(
                 [
                     '08-21 12:00:00.000 I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":9000,"session_epoch":3,"config_epoch":8}',
-                    '08-21 12:00:01.000 I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10600,"session_epoch":4}',
+                    '08-21 12:00:01.000 I/VibeScreenTelemetry: {"event":"protocol_v1_accepted","timestamp_ms":10600,"session_epoch":4}',
+                    '08-21 12:00:01.050 I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10650,"session_epoch":4}',
                     '08-21 12:00:01.200 I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
                     '08-21 12:00:01.250 I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
                 ]
@@ -259,6 +260,7 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             after_ms=10_000,
         )
 
+        self.assertEqual(events["protocol_v1_accepted_ms"], 10_600)
         self.assertEqual(events["android_session_epoch"], 4)
         self.assertEqual(events["config_epoch"], 9)
         self.assertEqual(events["first_frame_ms"], 10_800)
@@ -320,6 +322,55 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertIn("missing first_output_frame_ms", summary["attempts"][0]["reasons"])
         self.assertIn("missing first_output_frame_ms", summary["reasons"])
+
+    def test_logcat_connection_opened_does_not_prove_protocol_v1(self) -> None:
+        attempt = {
+            "name": DISRUPTION_CLIENT_KILL,
+            "disruption": DISRUPTION_CLIENT_KILL,
+            "transport": "usb",
+            "host_pid_before": 1234,
+            "host_pid_after": 1234,
+            "host_connection_epoch": 2,
+            "disruption_started_at_ms": 10_000,
+            "android_logcat": "\n".join(
+                [
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10600,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
+                ]
+            ),
+        }
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn("missing protocol_v1_accepted_ms", summary["attempts"][0]["reasons"])
+
+    def test_logcat_only_attempt_passes_with_protocol_v1_acceptance_event(self) -> None:
+        attempt = {
+            "name": DISRUPTION_CLIENT_KILL,
+            "disruption": DISRUPTION_CLIENT_KILL,
+            "transport": "usb",
+            "host_pid_before": 1234,
+            "host_pid_after": 1234,
+            "host_connection_epoch": 2,
+            "disruption_started_at_ms": 10_000,
+            "android_logcat": "\n".join(
+                [
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10550,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"protocol_v1_accepted","timestamp_ms":10600,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
+                ]
+            ),
+        }
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(summary["attempts"][0]["timestamps_ms"]["protocol_v1_accepted_ms"], 10_600)
+        self.assertEqual(summary["attempts"][0]["android_session_epoch"], 4)
+        self.assertEqual(summary["attempts"][0]["metrics"]["first_output_frame_ms"], 850.0)
 
     def test_rejects_mixed_android_diag_and_logcat_timebases(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")

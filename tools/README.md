@@ -410,9 +410,14 @@ Each attempt must include the same Host PID before and after recovery, the Host
 Protocol v1 connection epoch, and the disruption start in the same Android
 millisecond timebase as the recovery markers. Those markers can come from the
 private diag log (`Protocol v1 upgrade accepted`, `First frame:`, and `First
-output frame!`) or from `VibeScreenTelemetry` logcat events (`connection_opened`,
-`first_frame_received`, and `first_output_frame`). Run the evaluator on the
-observation JSON:
+output frame!`) or from `VibeScreenTelemetry` logcat events. For logcat-only
+attempts, `protocol_v1_accepted` with `session_epoch` is the Protocol v1
+acceptance marker; existing `connection_opened`, `first_frame_received`, and
+`first_output_frame` logcat events only supply connection/session and decoder
+timing evidence and cannot independently prove Protocol v1. Until the
+`protocol_v1_accepted` event is present in the captured logcat, the attempt must
+remain `insufficient` or use the private diag log instead. Run the evaluator on
+the observation JSON:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing observations.json \

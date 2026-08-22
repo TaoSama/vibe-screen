@@ -634,6 +634,10 @@ class StreamClient(
                 controllerConnectionAcks.reset()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
+                emitTelemetry(
+                    "protocol_v1_accepted",
+                    mapOf("session_epoch" to connectionEpoch, "transport" to transport.name),
+                )
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
                 configureLegacyMode(decision.firstByte)

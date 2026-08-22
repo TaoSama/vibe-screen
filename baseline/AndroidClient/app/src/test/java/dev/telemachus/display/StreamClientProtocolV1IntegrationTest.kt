@@ -140,11 +140,17 @@ class StreamClientProtocolV1IntegrationTest {
                 synchronized(telemetryEvents) {
                     telemetryEvents.filter { it.first == "first_frame_received" }
                 }
+            val protocolAcceptedEvents =
+                synchronized(telemetryEvents) {
+                    telemetryEvents.filter { it.first == "protocol_v1_accepted" }
+                }
+            assertEquals(2, protocolAcceptedEvents.size)
             assertEquals(2, firstFrameEvents.size)
             assertEquals(listOf(3L, 4L), firstFrameEvents.map { it.second["config_epoch"] })
             val sessionEpochs = firstFrameEvents.map { it.second["session_epoch"] as Long }
             assertTrue(sessionEpochs[0] > 0L)
             assertEquals(sessionEpochs[0] + 1L, sessionEpochs[1])
+            assertEquals(sessionEpochs, protocolAcceptedEvents.map { it.second["session_epoch"] })
             assertTrue(firstFrameEvents.all { it.second["keyframe"] == true })
             assertTrue(firstFrameEvents.all { it.second["metadata"] == true })
         }

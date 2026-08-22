@@ -203,7 +203,12 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
         if after_ms is not None and timestamp_ms < after_ms:
             continue
         event = payload.get("event")
-        if event == "connection_opened" and "android_session_epoch" not in events:
+        if event == "protocol_v1_accepted" and "protocol_v1_accepted_ms" not in events:
+            epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
+            if epoch is not None:
+                events["protocol_v1_accepted_ms"] = timestamp_ms
+                events["android_session_epoch"] = epoch
+        elif event == "connection_opened" and "android_session_epoch" not in events:
             epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
             if epoch is not None:
                 events["android_session_epoch"] = epoch
