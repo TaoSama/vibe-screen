@@ -81,6 +81,25 @@ struct NegotiatedDisplayConfiguration: Equatable {
     let rotation: Int
 }
 
+struct StreamFrameLifecycleStats: Equatable {
+    let latestPixelBufferRetained: Int
+    let latestPixelBufferCapacity: Int
+    let fallbackCaptureActive: Bool
+    let encoderPresent: Bool
+
+    init(
+        latestPixelBufferRetained: Int,
+        latestPixelBufferCapacity: Int = 1,
+        fallbackCaptureActive: Bool,
+        encoderPresent: Bool
+    ) {
+        self.latestPixelBufferRetained = latestPixelBufferRetained
+        self.latestPixelBufferCapacity = latestPixelBufferCapacity
+        self.fallbackCaptureActive = fallbackCaptureActive
+        self.encoderPresent = encoderPresent
+    }
+}
+
 final class ClientCallbackGenerationGate {
     private let lock = NSLock()
     private var currentGeneration: UInt64 = 0
@@ -247,6 +266,44 @@ final class LatestFrameMailbox<Element> {
     }
 }
 
+enum StreamStatsTelemetryBuilder {
+    static func attributes(
+        fps: Double,
+        mbps: Double,
+        averageFrameAgeMs: Double,
+        droppedFrames: UInt64,
+        queueDepth: Int,
+        queueCapacity: Int,
+        encoderStats: (inFlight: Int, capacity: Int, frameRegistryCount: Int)? = nil,
+        frameLifecycleStats: StreamFrameLifecycleStats? = nil
+    ) -> [String: TelemetryValue] {
+        var attributes: [String: TelemetryValue] = [
+            "fps": .double(fps),
+            "mbps": .double(mbps),
+            "average_frame_age_ms": .double(averageFrameAgeMs),
+            "dropped_frames": .unsigned(droppedFrames),
+            "queue_depth": .integer(Int64(queueDepth)),
+            "queue_capacity": .integer(Int64(queueCapacity))
+        ]
+        if let encoderStats {
+            attributes["encoder_in_flight"] = .integer(Int64(encoderStats.inFlight))
+            attributes["encoder_in_flight_capacity"] = .integer(Int64(encoderStats.capacity))
+            attributes["frame_registry_count"] = .integer(Int64(encoderStats.frameRegistryCount))
+        }
+        if let frameLifecycleStats {
+            attributes["latest_pixel_buffer_retained"] = .integer(
+                Int64(frameLifecycleStats.latestPixelBufferRetained)
+            )
+            attributes["latest_pixel_buffer_capacity"] = .integer(
+                Int64(frameLifecycleStats.latestPixelBufferCapacity)
+            )
+            attributes["fallback_capture_active"] = .boolean(frameLifecycleStats.fallbackCaptureActive)
+            attributes["encoder_present"] = .boolean(frameLifecycleStats.encoderPresent)
+        }
+        return attributes
+    }
+}
+
 class StreamingServer: EncodedFrameSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     // Wireless admission adds a full authentication round trip before the
@@ -314,7 +371,12 @@ class StreamingServer: EncodedFrameSink {
     /// capacity for the `stream_stats` telemetry record. The short-window host
     /// memory diagnostic uses these to assert the encoder never exceeds its
     /// admission budget. Optional so tests and non-capture builds can omit it.
-    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int)?)?
+    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int, frameRegistryCount: Int)?)?
+    /// Supplies capture-side retained-frame state for the same telemetry record.
+    /// It gives short-window diagnostics a production signal for the latest
+    /// pixel-buffer cache and capture pacer lifecycle, without inferring that
+    /// state from RSS after the fact. Optional for tests and non-capture builds.
+    var frameLifecycleStatsProvider: (() -> StreamFrameLifecycleStats?)?
     var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
     // handled regardless. When false, incoming touch frames are dropped
@@ -3014,22 +3076,16 @@ class StreamingServer: EncodedFrameSink {
             if profiledFrameCount > 0 {
                 let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
                 debugLog("Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
-                var attributes: [String: TelemetryValue] = [
-                    "fps": .double(fps),
-                    "mbps": .double(mbps),
-                    "average_frame_age_ms": .double(avgAgeMs),
-                    "dropped_frames": .unsigned(droppedFrames),
-                    "queue_depth": .integer(
-                        Int64(pendingFrames.count + (sendInFlight ? 1 : 0))
-                    ),
-                    "queue_capacity": .integer(
-                        Int64(pendingFrames.capacity + 1)
-                    )
-                ]
-                if let encoderStatsProvider, let stats = encoderStatsProvider() {
-                    attributes["encoder_in_flight"] = .integer(Int64(stats.inFlight))
-                    attributes["encoder_in_flight_capacity"] = .integer(Int64(stats.capacity))
-                }
+                let attributes = StreamStatsTelemetryBuilder.attributes(
+                    fps: fps,
+                    mbps: mbps,
+                    averageFrameAgeMs: avgAgeMs,
+                    droppedFrames: droppedFrames,
+                    queueDepth: pendingFrames.count + (sendInFlight ? 1 : 0),
+                    queueCapacity: pendingFrames.capacity + 1,
+                    encoderStats: encoderStatsProvider?(),
+                    frameLifecycleStats: frameLifecycleStatsProvider?()
+                )
                 recordTelemetry(
                     "stream_stats",
                     epoch: sessionEpochGate.current,

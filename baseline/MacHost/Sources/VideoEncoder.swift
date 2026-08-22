@@ -115,6 +115,12 @@ final class VideoEncoderInFlightAdmission {
     }
 }
 
+struct VideoEncoderRuntimeStats: Equatable {
+    let inFlight: Int
+    let capacity: Int
+    let frameRegistryCount: Int
+}
+
 final class VideoEncoderCallbackOwner {
     private let lock = NSLock()
     private weak var encoder: VideoEncoder?
@@ -216,6 +222,13 @@ final class VideoEncoderFrameRegistry {
         return entries.count
     }
 
+    func count(owner: VideoEncoderCallbackOwner) -> Int {
+        let ownerIdentifier = ObjectIdentifier(owner)
+        lock.lock()
+        defer { lock.unlock() }
+        return ticketsByOwner[ownerIdentifier]?.count ?? 0
+    }
+
     private func removeEntry(ticket: UInt) -> Entry? {
         guard let entry = entries.removeValue(forKey: ticket) else { return nil }
         let ownerIdentifier = ObjectIdentifier(entry.owner)
@@ -274,6 +287,15 @@ class VideoEncoder {
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
     private let callbackOwner = VideoEncoderCallbackOwner()
+
+    var runtimeStats: VideoEncoderRuntimeStats {
+        let snapshot = inFlightAdmission.snapshot
+        return VideoEncoderRuntimeStats(
+            inFlight: snapshot.inFlight,
+            capacity: snapshot.capacity,
+            frameRegistryCount: VideoEncoderFrameRegistry.shared.count(owner: callbackOwner)
+        )
+    }
 
     var inFlightSnapshot: VideoEncoderInFlightAdmission.Snapshot { inFlightAdmission.snapshot }
 

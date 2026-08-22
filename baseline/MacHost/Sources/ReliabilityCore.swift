@@ -317,6 +317,15 @@ enum TelemetryValue: Codable, Equatable {
     }
 }
 
+enum TelemetryTimestamp {
+    private static let lock = NSLock()
+    private static let formatter = ISO8601DateFormatter()
+
+    static func string(from date: Date) -> String {
+        lock.withLock { formatter.string(from: date) }
+    }
+}
+
 struct TelemetryEvent: Codable, Equatable {
     let schemaVersion: UInt8
     let event: String
@@ -338,7 +347,7 @@ struct TelemetryEvent: Codable, Equatable {
         event: String,
         sessionEpoch: UInt64? = nil,
         attributes: [String: TelemetryValue] = [:],
-        wallTime: String = ISO8601DateFormatter().string(from: Date()),
+        wallTime: String = TelemetryTimestamp.string(from: Date()),
         monotonicNs: UInt64 = DispatchTime.now().uptimeNanoseconds
     ) {
         schemaVersion = 1

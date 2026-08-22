@@ -52,6 +52,15 @@ retained 路径。`ScreenCapture` 的 `lastPixelBuffer`、`encoder` 和
 `currentFrameSink` 仍存在跨线程正确性风险，但这些引用数量有界，当前证据没有把
 它们与历史持续 RSS 斜率建立因果关系，因此不把猜测性并发重构混入内存候选。
 
+2026-08-21 的后续 root-cause 分支把两个剩余盲点收进可验证路径：一是把
+`debugLog` 与 `TelemetryEvent` 的 `ISO8601DateFormatter` 改为共享、加锁复用，
+避免推流期间日志和每秒 telemetry 持续构造 formatter；二是在 `stream_stats`
+生产 telemetry 中增加 `frame_registry_count` 与 capture 侧
+`latest_pixel_buffer_retained`/`latest_pixel_buffer_capacity`，使短窗诊断可以直接
+判定 VideoToolbox callback registry 或 latest pixel-buffer cache 是否超过固定
+容量，而不是事后只凭 RSS/heap 猜测。该变更是 root-cause-oriented 的修复与
+instrumentation，仍需要当前源码的短窗或两小时真机证据验证实际 RSS 表现。
+
 为避免再次只凭 RSS 猜测，现提供 10-17 分钟的
 `vibescreen_evidence.host_memory_diagnostic` 作为独立短窗回归门禁。它联合
 RSS、physical footprint、`MALLOC_SMALL`、malloc zone
@@ -62,17 +71,19 @@ dirty/live/fragmentation、三次 heap 类型快照及连续网络队列深度�
 `verdict` 语义如下：
 
 - `pass`：10-17 分钟窗口样本完整、所有必需内存信号落在短窗稳定阈值内、流遥测
-  与有界网络队列健康；若存在 VideoToolbox in-flight 遥测，也必须在容量内。
-  仅表示短窗回归通过，**不能替代或关闭正式两小时 `host_rss_gate`**。
+  与有界网络队列健康；若存在 VideoToolbox in-flight、callback registry 或
+  latest pixel-buffer telemetry，也必须在容量内。仅表示短窗回归通过，
+  **不能替代或关闭正式两小时 `host_rss_gate`**。
 - `fail`：窗口归因到 `retained_growth` 或 `allocator_high_water`，或生产流
-  出现队列越界、队列容量非法/变化、可选 VideoToolbox in-flight 越界、非正 FPS
-  异常。
+  出现队列越界、队列容量非法/变化、可选 VideoToolbox in-flight、callback
+  registry 或 latest pixel-buffer 越界、非正 FPS 异常。
 - `insufficient`：采样/工具/解析/流遥测覆盖不完整，或内存信号矛盾、无法支持
   稳定或增长归因。
 
-任何工具/解析/遥测覆盖错误、session epoch 变化、队列越界或存在的编码器在途越界
-都 fail closed：`verdict` 为 `insufficient` 或 `fail`，`attribution` 保持
-`inconclusive`。退出码按 `verdict` 映射：`pass`→0、`fail`→2、`insufficient`→1。
+任何工具/解析/遥测覆盖错误、session epoch 变化、队列越界或存在的编码器在途、
+callback registry、latest pixel-buffer 越界都 fail closed：`verdict` 为
+`insufficient` 或 `fail`，`attribution` 保持 `inconclusive`。退出码按
+`verdict` 映射：`pass`→0、`fail`→2、`insufficient`→1。
 该工具不会执行内存压力、修改 TCC 或访问 Keychain。具体命令与阈值见
 [`tools/README.md`](../../../tools/README.md)。
 
@@ -122,6 +133,10 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
   `heap_class_growth` 列表中重建首末漂移。
+- 2026-08-21 root-cause instrumentation 分支已离线验证新增 capture/encoder telemetry
+  合约和诊断 fail-closed 逻辑；本机没有完整 Xcode XCTest runtime，`swift test`
+  因 `no such module 'XCTest'` 阻塞。该分支没有运行当前源码的真机短窗或两小时
+  soak，因此正式 Host RSS no-growth 门禁保持开放。
 
 正式复测仍必须由具备 Screen Recording/Accessibility 权限的主任务执行：
 
