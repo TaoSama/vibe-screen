@@ -1507,6 +1507,10 @@ class StreamClientProtocolV1IntegrationTest {
                                 sha256 = ByteString.copyFrom(ByteArray(32) { 7 }),
                             ),
                         )
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(offer.transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("digest_mismatch", cancel.fileTransferCancel.reasonCode)
                         write(peer, disconnect(8))
                     }
                 }

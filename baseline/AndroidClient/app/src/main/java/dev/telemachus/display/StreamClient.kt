@@ -1823,6 +1823,11 @@ class StreamClient(
                             } else {
                                 action.result.rejectionReason
                             }
+                        if (transfer != null && !digestMatches) {
+                            session.fileCancel(action.result.transferId, "digest_mismatch")?.let {
+                                writeProtocolEnvelope(out, it)
+                            }
+                        }
                         onFileTransferResult?.invoke(accepted, reason)
                     }
                     is ProtocolV1Session.Action.WakeHost -> {
