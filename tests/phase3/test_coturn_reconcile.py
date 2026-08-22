@@ -189,6 +189,21 @@ class CoturnReconcileTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["start_new_session"], os.name == "posix")
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups are required")
+    def test_exporter_success_does_not_kill_reaped_process_group(self) -> None:
+        payload = {"source_id": "turn-prod-1", "observed_at": "2026-08-20T01:02:03Z", "allocations": []}
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(sys.executable, "-c", f"import json; print(json.dumps({payload!r}))"),
+            request_timeout_seconds=5,
+        )
+
+        with mock.patch("scripts.phase3.coturn_reconcile.os.killpg") as killpg:
+            self.assertEqual(run_exporter(settings)["source_id"], "turn-prod-1")
+
+        killpg.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups are required")
     def test_exporter_timeout_kills_child_process_group(self) -> None:
         marker = Path(self.tempdir.name) / "child.pid"
         command = (
@@ -196,14 +211,15 @@ class CoturnReconcileTests(unittest.TestCase):
             "-c",
             "import os, subprocess, sys, time; "
             "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-            f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid)); "
+            f"marker = open({str(marker)!r}, 'w', encoding='utf-8'); "
+            "marker.write(str(child.pid)); marker.flush(); os.fsync(marker.fileno()); marker.close(); "
             "sys.stdout.flush(); time.sleep(60)",
         )
         settings = Settings(
             authority_url="http://127.0.0.1:1",
             token="x" * 32,
             exporter_command=command,
-            request_timeout_seconds=0.5,
+            request_timeout_seconds=5,
         )
 
         with self.assertRaisesRegex(ReconcileError, "exporter timed out"):
