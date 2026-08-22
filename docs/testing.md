@@ -106,6 +106,15 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --gate-profile "$GATE_PROFILE"
 ```
 
+The equivalent Make target writes the standard report location and preserves the
+checker exit code (`0` only for a formal `pass`):
+
+```bash
+make evidence-latency-gate \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  LATENCY_GATE_PROFILE="$GATE_PROFILE"
+```
+
 See [External-camera latency measurement](runbook/latency-measurement.md). For
 external-camera packages, the checker requires the raw camera file, sample
 annotations, device/build metadata, matching gate profile, and the matching

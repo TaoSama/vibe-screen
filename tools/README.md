@@ -715,6 +715,15 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --output latency-run/latency-evidence-report.json
 ```
 
+For committed evidence directories, prefer the matching Make target so every
+run writes the canonical report name in place:
+
+```sh
+make evidence-latency-gate \
+  EVIDENCE_DIR=latency-run \
+  LATENCY_GATE_PROFILE=usb-glass-to-glass-sub50
+```
+
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
 the run ID, transport, profile, sample file, device identity, build identity,
 annotation method, and the profile-specific retained artifact: USB connection
