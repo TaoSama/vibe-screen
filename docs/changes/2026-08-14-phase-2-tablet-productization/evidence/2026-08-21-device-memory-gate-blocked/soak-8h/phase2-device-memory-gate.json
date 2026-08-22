@@ -1,0 +1,180 @@
+{
+  "criteria": {
+    "android_pss_full_window_endpoint_drift_kib": {
+      "maximum": 8192.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "android_pss_second_half_slope_kib_per_minute": {
+      "maximum": 40.0,
+      "measured": null,
+      "passed": false
+    },
+    "charging_or_full_min": {
+      "measured": null,
+      "minimum": 1.0,
+      "passed": false
+    },
+    "host_rss_full_window_endpoint_drift_kib": {
+      "maximum": 8192.0,
+      "measured": null,
+      "passed": false
+    },
+    "host_rss_second_half_slope_kib_per_minute": {
+      "maximum": 40.0,
+      "measured": null,
+      "passed": false
+    },
+    "thermal_status_max": {
+      "maximum": 2.0,
+      "measured": null,
+      "passed": false
+    }
+  },
+  "derivation_status": "complete",
+  "interpretation": "A pass means one schema-backed Phase 2 physical 8-9 inch tablet run supplied an eight-hour exact window with continuous Android PSS, Host RSS, charging, and thermal samples inside the declared memory thresholds. It does not close other Phase 2 recovery, login, headless, stylus, or hardware-keyboard gates.",
+  "kind": "phase2_device_memory_gate",
+  "manifest": {
+    "device_class": "android_substitute",
+    "device_identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "EP0110PZ0B9110300B",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/not-run",
+      "codename": "pacific",
+      "device_serial": "EP0110PZ0B9110300B",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": "36"
+    },
+    "memory_sampling": {
+      "android_pss_source": "ADB dumpsys meminfo dev.telemachus.display TOTAL PSS",
+      "host_pid": null,
+      "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+      "minimum_duration_seconds": 28800,
+      "require_host_pid": true,
+      "required_fields": [
+        "device.memory.app_total_pss_kb",
+        "host.rss_kb",
+        "device.battery.level",
+        "device.battery.status",
+        "device.thermal.status"
+      ],
+      "sample_interval_seconds": 30
+    },
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "tablet_size_inches": null
+  },
+  "reasons": [
+    "insufficient evidence: manifest_device_class",
+    "insufficient evidence: manifest_tablet_size_inches",
+    "insufficient evidence: known_phone_substitute_rejected",
+    "insufficient evidence: report_duration",
+    "insufficient evidence: manifest_host_pid",
+    "insufficient evidence: report_sample_count",
+    "insufficient evidence: android_pss_samples",
+    "insufficient evidence: host_rss_samples",
+    "insufficient evidence: thermal_status_samples",
+    "insufficient evidence: charging_state_samples",
+    "insufficient evidence: android_pss_second_half_slope_kib_per_minute",
+    "insufficient evidence: host_rss_second_half_slope_kib_per_minute",
+    "insufficient evidence: host_rss_full_window_endpoint_drift_kib",
+    "insufficient evidence: charging_or_full_min",
+    "insufficient evidence: thermal_status_max"
+  ],
+  "report": {
+    "run_id": "blocked-device-memory",
+    "source_summary": {
+      "errors": [],
+      "status": "complete"
+    },
+    "window": {
+      "duration_seconds": 30.0,
+      "finished_at": "2026-08-21T00:00:30Z",
+      "sample_records_in_window": 1,
+      "started_at": "2026-08-21T00:00:00Z",
+      "telemetry_records_in_window": 1
+    }
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "sufficiency": {
+    "android_pss_samples": {
+      "measured": 1.0,
+      "minimum": 960,
+      "passed": false
+    },
+    "charging_state_samples": {
+      "measured": null,
+      "minimum": 960,
+      "passed": false
+    },
+    "host_rss_samples": {
+      "measured": null,
+      "minimum": 960,
+      "passed": false
+    },
+    "known_phone_substitute_rejected": {
+      "expected": false,
+      "measured": true,
+      "passed": false
+    },
+    "manifest_device_class": {
+      "expected": "physical_8_9_inch_tablet",
+      "measured": "android_substitute",
+      "passed": false
+    },
+    "manifest_duration": {
+      "measured": 28800.0,
+      "minimum": 28800,
+      "passed": true
+    },
+    "manifest_host_pid": {
+      "measured": null,
+      "passed": false,
+      "required": true
+    },
+    "manifest_sample_interval": {
+      "maximum": 60,
+      "measured": 30.0,
+      "passed": true
+    },
+    "manifest_tablet_size_inches": {
+      "maximum": 9.0,
+      "measured": null,
+      "minimum": 8.0,
+      "passed": false
+    },
+    "report_duration": {
+      "measured": 30.0,
+      "minimum": 28800,
+      "passed": false
+    },
+    "report_sample_count": {
+      "measured": 1.0,
+      "minimum": 960,
+      "passed": false
+    },
+    "report_sample_gap": {
+      "maximum": 90.0,
+      "measured": 30.0,
+      "passed": true
+    },
+    "thermal_status_samples": {
+      "measured": null,
+      "minimum": 960,
+      "passed": false
+    }
+  },
+  "thresholds": {
+    "maximum_android_pss_full_window_drift_kib": 8192.0,
+    "maximum_android_pss_second_half_slope_kib_per_minute": 40.0,
+    "maximum_host_rss_full_window_drift_kib": 8192.0,
+    "maximum_host_rss_second_half_slope_kib_per_minute": 40.0,
+    "maximum_sample_gap_seconds": 90.0,
+    "maximum_sample_interval_seconds": 60,
+    "maximum_thermal_status": 2.0,
+    "minimum_charging_or_full": 1.0,
+    "minimum_duration_seconds": 28800
+  },
+  "verdict": "insufficient"
+}

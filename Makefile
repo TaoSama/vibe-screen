@@ -4,6 +4,7 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
+EVIDENCE_HOST_PID ?=
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -33,7 +34,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -159,7 +160,7 @@ harmony-device-gate:
 
 soak-30m soak-2h soak-8h: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)/$@
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak --serial $(EVIDENCE_SERIAL) --preset $(@:soak-%=%) --interval 30s --package $(EVIDENCE_PACKAGE) --telemetry-jsonl $(EVIDENCE_DIR)/$@/host-telemetry.jsonl --require-stream-telemetry --output-jsonl $(EVIDENCE_DIR)/$@/samples.jsonl --summary-json $(EVIDENCE_DIR)/$@/summary.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak --serial $(EVIDENCE_SERIAL) --preset $(@:soak-%=%) --interval 30s --package $(EVIDENCE_PACKAGE) $(if $(strip $(EVIDENCE_HOST_PID)),--host-pid $(EVIDENCE_HOST_PID),) --telemetry-jsonl $(EVIDENCE_DIR)/$@/host-telemetry.jsonl --require-stream-telemetry --output-jsonl $(EVIDENCE_DIR)/$@/samples.jsonl --summary-json $(EVIDENCE_DIR)/$@/summary.json
 
 phase2-tablet-manifest: require-evidence-serial
 	@test -f "$(EVIDENCE_DIR)/device-info.json" || (echo "error: collect $(EVIDENCE_DIR)/device-info.json with make evidence-device-info before phase2-tablet-manifest" >&2; exit 2)
@@ -173,6 +174,7 @@ phase2-tablet-manifest: require-evidence-serial
 	@test -n "$(strip $(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_SHA256" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS))" || (echo "error: set PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT))" || (echo "error: set PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT" >&2; exit 2)
+	@test -n "$(strip $(EVIDENCE_HOST_PID))" || (echo "error: set EVIDENCE_HOST_PID to the running Host process PID for Phase 2 device-memory evidence" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
 		--output $(EVIDENCE_DIR)/phase2-tablet-manifest.json \
@@ -185,6 +187,9 @@ phase2-tablet-manifest: require-evidence-serial
 		$(if $(strip $(PHASE2_AMBIENT_TEMPERATURE_CELSIUS)),--ambient-temperature-celsius $(PHASE2_AMBIENT_TEMPERATURE_CELSIUS),) \
 		--transport $(PHASE2_TRANSPORT) \
 		--video-preferences "$(PHASE2_VIDEO_PREFERENCES)" \
+		--host-pid $(EVIDENCE_HOST_PID) \
+		--host-rss-source "soak --host-pid sampling via ps -o rss=" \
+		--android-pss-source "ADB dumpsys meminfo $(EVIDENCE_PACKAGE) TOTAL PSS" \
 		--thermal-limit-status $(PHASE2_THERMAL_LIMIT_STATUS) \
 		$(if $(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS)),--battery-temperature-limit-celsius $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS),) \
 		$(if $(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT)),--maximum-net-battery-drain-percent $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT),) \
@@ -192,10 +197,14 @@ phase2-tablet-manifest: require-evidence-serial
 		--host-identity "$(PHASE2_HOST_IDENTITY)" \
 		--host-build "$(PHASE2_HOST_BUILD)" \
 		--apk-sha256 "$(PHASE2_APK_SHA256)" \
-		-- make soak-8h EVIDENCE_SERIAL=$(EVIDENCE_SERIAL) EVIDENCE_DIR=$(EVIDENCE_DIR)
+		-- make soak-8h EVIDENCE_SERIAL=$(EVIDENCE_SERIAL) EVIDENCE_DIR=$(EVIDENCE_DIR) EVIDENCE_HOST_PID=$(EVIDENCE_HOST_PID)
 
-phase2-tablet-gate:
+phase2-device-memory-gate:
+	@test -f "$(EVIDENCE_DIR)/phase2-tablet-manifest.json" || (echo "error: create $(EVIDENCE_DIR)/phase2-tablet-manifest.json before phase2-device-memory-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-8h/summary.json --samples $(EVIDENCE_DIR)/soak-8h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-8h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-8h/exact-window-report.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_device_memory_gate --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --output $(EVIDENCE_DIR)/soak-8h/phase2-device-memory-gate.json
+
+phase2-tablet-gate: phase2-device-memory-gate
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/soak-8h/phase2-tablet-gate.json
 
 hardware-keyboard-gate:
