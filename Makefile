@@ -8,6 +8,9 @@ EVIDENCE_HOST_PID ?=
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
+NATIVE_POINTER_HOST_LOG ?= $(HOME)/Library/Logs/Telemachus/telemachus.log
+NATIVE_POINTER_OBSERVE_SECONDS ?= 20
+NATIVE_POINTER_VISIBLE_RESULT_NOTE ?=
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -65,7 +68,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -237,6 +240,30 @@ evidence-reconnect-timing-blocked:
 		$(RECONNECT_TIMING_ARTIFACT_ARGS) \
 		$(RECONNECT_TIMING_NOTES_ARG) \
 		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json || test $$? -eq 3
+
+native-pointer-hid-acceptance: require-evidence-serial
+	mkdir -p "$(EVIDENCE_DIR)"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/native_pointer_hid_acceptance.py \
+		--serial "$(EVIDENCE_SERIAL)" \
+		--host-log "$(NATIVE_POINTER_HOST_LOG)" \
+		--observe-seconds $(NATIVE_POINTER_OBSERVE_SECONDS) \
+		--visible-result-note "$(NATIVE_POINTER_VISIBLE_RESULT_NOTE)" \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		--write-blocked-on-lock; \
+	status=$$?; \
+	if [ -f "$(EVIDENCE_DIR)/result.json" ] && [ ! -f "$(EVIDENCE_DIR)/native-pointer-hid-summary.json" ]; then \
+		PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.native_pointer_hid \
+			"$(EVIDENCE_DIR)/result.json" \
+			--output "$(EVIDENCE_DIR)/native-pointer-hid-summary.json"; \
+		gate_status=$$?; \
+		if [ $$gate_status -ne 0 ]; then exit $$gate_status; fi; \
+	fi; \
+	exit $$status
+
+native-pointer-hid-gate:
+	@test -f "$(EVIDENCE_DIR)/result.json" || (echo "error: collect $(EVIDENCE_DIR)/result.json before native-pointer-hid-gate" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.native_pointer_hid "$(EVIDENCE_DIR)/result.json" --output "$(EVIDENCE_DIR)/native-pointer-hid-summary.json" --require-pass
 
 actionable-error-states-gate:
 	mkdir -p $(EVIDENCE_DIR)
