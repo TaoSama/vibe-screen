@@ -28,13 +28,11 @@ ALLOWED_VERDICTS = {
     STATUS_INSUFFICIENT,
     STATUS_OPEN,
 }
-NON_CLOSING_EVIDENCE_STRENGTHS = {
-    "blocked",
-    "historical",
-    "offline",
-    "readiness",
-    "synthetic",
-    "unknown",
+CLOSING_EVIDENCE_STRENGTHS = {
+    "current-ci",
+    "current-real-device",
+    "current-source",
+    "real-device",
 }
 DEFAULT_README_GUARD_PHRASES = (
     "Phase 0 remains in progress",
@@ -42,8 +40,9 @@ DEFAULT_README_GUARD_PHRASES = (
     "Do not treat roadmap items below as shipped features",
 )
 DEFAULT_FORBIDDEN_README_PATTERNS = (
-    r"\bPhase\s*0\s+(?:is|now|has been|was|marked|declared|treated as)\s+(?:complete|closed|shipped|released)\b",
-    r"\bPhase\s*0\s+(?:stable[- ]release|release)\s+(?:is|now|has been|was)\s+(?:available|ready|complete|shipped|released)\b",
+    r"\bPhase\s*0\s+(?:is(?:\s+now)?|now|has(?:\s+been|\s+reached)?|was|marked|declared|treated as|reached)\s+(?:complete|closed|shipped|released|stable|done|production[- ]ready|generally available|GA)\b",
+    r"\bPhase\s*0\s+(?:stable[- ]release|release)\s+(?:is|now|has been|was)\s+(?:available|ready|complete|shipped|released|stable|done|production[- ]ready|generally available|GA)\b",
+    r"\bPhase\s*0\s+(?:GA|generally available|production[- ]ready)\b",
 )
 
 REQUIRED_GATE_IDS = (
@@ -127,9 +126,11 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
     if verdict == STATUS_PASS:
         if not evidence_paths:
             issues.append("pass gate must cite at least one evidence path or URL")
-        if evidence_strength in NON_CLOSING_EVIDENCE_STRENGTHS:
+        if blockers:
+            issues.append("pass gate must not list unresolved blockers")
+        if evidence_strength not in CLOSING_EVIDENCE_STRENGTHS:
             issues.append(
-                f"pass gate cannot use non-closing evidence strength {evidence_strength!r}"
+                f"pass gate must use a closing evidence strength, got {evidence_strength!r}"
             )
     can_close = required and verdict == STATUS_PASS and not issues
     return {
@@ -264,6 +265,11 @@ def evaluate_manifest(
             "unexpected required gate id(s): "
             + ", ".join(unexpected_required_gate_ids)
         )
+    for summary in gate_summaries:
+        if summary["id"] in REQUIRED_GATE_IDS and not summary["required_for_stable_release"]:
+            summary["issues"].append(
+                "required Phase 0 gate cannot set required_for_stable_release=false"
+            )
 
     required_gate_summaries = [
         summary for summary in gate_summaries if summary["id"] in REQUIRED_GATE_IDS
@@ -271,9 +277,13 @@ def evaluate_manifest(
     blocking_gates = [
         summary
         for summary in required_gate_summaries
-        if summary["verdict"] != STATUS_PASS or summary["issues"]
+        if not summary["can_close"] or summary["issues"]
     ]
-    aggregate_passed = not malformed_reasons and not blocking_gates
+    aggregate_passed = (
+        not malformed_reasons
+        and not blocking_gates
+        and not any(summary["issues"] for summary in gate_summaries)
+    )
     readme_guard = _readme_guard(
         manifest=manifest,
         readme_text=readme_text,

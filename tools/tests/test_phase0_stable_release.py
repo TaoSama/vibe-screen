@@ -110,8 +110,65 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         self.assertEqual(summary["aggregate_verdict"], "insufficient")
         self.assertIn(
-            "non-closing evidence strength",
+            "closing evidence strength",
             summary["gate_summaries"][0]["issues"][0],
+        )
+
+    def test_pass_requires_allowlisted_closing_evidence_strength(self) -> None:
+        non_closing_strengths = (
+            "partial",
+            "historical-fail",
+            "partial-current-source",
+        )
+        for evidence_strength in non_closing_strengths:
+            with self.subTest(evidence_strength=evidence_strength):
+                manifest = complete_manifest()
+                gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+                gate["evidence_strength"] = evidence_strength
+
+                summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+                self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                self.assertFalse(summary["can_mark_phase0_stable_release"])
+                self.assertEqual(
+                    [gate["id"] for gate in summary["blocking_required_gates"]],
+                    ["host_rss_2h_no_growth"],
+                )
+
+    def test_pass_gate_with_blockers_is_insufficient(self) -> None:
+        manifest = complete_manifest()
+        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+        gate["blockers"] = ["host RSS still grows"]
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(
+            [gate["id"] for gate in summary["blocking_required_gates"]],
+            ["host_rss_2h_no_growth"],
+        )
+        self.assertIn(
+            "pass gate must not list unresolved blockers",
+            summary["blocking_required_gates"][0]["issues"],
+        )
+
+    def test_required_gate_cannot_be_marked_optional_to_close_aggregate(self) -> None:
+        manifest = complete_manifest()
+        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+        gate["required_for_stable_release"] = False
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(
+            [gate["id"] for gate in summary["blocking_required_gates"]],
+            ["host_rss_2h_no_growth"],
+        )
+        self.assertIn(
+            "required Phase 0 gate cannot set required_for_stable_release=false",
+            summary["blocking_required_gates"][0]["issues"],
         )
 
     def test_missing_required_gate_is_insufficient(self) -> None:
@@ -122,6 +179,59 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         self.assertEqual(summary["aggregate_verdict"], "insufficient")
         self.assertEqual(summary["missing_required_gate_ids"], ["module_ownership_extraction"])
+
+    def test_readme_guard_fails_on_phase0_has_shipped_claim(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "native_pointer_hid_mouse")["verdict"] = "open"
+
+        summary = evaluate_manifest(
+            manifest,
+            readme_text="Phase 0 has shipped while this text omits the guard.",
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "fail")
+        self.assertEqual(summary["readme_guard"]["verdict"], "fail")
+        self.assertTrue(summary["readme_guard"]["forbidden_matches"])
+
+    def test_readme_guard_fails_on_stable_production_ready_or_ga_claim(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "native_pointer_hid_mouse")["verdict"] = "open"
+        guarded_text = GUARDED_README_TEXT + " "
+        claims = (
+            "Phase 0 is now stable.",
+            "Phase 0 is production-ready.",
+            "Phase 0 has reached stable.",
+            "Phase 0 GA.",
+            "Phase 0 is generally available.",
+        )
+        for claim in claims:
+            with self.subTest(claim=claim):
+                summary = evaluate_manifest(manifest, readme_text=guarded_text + claim)
+
+                self.assertEqual(summary["aggregate_verdict"], "fail")
+                self.assertEqual(summary["readme_guard"]["verdict"], "fail")
+                self.assertTrue(summary["readme_guard"]["forbidden_matches"])
+
+    def test_non_required_gate_issue_still_enforces_readme_guard(self) -> None:
+        manifest = complete_manifest()
+        manifest["required_gates"].append(
+            {
+                "id": "future_release_gate",
+                "title": "Future release gate",
+                "verdict": "pass",
+                "required_for_stable_release": False,
+                "evidence_strength": "readiness",
+                "evidence_paths": ["docs/evidence/future.json"],
+                "owner_prs": [],
+                "blockers": [],
+            }
+        )
+
+        summary = evaluate_manifest(manifest, readme_text="Phase 0 status summary")
+
+        self.assertEqual(summary["aggregate_verdict"], "fail")
+        self.assertEqual(summary["readme_guard"]["verdict"], "fail")
+        self.assertTrue(summary["readme_guard"]["missing_required_phrases"])
 
     def test_rejects_invalid_manifest_shape(self) -> None:
         with self.assertRaisesRegex(Phase0StableReleaseError, "kind must be"):
