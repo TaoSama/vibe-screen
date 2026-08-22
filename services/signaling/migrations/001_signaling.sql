@@ -38,9 +38,19 @@ CREATE TABLE IF NOT EXISTS signaling_role_rates (
     PRIMARY KEY (session_id, role)
 );
 
-CREATE TABLE IF NOT EXISTS signaling_waiters (
+-- Upgrade deploy order: drain or stop instances that still use the legacy
+-- signaling_waiters counter schema, apply this migration, then start instances
+-- that use signaling_waiter_leases.
+DROP TABLE IF EXISTS signaling_waiters;
+
+CREATE TABLE IF NOT EXISTS signaling_waiter_leases (
     session_id text NOT NULL REFERENCES signaling_sessions(session_id) ON DELETE CASCADE,
     role text NOT NULL CHECK (role IN ('host','device')),
-    waiter_count integer NOT NULL CHECK (waiter_count >= 0),
-    PRIMARY KEY (session_id, role)
+    lease_id text NOT NULL,
+    backend_pid integer NOT NULL CHECK (backend_pid > 0),
+    backend_started_at timestamptz NOT NULL,
+    registered_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (session_id, role, lease_id)
 );
+CREATE INDEX IF NOT EXISTS signaling_waiter_leases_backend_idx
+    ON signaling_waiter_leases(backend_pid, backend_started_at);

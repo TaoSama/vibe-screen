@@ -1,0 +1,23 @@
+Commands executed for Nubia P0110/pacific stylus preflight.
+ADB commands used explicit serial: adb -s EP0110PZ0B9110300B ...
+
+$ adb -s EP0110PZ0B9110300B get-state
+device
+
+$ adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer ro.product.model ro.product.device ro.build.version.release ro.build.version.sdk
+manufacturer=nubia
+model=P0110
+device=pacific
+android=16
+sdk=36
+
+$ adb -s EP0110PZ0B9110300B reverse --list
+UsbFfs tcp:54321 tcp:54321
+
+
+$ adb -s EP0110PZ0B9110300B shell dumpsys activity activities | sed -n foreground summary
+    topResumedActivity=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+    topResumedActivity=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+  ResumedActivity: ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+
+$ python3 scripts/android_stylus_acceptance.py --serial EP0110PZ0B9110300B --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-21-200005-nubia-p0110-pacific-stylus-preflight --allow-existing-device-lock
