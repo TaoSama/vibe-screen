@@ -12,12 +12,19 @@ make baseline-android-test
 make baseline-android-check
 make baseline-android-apk
 make evidence-tools-test
+make phase0-stable-release-gate
 make evidence-device-info
 ```
 
 Record `sw_vers`, `xcodebuild -version`, `swift --version`, `java -version`,
 Android SDK versions, `adb devices -l`, and the repository commit with every
 result.
+Before any README change that would describe Phase 0 as complete, shipped, or a
+stable release, run `make phase0-stable-release-gate
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1` and retain its generated summary. The
+default `make phase0-stable-release-gate` command is a consistency guard only;
+it is expected to report the current aggregate as blocked while required
+sub-gates remain open.
 
 ## Test matrix
 

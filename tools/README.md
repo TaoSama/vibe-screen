@@ -35,6 +35,17 @@ or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
 `can_close_ios_device_acceptance=false`. That nonzero result is the expected
 fail-closed readiness evidence when no iOS device run is scheduled.
 
+## Phase 0 stable-release aggregate gate
+
+The Phase 0 stable-release aggregate gate is intentionally separate from the
+individual evidence tools. Run `make phase0-stable-release-gate` to verify that
+README still carries the in-progress guard while any required sub-gate is open.
+Before changing README to complete/stable Phase 0 wording, run `make
+phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1`; that command
+fails closed until every required entry in
+`docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json`
+has verdict `pass` with closing-strength evidence.
+
 Codec capability evidence must record the negotiated Protocol v1 codec, the
 Host encoder capability and implementation path, the client decoder name, and
 the first decoded output frame before it is used to close a codec gate. AV1 is
