@@ -1,0 +1,160 @@
+{
+  "artifact_paths": [
+    "README.md",
+    "/tmp/vibe-screen-device-android.lock"
+  ],
+  "blocking_notes": [
+    "The shared Android lock /tmp/vibe-screen-device-android.lock already existed, so this task did not run new adb commands or create raw ADB artifacts.",
+    "A parallel read-only audit observed Nubia P0110 / pacific / Android 16 / SDK 36 as a phone substitute only; that result cannot close the physical 8-9 inch tablet gate.",
+    "No stand-mounted tablet setup, controlled thermal load, or eight-hour environment window was exercised."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    }
+  ],
+  "can_close_device_environment_gates": false,
+  "criteria": {
+    "environment_duration_seconds": {
+      "measured": null,
+      "minimum": 28800,
+      "passed": false
+    },
+    "maximum_battery_temperature_celsius": {
+      "maximum": 45.0,
+      "measured": null,
+      "passed": false
+    },
+    "maximum_sample_gap_seconds": {
+      "maximum": 90.0,
+      "measured": null,
+      "passed": false
+    },
+    "maximum_thermal_status": {
+      "maximum": 2.0,
+      "measured": null,
+      "passed": false
+    },
+    "net_battery_drain_percent": {
+      "maximum": 0.0,
+      "measured": null,
+      "passed": false
+    },
+    "non_charging_sample_count": {
+      "maximum": 0.0,
+      "measured": null,
+      "passed": false
+    },
+    "power_source_change_count": {
+      "maximum": 0.0,
+      "measured": null,
+      "passed": false
+    },
+    "unplugged_sample_count": {
+      "maximum": 0.0,
+      "measured": null,
+      "passed": false
+    }
+  },
+  "does_not_close_eight_hour_stream_gate": true,
+  "environment_gates": [
+    "stand_mounted_charging_stability",
+    "thermal_load",
+    "power_source_stability"
+  ],
+  "failed_criteria": [],
+  "interpretation": "A pass means a physical 8-9 inch tablet run supplied explicit stand-mounted setup observations, an eight-hour environment window, continuous battery, power-source, and thermal samples, and a controlled thermal-load recovery record within the declared thresholds. This summary does not close the separate eight-hour stream, device-memory, recovery, login, headless, stylus, or hardware-keyboard gates.",
+  "kind": "phase2_device_environment_acceptance",
+  "missing_criteria": [
+    "environment_duration_seconds",
+    "maximum_sample_gap_seconds",
+    "unplugged_sample_count",
+    "non_charging_sample_count",
+    "power_source_change_count",
+    "maximum_thermal_status",
+    "maximum_battery_temperature_celsius",
+    "net_battery_drain_percent"
+  ],
+  "missing_requirements": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "battery_power_samples_retained",
+      "requirement": "retain raw battery and power-source samples for the full environment window"
+    },
+    {
+      "field": "thermal_samples_retained",
+      "requirement": "retain raw thermal status and battery-temperature samples for the full environment window"
+    },
+    {
+      "field": "raw_platform_dumps_retained",
+      "requirement": "retain before/after dumpsys battery, power, and thermalservice artifacts"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    },
+    {
+      "field": "thermal_load_recovery_observed",
+      "requirement": "show the tablet remains usable and returns within the declared thermal limit after load"
+    },
+    {
+      "field": "settings_status_matches_platform",
+      "requirement": "verify the sustained-use UI agrees with dumpsys battery, power, and thermal state"
+    }
+  ],
+  "notes": "Phone-substitute readiness only; keeps stand-mounted charging, thermal-load, power-source, and eight-hour Phase 2 gates open.",
+  "observations": {
+    "android_device_lock_checked": true,
+    "battery_power_samples_retained": false,
+    "controlled_thermal_load_observed": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "eight_hour_environment_window_observed": false,
+    "physical_8_9_inch_tablet_observed": false,
+    "raw_platform_dumps_retained": false,
+    "run_readme_retained": true,
+    "settings_status_matches_platform": false,
+    "stand_mounted_setup_observed": false,
+    "thermal_load_recovery_observed": false,
+    "thermal_samples_retained": false
+  },
+  "profile": "phase2-device-environment",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi or as physical tablet evidence.",
+  "run_id": "2026-08-23-p0110-device-environment-readiness",
+  "schema_version": "vibescreen.evidence/v1",
+  "thresholds": {
+    "maximum_battery_temperature_celsius": 45.0,
+    "maximum_net_battery_drain_percent": 0.0,
+    "maximum_non_charging_sample_count": 0.0,
+    "maximum_power_source_change_count": 0.0,
+    "maximum_sample_gap_seconds": 90.0,
+    "maximum_thermal_status": 2.0,
+    "maximum_unplugged_sample_count": 0.0,
+    "minimum_environment_duration_seconds": 28800
+  },
+  "verdict": "blocked"
+}

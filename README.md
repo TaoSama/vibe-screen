@@ -441,13 +441,15 @@ the status readable in small-tablet and resized-window configurations. This is a
 offline product slice, not thermal or power acceptance: 8–9 inch hardware,
 stand-mounted charging, background/foreground recovery, and the eight-hour run
 remain device gates. The evidence tooling now includes a Phase 2 tablet
-manifest, a package-aware tablet gate, and an independent fail-closed
-device-memory verifier for Android PSS, Host RSS, charging/full-state, and
-thermal-status coverage during the 8h soak. The verifier rejects phone
-substitutes such as Nubia P0110/pacific and reports insufficient evidence when
-the physical tablet, Host PID/RSS, Android PSS, charging, thermal, or
-eight-hour data is missing; no current evidence closes that gate. Login startup
-and headless Mac mini acceptance also remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+manifest with gate owners, a package-aware tablet gate, an independent
+fail-closed device-memory verifier for Android PSS and Host RSS, and a focused
+device-environment verifier for stand-mounted charging stability, controlled
+thermal-load behavior, and power-source sampling during the 8h soak. The
+verifiers reject phone substitutes such as Nubia P0110/pacific and report
+insufficient evidence when the physical tablet, stand/charger/cable setup,
+controlled thermal load and recovery, Host PID/RSS, Android PSS, charging,
+power, thermal, or eight-hour data is missing; no current evidence closes those
+gates. Login startup and headless Mac mini acceptance also remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access

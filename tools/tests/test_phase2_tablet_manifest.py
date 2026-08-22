@@ -88,12 +88,32 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(manifest["session"]["duration_seconds"], 28800)
         self.assertIn("stand_mounted_charging", manifest["required_gates"])
         self.assertIn("device_memory_sampling", manifest["required_gates"])
+        self.assertEqual(
+            manifest["gate_owners"]["stand_mounted_charging"],
+            "phase2-device-environment",
+        )
+        self.assertEqual(
+            manifest["gate_owners"]["thermal_power_sampling"],
+            "phase2-device-environment",
+        )
         self.assertIn("phase2-tablet-manifest.json", manifest["required_artifacts"])
         self.assertIn("soak-8h/samples.jsonl", manifest["required_artifacts"])
         self.assertIn("soak-8h/phase2-device-memory-gate.json", manifest["required_artifacts"])
+        self.assertIn(
+            "soak-8h/phase2-device-environment-summary.json",
+            manifest["required_artifacts"],
+        )
         self.assertEqual(
             manifest["memory_sampling"]["android_pss_source"],
             "ADB dumpsys meminfo app TOTAL PSS",
+        )
+        self.assertIn(
+            "device.power.current_now_ua",
+            manifest["memory_sampling"]["required_fields"],
+        )
+        self.assertIn(
+            "device.power.voltage_now_uv",
+            manifest["memory_sampling"]["required_fields"],
         )
         self.assertTrue(manifest["memory_sampling"]["require_host_pid"])
         self.assertEqual(manifest["memory_sampling"]["host_pid"], 4242)
