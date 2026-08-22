@@ -412,13 +412,16 @@ glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
 reconnection within three seconds, and no latency or memory growth over a
 two-hour run. USB and LAN glass-to-glass latency gates require external-camera
 evidence, while the input-latency gate requires external-camera evidence or a
-documented synchronized-clock setup with a reviewable error budget. The gate
-profiles are `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
-`input-p95-sub50`; host and client telemetry are diagnostic only and cannot
-close these gates. As of the 2026-08-20 readiness check, the latency toolchain
-passes its fixture gates but no real external-camera package is available in
-the repository, so all three external latency gates remain open; see
-[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+documented synchronized-clock setup with a reviewable sub-5 ms total error
+budget. The gate profiles are `usb-glass-to-glass-sub50`,
+`lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
+are diagnostic only and cannot close these gates. As of the 2026-08-21 Nubia
+P0110/pacific latency preflight, the toolchain has formal manifest/checker
+coverage for external-camera packages and synchronized-clock input packages,
+but no raw camera package, annotated latency samples, or synchronized-clock
+proof from a real physical-input run is available in the repository. All three
+latency gates therefore remain open; see
+[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 

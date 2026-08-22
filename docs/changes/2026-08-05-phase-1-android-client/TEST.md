@@ -150,6 +150,10 @@ still record:
 - a real unlocked Mac stream, missing reverse, host interruption, Host PID,
   visible Mac result, session epochs, and end-to-end recovery duration;
 - Android diagnostic/logcat plus visible Mac-side outcomes.
+- USB glass-to-glass (`usb-glass-to-glass-sub50`), LAN glass-to-glass
+  (`lan-glass-to-glass-sub80`), and input P95 (`input-p95-sub50`) latency
+  gates remain open until a formal external-camera package, or synchronized-clock
+  package for input only, passes the stricter latency provenance checker.
 
 Compilation, synthetic media, ADB-injected events, and old Phase 0 tap evidence
 cannot close the remaining unlocked-Mac, physical-peripheral, or Xiaomi 13
