@@ -1,6 +1,9 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerAxes
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.generateEphemeral
@@ -209,6 +212,14 @@ class InternetProductSessionTest {
             pinnedHostId = "host-1",
         )
     private val codec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.HEVC)) { 1 }
+    private val controllerCodec =
+        ProtobufProtocolV1ProductCodec(
+            localDeviceId = "device-1",
+            deviceName = "Android",
+            supportedCodecs = setOf(ProductVideoCodec.HEVC),
+            advertiseController = true,
+            monotonicNanos = { 1 },
+        )
 
     @Test
     fun boundTranscriptContextMatchesSwiftKnownAnswer() {
@@ -325,17 +336,44 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun internetMediaAssemblerPreservesAnnexBHevcFramesForDecoderCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        val keyframePayload = byteArrayOf(0, 0, 0, 1, 0x40, 0, 0, 0, 1, 0x26, 0x01)
+        val deltaPayload = byteArrayOf(0, 0, 0, 1, 0x02, 0x7f, 0x55)
+
+        peer.media(media(frameId = 100, keyframe = true, payload = keyframePayload))
+        peer.media(media(frameId = 101, keyframe = false, payload = deltaPayload))
+
+        assertEquals(2, callbacks.frames.size)
+        callbacks.frames[0].also { frame ->
+            assertTrue(frame.keyframe)
+            assertEquals(ProductVideoCodec.HEVC, frame.codec)
+            assertEquals(7L, frame.sessionEpoch)
+            assertEquals(3L, frame.configEpoch)
+            assertEquals(5L, frame.streamId)
+            assertEquals(10_000L, frame.captureTimestampNs)
+            assertArrayEquals(keyframePayload, frame.payload)
+        }
+        callbacks.frames[1].also { frame ->
+            assertFalse(frame.keyframe)
+            assertEquals(ProductVideoCodec.HEVC, frame.codec)
+            assertEquals(7L, frame.sessionEpoch)
+            assertEquals(3L, frame.configEpoch)
+            assertEquals(5L, frame.streamId)
+            assertEquals(10_100L, frame.captureTimestampNs)
+            assertArrayEquals(deltaPayload, frame.payload)
+        }
+    }
+
+    @Test
     fun controllerOptInNegotiatesTheCapabilityAdvertisedByThisCodecInstance() {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()
-        val controllerCodec =
-            ProtobufProtocolV1ProductCodec(
-                localDeviceId = "device-1",
-                deviceName = "Android",
-                supportedCodecs = setOf(ProductVideoCodec.HEVC),
-                advertiseController = true,
-                monotonicNanos = { 1 },
-            )
         val session = session(peer, ProductFakeNetworkMonitor(), callbacks, codec = controllerCodec)
         session.start()
         peer.observer.onConnected(PeerRoute.DIRECT)
@@ -356,6 +394,164 @@ class InternetProductSessionTest {
 
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
         assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun controllerEventsSendAfterNegotiatedControllerAndVideoConfiguration() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        val accepted =
+            session.sendController(
+                listOf(
+                    ProductControllerEvent(
+                        inputId = 11,
+                        sample =
+                            controllerSample(
+                                kind = ControllerEventKind.STATE,
+                                buttonMask = 0b101,
+                                axes = ControllerAxes(leftX = 0.25, rightTrigger = 0.75),
+                            ),
+                    ),
+                ),
+                InternetControllerSendQueue.Delivery.ANALOG,
+            )
+
+        val controller = peer.controllerEvents().single().controllerEvent
+        assertTrue(accepted)
+        assertTrue(session.hasNegotiatedControllerCapability())
+        assertTrue(session.canSendController())
+        assertEquals(11L, controller.inputId)
+        assertEquals(5L, controller.target.streamId)
+        assertEquals("pad-1", controller.controllerId)
+        assertEquals(3L, controller.controllerEpoch)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, controller.kind)
+        assertEquals(0b101, controller.buttonMask)
+        assertEquals(0.25, controller.leftStickX, 0.0)
+        assertEquals(0.75, controller.rightTrigger, 0.0)
+        assertEquals(callbacks.configurations, callbacks.appliedConfigurations)
+    }
+
+    @Test
+    fun controllerInputAckReportsRejectedConnectedSampleWithoutClosingSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(21, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(21)
+                        .setAccepted(false)
+                        .setRejectionReason("maximum_active_controllers_exceeded"),
+                ).build(),
+        )
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+        assertEquals(
+            listOf(ProductInputAckCallback(21, "pad-1", 3, accepted = false, "maximum_active_controllers_exceeded")),
+            callbacks.inputAcks,
+        )
+    }
+
+    @Test
+    fun controllerStructuralQueuesDuringRecoveringAndDrainsAfterTransportResumes() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+        val controlCountBeforeRecovery = peer.control.size
+
+        peer.observer.onDisconnected()
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+
+        assertFalse(
+            session.sendController(
+                listOf(ProductControllerEvent(31, controllerSample(kind = ControllerEventKind.STATE, buttonMask = 1))),
+                InternetControllerSendQueue.Delivery.ANALOG,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(32, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertEquals(controlCountBeforeRecovery, peer.control.size)
+
+        peer.observer.onConnected(PeerRoute.DIRECT)
+
+        val controller = peer.controllerEvents().single().controllerEvent
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(32L, controller.inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, controller.kind)
+    }
+
+    @Test
+    fun controllerBackpressureKeepsConnectionAckUntrackedUntilSendSucceeds() {
+        var rejectNextController = true
+        val peer =
+            ProductFakePeerEngine(
+                sendControlResult = { payload ->
+                    val envelope = Envelope.parseFrom(payload)
+                    if (envelope.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT && rejectNextController) {
+                        rejectNextController = false
+                        false
+                    } else {
+                        true
+                    }
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+        val controlCountBeforeController = peer.control.size
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(41, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(InputAck.newBuilder().setInputId(41).setAccepted(true))
+                .build(),
+        )
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(controlCountBeforeController, peer.control.size)
+        assertEquals(listOf(ProductInputAckCallback(41, null, null, accepted = true, "")), callbacks.inputAcks)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(42, controllerSample(kind = ControllerEventKind.STATE, buttonMask = 1))),
+                InternetControllerSendQueue.Delivery.ANALOG,
+            ),
+        )
+
+        val controllers = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(2, controllers.size)
+        assertEquals(41L, controllers[0].inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, controllers[0].kind)
+        assertEquals(42L, controllers[1].inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, controllers[1].kind)
     }
 
     @Test
@@ -589,6 +785,107 @@ class InternetProductSessionTest {
             callbacks.failures.single().cause?.message,
         )
         assertEquals(0, callbacks.frames.size)
+    }
+
+    @Test
+    fun activeSessionSendsAndReceivesAudioAndBulkRecords() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        assertTrue(session.sendAudioRecord(byteArrayOf(0x11, 0x12)))
+        assertTrue(session.sendBulkRecord(byteArrayOf(0x21, 0x22), ByteArray(16) { 0x33 }))
+        assertArrayEquals(byteArrayOf(0x11, 0x12), peer.audio.single())
+        assertArrayEquals(byteArrayOf(0x21, 0x22), peer.bulk.single())
+
+        peer.audio(byteArrayOf(0xA1.toByte(), 0xA2.toByte()))
+        peer.bulk(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()))
+
+        assertArrayEquals(byteArrayOf(0xA1.toByte(), 0xA2.toByte()), callbacks.audio.single())
+        assertArrayEquals(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()), callbacks.bulk.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun audioRecordBeforeVideoConfigurationIsDroppedWithoutFailingSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.audio(byteArrayOf(0x01))
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(0, peer.closeCalls)
+        assertTrue(callbacks.audio.isEmpty())
+        assertTrue(callbacks.failures.isEmpty())
+
+        peer.receive(videoConfigurationEnvelope(3))
+        peer.audio(byteArrayOf(0x02))
+
+        assertArrayEquals(byteArrayOf(0x02), callbacks.audio.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun overlappingAudioRecordAdmissionsDoNotFailActiveSession() {
+        val firstSendEntered = CountDownLatch(1)
+        val releaseFirstSend = CountDownLatch(1)
+        val audioSendCalls = AtomicInteger(0)
+        val peer =
+            ProductFakePeerEngine(
+                sendAudioHook = {
+                    if (audioSendCalls.incrementAndGet() == 1) {
+                        firstSendEntered.countDown()
+                        assertTrue(releaseFirstSend.await(2, TimeUnit.SECONDS))
+                    }
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+        val payload = ByteArray(InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES) { 0x11 }
+        val executor = Executors.newFixedThreadPool(2)
+
+        val first = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(firstSendEntered.await(2, TimeUnit.SECONDS))
+        val second = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(second.get(2, TimeUnit.SECONDS))
+        releaseFirstSend.countDown()
+
+        assertTrue(first.get(2, TimeUnit.SECONDS))
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS))
+        assertEquals(2, peer.audio.size)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun advancedChannelRecordsAreRejectedOutsideActiveSessionAndFailClosedOnBacklogFailure() {
+        val inactive = session(ProductFakePeerEngine(), ProductFakeNetworkMonitor(), ProductCallbacks())
+        assertFalse(inactive.sendAudioRecord(byteArrayOf(1)))
+        assertFalse(inactive.sendBulkRecord(byteArrayOf(2), ByteArray(16)))
+
+        val peer = ProductFakePeerEngine(acceptBulkRecords = false)
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        assertFalse(session.sendBulkRecord(byteArrayOf(3), ByteArray(16)))
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals("Protocol v1 advanced channel backlog rejected a product-session record", callbacks.failures.single().message)
+        assertEquals(1, peer.closeCalls)
     }
 
     @Test
@@ -1756,15 +2053,35 @@ class InternetProductSessionTest {
         session: InternetProductSession,
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
+        controller: Boolean = false,
     ) {
         session.start()
         monitor.available("wifi")
         peer.observer.onConnected(PeerRoute.DIRECT)
-        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
-        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        val hello = hostHello()
+        val accepted = sessionAccepted()
+        if (controller) {
+            hello.addCapabilities(Capability.CAPABILITY_CONTROLLER)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER)
+        }
+        peer.receive(controlEnvelope(1).setHostHello(hello).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
         peer.receive(videoConfigurationEnvelope(3))
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
+
+    private fun controllerSample(
+        kind: ControllerEventKind,
+        buttonMask: Int = 0,
+        axes: ControllerAxes = ControllerAxes.NEUTRAL,
+    ): ControllerStateSample =
+        ControllerStateSample(
+            controllerId = "pad-1",
+            controllerEpoch = 3,
+            kind = kind,
+            buttonMask = buttonMask,
+            axes = axes,
+        )
 
     private fun videoConfigurationEnvelope(
         messageId: Long,
@@ -1907,10 +2224,22 @@ private class ProductRevocationBacking {
     val revoked = AtomicBoolean(false)
 }
 
+private data class ProductInputAckCallback(
+    val inputId: Long,
+    val controllerId: String?,
+    val controllerEpoch: Long?,
+    val accepted: Boolean,
+    val rejectionReason: String,
+)
+
 private class ProductCallbacks : InternetProductSessionCallbacks {
     val states = java.util.concurrent.CopyOnWriteArrayList<InternetProductSessionState>()
     val frames = mutableListOf<ProductVideoFrame>()
+    val audio = mutableListOf<ByteArray>()
+    val bulk = mutableListOf<ByteArray>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
+    val appliedConfigurations = mutableListOf<ProductVideoConfiguration>()
+    val inputAcks = java.util.concurrent.CopyOnWriteArrayList<ProductInputAckCallback>()
     val freshReasons = mutableListOf<String>()
     val failures = mutableListOf<Throwable>()
     val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
@@ -1928,7 +2257,21 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
             },
         )
     }
+    override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
+        appliedConfigurations += configuration
+    }
+    override fun onInputAck(
+        inputId: Long,
+        controllerId: String?,
+        controllerEpoch: Long?,
+        accepted: Boolean,
+        rejectionReason: String,
+    ) {
+        inputAcks += ProductInputAckCallback(inputId, controllerId, controllerEpoch, accepted, rejectionReason)
+    }
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
+    override fun onAudioRecord(payload: ByteArray) { audio += payload }
+    override fun onBulkRecord(payload: ByteArray) { bulk += payload }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }
@@ -1952,11 +2295,16 @@ private class ProductFakePeerEngine(
     private val closeFailure: Throwable? = null,
     private val startHook: () -> Unit = {},
     private val sendControlHook: (ByteArray) -> Unit = {},
+    private val sendControlResult: (ByteArray) -> Boolean = { true },
+    private val sendAudioHook: (ByteArray) -> Unit = {},
+    private val acceptBulkRecords: Boolean = true,
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
     lateinit var observer: WebRtcPeerEngine.Observer
     val control = mutableListOf<ByteArray>()
+    val audio = mutableListOf<ByteArray>()
+    val bulk = mutableListOf<ByteArray>()
     var startCalls = 0
     var restartCalls = 0
     var closeCalls = 0
@@ -1966,11 +2314,18 @@ private class ProductFakePeerEngine(
         startHook()
     }
     override fun sendControl(payload: ByteArray): Boolean {
-        val accepted = control.add(payload)
+        val accepted = sendControlResult(payload)
+        if (accepted) control.add(payload)
         if (accepted) sendControlHook(payload)
         return accepted
     }
     override fun sendMedia(frame: OutboundMediaFrame): Boolean = true
+    override fun sendAudioRecord(payload: ByteArray): Boolean {
+        val accepted = synchronized(audio) { audio.add(payload) }
+        if (accepted) sendAudioHook(payload)
+        return accepted
+    }
+    override fun sendBulkRecord(payload: ByteArray): Boolean = acceptBulkRecords && bulk.add(payload)
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
     override fun close() {
@@ -1979,9 +2334,16 @@ private class ProductFakePeerEngine(
     }
     fun receive(envelope: Envelope) = observer.onControlMessage(7, envelope.toByteArray())
     fun media(payload: ByteArray) = observer.onMediaPacket(7, payload)
+    fun audio(payload: ByteArray) = observer.onAudioRecord(7, payload)
+    fun bulk(payload: ByteArray) = observer.onBulkRecord(7, payload)
 
     fun keyframeRequests(): List<Envelope> =
         control
             .map(Envelope::parseFrom)
             .filter { it.payloadCase == Envelope.PayloadCase.REQUEST_KEYFRAME }
+
+    fun controllerEvents(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
 }

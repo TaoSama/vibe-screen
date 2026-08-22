@@ -54,8 +54,10 @@ older installed app as the current origin/main Host.
 
 The retained host-display-rotation.json intentionally contains no completed
 physical or virtual run. Running the offline gate produced
-host-display-rotation-gate.json with status=failed and errors for missing
+host-display-rotation-gate.json with status=failed and errors including missing
 rotated physical and virtual host-display evidence.
+At 2026-08-20T23:43:45Z the gate output was regenerated with the stricter
+readiness fields and input-schema checks; the verdict remains failed/open.
 
 This record does not rotate any macOS display, does not launch or install the
 Android app, does not start the Host, and does not send input to the device
@@ -82,6 +84,7 @@ Android screenshot, corner/center touch matrix, Host log, Android logcat, stable
 stream/no-teardown result, and proof that the original macOS rotation was
 restored. Then summarize those artifacts in host-display-rotation.json and run:
 
-    PYTHONPATH=tools python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+    PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
       docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
-      --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
+      --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json \
+      --check-artifacts

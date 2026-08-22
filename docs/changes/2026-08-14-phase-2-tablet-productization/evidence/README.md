@@ -68,3 +68,20 @@ must record `first_failure_at` and fail the run. A phone run, emulator run,
 synthetic layout test, focused unit test, or short soak belongs in its own
 evidence record but does not close the 8-9 inch tablet or eight-hour
 sustained-use gates.
+
+Hardware-keyboard workflow evidence uses a focused gate summary alongside any
+tablet or substitute-device records. A passing directory must include
+`hardware-keyboard-observations.json`, `hardware-keyboard-summary.json`,
+`dumpsys-input.txt`, Android production forwarding logs, Host `Key injected:`
+logs, Host listener/signing/TCC preflight records, and a screenshot or recording
+of the visible Mac result. Generate the summary with:
+
+```bash
+make hardware-keyboard-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The summary closes the hardware-keyboard workflow gate only when
+`verdict=pass` and `can_close_hardware_keyboard_gate=true`. A blocked record may
+be kept here when the Android device lock, physical keyboard, Host listener, or
+stable signed/TCC Host prerequisite is missing; blocked evidence must not run
+ADB when the shared Android lock is already held.

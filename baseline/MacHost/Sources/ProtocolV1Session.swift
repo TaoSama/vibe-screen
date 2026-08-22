@@ -1185,11 +1185,11 @@ final class ProtocolV1SessionCoordinator {
             let token = nextVideoPreferencesToken
             nextVideoPreferencesToken &+= 1
             pendingVideoPreferencesToken = token
-            // An explicit bitrate wins over the preset intent. A reset request
-            // is honored only when no explicit bitrate is requested, matching
-            // the "explicit bitrate overrides quality" contract.
+            // An explicit bitrate wins over the preset intent, but it can still
+            // carry a quality reset so the client can show AUTO without leaving
+            // a stale preset active on the host.
             let resolvedPreset = prefs.bitrateKbps == 0 ? prefs.qualityPreset : .unspecified
-            let resolvedReset = prefs.bitrateKbps == 0 ? prefs.resetQualityToAuto : false
+            let resolvedReset = prefs.resetQualityToAuto
             return [
                 .applyVideoPreferences(
                     token: token,

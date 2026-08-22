@@ -34,7 +34,8 @@ def product_record(
     return (
         "Phase 3 product signaling self-test: PASS "
         f"(productSession=true, protocolV1=true, route={route}, epoch=1, "
-        "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, "
+        "configEpoch=2, rotation=90, mediaSource=videotoolbox-hevc, "
+        "keyframe=true, delta=true, input=true, "
         f"applicationE2EE={application_e2ee}, "
         f"selectedCandidatePair={route}(local={candidate},remote={candidate},"
         f"protocol={protocol}), controlChannel=ordered-reliable, "
@@ -91,7 +92,8 @@ class PeerOutputParserTests(unittest.TestCase):
             "Phase 3 product signaling self-test: FAIL (actual failure)",
             "Phase 3 product signaling self-test: PASS-STALE "
             "productSession=true protocolV1=true route=direct epoch=1 "
-            "configEpoch=2 rotation=90 keyframe=true delta=true input=true "
+            "configEpoch=2 rotation=90 mediaSource=videotoolbox-hevc "
+            "keyframe=true delta=true input=true "
             "applicationE2EE=true-old "
             "selectedCandidatePair=direct(local=host,remote=host,protocol=udp)",
         ))

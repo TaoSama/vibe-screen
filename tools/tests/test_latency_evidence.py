@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.vibescreen_evidence.latency import GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import GATE_INPUT_P95_SUB50, GATE_USB_GLASS_TO_GLASS_SUB50
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 
 
@@ -267,6 +267,26 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_schema_requires_external_camera_annotation_uncertainty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            setup = manifest["measurement_setup"]
+            assert isinstance(setup, dict)
+            del setup["max_frame_annotation_uncertainty_ms"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.measurement_setup.max_frame_annotation_uncertainty_ms is required",
+            report["gate"]["reasons"],
+        )
+
     def test_schema_rejects_unknown_manifest_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -308,6 +328,184 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertIn(
             "samples.file must stay within the evidence directory",
             report["gate"]["reasons"],
+        )
+
+
+    def test_synchronized_clock_input_package_passes(self) -> None:
+        report = build_latency_evidence_report(
+            manifest_path=FIXTURE_DIR / "synchronized-clock-input-valid" / "manifest.json",
+            gate_profile=GATE_INPUT_P95_SUB50,
+        )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertTrue(report["gate"]["can_close_performance_gate"])
+        self.assertEqual(report["gate"]["sample_count"], 5)
+        self.assertEqual(report["measurement_method"], "synchronized-clock")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_synchronized_clock_requires_input_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["latency_kind"] = "glass-to-glass"
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronized-clock measurement_method requires latency_kind input",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_error_budget_must_be_below_5ms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["total_error_budget_ms"] = 5.0
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("total_error_budget_ms must be less than 5 ms" in reason
+                for reason in report["gate"]["reasons"])
+        )
+        self.assertIn(
+            "manifest.synchronization.total_error_budget_ms must be less than 5",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_allows_budget_just_below_5ms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["total_error_budget_ms"] = 4.999
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_synchronized_clock_rejects_manual_frame_count_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["samples"]["annotation_method"] = "manual-frame-count"
+            self.replace_samples(
+                root,
+                manifest,
+                "start_frame,end_frame,camera_fps\n"
+                "100,105,240\n200,205,240\n300,305,240\n"
+                "400,405,240\n500,505,240\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms",
+            report["gate"]["reasons"],
+        )
+        self.assertIn(
+            "manifest.samples.annotation_method must be direct-latency-ms",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_components_must_fit_total_budget(self) -> None:
+        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    source = FIXTURE_DIR / "synchronized-clock-input-valid"
+                    manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+                    manifest["synchronization"]["total_error_budget_ms"] = 3.0
+                    manifest["synchronization"][field] = 3.1
+                    (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+                    self.write_manifest(root, manifest)
+
+                    report = build_latency_evidence_report(
+                        manifest_path=root / "manifest.json",
+                        gate_profile=GATE_INPUT_P95_SUB50,
+                    )
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertIn(
+                    f"synchronization.{field} must be less than or equal to "
+                    "synchronization.total_error_budget_ms",
+                    report["gate"]["reasons"],
+                )
+
+    def test_synchronized_clock_component_sum_must_fit_total_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["before_skew_ms"] = 1.4
+            manifest["synchronization"]["after_skew_ms"] = 1.4
+            manifest["synchronization"]["max_drift_ms"] = 1.3
+            manifest["synchronization"]["total_error_budget_ms"] = 4.0
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronization.before_skew_ms + synchronization.after_skew_ms + "
+            "synchronization.max_drift_ms must be less than or equal to "
+            "synchronization.total_error_budget_ms",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_budget_applied_to_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["total_error_budget_ms"] = 4.5
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n45\n46\n47\n48\n49\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("synchronization error budget exceeds the gate threshold" in reason
+                for reason in report["gate"]["reasons"])
         )
 
 

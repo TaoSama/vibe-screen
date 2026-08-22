@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/hardware-keyboard.schema.json",
+  "title": "Vibe Screen Phase 2 hardware-keyboard workflow evidence summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_hardware_keyboard_gate",
+    "requires_physical_keyboard",
+    "adb_input_is_not_physical_keyboard_evidence",
+    "required_device_identity",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "phase2_hardware_keyboard_workflow"},
+    "profile": {"const": "phase2-hardware-keyboard-workflow"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_hardware_keyboard_gate": {"type": "boolean"},
+    "requires_physical_keyboard": {"const": true},
+    "adb_input_is_not_physical_keyboard_evidence": {"const": true},
+    "required_device_identity": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "android_device_lock_acquired",
+        "device_identity_recorded",
+        "device_identity_matches_claim",
+        "apk_identity_recorded",
+        "physical_keyboard_attached",
+        "android_keyboard_source_observed",
+        "protocol_keyboard_capability_negotiated",
+        "protocol_usb_hid_modifier_capability_negotiated",
+        "android_production_forwarding_observed",
+        "host_listener_observed",
+        "host_stable_signed_tcc_ready",
+        "host_key_injection_observed",
+        "key_press_release_observed",
+        "shortcut_combo_observed",
+        "modifier_release_no_leak_observed",
+        "visible_mac_result_observed",
+        "host_logs_retained",
+        "android_logs_retained"
+      ],
+      "properties": {
+        "android_device_lock_acquired": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "device_identity_matches_claim": {"type": "boolean"},
+        "apk_identity_recorded": {"type": "boolean"},
+        "physical_keyboard_attached": {"type": "boolean"},
+        "android_keyboard_source_observed": {"type": "boolean"},
+        "protocol_keyboard_capability_negotiated": {"type": "boolean"},
+        "protocol_usb_hid_modifier_capability_negotiated": {"type": "boolean"},
+        "android_production_forwarding_observed": {"type": "boolean"},
+        "host_listener_observed": {"type": "boolean"},
+        "host_stable_signed_tcc_ready": {"type": "boolean"},
+        "host_key_injection_observed": {"type": "boolean"},
+        "key_press_release_observed": {"type": "boolean"},
+        "shortcut_combo_observed": {"type": "boolean"},
+        "modifier_release_no_leak_observed": {"type": "boolean"},
+        "visible_mac_result_observed": {"type": "boolean"},
+        "host_logs_retained": {"type": "boolean"},
+        "android_logs_retained": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}

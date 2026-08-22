@@ -2,9 +2,9 @@ import Foundation
 import VibeScreenProtocol
 
 /// Local evidence harness for the production product-session composition.
-/// It uses synthetic encoded payloads so it never starts screen capture or a stream server.
+/// It uses a synthetic Protocol v1 peer, but media payloads come from real
+/// VideoToolbox HEVC output and travel over the production WebRTC media channel.
 enum InternetProductSessionSelfTest {
-    static let keyframePlaintextSeed = "VIBE-PRODUCT-E2E-KEYFRAME-PLAINTEXT-SEED"
     static let deltaPlaintextSeed = "VIBE-PRODUCT-E2E-DELTA-PLAINTEXT-SEED"
 
     private static let timeout: TimeInterval = 20
@@ -127,20 +127,21 @@ enum InternetProductSessionSelfTest {
             }
             try wait(keyframeRequested, gate: "the post-rotation keyframe request")
 
+            let realMedia = try InternetProductRealEncodedMediaSource.makeHEVCFrames()
             session.sendFrame(
-                Data(keyframePlaintextSeed.utf8),
+                realMedia.keyframe,
                 timestamp: 1_000,
                 isKeyframe: true,
                 sessionEpoch: 1
             )
-            try wait(harness.keyframeComplete, gate: "the synthetic keyframe")
+            try wait(harness.keyframeComplete, gate: "the real VideoToolbox keyframe")
             session.sendFrame(
-                Data(deltaPlaintextSeed.utf8),
+                realMedia.delta,
                 timestamp: 2_000,
                 isKeyframe: false,
                 sessionEpoch: 1
             )
-            try wait(harness.mediaComplete, gate: "keyframe and delta media")
+            try wait(harness.mediaComplete, gate: "real VideoToolbox keyframe and delta media")
             try wait(harness.candidatePairObserved, gate: "the selected ICE candidate pair")
 
             guard let evidence = harness.evidence(hostPath: state.hostPath),
@@ -155,7 +156,8 @@ enum InternetProductSessionSelfTest {
                 "Phase 3 product signaling self-test: PASS "
                     + "(productSession=true, protocolV1=true, route=\(pathLabel(evidence.route)), "
                     + "epoch=\(evidence.epoch), configEpoch=\(evidence.configEpoch), rotation=90, "
-                    + "keyframe=true, delta=true, input=true, applicationE2EE=true, "
+                    + "mediaSource=videotoolbox-hevc, keyframe=true, delta=true, "
+                    + "input=true, applicationE2EE=true, "
                     + "selectedCandidatePair=\(pathLabel(evidence.route))"
                     + "(local=\(evidence.localCandidateType),remote=\(evidence.remoteCandidateType),"
                     + "protocol=\(evidence.networkProtocol)), "
@@ -300,6 +302,8 @@ final class ProductDeviceHarness {
     private var displayChangedRotation: UInt32 = 0
     private var keyframeReceived = false
     private var deltaReceived = false
+    private var keyframePayloadBytes = 0
+    private var deltaPayloadBytes = 0
     private var touchSent = false
     private var pendingControlPayloads: [Data] = []
     private var controlSendInFlight = false
@@ -424,15 +428,25 @@ final class ProductDeviceHarness {
         let packet = try ProtocolV1MediaPacketCodec.decode(payload)
         lock.withProductSelfTestLock {
             if packet.header.keyframe,
-               packet.payload == Data(InternetProductSessionSelfTest.keyframePlaintextSeed.utf8) {
+               packet.header.codec == .hevc,
+               packet.payload.starts(with: [0x00, 0x00, 0x00, 0x01]) {
                 if !keyframeReceived { keyframeComplete.signal() }
                 keyframeReceived = true
+                keyframePayloadBytes = packet.payload.count
             }
             if !packet.header.keyframe,
-               packet.payload == Data(InternetProductSessionSelfTest.deltaPlaintextSeed.utf8) {
+               packet.header.codec == .hevc,
+               packet.payload.starts(with: [0x00, 0x00, 0x00, 0x01]),
+               !packet.payload.isEmpty,
+               packet.payload != Data(InternetProductSessionSelfTest.deltaPlaintextSeed.utf8) {
                 deltaReceived = true
+                deltaPayloadBytes = packet.payload.count
             }
-            if keyframeReceived && deltaReceived { mediaComplete.signal() }
+            if keyframeReceived && deltaReceived
+                && keyframePayloadBytes > 0
+                && deltaPayloadBytes > 0 {
+                mediaComplete.signal()
+            }
         }
     }
 
