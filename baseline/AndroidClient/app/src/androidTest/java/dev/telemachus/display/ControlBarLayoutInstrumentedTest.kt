@@ -157,6 +157,34 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun productionBinderDisablesSelectorAndAnnouncesPendingDisplaySwitch() {
+        withLayout(widthDp = 320) { layout ->
+            val selectable =
+                DisplayCapsuleViewBinder.bind(
+                    resources = layout.context.resources,
+                    selector = layout.views.displaySelector,
+                    labelView = layout.label,
+                    displaySelection = true,
+                    displays = listOf(display("main", FULL_DISPLAY_NAME, true), display("side", "Side Display")),
+                    selectedId = "main",
+                    pendingDisplayId = "side",
+                )
+
+            assertTrue(selectable)
+            assertEquals(View.VISIBLE, layout.views.displaySelector.visibility)
+            assertFalse(layout.views.displaySelector.isEnabled)
+            assertEquals(
+                layout.context.getString(R.string.display_capsule_switching, "Side Display"),
+                layout.label.text.toString(),
+            )
+            assertEquals(
+                layout.context.getString(R.string.control_displays_switching, FULL_DISPLAY_NAME, "Side Display"),
+                layout.views.displaySelector.contentDescription.toString(),
+            )
+        }
+    }
+
+    @Test
     fun productionApplierCoversStackedColumnAndHiddenSelectorBoundaries() {
         val geometry = ControlBarLayoutApplier.geometry(applicationContext().resources)
         val withHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)

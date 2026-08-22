@@ -457,6 +457,13 @@ internal object DisplayCapsulePolicy {
         displays: List<StreamDisplayOption>,
     ): Boolean = displaySelection && displays.size > 1
 
+    /** The selector remains visible during a host-confirmation wait, but cannot be tapped again. */
+    fun isEnabled(
+        displaySelection: Boolean,
+        displays: List<StreamDisplayOption>,
+        pendingDisplayId: String?,
+    ): Boolean = isSelectable(displaySelection, displays) && pendingDisplayId == null
+
     /** Resolve the option currently marked active, if any. */
     fun activeOption(
         displays: List<StreamDisplayOption>,
@@ -480,6 +487,15 @@ internal object DisplayCapsulePolicy {
                 ?: return ""
         return active.name.trim()
     }
+
+    /** Resolve the display currently awaiting host confirmation, if any. */
+    fun pendingOption(
+        displays: List<StreamDisplayOption>,
+        pendingDisplayId: String?,
+    ): StreamDisplayOption? =
+        pendingDisplayId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { id -> displays.firstOrNull { it.id == id } }
 
     fun displayKind(option: StreamDisplayOption): DisplayKind =
         when {
