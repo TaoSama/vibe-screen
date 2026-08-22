@@ -20,6 +20,11 @@ For every device run, record:
 
 - ADB endpoint, hardware serial, manufacturer, model, Android version, SDK,
   build fingerprint, display size/density, battery, and boot state;
+- Mac Host model identifier, CPU architecture (`apple_silicon` or `intel`),
+  CPU/chip name, macOS product version and build, Xcode/Swift versions, Host
+  app commit/binary SHA/signing identity, Screen Recording and Accessibility
+  state, capture backend, VideoToolbox codec path, display topology, and display
+  UUID/logical/physical dimensions;
 - APK version/signing identity and install timestamp;
 - ADB reverse mapping and host listener;
 - decoder name, first output frame, continuing frame counters, and drops;
@@ -90,6 +95,30 @@ produced them. Later Xiaomi 13 streaming, display-switch, input, and
 two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
+### macOS Host compatibility matrix gate
+
+The macOS compatibility matrix is hardware-gated. A row can close only for the
+exact Host architecture, Mac model identifier, macOS build, display topology,
+transport, Android counterpart, Host build identity, and artifacts recorded in
+that evidence bundle. CI `macos-15` build/test output, a local Apple silicon run,
+or a successful row on another display setup cannot be extrapolated to Intel, to
+the whole macOS 13+ range, or to a different built-in/external/multi-display,
+dummy/headless, or Screen Sharing topology.
+
+Before claiming a row, follow the
+[macOS Host compatibility runbook](runbook/macos-host-compatibility.md), retain
+the row artifacts, then run:
+
+```bash
+make macos-hardware-compatibility-gate EVIDENCE_DIR="$EVIDENCE_DIR"
+```
+
+The gate consumes `macos-hardware-compatibility.json` and writes
+`macos-hardware-compatibility-gate.json`. A row is accepted only when the summary
+contains `verdict=pass` and `can_close_macos_host_compatibility_row=true`.
+`blocked`, `insufficient`, or `failed` summaries keep the README compatibility
+matrix open for that row.
+
 ### Native pointer HID mouse gate
 
 Native pointer move/click is a hardware-gated acceptance item. Use a real USB or
@@ -141,6 +170,10 @@ P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
   do not prove the OS accepted a virtual gamepad.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
+- macOS Host compatibility claims require a passing
+  `macos-hardware-compatibility-gate` summary for the exact Host row. A source
+  build, XCTest/self-test pass, or CI runner result can support the row but does
+  not prove hardware compatibility by itself.
 - A sustained stream keeps live PIDs and rising frames throughout, with no fatal
   codec error and controlled thermal behavior. A two-hour soak has run on the
   Xiaomi 13 with a stable stream and stable client memory; the host
