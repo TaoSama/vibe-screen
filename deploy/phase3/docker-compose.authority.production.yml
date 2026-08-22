@@ -24,7 +24,7 @@ services:
     restart: "no"
     command:
       - --migrate
-      - /usr/share/vibe-screen/migrations/001_authority.sql
+      - /usr/share/vibe-screen/migrations
     environment:
       VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/migration_database_url
       VIBE_AUTHORITY_DATABASE_TLS_MODE: verify-full
