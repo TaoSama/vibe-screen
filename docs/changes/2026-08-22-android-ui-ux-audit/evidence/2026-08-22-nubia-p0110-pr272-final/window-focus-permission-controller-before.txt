@@ -1,0 +1,2 @@
+  mCurrentFocus=Window{ca94cc2 u0 com.android.permissioncontroller/com.android.permissioncontroller.permissionplus.ui.InterceptJumpDialogActivity}
+  mFocusedApp=ActivityRecord{131365723 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t529}

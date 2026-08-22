@@ -1,0 +1,7 @@
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: dev.telemachus.display/.MainActivity
+TotalTime: 407
+WaitTime: 409
+Complete

@@ -206,6 +206,7 @@ internal object ControlBarLayoutApplier {
 
 /** Production binding for the visible and accessibility display names. */
 internal object DisplayCapsuleViewBinder {
+    @JvmOverloads
     fun bind(
         resources: Resources,
         selector: View,
@@ -213,15 +214,30 @@ internal object DisplayCapsuleViewBinder {
         displaySelection: Boolean,
         displays: List<StreamDisplayOption>,
         selectedId: String,
+        pendingDisplayId: String? = null,
     ): Boolean {
         val selectable = DisplayCapsulePolicy.isSelectable(displaySelection, displays)
-        val label =
+        val activeLabel =
             DisplayCapsulePolicy.capsuleLabel(displays, selectedId)
                 .ifEmpty { resources.getString(R.string.display_capsule_placeholder) }
+        val pendingLabel =
+            DisplayCapsulePolicy
+                .pendingOption(displays, pendingDisplayId)
+                ?.name
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val label =
+            pendingLabel?.let { resources.getString(R.string.display_capsule_switching, it) }
+                ?: activeLabel
         labelView.text = label
-        selector.contentDescription = resources.getString(R.string.control_displays_current, label)
+        selector.contentDescription =
+            if (pendingLabel != null) {
+                resources.getString(R.string.control_displays_switching, activeLabel, pendingLabel)
+            } else {
+                resources.getString(R.string.control_displays_current, activeLabel)
+            }
         selector.visibility = if (selectable) View.VISIBLE else View.GONE
-        selector.isEnabled = selectable
+        selector.isEnabled = DisplayCapsulePolicy.isEnabled(displaySelection, displays, pendingDisplayId)
         return selectable
     }
 }

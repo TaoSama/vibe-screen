@@ -1,0 +1,71 @@
+
+dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest:
+Error in realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest):
+androidx.test.espresso.PerformException: Error performing 'single click' on view 'Animations or transitions are enabled on the target device.
+For more info check: https://developer.android.com/training/testing/espresso/setup#set-up-environment
+
+an instance of android.widget.TextView and view.getText() with or without transformation to match: a string containing "DELL U2723QE"'.
+	at androidx.test.espresso.PerformException$Builder.build(PerformException.java:86)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:56)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:31)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:385)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:51)
+	... 32 trimmed
+Caused by: java.lang.RuntimeException: Action will not be performed because the target view does not match one or more of the following constraints:
+(view has effective visibility <VISIBLE> and view.getGlobalVisibleRect() covers at least <90> percent of the view's area)
+Target view: "MaterialTextView{id=16908310, res-name=title, visibility=VISIBLE, width=1218, height=76, has-focus=false, has-focusable=false, has-window-focus=true, is-clickable=false, is-enabled=true, is-focused=false, is-focusable=false, is-layout-requested=false, is-selected=false, layout-params=android.widget.RelativeLayout$LayoutParams@YYYYYY, tag=null, root-is-layout-requested=false, has-input-connection=false, x=0.0, y=0.0, text=DELL U2723QE · External · 1920×1080, input-type=0, ime-target=false, has-links=false}"
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:287)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:282)
+	at android.os.Looper.loop(Looper.java:382)
+	at android.app.ActivityThread.main(ActivityThread.java:10139)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:628)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:956)
+
+
+Time: 47.174
+There was 1 failure:
+1) realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest)
+androidx.test.espresso.PerformException: Error performing 'single click' on view 'Animations or transitions are enabled on the target device.
+For more info check: https://developer.android.com/training/testing/espresso/setup#set-up-environment
+
+an instance of android.widget.TextView and view.getText() with or without transformation to match: a string containing "DELL U2723QE"'.
+	at androidx.test.espresso.PerformException$Builder.build(PerformException.java:86)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:56)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:31)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:385)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:51)
+	... 32 trimmed
+Caused by: java.lang.RuntimeException: Action will not be performed because the target view does not match one or more of the following constraints:
+(view has effective visibility <VISIBLE> and view.getGlobalVisibleRect() covers at least <90> percent of the view's area)
+Target view: "MaterialTextView{id=16908310, res-name=title, visibility=VISIBLE, width=1218, height=76, has-focus=false, has-focusable=false, has-window-focus=true, is-clickable=false, is-enabled=true, is-focused=false, is-focusable=false, is-layout-requested=false, is-selected=false, layout-params=android.widget.RelativeLayout$LayoutParams@YYYYYY, tag=null, root-is-layout-requested=false, has-input-connection=false, x=0.0, y=0.0, text=DELL U2723QE · External · 1920×1080, input-type=0, ime-target=false, has-links=false}"
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:287)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:282)
+	at android.os.Looper.loop(Looper.java:382)
+	at android.app.ActivityThread.main(ActivityThread.java:10139)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:628)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:956)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
