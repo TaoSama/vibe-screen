@@ -37,6 +37,21 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun invalidReconfigureStopsOldOutputAndLeavesPlayerUnconfigured() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Rejected(AudioRejectReason.UNSUPPORTED_CODEC),
+            player.configure(audioConfig(codec = dev.vibescreen.protocol.v1.AudioCodec.AUDIO_CODEC_OPUS), sessionEpoch = 6),
+        )
+
+        assertNull(player.activeFormat())
+        assertEquals(listOf("start", "stop", "close"), factory.created.single().events)
+    }
+
+    @Test
     fun configureReportsOutputCreateAndStartFailures() {
         val createFailure = FakePcmAudioOutputFactory(createFailure = AudioOutputFailureReason.CREATE_FAILED)
         assertEquals(

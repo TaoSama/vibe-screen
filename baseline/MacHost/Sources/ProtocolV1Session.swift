@@ -183,6 +183,7 @@ struct ProtocolV1SessionConfiguration {
         controllerAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
         fileTransferAllowed: Bool = false,
+        audioCaptureAvailable: Bool = false,
         wakeHostAvailable: Bool = false
     ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
@@ -204,6 +205,7 @@ struct ProtocolV1SessionConfiguration {
         if fileTransferAllowed && managedPolicy.fileTransferAllowed {
             capabilities.insert(.fileTransfer)
         }
+        if audioCaptureAvailable && managedPolicy.audioAllowed { capabilities.insert(.audio) }
         if wakeHostAvailable && managedPolicy.wakeAllowed { capabilities.insert(.wakeHost) }
         return capabilities
     }
@@ -239,6 +241,71 @@ enum ProtocolV1SessionPhase: Equatable {
     case streaming(configEpoch: UInt64, streamID: UInt64)
     case closed
     case failed
+}
+
+private struct ProtocolV1AudioState: Equatable {
+    static let streamID: UInt64 = 2
+    static let initialConfigEpoch: UInt64 = 1
+    static let sampleRateHz: UInt32 = 48_000
+    static let channelCount: UInt32 = 2
+    static let framesPerPacket: UInt32 = 480
+
+    enum Status: Equatable {
+        case idle
+        case awaitingResult(configEpoch: UInt64)
+        case streaming(configEpoch: UInt64)
+        case disabled(reason: String)
+    }
+
+    var nextConfigEpoch = initialConfigEpoch
+    var status: Status = .idle
+
+    var isConfigured: Bool {
+        if case .streaming = status { return true }
+        return false
+    }
+
+    var shouldRequestConfiguration: Bool {
+        if case .idle = status { return true }
+        return false
+    }
+
+    mutating func reset() {
+        nextConfigEpoch = Self.initialConfigEpoch
+        status = .idle
+    }
+
+    mutating func beginConfiguration() -> VSAudioConfig {
+        let config = Self.config(configEpoch: nextConfigEpoch)
+        status = .awaitingResult(configEpoch: config.configEpoch)
+        return config
+    }
+
+    mutating func accept(configEpoch: UInt64) -> VSAudioConfig? {
+        guard case .awaitingResult(let pendingConfigEpoch) = status,
+              pendingConfigEpoch == configEpoch else { return nil }
+        let config = Self.config(configEpoch: configEpoch)
+        status = .streaming(configEpoch: configEpoch)
+        nextConfigEpoch = configEpoch + 1
+        return config
+    }
+
+    mutating func disable(reason: String) -> Bool {
+        let wasActive = status != .idle && status != .disabled(reason: reason)
+        status = .disabled(reason: reason)
+        return wasActive
+    }
+
+    static func config(configEpoch: UInt64) -> VSAudioConfig {
+        var config = VSAudioConfig()
+        config.streamID = streamID
+        config.configEpoch = configEpoch
+        config.codec = .pcmS16Le
+        config.sampleRateHz = sampleRateHz
+        config.channelCount = channelCount
+        config.framesPerPacket = framesPerPacket
+        return config
+    }
 }
 
 enum ProtocolV1SessionAction {
@@ -296,6 +363,8 @@ enum ProtocolV1SessionAction {
     case fileTransferComplete(VSFileTransferComplete)
     case remoteManagedPolicyChanged(VSManagedPolicyStatus)
     case sendBulk(Data)
+    case startAudio(VSAudioConfig)
+    case stopAudio(reason: String)
     case wakeHost(request: WakeHostRequestContext, correlationID: UInt64)
     case peerError(VSProtocolError)
     case close
@@ -334,6 +403,7 @@ final class ProtocolV1SessionCoordinator {
     private var managedPolicyResolver: ManagedPolicyResolver
     private var negotiatedFileTransferPolicy: ProtocolV1FileTransferPolicy
     private var peerResourceLimits = VSResourceLimits()
+    private var audioState = ProtocolV1AudioState()
     /// Host-action invocations the host is currently running, keyed by the
     /// client's invocation_id and mapped to the request's Envelope message_id.
     /// The result echoes both the invocation_id (in the payload) and the
@@ -854,7 +924,33 @@ final class ProtocolV1SessionCoordinator {
                     return serializationFailure()
                 }
             }
+            if negotiatedCapabilities.contains(.audio),
+               audioState.shouldRequestConfiguration {
+                let config = audioState.beginConfiguration()
+                do {
+                    actions.append(.sendControl(try encode(payload: .audioConfig(config), correlationID: 0)))
+                } catch {
+                    return serializationFailure()
+                }
+            }
             return actions + [.connectionReady, .requestKeyframe(force: true)]
+
+        case .audioConfigResult(let result):
+            guard negotiatedCapabilities.contains(.audio) else {
+                return unsupportedCapability("Audio was not negotiated.", envelope.messageID)
+            }
+            guard result.streamID == ProtocolV1AudioState.streamID else {
+                return invalidState("AudioConfigResult referenced an unknown audio stream.", envelope.messageID)
+            }
+            guard result.accepted else {
+                let reason = result.rejectionReason.isEmpty ? "audio_config_rejected" : result.rejectionReason
+                _ = audioState.disable(reason: reason)
+                return [.stopAudio(reason: reason)]
+            }
+            guard let config = audioState.accept(configEpoch: result.configEpoch) else {
+                return invalidState("AudioConfigResult does not match the pending configuration.", envelope.messageID)
+            }
+            return [.startAudio(config)]
 
         case .ping(let ping):
             var pong = VSPong()
@@ -1228,6 +1324,7 @@ final class ProtocolV1SessionCoordinator {
             phase = .failed
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
+            audioState.reset()
             pendingHostActionInvocations.removeAll()
             pendingWakeHostRequests.removeAll()
             clipboardCore?.reset()
@@ -1241,6 +1338,7 @@ final class ProtocolV1SessionCoordinator {
             phase = .closed
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
+            audioState.reset()
             pendingHostActionInvocations.removeAll()
             pendingWakeHostRequests.removeAll()
             clipboardCore?.reset()
@@ -1294,6 +1392,12 @@ final class ProtocolV1SessionCoordinator {
                 message: message,
                 correlationID: correlationID
             )
+        }
+    }
+
+    func failAudioRuntime(_ message: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            fail(code: .invalidState, message: message, correlationID: 0)
         }
     }
 
@@ -1503,6 +1607,9 @@ final class ProtocolV1SessionCoordinator {
         if !baseNegotiatedCapabilities.contains(.keyboard) {
             baseNegotiatedCapabilities.remove(.usbHidModifierByte)
         }
+        if hello.resourceLimits.maximumAudioStreams == 0 {
+            baseNegotiatedCapabilities.remove(.audio)
+        }
         self.baseNegotiatedCapabilities = baseNegotiatedCapabilities
         peerResourceLimits = hello.resourceLimits
         negotiatedFileTransferPolicy = fileTransferPolicy(for: managedPolicyResolver.effectivePolicy)
@@ -1564,7 +1671,9 @@ final class ProtocolV1SessionCoordinator {
         limits.maximumClients = 1
         limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
         limits.maximumVideoStreams = 1
-        limits.maximumAudioStreams = ManagedPolicy.defaultMaximumAudioStreams
+        limits.maximumAudioStreams = negotiatedCapabilities.contains(.audio)
+            ? ManagedPolicy.defaultMaximumAudioStreams
+            : 0
         limits.maximumClipboardBytes = negotiatedMaximumClipboardBytes > 0
             ? UInt64(negotiatedMaximumClipboardBytes)
             : ManagedPolicy.defaultMaximumClipboardBytes
@@ -1852,6 +1961,7 @@ final class ProtocolV1SessionCoordinator {
             clipboardCore?.reset()
         }
         negotiatedFileTransferPolicy = fileTransferPolicy(for: effectivePolicy)
+        let previousCapabilities = negotiatedCapabilities
         negotiatedCapabilities = policyFilteredCapabilities(baseNegotiatedCapabilities, policy: effectivePolicy)
         if !effectivePolicy.hostActionsAllowed {
             pendingHostActionInvocations.removeAll()
@@ -1859,7 +1969,13 @@ final class ProtocolV1SessionCoordinator {
         if !effectivePolicy.wakeAllowed {
             pendingWakeHostRequests.removeAll()
         }
-        return [.remoteManagedPolicyChanged(effectivePolicy.protocolStatus)]
+        var actions: [ProtocolV1SessionAction] = [.remoteManagedPolicyChanged(effectivePolicy.protocolStatus)]
+        if previousCapabilities.contains(.audio),
+           !negotiatedCapabilities.contains(.audio),
+           audioState.disable(reason: "managed_policy_audio_denied") {
+            actions.append(.stopAudio(reason: "managed_policy_audio_denied"))
+        }
+        return actions
     }
 
     private func handleIncomingClipboardOffer(
@@ -1973,6 +2089,7 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
+        audioState.reset()
         pendingHostActionInvocations.removeAll()
         pendingWakeHostRequests.removeAll()
         clipboardCore?.reset()
@@ -2012,6 +2129,7 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
+        audioState.reset()
         pendingHostActionInvocations.removeAll()
         pendingWakeHostRequests.removeAll()
         clipboardCore?.reset()

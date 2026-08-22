@@ -1,9 +1,21 @@
 package dev.telemachus.display
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.audio.AudioOutputFailureReason
+import dev.telemachus.display.audio.AudioOutputException
+import dev.telemachus.display.audio.PcmAudioOutput
+import dev.telemachus.display.audio.PcmAudioOutputFactory
+import dev.telemachus.display.audio.PcmAudioStreamFormat
+import dev.telemachus.display.audio.PcmAudioWriteResult
+import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
+import dev.telemachus.display.audio.encodePacket
+import dev.telemachus.display.audio.pcmPayload
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolV1Framing
 import dev.telemachus.display.protocol.TouchSample
+import dev.vibescreen.protocol.v1.AudioCodec
+import dev.vibescreen.protocol.v1.AudioConfig
+import dev.vibescreen.protocol.v1.AudioPacketHeader
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
@@ -55,6 +67,112 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class StreamClientProtocolV1IntegrationTest {
+    @Test
+    fun negotiatedAudioConfigEnablesPcmPlaybackAndStopsOnDisconnect() = runBlocking {
+        ServerSocket(0).use { server ->
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val audioFrameWritten = CountDownLatch(1)
+            val sessionEnded = CountDownLatch(1)
+            audioOutputFactory.onWrite = { audioFrameWritten.countDown() }
+            val configurationRequested = CountDownLatch(1)
+            val audioConfig = audioConfig()
+            val audioPayload = pcmPayload(PcmAudioStreamFormat.from(audioConfig), seed = 30)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(audioConfig).build())
+                        val result = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.AUDIO_CONFIG_RESULT, result.payloadCase)
+                        assertTrue(result.audioConfigResult.accepted)
+                        assertEquals(audioConfig.streamId, result.audioConfigResult.streamId)
+                        assertEquals(audioConfig.configEpoch, result.audioConfigResult.configEpoch)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            encodePacket(
+                                AudioPacketHeader.newBuilder()
+                                    .setStreamId(audioConfig.streamId)
+                                    .setSessionEpoch(7)
+                                    .setConfigEpoch(audioConfig.configEpoch)
+                                    .setSequence(0)
+                                    .setFrameCount(audioConfig.framesPerPacket)
+                                    .setPayloadLength(audioPayload.size)
+                                    .build(),
+                                audioPayload,
+                            ),
+                        )
+                        assertTrue(audioFrameWritten.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(id = 7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.onVideoConfiguration = { _, commit ->
+                commit.accept()
+                configurationRequested.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(listOf("start", "write", "stop", "close"), audioOutputFactory.created.single().events)
+            assertEquals(listOf(audioPayload.toList()), audioOutputFactory.created.single().writes.map { it.toList() })
+        }
+    }
+
+    @Test
+    fun rejectedAudioReconfigurationStopsExistingPlayback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val sessionEnded = CountDownLatch(1)
+            val acceptedConfig = audioConfig()
+            val rejectedConfig = audioConfig(codec = AudioCodec.AUDIO_CODEC_OPUS, configEpoch = 2)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(acceptedConfig).build())
+                        val accepted = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.AUDIO_CONFIG_RESULT, accepted.payloadCase)
+                        assertTrue(accepted.audioConfigResult.accepted)
+
+                        write(peer, base(7).setAudioConfig(rejectedConfig).build())
+                        val rejected = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.AUDIO_CONFIG_RESULT, rejected.payloadCase)
+                        assertFalse(rejected.audioConfigResult.accepted)
+                        assertEquals("unsupported_codec", rejected.audioConfigResult.rejectionReason)
+                        write(peer, disconnect(id = 8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(listOf("start", "stop", "close"), audioOutputFactory.created.single().events)
+        }
+    }
+
     @Test
     fun decoderCommitWithholdsAckDropsPrematureMediaThenRequestsKeyframeAndDeliversNewEpoch() = runBlocking {
         ServerSocket(0).use { server ->
@@ -1380,6 +1498,58 @@ class StreamClientProtocolV1IntegrationTest {
         )
     }
 
+    private fun audioConfig(
+        codec: AudioCodec = AudioCodec.AUDIO_CODEC_PCM_S16LE,
+        configEpoch: Long = 1,
+    ): AudioConfig =
+        AudioConfig.newBuilder()
+            .setStreamId(2)
+            .setConfigEpoch(configEpoch)
+            .setCodec(codec)
+            .setSampleRateHz(48_000)
+            .setChannelCount(2)
+            .setFramesPerPacket(2)
+            .build()
+
+    private class TestPcmAudioOutputFactory : PcmAudioOutputFactory {
+        val created = Collections.synchronizedList(mutableListOf<TestPcmAudioOutput>())
+        var onWrite: () -> Unit = {}
+
+        override fun create(format: PcmAudioStreamFormat): PcmAudioOutput =
+            TestPcmAudioOutput(onWrite).also { created += it }
+    }
+
+    private class TestPcmAudioOutput(
+        private val onWrite: () -> Unit,
+    ) : PcmAudioOutput {
+        val events = Collections.synchronizedList(mutableListOf<String>())
+        val writes = Collections.synchronizedList(mutableListOf<ByteArray>())
+
+        override fun start() {
+            events += "start"
+        }
+
+        override fun writePcm(payload: ByteArray): PcmAudioWriteResult {
+            events += "write"
+            writes += payload.copyOf()
+            onWrite()
+            return PcmAudioWriteResult.Written
+        }
+
+        override fun stop() {
+            events += "stop"
+        }
+
+        override fun close() {
+            try {
+                stop()
+            } catch (failure: RuntimeException) {
+                throw AudioOutputException(AudioOutputFailureReason.STOP_FAILED, failure)
+            }
+            events += "close"
+        }
+    }
+
     private class ManualExecutor(
         private val onSubmit: () -> Unit,
     ) : Executor {
@@ -1642,6 +1812,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_AUDIO,
                 Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
