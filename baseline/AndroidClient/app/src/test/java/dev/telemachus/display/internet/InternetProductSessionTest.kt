@@ -788,6 +788,107 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun activeSessionSendsAndReceivesAudioAndBulkRecords() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        assertTrue(session.sendAudioRecord(byteArrayOf(0x11, 0x12)))
+        assertTrue(session.sendBulkRecord(byteArrayOf(0x21, 0x22), ByteArray(16) { 0x33 }))
+        assertArrayEquals(byteArrayOf(0x11, 0x12), peer.audio.single())
+        assertArrayEquals(byteArrayOf(0x21, 0x22), peer.bulk.single())
+
+        peer.audio(byteArrayOf(0xA1.toByte(), 0xA2.toByte()))
+        peer.bulk(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()))
+
+        assertArrayEquals(byteArrayOf(0xA1.toByte(), 0xA2.toByte()), callbacks.audio.single())
+        assertArrayEquals(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()), callbacks.bulk.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun audioRecordBeforeVideoConfigurationIsDroppedWithoutFailingSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.audio(byteArrayOf(0x01))
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(0, peer.closeCalls)
+        assertTrue(callbacks.audio.isEmpty())
+        assertTrue(callbacks.failures.isEmpty())
+
+        peer.receive(videoConfigurationEnvelope(3))
+        peer.audio(byteArrayOf(0x02))
+
+        assertArrayEquals(byteArrayOf(0x02), callbacks.audio.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun overlappingAudioRecordAdmissionsDoNotFailActiveSession() {
+        val firstSendEntered = CountDownLatch(1)
+        val releaseFirstSend = CountDownLatch(1)
+        val audioSendCalls = AtomicInteger(0)
+        val peer =
+            ProductFakePeerEngine(
+                sendAudioHook = {
+                    if (audioSendCalls.incrementAndGet() == 1) {
+                        firstSendEntered.countDown()
+                        assertTrue(releaseFirstSend.await(2, TimeUnit.SECONDS))
+                    }
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+        val payload = ByteArray(InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES) { 0x11 }
+        val executor = Executors.newFixedThreadPool(2)
+
+        val first = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(firstSendEntered.await(2, TimeUnit.SECONDS))
+        val second = executor.submit<Boolean> { session.sendAudioRecord(payload) }
+        assertTrue(second.get(2, TimeUnit.SECONDS))
+        releaseFirstSend.countDown()
+
+        assertTrue(first.get(2, TimeUnit.SECONDS))
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS))
+        assertEquals(2, peer.audio.size)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun advancedChannelRecordsAreRejectedOutsideActiveSessionAndFailClosedOnBacklogFailure() {
+        val inactive = session(ProductFakePeerEngine(), ProductFakeNetworkMonitor(), ProductCallbacks())
+        assertFalse(inactive.sendAudioRecord(byteArrayOf(1)))
+        assertFalse(inactive.sendBulkRecord(byteArrayOf(2), ByteArray(16)))
+
+        val peer = ProductFakePeerEngine(acceptBulkRecords = false)
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        assertFalse(session.sendBulkRecord(byteArrayOf(3), ByteArray(16)))
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals("Protocol v1 advanced channel backlog rejected a product-session record", callbacks.failures.single().message)
+        assertEquals(1, peer.closeCalls)
+    }
+
+    @Test
     fun tickExpiresIncompleteMediaAssemblyAndRequestsOneKeyframe() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
@@ -2134,6 +2235,8 @@ private data class ProductInputAckCallback(
 private class ProductCallbacks : InternetProductSessionCallbacks {
     val states = java.util.concurrent.CopyOnWriteArrayList<InternetProductSessionState>()
     val frames = mutableListOf<ProductVideoFrame>()
+    val audio = mutableListOf<ByteArray>()
+    val bulk = mutableListOf<ByteArray>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
     val appliedConfigurations = mutableListOf<ProductVideoConfiguration>()
     val inputAcks = java.util.concurrent.CopyOnWriteArrayList<ProductInputAckCallback>()
@@ -2167,6 +2270,8 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
         inputAcks += ProductInputAckCallback(inputId, controllerId, controllerEpoch, accepted, rejectionReason)
     }
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
+    override fun onAudioRecord(payload: ByteArray) { audio += payload }
+    override fun onBulkRecord(payload: ByteArray) { bulk += payload }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }
@@ -2191,11 +2296,15 @@ private class ProductFakePeerEngine(
     private val startHook: () -> Unit = {},
     private val sendControlHook: (ByteArray) -> Unit = {},
     private val sendControlResult: (ByteArray) -> Boolean = { true },
+    private val sendAudioHook: (ByteArray) -> Unit = {},
+    private val acceptBulkRecords: Boolean = true,
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
     lateinit var observer: WebRtcPeerEngine.Observer
     val control = mutableListOf<ByteArray>()
+    val audio = mutableListOf<ByteArray>()
+    val bulk = mutableListOf<ByteArray>()
     var startCalls = 0
     var restartCalls = 0
     var closeCalls = 0
@@ -2211,6 +2320,12 @@ private class ProductFakePeerEngine(
         return accepted
     }
     override fun sendMedia(frame: OutboundMediaFrame): Boolean = true
+    override fun sendAudioRecord(payload: ByteArray): Boolean {
+        val accepted = synchronized(audio) { audio.add(payload) }
+        if (accepted) sendAudioHook(payload)
+        return accepted
+    }
+    override fun sendBulkRecord(payload: ByteArray): Boolean = acceptBulkRecords && bulk.add(payload)
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
     override fun close() {
@@ -2219,6 +2334,8 @@ private class ProductFakePeerEngine(
     }
     fun receive(envelope: Envelope) = observer.onControlMessage(7, envelope.toByteArray())
     fun media(payload: ByteArray) = observer.onMediaPacket(7, payload)
+    fun audio(payload: ByteArray) = observer.onAudioRecord(7, payload)
+    fun bulk(payload: ByteArray) = observer.onBulkRecord(7, payload)
 
     fun keyframeRequests(): List<Envelope> =
         control

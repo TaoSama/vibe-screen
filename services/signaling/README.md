@@ -117,12 +117,16 @@ field returns `409`.
 
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
-rate window, and waiter count are backed by PostgreSQL and survive a signaling
-process restart until TTL cleanup. Replaying the same `request_id` after restart
-therefore returns the existing session rather than reconstructing an empty
-session. With `store_backend: memory`, a restart still loses all routing state,
-so operators must issue a fresh `request_id`. In `production_authority` mode,
-they must also use a larger `session_epoch`.
+rate window are backed by PostgreSQL and survive a signaling process restart
+until TTL cleanup. Long-poll waiter leases are stored in PostgreSQL and are
+reclaimed when their listener backend disappears. Waiter leases are tied to the
+PostgreSQL listener backend PID and start timestamp; another instance clears a
+lease only after that backend disappears, so a crashed or killed signaling
+process cannot permanently consume the per-role waiter slot. Replaying the same
+`request_id` after restart therefore returns the existing session rather than
+reconstructing an empty session. With `store_backend: memory`, a restart still
+loses all routing state, so operators must issue a fresh `request_id`. In
+`production_authority` mode, they must also use a larger `session_epoch`.
 
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
@@ -313,7 +317,8 @@ TURN-credential fail-closed revocation propagation, not a WebRTC ICE connection
 or an already-active TURN allocation.
 The Postgres store tests apply the migration twice, verify readiness checksum and
 schema drift failure, prove routing state survives a signaling restart, exercise
-expiry cleanup, long-poll wakeup, waiter caps, and concurrent capacity admission.
+expiry cleanup, cross-instance long-poll wakeup, connection-scoped waiter-lease
+recovery after backend disconnect, waiter caps, and concurrent capacity admission.
 
 ## Upgrade and rollback
 
@@ -352,10 +357,12 @@ slice, not accepted production behavior:
   rendezvous access.
 - The authority's per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes; their interaction is not yet unified.
-- PostgreSQL durable routing is implemented for `production_authority`, but
-  multi-instance operation is not proven. `session_creates_per_minute` remains a
-  process-local cap, throughput has not been validated across replicas, and no
-  public ingress deployment has exercised it.
+- PostgreSQL durable routing is implemented for `production_authority`, including
+  cross-instance message delivery through `LISTEN`/`NOTIFY`, transaction-level
+  session state locks, and connection-scoped waiter leases that can be reclaimed
+  after an instance loses its database backend. Multi-instance throughput, public
+  ingress behavior, and rolling deployment behavior are still not proven.
+  `session_creates_per_minute` remains a process-local cap.
 - Per-message remote authorization against the authority and the global
   PostgreSQL advisory lock serialization of creates are deliberate fail-closed
   correctness choices, not a high-throughput design. Do not claim multi-instance

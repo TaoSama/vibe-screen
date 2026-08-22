@@ -33,7 +33,7 @@ older Phase 0 clients remain valid.
 | --- | --- | --- | --- |
 | 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device run pending |
 | 5B | multiple clients, multiple virtual displays/streams | additive resource limits, stream/display targets, explicit negotiated capability result | client routing/limits/UI implemented and CLI tested; host allocation pending |
-| 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; platform/host E2E pending |
+| 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; Internet product-flow wiring and platform/host E2E pending |
 | 5D | HDR/color, custom gestures, wake, managed devices | structured color metadata; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; HDR output/host helper pending |
 
 ## Acceptance criteria
