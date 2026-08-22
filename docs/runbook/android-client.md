@@ -40,6 +40,19 @@ outbound ordering, typed connection guidance, reconnect backoff, framing, and
 reliability. This proves code paths and packaging only; it is not device
 acceptance.
 
+The Phase 1 actionable-error state owner matrix is tracked in
+docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json.
+Run the gate from the repository root to verify that each Android
+SessionFailureKind has documented user-visible guidance and that Host-side
+permission/startup/capture states have an owner:
+
+```bash
+cd /path/to/vibe-screen
+make actionable-error-states-gate
+```
+
+This is an offline drift gate; it does not replace the device checks below.
+
 ## Install after acquiring the device
 
 Resolve and record the exact device identity before changing it. Always pass
@@ -341,6 +354,18 @@ physical-stylus drawing-app gate open.
   pass.
 
 ## Actionable failure checks
+
+The cross-surface owner matrix for these checks lives in
+docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json.
+Keep that matrix and make actionable-error-states-gate current whenever Android
+session failure kinds, Host permission/startup/capture states, or user-visible
+recovery actions change. If the previous step changed into baseline/AndroidClient,
+return to the repository root before invoking the gate:
+
+```bash
+cd /path/to/vibe-screen
+make actionable-error-states-gate
+```
 
 Exercise a missing Mac app, missing ADB reverse, unreachable route, timeout,
 camera denial, incompatible message/display configuration, outbound
