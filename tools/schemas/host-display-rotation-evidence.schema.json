@@ -114,6 +114,7 @@
         "host_rotation_combined_with_client_transform",
         "host_rotation_source",
         "probes",
+        "inverse_touch_mapping",
         "artifacts"
       ],
       "properties": {
@@ -129,7 +130,63 @@
         "host_rotation_combined_with_client_transform": {"const": false},
         "host_rotation_source": {"$ref": "#/$defs/nonEmptyString"},
         "probes": {"$ref": "#/$defs/probes"},
+        "inverse_touch_mapping": {"$ref": "#/$defs/inverseTouchMapping"},
         "artifacts": {"$ref": "#/$defs/artifacts"}
+      }
+    },
+    "mappingPointName": {
+      "enum": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center"
+      ]
+    },
+    "mappingPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "android_x",
+        "android_y",
+        "expected_host_x",
+        "expected_host_y",
+        "observed_host_x",
+        "observed_host_y",
+        "error_px",
+        "within_tolerance"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/mappingPointName"},
+        "android_x": {"type": "number", "minimum": 0},
+        "android_y": {"type": "number", "minimum": 0},
+        "expected_host_x": {"type": "number", "minimum": 0},
+        "expected_host_y": {"type": "number", "minimum": 0},
+        "observed_host_x": {"type": "number", "minimum": 0},
+        "observed_host_y": {"type": "number", "minimum": 0},
+        "error_px": {"type": "number", "minimum": 0},
+        "within_tolerance": {"const": true}
+      }
+    },
+    "inverseTouchMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coordinate_space",
+        "tolerance_px",
+        "points",
+        "all_points_within_tolerance"
+      ],
+      "properties": {
+        "coordinate_space": {"const": "host-logical-display"},
+        "tolerance_px": {"type": "number", "minimum": 0},
+        "points": {
+          "type": "array",
+          "minItems": 5,
+          "items": {"$ref": "#/$defs/mappingPoint"}
+        },
+        "all_points_within_tolerance": {"const": true}
       }
     }
   }

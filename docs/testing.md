@@ -30,8 +30,9 @@ For every device run, record:
   result. ADB `input` commands may exercise Android dispatch but do not prove a
   physical HID peripheral;
 - when closing rotated host-display acceptance, the physical and virtual
-  display identities, original and rotated macOS display rotation, client
-  rotation mode, screenshots, touch matrix, and proof that the original macOS
+  display identities for 90/180/270 host rotations, original and rotated macOS
+  display rotation, client rotation mode, screenshots, structured inverse touch
+  matrix for the four corners plus center, and proof that the original macOS
   rotation was restored;
 - Host PID and a complete post-disconnect connection sequence;
 - per-minute Host/Android memory, temperature, and frame samples during soak.

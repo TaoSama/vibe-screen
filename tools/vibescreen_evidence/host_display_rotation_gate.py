@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Sequence, TextIO
@@ -23,6 +24,14 @@ STATUS_FAILED = "failed"
 DISPLAY_KINDS = frozenset(("physical", "virtual"))
 VALID_TRANSPORTS = frozenset(("lan", "usb"))
 VALID_ROTATIONS = frozenset((0, 90, 180, 270))
+REQUIRED_HOST_ROTATIONS = (90, 180, 270)
+REQUIRED_INPUT_MAPPING_POINTS = (
+    "top_left",
+    "top_right",
+    "bottom_left",
+    "bottom_right",
+    "center",
+)
 REQUIRED_DEVICE_FIELDS = (
     "manufacturer",
     "model",
@@ -59,6 +68,11 @@ REQUIRED_ARTIFACTS = (
     "touch_matrix",
     "host_log",
     "android_logcat",
+)
+ROTATION_SPECIFIC_ARTIFACTS = (
+    "host_display_snapshot_rotated",
+    "android_screenshot",
+    "touch_matrix",
 )
 ARTIFACT_BOUNDARY_ERROR = "must be a relative path inside the evidence directory"
 
@@ -109,6 +123,12 @@ def _json_type_matches(value: Any, expected_type: str) -> bool:
         return isinstance(value, str)
     if expected_type == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
     if expected_type == "boolean":
         return isinstance(value, bool)
     return True
@@ -123,6 +143,8 @@ def _describe_json_type(expected_type: str) -> str:
         return "a string"
     if expected_type == "integer":
         return "an integer"
+    if expected_type == "number":
+        return "a number"
     if expected_type == "boolean":
         return "a boolean"
     return expected_type
@@ -188,6 +210,11 @@ def _validate_schema_node(
         assert isinstance(value, int) and not isinstance(value, bool)
         minimum = schema.get("minimum")
         if isinstance(minimum, int) and value < minimum:
+            errors.append(f"{path}: must be at least {minimum}")
+    elif expected_type == "number":
+        assert isinstance(value, (int, float)) and not isinstance(value, bool)
+        minimum = schema.get("minimum")
+        if isinstance(minimum, (int, float)) and value < minimum:
             errors.append(f"{path}: must be at least {minimum}")
 
     return errors
@@ -400,6 +427,34 @@ def _validate_distinct_display_evidence(
                 )
 
 
+def _validate_rotation_specific_artifacts(
+    runs: list[Any], errors: list[str]
+) -> None:
+    seen_by_kind_and_artifact: dict[tuple[str, str], dict[str, int]] = {}
+    for index, run in enumerate(runs):
+        if not isinstance(run, dict):
+            continue
+        display_kind = run.get("display_kind")
+        if display_kind not in DISPLAY_KINDS:
+            continue
+        artifacts = run.get("artifacts")
+        if not isinstance(artifacts, dict):
+            continue
+        for artifact_name in ROTATION_SPECIFIC_ARTIFACTS:
+            value = artifacts.get(artifact_name)
+            if not _is_non_empty_string(value):
+                continue
+            seen = seen_by_kind_and_artifact.setdefault((display_kind, artifact_name), {})
+            previous_index = seen.get(value)
+            if previous_index is not None:
+                errors.append(
+                    f"runs[{index}].artifacts.{artifact_name}: must be unique for "
+                    f"each {display_kind} host rotation; already used by runs[{previous_index}]"
+                )
+                continue
+            seen[value] = index
+
+
 def _validate_probes(run: dict[str, Any], run_index: int, errors: list[str]) -> None:
     probes = run.get("probes")
     if not isinstance(probes, dict):
@@ -408,6 +463,52 @@ def _validate_probes(run: dict[str, Any], run_index: int, errors: list[str]) -> 
     for name in REQUIRED_PROBES:
         if probes.get(name) is not True:
             errors.append(f"runs[{run_index}].probes.{name}: must be true")
+
+
+def _validate_inverse_touch_mapping(
+    run: dict[str, Any], run_index: int, errors: list[str]
+) -> None:
+    mapping = run.get("inverse_touch_mapping")
+    if not isinstance(mapping, dict):
+        errors.append(f"runs[{run_index}].inverse_touch_mapping: must be an object")
+        return
+
+    if mapping.get("coordinate_space") != "host-logical-display":
+        errors.append(
+            f"runs[{run_index}].inverse_touch_mapping.coordinate_space: "
+            "must be host-logical-display"
+        )
+    if mapping.get("all_points_within_tolerance") is not True:
+        errors.append(
+            f"runs[{run_index}].inverse_touch_mapping.all_points_within_tolerance: "
+            "must be true"
+        )
+
+    points = mapping.get("points")
+    seen_points: set[str] = set()
+    if not isinstance(points, list) or not points:
+        errors.append(
+            f"runs[{run_index}].inverse_touch_mapping.points: "
+            "must contain corner and center probes"
+        )
+    else:
+        for point_index, point in enumerate(points):
+            if not isinstance(point, dict):
+                errors.append(
+                    f"runs[{run_index}].inverse_touch_mapping.points[{point_index}]: "
+                    "must be an object"
+                )
+                continue
+            name = point.get("name")
+            if isinstance(name, str):
+                seen_points.add(name)
+
+    for point_name in REQUIRED_INPUT_MAPPING_POINTS:
+        if point_name not in seen_points:
+            errors.append(
+                f"runs[{run_index}].inverse_touch_mapping.points: "
+                f"missing {point_name} probe"
+            )
 
 
 def _validate_run(
@@ -470,6 +571,7 @@ def _validate_run(
     _validate_device_identity(run, run_index, errors)
     _validate_host_preflight(run, run_index, errors)
     _validate_probes(run, run_index, errors)
+    _validate_inverse_touch_mapping(run, run_index, errors)
     _validate_artifacts(run, run_index, errors)
     _validate_artifact_files(run, run_index, evidence_dir, errors)
     _validate_artifact_contents(run, run_index, evidence_dir, errors)
@@ -487,6 +589,9 @@ def evaluate(
 
     runs = document.get("runs")
     seen_display_kinds: set[str] = set()
+    seen_rotations_by_kind: dict[str, set[int]] = {
+        display_kind: set() for display_kind in DISPLAY_KINDS
+    }
     if not isinstance(runs, list) or not runs:
         errors.append("runs: must be a non-empty array")
     else:
@@ -494,18 +599,40 @@ def evaluate(
             display_kind = _validate_run(run, index, errors, evidence_dir)
             if display_kind is not None:
                 seen_display_kinds.add(display_kind)
+                host_rotation = run.get("host_rotation_degrees")
+                if host_rotation in REQUIRED_HOST_ROTATIONS:
+                    seen_rotations_by_kind[display_kind].add(host_rotation)
         _validate_distinct_display_evidence(runs, errors)
+        _validate_rotation_specific_artifacts(runs, errors)
 
     missing_kinds = sorted(DISPLAY_KINDS - seen_display_kinds)
     for display_kind in missing_kinds:
         errors.append(f"runs: missing rotated {display_kind} host-display evidence")
+
+    for display_kind in sorted(DISPLAY_KINDS):
+        missing_rotations = [
+            rotation
+            for rotation in REQUIRED_HOST_ROTATIONS
+            if rotation not in seen_rotations_by_kind[display_kind]
+        ]
+        if missing_rotations:
+            errors.append(
+                f"runs: missing {display_kind} host-display rotation coverage for "
+                f"{missing_rotations}"
+            )
 
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "status": STATUS_COMPLETE if not errors else STATUS_FAILED,
         "covered_display_kinds": sorted(seen_display_kinds),
+        "covered_host_rotations_by_display_kind": {
+            display_kind: sorted(seen_rotations_by_kind[display_kind])
+            for display_kind in sorted(DISPLAY_KINDS)
+        },
         "required_display_kinds": sorted(DISPLAY_KINDS),
+        "required_host_rotations": list(REQUIRED_HOST_ROTATIONS),
+        "required_input_mapping_points": list(REQUIRED_INPUT_MAPPING_POINTS),
         "required_transports": sorted(VALID_TRANSPORTS),
         "required_device_fields": list(REQUIRED_DEVICE_FIELDS),
         "required_host_preflight_fields": list(REQUIRED_HOST_PREFLIGHT_FIELDS),

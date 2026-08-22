@@ -222,14 +222,15 @@ combined into the Android Surface/input transform. It is not an acceptance run
 for a rotated physical or virtual Mac display.
 
 Before claiming rotated host-display acceptance, run a fresh real-device pass
-that records both display kinds:
+that records both display kinds across all required host rotations:
 
-1. Rotate an existing physical Mac display, stream it over a Protocol v1 USB or
-   LAN session, capture visual source orientation, corner/center input mapping,
-   stable stream state, no session teardown, and restoration of the original
-   macOS rotation.
-2. Repeat the same probes for a virtual display in its rotated host-display
-   state.
+1. Rotate an existing physical Mac display through 90, 180, and 270 degrees;
+   for each angle, stream it over a Protocol v1 USB or LAN session, capture
+   visual source orientation, corner/center inverse touch mapping in host
+   logical-display coordinates, stable stream state, no session teardown, and
+   restoration of the original macOS rotation.
+2. Repeat the same 90/180/270 probes for a virtual display in its rotated
+   host-display state.
 3. Keep client rotation as an explicit client-local setting, usually Follow Mac
    or 0 for the host-display run, and do not treat the existing client-local
    90/180/270 matrix as host-display rotation evidence.
@@ -295,6 +296,28 @@ Minimum summary shape:
         "no_session_teardown": true,
         "restored_original_host_rotation": true
       },
+      "inverse_touch_mapping": {
+        "coordinate_space": "host-logical-display",
+        "tolerance_px": 8,
+        "points": [
+          {
+            "name": "top_left",
+            "android_x": 16,
+            "android_y": 16,
+            "expected_host_x": 0,
+            "expected_host_y": 0,
+            "observed_host_x": 2,
+            "observed_host_y": 1,
+            "error_px": 2.2,
+            "within_tolerance": true
+          },
+          {"name": "top_right", "android_x": 1248, "android_y": 16, "expected_host_x": 1999, "expected_host_y": 0, "observed_host_x": 1997, "observed_host_y": 2, "error_px": 2.8, "within_tolerance": true},
+          {"name": "bottom_left", "android_x": 16, "android_y": 2784, "expected_host_x": 0, "expected_host_y": 1199, "observed_host_x": 1, "observed_host_y": 1196, "error_px": 3.2, "within_tolerance": true},
+          {"name": "bottom_right", "android_x": 1248, "android_y": 2784, "expected_host_x": 1999, "expected_host_y": 1199, "observed_host_x": 1998, "observed_host_y": 1197, "error_px": 2.2, "within_tolerance": true},
+          {"name": "center", "android_x": 632, "android_y": 1400, "expected_host_x": 1000, "expected_host_y": 600, "observed_host_x": 1001, "observed_host_y": 601, "error_px": 1.4, "within_tolerance": true}
+        ],
+        "all_points_within_tolerance": true
+      },
       "artifacts": {
         "device_identity": "device-and-artifact-identity.txt",
         "host_display_snapshot_before": "host-display-before.txt",
@@ -351,6 +374,10 @@ Minimum summary shape:
   ]
 }
 ```
+
+The final evidence file must contain six successful entries: physical
+90/180/270 and virtual 90/180/270. A shorter file remains a readiness or
+blocked record only.
 
 ## Xiaomi 13 window-action and recovery follow-up
 

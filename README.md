@@ -351,7 +351,8 @@ viewport matrix, including inverse touch mapping at the corners and center,
 with host rotation fixed at zero. Rotated physical/virtual host-display
 acceptance remains separate and now has a focused offline evidence-summary
 gate documented in the Phase 1 test record; that gate still requires a fresh
-real-device host-rotation pass before the acceptance item can close. The
+real-device host-rotation pass for physical and virtual displays at
+90/180/270 degrees before the acceptance item can close. The
 host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it

@@ -1,11 +1,17 @@
 {
   "artifact_file_check": true,
   "covered_display_kinds": [],
+  "covered_host_rotations_by_display_kind": {
+    "physical": [],
+    "virtual": []
+  },
   "errors": [
     "evidence.runs: must contain at least 1 item(s)",
     "runs: must be a non-empty array",
     "runs: missing rotated physical host-display evidence",
-    "runs: missing rotated virtual host-display evidence"
+    "runs: missing rotated virtual host-display evidence",
+    "runs: missing physical host-display rotation coverage for [90, 180, 270]",
+    "runs: missing virtual host-display rotation coverage for [90, 180, 270]"
   ],
   "kind": "host_display_rotation_acceptance",
   "required_artifacts": [
@@ -36,6 +42,18 @@
     "accessibility_granted",
     "signing_tcc_match",
     "host_display_rotation_restoration_plan"
+  ],
+  "required_host_rotations": [
+    90,
+    180,
+    270
+  ],
+  "required_input_mapping_points": [
+    "top_left",
+    "top_right",
+    "bottom_left",
+    "bottom_right",
+    "center"
   ],
   "required_probes": [
     "visual_source_orientation",
