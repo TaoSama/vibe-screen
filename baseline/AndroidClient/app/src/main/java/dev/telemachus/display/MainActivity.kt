@@ -946,6 +946,9 @@ class MainActivity : AppCompatActivity() {
         applyConnectionPanelLayout()
         applyControlBarLayout()
         applyStatusOverlayLayout()
+        if (!isConnected) {
+            applyDisconnectedSettingsEntryPolicy()
+        }
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
@@ -1861,13 +1864,7 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
-        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
-        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
-        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
-        if (!useInlineSettingsButton) {
-            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
-            binding.settingsButton.bringToFront()
-        }
+        applyDisconnectedSettingsEntryPolicy()
         binding.statusBar.visibility = View.GONE
         binding.connectionSecurityGroup.visibility = View.GONE
         binding.connectButton.isEnabled = true
@@ -1875,6 +1872,16 @@ class MainActivity : AppCompatActivity() {
         discardPendingOutgoingFileTransfer()
         hideControlBar()
         updateDisconnectedHeader(prefs.connectionMode)
+    }
+
+    private fun applyDisconnectedSettingsEntryPolicy() {
+        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
+        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
+        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
+        if (!useInlineSettingsButton) {
+            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
+            binding.settingsButton.bringToFront()
+        }
     }
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
