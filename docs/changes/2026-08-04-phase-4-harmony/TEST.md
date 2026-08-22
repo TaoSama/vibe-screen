@@ -164,6 +164,42 @@ by `tools/schemas/harmony-readiness.schema.json`. The Harmony workflow runs a
 blocked dry run and rejects script or schema drift, but it still labels the job
 as portable/no-HAP evidence only.
 
+## 2026-08-23 current-base owner gate
+
+The Phase 4 README owner surface for hardware decode capability, HAP install,
+and resume-capable Host interoperability is now represented by a read-only
+current-base aggregate gate. It consumes `harmony-readiness.json` and
+`harmony-device-gates.json`, then writes `harmony-current-base-gate.json` with
+separate owner checks for:
+
+- `hardware_decode_capability`: requires passing `h264_hardware_decode` and
+  `hevc_hardware_decode` device gates, evidence that references
+  `harmony-avcodec-preflight.json`, plus DevEco/HAP/MatePad/Host readiness;
+- `hap_install`: requires passing `signed_release_hap` and
+  `hap_install_launch` device gates, evidence that references
+  `harmony-hap-readiness.json`, plus DevEco/HAP/MatePad readiness;
+- `host_resume_interop`: requires passing `host_protocol_v1_interop`,
+  `resume_background_foreground`, `resume_network_roam`,
+  `resume_host_restart`, `no_old_epoch_render`, and
+  `resume_capable_host_interop` device gates, evidence that references
+  `harmony-host-interop-preflight.json`, plus DevEco/HAP/MatePad/Host readiness.
+
+```text
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when both input manifests are present and all three owner gates are
+  backed by real MatePad Mini device evidence
+PYTHONPATH=tools python3 -m unittest tools.tests.test_harmony_current_base_gate -v
+  PASS: verifies missing DevEco/HAP/MatePad/Host inputs stay blocked, Android
+  substitution fails, generic cross-domain evidence cannot close owner gates,
+  missing resume evidence stays blocked, and a complete synthetic manifest can
+  reach pass
+```
+
+This gate does not run DevEco, install or launch a HAP, pair a device, decode
+media, interoperate with the Host, or create MatePad Mini evidence. Without
+DevEco, MatePad Mini hardware, signed HAP metadata, and Host resume evidence,
+its correct result is `blocked` and the README gates remain open.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:
