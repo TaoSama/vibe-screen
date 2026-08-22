@@ -48,6 +48,31 @@ Additional current-source checks for this recheck:
 | `make protocol` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Protocol v1 schemas, fixtures, and security contract checks. |
 | `python3 scripts/macos_dev_host.py preflight` | BLOCKED | Stable Host bundle validation cannot proceed without the configured `Vibe Screen Dev` signing identity. |
 
+## 2026-08-23 route preflight
+
+The latest `origin/main` commit
+`de2752e0033713ad48bb7f86960f9180d8e7342f` was rechecked on the same Nubia
+P0110 / pacific / Android 16 / SDK 36 device (`EP0110PZ0B9110300B`) using only
+read-only Android network queries. The device was available over USB and Wi-Fi
+was enabled, but the precondition blocker was unchanged: `cmd wifi status`
+reported `Wifi is not connected`, `wlan0` reported `NO-CARRIER` and
+`state DOWN`, `wlan0` had no IPv4 address, `ip route` returned no route, and
+route lookup plus ping to the Mac LAN IPv4 candidate failed with
+`Network is unreachable`. ADB reverse still mapped `tcp:54321` for USB, and the
+Mac had no TCP `54321` listener.
+
+The Host evidence preflight also remained blocked: local `xcodebuild` resolves
+to Command Line Tools instead of full Xcode, `security find-identity -v -p
+codesigning` reports `0 valid identities found`, and
+`scripts/macos_dev_host.py preflight` exits `1` because `Vibe Screen Dev` is
+not available.
+
+No Host launch, QR/token admission, trusted-LAN socket admission, secure-record
+negotiation, Protocol v1 LAN upgrade, decoder output, reconnect, latency, or
+stability evidence was attempted or observed. This remains a fail-closed
+blocked record and does not close any README trusted-LAN gate. Evidence:
+[`evidence/2026-08-23-p0110-lan-route-blocked/README.md`](evidence/2026-08-23-p0110-lan-route-blocked/README.md).
+
 ## Source-level checks
 
 The current code path was still checked offline so the next device owner has a
