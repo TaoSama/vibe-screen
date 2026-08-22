@@ -7,14 +7,17 @@ This directory contains two deliberately separate deployment slices:
 - `docker-compose.authority.production.yml` is a production-shaped Authority
   profile that requires an external PostgreSQL, immutable image digest, and
   runtime secret files.
-- `docker-compose.yml` and `docker-compose.production.yml` run the experimental
-  relay credential service beside coturn.
+- `docker-compose.yml` runs the experimental relay credential service beside
+  coturn for local testing.
+- `docker-compose.production.yml` is a production-shaped profile for signaling,
+  relay credential issuance, and coturn. It requires external PostgreSQL
+  databases, immutable image digests, and runtime secret files.
 
 They are not an integrated public Internet stack. Authority-backed signaling and
 relay credential admission can both call the shared Authority service, but these
 profiles still do not provide automatic account/session issuance, public ingress,
-multi-instance routing, or active revocation of an established PeerConnection/TURN
-allocation.
+validated multi-instance throughput, or active revocation of an established
+PeerConnection/TURN allocation.
 
 ## Authority local profile
 
@@ -108,6 +111,57 @@ PostgreSQL migration, readiness, admission/authorization, Authority restart
 persistence, database-outage failure, runtime hardening, and secret-log scan. It
 does not prove production TLS, NTP, backup/restore, public ingress, or multi-node
 behavior.
+
+## Signaling production configuration
+
+The production profile now includes `signaling-migrate` and `signaling` services
+that use the same external PostgreSQL and immutable-image pattern as the relay
+profile. Copy `config/signaling.production.example.json` to the ignored
+`config/signaling.production.json`, point `authority_url` at the private
+Authority endpoint, and keep `authority_mode=production_authority` with
+`store_backend=postgres`.
+
+Provide `VIBE_SIGNALING_IMAGE_REPOSITORY` and
+`VIBE_SIGNALING_IMAGE_SHA256`, independent migration/runtime PostgreSQL URL
+secret files, and independent issuer, metrics, and Authority client token files.
+The migration and runtime PostgreSQL URLs may use different credentials, but
+they must target the same PostgreSQL database and schema so the migration job
+creates the exact schema used by runtime readiness and traffic.
+
+```bash
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/etc/vibe-secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/etc/vibe-secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/etc/vibe-secrets/signaling-authority-token
+docker compose -f docker-compose.production.yml config --quiet
+docker compose -f docker-compose.production.yml pull signaling
+docker compose -f docker-compose.production.yml up -d --wait signaling
+curl --fail http://127.0.0.1:8088/readyz
+```
+
+The migration job applies `001_signaling.sql` behind an advisory lock and a
+checksum ledger. `/readyz` requires PostgreSQL reachability, exact schema,
+database/application clock-skew proof, and Authority readiness. With PostgreSQL,
+any signaling instance can authorize, publish, poll, and invalidate any
+short-lived session row. Long-poll waiters are stored as connection-scoped
+leases keyed by PostgreSQL backend PID and backend start time, so a replacement
+instance can reclaim a waiter slot after the failed instance database backend
+disappears.
+
+The signaling runtime role must either be shared by all signaling instances or
+have `pg_read_all_stats`/`pg_monitor` so live listener backend start times are
+visible in `pg_stat_activity`. If a pooler sits between signaling and
+PostgreSQL, use session pooling; transaction pooling breaks `LISTEN` and stable
+backend identity.
+
+Place signaling behind a private TLS 1.2+ reverse proxy or service mesh and route
+only client role endpoints publicly. Keep issuer and metrics endpoints internal.
+No sticky sessions are required for rendezvous correctness, but this profile has
+not proved multi-replica throughput, global create-rate enforcement, production
+load-balancer behavior, or multi-region consistency.
 
 ## Relay data plane
 

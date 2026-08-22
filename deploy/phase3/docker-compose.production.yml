@@ -1,6 +1,50 @@
 name: vibe-screen-phase3-production
 
 services:
+  signaling-migrate:
+    image: ${VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}@sha256:${VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}
+    restart: "no"
+    network_mode: host
+    command:
+      - --migrate
+      - /usr/share/vibe-screen/migrations/001_signaling.sql
+    environment:
+      VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_migration_database_url
+    secrets:
+      - signaling_migration_database_url
+    security_opt:
+      - no-new-privileges:true
+
+  signaling:
+    image: ${VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}@sha256:${VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config
+      - /etc/vibe-screen/signaling.json
+    depends_on:
+      signaling-migrate:
+        condition: service_completed_successfully
+    environment:
+      VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_database_url
+      VIBE_SIGNALING_ISSUER_TOKEN_FILE: /run/secrets/signaling_issuer_token
+      VIBE_SIGNALING_METRICS_TOKEN_FILE: /run/secrets/signaling_metrics_token
+      VIBE_SIGNALING_AUTHORITY_TOKEN_FILE: /run/secrets/signaling_authority_token
+    secrets:
+      - signaling_database_url
+      - signaling_issuer_token
+      - signaling_metrics_token
+      - signaling_authority_token
+    volumes:
+      - ${VIBE_SIGNALING_CONFIG_FILE:-./config/signaling.production.json}:/etc/vibe-screen/signaling.json:ro
+    healthcheck:
+      test: ["CMD", "/vibe-signaling", "--healthcheck", "http://127.0.0.1:8088/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
   relay-migrate:
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: "no"
@@ -97,6 +141,16 @@ secrets:
     file: ${VIBE_RELAY_MIGRATION_DATABASE_URL_FILE:?set the relay migration database URL secret file}
   relay_database_url:
     file: ${VIBE_RELAY_DATABASE_URL_FILE:?set the relay runtime database URL secret file}
+  signaling_migration_database_url:
+    file: ${VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE:?set the signaling migration database URL secret file}
+  signaling_database_url:
+    file: ${VIBE_SIGNALING_DATABASE_URL_FILE:?set the signaling runtime database URL secret file}
+  signaling_issuer_token:
+    file: ${VIBE_SIGNALING_ISSUER_TOKEN_FILE:?set the signaling issuer token secret file}
+  signaling_metrics_token:
+    file: ${VIBE_SIGNALING_METRICS_TOKEN_FILE:?set the signaling metrics token secret file}
+  signaling_authority_token:
+    file: ${VIBE_SIGNALING_AUTHORITY_TOKEN_FILE:?set the signaling authority token secret file}
   tls_certificate:
     file: ./tls/fullchain.pem
   tls_private_key:
