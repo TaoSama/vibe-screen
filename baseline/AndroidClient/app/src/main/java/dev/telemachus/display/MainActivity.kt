@@ -1101,6 +1101,7 @@ class MainActivity : AppCompatActivity() {
         if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
             val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
             if (samples.isNotEmpty() && client.sendMotionStylus(samples)) {
+                mainDiagStylusForwarded("stream", event, samples, extended = true)
                 trackStreamStylus(samples)
                 return true
             }
@@ -4969,6 +4970,12 @@ class MainActivity : AppCompatActivity() {
                     extendedNegotiated = client?.canSendExtendedStylus() == true,
                 )
             if (stylusSamples.isNotEmpty() && client?.sendMotionStylus(stylusSamples) == true) {
+                mainDiagStylusForwarded(
+                    "stream",
+                    event,
+                    stylusSamples,
+                    extended = client.canSendExtendedStylus(),
+                )
                 trackStreamStylus(stylusSamples)
             }
             if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
@@ -5296,7 +5303,9 @@ class MainActivity : AppCompatActivity() {
         if (extendedOnly && samples.isEmpty()) return false
         samples.forEach { sample ->
             val inputId = internetStylusInputIds.resolve(sample) ?: return@forEach
-            session.sendStylus(sample.toProductStylusEvent(inputId, extended))
+            if (session.sendStylus(sample.toProductStylusEvent(inputId, extended))) {
+                mainDiagStylusForwarded("internet", event, listOf(sample), extended)
+            }
             internetStylusInputIds.complete(sample)
         }
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
@@ -5400,6 +5409,38 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else null,
         )
+
+    private fun mainDiagStylusForwarded(
+        transport: String,
+        event: MotionEvent,
+        samples: List<StylusSample>,
+        extended: Boolean,
+    ) {
+        val sample = samples.firstOrNull() ?: return
+        mainDiag(
+            "Stylus forwarded: transport=$transport samples=${samples.size} extended=$extended " +
+                "rawSource=0x${event.source.toString(16)} rawAction=${event.actionMasked} " +
+                "rawTools=${event.toolTypesSummary()} " +
+                "phase=${sample.phase} contact=${sample.contactState} tool=${sample.toolKind} " +
+                "buttons=${sample.buttonMask} pressure=${sample.pressure} " +
+                "tiltX=${sample.tiltXDegrees} tiltY=${sample.tiltYDegrees}",
+        )
+    }
+
+    private fun MotionEvent.toolTypesSummary(): String =
+        (0 until pointerCount).joinToString(separator = ",", prefix = "[", postfix = "]") { index ->
+            toolTypeName(getToolType(index))
+        }
+
+    private fun toolTypeName(toolType: Int): String =
+        when (toolType) {
+            MotionEvent.TOOL_TYPE_STYLUS -> "stylus"
+            MotionEvent.TOOL_TYPE_ERASER -> "eraser"
+            MotionEvent.TOOL_TYPE_FINGER -> "finger"
+            MotionEvent.TOOL_TYPE_MOUSE -> "mouse"
+            MotionEvent.TOOL_TYPE_UNKNOWN -> "unknown"
+            else -> "other-$toolType"
+        }
 
     /**
      * Apply rotation by changing the Activity's screen orientation
