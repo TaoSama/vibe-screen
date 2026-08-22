@@ -130,18 +130,15 @@ export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
 export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
-# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
-make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
-PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --host-telemetry "$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/exact-window-report.json"
-PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/host-rss-gate.json"
+# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后，记录该进程 PID：
+export HOST_PID='<running-host-pid>'
+make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"
+make host-rss-gate EVIDENCE_DIR="$EVIDENCE_DIR"
 ```
+
+也可用 `make soak-2h-host-rss-gate EVIDENCE_SERIAL="$EVIDENCE_SERIAL"
+EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"` 串联正式两小时采集和门禁判定；
+该目标会在 `HOST_PID` 缺失时立即失败，避免产生缺少 `host.rss_kb` 的不可关闭证据。
 
 只有来源 summary 为 `complete` 且无错误、流/客户端指标有效，并且
 `host_rss_gate` 独立输出 `pass` 时才能关闭门禁。短诊断、30 分钟前缀或 partial

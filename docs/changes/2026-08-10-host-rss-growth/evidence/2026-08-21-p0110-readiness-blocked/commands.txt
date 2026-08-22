@@ -1,0 +1,33 @@
+git fetch origin --prune
+git checkout -B codex/host-rss-readiness origin/main
+git rebase origin/main
+git fetch origin --prune
+git rebase origin/main after origin/main advanced to 0bf426dc657d2068f82cb93d897d89226b3c0524
+git fetch origin --prune
+git rebase origin/main after origin/main advanced to a9b05002dde33b7b972f6bcf8131305bedd8548e
+git fetch origin --prune
+git rebase origin/main after origin/main advanced to be9381179a7f5b6a9ea5e97d6a77ad486a026ca7
+git rev-parse HEAD
+git rev-parse origin/main
+security find-identity -v -p codesigning
+xcode-select -p
+xcodebuild -version
+python3 scripts/macos_dev_host.py preflight --report docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-21-p0110-readiness-blocked/host-signing-and-permissions.txt
+make baseline-macos-build
+make baseline-macos-self-test
+make baseline-android-apk
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest -v tools.tests.test_host_memory_diagnostic tools.tests.test_host_rss_gate tools.tests.test_soak tools.tests.test_soak_report
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
+make protocol
+make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345
+make -n host-rss-gate EVIDENCE_DIR=.build/evidence
+make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345
+make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence
+python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-21-p0110-readiness-blocked/readiness.json
+git diff --check
+
+Device identity was collected under an exclusive Python fcntl lock on
+/tmp/vibe-screen-device-android.lock with explicit adb -s EP0110PZ0B9110300B
+commands. The formal two-hour soak and short Host memory diagnostic were not
+started because the current-source Host cannot be stable-signed and installed
+with the unavailable Vibe Screen Dev identity in this environment.
