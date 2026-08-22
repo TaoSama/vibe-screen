@@ -1,7 +1,7 @@
 # HarmonyOS current-base aggregate owner audit
 
 Date: 2026-08-23; rebased check: 2026-08-24
-Base: `origin/main` at `0ac995206916451a4ae12f7e6980432903407b7b`
+Base: `origin/main` at `b759d785898ede5bbd4370255b3d49e56457f0ef`
 Scope: current-base owner selection and fail-closed evidence routing only. This
 record does not close any HarmonyOS real-device gate.
 
@@ -9,10 +9,11 @@ record does not close any HarmonyOS real-device gate.
 
 This branch is the current-base aggregate owner successor for the Phase 4
 README gate surface. It refreshes the owner-gate approach from PR #283 onto
-`0ac995206916451a4ae12f7e6980432903407b7b`, expands the aggregate scope to the
+`b759d785898ede5bbd4370255b3d49e56457f0ef`, expands the aggregate scope to the
 full DevEco/HAP/decode/HUKS/authenticated-transport/resume/MatePad surface, and
-absorbs the strict evidence-root hardening from PR #269. It supersedes PR #250's
-README-only attribution change for review purposes.
+absorbs the strict evidence-root hardening from PR #269. PR #250 remains a
+README-only support change that clarifies component-level decode and resume
+ownership, not a competing aggregate owner path.
 
 PR #239 remains the semantic MatePad Mini acceptance package design, but it is
 not the current-base owner while its branch is draft and `DIRTY` against current
@@ -26,7 +27,7 @@ creating a second final-owner path.
 | #283 | draft; behind current main | Prior current-base gate candidate | Superseded by this branch because this branch is based on current `origin/main` and expands scope beyond decode/HAP/resume. |
 | #239 | draft; conflicts with current main | MatePad acceptance package design owner | Keep as semantic aggregate package input after refresh; not current-base today. |
 | #269 | draft; behind current main | Support verifier hardening | Strict evidence-root validation is folded into this branch. |
-| #250 | draft; behind current main | Support README attribution | Folded into this branch; should not merge as a standalone owner PR. |
+| #250 | draft; rebased onto current main | Support README attribution | Keep as a narrow README clarification; it does not replace this aggregate owner gate. |
 | #202 | draft; conflicts with current main | Focused authenticated-record support | Needs refresh before feeding the aggregate owner; not a final closure owner. |
 | #203 | draft; conflicts with current main | Focused AVCodec hardware-decode support | Needs real DevEco/HAP/MatePad decode evidence before it can close decode gates. |
 | #204 | draft; conflicts with current main | Focused HUKS secure-pairing support | Needs real HUKS runtime and Host/Authority compatibility evidence. |
