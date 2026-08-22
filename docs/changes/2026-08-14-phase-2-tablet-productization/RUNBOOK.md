@@ -195,19 +195,17 @@ adb -s "$ADB_SERIAL" logcat -c
 adb -s "$ADB_SERIAL" reverse tcp:54321 tcp:54321
 ```
 
-Also retain a Host preflight record with the listener, signing identity, and
-permission state before starting the run:
+Also retain a shared Host readiness record with the listener, signing identity,
+and permission state before starting the run:
 
 ```bash
-lsof -nP -iTCP:54321 -sTCP:LISTEN > "$RUN_DIR/host-listener.txt"
 security find-identity -v -p codesigning > "$RUN_DIR/codesign-identities.txt"
-python3 scripts/macos_dev_host.py preflight --report "$RUN_DIR/host-signing-and-permissions.txt"
+make baseline-macos-host-readiness EVIDENCE_DIR="$RUN_DIR"
 ```
 
-Do not continue to physical-keyboard input unless the Host listener exists and
-the installed Host is stable-signed with Screen Recording and Accessibility
-ready. Once the stream is active, press keys on the attached keyboard and retain
-Android and Host logs proving:
+Do not continue to physical-keyboard input unless `host-readiness.json` reports
+`can_start_hardware_keyboard_gate=true`. Once the stream is active, press keys on the
+attached keyboard and retain Android and Host logs proving:
 
 - the physical keyboard device name and `Sources: ... KEYBOARD` in
   `dumpsys-input.txt`;

@@ -74,6 +74,33 @@ modify `TCC.db`, run `tccutil`, or grant permissions. If codesign cannot access
 the private key, fix the Keychain item ownership/ACL for `/usr/bin/codesign` on
 that machine instead of switching to ad-hoc signing.
 
+## Shared Host readiness snapshot
+
+Before starting any current-source Host RSS, trusted LAN, native HID pointer,
+controller runtime, hardware-keyboard, login-startup, or headless integration
+gate, collect one read-only Host readiness snapshot:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+This writes `host-signing-and-permissions.txt` and `host-readiness.json`. The
+JSON records the installed `/Applications/Vibe Screen.app` signing identity,
+designated requirement, Screen Recording and Accessibility TCC rows, TCP
+listener state on port `54321`, and whether the installed Host carries
+`com.apple.developer.hid.virtual.device`. The command is fail-closed and
+read-only: it never starts the Host, edits TCC, changes Keychain, or touches an
+Android device.
+
+Use `host-readiness.json` as a shared prerequisite, not as runtime acceptance.
+`can_start_host_rss_gate`, `can_start_trusted_lan_gate`,
+`can_start_native_hid_gate`, `can_start_stylus_gate`,
+`can_start_hardware_keyboard_gate`, and `can_start_headless_login_gate` require
+stable signing/TCC plus an observed Host listener.
+`can_start_controller_runtime_gate` also requires the approved virtual HID
+entitlement. If any value is false, keep the JSON as blocked readiness evidence
+and do not claim the corresponding README gate passed.
+
 ## First-run permissions
 
 Vibe Screen requests two independent permissions:
