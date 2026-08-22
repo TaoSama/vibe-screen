@@ -122,6 +122,67 @@ a short run, phone substitute, missing raw battery / power / thermal files,
 missing screenshots, or undeclared threshold remains `insufficient` instead of
 closing Phase 2.
 
+Also write a focused device-environment observation record before evaluating the
+stand-mounted charging stability, thermal-load, and power-source gates:
+
+```bash
+cat > "$RUN_DIR/phase2-device-environment-observations.json" <<'JSON'
+{
+  "android_device_lock_checked": true,
+  "device_identity_recorded": true,
+  "device_identity_matches_claim": true,
+  "physical_8_9_inch_tablet_observed": true,
+  "stand_mounted_setup_observed": true,
+  "eight_hour_environment_window_observed": true,
+  "battery_power_samples_retained": true,
+  "thermal_samples_retained": true,
+  "raw_platform_dumps_retained": true,
+  "controlled_thermal_load_observed": true,
+  "thermal_load_recovery_observed": true,
+  "settings_status_matches_platform": true,
+  "run_readme_retained": true,
+  "thresholds": {
+    "maximum_thermal_status": 2,
+    "maximum_battery_temperature_celsius": 45,
+    "maximum_net_battery_drain_percent": 5,
+    "maximum_sample_gap_seconds": 90
+  },
+  "measurements": {
+    "environment_duration_seconds": 28800,
+    "maximum_sample_gap_seconds": 30,
+    "unplugged_sample_count": 0,
+    "non_charging_sample_count": 0,
+    "power_source_change_count": 0,
+    "maximum_thermal_status": 1,
+    "maximum_battery_temperature_celsius": 38.5,
+    "net_battery_drain_percent": 0
+  },
+  "artifact_paths": [
+    "phase2-tablet-manifest.json",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-after.txt",
+    "samples.jsonl",
+    "summary.json"
+  ],
+  "blocking_notes": [],
+  "notes": "physical tablet environment acceptance run"
+}
+JSON
+make phase2-device-environment-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+Use `false` for any observation that was not actually performed. A phone
+substitute, missing tablet stand, missing eight-hour environment window, missing
+controlled thermal-load step, existing Android coordination lock, or absent raw
+platform dumps must produce `verdict=blocked` or `verdict=insufficient`; do not
+rewrite it as a pass. The summary can close only the device-environment gates
+listed in `environment_gates`. It does not close the eight-hour stream, device
+memory, hardware-keyboard, stylus, login-startup, or headless-recovery gates.
+
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are
 accepted after a new session epoch, Android reports severe or critical thermal
@@ -266,6 +327,9 @@ Each run directory should include at minimum:
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states.
+- `phase2-device-environment-observations.json` and
+  `phase2-device-environment-summary.json` for the focused stand-mounted
+  charging stability, thermal-load, and power-source gate decision.
 - for hardware-keyboard passes, `hardware-keyboard-observations.json`,
   `hardware-keyboard-summary.json`, `dumpsys-input.txt`, `android-keyboard.log`,
   `host-keyboard.log`, `host-listener.txt`, `host-signing-and-permissions.txt`,
