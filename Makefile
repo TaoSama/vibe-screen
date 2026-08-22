@@ -22,6 +22,16 @@ PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
+PHASE2_TABLET_GATE ?=
+PHASE2_TABLET_MANIFEST ?=
+PHASE2_HARDWARE_KEYBOARD ?=
+PHASE2_DEVICE_MEMORY ?=
+PHASE2_DEVICE_ENVIRONMENT ?=
+PHASE2_SOAK_READINESS ?=
+PHASE2_STAND_CHARGING ?=
+PHASE2_TABLET_UI ?=
+PHASE2_RECOVERY ?=
+PHASE2_LOGIN_HEADLESS ?=
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
@@ -36,7 +46,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate phase2-aggregate-owner
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -232,3 +242,18 @@ ios-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate \
 		--manifest $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--output $(EVIDENCE_DIR)/ios-current-base-gate.json
+
+phase2-aggregate-owner:
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_aggregate_owner \
+		--output $(EVIDENCE_DIR)/phase2-aggregate-owner.json \
+		$(if $(strip $(PHASE2_TABLET_GATE)),--tablet-gate $(PHASE2_TABLET_GATE),) \
+		$(if $(strip $(PHASE2_TABLET_MANIFEST)),--tablet-manifest $(PHASE2_TABLET_MANIFEST),) \
+		$(if $(strip $(PHASE2_HARDWARE_KEYBOARD)),--hardware-keyboard $(PHASE2_HARDWARE_KEYBOARD),) \
+		$(if $(strip $(PHASE2_DEVICE_MEMORY)),--device-memory $(PHASE2_DEVICE_MEMORY),) \
+		$(if $(strip $(PHASE2_DEVICE_ENVIRONMENT)),--device-environment $(PHASE2_DEVICE_ENVIRONMENT),) \
+		$(if $(strip $(PHASE2_SOAK_READINESS)),--soak-readiness $(PHASE2_SOAK_READINESS),) \
+		$(if $(strip $(PHASE2_STAND_CHARGING)),--stand-charging $(PHASE2_STAND_CHARGING),) \
+		$(if $(strip $(PHASE2_TABLET_UI)),--tablet-ui $(PHASE2_TABLET_UI),) \
+		$(if $(strip $(PHASE2_RECOVERY)),--recovery $(PHASE2_RECOVERY),) \
+		$(if $(strip $(PHASE2_LOGIN_HEADLESS)),--login-headless $(PHASE2_LOGIN_HEADLESS),)

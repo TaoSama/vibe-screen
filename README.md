@@ -443,11 +443,12 @@ stand-mounted charging, background/foreground recovery, and the eight-hour run
 remain device gates. The evidence tooling now includes a Phase 2 tablet
 manifest, a package-aware tablet gate, and an independent fail-closed
 device-memory verifier for Android PSS, Host RSS, charging/full-state, and
-thermal-status coverage during the 8h soak. The verifier rejects phone
-substitutes such as Nubia P0110/pacific and reports insufficient evidence when
-the physical tablet, Host PID/RSS, Android PSS, charging, thermal, or
-eight-hour data is missing; no current evidence closes that gate. Login startup
-and headless Mac mini acceptance also remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+thermal-status coverage during the 8h soak. The aggregate owner report keeps the
+split Phase 2 workstreams ordered and fail-closed without replacing child gates.
+It rejects phone substitutes such as Nubia P0110/pacific as physical-tablet
+acceptance and stays blocked while physical 8-9 inch tablet, stand-mounted
+charging, thermal/power, eight-hour soak, hardware-keyboard, login startup, and
+headless Mac mini evidence is missing or insufficient. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access
