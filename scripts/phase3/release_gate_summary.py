@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -137,6 +138,23 @@ HISTORICAL_ANDROID_BOUNDARY_DEFAULTS = {
     "android_mediacodec_decode": "not_claimed",
     "visible_mac_input_effects": "not_claimed",
 }
+REQUIRED_HISTORICAL_BOUNDARIES = {
+    "disconnect_reconnect": "not_claimed",
+    "real_display_content": "not_claimed",
+    "screen_capture_kit": "not_claimed",
+    "soak": "not_claimed",
+}
+REQUIRED_HISTORICAL_ASSERTIONS = {
+    "real_android_app_and_instrumentation": "pass",
+    "real_local_signaling_process": "pass",
+    "synthetic_video_config_keyframe_delta": "pass",
+}
+REQUIRED_FALSE_REAL_MEDIA_CLAIMS = (
+    "real_capture",
+    "real_media_delivery",
+    "hardware_decode",
+    "internet_or_turn",
+)
 
 
 class GateSummaryError(RuntimeError):
@@ -144,9 +162,12 @@ class GateSummaryError(RuntimeError):
 
 
 def git_revision(repo: Path) -> str:
+    git = shutil.which("git")
+    if git is None:
+        raise GateSummaryError("cannot locate git to resolve repository HEAD")
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            [git, "rev-parse", "HEAD"],
             cwd=repo,
             text=True,
             stdout=subprocess.PIPE,
@@ -184,6 +205,25 @@ def _missing_record(kind: str, path_label: str) -> dict[str, Any]:
         "path": path_label,
         "release_gate_impact": "none",
     }
+
+
+def _invalid_record(kind: str, path_label: str, errors: list[str]) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "status": "invalid",
+        "path": path_label,
+        "errors": errors,
+        "current_base": False,
+        "release_gate_impact": "none",
+    }
+
+
+def _is_git_revision(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value.lower())
+    )
 
 
 def inspect_local_public_artifacts(
@@ -237,7 +277,33 @@ def inspect_historical_android_interop(
     source_commit = _source_commit(value)
     run_commits = _run_commits(value)
     device = value.get("device", {})
-    boundaries = _historical_android_boundaries(value.get("evidence_boundaries", {}))
+    raw_boundaries = value.get("evidence_boundaries", {})
+    boundaries = _historical_android_boundaries(raw_boundaries)
+    assertions = _historical_source_assertions(value)
+    errors = _validate_historical_android_interop(
+        value,
+        source_commit,
+        run_commits,
+        device,
+        raw_boundaries,
+        assertions,
+    )
+    if errors:
+        invalid = _invalid_record("historical_android_local_interop", path_label, errors)
+        invalid.update(
+            {
+                "source_commit": source_commit,
+                "run_commits": run_commits,
+                "run_commits_match_source": _run_commits_match_source(
+                    source_commit, run_commits
+                ),
+                "device": device if isinstance(device, dict) else {},
+                "routes": value.get("routes", []),
+                "evidence_boundaries": boundaries,
+                "source_assertions": assertions,
+            }
+        )
+        return invalid
     return {
         "kind": "historical_android_local_interop",
         "status": value.get("result", "unknown"),
@@ -253,7 +319,7 @@ def inspect_historical_android_interop(
         "routes": value.get("routes", []),
         "relay_kind": "forced_local_coturn",
         "evidence_boundaries": boundaries,
-        "source_assertions": _historical_source_assertions(value),
+        "source_assertions": assertions,
         "release_gate_impact": "readiness_only",
     }
 
@@ -269,11 +335,29 @@ def inspect_blocked_real_media(
     claims = value.get("claims", {})
     source_commit = value.get("source_commit")
     source_clean_before_run = value.get("source_dirty_before_run") is False
+    errors = _validate_blocked_real_media(value, source_commit, claims)
+    if errors:
+        invalid = _invalid_record("current_main_real_media_attempt", path_label, errors)
+        invalid.update(
+            {
+                "source_commit": source_commit,
+                "source_clean_before_run": source_clean_before_run,
+                "source_matched_origin_main": value.get("source_matched_origin_main"),
+                "device": value.get("device", {}),
+                "blocker": value.get("blocker", {}),
+                "claims": claims if isinstance(claims, dict) else {},
+            }
+        )
+        return invalid
     return {
         "kind": "current_main_real_media_attempt",
         "status": value.get("result", "unknown"),
         "path": path_label,
-        "current_base": source_commit == current_commit and source_clean_before_run,
+        "current_base": (
+            source_commit == current_commit
+            and source_clean_before_run
+            and value.get("source_matched_origin_main") is True
+        ),
         "source_commit": source_commit,
         "source_clean_before_run": source_clean_before_run,
         "source_matched_origin_main": value.get("source_matched_origin_main"),
@@ -282,6 +366,75 @@ def inspect_blocked_real_media(
         "claims": claims,
         "release_gate_impact": "blocked_readiness_only",
     }
+
+
+def _validate_historical_android_interop(
+    value: dict[str, Any],
+    source_commit: str | None,
+    run_commits: list[str],
+    device: object,
+    raw_boundaries: object,
+    assertions: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    if value.get("result") != "pass":
+        errors.append("result must be pass for historical Android readiness")
+    if not _is_git_revision(source_commit):
+        errors.append("source commit must be a full Git revision")
+    if not _run_commits_match_source(source_commit, run_commits):
+        errors.append("run commits must be present and match the source commit")
+    if (
+        not isinstance(device, dict)
+        or not device.get("product")
+        or not device.get("codename")
+    ):
+        errors.append("device product and codename are required")
+    routes = value.get("routes")
+    if not isinstance(routes, list) or set(routes) != {"direct", "relay"}:
+        errors.append("historical Android readiness must cover direct and relay routes only")
+    if not isinstance(raw_boundaries, dict):
+        errors.append("evidence boundaries are required")
+    else:
+        for key, expected in REQUIRED_HISTORICAL_BOUNDARIES.items():
+            if raw_boundaries.get(key) != expected:
+                errors.append(f"evidence boundary {key} must be {expected}")
+    for key, expected in REQUIRED_HISTORICAL_ASSERTIONS.items():
+        if assertions.get(key) != expected:
+            errors.append(f"source assertion {key} must be {expected}")
+    return errors
+
+
+def _validate_blocked_real_media(
+    value: dict[str, Any],
+    source_commit: object,
+    claims: object,
+) -> list[str]:
+    errors: list[str] = []
+    if value.get("result") != "blocked":
+        errors.append("result must be blocked for blocked real-media readiness")
+    if not _is_git_revision(source_commit):
+        errors.append("source_commit must be a full Git revision")
+    if not isinstance(value.get("source_dirty_before_run"), bool):
+        errors.append("source_dirty_before_run must be boolean")
+    if not isinstance(value.get("source_matched_origin_main"), bool):
+        errors.append("source_matched_origin_main must be boolean")
+    device = value.get("device")
+    if (
+        not isinstance(device, dict)
+        or not device.get("product")
+        or not device.get("codename")
+    ):
+        errors.append("device product and codename are required")
+    blocker = value.get("blocker")
+    if not isinstance(blocker, dict) or not blocker.get("component"):
+        errors.append("blocker component is required")
+    if not isinstance(claims, dict):
+        errors.append("claims must be an object")
+    else:
+        for key in REQUIRED_FALSE_REAL_MEDIA_CLAIMS:
+            if claims.get(key) is not False:
+                errors.append(f"claim {key} must be false")
+    return errors
 
 
 def _first_run_commit(value: dict[str, Any]) -> str | None:

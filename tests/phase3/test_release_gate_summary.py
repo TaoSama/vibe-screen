@@ -275,7 +275,12 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
                         "result": "pass",
                         "device": {"product": "Nubia P0110", "codename": "pacific"},
                         "routes": ["direct", "relay"],
-                        "evidence_boundaries": {"screen_capture_kit": "not_claimed"},
+                        "evidence_boundaries": {
+                            "disconnect_reconnect": "not_claimed",
+                            "real_display_content": "not_claimed",
+                            "screen_capture_kit": "not_claimed",
+                            "soak": "not_claimed",
+                        },
                         "source": {"commit": "2" * 40},
                         "runs": [
                             {
@@ -349,6 +354,93 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         android = summary["readiness_observations"][1]
         self.assertFalse(android["current_base"])
         self.assertFalse(android["run_commits_match_source"])
+        self.assertEqual(android["status"], "invalid")
+        self.assertEqual(android["release_gate_impact"], "none")
+
+    def test_historical_android_interop_rejects_public_or_real_media_claims(self) -> None:
+        commit = "d" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            acceptance = root / "acceptance.json"
+            acceptance.write_text(
+                json.dumps(
+                    {
+                        "result": "pass",
+                        "device": {"product": "P0110", "codename": "pacific"},
+                        "routes": ["direct", "relay"],
+                        "evidence_boundaries": {
+                            "disconnect_reconnect": "not_claimed",
+                            "real_display_content": "claimed",
+                            "screen_capture_kit": "claimed",
+                            "soak": "not_claimed",
+                        },
+                        "source": {"commit": commit},
+                        "runs": [
+                            {
+                                "adb_gate": {"commit": commit},
+                                "assertions": {
+                                    "real_android_app_and_instrumentation": "pass",
+                                    "real_local_signaling_process": "pass",
+                                    "synthetic_video_config_keyframe_delta": "pass",
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=acceptance,
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit=commit,
+            )
+
+        android = summary["readiness_observations"][1]
+        self.assertEqual(android["status"], "invalid")
+        self.assertFalse(android["current_base"])
+        self.assertEqual(android["release_gate_impact"], "none")
+        self.assertIn("real_display_content", " ".join(android["errors"]))
+        self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_historical_android_interop_rejects_missing_required_assertions(self) -> None:
+        commit = "e" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            acceptance = root / "acceptance.json"
+            acceptance.write_text(
+                json.dumps(
+                    {
+                        "result": "pass",
+                        "device": {"product": "P0110", "codename": "pacific"},
+                        "routes": ["direct", "relay"],
+                        "evidence_boundaries": {
+                            "disconnect_reconnect": "not_claimed",
+                            "real_display_content": "not_claimed",
+                            "screen_capture_kit": "not_claimed",
+                            "soak": "not_claimed",
+                        },
+                        "source": {"commit": commit},
+                        "runs": [{"adb_gate": {"commit": commit}, "assertions": {}}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=acceptance,
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit=commit,
+            )
+
+        android = summary["readiness_observations"][1]
+        self.assertEqual(android["status"], "invalid")
+        self.assertFalse(android["current_base"])
+        self.assertEqual(android["release_gate_impact"], "none")
 
     def test_blocked_real_media_observation_preserves_blocker_and_false_claims(self) -> None:
         commit = "6" * 40
@@ -420,6 +512,86 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         observation = summary["readiness_observations"][2]
         self.assertFalse(observation["current_base"])
         self.assertFalse(observation["source_clean_before_run"])
+        self.assertEqual(observation["status"], "invalid")
+        self.assertEqual(observation["release_gate_impact"], "none")
+
+    def test_blocked_real_media_rejects_contradictory_pass_result(self) -> None:
+        commit = "f" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blocked = root / "blocked.json"
+            blocked.write_text(
+                json.dumps(
+                    {
+                        "result": "pass",
+                        "source_commit": commit,
+                        "source_dirty_before_run": False,
+                        "source_matched_origin_main": True,
+                        "device": {"product": "P0110", "codename": "pacific"},
+                        "blocker": {"component": "macOS Screen Recording permission"},
+                        "claims": {
+                            "real_capture": False,
+                            "real_media_delivery": False,
+                            "hardware_decode": False,
+                            "internet_or_turn": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=blocked,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][2]
+        self.assertEqual(observation["status"], "invalid")
+        self.assertFalse(observation["current_base"])
+        self.assertEqual(observation["release_gate_impact"], "none")
+        self.assertIn("result must be blocked", " ".join(observation["errors"]))
+
+    def test_blocked_real_media_rejects_positive_real_media_claims(self) -> None:
+        commit = "1" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blocked = root / "blocked.json"
+            blocked.write_text(
+                json.dumps(
+                    {
+                        "result": "blocked",
+                        "source_commit": commit,
+                        "source_dirty_before_run": False,
+                        "source_matched_origin_main": True,
+                        "device": {"product": "P0110", "codename": "pacific"},
+                        "blocker": {"component": "macOS Screen Recording permission"},
+                        "claims": {
+                            "real_capture": True,
+                            "real_media_delivery": False,
+                            "hardware_decode": False,
+                            "internet_or_turn": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=blocked,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][2]
+        self.assertEqual(observation["status"], "invalid")
+        self.assertFalse(observation["current_base"])
+        self.assertEqual(observation["release_gate_impact"], "none")
+        self.assertIn("real_capture", " ".join(observation["errors"]))
 
     def test_summary_observations_never_have_release_gate_pass_impact(self) -> None:
         summary = build_summary(
