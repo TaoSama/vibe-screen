@@ -31,6 +31,9 @@ the existing PR #272 improvements and Nubia evidence:
 - New stream id and display geometry from a runtime switch are staged until
   decoder acceptance, so rejection rolls back input/media targets to the last
   confirmed stream.
+- Video-preference changes queued while a display switch is pending are dropped
+  if that switch is rejected, so a later unrelated video configuration cannot
+  apply stale settings from the failed switch window.
 - Pending display state is cleared on disconnect and protocol error.
 
 The overlapping pending-state PR should be closed as superseded once this
@@ -49,6 +52,13 @@ cd baseline/AndroidClient
   --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest \
   --tests dev.telemachus.display.protocol.ProtocolV1SessionTest \
   --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest
+./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+cd ../..
+make baseline-android-check
+git diff --check
+git diff --check origin/main...HEAD
+cd baseline/AndroidClient
 adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s EP0110PZ0B9110300B shell am instrument -w -r \
@@ -70,6 +80,11 @@ after reinstalling the current debug and androidTest APKs.
 The JVM protocol tests also cover host rejection, unsupported video config,
 decoder rejection, and the rollback invariant that post-rejection touch targets
 continue to use the previous display id and stream id.
+The 2026-08-22 follow-up run also covers the settings/display-switch
+concurrency regression with
+`preferenceChangeDuringRejectedDisplaySelectionIsNotFlushedLater`. This was a
+local protocol/JVM verification; it does not add a new real-device claim beyond
+the Nubia instrumentation evidence above.
 
 ## Boundaries
 
