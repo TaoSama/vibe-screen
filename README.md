@@ -675,7 +675,9 @@ tablet that meets the runtime requirements and is explicitly identified in the
 evidence. Xiaomi 13 (model 2211133C, codename fuxi) remains the primary named
 evidence source, and Nubia P0110/pacific is an acceptable substitute
 for general Android decoding, protocol behavior, input, networking, UI, and
-performance validation. Do not relabel one device as another: device-specific
+performance validation. When the connected test device is
+`EP0110PZ0B9110300B`, use `adb -s EP0110PZ0B9110300B ...` and record the
+device as Nubia P0110/pacific Android evidence. Do not relabel one device as another: device-specific
 evidence and hardware-gated claims, such as native HID, stylus, thermal, panel,
 or SoC decode behavior, remain scoped to the exact device that produced them.
 As of 2026-08-10 the Xiaomi 13 has recorded verified streaming, touch, keyboard
