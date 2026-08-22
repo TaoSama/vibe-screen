@@ -89,8 +89,16 @@ Negotiation rules:
   protocol.
 - **Wake:** only an already paired device may request wake with replay-safe
   proof. Wake-on-LAN is transport behavior, not authentication.
-- **Managed devices:** Apple MDM configuration is read locally. The protocol
-  carries product restrictions/results, not vendor-specific MDM payloads.
+- **Managed devices:** Apple MDM configuration is read locally from
+  `com.apple.configuration.managed`. The protocol carries product
+  restrictions/results, not vendor-specific MDM payloads. Managed peers include
+  complete `restriction_results` for `clipboard`, `file_transfer`, `audio`,
+  `wake`, `custom_gestures`, `host_actions`, `maximum_file_bytes`,
+  `allowed_hosts`, and `denied_hosts`; incomplete or inconsistent results fail
+  closed. The effective policy is recomputed deny-wins: booleans use local AND
+  remote, file bytes use the minimum, restricted allowlists intersect, and
+  `DeniedHosts` removes hosts after allowlist merging. See
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TECH.md).
 
 ## Implemented client mechanics
 
@@ -148,8 +156,10 @@ Negotiation rules:
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
-  action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
-  produces the standard 102-byte packet only after local authorization/policy.
+  action IDs. Managed policy is parsed fail-closed, carries explanatory
+  restriction results, and merges deny-wins, including denylist-over-allowlist
+  host matching. WOL produces the standard 102-byte packet only after local
+  authorization/policy.
 
 ## Host and security TODO
 

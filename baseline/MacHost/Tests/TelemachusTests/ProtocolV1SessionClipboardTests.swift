@@ -226,9 +226,17 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
             return XCTFail("Expected initial clipboardOffer")
         }
 
-        var denied = VSManagedPolicyStatus()
-        denied.managed = true
-        denied.clipboardAllowed = false
+        let denied = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        ).protocolStatus
         let policyActions = session.handleControl(try envelope(
             id: 4,
             payload: .managedPolicyStatus(denied)
@@ -239,6 +247,7 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
         }
         XCTAssertTrue(effectivePolicy.managed)
         XCTAssertFalse(effectivePolicy.clipboardAllowed)
+        XCTAssertEqual(Set(effectivePolicy.restrictionResults.map(\.source)), ["effective_deny_wins"])
         XCTAssertFalse(session.hasClipboardCapability)
         XCTAssertTrue(session.shareClipboard(text: "after deny").isEmpty)
         XCTAssertTrue(session.requestClipboardContent(changeID: firstOffer.changeID).isEmpty)

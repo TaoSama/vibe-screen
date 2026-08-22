@@ -631,6 +631,28 @@ public struct VSManagedPolicyStatus: Sendable {
 
   public var allowedHostsRestricted: Bool = false
 
+  public var restrictionResults: [VSManagedRestrictionResult] = []
+
+  public var deniedHosts: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public struct VSManagedRestrictionResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var restriction: String = String()
+
+  public var allowed: Bool = false
+
+  public var source: String = String()
+
+  public var reason: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1682,7 +1704,7 @@ extension VSWakeHostResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
 
 extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ManagedPolicyStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}managed\0\u{3}clipboard_allowed\0\u{3}file_transfer_allowed\0\u{3}audio_allowed\0\u{3}wake_allowed\0\u{3}maximum_file_bytes\0\u{3}custom_gestures_allowed\0\u{3}host_actions_allowed\0\u{3}allowed_hosts\0\u{3}allowed_hosts_restricted\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}managed\0\u{3}clipboard_allowed\0\u{3}file_transfer_allowed\0\u{3}audio_allowed\0\u{3}wake_allowed\0\u{3}maximum_file_bytes\0\u{3}custom_gestures_allowed\0\u{3}host_actions_allowed\0\u{3}allowed_hosts\0\u{3}allowed_hosts_restricted\0\u{3}restriction_results\0\u{3}denied_hosts\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1700,6 +1722,8 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       case 8: try { try decoder.decodeSingularBoolField(value: &self.hostActionsAllowed) }()
       case 9: try { try decoder.decodeRepeatedStringField(value: &self.allowedHosts) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.allowedHostsRestricted) }()
+      case 11: try { try decoder.decodeRepeatedMessageField(value: &self.restrictionResults) }()
+      case 12: try { try decoder.decodeRepeatedStringField(value: &self.deniedHosts) }()
       default: break
       }
     }
@@ -1736,6 +1760,12 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if self.allowedHostsRestricted != false {
       try visitor.visitSingularBoolField(value: self.allowedHostsRestricted, fieldNumber: 10)
     }
+    if !self.restrictionResults.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.restrictionResults, fieldNumber: 11)
+    }
+    if !self.deniedHosts.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.deniedHosts, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1750,6 +1780,53 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if lhs.hostActionsAllowed != rhs.hostActionsAllowed {return false}
     if lhs.allowedHosts != rhs.allowedHosts {return false}
     if lhs.allowedHostsRestricted != rhs.allowedHostsRestricted {return false}
+    if lhs.restrictionResults != rhs.restrictionResults {return false}
+    if lhs.deniedHosts != rhs.deniedHosts {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension VSManagedRestrictionResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ManagedRestrictionResult"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}restriction\0\u{1}allowed\0\u{1}source\0\u{1}reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.restriction) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.allowed) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.source) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.restriction.isEmpty {
+      try visitor.visitSingularStringField(value: self.restriction, fieldNumber: 1)
+    }
+    if self.allowed != false {
+      try visitor.visitSingularBoolField(value: self.allowed, fieldNumber: 2)
+    }
+    if !self.source.isEmpty {
+      try visitor.visitSingularStringField(value: self.source, fieldNumber: 3)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: VSManagedRestrictionResult, rhs: VSManagedRestrictionResult) -> Bool {
+    if lhs.restriction != rhs.restriction {return false}
+    if lhs.allowed != rhs.allowed {return false}
+    if lhs.source != rhs.source {return false}
+    if lhs.reason != rhs.reason {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

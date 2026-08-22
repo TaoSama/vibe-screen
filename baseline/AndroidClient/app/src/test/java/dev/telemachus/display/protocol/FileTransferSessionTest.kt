@@ -31,12 +31,11 @@ class FileTransferSessionTest {
     @Test
     fun managedPolicyAndPeerLimitsResolveDenyWins() {
         val remoteStatus =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(5)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 5,
+            ).toStatus()
         val peerLimits =
             ResourceLimits
                 .newBuilder()
@@ -203,12 +202,11 @@ class FileTransferSessionTest {
         assertEquals(0, approvalCalls)
 
         val denied =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(10)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 10,
+            ).toStatus()
         assertFileTransferFailure("policy_denied") {
             manager.accept(
                 offer(payload = "hi".toByteArray()),
