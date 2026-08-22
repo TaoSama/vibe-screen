@@ -23,6 +23,19 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         (root / "raw-camera-placeholder.mov").write_bytes(
             (source / "raw-camera-placeholder.mov").read_bytes()
         )
+        (root / "usb-connection.txt").write_bytes(
+            (source / "usb-connection.txt").read_bytes()
+        )
+        return manifest
+
+    def copy_synchronized_clock_package(self, root: Path) -> dict[str, object]:
+        source = FIXTURE_DIR / "synchronized-clock-input-valid"
+        manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+        (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+        (root / "input-actuation.txt").write_bytes((source / "input-actuation.txt").read_bytes())
+        (root / "synchronization-record.txt").write_bytes(
+            (source / "synchronization-record.txt").read_bytes()
+        )
         return manifest
 
     def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
@@ -72,6 +85,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             (root / "raw-camera-placeholder.mov").write_bytes(
                 (source / "raw-camera-placeholder.mov").read_bytes()
             )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
+            )
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -89,6 +105,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
             (root / "raw-camera-placeholder.mov").write_text("placeholder", encoding="utf-8")
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
+            )
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -105,6 +124,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             (root / "manifest.json").write_bytes((source / "manifest.json").read_bytes())
             (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
             (root / "raw-camera-placeholder.mov").write_bytes(b"modified recording")
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
+            )
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -128,6 +150,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
             (root / "raw-camera-placeholder.mov").write_bytes(
                 (source / "raw-camera-placeholder.mov").read_bytes()
+            )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
             )
 
             report = build_latency_evidence_report(
@@ -330,6 +355,182 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_profile_artifact_is_required_for_usb_glass_to_glass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest.pop("gate_artifacts", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn("manifest.gate_artifacts is required", report["gate"]["reasons"])
+        self.assertIn(
+            "gate_artifacts must be an object containing profile-specific retained artifacts",
+            report["gate"]["reasons"],
+        )
+        self.assertTrue(
+            any("gate_artifacts.usb_connection is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_profile_artifact_must_stay_in_evidence_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "package"
+            root.mkdir()
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["file"] = "../outside-usb-connection.txt"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.file must stay within the evidence directory",
+            report["gate"]["reasons"],
+        )
+
+    def test_profile_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["sha256"] = "0" * 64
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
+        )
+
+    def test_profile_specific_artifact_key_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["gate_artifacts"] = {
+                "lan_network_preflight": {
+                    "file": "usb-connection.txt",
+                    "sha256": manifest["gate_artifacts"]["usb_connection"]["sha256"],
+                    "description": "Wrong profile artifact key.",
+                }
+            }
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any(
+                "gate_artifacts.usb_connection is required" in reason
+                for reason in report["gate"]["reasons"]
+            )
+        )
+
+    def test_lan_profile_requires_lan_preflight_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["transport"] = "lan"
+            manifest["gate_profile"] = "lan-glass-to-glass-sub80"
+            manifest["gate_artifacts"] = {
+                "lan_network_preflight": {
+                    "file": "missing-lan-preflight.txt",
+                    "sha256": "0" * 64,
+                    "description": "Synthetic LAN preflight proof.",
+                }
+            }
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile="lan-glass-to-glass-sub80",
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.lan_network_preflight.file does not exist" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_input_profile_requires_physical_actuation_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest.pop("gate_artifacts", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.input_actuation_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_requires_sync_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            gate_artifacts.pop("synchronization_record", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.synchronization_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_sync_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            sync_record = gate_artifacts["synchronization_record"]
+            assert isinstance(sync_record, dict)
+            sync_record["sha256"] = "0" * 64
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.synchronization_record.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
+        )
 
     def test_synchronized_clock_input_package_passes(self) -> None:
         report = build_latency_evidence_report(
@@ -346,11 +547,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_requires_input_kind(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["latency_kind"] = "glass-to-glass"
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -366,11 +565,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_error_budget_must_be_below_5ms(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["synchronization"]["total_error_budget_ms"] = 5.0
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -390,10 +587,8 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_allows_budget_just_below_5ms(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["synchronization"]["total_error_budget_ms"] = 4.999
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -407,8 +602,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_rejects_manual_frame_count_samples(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["samples"]["annotation_method"] = "manual-frame-count"
             self.replace_samples(
                 root,
@@ -439,11 +633,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             with self.subTest(field=field):
                 with tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
-                    source = FIXTURE_DIR / "synchronized-clock-input-valid"
-                    manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+                    manifest = self.copy_synchronized_clock_package(root)
                     manifest["synchronization"]["total_error_budget_ms"] = 3.0
                     manifest["synchronization"][field] = 3.1
-                    (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
                     self.write_manifest(root, manifest)
 
                     report = build_latency_evidence_report(
@@ -461,13 +653,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_component_sum_must_fit_total_budget(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["synchronization"]["before_skew_ms"] = 1.4
             manifest["synchronization"]["after_skew_ms"] = 1.4
             manifest["synchronization"]["max_drift_ms"] = 1.3
             manifest["synchronization"]["total_error_budget_ms"] = 4.0
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -486,8 +676,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_synchronized_clock_budget_applied_to_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "synchronized-clock-input-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_synchronized_clock_package(root)
             manifest["synchronization"]["total_error_budget_ms"] = 4.5
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             self.replace_samples(

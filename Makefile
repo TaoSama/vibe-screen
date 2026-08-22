@@ -23,6 +23,11 @@ PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+LATENCY_PREFLIGHT_INPUT ?=
+LATENCY_DEVICE_INFO ?=
+LATENCY_REPOSITORY_REVISION ?=
+LATENCY_GATE_PROFILE ?=
+LATENCY_MANIFEST ?= $(EVIDENCE_DIR)/manifest.json
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -36,7 +41,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-latency-preflight evidence-latency-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -144,6 +149,26 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		--serial $(EVIDENCE_SERIAL) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
 		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
+
+evidence-latency-preflight:
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.latency_preflight \
+		$(if $(strip $(LATENCY_PREFLIGHT_INPUT)),--input $(LATENCY_PREFLIGHT_INPUT),) \
+		$(if $(strip $(LATENCY_DEVICE_INFO)),--device-info $(LATENCY_DEVICE_INFO),) \
+		$(if $(strip $(LATENCY_REPOSITORY_REVISION)),--repository-revision $(LATENCY_REPOSITORY_REVISION),) \
+		--repo . \
+		--output $(EVIDENCE_DIR)/latency-preflight.json; \
+		status=$$?; printf '%s\n' "$$status" > $(EVIDENCE_DIR)/latency-preflight-exit.txt; exit $$status
+
+evidence-latency-gate:
+	@test -n "$(strip $(LATENCY_GATE_PROFILE))" || (echo "error: set LATENCY_GATE_PROFILE" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.latency_evidence \
+		$(LATENCY_MANIFEST) \
+		--gate-profile $(LATENCY_GATE_PROFILE) \
+		--output $(EVIDENCE_DIR)/latency-evidence-report.json
 
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)

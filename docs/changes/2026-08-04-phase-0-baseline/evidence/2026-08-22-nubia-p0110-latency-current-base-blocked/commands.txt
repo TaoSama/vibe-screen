@@ -1,0 +1,58 @@
+Repository/context checks:
+
+  git -C /Users/luwentao/Workspaces/vibe-screen fetch origin --prune
+  git -C /Users/luwentao/Workspaces/vibe-screen worktree add -b codex/external-camera-latency-readiness \
+    /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/external-camera-latency-readiness origin/main
+  git rev-parse HEAD
+  git rev-parse origin/main
+
+Outcome:
+
+  HEAD and origin/main were both de2752e0033713ad48bb7f86960f9180d8e7342f
+  after the current-base latency preflight/tooling successor slice was refreshed.
+
+PR context checked with GitHub CLI/MCP during the task:
+
+  PR #167: merged; merge commit a8346626 is in current origin/main. It provides
+  synchronized-clock manifest/checker tooling for input latency only, but it is
+  not real latency evidence and does not close any README latency gate.
+
+  PR #192: open draft, stale/conflicting, and not merged. It is not a
+  current-base closure owner.
+
+  PR #264: open, based on an older main commit before origin/main advanced to
+  de2752e0033713ad48bb7f86960f9180d8e7342f. Its
+  fail-closed tooling shape was cherry-picked into this successor branch and
+  refreshed against current origin/main rather than modifying PR #264's dirty
+  local worktree.
+
+Android device lock and read-only identity preflight:
+
+  test ! -e /tmp/vibe-screen-device-android.lock
+  adb -s EP0110PZ0B9110300B get-state
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info \
+    --serial EP0110PZ0B9110300B \
+    --no-connect \
+    --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/device-info.json
+
+Outcome:
+
+  The device was reachable and reported nubia / P0110 / pacific / Android 16 /
+  SDK 36. Committed JSON replaces the raw ADB serial and local Android SDK path
+  with stable pseudonymous values. No destructive Android operation, app start,
+  install, stream setup, external-camera capture, or physical-input latency run
+  was performed.
+
+Fail-closed latency preflight generation:
+
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked \
+  LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/device-info.json \
+  LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/preflight-input.json \
+  LATENCY_REPOSITORY_REVISION=de2752e0033713ad48bb7f86960f9180d8e7342f \
+  make evidence-latency-preflight
+
+Outcome:
+
+  make exited 2 and wrote latency-preflight.json plus
+  latency-preflight-exit.txt. Exit 2 is the expected blocked-readiness result
+  when formal measurement artifacts are missing.

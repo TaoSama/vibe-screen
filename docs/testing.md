@@ -41,7 +41,10 @@ as the device identity and soak artifacts:
 
 - USB and LAN glass-to-glass latency require raw high-frame-rate camera footage,
   the sampled `latency_ms` or `start_frame,end_frame,camera_fps` CSV/JSON, the
-  `vibescreen_evidence.latency` summary, device info, and an evidence manifest.
+  `vibescreen_evidence.latency` summary, device info, a profile-specific
+  transport artifact, and an evidence manifest. USB packages must retain
+  ADB reverse/USB connection and active stream proof; LAN packages must retain
+  the trusted-network preflight and active LAN stream proof.
 - Input latency requires either the same external-camera single timebase or a
   documented synchronized-clock setup with an error budget small enough for the
   sub-50 ms P95 gate. The formal provenance checker validates both
@@ -49,7 +52,9 @@ as the device identity and soak artifacts:
   claim must carry its own synchronization proof (clock sources, sync
   procedure, before/after skew, drift, and a total error budget below 5 ms) in
   the manifest's `synchronization` section. Unsynchronized host/device
-  timestamps are diagnostic only.
+  timestamps are diagnostic only. Input packages must also retain a physical
+  input actuation record that ties each sample to a real Android input event
+  and visible Mac-side result.
 - Host/client telemetry-stage summaries may be recorded from pipeline, decoder,
   queue, or RTT logs with `--kind telemetry-stage`. They explain where latency
   is spent, but their summary must retain
@@ -73,11 +78,35 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --gate-profile "$GATE_PROFILE"
 ```
 
+The equivalent Make target writes the standard report location and preserves the
+checker exit code (`0` only for a formal `pass`):
+
+```bash
+make evidence-latency-gate \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  LATENCY_GATE_PROFILE="$GATE_PROFILE"
+```
+
 See [External-camera latency measurement](runbook/latency-measurement.md). For
 external-camera packages, the checker requires the raw camera file, sample
-annotations, device/build metadata, and matching gate profile before it can
-return `pass`. Synchronized-clock input packages use direct-latency samples and
-manifest synchronization metadata instead of `camera` and `recording` sections.
+annotations, device/build metadata, matching gate profile, and the matching
+`gate_artifacts` entry before it can return `pass`. Synchronized-clock input
+packages use direct-latency samples and manifest synchronization metadata
+instead of `camera` and `recording` sections.
+
+When the measurement setup is not ready, keep a fail-closed blocked preflight
+instead of a partial latency claim:
+
+```bash
+make evidence-latency-preflight \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  LATENCY_DEVICE_INFO="$EVIDENCE_DIR/device-info.json" \
+  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json"
+```
+
+That target exits `2` for blocked readiness and writes
+`latency-preflight.json` plus `latency-preflight-exit.txt`; it cannot close a
+latency gate.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android

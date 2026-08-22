@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/latency-preflight-input.schema.json",
+  "title": "Vibe Screen latency gate preflight input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "gate_profiles"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "checked_at": {"type": "string", "minLength": 1},
+    "gate_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "checks"],
+      "properties": {
+        "profile": {
+          "enum": [
+            "usb-glass-to-glass-sub50",
+            "lan-glass-to-glass-sub80",
+            "input-p95-sub50"
+          ]
+        },
+        "manifest": {"type": "string", "minLength": 1},
+        "checks": {"type": "object"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"profile": {"const": "usb-glass-to-glass-sub50"}},
+            "required": ["profile"]
+          },
+          "then": {
+            "properties": {"checks": {"$ref": "#/$defs/usb_checks"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"profile": {"const": "lan-glass-to-glass-sub80"}},
+            "required": ["profile"]
+          },
+          "then": {
+            "properties": {"checks": {"$ref": "#/$defs/lan_checks"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"profile": {"const": "input-p95-sub50"}},
+            "required": ["profile"]
+          },
+          "then": {
+            "properties": {"checks": {"$ref": "#/$defs/input_checks"}}
+          }
+        }
+      ]
+    },
+    "usb_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device_identity_recorded": {"type": "boolean"},
+        "host_build_identity_recorded": {"type": "boolean"},
+        "external_camera_timebase_ready": {"type": "boolean"},
+        "raw_camera_recording_retained": {"type": "boolean"},
+        "sample_annotations_retained": {"type": "boolean"},
+        "minimum_sample_count_ready": {"type": "boolean"},
+        "formal_manifest_retained": {"type": "boolean"},
+        "usb_transport_ready": {"type": "boolean"}
+      }
+    },
+    "lan_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device_identity_recorded": {"type": "boolean"},
+        "host_build_identity_recorded": {"type": "boolean"},
+        "external_camera_timebase_ready": {"type": "boolean"},
+        "raw_camera_recording_retained": {"type": "boolean"},
+        "sample_annotations_retained": {"type": "boolean"},
+        "minimum_sample_count_ready": {"type": "boolean"},
+        "formal_manifest_retained": {"type": "boolean"},
+        "lan_transport_ready": {"type": "boolean"}
+      }
+    },
+    "input_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device_identity_recorded": {"type": "boolean"},
+        "host_build_identity_recorded": {"type": "boolean"},
+        "measurement_timebase_ready": {"type": "boolean"},
+        "sample_annotations_retained": {"type": "boolean"},
+        "minimum_sample_count_ready": {"type": "boolean"},
+        "formal_manifest_retained": {"type": "boolean"},
+        "physical_input_actuation_ready": {"type": "boolean"},
+        "visible_mac_input_result_ready": {"type": "boolean"}
+      }
+    }
+  }
+}

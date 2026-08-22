@@ -79,17 +79,32 @@ def _write_synchronized_clock_samples(root: Path) -> Path:
     return samples
 
 
+def _write_artifact(root: Path, name: str = "usb-connection.txt") -> Path:
+    artifact = root / name
+    artifact.write_text("fixture profile artifact\n", encoding="utf-8")
+    return artifact
+
+
+def _write_synchronization_artifact(root: Path) -> Path:
+    artifact = root / "synchronization-record.txt"
+    artifact.write_text("fixture clock synchronization proof\n", encoding="utf-8")
+    return artifact
+
+
 class LatencyManifestBuilderTest(unittest.TestCase):
     def test_builds_manifest_that_formal_checker_accepts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root)
             metadata = _base_metadata()
 
             manifest = build_latency_manifest(
                 evidence_dir=root,
                 raw_video=raw_video,
                 samples=samples,
+                gate_artifact=artifact,
+                gate_artifact_description="Synthetic USB active-stream proof.",
                 **metadata,
             )
             (root / "manifest.json").write_text(
@@ -106,11 +121,13 @@ class LatencyManifestBuilderTest(unittest.TestCase):
         self.assertEqual(manifest["recording"]["raw_video"], raw_video.name)
         self.assertEqual(manifest["samples"]["file"], samples.name)
         self.assertEqual(manifest["recording"]["sha256"], raw_video_sha256)
+        self.assertEqual(manifest["gate_artifacts"]["usb_connection"]["file"], artifact.name)
 
     def test_rejects_profile_kind_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root)
             metadata = _base_metadata()
             metadata["latency_kind"] = "input"
 
@@ -119,6 +136,8 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     evidence_dir=root,
                     raw_video=raw_video,
                     samples=samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="Synthetic USB active-stream proof.",
                     **metadata,
                 )
 
@@ -127,6 +146,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
             root = Path(directory) / "package"
             root.mkdir()
             raw_video, _samples = _write_fixture_files(root)
+            artifact = _write_artifact(root)
             outside_samples = Path(directory) / "outside-samples.csv"
             outside_samples.write_text("latency_ms\n10\n", encoding="utf-8")
             metadata = _base_metadata()
@@ -136,6 +156,22 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     evidence_dir=root,
                     raw_video=raw_video,
                     samples=outside_samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="Synthetic USB active-stream proof.",
+                    **metadata,
+                )
+
+    def test_requires_profile_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            metadata = _base_metadata()
+
+            with self.assertRaisesRegex(LatencyManifestError, "gate artifact is required"):
+                build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=raw_video,
+                    samples=samples,
                     **metadata,
                 )
 
@@ -151,6 +187,7 @@ class LatencyManifestCliTest(unittest.TestCase):
         )
 
     def valid_cli_args(self, root: Path, raw_video: Path, samples: Path) -> list[str]:
+        artifact = _write_artifact(root)
         return [
             "--evidence-dir",
             str(root),
@@ -208,11 +245,17 @@ class LatencyManifestCliTest(unittest.TestCase):
             "fixed tripod framing both screens",
             "--max-frame-annotation-uncertainty-ms",
             "4.2",
+            "--gate-artifact",
+            str(artifact),
+            "--gate-artifact-description",
+            "Synthetic USB active-stream proof.",
             "--notes",
             "Synthetic test package only.",
         ]
 
     def valid_synchronized_clock_cli_args(self, root: Path, samples: Path) -> list[str]:
+        artifact = _write_artifact(root, "input-actuation.txt")
+        synchronization_artifact = _write_synchronization_artifact(root)
         return [
             "--evidence-dir",
             str(root),
@@ -280,6 +323,14 @@ class LatencyManifestCliTest(unittest.TestCase):
             "Android MotionEvent.eventTime captured at touch dispatch",
             "--result-timestamp-method",
             "macOS CGEvent timestamp captured at injection",
+            "--gate-artifact",
+            str(artifact),
+            "--gate-artifact-description",
+            "Synthetic physical-input proof.",
+            "--synchronization-artifact",
+            str(synchronization_artifact),
+            "--synchronization-artifact-description",
+            "Synthetic clock synchronization proof.",
             "--notes",
             "Synthetic synchronized-clock package only.",
         ]
@@ -341,7 +392,21 @@ class LatencyManifestCliTest(unittest.TestCase):
             manifest["measurement_setup"]["clock_domain"],
             "synchronized-host-device-clocks",
         )
+        self.assertIn("synchronization_record", manifest["gate_artifacts"])
         self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_rejects_synchronized_clock_without_sync_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = _write_synchronized_clock_samples(root)
+            arguments = self.valid_synchronized_clock_cli_args(root, samples)
+            start = arguments.index("--synchronization-artifact")
+            del arguments[start : start + 4]
+
+            result = self.run_cli(*arguments)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synchronization artifact is required", result.stderr)
 
     def test_cli_rejects_non_finite_camera_frame_rate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

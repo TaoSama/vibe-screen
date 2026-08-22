@@ -16,10 +16,15 @@ used to claim a shipped latency result.
 - `telemetry-stage-informational.csv`: host telemetry-stage samples that remain
   informational and cannot close a performance gate.
 - external-camera-valid/: synthetic formal evidence package with manifest,
-  sample CSV, and placeholder raw-camera artifact for the provenance checker.
-- external-camera-missing-video/: same synthetic samples, but the manifest
-  references a missing raw-camera artifact and must remain insufficient.
+  sample CSV, placeholder raw-camera artifact, and USB connection artifact for
+  the provenance checker.
+- external-camera-missing-video/: same synthetic samples and USB artifact, but
+  the manifest references a missing raw-camera artifact and must remain
+  insufficient.
 - synchronized-clock-input-valid/: synthetic formal evidence package for the
-  `input-p95-sub50` gate using the synchronized-clock measurement method. It
+  `input-p95-sub50` gate using the synchronized-clock measurement method plus a
+  synthetic physical-input artifact and synchronization proof artifact. It
   exercises the checker path without an external camera and is not real-device
   evidence.
+- preflight-input.template.json: editable fail-closed readiness input template
+  for `vibescreen_evidence.latency_preflight`.

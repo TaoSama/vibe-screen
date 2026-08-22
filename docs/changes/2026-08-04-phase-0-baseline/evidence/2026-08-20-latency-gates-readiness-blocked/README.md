@@ -95,11 +95,11 @@ enough for the sub-50 ms P95 gate.
   `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
 - Host/client telemetry-stage summaries remain useful diagnostics only; they do
   not replace external-camera or valid synchronized-clock evidence.
-- The synchronized-clock path is currently limited to the `input-p95-sub50`
-  profile, requires a reviewable sub-5 ms total timing error budget, and does
-  not yet have a formal manifest/checker path. It cannot close USB or LAN
-  glass-to-glass gates.
+- At the time of this 2026-08-20 record, the synchronized-clock path was
+  limited to the `input-p95-sub50` profile and still lacked a formal
+  manifest/checker path. Later mainline work added that formal input-only path,
+  but this historical record still contains no synchronized-clock proof and
+  cannot close USB or LAN glass-to-glass gates.
 - Fixture passes remain synthetic and are scoped only to the CLI/toolchain.
-- This refreshed record intentionally does not touch the higher-conflict root
-  README, `docs/testing.md`, or Phase 0 `TEST.md`; those already point to this
-  blocked evidence and keep the gates open.
+- Later README, `docs/testing.md`, and Phase 0 `TEST.md` updates point to newer
+  blocked preflight records while keeping all three latency gates open.

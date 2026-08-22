@@ -49,5 +49,12 @@
     "clock_domain": "single-external-camera-timebase",
     "max_frame_annotation_uncertainty_ms": 4.2,
     "notes": "Synthetic checker fixture only; not acceptance evidence."
+  },
+  "gate_artifacts": {
+    "usb_connection": {
+      "file": "usb-connection.txt",
+      "sha256": "613180f782bb4693f040c48cfb23755229159965b53011c831f1081e7eaf2f6b",
+      "description": "Synthetic USB active-stream proof for checker tests only."
+    }
   }
 }
