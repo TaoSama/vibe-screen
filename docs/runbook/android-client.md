@@ -311,7 +311,9 @@ reconnect acceptance starts only after a real encrypted LAN stream has produced
 decoder output and then recovers with the same Host PID. Run the read-only
 trusted-LAN preflight first and retain the JSON when it reports blocked:
 
-    make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+```
 
 Collect the private log with:
 

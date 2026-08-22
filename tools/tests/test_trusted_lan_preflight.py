@@ -12,8 +12,10 @@ from vibescreen_evidence.trusted_lan_preflight import (
     _identity_stage,
     _private_ipv4_candidates,
     _route_result_reaches_wifi,
+    _validated_mac_candidates,
     build_document,
     redact_network_endpoints,
+    redact_lsof_user_columns,
     main,
     sanitize_text,
 )
@@ -63,6 +65,24 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertIn("10.0.0.1", redacted)
         self.assertNotIn(private_endpoint, redacted)
 
+    def test_redacts_lsof_user_column_from_listener_output(self) -> None:
+        redacted = redact_lsof_user_columns(
+            "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            "Vibe\\x20S 92943 localuser    7u  IPv4 0x1 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        self.assertIn("<redacted-user>", redacted)
+        self.assertNotIn("localuser", redacted)
+
+    def test_sanitize_text_redacts_lsof_user_column(self) -> None:
+        sanitized = sanitize_text(
+            "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            "Vibe\\x20S 92943 localuser    7u  IPv4 0x1 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        self.assertIn("<redacted-user>", sanitized)
+        self.assertNotIn("localuser", sanitized)
+
     def test_private_ipv4_candidates_exclude_loopback_link_local_and_multicast(self) -> None:
         candidates = _private_ipv4_candidates(
             "lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384\n"
@@ -100,6 +120,12 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertFalse(_route_result_reaches_wifi({"returncode": 0, "stdout": "10.0.0.1 dev rmnet0 src 10.0.0.2"}))
         self.assertFalse(_route_result_reaches_wifi({"returncode": 1, "stderr": "Network is unreachable"}))
 
+    def test_mac_host_ipv4_override_must_match_discovered_candidate(self) -> None:
+        self.assertEqual(_validated_mac_candidates(["10.0.0.5"], ["10.0.0.5", "10.0.0.6"]), ["10.0.0.5"])
+        self.assertEqual(_validated_mac_candidates([], ["10.0.0.5"]), ["10.0.0.5"])
+        with self.assertRaisesRegex(ValueError, "not assigned to a discovered host interface"):
+            _validated_mac_candidates(["8.8.8.8"], ["10.0.0.5"])
+
     def test_identity_stage_requires_exact_p0110_identity(self) -> None:
         stage = _identity_stage(dict(DEVICE_IDENTITY, model="2211133C", device="fuxi"), "EP0110PZ0B9110300B")
 
@@ -133,6 +159,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
             "has_route": False,
         }
         host_preflight.return_value = {
+            "command": [sys.executable, "scripts/macos_dev_host.py", "preflight"],
             "returncode": 1,
             "stdout": "",
             "stderr": "codesign identity 'Vibe Screen Dev' not found",
@@ -183,7 +210,13 @@ class TrustedLANPreflightTests(unittest.TestCase):
             "wlan0_ipv4": ["10.0.0.20"],
             "has_route": True,
         }
-        host_preflight.return_value = {"returncode": 0, "stdout": "Status: PASS", "stderr": "", "timed_out": False}
+        host_preflight.return_value = {
+            "command": [sys.executable, "scripts/macos_dev_host.py", "preflight"],
+            "returncode": 0,
+            "stdout": "Status: PASS",
+            "stderr": "",
+            "timed_out": False,
+        }
 
         document = build_document(
             serial="EP0110PZ0B9110300B",
@@ -200,6 +233,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertTrue(document["claims"]["can_start_trusted_lan_smoke"])
         self.assertFalse(document["claims"]["real_lan_stream"])
         self.assertFalse(document["claims"]["reconnect"])
+        self.assertEqual(document["host"]["host_preflight_command"], document["host"]["preflight"]["command"])
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient", FakeADBClient)
@@ -236,7 +270,13 @@ class TrustedLANPreflightTests(unittest.TestCase):
                 }
             },
         }
-        host_preflight.return_value = {"returncode": 0, "stdout": "Status: PASS", "stderr": "", "timed_out": False}
+        host_preflight.return_value = {
+            "command": [sys.executable, "scripts/macos_dev_host.py", "preflight"],
+            "returncode": 0,
+            "stdout": "Status: PASS",
+            "stderr": "",
+            "timed_out": False,
+        }
 
         document = build_document(
             serial="EP0110PZ0B9110300B",

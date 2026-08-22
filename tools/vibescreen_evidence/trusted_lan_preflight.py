@@ -71,7 +71,20 @@ def sanitize_text(value: str) -> str:
     sanitized = value.replace("\r", "")
     for pattern, replacement in SSID_REDACTIONS:
         sanitized = pattern.sub(replacement, sanitized)
+    sanitized = redact_lsof_user_columns(sanitized)
     return redact_network_endpoints(sanitized).strip()
+
+
+def redact_lsof_user_columns(value: str) -> str:
+    if "COMMAND" not in value or "USER" not in value or "NODE NAME" not in value:
+        return value
+    lines = []
+    for line in value.splitlines():
+        if line.startswith("COMMAND"):
+            lines.append(line)
+            continue
+        lines.append(re.sub(r"^(\S+\s+\d+\s+)(\S+)(\s+)", r"\1<redacted-user>\3", line))
+    return "\n".join(lines)
 
 
 def redact_network_endpoints(value: str) -> str:
@@ -258,6 +271,22 @@ def _route_result_reaches_wifi(result: dict[str, Any]) -> bool:
     return "dev wlan0" in text
 
 
+def _validated_mac_candidates(
+    requested_candidates: Sequence[str], discovered_candidates: Sequence[str]
+) -> list[str]:
+    requested = list(dict.fromkeys(requested_candidates))
+    if not requested:
+        return list(discovered_candidates)
+    discovered = set(discovered_candidates)
+    unknown = [address for address in requested if address not in discovered]
+    if unknown:
+        raise ValueError(
+            "Mac LAN IPv4 candidate is not assigned to a discovered host interface: "
+            + ", ".join(unknown)
+        )
+    return requested
+
+
 def collect_host_preflight(
     command: Sequence[str], *, timeout_seconds: float, repo: Path
 ) -> dict[str, Any]:
@@ -441,7 +470,7 @@ def build_document(
     client.require_device()
     identity = client.identity()
     host_network = collect_host_network(host_port, timeout_seconds=adb_timeout)
-    mac_candidates = list(mac_host_ipv4) or host_network["mac_ipv4_candidates"]
+    mac_candidates = _validated_mac_candidates(mac_host_ipv4, host_network["mac_ipv4_candidates"])
     android_network = collect_android_network(serial, adb_path, adb_timeout, mac_candidates)
     host_preflight = collect_host_preflight(host_preflight_command, timeout_seconds=30.0, repo=repo)
     stages = [
@@ -474,7 +503,7 @@ def build_document(
         "host": {
             "network": host_network,
             "preflight": host_preflight,
-            "host_preflight_command": list(host_preflight_command),
+            "host_preflight_command": host_preflight["command"],
             "require_host_listener": require_host_listener,
         },
         "android_device": {
