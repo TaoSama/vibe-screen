@@ -303,6 +303,18 @@ and tell the user what to do next. Retryable transport failures use bounded
 automatic recovery; non-retryable protocol/input failures must stop the loop
 and show a concrete recovery action.
 
+For trusted-LAN device evidence, classify Wi-Fi disconnected, wlan0 with no
+IPv4 address, no route to the Mac LAN address, missing LAN Host listener, Host
+stable-signing failure, and Host TCC failure as pre-session blockers. A
+pre-session connection retry or TRANSPORT_CLOSED log is not reconnect evidence:
+reconnect acceptance starts only after a real encrypted LAN stream has produced
+decoder output and then recovers with the same Host PID. Run the read-only
+trusted-LAN preflight first and retain the JSON when it reports blocked:
+
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+```
+
 Collect the private log with:
 
 ```bash

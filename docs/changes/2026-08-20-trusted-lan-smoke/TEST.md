@@ -48,6 +48,40 @@ Additional current-source checks for this recheck:
 | `make protocol` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Protocol v1 schemas, fixtures, and security contract checks. |
 | `python3 scripts/macos_dev_host.py preflight` | BLOCKED | Stable Host bundle validation cannot proceed without the configured `Vibe Screen Dev` signing identity. |
 
+## 2026-08-22 fail-closed preflight
+
+The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`
+was checked with the new read-only trusted-LAN preflight on the same Nubia P0110
+/ pacific / Android 16 device (`EP0110PZ0B9110300B`). Wi-Fi was enabled with
+`adb -s EP0110PZ0B9110300B shell svc wifi enable`, but the device still reported
+no Wi-Fi association, `wlan0` remained `NO-CARRIER` / `state DOWN` with no IPv4
+address, and Android had no wlan0 route to the Mac LAN candidate. Host stable
+signing was also blocked before TCC evaluation because the
+`scripts/macos_dev_host.py preflight` command could not find the configured
+`Vibe Screen Dev` codesigning identity.
+
+The preflight stopped before Host launch, QR/token admission, secure-record
+negotiation, Protocol v1 LAN upgrade, decoder output, reconnect, latency, or
+soak evidence. The retained artifact bundle is
+[`evidence/2026-08-22-p0110-lan-preflight-blocked/README.md`](evidence/2026-08-22-p0110-lan-preflight-blocked/README.md).
+
+## Fail-closed preflight
+
+Use the machine-readable trusted-LAN preflight before starting the Host,
+generating a QR/token, or attempting stream/reconnect evidence:
+
+    make evidence-trusted-lan-preflight \
+      EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+      EVIDENCE_DIR=<evidence-dir>
+
+The JSON result must be ready before the real smoke can proceed. If any stage
+reports blocked, retain trusted-lan-preflight.json, keep the downstream
+admission/secure-record/Protocol v1/decoder/reconnect/latency stages as
+not_run, and do not describe the run as a trusted-LAN pass. The preflight is
+read-only: it does not launch the Host, write a pairing token or QR payload,
+modify TCC, alter Keychain, clear Android app data, or change saved Wi-Fi
+credentials.
+
 ## Source-level checks
 
 The current code path was still checked offline so the next device owner has a
