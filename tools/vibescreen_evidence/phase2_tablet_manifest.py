@@ -15,6 +15,12 @@ from .manifest import ManifestError, repository_state
 
 KIND = "phase2_tablet_sustained_use_manifest"
 MINIMUM_DURATION_SECONDS = 8 * 60 * 60
+MINIMUM_TABLET_SIZE_INCHES = 8.0
+MAXIMUM_TABLET_SIZE_INCHES = 9.0
+PHYSICAL_TABLET_DEVICE_CLASS = "physical_8_9_inch_tablet"
+ANDROID_SUBSTITUTE_DEVICE_CLASS = "android_substitute"
+NUBIA_P0110_MODEL = "p0110"
+NUBIA_P0110_CODENAME = "pacific"
 REQUIRED_IDENTITY_FIELDS = [
     "adb_serial",
     "device_serial",
@@ -36,6 +42,13 @@ REQUIRED_GATES = [
     "login_startup_or_headless_recovery",
     "eight_hour_sustained_stream",
 ]
+
+REQUIRED_GATE_OWNER_KEYS = (
+    "stand_mounted_charging",
+    "thermal_power_sampling",
+    "posture_and_mount",
+    "eight_hour_sustained_stream",
+)
 
 REQUIRED_ARTIFACTS = [
     "README.md",
@@ -90,6 +103,31 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _gate_owners(value: str) -> dict[str, str]:
+    owners: dict[str, str] = {}
+    for item in _split_csv(value):
+        key, separator, owner = item.partition("=")
+        if separator != "=" or not key.strip() or not owner.strip():
+            raise ManifestError(
+                "--gate-owners must use comma-separated gate=owner entries"
+            )
+        normalized_key = key.strip()
+        if normalized_key in owners:
+            raise ManifestError(f"--gate-owners repeats {normalized_key}")
+        owners[normalized_key] = owner.strip()
+    missing = [key for key in REQUIRED_GATE_OWNER_KEYS if key not in owners]
+    if missing:
+        raise ManifestError(
+            "--gate-owners is missing required owner(s): " + ", ".join(missing)
+        )
+    unknown = [key for key in owners if key not in REQUIRED_GATE_OWNER_KEYS]
+    if unknown:
+        raise ManifestError(
+            "--gate-owners contains unknown owner key(s): " + ", ".join(unknown)
+        )
+    return owners
+
+
 def _device_identity(device_info: dict[str, Any]) -> dict[str, Any]:
     device = device_info.get("device")
     if not isinstance(device, dict):
@@ -120,6 +158,21 @@ def _device_identity(device_info: dict[str, Any]) -> dict[str, Any]:
     return identity
 
 
+def _is_nubia_p0110(identity: dict[str, Any]) -> bool:
+    model = str(identity.get("model", "")).strip().lower()
+    codename = str(identity.get("codename", "")).strip().lower()
+    return model == NUBIA_P0110_MODEL and codename == NUBIA_P0110_CODENAME
+
+
+def _tablet_size(value: str | None) -> float | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        return float(value.strip())
+    except ValueError:
+        return None
+
+
 def build_manifest(
     *,
     command: Sequence[str],
@@ -139,6 +192,7 @@ def build_manifest(
     battery_temperature_limit_celsius: float | None,
     maximum_net_battery_drain_percent: int | None,
     recovery_scenarios: Sequence[str],
+    gate_owners: dict[str, str],
     host_identity: str,
     host_build: str,
     apk_sha256: str,
@@ -153,9 +207,22 @@ def build_manifest(
     if maximum_net_battery_drain_percent is not None and maximum_net_battery_drain_percent < 0:
         raise ManifestError("--maximum-net-battery-drain-percent must be non-negative")
 
+    identity = _device_identity(device_info)
     limitations = list(DEFAULT_LIMITATIONS)
     normalized_class = device_class.strip()
-    if normalized_class != "physical_8_9_inch_tablet":
+    if normalized_class == PHYSICAL_TABLET_DEVICE_CLASS:
+        size_inches = _tablet_size(tablet_size_inches)
+        if size_inches is None or not (
+            MINIMUM_TABLET_SIZE_INCHES <= size_inches <= MAXIMUM_TABLET_SIZE_INCHES
+        ):
+            raise ManifestError(
+                "--tablet-size-inches must be a numeric 8.0..9.0 value for physical_8_9_inch_tablet evidence"
+            )
+        if _is_nubia_p0110(identity):
+            raise ManifestError(
+                "Nubia P0110/pacific must use --device-class android_substitute; it cannot close the physical 8-9 inch tablet gate"
+            )
+    if normalized_class != PHYSICAL_TABLET_DEVICE_CLASS:
         limitations.append(
             "The recorded device class is not a physical 8-9 inch tablet, so this manifest cannot close the tablet hardware gate."
         )
@@ -168,7 +235,7 @@ def build_manifest(
         "command": list(command),
         "repository": repository_state(repo.resolve()),
         "device": {
-            "identity": _device_identity(device_info),
+            "identity": identity,
             "device_class": normalized_class,
             "tablet_size_inches": tablet_size_inches,
         },
@@ -197,6 +264,7 @@ def build_manifest(
             "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
         },
         "recovery_scenarios": list(recovery_scenarios),
+        "gate_owners": dict(gate_owners),
         "required_gates": REQUIRED_GATES,
         "required_artifacts": REQUIRED_ARTIFACTS,
         "limitations": limitations,
@@ -238,6 +306,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--battery-temperature-limit-celsius", type=float)
     parser.add_argument("--maximum-net-battery-drain-percent", type=int)
     parser.add_argument("--recovery-scenarios", help="comma-separated planned recovery scenarios")
+    parser.add_argument(
+        "--gate-owners",
+        required=True,
+        help=(
+            "comma-separated gate=owner entries for stand_mounted_charging, "
+            "thermal_power_sampling, posture_and_mount, and "
+            "eight_hour_sustained_stream"
+        ),
+    )
     parser.add_argument("--host-identity", required=True)
     parser.add_argument("--host-build", required=True)
     parser.add_argument("--apk-sha256", required=True)
@@ -276,6 +353,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
             maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,
             recovery_scenarios=_split_csv(arguments.recovery_scenarios),
+            gate_owners=_gate_owners(arguments.gate_owners),
             host_identity=_require_non_empty(arguments.host_identity, "--host-identity"),
             host_build=_require_non_empty(arguments.host_build, "--host-build"),
             apk_sha256=_require_non_empty(arguments.apk_sha256, "--apk-sha256"),

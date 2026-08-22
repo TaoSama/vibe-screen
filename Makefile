@@ -159,6 +159,7 @@ soak-30m soak-2h soak-8h: require-evidence-serial
 phase2-tablet-manifest: require-evidence-serial
 	@test -f "$(EVIDENCE_DIR)/device-info.json" || (echo "error: collect $(EVIDENCE_DIR)/device-info.json with make evidence-device-info before phase2-tablet-manifest" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_DEVICE_CLASS))" || (echo "error: set PHASE2_DEVICE_CLASS to physical_8_9_inch_tablet or android_substitute" >&2; exit 2)
+	@if [ "$(strip $(PHASE2_DEVICE_CLASS))" = "physical_8_9_inch_tablet" ]; then test -n "$(strip $(PHASE2_TABLET_SIZE_INCHES))" || (echo "error: set PHASE2_TABLET_SIZE_INCHES for physical_8_9_inch_tablet evidence" >&2; exit 2); fi
 	@test -n "$(strip $(PHASE2_STAND_SETUP))" || (echo "error: set PHASE2_STAND_SETUP" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_CHARGER))" || (echo "error: set PHASE2_CHARGER" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_CABLE_OR_DOCK))" || (echo "error: set PHASE2_CABLE_OR_DOCK" >&2; exit 2)
@@ -168,6 +169,7 @@ phase2-tablet-manifest: require-evidence-serial
 	@test -n "$(strip $(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_SHA256" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS))" || (echo "error: set PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT))" || (echo "error: set PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_GATE_OWNERS))" || (echo "error: set PHASE2_GATE_OWNERS to gate=owner entries for stand_mounted_charging, thermal_power_sampling, posture_and_mount, and eight_hour_sustained_stream" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
 		--output $(EVIDENCE_DIR)/phase2-tablet-manifest.json \
@@ -184,6 +186,7 @@ phase2-tablet-manifest: require-evidence-serial
 		$(if $(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS)),--battery-temperature-limit-celsius $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS),) \
 		$(if $(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT)),--maximum-net-battery-drain-percent $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT),) \
 		$(if $(strip $(PHASE2_RECOVERY_SCENARIOS)),--recovery-scenarios "$(PHASE2_RECOVERY_SCENARIOS)",) \
+		--gate-owners "$(PHASE2_GATE_OWNERS)" \
 		--host-identity "$(PHASE2_HOST_IDENTITY)" \
 		--host-build "$(PHASE2_HOST_BUILD)" \
 		--apk-sha256 "$(PHASE2_APK_SHA256)" \

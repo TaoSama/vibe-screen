@@ -17,6 +17,7 @@
     "android_artifact",
     "session",
     "thresholds",
+    "gate_owners",
     "recovery_scenarios",
     "required_gates",
     "required_artifacts",
@@ -116,6 +117,22 @@
       }
     },
     "recovery_scenarios": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "gate_owners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stand_mounted_charging",
+        "thermal_power_sampling",
+        "posture_and_mount",
+        "eight_hour_sustained_stream"
+      ],
+      "properties": {
+        "stand_mounted_charging": {"type": "string", "minLength": 1},
+        "thermal_power_sampling": {"type": "string", "minLength": 1},
+        "posture_and_mount": {"type": "string", "minLength": 1},
+        "eight_hour_sustained_stream": {"type": "string", "minLength": 1}
+      }
+    },
     "required_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "required_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},

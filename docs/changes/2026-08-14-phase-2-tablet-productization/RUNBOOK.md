@@ -22,9 +22,12 @@ and keep raw logs even when the run fails.
   the soak: `dumpsys battery`, `dumpsys power`, and thermal status must match
   the visible battery, charging, power-saver, and thermal labels.
 - Create `phase2-tablet-manifest.json` before starting the timer so the run has
-  a run ID plus predeclared identity, setup, scenario, and threshold metadata.
-  This manifest is preparation evidence only; it cannot close the gate without
-  the raw eight-hour artifacts and final gate report.
+  a run ID plus predeclared identity, setup, scenario, threshold, and gate-owner
+  metadata. The owner map assigns stand-mounted charging stability,
+  thermal/power sampling, posture and mount review, and the eight-hour stream
+  verdict to named accountable gates or people before evidence collection
+  begins. This manifest is preparation evidence only; it cannot close the gate
+  without the raw eight-hour artifacts and final gate report.
 
 ## Baseline device checks
 
@@ -45,7 +48,10 @@ adb -s "$ADB_SERIAL" shell pidof dev.telemachus.display > android-pid.txt
 Then write the Phase 2 manifest from the evidence root. Use
 `PHASE2_DEVICE_CLASS=android_substitute` for a Nubia P0110/pacific/Android 16
 or another phone substitute; do not label a substitute as Xiaomi 13/fuxi or as
-8-9 inch tablet evidence.
+8-9 inch tablet evidence. `PHASE2_DEVICE_CLASS=physical_8_9_inch_tablet`
+requires a numeric `PHASE2_TABLET_SIZE_INCHES` value in the 8.0-9.0 range; the
+gate also rejects known phone-substitute identities such as Nubia P0110/pacific
+if a hand-written manifest mislabels them as physical tablet evidence.
 
 ```bash
 make phase2-tablet-manifest \
@@ -63,8 +69,18 @@ make phase2-tablet-manifest \
   PHASE2_APK_SHA256="<debug or release APK SHA-256>" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS="<battery temperature limit>" \
   PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT="<maximum net battery drain>" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate" \
   PHASE2_RECOVERY_SCENARIOS="background_foreground,transport_reconnect"
 ```
+
+`PHASE2_GATE_OWNERS` is required. It makes the stand-mounted charging owner
+auditable instead of leaving the acceptance decision implicit in README text:
+`stand_mounted_charging` owns the charging-state/current/voltage and net-drain
+stability decision, `thermal_power_sampling` owns the thermal and battery-power
+sample review, `posture_and_mount` owns the physical stand, cable/dock, charger,
+and ambient setup review, and `eight_hour_sustained_stream` owns the sustained
+stream verdict. The owner values may be gate names, role names, or accountable
+human reviewers, but they must be non-empty and declared before the run.
 
 If `dumpsys thermalservice` fails or writes an empty dump, keep
 `thermal-before.err`, mark the thermal gate failed, and do not count the run as
@@ -119,8 +135,8 @@ make phase2-tablet-gate EVIDENCE_DIR="$RUN_DIR"
 
 The gate reads the manifest and raw evidence root as well as the soak report, so
 a short run, phone substitute, missing raw battery / power / thermal files,
-missing screenshots, or undeclared threshold remains `insufficient` instead of
-closing Phase 2.
+missing screenshots, undeclared threshold, or missing gate owner remains
+`insufficient` instead of closing Phase 2.
 
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are
@@ -241,7 +257,9 @@ stable signed/TCC Host, logs, or visible Mac result.
   or critical interval is called out with duration and user-visible behavior.
 - The stand-mounted power setup is stable: charging state, current/voltage where
   available, and battery percentage do not show unsafe heat or net drain outside
-  the declared threshold.
+  the declared threshold. This decision is owned by the manifest
+  `gate_owners.stand_mounted_charging` entry and must be reviewed with the
+  physical setup recorded for the run, not inferred from a phone substitute.
 - Every manual recovery action records before/after logs and confirms whether the
   user-visible state matched platform state.
 
@@ -255,7 +273,7 @@ Each run directory should include at minimum:
 - `device-info.json` collected by `make evidence-device-info` and valid against
   `tools/schemas/device-info.schema.json`;
 - `device.txt`, `host.txt`, `apk-sha256.txt`, `build.txt`, and
-  `phase2-tablet-manifest.json` valid against
+  `phase2-tablet-manifest.json` with predeclared `gate_owners`, valid against
   `tools/schemas/phase2-tablet-manifest.schema.json`;
 - `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
