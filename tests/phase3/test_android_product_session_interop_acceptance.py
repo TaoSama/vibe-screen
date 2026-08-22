@@ -21,6 +21,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     UI_MARKER_PREFIX,
     INTERNET_LEASE_LOCK,
     MANDATORY_DEVICE_LOCKS,
+    PRODUCT_INTEROP_EVIDENCE_BOUNDARIES,
     Adb,
     AdbGateJournal,
     InteropError,
@@ -43,6 +44,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     validate_ui_marker,
     write_private,
 )
+from scripts.phase3.android_current_base_interop_gate import PRODUCT_BOUNDARY_EXPECTATIONS
 
 
 class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
@@ -414,6 +416,20 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         self.assertEqual(config["listen_address"], "192.0.2.10:18088")
         self.assertEqual(config["max_waiters_per_role"], 1)
         self.assertGreater(config["max_candidates_per_role"], 0)
+
+    def test_runner_records_exact_p0110_sdk_identity(self) -> None:
+        source = Path(
+            "scripts/phase3/android_product_session_interop_acceptance.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"ro.build.version.sdk"', source)
+        self.assertIn('"sdk": 36', source)
+        self.assertIn('"manufacturer": "nubia"', source)
+        self.assertIn('"model": "P0110"', source)
+        self.assertIn('"codename": "pacific"', source)
+
+    def test_runner_product_boundaries_cover_current_base_gate_expectations(self) -> None:
+        for key, expected in PRODUCT_BOUNDARY_EXPECTATIONS.items():
+            self.assertEqual(PRODUCT_INTEROP_EVIDENCE_BOUNDARIES.get(key), expected)
 
     def test_ice_urls_and_turn_credentials_are_loaded_only_from_private_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

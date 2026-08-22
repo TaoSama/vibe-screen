@@ -301,6 +301,24 @@ Internet lock. Never include its owner token in evidence. Absence of the
 coordination locks and ownership of the Internet lock authorize a run; neither is
 evidence that any device test passed.
 
+For the current Nubia substitute path, check `/tmp/vibe-screen-device-android.lock`
+before touching ADB and use the explicit serial in every command:
+
+```bash
+test ! -e /tmp/vibe-screen-device-android.lock
+adb -s EP0110PZ0B9110300B devices -l
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+```
+
+The recorded identity for that path is `nubia P0110 / pacific / Android 16 /
+SDK 36`. Do not relabel it as Xiaomi 13/fuxi evidence, and do not use a
+synthetic-media interop run to claim ScreenCaptureKit-to-Android-MediaCodec,
+public Internet, handoff, latency, or soak gates.
+
 ## Authority integration open items
 
 The signaling `production_authority` mode is implemented and covered by a
