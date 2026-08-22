@@ -25,6 +25,18 @@ GUARDED_README_TEXT = (
     "rather than a stable release. Do not treat roadmap items below "
     "as shipped features."
 )
+COMPLETE_MANIFEST_STRENGTHS = {
+    "upstream_provenance_and_license": "current-source",
+    "protocol_contract_ci": "current-ci",
+    "android_clean_build": "current-ci",
+    "macos_release_build_xcode_tests": "current-ci",
+    "android_device_usb_stream_reconnect_codec": "current-real-device",
+    "telemetry_and_latency_archive": "current-real-device",
+    "host_rss_2h_no_growth": "current-real-device",
+    "native_pointer_hid_mouse": "current-real-device",
+    "controller_runtime_acceptance": "current-real-device",
+    "module_ownership_extraction": "current-source",
+}
 
 
 def gate_by_id(manifest: dict[str, object], gate_id: str) -> dict[str, object]:
@@ -49,7 +61,7 @@ def complete_manifest() -> dict[str, object]:
                 "title": gate_id.replace("_", " "),
                 "verdict": "pass",
                 "required_for_stable_release": True,
-                "evidence_strength": "current-real-device",
+                "evidence_strength": COMPLETE_MANIFEST_STRENGTHS[gate_id],
                 "evidence_paths": [f"docs/evidence/{gate_id}.json"],
                 "owner_prs": [],
                 "blockers": [],
@@ -136,6 +148,36 @@ class Phase0StableReleaseTest(unittest.TestCase):
                     [gate["id"] for gate in summary["blocking_required_gates"]],
                     ["host_rss_2h_no_growth"],
                 )
+
+    def test_runtime_gate_requires_gate_specific_closing_strength(self) -> None:
+        manifest = complete_manifest()
+        gate = gate_by_id(manifest, "native_pointer_hid_mouse")
+        gate["evidence_strength"] = "current-source"
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(
+            [gate["id"] for gate in summary["blocking_required_gates"]],
+            ["native_pointer_hid_mouse"],
+        )
+        self.assertIn(
+            "closing evidence strength for this gate",
+            summary["blocking_required_gates"][0]["issues"][0],
+        )
+
+    def test_retained_real_device_strength_only_closes_android_baseline_gate(self) -> None:
+        manifest = complete_manifest()
+        gate = gate_by_id(manifest, "android_device_usb_stream_reconnect_codec")
+        gate["evidence_strength"] = "real-device"
+
+        summary = evaluate_manifest(
+            manifest, readme_text="Phase 0 stable-release summary"
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "pass")
+        self.assertTrue(summary["can_mark_phase0_stable_release"])
 
     def test_pass_gate_with_blockers_is_insufficient(self) -> None:
         manifest = complete_manifest()

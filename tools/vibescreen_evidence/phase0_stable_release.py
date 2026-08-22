@@ -35,6 +35,21 @@ CLOSING_EVIDENCE_STRENGTHS = {
     "current-source",
     "real-device",
 }
+REQUIRED_GATE_CLOSING_EVIDENCE_STRENGTHS = {
+    "upstream_provenance_and_license": {"current-source"},
+    "protocol_contract_ci": {"current-ci"},
+    "android_clean_build": {"current-ci"},
+    "macos_release_build_xcode_tests": {"current-ci"},
+    "android_device_usb_stream_reconnect_codec": {
+        "current-real-device",
+        "real-device",
+    },
+    "telemetry_and_latency_archive": {"current-real-device"},
+    "host_rss_2h_no_growth": {"current-real-device"},
+    "native_pointer_hid_mouse": {"current-real-device"},
+    "controller_runtime_acceptance": {"current-real-device"},
+    "module_ownership_extraction": {"current-ci", "current-source"},
+}
 DEFAULT_README_GUARD_PHRASES = (
     "Phase 0 remains in progress",
     "rather than a stable release",
@@ -156,9 +171,13 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
             issues.append("pass gate must cite at least one evidence path or URL")
         if blockers:
             issues.append("pass gate must not list unresolved blockers")
-        if evidence_strength not in CLOSING_EVIDENCE_STRENGTHS:
+        closing_evidence_strengths = REQUIRED_GATE_CLOSING_EVIDENCE_STRENGTHS.get(
+            gate_id, CLOSING_EVIDENCE_STRENGTHS
+        )
+        if evidence_strength not in closing_evidence_strengths:
             issues.append(
-                f"pass gate must use a closing evidence strength, got {evidence_strength!r}"
+                "pass gate must use a closing evidence strength for this gate, "
+                f"got {evidence_strength!r}"
             )
     can_close = required and verdict == STATUS_PASS and not issues
     return {
