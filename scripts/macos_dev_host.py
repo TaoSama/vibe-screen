@@ -5,14 +5,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import plistlib
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
+import textwrap
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import package_macos
@@ -23,15 +25,58 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_READINESS_REPORT_PATH = DEFAULT_OUTPUT_DIR / "login-headless-readiness.txt"
+DEFAULT_READINESS_JSON_PATH = DEFAULT_OUTPUT_DIR / "login-headless-readiness.json"
+DEFAULT_HOST_LOG_PATH = Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
+TCC_QUERY_TIMEOUT_SECONDS = 5
+DEFAULTS_PREFIX = "Telemachus_"
+STARTUP_MODES = {"usb", "wireless", "internet"}
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+TCC_QUERY_SCRIPT = textwrap.dedent(r'''
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+database_path = Path(sys.argv[1])
+bundle_id = sys.argv[2]
+services = tuple(sys.argv[3:])
+try:
+    connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(access)").fetchall()}
+        required = {"service", "client", "client_type", "auth_value"}
+        missing = required - columns
+        if missing:
+            raise sqlite3.OperationalError(
+                f"TCC access table is missing required columns: {', '.join(sorted(missing))}"
+            )
+        auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
+        last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
+        placeholders = ",".join("?" for _ in services)
+        cursor = connection.execute(
+            f"""
+            SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}
+            FROM access
+            WHERE client = ? AND client_type = 0 AND service IN ({placeholders})
+            ORDER BY service, last_modified
+            """,
+            (bundle_id, *services),
+        )
+        print(json.dumps({"rows": cursor.fetchall()}))
+    finally:
+        connection.close()
+except sqlite3.Error as error:
+    print(json.dumps({"error": str(error)}))
+''')
 
 
 @dataclass(frozen=True)
@@ -76,6 +121,46 @@ class PermissionStatus:
         return any(row.service in services and row.auth_value == ALLOWED_AUTH_VALUE for row in self.rows)
 
 
+@dataclass(frozen=True)
+class HostStartupSettings:
+    domain: str
+    readable: bool
+    auto_start_streaming_on_launch: bool
+    startup_mode: str
+    has_completed_onboarding: bool
+    display_source: str
+    selected_display_uuid: str | None
+    selected_display_id: int | None
+    stored_keys: tuple[str, ...]
+    defaults_used: tuple[str, ...]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class LoginItemReadiness:
+    state: str
+    matched: bool
+    detail: str
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HostDisplayReadiness:
+    readable: bool
+    display_count: int
+    displays: tuple[dict[str, object], ...]
+    error: str | None = None
+    active_display_count: int | None = None
+
+
+@dataclass(frozen=True)
+class LogReadiness:
+    path: str
+    readable: bool
+    markers: tuple[str, ...]
+    error: str | None = None
+
+
 def default_tcc_database() -> Path:
     return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
 
@@ -88,17 +173,49 @@ def tcc_database_paths(database_path: Path) -> tuple[Path, ...]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
+        description=(
+            "Build/install the local Vibe Screen Host or collect read-only macOS "
+            "readiness diagnostics. The tool never modifies TCC."
+        )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     install = subparsers.add_parser("install", help="build, sign, and install the stable local development Host bundle")
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    readiness = subparsers.add_parser(
+        "readiness",
+        help="collect read-only login/headless/unattended readiness diagnostics",
+    )
+    add_common_options(
+        readiness,
+        include_sign_identity=True,
+        report_default=DEFAULT_READINESS_REPORT_PATH,
+        report_help="path for the human-readable readiness report",
+    )
+    readiness.add_argument(
+        "--json-report",
+        type=Path,
+        default=DEFAULT_READINESS_JSON_PATH,
+        help="path for the machine-readable readiness report",
+    )
+    readiness.add_argument(
+        "--log-path",
+        type=Path,
+        default=DEFAULT_HOST_LOG_PATH,
+        help="Host log path to summarize for startup/recovery markers",
+    )
     return parser.parse_args()
 
 
-def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity: bool = False, include_output_dir: bool = False) -> None:
+def add_common_options(
+    parser: argparse.ArgumentParser,
+    *,
+    include_sign_identity: bool = False,
+    include_output_dir: bool = False,
+    report_default: Path = DEFAULT_REPORT_PATH,
+    report_help: str = "path for the signing and permission report",
+) -> None:
     if include_sign_identity:
         sign_default = os.environ.get(package_macos.SIGN_IDENTITY_ENV, package_macos.DEFAULT_SIGN_IDENTITY)
         parser.add_argument(
@@ -126,8 +243,8 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
     parser.add_argument(
         "--report",
         type=Path,
-        default=DEFAULT_REPORT_PATH,
-        help="path for the signing and permission report",
+        default=report_default,
+        help=report_help,
     )
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
@@ -252,48 +369,38 @@ def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> P
 def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
     if not database_path.exists():
         return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error="TCC database not found")
+    exit_code, output = run_best_effort(
+        sys.executable,
+        "-c",
+        TCC_QUERY_SCRIPT,
+        str(database_path),
+        bundle_id,
+        *SCREEN_CAPTURE_SERVICES,
+        ACCESSIBILITY_SERVICE,
+        timeout_seconds=TCC_QUERY_TIMEOUT_SECONDS,
+    )
+    if exit_code != 0:
+        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error=output)
     try:
-        connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
-        try:
-            columns = {
-                str(row[1])
-                for row in connection.execute("PRAGMA table_info(access)").fetchall()
-            }
-            required = {"service", "client", "client_type", "auth_value"}
-            missing = required - columns
-            if missing:
-                raise sqlite3.OperationalError(
-                    f"TCC access table is missing required columns: {', '.join(sorted(missing))}"
-                )
-            auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
-            last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
-            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE)
-            placeholders = ",".join("?" for _ in services)
-            cursor = connection.execute(
-                f"""
-                SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}
-                FROM access
-                WHERE client = ? AND client_type = 0 AND service IN ({placeholders})
-                ORDER BY service, last_modified
-                """,
-                (bundle_id, *services),
-            )
-            rows = tuple(
-                TCCRow(
-                    service=str(row[0]),
-                    client=str(row[1]),
-                    client_type=int(row[2]),
-                    auth_value=None if row[3] is None else int(row[3]),
-                    auth_reason=None if row[4] is None else int(row[4]),
-                    last_modified=None if row[5] is None else int(row[5]),
-                )
-                for row in cursor.fetchall()
-            )
-            return PermissionStatus(database_path=str(database_path), rows=rows, readable=True)
-        finally:
-            connection.close()
-    except sqlite3.Error as error:
-        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error=str(error))
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error=f"invalid TCC query output: {error}")
+    if not isinstance(payload, dict):
+        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error="invalid TCC query output")
+    if isinstance(payload.get("error"), str):
+        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error=str(payload["error"]))
+    rows = tuple(
+        TCCRow(
+            service=str(row[0]),
+            client=str(row[1]),
+            client_type=int(row[2]),
+            auth_value=None if row[3] is None else int(row[3]),
+            auth_reason=None if row[4] is None else int(row[4]),
+            last_modified=None if row[5] is None else int(row[5]),
+        )
+        for row in payload.get("rows", [])
+    )
+    return PermissionStatus(database_path=str(database_path), rows=rows, readable=True)
 
 
 def validate_preflight(
@@ -387,6 +494,490 @@ This tool does not reset Keychain, import certificates, request passwords, updat
 partition lists, modify TCC.db, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads TCC.db in read-only mode.
 """
+
+
+def run_best_effort(*command: str, timeout_seconds: int = 15) -> tuple[int, str]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        detail = f"command timed out after {timeout_seconds}s"
+        if output.strip():
+            detail = f"{detail}: {output.strip()}"
+        return 124, detail
+    return completed.returncode, completed.stdout.strip()
+
+
+def parse_defaults_output(output: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if " = " not in line:
+            continue
+        key, value = line.split(" = ", 1)
+        values[key.strip()] = value.strip().rstrip(";")
+    return values
+
+
+def parse_defaults_export(output: str) -> dict[str, object]:
+    try:
+        value = plistlib.loads(output.encode("utf-8"))
+    except (plistlib.InvalidFileException, ValueError):
+        return parse_defaults_output(output)
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
+def defaults_bool(value: object | None, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if not isinstance(value, str):
+        return default
+    return value.strip().lower() in {"1", "true", "yes"}
+
+
+def defaults_int(value: object | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def defaults_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return str(value)
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == '"' and stripped[-1] == '"':
+        return stripped[1:-1]
+    return stripped
+
+
+def read_startup_settings(bundle_id: str = EXPECTED_BUNDLE_ID) -> HostStartupSettings:
+    exit_code, output = run_best_effort("/usr/bin/defaults", "export", bundle_id, "-")
+    if exit_code != 0:
+        return HostStartupSettings(
+            domain=bundle_id,
+            readable=False,
+            auto_start_streaming_on_launch=True,
+            startup_mode="usb",
+            has_completed_onboarding=False,
+            display_source="currentMain",
+            selected_display_uuid=None,
+            selected_display_id=None,
+            stored_keys=(),
+            defaults_used=(
+                "autoStartStreamingOnLaunch=True",
+                "startupMode=usb",
+                "hasCompletedOnboarding=False",
+                "displaySource=currentMain",
+            ),
+            error=output or "defaults domain not found",
+        )
+    parsed = parse_defaults_export(output)
+    startup_mode = defaults_string(parsed.get(DEFAULTS_PREFIX + "startupMode"))
+    connection_mode = defaults_string(parsed.get(DEFAULTS_PREFIX + "connectionMode"))
+    if startup_mode not in STARTUP_MODES:
+        startup_mode = connection_mode if connection_mode in STARTUP_MODES else "usb"
+    display_source = defaults_string(parsed.get(DEFAULTS_PREFIX + "displaySource")) or "currentMain"
+    defaults_used = []
+    for key, default_value in (
+        ("autoStartStreamingOnLaunch", "True"),
+        ("startupMode", "usb"),
+        ("displaySource", "currentMain"),
+    ):
+        if DEFAULTS_PREFIX + key not in parsed:
+            defaults_used.append(f"{key}={default_value}")
+    if DEFAULTS_PREFIX + "hasCompletedOnboarding" not in parsed:
+        defaults_used.append("hasCompletedOnboarding=False")
+    return HostStartupSettings(
+        domain=bundle_id,
+        readable=True,
+        auto_start_streaming_on_launch=defaults_bool(
+            parsed.get(DEFAULTS_PREFIX + "autoStartStreamingOnLaunch"),
+            True,
+        ),
+        startup_mode=startup_mode,
+        has_completed_onboarding=defaults_bool(
+            parsed.get(DEFAULTS_PREFIX + "hasCompletedOnboarding"),
+            False,
+        ),
+        display_source=display_source,
+        selected_display_uuid=defaults_string(parsed.get(DEFAULTS_PREFIX + "selectedDisplayUUID")),
+        selected_display_id=defaults_int(parsed.get(DEFAULTS_PREFIX + "selectedDisplayID")),
+        stored_keys=tuple(sorted(key for key in parsed if key.startswith(DEFAULTS_PREFIX))),
+        defaults_used=tuple(defaults_used),
+    )
+
+
+def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> LoginItemReadiness:
+    lines = output.splitlines()
+    matches: list[str] = []
+    for index, line in enumerate(lines):
+        if bundle_id not in line and APP_NAME not in line:
+            continue
+        start = max(0, index - 8)
+        end = min(len(lines), index + 12)
+        matches.append("\n".join(lines[start:end]))
+    if not matches:
+        return LoginItemReadiness(
+            state="not_found",
+            matched=False,
+            detail="No matching login item entry found in sfltool dumpbtm output.",
+            evidence=(),
+        )
+    combined = "\n---\n".join(matches)
+    lowered = combined.lower()
+    if any(marker in lowered for marker in ("requires approval", "approval required", "not approved", "allowed = 0")):
+        state = "requires_approval"
+        detail = "Matching login item appears to need user approval; verify in System Settings."
+    elif any(marker in lowered for marker in ("disabled", "not enabled", "state = 0")):
+        state = "disabled"
+        detail = "Matching login item appears present but disabled."
+    elif any(marker in lowered for marker in ("enabled", "allowed = 1", "state = 1")):
+        state = "enabled"
+        detail = "Matching login item appears enabled in read-only sfltool output."
+    else:
+        state = "present_unknown"
+        detail = "Matching login item was found, but the enabled/approval state was not machine-parsable."
+    return LoginItemReadiness(state=state, matched=True, detail=detail, evidence=tuple(matches))
+
+
+def read_login_item_readiness() -> LoginItemReadiness:
+    exit_code, output = run_best_effort("/usr/bin/sfltool", "dumpbtm")
+    if exit_code != 0:
+        return LoginItemReadiness(
+            state="unverified",
+            matched=False,
+            detail=output or "sfltool dumpbtm failed",
+            evidence=(),
+        )
+    return parse_login_item_state(output)
+
+
+def read_display_readiness() -> HostDisplayReadiness:
+    script = """
+import CoreGraphics
+let maxDisplays: UInt32 = 32
+let active = UnsafeMutablePointer<CGDirectDisplayID>.allocate(capacity: Int(maxDisplays))
+defer { active.deallocate() }
+var count: UInt32 = 0
+let error = CGGetActiveDisplayList(maxDisplays, active, &count)
+if error != .success {
+    print("ERROR:\(error.rawValue)")
+    exit(2)
+}
+for index in 0..<Int(count) {
+    let id = active[index]
+    let bounds = CGDisplayBounds(id)
+    let mode = CGDisplayCopyDisplayMode(id)
+    let main = CGDisplayIsMain(id) != 0 ? 1 : 0
+    print("id=\(id)|main=\(main)|logical=\(Int(bounds.width))x\(Int(bounds.height))|physical=\(mode?.pixelWidth ?? 0)x\(mode?.pixelHeight ?? 0)")
+}
+"""
+    exit_code, output = run_best_effort("/usr/bin/swift", "-e", script)
+    if exit_code != 0:
+        return HostDisplayReadiness(False, 0, (), output or "display inventory command failed")
+    displays: list[dict[str, object]] = []
+    for line in output.splitlines():
+        fields = dict(part.split("=", 1) for part in line.split("|") if "=" in part)
+        if fields:
+            displays.append(fields)
+    if displays:
+        return HostDisplayReadiness(True, len(displays), tuple(displays), active_display_count=len(displays))
+    profiler_displays = read_system_profiler_displays()
+    if profiler_displays:
+        return HostDisplayReadiness(True, len(profiler_displays), tuple(profiler_displays), active_display_count=0)
+    return HostDisplayReadiness(True, 0, (), active_display_count=0)
+
+
+def read_system_profiler_displays() -> list[dict[str, object]]:
+    exit_code, output = run_best_effort(
+        "/usr/sbin/system_profiler",
+        "SPDisplaysDataType",
+        "-json",
+        timeout_seconds=20,
+    )
+    if exit_code != 0:
+        return []
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return []
+    displays: list[dict[str, object]] = []
+    for gpu in payload.get("SPDisplaysDataType", []):
+        if not isinstance(gpu, dict):
+            continue
+        for display in gpu.get("spdisplays_ndrvs", []):
+            if not isinstance(display, dict):
+                continue
+            if display.get("spdisplays_online") not in (None, "spdisplays_yes"):
+                continue
+            displays.append(
+                {
+                    "id": str(display.get("_spdisplays_displayID", "unknown")),
+                    "name": str(display.get("_name", "unknown")),
+                    "main": "1" if display.get("spdisplays_main") == "spdisplays_yes" else "0",
+                    "logical": str(display.get("_spdisplays_resolution", "unknown")),
+                    "physical": str(display.get("_spdisplays_pixels", "unknown")),
+                    "source": "system_profiler",
+                }
+            )
+    return displays
+
+
+def summarize_host_log(log_path: Path, marker_limit: int = 40) -> LogReadiness:
+    if not log_path.exists():
+        return LogReadiness(str(log_path), False, (), "Host log not found")
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-2000:]
+    except OSError as error:
+        return LogReadiness(str(log_path), False, (), str(error))
+    markers = [
+        line
+        for line in lines
+        if any(
+            token in line
+            for token in (
+                "Launch at Login",
+                "Auto-start",
+                "automatic",
+                "Unattended",
+                "recovery",
+                "retry",
+                "Screen Recording",
+                "CGPreflight",
+                "Server started",
+                "Streaming listener stopped",
+            )
+        )
+    ]
+    return LogReadiness(str(log_path), True, tuple(markers[-marker_limit:]))
+
+
+def build_readiness_payload(
+    metadata: SigningMetadata,
+    permissions: PermissionStatus,
+    signing_errors: list[str],
+    settings: HostStartupSettings,
+    login_item: LoginItemReadiness,
+    displays: HostDisplayReadiness,
+    logs: LogReadiness,
+) -> dict[str, object]:
+    blockers = list(signing_errors)
+    warnings: list[str] = []
+    if not settings.readable:
+        blockers.append(f"cannot read startup defaults: {settings.error}")
+    if login_item.state != "enabled":
+        blockers.append(f"Launch at Login is not verified enabled: {login_item.state}")
+    if not settings.auto_start_streaming_on_launch:
+        blockers.append("Start streaming automatically is disabled")
+    if settings.startup_mode not in {"usb", "wireless"}:
+        blockers.append(f"startupMode is '{settings.startup_mode}', expected usb or wireless for local headless readiness")
+    if not settings.has_completed_onboarding:
+        blockers.append("onboarding has not completed; automatic startup waits for onboarding outside explicit benchmark mode")
+    if not displays.readable:
+        blockers.append(f"cannot read active display inventory: {displays.error}")
+    elif (displays.active_display_count if displays.active_display_count is not None else displays.display_count) < 1:
+        blockers.append("no active display is visible to the current WindowServer session")
+    if not logs.readable:
+        warnings.append(f"cannot summarize Host startup/recovery log: {logs.error}")
+    return {
+        "schema": "dev.vibescreen.macos-startup-readiness/v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "result": "ready" if not blockers else "blocked",
+        "scope": "read-only login startup, headless display, and unattended recovery readiness",
+        "does_not_prove": [
+            "macOS launched Vibe Screen after logout/login or reboot",
+            "a headless Mac mini exposes a capturable display after reboot",
+            "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+            "USB or LAN streaming rendered on an Android client",
+            "unattended recovery succeeded or exhausted during a real listener/capture/display failure",
+        ],
+        "blockers": blockers,
+        "warnings": warnings,
+        "recommended_next_evidence": [
+            "run this readiness command again after Launch at Login can be read and at least one display is visible",
+            "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+            "record the intended headless display setup and first successful capture after login",
+            "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs",
+        ],
+        "host_bundle": {
+            "path": str(metadata.app_path),
+            "identifier": metadata.identifier,
+            "identity": metadata.identity_name,
+            "authorities": list(metadata.authorities),
+            "team_identifier": metadata.team_identifier,
+            "certificate_sha1": metadata.leaf_certificate_hash,
+            "cdhash": metadata.cdhash,
+            "binary_sha256": metadata.binary_sha256,
+            "designated_requirement": metadata.designated_requirement,
+            "ad_hoc": metadata.is_ad_hoc,
+        },
+        "permissions": {
+            "database": str(permissions.database_path),
+            "readable": permissions.readable,
+            "error": permissions.error,
+            "screen_recording_allowed": permissions.is_allowed(SCREEN_CAPTURE_SERVICES),
+            "accessibility_allowed": permissions.is_allowed((ACCESSIBILITY_SERVICE,)),
+            "rows": [row.__dict__ for row in permissions.rows],
+        },
+        "startup_settings": {
+            "domain": settings.domain,
+            "readable": settings.readable,
+            "error": settings.error,
+            "auto_start_streaming_on_launch": settings.auto_start_streaming_on_launch,
+            "startup_mode": settings.startup_mode,
+            "has_completed_onboarding": settings.has_completed_onboarding,
+            "display_source": settings.display_source,
+            "selected_display_uuid": settings.selected_display_uuid,
+            "selected_display_id": settings.selected_display_id,
+            "stored_keys": list(settings.stored_keys),
+            "defaults_used": list(settings.defaults_used),
+        },
+        "login_item": {
+            "state": login_item.state,
+            "matched": login_item.matched,
+            "detail": login_item.detail,
+            "evidence": list(login_item.evidence),
+        },
+        "display_inventory": {
+            "readable": displays.readable,
+            "display_count": displays.display_count,
+            "active_display_count": displays.active_display_count
+            if displays.active_display_count is not None
+            else displays.display_count,
+            "error": displays.error,
+            "displays": list(displays.displays),
+        },
+        "host_log": {
+            "path": logs.path,
+            "readable": logs.readable,
+            "error": logs.error,
+            "startup_recovery_markers": list(logs.markers),
+        },
+    }
+
+
+def format_readiness_report(payload: dict[str, object]) -> str:
+    host = payload["host_bundle"]
+    permissions = payload["permissions"]
+    settings = payload["startup_settings"]
+    login_item = payload["login_item"]
+    display_inventory = payload["display_inventory"]
+    host_log = payload["host_log"]
+    blocker_lines = "\n".join(f"- {blocker}" for blocker in payload["blockers"]) or "(none)"
+    warning_lines = "\n".join(f"- {warning}" for warning in payload["warnings"]) or "(none)"
+    display_lines = "\n".join(f"- {display}" for display in display_inventory["displays"]) or "(none)"
+    log_lines = "\n".join(
+        f"- {ascii_report_text(str(marker))}"
+        for marker in host_log["startup_recovery_markers"]
+    ) or "(none)"
+    does_not_prove = "\n".join(f"- {item}" for item in payload["does_not_prove"])
+    next_evidence = "\n".join(f"- {item}" for item in payload["recommended_next_evidence"])
+    defaults_used = settings["defaults_used"]
+    defaults_used_text = ", ".join(defaults_used) if defaults_used else "none"
+    selected_display_id = settings["selected_display_id"]
+    selected_display_id_text = selected_display_id if selected_display_id is not None else "not set"
+    return f"""macOS login/headless readiness
+--------------------------------
+Generated: {payload['generated_at']}
+Result: {str(payload['result']).upper()}
+Scope: {payload['scope']}
+
+Blocking issues
+---------------
+{blocker_lines}
+
+Warnings
+--------
+{warning_lines}
+
+Installed Host
+--------------
+Path: {host['path']}
+Identifier: {host['identifier']}
+Identity: {host['identity']}
+Certificate SHA-1: {host['certificate_sha1'] or 'not available'}
+CDHash: {host['cdhash'] or 'missing'}
+Binary SHA-256: {host['binary_sha256']}
+Ad-hoc: {host['ad_hoc']}
+
+Permissions
+-----------
+Database: {permissions['database']}
+Screen Recording allowed: {permissions['screen_recording_allowed']}
+Accessibility allowed: {permissions['accessibility_allowed']}
+Read warning: {permissions['error'] or 'none'}
+
+Startup settings
+----------------
+Defaults domain readable: {settings['readable']}
+autoStartStreamingOnLaunch: {settings['auto_start_streaming_on_launch']}
+startupMode: {settings['startup_mode']}
+hasCompletedOnboarding: {settings['has_completed_onboarding']}
+displaySource: {settings['display_source']}
+selectedDisplayUUID: {settings['selected_display_uuid'] or 'not set'}
+selectedDisplayID: {selected_display_id_text}
+Defaults used: {defaults_used_text}
+
+Launch at Login
+---------------
+State: {login_item['state']}
+Detail: {login_item['detail']}
+
+Display inventory
+-----------------
+Readable: {display_inventory['readable']}
+Display count: {display_inventory['display_count']}
+Active CoreGraphics display count: {display_inventory['active_display_count']}
+{display_lines}
+
+Recent Host startup/recovery markers
+------------------------------------
+Log path: {host_log['path']}
+Readable: {host_log['readable']}
+{log_lines}
+
+This readiness report does not prove
+------------------------------------
+{does_not_prove}
+
+Recommended next evidence
+-------------------------
+{next_evidence}
+
+Safety
+------
+This command is read-only. It does not register login items, reboot, launch or
+stop Vibe Screen, reset TCC, grant permissions, modify Keychain, or contact an
+Android device.
+"""
+
+
+def ascii_report_text(value: str) -> str:
+    return value.encode("ascii", errors="backslashreplace").decode("ascii")
 
 
 def write_report(path: Path, report: str) -> None:
@@ -517,12 +1108,45 @@ def preflight_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def readiness_command(args: argparse.Namespace) -> int:
+    install_path = args.install_path.resolve()
+    if not is_default_install_path(install_path):
+        raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
+    metadata, permissions, signing_errors = metadata_and_permissions(
+        install_path,
+        args.tcc_db,
+        expected_sign_identity=args.sign_identity,
+    )
+    payload = build_readiness_payload(
+        metadata=metadata,
+        permissions=permissions,
+        signing_errors=signing_errors,
+        settings=read_startup_settings(),
+        login_item=read_login_item_readiness(),
+        displays=read_display_readiness(),
+        logs=summarize_host_log(args.log_path),
+    )
+    report = format_readiness_report(payload)
+    write_report(args.report, report)
+    args.json_report.parent.mkdir(parents=True, exist_ok=True)
+    args.json_report.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"Wrote {args.report}")
+    print(f"Wrote {args.json_report}")
+    if payload["result"] != "ready":
+        print(report, file=sys.stderr)
+        return 2
+    print("macOS Host login/headless readiness preflight passed")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
+    if args.command == "readiness":
+        return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
 
 

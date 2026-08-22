@@ -1,0 +1,120 @@
+{
+  "blockers": [
+    "cannot verify TCC permissions read-only: /Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s; /Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s",
+    "Launch at Login is not verified enabled: unverified",
+    "no active display is visible to the current WindowServer session"
+  ],
+  "display_inventory": {
+    "active_display_count": 0,
+    "display_count": 2,
+    "displays": [
+      {
+        "id": "1",
+        "logical": "1512 x 982 @ 120.00Hz",
+        "main": "1",
+        "name": "Color LCD",
+        "physical": "3024 x 1964",
+        "source": "system_profiler"
+      },
+      {
+        "id": "3",
+        "logical": "1920 x 1080 @ 60.00Hz",
+        "main": "0",
+        "name": "DELL U2723QE",
+        "physical": "3840 x 2160",
+        "source": "system_profiler"
+      }
+    ],
+    "error": null,
+    "readable": true
+  },
+  "does_not_prove": [
+    "macOS launched Vibe Screen after logout/login or reboot",
+    "a headless Mac mini exposes a capturable display after reboot",
+    "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+    "USB or LAN streaming rendered on an Android client",
+    "unattended recovery succeeded or exhausted during a real listener/capture/display failure"
+  ],
+  "generated_at": "2026-08-21T05:28:53.189819+00:00",
+  "host_bundle": {
+    "ad_hoc": false,
+    "authorities": [
+      "Vibe Screen Dev",
+      "Vibe Screen Dev Root"
+    ],
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
+    "identifier": "dev.telemachus.display",
+    "identity": "Vibe Screen Dev",
+    "path": "/Applications/Vibe Screen.app",
+    "team_identifier": "not set"
+  },
+  "host_log": {
+    "error": null,
+    "path": "/Users/luwentao/Library/Logs/Telemachus/telemachus.log",
+    "readable": true,
+    "startup_recovery_markers": [
+      "2026-08-21T04:45:59Z Auto-start deferred until onboarding and Screen Recording are complete"
+    ]
+  },
+  "login_item": {
+    "detail": "command timed out after 15s",
+    "evidence": [],
+    "matched": false,
+    "state": "unverified"
+  },
+  "permissions": {
+    "accessibility_allowed": false,
+    "database": "/Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db; /Library/Application Support/com.apple.TCC/TCC.db",
+    "error": "/Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s; /Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s",
+    "readable": false,
+    "rows": [],
+    "screen_recording_allowed": false
+  },
+  "recommended_next_evidence": [
+    "run this readiness command again after Launch at Login can be read and at least one display is visible",
+    "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+    "record the intended headless display setup and first successful capture after login",
+    "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs"
+  ],
+  "result": "blocked",
+  "schema": "dev.vibescreen.macos-startup-readiness/v1",
+  "scope": "read-only login startup, headless display, and unattended recovery readiness",
+  "startup_settings": {
+    "auto_start_streaming_on_launch": true,
+    "defaults_used": [],
+    "display_source": "selectedDisplay",
+    "domain": "dev.telemachus.display",
+    "error": null,
+    "has_completed_onboarding": true,
+    "readable": true,
+    "selected_display_id": 1,
+    "selected_display_uuid": "37D8832A-2D66-02CA-B9F7-8F30A301B230",
+    "startup_mode": "usb",
+    "stored_keys": [
+      "Telemachus_adbDeviceSerial",
+      "Telemachus_autoStartStreamingOnLaunch",
+      "Telemachus_bitrate",
+      "Telemachus_connectionMode",
+      "Telemachus_dismissedPostUpdatePermissionHintFingerprint",
+      "Telemachus_displaySource",
+      "Telemachus_hasCompletedOnboarding",
+      "Telemachus_hasPosition_1446320657_60_0",
+      "Telemachus_hiDPI",
+      "Telemachus_internetHostDeviceID",
+      "Telemachus_lastKnownBinaryFingerprint",
+      "Telemachus_pendingPostUpdatePermissionHintFingerprint",
+      "Telemachus_positionX_1446320657_60_0",
+      "Telemachus_positionY_1446320657_60_0",
+      "Telemachus_quality",
+      "Telemachus_refreshRate",
+      "Telemachus_rotation",
+      "Telemachus_selectedDisplayID",
+      "Telemachus_selectedDisplayUUID",
+      "Telemachus_startupMode"
+    ]
+  },
+  "warnings": []
+}
