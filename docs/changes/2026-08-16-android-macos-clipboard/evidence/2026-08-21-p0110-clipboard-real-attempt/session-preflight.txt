@@ -1,0 +1,8 @@
+$ adb -s EP0110PZ0B9110300B reverse --list
+UsbFfs tcp:54321 tcp:54321
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
+COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Vibe\x20S 92943 luwentao    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
+$ adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
+12012

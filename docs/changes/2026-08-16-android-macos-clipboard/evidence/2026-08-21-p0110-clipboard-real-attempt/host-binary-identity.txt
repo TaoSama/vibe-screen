@@ -1,0 +1,9 @@
+$ ps -p 92943 -o pid,ppid,command=
+  PID  PPID
+92943     1 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+$ stat -f %Sm /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Jan  1 08:00:00 1980
+$ shasum -a 256 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996  /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+$ shasum -a 256 baseline/MacHost/.build/release/Vibe Screen
+90dc772ea25a2071b6f258bc8fa52c2e5da275e3f560d25810797b061ccf2914  baseline/MacHost/.build/release/Vibe Screen

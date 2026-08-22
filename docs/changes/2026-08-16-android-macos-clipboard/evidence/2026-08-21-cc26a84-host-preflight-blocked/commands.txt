@@ -1,0 +1,62 @@
+# Commands
+
+Date: 2026-08-20 UTC / 2026-08-21 Asia/Shanghai
+Worktree: /Users/luwentao/.codex/worktrees/3c7e/vibe-screen
+Branch: codex/android-clipboard-e2e-evidence
+Head: 8b70fa3e2b58ffa7f06b175147ccf6ff2e315ce7
+Baseline: origin/main cc26a84c829016fa61c721f73a128284fdf64f92
+
+## Sync and status
+
+```bash
+git fetch origin main --prune
+git rebase origin/main
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base HEAD origin/main
+```
+
+Result: branch rebased cleanly; HEAD is
+8b70fa3e2b58ffa7f06b175147ccf6ff2e315ce7 and merge-base is
+cc26a84c829016fa61c721f73a128284fdf64f92.
+
+## Device availability
+
+```bash
+if [ -e /tmp/vibe-screen-device-android.lock ]; then
+  cat /tmp/vibe-screen-device-android.lock
+  lsof /tmp/vibe-screen-device-android.lock || true
+else
+  echo LOCK_MISSING
+fi
+adb devices -l
+```
+
+Result: the Android lock was missing, and the P0110 device was online as
+EP0110PZ0B9110300B. An emulator was also online, so any future ADB command must
+continue to use `adb -s EP0110PZ0B9110300B`.
+
+## Host preflight
+
+```bash
+python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
+```
+
+Result: exit code 1. The local keychain does not contain the stable
+`Vibe Screen Dev` signing identity. No Host listener, ADB reverse, Android app
+launch, or clipboard E2E action was run after this precondition failed.
+
+## Minimal validation after rebase
+
+```bash
+git diff --check
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-android-device-lock-blocked/clipboard-evidence.json >/dev/null
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-device-attempt/clipboard-evidence.json >/dev/null
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest
+```
+
+Results: `git diff --check` passed, both JSON evidence files parsed, and the
+focused Android clipboard JVM tests reported `BUILD SUCCESSFUL in 8s`.

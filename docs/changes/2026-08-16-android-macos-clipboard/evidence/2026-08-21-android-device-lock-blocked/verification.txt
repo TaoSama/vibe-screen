@@ -1,0 +1,26 @@
+Verification commands run without Android device access:
+
+  cd baseline/AndroidClient
+  ./gradlew --no-daemon testDebugUnitTest \
+    --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+    --tests dev.telemachus.display.ClipboardApprovalStateTest
+
+Result:
+
+  BUILD SUCCESSFUL in 28s
+
+  cd baseline/MacHost
+  swift test --scratch-path /tmp/vibe-screen-mac-host-swift-clipboard-3c7e \
+    --filter Clipboard
+
+Result:
+
+  Failed while compiling test target because XCTest is unavailable in the local
+  Command Line Tools environment:
+
+  error: no such module 'XCTest'
+
+Android device commands:
+
+  none. /tmp/vibe-screen-device-android.lock existed before the preflight could
+  acquire the Android device lease.
