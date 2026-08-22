@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from scripts.phase3.release_gate_summary import (  # noqa: E402
+    AGGREGATE_OWNER,
+    CANDIDATE_PRS,
     HISTORICAL_ANDROID_BOUNDARY_DEFAULTS,
     RELEASE_GATES,
     SCHEMA,
@@ -101,7 +103,7 @@ def private_product_evidence(
 class Phase3ReleaseGateSummaryTests(unittest.TestCase):
     def test_release_gate_name_set_is_explicit(self) -> None:
         self.assertEqual(
-            [name for name, _ in RELEASE_GATES],
+            [name for name, _, _, _ in RELEASE_GATES],
             [
                 "public_internet_path",
                 "real_remote_turn",
@@ -115,6 +117,42 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
                 "independent_security_review",
             ],
         )
+
+    def test_release_gate_owners_and_status_are_explicit(self) -> None:
+        summary = build_summary(
+            ROOT,
+            local_public_dir=ROOT / "missing-public",
+            android_interop_acceptance=ROOT / "missing-android.json",
+            blocked_real_media_acceptance=ROOT / "missing-blocked.json",
+            current_commit="c" * 40,
+        )
+
+        self.assertEqual(summary["aggregate_owner"], AGGREGATE_OWNER)
+        self.assertEqual(summary["aggregate_owner"]["pull_request"], 258)
+        self.assertIn(
+            {
+                "pull_request": 258,
+                "role": "current_base_aggregate_owner",
+                "recommendation": "use_as_unique_aggregate_owner",
+                "reason": "current-base summary is executable and keeps all public release gates open",
+            },
+            summary["candidate_prs"],
+        )
+        self.assertEqual(
+            {candidate["pull_request"] for candidate in summary["candidate_prs"]},
+            {candidate["pull_request"] for candidate in CANDIDATE_PRS},
+        )
+        owner_by_gate = {gate["gate"]: gate["owner_pr"] for gate in summary["release_gates"]}
+        self.assertEqual(owner_by_gate["public_internet_path"], 194)
+        self.assertEqual(owner_by_gate["real_remote_turn"], 194)
+        self.assertEqual(owner_by_gate["screencapturekit_to_android_mediacodec"], 173)
+        self.assertEqual(owner_by_gate["network_handoff"], 224)
+        self.assertEqual(owner_by_gate["cross_service_revocation"], 190)
+        self.assertEqual(owner_by_gate["two_hour_mixed_route_soak"], 214)
+        self.assertEqual(owner_by_gate["production_services"], 254)
+        for gate in summary["release_gates"]:
+            self.assertEqual(gate["status"], "open")
+            self.assertTrue(gate["evidence_state"].startswith("blocked_"))
 
     def test_summary_keeps_release_gates_open_for_current_local_public_artifacts(self) -> None:
         commit = "1" * 40
