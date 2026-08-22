@@ -242,6 +242,54 @@ class MainActivityTerminalGuidanceContractTest {
             "The stats overlay should carry the same connection/security state as the control bar",
             compactSecurity.contains("binding.securityText.text=getString(R.string.stream_status_overlay_format,label,detail)"),
         )
+        assertTrue(
+            "Streaming UI should render the negotiated LAN record protection state when available",
+            securityStatus.contains("streamClient?.currentLanProtectionState"),
+        )
+        assertTrue(
+            "Streaming UI should send the LAN protection state to the shared presentation policy",
+            compactSecurity.contains("lanProtectionState=lanProtectionState"),
+        )
+    }
+
+    @Test
+    fun controlMenusAnchorToTheirFullTouchTargets() {
+        val source = mainActivitySource()
+        val displaysMenu = extractMethod(source, "private fun showDisplaysMenu")
+        val hostActionsMenu = extractMethod(source, "private fun showHostActionsMenu")
+        val clipboardMenu = extractMethod(source, "private fun showClipboardMenu")
+        val popupPresenter = extractMethod(source, "private fun showControlPopupMenu")
+        val compactPresenter = popupPresenter.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "The display menu should anchor to the whole selector row, matching its actual tap target",
+            displaysMenu.contains("PopupMenu(this, binding.displayCapsuleGroup)"),
+        )
+        assertFalse(
+            "The display menu must not anchor to the small icon inside the selector",
+            displaysMenu.contains("PopupMenu(this, binding.controlDisplaysButton)"),
+        )
+        assertTrue(displaysMenu.contains("showControlPopupMenu(popup)"))
+        assertTrue(hostActionsMenu.contains("showControlPopupMenu(popup)"))
+        assertTrue(clipboardMenu.contains("showControlPopupMenu(popup)"))
+        assertTrue(compactPresenter.contains("popup.gravity=Gravity.END"))
+        assertTrue(compactPresenter.contains("popup.show()"))
+    }
+
+    @Test
+    fun lanClipboardPromptsUseNegotiatedProtectionState() {
+        val source = mainActivitySource()
+        val send = extractMethod(source, "private fun beginSendLocalClipboard")
+        val receive = extractMethod(source, "private fun beginReceiveRemoteClipboard")
+        val directReceive = extractMethod(source, "private fun showDirectClipboardConfirmation")
+
+        assertTrue(send.contains("LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState)"))
+        assertTrue(receive.contains("LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState)"))
+        assertTrue(
+            directReceive.contains(
+                "LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)",
+            ),
+        )
     }
 
     @Test
@@ -460,6 +508,27 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Replay must send through the existing StreamClient video-preference path",
             replay.contains("callbackClient.setVideoPreferences("),
+        )
+    }
+
+    @Test
+    fun explicitVideoPreferenceControlsResetQualityUiToAuto() {
+        val setupVideoControls = extractMethod(mainActivitySource(), "private fun setupVideoControls")
+        val compact = setupVideoControls.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Programmatic quality reset should not send a second quality request",
+            compact.contains("if(suppressQualityListener)return@addOnButtonCheckedListener"),
+        )
+        assertTrue(
+            "Explicit frame-rate requests should make the quality buttons reflect preset-free wire semantics",
+            compact.contains("framesPerSecond=fps,qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoFrameRate=fps"),
+        )
+        assertTrue(
+            "Explicit bitrate requests should make the quality buttons reflect preset-free wire semantics",
+            compact.contains("qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoBitrateMbps=mbps"),
         )
     }
 
