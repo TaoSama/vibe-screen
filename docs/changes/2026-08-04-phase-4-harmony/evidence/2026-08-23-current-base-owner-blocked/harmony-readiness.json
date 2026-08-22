@@ -1,0 +1,127 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_path": null,
+    "hap_sha256": null,
+    "hap_zip_readable": false,
+    "sha256sums_contains_hap": false,
+    "sha256sums_path": null,
+    "sha256sums_sha256": null,
+    "signature_certificate_sha256": null,
+    "signature_markers": [],
+    "version_name": "0.1.0"
+  },
+  "blocking_reasons": [
+    "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+    "hvigor not found on PATH",
+    "ohpm not found on PATH",
+    "hdc not found on PATH",
+    "hdc is unavailable",
+    "signed HAP not found; pass --hap or create exactly one apps/harmony/dist/*/*.hap",
+    "signature certificate SHA-256 is required and must be non-zero 64-hex",
+    "SHA256SUMS manifest not found beside the HAP; pass --sha256sums",
+    "repository has uncommitted changes; final device evidence must bind a clean tree",
+    "Protocol v1 Host commit is required",
+    "Protocol v1 Host build SHA-256 is required"
+  ],
+  "command": [
+    "scripts/harmony_readiness.py",
+    "--output",
+    "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-23-current-base-owner-blocked/harmony-readiness.json"
+  ],
+  "created_at": "2026-08-23T04:10:24Z",
+  "device": null,
+  "device_gate_prefill": {
+    "artifact": {
+      "bundle_name": "dev.vibescreen.harmony",
+      "hap_sha256": null,
+      "sha256sums_sha256": null,
+      "signature_certificate_sha256": null,
+      "version_name": "0.1.0"
+    },
+    "device": null,
+    "host": {
+      "build_sha256": null,
+      "commit": null,
+      "protocol": "Protocol v1"
+    },
+    "repository": {
+      "commit": "6636f2d97589a624f3ec4cb17e0a598883e04632",
+      "status": "dirty",
+      "tree": "df2f6d25a8099521b26fa1dee5fb005f671e9645"
+    },
+    "toolchain": {
+      "deveco_studio_version": null,
+      "harmony_sdk_api": null,
+      "harmony_sdk_version": null,
+      "hdc_version": null,
+      "hvigor_version": null,
+      "ohpm_version": null
+    }
+  },
+  "hdc": {
+    "targets": []
+  },
+  "host": {
+    "build_sha256": null,
+    "commit": null,
+    "protocol": "Protocol v1"
+  },
+  "kind": "harmony_readiness_preflight",
+  "limitations": [
+    "This readiness preflight is not HarmonyOS device acceptance evidence.",
+    "It does not build, install, launch, pair, stream, decode, inject input, soak, or measure external-camera latency."
+  ],
+  "repository": {
+    "dirty": true,
+    "revision": "6636f2d97589a624f3ec4cb17e0a598883e04632",
+    "status_porcelain": [
+      "M Makefile",
+      " M README.md",
+      " M apps/harmony/README.md",
+      " M docs/changes/2026-08-04-phase-4-harmony/TEST.md",
+      " M docs/runbook/harmony-matepad-mini.md",
+      " M scripts/harmony_device_gate.py",
+      " M scripts/tests/test_release_tools.py",
+      " M tools/README.md",
+      " M tools/schemas/harmony-current-base-gate.schema.json",
+      " M tools/tests/test_harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_current_base_gate.py",
+      "?? docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-23-current-base-owner-blocked/harmony-readiness.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-23-current-base-owner-blocked/harmony-readiness.stdout"
+    ]
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "toolchain": {
+    "deveco_studio": {
+      "detail": "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+      "name": "deveco_studio",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hdc": {
+      "detail": "hdc not found on PATH",
+      "name": "hdc",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hvigor": {
+      "detail": "hvigor not found on PATH",
+      "name": "hvigor",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "ohpm": {
+      "detail": "ohpm not found on PATH",
+      "name": "ohpm",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    }
+  },
+  "verdict": "blocked"
+}

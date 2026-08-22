@@ -1,0 +1,42 @@
+{
+  "base_commit": "3d23de133adc4414b4c70430c619fadbe7d90207",
+  "branch": "codex/harmony-current-base-aggregate-owner",
+  "can_claim_harmony_device_pass": false,
+  "can_close_readme_phase4_owner_gates": false,
+  "date": "2026-08-23",
+  "device_evidence": "none",
+  "interpretation": "blocked readiness evidence only; not HarmonyOS or MatePad Mini acceptance evidence",
+  "not_accepted_as_harmony_evidence": [
+    "Android Nubia P0110/pacific evidence",
+    "Android Xiaomi/fuxi evidence",
+    "portable-only tests",
+    "allow-blocked manifests"
+  ],
+  "open_gate_groups": [
+    "deveco_build",
+    "hap_sign_install",
+    "hardware_decode_capability",
+    "huks_secure_pairing",
+    "authenticated_transport",
+    "host_resume_interop",
+    "matepad_acceptance"
+  ],
+  "outputs": {
+    "harmony_current_base_gate": {
+      "exit": 2,
+      "json": "harmony-current-base-gate.json",
+      "verdict": "blocked"
+    },
+    "harmony_device_gate_allow_blocked": {
+      "exit": 0,
+      "json": "harmony-device-gates.json",
+      "verdict": "blocked manifest structure only"
+    },
+    "harmony_readiness": {
+      "exit": 2,
+      "json": "harmony-readiness.json",
+      "verdict": "blocked"
+    }
+  },
+  "repository": "TaoSama/vibe-screen"
+}

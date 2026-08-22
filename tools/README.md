@@ -79,6 +79,29 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## HarmonyOS current-base owner gate
+
+The HarmonyOS Phase 4 owner gate is a read-only aggregate for the README
+DevEco build, signed-HAP install, hardware decode, HUKS secure-pairing,
+authenticated transport, resume-capable Host interoperability, and MatePad
+Mini acceptance claims. It consumes a readiness preflight and a final device
+manifest; it does not run DevEco, install a HAP, start the Host, pair with a
+device, decode frames, or produce MatePad Mini evidence:
+
+```sh
+make harmony-current-base-gate EVIDENCE_DIR=.build/evidence/harmony-current-base
+```
+
+The target reads `harmony-readiness.json` and `harmony-device-gates.json`, then
+writes `harmony-current-base-gate.json`. It exits `0` only when every owner
+gate is backed by a passing readiness preflight and a passing MatePad Mini
+device-gate manifest with local relative evidence artifacts under the evidence
+package. Missing DevEco/OHPM/Hvigor/HDC, signed-HAP, MatePad Mini HDC target,
+Protocol v1 Host build, H.264/HEVC hardware-decode evidence, HAP install
+evidence, HUKS secure-pairing evidence, authenticated transport evidence,
+Host resume evidence, eight-hour soak, or external-camera latency returns
+`blocked`; Android substitution returns `fail`.
+
 ## iOS device acceptance gate
 
 The iOS gate validates a sanitized `acceptance.json` after a separately

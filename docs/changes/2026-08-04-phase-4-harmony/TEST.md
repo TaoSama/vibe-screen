@@ -129,10 +129,19 @@ python3 scripts/harmony_device_gate.py --template
   PASS: prints a redaction-safe manifest template only
 make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
   PASS only when /path/to/evidence/harmony-device-gates.json has every required
-  real-device gate marked pass with evidence references
+  real-device gate marked pass with evidence references that exist under
+  /path/to/evidence
 python3 scripts/harmony_device_gate.py --allow-blocked /path/to/evidence/harmony-device-gates.json
   STRUCTURE-ONLY: may document blocked readiness, but is not acceptance evidence
 ```
+
+The strict path validates evidence references with `--evidence-root`; direct
+strict script invocations default the evidence root to the manifest directory.
+Every `pass` gate reference must be a local relative artifact file below the
+evidence directory. Missing artifacts, directories, absolute paths, URLs, and
+`..` traversal fail closed. `--allow-blocked` intentionally skips file-existence
+checks so blocked readiness manifests can be archived without being mistaken for
+acceptance.
 
 This validator does not run DevEco, install a HAP, pair a device, decode media,
 or interoperate with the Host. It exists to keep those external observations
@@ -163,6 +172,55 @@ The preflight output uses `schema_version: vibescreen.evidence/v1` and is covere
 by `tools/schemas/harmony-readiness.schema.json`. The Harmony workflow runs a
 blocked dry run and rejects script or schema drift, but it still labels the job
 as portable/no-HAP evidence only.
+
+## 2026-08-23 current-base owner gate
+
+The Phase 4 README owner surface for DevEco build, signed-HAP install,
+hardware decode capability, HUKS secure pairing, authenticated transport,
+resume-capable Host interoperability, and MatePad Mini acceptance is now
+represented by a read-only current-base aggregate gate. It consumes
+`harmony-readiness.json` and `harmony-device-gates.json`, then writes
+`harmony-current-base-gate.json` with separate owner checks for:
+
+- `deveco_build`: requires passing `deveco_sdk_and_api_checker` evidence that
+  references DevEco/Hvigor/API-checker readiness plus DevEco/HAP/MatePad
+  readiness;
+- `hap_sign_install`: requires passing `signed_release_hap` and
+  `hap_install_launch` device gates, evidence that references signed-HAP
+  lifecycle artifacts, plus DevEco/HAP/MatePad readiness;
+- `hardware_decode_capability`: requires passing `h264_hardware_decode` and
+  `hevc_hardware_decode` device gates, evidence that references
+  `harmony-avcodec-preflight.json`, plus DevEco/HAP/MatePad/Host readiness;
+- `huks_secure_pairing`: requires passing `huks_backed_secure_pairing` and
+  `credential_revocation_replay` with HUKS/secure-pairing evidence plus
+  DevEco/HAP/MatePad/Host readiness;
+- `authenticated_transport`: requires passing
+  `authenticated_transport_records` with authenticated-record evidence plus
+  DevEco/HAP/MatePad/Host readiness;
+- `host_resume_interop`: requires passing `host_protocol_v1_interop`,
+  `resume_background_foreground`, `resume_network_roam`,
+  `resume_host_restart`, `no_old_epoch_render`, and
+  `resume_capable_host_interop` device gates, evidence that references
+  `harmony-host-interop-preflight.json`, plus DevEco/HAP/MatePad/Host readiness.
+- `matepad_acceptance`: requires passing permission, input, eight-hour soak,
+  and external latency device gates with MatePad acceptance package evidence.
+
+```text
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when both input manifests are present and every owner gate is backed
+  by real MatePad Mini device evidence
+PYTHONPATH=tools python3 -m unittest tools.tests.test_harmony_current_base_gate -v
+  PASS: verifies missing DevEco/HAP/MatePad/Host inputs stay blocked, Android
+  substitution fails, generic cross-domain evidence cannot close owner gates,
+  missing security, transport, MatePad, or resume evidence stays blocked, and a
+  complete synthetic manifest can reach pass
+```
+
+This gate does not run DevEco, install or launch a HAP, pair a device, decode
+media, interoperate with the Host, or create MatePad Mini evidence. Without
+DevEco, MatePad Mini hardware, signed HAP metadata, HUKS/authenticated
+transport artifacts, and Host resume evidence, its correct result is `blocked`
+and the README gates remain open.
 
 ## Clean cross-repository gates
 

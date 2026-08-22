@@ -35,6 +35,7 @@ REQUIRED_GATE_IDS = (
     "resume_background_foreground",
     "resume_network_roam",
     "resume_host_restart",
+    "resume_capable_host_interop",
     "no_old_epoch_render",
     "input_touch_keyboard_pointer_stylus",
     "eight_hour_soak",
@@ -65,6 +66,7 @@ REQUIRED_HOST_KEYS = ("commit", "build_sha256", "protocol")
 REQUIRED_REPOSITORY_KEYS = ("commit", "tree", "status")
 HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+URL_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 class ManifestError(ValueError):
@@ -99,7 +101,32 @@ def _require_keys(document: dict[str, Any], keys: Iterable[str], path: str) -> N
         _string(document[key], f"{path}.{key}")
 
 
-def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) -> list[str]:
+def _validate_evidence_reference(reference: str, root: Path, path: str) -> None:
+    if URL_RE.match(reference):
+        raise ManifestError(f"{path}: expected repository-local evidence path, got URL")
+    reference_path = Path(reference)
+    if reference_path.is_absolute():
+        raise ManifestError(f"{path}: expected path relative to evidence root")
+    if any(part == ".." for part in reference_path.parts):
+        raise ManifestError(f"{path}: must not escape evidence root")
+    resolved_root = root.resolve()
+    resolved_path = (resolved_root / reference_path).resolve()
+    if resolved_path == resolved_root:
+        raise ManifestError(f"{path}: expected an evidence artifact below evidence root")
+    if resolved_root not in resolved_path.parents:
+        raise ManifestError(f"{path}: must stay within evidence root")
+    if not resolved_path.exists():
+        raise ManifestError(f"{path}: missing evidence artifact {reference}")
+    if not resolved_path.is_file():
+        raise ManifestError(f"{path}: expected evidence artifact file {reference}")
+
+
+def validate_manifest(
+    document: dict[str, Any],
+    *,
+    allow_blocked: bool = False,
+    evidence_root: Path | None = None,
+) -> list[str]:
     warnings: list[str] = []
     if document.get("schema") != SCHEMA:
         raise ManifestError(f"schema: expected {SCHEMA}")
@@ -163,6 +190,13 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
                 warnings.append(message)
             else:
                 raise ManifestError(message)
+        if evidence_root is not None and not allow_blocked and status == "pass":
+            for evidence_index, reference in enumerate(evidence):
+                _validate_evidence_reference(
+                    reference,
+                    evidence_root,
+                    f"gates[{index}].evidence[{evidence_index}]",
+                )
 
     missing = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in by_id]
     if missing:
@@ -217,6 +251,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate a HarmonyOS real-device gate manifest.")
     parser.add_argument("manifest", nargs="?", type=Path, help="Path to the evidence manifest JSON.")
     parser.add_argument("--allow-blocked", action="store_true", help="Validate structure for a blocked readiness record without closing the gate.")
+    parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        help="Directory that strict pass evidence references must resolve under.",
+    )
     parser.add_argument("--template", action="store_true", help="Print a redaction-safe manifest template and exit.")
     return parser.parse_args()
 
@@ -229,7 +268,12 @@ def main() -> int:
     if args.manifest is None:
         raise SystemExit("manifest is required unless --template is used")
     document = json.loads(args.manifest.read_text(encoding="utf-8"))
-    warnings = validate_manifest(_mapping(document, "manifest"), allow_blocked=args.allow_blocked)
+    evidence_root = args.evidence_root if args.evidence_root is not None else args.manifest.parent
+    warnings = validate_manifest(
+        _mapping(document, "manifest"),
+        allow_blocked=args.allow_blocked,
+        evidence_root=evidence_root,
+    )
     if args.allow_blocked:
         print("HarmonyOS device manifest is structurally valid but not acceptance evidence:")
         for warning in warnings or ["allow-blocked mode does not close real-device gates"]:

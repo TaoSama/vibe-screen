@@ -55,6 +55,9 @@ HARMONY_SHA256SUMS ?=
 HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
+HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
+HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
+HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -68,7 +71,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -290,7 +293,16 @@ harmony-readiness:
 
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py "$(EVIDENCE_DIR)/harmony-device-gates.json"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py --evidence-root "$(EVIDENCE_DIR)" "$(EVIDENCE_DIR)/harmony-device-gates.json"
+
+harmony-current-base-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)
+	mkdir -p "$(dir $(HARMONY_CURRENT_BASE_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_current_base_gate \
+		--readiness "$(HARMONY_READINESS_JSON)" \
+		--device-gates "$(HARMONY_DEVICE_GATES_JSON)" \
+		--evidence-root "$(EVIDENCE_DIR)" \
+		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
 
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)
