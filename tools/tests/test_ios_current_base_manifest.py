@@ -43,14 +43,42 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], SCHEMA_VERSION)
         self.assertEqual(manifest["kind"], "ios_current_base_readiness_manifest")
         self.assertEqual(manifest["source_root"], str(root.resolve()))
-        self.assertEqual(manifest["owner"]["aggregate_pr"], "#182")
-        self.assertEqual(manifest["owner"]["device_acceptance_pr"], "#182")
+        self.assertEqual(manifest["owner"]["aggregate_pr"], "#290")
+        self.assertEqual(manifest["owner"]["device_acceptance_pr"], "#290")
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
         self.assertEqual(set(manifest["source_docs"]), set(SOURCE_DOCS))
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
         self.assertEqual(manifest["signing"]["status"], "blocked")
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_current_base_scope_includes_related_ios_owner_prs(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+
+            manifest = build_manifest(command=[], repo=root)
+
+        self.assertGreaterEqual(
+            set(manifest["scope_prs"]),
+            {
+                "#182",
+                "#196",
+                "#207",
+                "#208",
+                "#209",
+                "#238",
+                "#251",
+                "#253",
+                "#257",
+                "#279",
+                "#282",
+            },
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -84,7 +112,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             make_docs(root)
-            with self.assertRaisesRegex(ManifestError, "must remain #182"):
+            with self.assertRaisesRegex(ManifestError, "must remain #290"):
                 build_manifest(
                     command=[],
                     repo=root,

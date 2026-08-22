@@ -193,14 +193,16 @@ execution.
 
 ## Current-base aggregate readiness
 
-The current-base aggregate owner is #182. It owns the aggregate iOS acceptance
-tracking entry point for the current base, while the narrower readiness work
-remains scoped to the related PR/task owners: #196 gesture/action mapping, #207
-managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM, #238
-reconnect, #251 VideoToolbox, #253 host advanced adapters, and #257 native
-input. The aggregate must not pass by owner declaration alone; it passes only
-when the machine-readable gate can prove every required iOS hardware and broader
-Phase 5 gate from retained evidence.
+The current-base aggregate owner is #290. Merged #182 remains the historical
+sanitized iOS device-acceptance baseline, while #290 owns the aggregate iOS
+acceptance tracking entry point for the current base. The narrower readiness
+work remains scoped to the related PR/task owners: #196 gesture/action mapping,
+#207 managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM,
+#238 reconnect, #251 VideoToolbox, #253 host advanced adapters, #257 native
+input, #279 key-release/native-input modifier behavior, and #282 Phase 5 host
+gate ownership. The aggregate must not pass by owner declaration alone; it
+passes only when the machine-readable gate can prove every required iOS hardware
+and broader Phase 5 gate from retained evidence.
 
 Use the fail-closed current-base collector before scheduling or reporting an iOS
 device run:
@@ -231,10 +233,10 @@ only.
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
 | trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
 
-2026-08-22 current-base readiness smoke on this worktree ran:
+2026-08-23 current-base readiness smoke on this worktree ran:
 
 ```bash
-make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base-smoke-20260822
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base-smoke-20260823
 ```
 
 The command wrote the manifest and gate report, then exited nonzero as expected
@@ -245,7 +247,10 @@ with `verdict=blocked`. The retained gate JSON recorded
 unavailability in the active Command Line Tools environment, missing signing
 identity/profile/signed archive, missing physical iPhone and iPad install
 evidence, and missing E1-E7 gate evidence. The broader HDR, advanced-adapter,
-and trusted-LAN secure-record gates remained insufficient.
+and trusted-LAN secure-record gates remained insufficient. The generated
+manifest also records the local Xcode/iPhoneOS SDK and Swift toolchain probes so
+that an environment-only readiness improvement cannot be mistaken for signed
+iOS hardware acceptance.
 
 ## Environment gates and unproved behavior
 

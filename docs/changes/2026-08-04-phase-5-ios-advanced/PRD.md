@@ -2,7 +2,7 @@
 
 Status: 5A–5D client implementation complete; baseline MacHost loopback and Simulator gates pass, device verification pending
 Owner: iOS and advanced capabilities  
-Current-base aggregate owner: #182 (`current-base-ios-acceptance`)
+Current-base aggregate owner: #290 (`current-base-ios-acceptance`)
 Started: 2026-08-04
 
 ## Goal
@@ -62,9 +62,11 @@ the Android application fixture named by the acceptance criterion. Android ADB
 evidence can prove cross-client contract behavior but cannot satisfy criterion
 3.
 
-The current-base aggregate owner is #182. It owns the machine-readable aggregate
-entry point for the iOS acceptance family, not a device-pass claim. The
-aggregate must continue to include the narrower readiness owners for signing,
-VideoToolbox hardware decode, host advanced adapters, AVAudioEngine/PCM, HDR,
-native input, reconnect, and trusted-LAN secure records. Without real signed
-iPhone and iPad evidence, the aggregate remains fail-closed readiness only.
+The current-base aggregate owner is #290. The merged #182 gate remains the
+historical sanitized device-acceptance baseline, while #290 owns the
+machine-readable aggregate entry point for the current base. This is not a
+device-pass claim. The aggregate must continue to include the narrower readiness
+owners for signing, VideoToolbox hardware decode, host advanced adapters,
+AVAudioEngine/PCM, HDR, native input, reconnect, and trusted-LAN secure records.
+Without real signed iPhone and iPad evidence, the aggregate remains fail-closed
+readiness only.
