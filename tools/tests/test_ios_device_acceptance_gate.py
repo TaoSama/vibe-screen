@@ -17,6 +17,7 @@ from vibescreen_evidence.ios_device_acceptance_gate import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.ios_device_acceptance_gate"
+ACCEPTANCE_SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "ios-device-acceptance.schema.json"
 SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "ios-device-acceptance-gate.schema.json"
 
 
@@ -111,6 +112,14 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertEqual(set(result), set(schema["properties"]))
         for field in schema["required"]:
             self.assertIn(field, result)
+
+    def test_acceptance_schema_declares_host_advanced_adapter_broader_gate(self) -> None:
+        schema = json.loads(ACCEPTANCE_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        broader_gates = schema["properties"]["broader_gates"]["properties"]
+        self.assertIn("host_advanced_adapters", broader_gates)
+        gate_ref = broader_gates["host_advanced_adapters"]
+        self.assertEqual(gate_ref, {"$ref": "#/$defs/evidence_gate"})
 
     def test_missing_ipad_and_open_gate_are_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

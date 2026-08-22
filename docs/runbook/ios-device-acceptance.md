@@ -24,6 +24,12 @@ The expected no-device result is fail-closed `blocked`. A nonzero exit from this
 command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
 retained gate evidence are missing. Do not convert that readiness output into a
 device pass.
+The aggregate report also records per-gate owners. The merged #182 gate owns the
+aggregate and sanitized iOS device-acceptance validator only; hardware
+VideoToolbox readiness remains owned by #251, and Host-side advanced-adapter
+readiness remains owned by #253. Do not mark those gates complete from the #182
+aggregate, Simulator output, unsigned archives, MacHost loopback, or Android
+evidence.
 
 ## Open gates
 
@@ -76,10 +82,13 @@ Fail-closed rules:
 - F7: Core PCM parser tests or host-side audio capture plans do not prove iOS
   playback.
 
-README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
-product flows over Internet DataChannels, and advanced real-device behavior
-open; those broader gates remain tracked in the Phase 5 verification record
-rather than closed by this device runbook.
+README Phase 5 also keeps HDR output, iOS advanced adapters, host-side advanced
+adapters, audio/bulk product flows over Internet DataChannels, and advanced
+real-device behavior open; those broader gates remain tracked in the Phase 5
+verification record rather than closed by this device runbook. The host-side
+advanced-adapter owner is #253 and requires reviewed MacHost/product evidence
+for multi-client/display streams, audio capture, clipboard/file handlers,
+HDR/color retry, host actions, wake helper, and managed policy.
 
 ## Checklist
 
@@ -209,6 +218,7 @@ gate.
   "broader_gates": {
     "hdr_output": { "status": "open", "evidence": [] },
     "advanced_adapters": { "status": "open", "evidence": [] },
+    "host_advanced_adapters": { "status": "open", "evidence": [] },
     "trusted_lan_secure_records": { "status": "open", "evidence": [] }
   },
   "android_evidence_used_for_ios_gates": false,
