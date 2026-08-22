@@ -1,0 +1,16 @@
+Executable=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen/.build/current-usb-host-app/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier=dev.telemachus.display
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=24623 flags=0x2(adhoc) hashes=759+7 location=embedded
+Hash type=sha256 size=32
+CandidateCDHash sha256=b6317241d87c6706a13ca6b6660da869790e70ca
+CandidateCDHashFull sha256=b6317241d87c6706a13ca6b6660da869790e70cabd81261d3edbe0e21b319aea
+Hash choices=sha256
+CMSDigest=b6317241d87c6706a13ca6b6660da869790e70cabd81261d3edbe0e21b319aea
+CMSDigestType=2
+CDHash=b6317241d87c6706a13ca6b6660da869790e70ca
+Signature=adhoc
+Info.plist entries=15
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10
+Internal requirements count=0 size=12

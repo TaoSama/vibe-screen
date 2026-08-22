@@ -5,18 +5,20 @@ import Foundation
 enum VideoEncoderSelfTest {
     private static let width = 640
     private static let height = 480
+    private static let warmupFrameCount = 4
     private static let frameCount = 120
     private static let settingsUpdateCount = 24
 
     private final class ResultState: @unchecked Sendable {
         private let lock = NSLock()
-        private var settingsSucceeded = true
+        private var settingsFailure: String?
         private var encodedFrameCount = 0
 
-        func recordSettingsResult(_ succeeded: Bool) {
-            guard !succeeded else { return }
+        func recordSettingsFailure(_ failure: String) {
             lock.lock()
-            settingsSucceeded = false
+            if settingsFailure == nil {
+                settingsFailure = failure
+            }
             lock.unlock()
         }
 
@@ -26,10 +28,10 @@ enum VideoEncoderSelfTest {
             lock.unlock()
         }
 
-        func snapshot() -> (settingsSucceeded: Bool, encodedFrameCount: Int) {
+        func snapshot() -> (settingsFailure: String?, encodedFrameCount: Int) {
             lock.lock()
             defer { lock.unlock() }
-            return (settingsSucceeded, encodedFrameCount)
+            return (settingsFailure, encodedFrameCount)
         }
     }
 
@@ -56,32 +58,62 @@ enum VideoEncoderSelfTest {
         let settingsQueue = DispatchQueue(label: "dev.vibescreen.encoder-self-test.settings")
         let result = ResultState()
         encoder.onEncodedFrame = { _, _, _, _ in result.recordEncodedFrame() }
+        encoder.requestKeyframe()
+
+        for index in 0..<warmupFrameCount {
+            encoder.encode(
+                pixelBuffer: pixelBuffer,
+                presentationTimeStamp: CMTime(value: CMTimeValue(index), timescale: 60),
+                sessionEpoch: 1
+            )
+        }
+
+        guard waitForEncodedFrameCount(1, in: result, timeout: 8) else {
+            let snapshot = result.snapshot()
+            FileHandle.standardError.write(Data(
+                "video encoder self-test failed: warmup produced no encoded callbacks "
+                    .appending("(callbacks=\(snapshot.encodedFrameCount))\n")
+                    .utf8
+            ))
+            return false
+        }
+        let warmupSnapshot = result.snapshot()
 
         group.enter()
         encodeQueue.async {
-            for index in 0..<frameCount {
+            defer { group.leave() }
+            for index in warmupFrameCount..<(warmupFrameCount + frameCount) {
                 encoder.encode(
                     pixelBuffer: pixelBuffer,
                     presentationTimeStamp: CMTime(value: CMTimeValue(index), timescale: 60),
                     sessionEpoch: 1
                 )
+                Thread.sleep(forTimeInterval: 1.0 / 120.0)
             }
-            group.leave()
         }
 
         group.enter()
         settingsQueue.async {
+            defer { group.leave() }
             for index in 0..<settingsUpdateCount {
                 let sharp = index.isMultiple(of: 2)
+                let bitrateMbps = sharp ? 35 : 12
+                let quality = sharp ? "high" : "low"
+                let frameRate = sharp ? 60 : 30
                 let succeeded = encoder.updateSettings(
-                    bitrateMbps: sharp ? 35 : 12,
-                    quality: sharp ? "high" : "low",
+                    bitrateMbps: bitrateMbps,
+                    quality: quality,
                     gamingBoost: false,
-                    frameRate: sharp ? 60 : 30
+                    frameRate: frameRate
                 )
-                result.recordSettingsResult(succeeded)
+                if !succeeded {
+                    result.recordSettingsFailure(
+                        "update #\(index + 1) rejected "
+                            + "(bitrate=\(bitrateMbps)Mbps, quality=\(quality), fps=\(frameRate))"
+                    )
+                    return
+                }
             }
-            group.leave()
         }
 
         guard group.wait(timeout: .now() + 15) == .success else {
@@ -89,16 +121,21 @@ enum VideoEncoderSelfTest {
             return false
         }
 
-        let callbackDeadline = Date().addingTimeInterval(5)
-        while result.snapshot().encodedFrameCount == 0, Date() < callbackDeadline {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
+        _ = waitForEncodedFrameCount(warmupSnapshot.encodedFrameCount + 1, in: result, timeout: 5)
         let snapshot = result.snapshot()
-        let passed = snapshot.settingsSucceeded && snapshot.encodedFrameCount > 0
+        let passed = snapshot.settingsFailure == nil
+            && snapshot.encodedFrameCount > warmupSnapshot.encodedFrameCount
         if passed {
-            print("video encoder self-test passed (encoded callbacks: \(snapshot.encodedFrameCount))")
+            print(
+                "video encoder self-test passed "
+                    + "(warmup callbacks: \(warmupSnapshot.encodedFrameCount), "
+                    + "encoded callbacks: \(snapshot.encodedFrameCount), "
+                    + "settings updates: \(settingsUpdateCount))"
+            )
         } else {
-            let failure = snapshot.settingsSucceeded ? "no encoded callbacks" : "VideoToolbox property update rejected"
+            let failure = snapshot.settingsFailure.map {
+                "VideoToolbox property update rejected after warmup: \($0)"
+            } ?? "no encoded callbacks after settings updates"
             FileHandle.standardError.write(Data(
                 "video encoder self-test failed: \(failure) "
                     .appending("(callbacks=\(snapshot.encodedFrameCount))\n")
@@ -106,6 +143,18 @@ enum VideoEncoderSelfTest {
             ))
         }
         return passed
+    }
+
+    private static func waitForEncodedFrameCount(
+        _ expectedCount: Int,
+        in result: ResultState,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while result.snapshot().encodedFrameCount < expectedCount, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return result.snapshot().encodedFrameCount >= expectedCount
     }
 
     private static func makePixelBuffer() -> CVPixelBuffer? {

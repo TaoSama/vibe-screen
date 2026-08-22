@@ -282,6 +282,30 @@ latency, rotated host-display, or Accessibility/input gates.
 Evidence is retained under
 [evidence/2026-08-20-nubia-p0110-usb-smoke/](evidence/2026-08-20-nubia-p0110-usb-smoke/README.md).
 
+## Current-base Nubia P0110 USB recheck (2026-08-23)
+
+Origin/main commit `50694049096783466481f418c41a5eb50740e871` was rechecked on
+the connected Nubia P0110 (pacific), serial `EP0110PZ0B9110300B`, Android 16 /
+SDK 36. The current Android debug APK installed successfully and the P0110 ADB
+target reported `UsbFfs tcp:54321 tcp:54321`, but this attempt did not establish
+a current-base USB stream.
+
+The supported stable Host preflight failed because the local keychain lacked the
+documented `Vibe Screen Dev` codesigning identity. An ad-hoc current-source
+`.app` could be launched, but no current-base `54321` listener was observed and
+the retained artifacts do not isolate Screen Recording/TCC state from local
+port/process state. The read-only `usb_live_smoke` collector then returned
+`insufficient`: the Android package was not running, was not foregrounded, and
+current-process logcat had no `stream_stats`, decoder setup, first output frame,
+or decoder counters.
+
+This is fail-closed readiness evidence only. It does not prove current-base USB
+streaming, Protocol v1 interoperability, decoder output, reconnect, or
+app-lifecycle recovery, and it does not change any two-hour soak, Host RSS,
+latency, native-pointer, stylus, controller, rotated-display, login-startup,
+headless, LAN, Internet, or AV1 gate. Evidence is retained under
+[evidence/2026-08-23-nubia-p0110-usb-current-base/](evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
+
 ## External latency readiness check (2026-08-20)
 
 Main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` completed a latency
