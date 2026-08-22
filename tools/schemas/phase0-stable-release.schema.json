@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase0-stable-release.schema.json",
+  "title": "Vibe Screen Phase 0 stable-release closure summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "phase",
+    "aggregate_verdict",
+    "can_mark_phase0_stable_release",
+    "required_gate_count",
+    "closed_required_gate_count",
+    "missing_required_gate_ids",
+    "blocking_required_gates",
+    "gate_summaries",
+    "readme_guard",
+    "manifest_source",
+    "reasons"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase0_stable_release_closure_summary"},
+    "phase": {"const": "phase0"},
+    "aggregate_verdict": {"enum": ["pass", "blocked", "fail", "insufficient"]},
+    "can_mark_phase0_stable_release": {"type": "boolean"},
+    "required_gate_count": {"type": "integer", "minimum": 0},
+    "closed_required_gate_count": {"type": "integer", "minimum": 0},
+    "missing_required_gate_ids": {"type": "array", "items": {"type": "string"}},
+    "blocking_required_gates": {"type": "array", "items": {"$ref": "#/$defs/gate_summary"}},
+    "gate_summaries": {"type": "array", "items": {"$ref": "#/$defs/gate_summary"}},
+    "readme_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "missing_required_phrases", "forbidden_matches", "reasons"],
+      "properties": {
+        "verdict": {"enum": ["pass", "fail", "insufficient"]},
+        "missing_required_phrases": {"type": "array", "items": {"type": "string"}},
+        "forbidden_matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pattern", "snippet"],
+            "properties": {
+              "pattern": {"type": "string"},
+              "snippet": {"type": "string"}
+            }
+          }
+        },
+        "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "manifest_source": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "gate_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_for_stable_release",
+        "verdict",
+        "evidence_strength",
+        "can_close",
+        "owner_prs",
+        "evidence_paths",
+        "blockers",
+        "issues"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "required_for_stable_release": {"type": "boolean"},
+        "verdict": {"enum": ["pass", "blocked", "fail", "insufficient", "open"]},
+        "evidence_strength": {"type": "string", "minLength": 1},
+        "can_close": {"type": "boolean"},
+        "owner_prs": {"type": "array", "items": {"type": "integer"}},
+        "evidence_paths": {"type": "array", "items": {"type": "string"}},
+        "blockers": {"type": "array", "items": {"type": "string"}},
+        "issues": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
