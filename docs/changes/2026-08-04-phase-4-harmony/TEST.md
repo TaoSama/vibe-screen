@@ -139,6 +139,31 @@ or interoperate with the Host. It exists to keep those external observations
 complete and correctly scoped once a MatePad Mini and signing environment are
 available.
 
+## 2026-08-21 HarmonyOS readiness preflight
+
+The HarmonyOS path now has a read-only readiness preflight before the final
+device-gate manifest. It records DevEco Studio, Hvigor/OHPM/HDC versions,
+redacted HDC target identity, MatePad Mini-class device properties, signed HAP
+hashes and checksum linkage, signing-certificate hash, and Protocol v1 Host
+build identity into `harmony-readiness.json`. The command exits 2 with a
+machine-readable `verdict: blocked` while any prerequisite is missing. This is
+intentional fail-closed behavior and does not claim ArkTS compilation, HAP
+installation, secure pairing, authenticated records, hardware decode, Host
+interoperability, input, soak, external latency, or MatePad Mini acceptance.
+
+```text
+make harmony-readiness EVIDENCE_DIR=/path/to/evidence
+  PASS only when DevEco/Hvigor/OHPM/HDC, signed HAP/checksums/signature hash,
+  Host build identity, and one MatePad Mini-class HDC target are present
+python3 scripts/harmony_readiness.py --output /tmp/harmony-readiness.json
+  BLOCKED in ordinary CI or local environments without DevEco/HAP/MatePad Mini
+```
+
+The preflight output uses `schema_version: vibescreen.evidence/v1` and is covered
+by `tools/schemas/harmony-readiness.schema.json`. The Harmony workflow runs a
+blocked dry run and rejects script or schema drift, but it still labels the job
+as portable/no-HAP evidence only.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

@@ -1,0 +1,1 @@
+blocked_physical_stylus_not_observed: wrote docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-21-200005-nubia-p0110-pacific-stylus-preflight

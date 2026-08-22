@@ -1,6 +1,8 @@
 package dev.telemachus.display
 
 import android.media.MediaFormat
+import dev.telemachus.display.internet.ProductVideoCodec
+import dev.vibescreen.protocol.v1.Codec
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,6 +87,19 @@ class DecoderSelectionTest {
         assertTrue(recorded)
         assertEquals(listOf("current_gate", "configuration_completion"), events)
         assertEquals(listOf(StreamCodec.H264), CodecFallbackPolicy.candidates(true))
+    }
+
+    @Test
+    fun av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled() {
+        assertEquals(
+            listOf(StreamCodec.HEVC, StreamCodec.H264),
+            CodecFallbackPolicy.candidates(hasUsableHevcDecoder = true, hasUsableAv1Decoder = true),
+        )
+        assertEquals(StreamCodec.AV1, MediaFormat.MIMETYPE_VIDEO_AV1.toStreamCodec())
+        assertEquals(Codec.CODEC_HEVC, StreamCodec.HEVC.toProtocolCodecOrNull())
+        assertEquals(ProductVideoCodec.HEVC, StreamCodec.HEVC.toProductVideoCodecOrNull())
+        assertEquals(null, StreamCodec.AV1.toProtocolCodecOrNull())
+        assertEquals(null, StreamCodec.AV1.toProductVideoCodecOrNull())
     }
 
     @Test

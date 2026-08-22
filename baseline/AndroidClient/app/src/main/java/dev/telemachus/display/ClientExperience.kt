@@ -71,7 +71,10 @@ internal object ConnectionSecurityPresentationPolicy {
         val warning: Boolean,
     )
 
-    fun presentation(mode: ConnectionMode): Presentation =
+    fun presentation(
+        mode: ConnectionMode,
+        lanProtectionState: LanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE,
+    ): Presentation =
         when (mode) {
             ConnectionMode.USB ->
                 Presentation(
@@ -82,8 +85,15 @@ internal object ConnectionSecurityPresentationPolicy {
             ConnectionMode.WIRELESS ->
                 Presentation(
                     labelResource = R.string.stream_status_lan_label,
-                    detailResource = R.string.stream_status_lan_detail,
-                    warning = false,
+                    detailResource =
+                        when (lanProtectionState) {
+                            LanRecordProtectionState.ENCRYPTED -> R.string.stream_status_lan_encrypted_detail
+                            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK ->
+                                R.string.stream_status_lan_legacy_plaintext_detail
+                            LanRecordProtectionState.NEGOTIATING -> R.string.stream_status_lan_negotiating_detail
+                            LanRecordProtectionState.NOT_APPLICABLE -> R.string.stream_status_lan_unknown_detail
+                        },
+                    warning = lanProtectionState != LanRecordProtectionState.ENCRYPTED,
                 )
             ConnectionMode.INTERNET ->
                 Presentation(
@@ -91,6 +101,35 @@ internal object ConnectionSecurityPresentationPolicy {
                     detailResource = R.string.stream_status_internet_detail,
                     warning = false,
                 )
+        }
+}
+
+internal object LanClipboardProtectionMessagePolicy {
+    fun sendMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_confirm_message
+        }
+
+    fun receiveMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_receive_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_receive_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_receive_confirm_message
+        }
+
+    fun directReceiveMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_direct_receive_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_direct_receive_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_direct_receive_confirm_message
         }
 }
 

@@ -1,0 +1,2 @@
+/bin/sh: /tmp/vibe-screen-device-android.lock: cannot overwrite existing file
+exit=1

@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/harmony-readiness.schema.json",
+  "title": "Vibe Screen HarmonyOS NEXT readiness preflight v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "command",
+    "verdict",
+    "blocking_reasons",
+    "repository",
+    "toolchain",
+    "hdc",
+    "device",
+    "artifact",
+    "host",
+    "device_gate_prefill",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "harmony_readiness_preflight"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "verdict": {"enum": ["pass", "blocked"]},
+    "blocking_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "repository": {"type": "object"},
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deveco_studio", "hvigor", "ohpm", "hdc"],
+      "properties": {
+        "deveco_studio": {"$ref": "#/$defs/probe"},
+        "hvigor": {"$ref": "#/$defs/probe"},
+        "ohpm": {"$ref": "#/$defs/probe"},
+        "hdc": {"$ref": "#/$defs/probe"}
+      }
+    },
+    "hdc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets"],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target_hash", "state", "raw_summary"],
+            "properties": {
+              "target_hash": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+              "state": {"type": "string", "minLength": 1},
+              "raw_summary": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "device": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/device"}]},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hap_path",
+        "hap_sha256",
+        "hap_zip_readable",
+        "signature_markers",
+        "signature_certificate_sha256",
+        "sha256sums_path",
+        "sha256sums_sha256",
+        "sha256sums_contains_hap",
+        "bundle_name",
+        "version_name"
+      ],
+      "properties": {
+        "hap_path": {"type": ["string", "null"]},
+        "hap_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+        "hap_zip_readable": {"type": "boolean"},
+        "signature_markers": {"type": "array", "items": {"type": "string"}},
+        "signature_certificate_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+        "sha256sums_path": {"type": ["string", "null"]},
+        "sha256sums_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+        "sha256sums_contains_hap": {"type": "boolean"},
+        "bundle_name": {"type": "string", "minLength": 1},
+        "version_name": {"type": ["string", "null"]}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "build_sha256", "protocol"],
+      "properties": {
+        "commit": {"type": ["string", "null"]},
+        "build_sha256": {"type": ["string", "null"]},
+        "protocol": {"const": "Protocol v1"}
+      }
+    },
+    "device_gate_prefill": {"type": "object"},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "path", "version", "detail"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["pass", "blocked"]},
+        "path": {"type": ["string", "null"]},
+        "version": {"type": ["string", "null"]},
+        "detail": {"type": ["string", "null"]}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "manufacturer",
+        "model",
+        "product",
+        "os_build",
+        "sdk_api",
+        "hdc_target_hash",
+        "serial_hash",
+        "is_matepad_mini"
+      ],
+      "properties": {
+        "platform": {"type": "string", "minLength": 1},
+        "manufacturer": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "product": {"type": "string", "minLength": 1},
+        "os_build": {"type": "string", "minLength": 1},
+        "sdk_api": {"type": "string", "minLength": 1},
+        "hdc_target_hash": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "serial_hash": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "is_matepad_mini": {"type": "boolean"}
+      }
+    }
+  }
+}

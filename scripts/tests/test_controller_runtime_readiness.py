@@ -164,6 +164,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
                         "",
                     ),
                 ),
+                mock.patch.object(readiness, "DEVICE_LOCKS", ()),
             ):
                 exit_code = readiness.main(
                     [
@@ -187,6 +188,60 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
             self.assertTrue((evidence_dir / "host-controller-availability.txt").exists())
             readme = (evidence_dir / "README.md").read_text(encoding="utf-8")
             self.assertIn("Controller runtime readiness: blocked", readme)
+
+    def test_main_refuses_adb_when_device_lock_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lock = Path(temporary_directory) / "device.lock"
+            lock.write_text("owner=other-task\n", encoding="utf-8")
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with (
+                mock.patch.object(readiness, "DEVICE_LOCKS", (lock,)),
+                mock.patch.object(readiness, "adb", side_effect=AssertionError("adb must not run")),
+            ):
+                exit_code = readiness.main(
+                    [
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--evidence-dir",
+                        str(evidence_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, readiness.BLOCKED_EXIT)
+            self.assertFalse(evidence_dir.exists())
+
+    def test_main_writes_lock_blocked_bundle_without_adb(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lock = Path(temporary_directory) / "device.lock"
+            lock.write_text("owner=other-task\n", encoding="utf-8")
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with (
+                mock.patch.object(readiness, "DEVICE_LOCKS", (lock,)),
+                mock.patch.object(readiness, "adb", side_effect=AssertionError("adb must not run")),
+            ):
+                exit_code = readiness.main(
+                    [
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--run-id",
+                        "lock-run",
+                        "--write-blocked-on-lock",
+                    ]
+                )
+
+            self.assertEqual(exit_code, readiness.BLOCKED_EXIT)
+            readiness_record = json.loads((evidence_dir / "controller-runtime-readiness.json").read_text(encoding="utf-8"))
+            summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
+            self.assertTrue(readiness_record["lock_blocked"])
+            self.assertEqual(readiness_record["requested_serial"], "EP0110PZ0B9110300B")
+            self.assertEqual(readiness_record["existing_locks"][0]["path"], str(lock))
+            self.assertEqual(summary["run_id"], "lock-run")
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["can_close_runtime_gate"])
+            readme = (evidence_dir / "README.md").read_text(encoding="utf-8")
+            self.assertIn("no ADB command was run", readme)
 
 
 if __name__ == "__main__":

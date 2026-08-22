@@ -45,6 +45,10 @@ PRODUCT_SESSION_HOST = "InternetProductSession"
 PRODUCTION_WEBRTC_IMPLEMENTATION = "stasel/WebRTC 150.0.0 production adapter"
 CONTROL_CHANNEL_PROOF = "ordered/reliable; bidirectional payload pass"
 MEDIA_CHANNEL_PROOF = "unordered/maxRetransmits=0; bidirectional payload pass"
+PRODUCT_MEDIA_PROOF = (
+    "real VideoToolbox HEVC keyframe and delta over WebRTC media DataChannel pass"
+)
+PRODUCT_MEDIA_SOURCE = "videotoolbox-hevc"
 GATE_FAILURE_PATH = "gate-failure.json"
 
 
@@ -208,7 +212,8 @@ def _project_pass_evidence(
             "initial_video_config_ack_epoch": 1,
             "runtime_video_config_ack_epoch": 2,
             "runtime_rotation_degrees": 90,
-            "media": "synthetic keyframe and delta pass",
+            "media": PRODUCT_MEDIA_PROOF,
+            "media_source": PRODUCT_MEDIA_SOURCE,
             "touch_input": "pass",
             "seeded_plaintext_log_scan": "pass",
         }
@@ -218,6 +223,7 @@ def _project_pass_evidence(
         public["product_session"] = {
             "host": product_host,
             "synthetic_device": True,
+            "media_source": PRODUCT_MEDIA_SOURCE,
             "capture_or_stream_server_started": False,
         }
     if expected_mode == "relay":

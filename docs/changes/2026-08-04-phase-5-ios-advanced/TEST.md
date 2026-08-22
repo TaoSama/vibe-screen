@@ -207,9 +207,11 @@ The following remain unproved until their dedicated gates produce evidence:
   file picker/export, UDP broadcast, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
-- audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
-  real-network E2E behavior. The Android/macOS record-layer key, nonce, replay,
-  and fixed-vector checks are offline evidence only;
+- audio capture/playback, clipboard, and file-transfer product flows over
+  audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
+  Android/macOS raw product-session record hooks, owner-scoped admission,
+  bounded backlog, record-layer key, nonce, replay, and fixed-vector checks are
+  offline evidence only;
 - HDR/EDR output (the current client deliberately advertises SDR only).
 
 ## Required iOS acceptance run
