@@ -9,7 +9,21 @@ signing, install, decode, UI, input, audio, reconnect, or device evidence.
 Use this runbook only when an iPhone or iPad acceptance pass is explicitly
 scheduled. It is a checklist and evidence schema; it does not ask for a long
 soak by default, and it must not reset macOS or Android permissions or clear
-Android application data.
+Android application data. The machine gate validates retained summaries after a
+run; it does not start Xcode, the Host, LAN traffic, ADB, or device automation.
+
+The current-base aggregate owner is #182 (`current-base-ios-acceptance`). Before
+reporting readiness or a blocked run, produce the aggregate summary from the
+current base:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+The expected no-device result is fail-closed `blocked`. A nonzero exit from this
+command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
+retained gate evidence are missing. Do not convert that readiness output into a
+device pass.
 
 ## Open gates
 
@@ -105,16 +119,38 @@ rather than closed by this device runbook.
 
 ## Evidence schema
 
-Each run should include a sanitized acceptance.json next to the retained logs.
+Each run should include a sanitized `acceptance.json` next to the retained logs.
 Missing required fields, any Android device substituted for an iPhone/iPad gate,
 or any gate without evidence keeps the run open, failed, or blocked; it must not
-be reported as passed.
+be reported as passed. Validate the sanitized file before using it to close a
+README gate:
 
-~~~json
+```sh
+make ios-device-acceptance-gate \
+  IOS_ACCEPTANCE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/acceptance.json \
+  IOS_ACCEPTANCE_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/ios-device-acceptance-gate.json
+```
+
+The underlying Python gate exits `0` only for `pass`, `1` for incomplete
+evidence (`insufficient`), and `2` for failed or invalid evidence; the Makefile
+target reports any non-pass as a failed target. `open` or `blocked` readiness
+summaries are useful for tracking prerequisites, but they are expected to return
+`insufficient` and cannot close the iOS trusted-LAN or real-device acceptance
+gate.
+
+```json
 {
-  "schema_version": 1,
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "ios_device_acceptance",
   "platform": "ios",
   "status": "open",
+  "aggregate_owner": {
+    "aggregate": "current-base-ios-acceptance",
+    "aggregate_pr": "#182",
+    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+  },
+  "readiness_status": "blocked",
+  "blocked_reasons": [],
   "repository": {
     "commit": "",
     "branch": "",
@@ -129,6 +165,10 @@ be reported as passed.
     "version": "",
     "selected_developer_dir": "",
     "ios_sdk": ""
+  },
+  "trusted_lan": {
+    "mode": "explicit_plaintext_legacy_fallback",
+    "encrypted_lan_claimed": false
   },
   "signing": {
     "status": "open",
@@ -166,10 +206,23 @@ be reported as passed.
     "reconnect": { "status": "open", "evidence": [] },
     "audio_playback": { "status": "open", "evidence": [] }
   },
+  "broader_gates": {
+    "hdr_output": { "status": "open", "evidence": [] },
+    "advanced_adapters": { "status": "open", "evidence": [] },
+    "trusted_lan_secure_records": { "status": "open", "evidence": [] }
+  },
   "android_evidence_used_for_ios_gates": false,
   "notes": []
 }
-~~~
+```
+
+To turn this runbook record into current-base aggregate evidence, copy sanitized
+field values into `ios-current-base-manifest.json` or generate a fresh default
+manifest with `make ios-current-base-manifest`, then run
+`PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate`. The aggregate gate is
+stricter than this runbook: it keeps the current-base aggregate open until the
+E1-E7 device gates and the broader HDR, advanced-adapter, and trusted-LAN
+secure-record gates all carry retained evidence.
 
 Store raw logs under the active Phase 5 evidence directory or an external
 release bundle, depending on privacy review. Commit only sanitized summaries,
