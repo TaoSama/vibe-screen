@@ -65,6 +65,22 @@ negotiation, Protocol v1 LAN upgrade, decoder output, reconnect, latency, or
 soak evidence. The retained artifact bundle is
 [`evidence/2026-08-22-p0110-lan-preflight-blocked/README.md`](evidence/2026-08-22-p0110-lan-preflight-blocked/README.md).
 
+## 2026-08-23 main preflight recheck
+
+After PR #261 merged the fail-closed trusted-LAN preflight to `origin/main`,
+commit `392b86882869f9bf431cfd35be834f6cdc15fd37` was rechecked on the same
+Nubia P0110 / pacific / Android 16 device (`EP0110PZ0B9110300B`). The device
+identity was confirmed, but the real LAN smoke remained blocked before Host
+launch or pairing: Wi-Fi was enabled but not associated, `wlan0` remained
+`NO-CARRIER` / `state DOWN` with no IPv4 address, Android had no `wlan0` route
+to the Mac LAN candidate, and Host stable signing was blocked because the
+`Vibe Screen Dev` codesigning identity was unavailable.
+
+No trusted-LAN socket admission, secure-record negotiation, Protocol v1 LAN
+upgrade, decoder output, reconnect, latency, or soak evidence was observed. The
+retained artifact bundle is
+[`evidence/2026-08-23-p0110-lan-preflight-main-blocked/README.md`](evidence/2026-08-23-p0110-lan-preflight-main-blocked/README.md).
+
 ## Fail-closed preflight
 
 Use the machine-readable trusted-LAN preflight before starting the Host,
