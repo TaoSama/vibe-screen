@@ -1,0 +1,5 @@
+owner=codex-pr169-refresh-clean-window
+pid=21304
+created_at_utc=2026-08-21T18:11:21Z
+worktree=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr169-sync-main-20260821
+serial=EP0110PZ0B9110300B
