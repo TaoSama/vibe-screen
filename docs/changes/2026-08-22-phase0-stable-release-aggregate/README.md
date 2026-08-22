@@ -1,7 +1,7 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-22
-Base: origin/main at c8a2e771e3d89a785b4dc773185dc4b989add48d
+Base: origin/main at 660dae5231fb1ac4decf5088f911f22a9285abf8
 Status: open. This document does not close Phase 0 and does not change product
 status.
 

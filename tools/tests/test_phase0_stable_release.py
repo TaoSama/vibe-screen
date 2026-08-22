@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 from vibescreen_evidence.phase0_stable_release import (
     REQUIRED_GATE_IDS,
     Phase0StableReleaseError,
+    _write_summary,
     evaluate_manifest,
 )
 
@@ -331,6 +333,29 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("aggregate_verdict", result.stdout)
+
+    def test_summary_writer_uses_unique_atomic_temporary_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            output_path = directory / "phase0-summary.json"
+
+            def write_summary(index: int) -> None:
+                _write_summary(
+                    output_path,
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "phase0_stable_release_closure_summary",
+                        "writer": index,
+                    },
+                )
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                list(executor.map(write_summary, range(40)))
+
+            summary = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertIn(summary["writer"], range(40))
+            self.assertFalse((directory / "phase0-summary.json.tmp").exists())
+            self.assertEqual(list(directory.glob(".phase0-summary.json.*.tmp")), [])
 
 
 if __name__ == "__main__":

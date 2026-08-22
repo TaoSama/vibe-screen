@@ -10,6 +10,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Sequence, TextIO
 
@@ -320,12 +321,31 @@ def evaluate_manifest(
 
 def _write_summary(path: Path, summary: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
-    temporary.replace(path)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary_path = Path(stream.name)
+            json.dump(summary, stream, indent=2, sort_keys=True, allow_nan=False)
+            stream.write("\n")
+        temporary_path.replace(path)
+    except Exception:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                print(
+                    f"warning: failed to remove temporary summary file "
+                    f"{temporary_path}: {cleanup_error}",
+                    file=sys.stderr,
+                )
+        raise
 
 
 def build_parser() -> argparse.ArgumentParser:
