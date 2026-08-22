@@ -76,10 +76,13 @@ git diff --check
   `accessibility-raw-instrumentation-retry.txt`. A separate retry for the new
   `internetRouteToggleDoesNotAutosizeBelowReadableText` method returned
   `OK (0 tests)` even after reinstalling the current androidTest APK, so that
-  method is not claimed as device-executed evidence; see
-  `accessibility-route-toggle-raw-instrumentation-final.txt`. The instrumented
-  source still compiled with `:app:compileDebugAndroidTestKotlin`; no full
-  device instrumentation suite pass is claimed from this run.
+  method is not claimed as device-executed evidence from this readiness run;
+  see `accessibility-route-toggle-raw-instrumentation-final.txt`. A later
+  PR272 final rerun on the same Nubia P0110 / pacific / Android 16 / SDK 36
+  test APK executed the method as `OK (1 test)` in
+  `2026-08-22-nubia-p0110-pr272-final/instrumentation-route-toggle-method-rerun.txt`.
+  The instrumented source still compiled with `:app:compileDebugAndroidTestKotlin`;
+  no full device instrumentation suite pass is claimed from this readiness run.
 - Focused JVM verification and Android test compilation passed for the UI/UX
   changes: `StreamClientProtocolV1IntegrationTest`, `ProtocolV1SessionTest`,
   `MainActivityTerminalGuidanceContractTest`, `DisplayCapsulePolicyTest`,
