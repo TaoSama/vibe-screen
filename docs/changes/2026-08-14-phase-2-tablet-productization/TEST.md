@@ -248,3 +248,40 @@ physical 8-9 inch tablet evidence. Stand-mounted charging stability, controlled
 thermal-load behavior, power stability, background/transport recovery, login
 startup, headless Mac recovery, and the eight-hour physical-tablet sample series
 remain open.
+
+## 2026-08-22 device-environment blocked preflight
+
+This follow-up added a focused schema-backed device-environment summary for the
+three Phase 2 hardware environment gates that lacked a dedicated owner:
+stand-mounted charging stability, controlled thermal-load behavior, and
+power-source stability. The summary is intentionally separate from the
+eight-hour stream gate and device-memory gate; it can close only the
+`stand_mounted_charging_stability`, `thermal_load`, and
+`power_source_stability` entries named in its `environment_gates` field.
+
+Evidence is under
+[`evidence/2026-08-22-nubia-p0110-device-environment-blocked`](evidence/2026-08-22-nubia-p0110-device-environment-blocked/README.md).
+The attached Android device was used only for non-destructive reads with the
+explicit serial `EP0110PZ0B9110300B`; the recorded identity is Nubia P0110 /
+pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi or as
+physical tablet evidence. The read-only snapshots showed battery level 100,
+status 5/full, AC powered true, power manager `mIsPowered=true`, thermal status
+1, and battery temperature 34.0 C.
+
+The generated `phase2-device-environment-summary.json` reports
+`verdict=blocked`, `can_close_device_environment_gates=false`, and
+`does_not_close_eight_hour_stream_gate=true` because no real 8-9 inch tablet,
+stand-mounted setup, eight-hour environment window, or controlled thermal-load
+step was available.
+
+Validation performed for this tooling and evidence update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_device_environment tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_schemas -v`: 34 tests passed.
+- `make phase2-device-environment-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-22-nubia-p0110-device-environment-blocked`: wrote blocked summary.
+- `make evidence-tools-test`: 228 tests passed.
+
+Still open after this result: real 8-9 inch tablet hardware, stand-mounted
+charging stability over the declared environment window, controlled thermal-load
+behavior and recovery, power-source stability under sustained streaming, login
+startup, headless Mac recovery, and the formal eight-hour stream/device-memory
+acceptance run.

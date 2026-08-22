@@ -1,0 +1,145 @@
+{
+  "artifact_paths": [
+    "device-lock.txt",
+    "adb-get-state.txt",
+    "device-info.json",
+    "device.txt",
+    "adb-battery-readonly.txt",
+    "adb-power-readonly.txt",
+    "thermal-readonly.txt",
+    "thermal-readonly.err"
+  ],
+  "blocking_notes": [
+    "Read-only preflight used Nubia P0110 / pacific / Android 16 / SDK 36 as an Android phone substitute only.",
+    "No 8-9 inch tablet, stand-mounted setup, eight-hour environment window, controlled thermal load, or settings UI/platform comparison was performed."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    }
+  ],
+  "can_close_device_environment_gates": false,
+  "criteria": {
+    "environment_duration_seconds": {
+      "measured": 0.0,
+      "minimum": 28800,
+      "passed": false
+    },
+    "maximum_battery_temperature_celsius": {
+      "maximum": 45.0,
+      "measured": 34.0,
+      "passed": true
+    },
+    "maximum_sample_gap_seconds": {
+      "maximum": 90.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "maximum_thermal_status": {
+      "maximum": 2.0,
+      "measured": 1.0,
+      "passed": true
+    },
+    "net_battery_drain_percent": {
+      "maximum": 5.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "non_charging_sample_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "power_source_change_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "unplugged_sample_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    }
+  },
+  "does_not_close_eight_hour_stream_gate": true,
+  "environment_gates": [
+    "stand_mounted_charging_stability",
+    "thermal_load",
+    "power_source_stability"
+  ],
+  "failed_criteria": [
+    "environment_duration_seconds"
+  ],
+  "kind": "phase2_device_environment_acceptance",
+  "missing_criteria": [],
+  "missing_requirements": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    },
+    {
+      "field": "thermal_load_recovery_observed",
+      "requirement": "show the tablet remains usable and returns within the declared thermal limit after load"
+    },
+    {
+      "field": "settings_status_matches_platform",
+      "requirement": "verify the sustained-use UI agrees with dumpsys battery, power, and thermal state"
+    }
+  ],
+  "notes": "Blocked readiness evidence for Phase 2 stand-mounted charging stability, thermal-load, and power-source gates.",
+  "observations": {
+    "android_device_lock_checked": true,
+    "battery_power_samples_retained": true,
+    "controlled_thermal_load_observed": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "eight_hour_environment_window_observed": false,
+    "physical_8_9_inch_tablet_observed": false,
+    "raw_platform_dumps_retained": true,
+    "run_readme_retained": true,
+    "settings_status_matches_platform": false,
+    "stand_mounted_setup_observed": false,
+    "thermal_load_recovery_observed": false,
+    "thermal_samples_retained": true
+  },
+  "profile": "phase2-device-environment",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi or as physical tablet evidence.",
+  "run_id": "63fd7bbd-cde7-4e87-a461-8df929d04fbc",
+  "schema_version": "vibescreen.evidence/v1",
+  "thresholds": {
+    "maximum_battery_temperature_celsius": 45.0,
+    "maximum_net_battery_drain_percent": 5.0,
+    "maximum_non_charging_sample_count": 0.0,
+    "maximum_power_source_change_count": 0.0,
+    "maximum_sample_gap_seconds": 90.0,
+    "maximum_thermal_status": 2.0,
+    "maximum_unplugged_sample_count": 0.0,
+    "minimum_environment_duration_seconds": 28800
+  },
+  "verdict": "blocked"
+}

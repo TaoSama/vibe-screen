@@ -147,6 +147,23 @@ substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
 readiness records and intentionally evaluate as `insufficient` for the formal
 8-9 inch tablet gate.
 
+For the narrower Phase 2 device-environment gates, create an observation record
+after collecting the raw stand, battery, power, and thermal artifacts, then
+derive the focused summary:
+
+```sh
+make phase2-device-environment-gate EVIDENCE_DIR=.build/evidence
+```
+
+The input file is
+`.build/evidence/phase2-device-environment-observations.json`; the command
+writes `.build/evidence/phase2-device-environment-summary.json`. The summary
+can close only `stand_mounted_charging_stability`, `thermal_load`, and
+`power_source_stability`, and only when a real 8-9 inch tablet, stand setup,
+controlled thermal load, raw platform dumps, and eight-hour environment window
+are all observed. Missing target hardware or a phone substitute should be
+recorded as `blocked`, not as a failed or passing hardware result.
+
 ### Short Host memory regression gate
 
 Use the bounded short diagnostic as a 10-17 minute regression gate before

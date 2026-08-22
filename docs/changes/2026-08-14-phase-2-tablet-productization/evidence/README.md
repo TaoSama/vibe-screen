@@ -22,6 +22,8 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── thermal-after.txt
 ├── thermal-before.err       # stderr capture; use status and dump content for failure
 ├── thermal-after.err        # stderr capture; use status and dump content for failure
+├── phase2-device-environment-observations.json
+├── phase2-device-environment-summary.json
 ├── raw-logcat.txt
 ├── host.log
 ├── reconnects.log
@@ -54,6 +56,21 @@ repository root. The gate consumes `phase2-tablet-manifest.json`, the eight-hour
 soak report, and this raw evidence directory before it can report `pass`. Missing
 raw artifacts, a phone substitute such as Nubia P0110/pacific/Android 16, or an
 undeclared threshold leaves the result `insufficient`.
+
+For the focused device-environment gates, collect the explicit observation file
+and run:
+
+```bash
+make phase2-device-environment-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+`phase2-device-environment-summary.json` may close only the stand-mounted
+charging stability, thermal-load, and power-source stability gates. It remains
+`blocked` when the run did not use a real 8-9 inch tablet, a stand-mounted
+charged setup, a full eight-hour environment window, or a controlled thermal
+load. It remains `insufficient` when the required observations are true but
+derived battery, power-source, thermal, drain, or sample-gap measurements are
+missing.
 
 The run `README.md` must state the real tablet model, OS build, density,
 orientation/window sizes, charger/cable/stand setup, Mac host identity, commit

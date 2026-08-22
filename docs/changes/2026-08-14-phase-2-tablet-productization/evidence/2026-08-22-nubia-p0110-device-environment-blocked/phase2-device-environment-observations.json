@@ -1,0 +1,46 @@
+{
+  "android_device_lock_checked": true,
+  "device_identity_recorded": true,
+  "device_identity_matches_claim": true,
+  "physical_8_9_inch_tablet_observed": false,
+  "stand_mounted_setup_observed": false,
+  "eight_hour_environment_window_observed": false,
+  "battery_power_samples_retained": true,
+  "thermal_samples_retained": true,
+  "raw_platform_dumps_retained": true,
+  "controlled_thermal_load_observed": false,
+  "thermal_load_recovery_observed": false,
+  "settings_status_matches_platform": false,
+  "run_readme_retained": true,
+  "thresholds": {
+    "maximum_thermal_status": 2,
+    "maximum_battery_temperature_celsius": 45,
+    "maximum_net_battery_drain_percent": 5,
+    "maximum_sample_gap_seconds": 90
+  },
+  "measurements": {
+    "environment_duration_seconds": 0,
+    "maximum_sample_gap_seconds": 0,
+    "unplugged_sample_count": 0,
+    "non_charging_sample_count": 0,
+    "power_source_change_count": 0,
+    "maximum_thermal_status": 1,
+    "maximum_battery_temperature_celsius": 34,
+    "net_battery_drain_percent": 0
+  },
+  "artifact_paths": [
+    "device-lock.txt",
+    "adb-get-state.txt",
+    "device-info.json",
+    "device.txt",
+    "adb-battery-readonly.txt",
+    "adb-power-readonly.txt",
+    "thermal-readonly.txt",
+    "thermal-readonly.err"
+  ],
+  "blocking_notes": [
+    "Read-only preflight used Nubia P0110 / pacific / Android 16 / SDK 36 as an Android phone substitute only.",
+    "No 8-9 inch tablet, stand-mounted setup, eight-hour environment window, controlled thermal load, or settings UI/platform comparison was performed."
+  ],
+  "notes": "Blocked readiness evidence for Phase 2 stand-mounted charging stability, thermal-load, and power-source gates."
+}
