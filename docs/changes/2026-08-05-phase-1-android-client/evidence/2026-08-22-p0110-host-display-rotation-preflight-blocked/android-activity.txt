@@ -1,0 +1,43 @@
+  * Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    topResumedActivity=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+    topResumedActivity=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+    * Hist  #0: ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+      packageName=dev.telemachus.display processName=dev.telemachus.display
+      app=ProcessRecord{f17f85f 27526:dev.telemachus.display/u0a259 PRSmt{8e5db44 p:0 rp:27526 t:null sa:0 usps:2 sps:2 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+      Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=dev.telemachus.display/.MainActivity }
+      rootOfTask=true task=Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display}
+      taskAffinity=10259:dev.telemachus.display
+      mActivityComponent=dev.telemachus.display/.MainActivity
+      baseDir=/data/app/~~iwMKdjBjqbUpXqKn07vGOA==/dev.telemachus.display-yOznR5Yq1KLHlQ9RH8AJog==/base.apk
+      dataDir=/data/user/0/dev.telemachus.display
+      windows=[Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}]
+    Resumed: ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+  ResumedActivity: ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+  topDisplayFocusedRootTask=Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display}
+  deepestLastOrientationSource=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+  mCurrentFocus=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+  mHoldScreenWindow=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mLastWakeLockHoldingWindow=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      mPreferredTopFocusableRootTask=Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display}
+      mLastFocusedRootTask=Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display}
+      * Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        * ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}
+    mFocusedWindow=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mTopFullscreenOpaqueWindowState=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mSystemBarColorApps={ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498}}
+    mNavBarColorWindowCandidate=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mNavBarBackgroundWindowCandidate=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        source=ActivityRecord{253398919 u0 dev.telemachus.display/.MainActivity t475} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{12013962 u0 dev.telemachus.display/.MainActivity t476} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{81285321 u0 dev.telemachus.display/.MainActivity t477} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{51867395 u0 dev.telemachus.display/.MainActivity t498} SCREEN_ORIENTATION_LANDSCAPE
+      Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+        mControlTarget=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mControlTarget=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mControlTarget=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mPendingControlTarget=Window{5b4b721 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        (fullscreen) Task{41f5e80 #498 type=standard A=10259:dev.telemachus.display}
+  VisibleActivityProcess:[ ProcessRecord{f17f85f 27526:dev.telemachus.display/u0a259 PRSmt{8e5db44 p:0 rp:27526 t:null sa:0 usps:2 sps:2 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}]
+exit=0

@@ -1,0 +1,402 @@
+--------- beginning of main
+08-22 01:03:36.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:36.854 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331816854,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:36.941 D/VD      (27526): Decode stats: input=119400, output=119399, dropped=0, availBufs=10
+08-22 01:03:36.950 D/VD      (27526): Output #119400: decoder latency avg=5.3ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:37.642 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119441); ignored
+08-22 01:03:37.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:03:37.856 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331817856,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:03:37.935 D/VD      (27526): Decode stats: input=119460, output=119459, dropped=0, availBufs=10
+08-22 01:03:37.938 D/VD      (27526): Output #119460: decoder latency avg=5.2ms max=8.1ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:38.075 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 119467/119478 (recycle/alloc) - 19/119469 (fetch/transfer)
+08-22 01:03:38.641 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119501); ignored
+08-22 01:03:38.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 58, rendered count 59, avgLatencyMs: 3
+08-22 01:03:38.872 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331818872,"event":"stream_stats","session_epoch":1,"fps":58.99705014749262,"mbps":0.3647905604719764}
+08-22 01:03:38.953 D/VD      (27526): Decode stats: input=119520, output=119519, dropped=0, availBufs=10
+08-22 01:03:38.957 D/VD      (27526): Output #119520: decoder latency avg=5.2ms max=8.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:39.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 58, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:03:39.884 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331819883,"event":"stream_stats","session_epoch":1,"fps":57.368941641938676,"mbps":0.36315727002967363}
+08-22 01:03:39.987 D/VD      (27526): Decode stats: input=119580, output=119579, dropped=0, availBufs=10
+08-22 01:03:39.993 D/VD      (27526): Output #119580: decoder latency avg=4.7ms max=8.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:40.495 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119609); ignored
+08-22 01:03:40.793 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:40.889 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331820889,"event":"stream_stats","session_epoch":1,"fps":60.69651741293532,"mbps":0.3710567164179105}
+08-22 01:03:40.988 D/VD      (27526): Decode stats: input=119640, output=119639, dropped=0, availBufs=10
+08-22 01:03:40.994 D/VD      (27526): Output #119640: decoder latency avg=5.0ms max=10.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:41.211 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119652); ignored
+08-22 01:03:41.793 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:41.808 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119688); ignored
+08-22 01:03:41.891 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331821891,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:03:41.989 D/VD      (27526): Decode stats: input=119700, output=119699, dropped=0, availBufs=10
+08-22 01:03:41.996 D/VD      (27526): Output #119700: decoder latency avg=5.3ms max=8.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:42.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 61, avgLatencyMs: 3
+08-22 01:03:42.903 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331822903,"event":"stream_stats","session_epoch":1,"fps":60.21717670286279,"mbps":0.3681263573543929}
+08-22 01:03:42.987 D/VD      (27526): Decode stats: input=119760, output=119759, dropped=0, availBufs=10
+08-22 01:03:42.994 D/VD      (27526): Output #119760: decoder latency avg=5.3ms max=10.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:43.152 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 119768/119779 (recycle/alloc) - 19/119771 (fetch/transfer)
+08-22 01:03:43.443 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119786); ignored
+08-22 01:03:43.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:43.906 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331823906,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:03:43.987 D/VD      (27526): Decode stats: input=119820, output=119819, dropped=0, availBufs=10
+08-22 01:03:43.992 D/VD      (27526): Output #119820: decoder latency avg=5.4ms max=8.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:44.061 I/emachus.display(27526): ProfileSaver: LiteProfileSaver time 40.625us new_methods=0
+08-22 01:03:44.359 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119841); ignored
+08-22 01:03:44.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 61, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:44.920 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331824920,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:03:44.986 D/VD      (27526): Decode stats: input=119880, output=119879, dropped=0, availBufs=10
+08-22 01:03:44.989 D/VD      (27526): Output #119880: decoder latency avg=5.4ms max=7.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:45.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:45.919 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331825919,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:45.988 D/VD      (27526): Decode stats: input=119940, output=119939, dropped=0, availBufs=10
+08-22 01:03:45.994 D/VD      (27526): Output #119940: decoder latency avg=5.0ms max=7.8ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:03:46.441 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119966); ignored
+08-22 01:03:46.594 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119975); ignored
+08-22 01:03:46.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:03:46.826 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (119989); ignored
+08-22 01:03:46.923 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331826923,"event":"stream_stats","session_epoch":1,"fps":59.82053838484546,"mbps":0.3698823529411765}
+08-22 01:03:46.987 D/VD      (27526): Decode stats: input=120000, output=119999, dropped=0, availBufs=10
+08-22 01:03:46.993 D/VD      (27526): Output #120000: decoder latency avg=5.2ms max=8.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:47.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 59, avgLatencyMs: 3
+08-22 01:03:47.922 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331827922,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:47.990 D/VD      (27526): Decode stats: input=120060, output=120059, dropped=0, availBufs=10
+08-22 01:03:47.994 D/VD      (27526): Output #120060: decoder latency avg=5.2ms max=7.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:48.220 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 120072/120083 (recycle/alloc) - 19/120075 (fetch/transfer)
+08-22 01:03:48.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:03:48.939 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331828939,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.36703937007874016}
+08-22 01:03:48.988 D/VD      (27526): Decode stats: input=120120, output=120119, dropped=0, availBufs=10
+08-22 01:03:48.994 D/VD      (27526): Output #120120: decoder latency avg=5.3ms max=10.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:49.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:03:49.938 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331829938,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:49.988 D/VD      (27526): Decode stats: input=120180, output=120179, dropped=0, availBufs=10
+08-22 01:03:49.995 D/VD      (27526): Output #120180: decoder latency avg=5.6ms max=12.2ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:50.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:50.940 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331830940,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:03:50.986 D/VD      (27526): Decode stats: input=120240, output=120239, dropped=0, availBufs=10
+08-22 01:03:50.992 D/VD      (27526): Output #120240: decoder latency avg=5.3ms max=10.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:51.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:03:51.957 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331831957,"event":"stream_stats","session_epoch":1,"fps":58.99705014749262,"mbps":0.3647905604719764}
+08-22 01:03:52.005 D/VD      (27526): Decode stats: input=120300, output=120299, dropped=0, availBufs=10
+08-22 01:03:52.010 D/VD      (27526): Output #120300: decoder latency avg=4.9ms max=7.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:52.639 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120337); ignored
+08-22 01:03:52.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 58, rendered count 59, avgLatencyMs: 3
+08-22 01:03:52.970 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331832970,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:03:53.007 D/VD      (27526): Decode stats: input=120360, output=120359, dropped=0, availBufs=10
+08-22 01:03:53.011 D/VD      (27526): Output #120360: decoder latency avg=4.9ms max=9.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:53.269 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 120374/120385 (recycle/alloc) - 19/120377 (fetch/transfer)
+08-22 01:03:53.343 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120378); ignored
+08-22 01:03:53.558 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120392); ignored
+08-22 01:03:53.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:53.971 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331833971,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:03:54.003 D/VD      (27526): Decode stats: input=120420, output=120419, dropped=0, availBufs=10
+08-22 01:03:54.011 D/VD      (27526): Output #120420: decoder latency avg=5.3ms max=8.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:54.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:54.972 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331834971,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:55.005 D/VD      (27526): Decode stats: input=120480, output=120479, dropped=0, availBufs=10
+08-22 01:03:55.012 D/VD      (27526): Output #120480: decoder latency avg=5.1ms max=9.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:55.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:03:55.972 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331835972,"event":"stream_stats","session_epoch":1,"fps":58.94105894105894,"mbps":0.36870329670329677}
+08-22 01:03:56.018 D/VD      (27526): Decode stats: input=120540, output=120539, dropped=0, availBufs=10
+08-22 01:03:56.021 D/VD      (27526): Output #120540: decoder latency avg=5.3ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:56.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:56.855 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120589); ignored
+08-22 01:03:56.989 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331836989,"event":"stream_stats","session_epoch":1,"fps":59.9803343166175,"mbps":0.3666784660766962}
+08-22 01:03:57.022 D/VD      (27526): Decode stats: input=120600, output=120599, dropped=0, availBufs=10
+08-22 01:03:57.025 D/VD      (27526): Output #120600: decoder latency avg=5.0ms max=12.2ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:57.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:03:57.991 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331837990,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:03:58.020 D/VD      (27526): Decode stats: input=120660, output=120659, dropped=0, availBufs=10
+08-22 01:03:58.026 D/VD      (27526): Output #120660: decoder latency avg=4.9ms max=8.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:58.336 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 120675/120686 (recycle/alloc) - 19/120679 (fetch/transfer)
+08-22 01:03:58.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:03:59.004 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331839004,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 01:03:59.021 D/VD      (27526): Decode stats: input=120720, output=120719, dropped=0, availBufs=10
+08-22 01:03:59.026 D/VD      (27526): Output #120720: decoder latency avg=4.8ms max=8.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:03:59.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:00.005 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331840005,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:04:00.025 D/VD      (27526): Decode stats: input=120780, output=120779, dropped=0, availBufs=10
+08-22 01:04:00.030 D/VD      (27526): Output #120780: decoder latency avg=5.2ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:00.194 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120789); ignored
+08-22 01:04:00.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:00.991 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120837); ignored
+08-22 01:04:01.007 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331841007,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:01.020 D/VD      (27526): Decode stats: input=120840, output=120839, dropped=0, availBufs=10
+08-22 01:04:01.023 D/VD      (27526): Output #120840: decoder latency avg=5.2ms max=8.4ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:01.638 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (120875); ignored
+08-22 01:04:01.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:02.019 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331842019,"event":"stream_stats","session_epoch":1,"fps":59.230009871668315,"mbps":0.3662309970384996}
+08-22 01:04:02.021 D/VD      (27526): Decode stats: input=120900, output=120898, dropped=0, availBufs=9
+08-22 01:04:02.028 D/VD      (27526): Output #120900: decoder latency avg=5.2ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:02.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 60, avgLatencyMs: 3
+08-22 01:04:03.021 D/VD      (27526): Decode stats: input=120960, output=120958, dropped=0, availBufs=9
+08-22 01:04:03.023 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331843023,"event":"stream_stats","session_epoch":1,"fps":60.81754735792622,"mbps":0.37179661016949156}
+08-22 01:04:03.025 D/VD      (27526): Output #120960: decoder latency avg=5.1ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:03.392 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 120981/120992 (recycle/alloc) - 19/120983 (fetch/transfer)
+08-22 01:04:03.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:04.020 D/VD      (27526): Decode stats: input=121020, output=121019, dropped=0, availBufs=10
+08-22 01:04:04.023 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331844023,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:04:04.027 D/VD      (27526): Output #121020: decoder latency avg=4.9ms max=10.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:04.642 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121056); ignored
+08-22 01:04:04.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 58, output count: 58, rendered count 60, avgLatencyMs: 3
+08-22 01:04:05.037 D/VD      (27526): Decode stats: input=121080, output=121079, dropped=0, availBufs=10
+08-22 01:04:05.039 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331845039,"event":"stream_stats","session_epoch":1,"fps":59.05511811023622,"mbps":0.3651496062992126}
+08-22 01:04:05.042 D/VD      (27526): Output #121080: decoder latency avg=5.3ms max=9.4ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:05.476 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121104); ignored
+08-22 01:04:05.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 57, avgLatencyMs: 3
+08-22 01:04:06.040 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331846039,"event":"stream_stats","session_epoch":1,"fps":59.0,"mbps":0.369072}
+08-22 01:04:06.080 D/VD      (27526): Decode stats: input=121140, output=121139, dropped=0, availBufs=10
+08-22 01:04:06.084 D/VD      (27526): Output #121140: decoder latency avg=4.8ms max=7.2ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:06.448 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121161); ignored
+08-22 01:04:06.475 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121163); ignored
+08-22 01:04:06.674 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121175); ignored
+08-22 01:04:06.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:07.057 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331847057,"event":"stream_stats","session_epoch":1,"fps":58.93909626719057,"mbps":0.3644322200392927}
+08-22 01:04:07.069 D/VD      (27526): Decode stats: input=121200, output=121199, dropped=0, availBufs=10
+08-22 01:04:07.075 D/VD      (27526): Output #121200: decoder latency avg=5.3ms max=9.4ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:07.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:08.050 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121257); ignored
+08-22 01:04:08.070 D/VD      (27526): Decode stats: input=121260, output=121259, dropped=0, availBufs=10
+08-22 01:04:08.073 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331848073,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.36703937007874016}
+08-22 01:04:08.077 D/VD      (27526): Output #121260: decoder latency avg=5.2ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:08.173 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121265); ignored
+08-22 01:04:08.473 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 121282/121293 (recycle/alloc) - 19/121284 (fetch/transfer)
+08-22 01:04:08.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:09.042 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121316); ignored
+08-22 01:04:09.090 D/VD      (27526): Decode stats: input=121320, output=121319, dropped=0, availBufs=10
+08-22 01:04:09.093 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331849092,"event":"stream_stats","session_epoch":1,"fps":58.88125613346418,"mbps":0.36407458292443573}
+08-22 01:04:09.095 D/VD      (27526): Output #121320: decoder latency avg=5.3ms max=8.1ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:09.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:04:10.087 D/VD      (27526): Decode stats: input=121380, output=121379, dropped=0, availBufs=10
+08-22 01:04:10.093 D/VD      (27526): Output #121380: decoder latency avg=5.3ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:10.107 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331850107,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 01:04:10.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:11.086 D/VD      (27526): Decode stats: input=121440, output=121439, dropped=0, availBufs=10
+08-22 01:04:11.091 D/VD      (27526): Output #121440: decoder latency avg=4.8ms max=9.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:11.121 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331851121,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:04:11.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:12.103 D/VD      (27526): Decode stats: input=121500, output=121499, dropped=0, availBufs=10
+08-22 01:04:12.108 D/VD      (27526): Output #121500: decoder latency avg=5.2ms max=11.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:12.136 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331852136,"event":"stream_stats","session_epoch":1,"fps":59.11330049261084,"mbps":0.36550935960591135}
+08-22 01:04:12.644 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121531); ignored
+08-22 01:04:12.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:13.102 D/VD      (27526): Decode stats: input=121560, output=121559, dropped=0, availBufs=10
+08-22 01:04:13.108 D/VD      (27526): Output #121560: decoder latency avg=5.3ms max=8.5ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:13.139 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331853139,"event":"stream_stats","session_epoch":1,"fps":59.82053838484546,"mbps":0.3698823529411765}
+08-22 01:04:13.539 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 121584/121595 (recycle/alloc) - 19/121587 (fetch/transfer)
+08-22 01:04:13.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:04:14.104 D/VD      (27526): Decode stats: input=121620, output=121619, dropped=0, availBufs=10
+08-22 01:04:14.109 D/VD      (27526): Output #121620: decoder latency avg=5.5ms max=8.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:14.158 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331854157,"event":"stream_stats","session_epoch":1,"fps":59.921414538310415,"mbps":0.6161650294695481}
+08-22 01:04:14.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:15.105 D/VD      (27526): Decode stats: input=121680, output=121679, dropped=0, availBufs=10
+08-22 01:04:15.112 D/VD      (27526): Output #121680: decoder latency avg=5.5ms max=11.2ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:15.173 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331855173,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.3684645669291338}
+08-22 01:04:15.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 58, output count: 58, rendered count 59, avgLatencyMs: 3
+08-22 01:04:16.126 D/VD      (27526): Decode stats: input=121740, output=121739, dropped=0, availBufs=10
+08-22 01:04:16.129 D/VD      (27526): Output #121740: decoder latency avg=5.3ms max=8.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:16.174 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331856173,"event":"stream_stats","session_epoch":1,"fps":59.0,"mbps":0.369072}
+08-22 01:04:16.244 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121746); ignored
+08-22 01:04:16.590 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (121767); ignored
+08-22 01:04:16.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 57, avgLatencyMs: 3
+08-22 01:04:17.136 D/VD      (27526): Decode stats: input=121800, output=121799, dropped=0, availBufs=10
+08-22 01:04:17.144 D/VD      (27526): Output #121800: decoder latency avg=5.5ms max=9.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:17.188 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331857188,"event":"stream_stats","session_epoch":1,"fps":59.11330049261084,"mbps":0.36550935960591135}
+08-22 01:04:17.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:18.154 D/VD      (27526): Decode stats: input=121860, output=121859, dropped=0, availBufs=10
+08-22 01:04:18.159 D/VD      (27526): Output #121860: decoder latency avg=5.1ms max=9.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:18.206 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331858205,"event":"stream_stats","session_epoch":1,"fps":58.99705014749262,"mbps":0.3647905604719764}
+08-22 01:04:18.575 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 121884/121895 (recycle/alloc) - 19/121886 (fetch/transfer)
+08-22 01:04:18.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:19.152 D/VD      (27526): Decode stats: input=121920, output=121919, dropped=0, availBufs=10
+08-22 01:04:19.155 D/VD      (27526): Output #121920: decoder latency avg=4.8ms max=9.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:19.207 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331859206,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:04:19.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:20.171 D/VD      (27526): Decode stats: input=121980, output=121979, dropped=0, availBufs=10
+08-22 01:04:20.176 D/VD      (27526): Output #121980: decoder latency avg=5.3ms max=8.2ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:20.224 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331860224,"event":"stream_stats","session_epoch":1,"fps":58.93909626719057,"mbps":0.3644322200392927}
+08-22 01:04:20.793 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:21.203 D/VD      (27526): Decode stats: input=122040, output=122039, dropped=0, availBufs=10
+08-22 01:04:21.207 D/VD      (27526): Output #122040: decoder latency avg=3.7ms max=6.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:21.237 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331861237,"event":"stream_stats","session_epoch":1,"fps":58.24284304047384,"mbps":0.36433563672260616}
+08-22 01:04:21.725 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122069); ignored
+08-22 01:04:21.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 58, output count: 57, rendered count 56, avgLatencyMs: 2
+08-22 01:04:22.220 D/VD      (27526): Decode stats: input=122100, output=122099, dropped=0, availBufs=10
+08-22 01:04:22.224 D/VD      (27526): Output #122100: decoder latency avg=5.1ms max=8.1ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:22.237 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331862237,"event":"stream_stats","session_epoch":1,"fps":59.0,"mbps":0.369072}
+08-22 01:04:22.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:23.236 D/VD      (27526): Decode stats: input=122160, output=122159, dropped=0, availBufs=10
+08-22 01:04:23.238 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331863237,"event":"stream_stats","session_epoch":1,"fps":59.0,"mbps":0.369072}
+08-22 01:04:23.242 D/VD      (27526): Output #122160: decoder latency avg=5.1ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:23.669 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 122182/122193 (recycle/alloc) - 19/122185 (fetch/transfer)
+08-22 01:04:23.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 57, output count: 57, rendered count 56, avgLatencyMs: 3
+08-22 01:04:24.060 I/emachus.display(27526): ProfileSaver: LiteProfileSaver time 135.520us new_methods=0
+08-22 01:04:24.241 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331864241,"event":"stream_stats","session_epoch":1,"fps":57.82652043868395,"mbps":0.3660538384845464}
+08-22 01:04:24.270 D/VD      (27526): Decode stats: input=122220, output=122219, dropped=0, availBufs=10
+08-22 01:04:24.275 D/VD      (27526): Output #122220: decoder latency avg=5.6ms max=8.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:24.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:24.823 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122251); ignored
+08-22 01:04:25.242 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331865241,"event":"stream_stats","session_epoch":1,"fps":58.94105894105894,"mbps":0.36870329670329677}
+08-22 01:04:25.291 D/VD      (27526): Decode stats: input=122280, output=122279, dropped=0, availBufs=10
+08-22 01:04:25.294 D/VD      (27526): Output #122280: decoder latency avg=5.5ms max=8.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:25.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:26.255 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331866255,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:04:26.285 D/VD      (27526): Decode stats: input=122340, output=122339, dropped=0, availBufs=10
+08-22 01:04:26.289 D/VD      (27526): Output #122340: decoder latency avg=5.2ms max=11.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:26.326 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122341); ignored
+08-22 01:04:26.426 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122347); ignored
+08-22 01:04:26.629 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122359); ignored
+08-22 01:04:26.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:27.258 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331867257,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:27.287 D/VD      (27526): Decode stats: input=122400, output=122399, dropped=0, availBufs=10
+08-22 01:04:27.293 D/VD      (27526): Output #122400: decoder latency avg=5.2ms max=10.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:27.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 58, avgLatencyMs: 3
+08-22 01:04:28.273 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331868273,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.36703937007874016}
+08-22 01:04:28.288 D/VD      (27526): Decode stats: input=122460, output=122459, dropped=0, availBufs=10
+08-22 01:04:28.295 D/VD      (27526): Output #122460: decoder latency avg=5.1ms max=7.6ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:28.376 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122462); ignored
+08-22 01:04:28.721 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 122484/122495 (recycle/alloc) - 19/122487 (fetch/transfer)
+08-22 01:04:28.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:04:29.285 D/VD      (27526): Decode stats: input=122520, output=122519, dropped=0, availBufs=10
+08-22 01:04:29.286 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331869286,"event":"stream_stats","session_epoch":1,"fps":60.21717670286279,"mbps":0.3681263573543929}
+08-22 01:04:29.289 D/VD      (27526): Output #122520: decoder latency avg=5.2ms max=7.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:29.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 61, avgLatencyMs: 3
+08-22 01:04:30.290 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331870289,"event":"stream_stats","session_epoch":1,"fps":56.82951146560319,"mbps":0.36413958125623136}
+08-22 01:04:30.338 D/VD      (27526): Decode stats: input=122580, output=122579, dropped=0, availBufs=10
+08-22 01:04:30.344 D/VD      (27526): Output #122580: decoder latency avg=5.5ms max=8.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:30.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 56, output count: 57, rendered count 56, avgLatencyMs: 3
+08-22 01:04:31.291 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331871290,"event":"stream_stats","session_epoch":1,"fps":58.94105894105894,"mbps":0.36870329670329677}
+08-22 01:04:31.373 D/VD      (27526): Decode stats: input=122640, output=122639, dropped=0, availBufs=10
+08-22 01:04:31.377 D/VD      (27526): Output #122640: decoder latency avg=5.4ms max=8.1ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:31.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:04:32.304 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331872304,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:04:32.378 D/VD      (27526): Decode stats: input=122700, output=122699, dropped=0, availBufs=10
+08-22 01:04:32.384 D/VD      (27526): Output #122700: decoder latency avg=5.4ms max=9.5ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:32.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 57, output count: 58, rendered count 61, avgLatencyMs: 3
+08-22 01:04:32.892 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122729); ignored
+08-22 01:04:33.306 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331873306,"event":"stream_stats","session_epoch":1,"fps":57.884231536926144,"mbps":0.36641916167664673}
+08-22 01:04:33.391 D/VD      (27526): Decode stats: input=122760, output=122757, dropped=0, availBufs=8
+08-22 01:04:33.395 D/VD      (27526): Output #122760: decoder latency avg=5.3ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:33.760 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (122781); ignored
+08-22 01:04:33.791 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 122783/122794 (recycle/alloc) - 19/122785 (fetch/transfer)
+08-22 01:04:33.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 61, output count: 60, rendered count 57, avgLatencyMs: 3
+08-22 01:04:34.322 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331874322,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.36703937007874016}
+08-22 01:04:34.388 D/VD      (27526): Decode stats: input=122820, output=122817, dropped=0, availBufs=8
+08-22 01:04:34.396 D/VD      (27526): Output #122820: decoder latency avg=5.3ms max=10.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:34.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:35.338 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331875338,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 01:04:35.390 D/VD      (27526): Decode stats: input=122880, output=122877, dropped=0, availBufs=9
+08-22 01:04:35.395 D/VD      (27526): Output #122880: decoder latency avg=5.5ms max=9.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:35.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:36.337 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331876337,"event":"stream_stats","session_epoch":1,"fps":53.0,"mbps":0.357552}
+08-22 01:04:36.505 D/VD      (27526): Decode stats: input=122940, output=122939, dropped=0, availBufs=10
+08-22 01:04:36.512 D/VD      (27526): Output #122940: decoder latency avg=5.6ms max=10.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:36.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 45, output count: 45, rendered count 48, avgLatencyMs: 3
+08-22 01:04:37.338 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331877337,"event":"stream_stats","session_epoch":1,"fps":49.0,"mbps":0.349872}
+08-22 01:04:37.687 D/VD      (27526): Decode stats: input=123000, output=122999, dropped=0, availBufs=10
+08-22 01:04:37.691 D/VD      (27526): Output #123000: decoder latency avg=5.5ms max=11.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:37.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 57, output count: 57, rendered count 54, avgLatencyMs: 3
+08-22 01:04:38.339 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331878339,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:38.686 D/VD      (27526): Decode stats: input=123060, output=123059, dropped=0, availBufs=10
+08-22 01:04:38.691 D/VD      (27526): Output #123060: decoder latency avg=5.2ms max=7.3ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:38.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:38.842 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 123068/123079 (recycle/alloc) - 19/123070 (fetch/transfer)
+08-22 01:04:39.389 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331879389,"event":"stream_stats","session_epoch":1,"fps":58.15061963775024,"mbps":0.35549285033365113}
+08-22 01:04:39.688 D/VD      (27526): Decode stats: input=123120, output=123119, dropped=0, availBufs=10
+08-22 01:04:39.694 D/VD      (27526): Output #123120: decoder latency avg=5.4ms max=8.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:39.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:40.393 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331880393,"event":"stream_stats","session_epoch":1,"fps":59.701492537313435,"mbps":0.36914626865671646}
+08-22 01:04:40.685 D/VD      (27526): Decode stats: input=123180, output=123179, dropped=0, availBufs=10
+08-22 01:04:40.690 D/VD      (27526): Output #123180: decoder latency avg=5.4ms max=8.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:40.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:04:41.395 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331881395,"event":"stream_stats","session_epoch":1,"fps":60.87824351297405,"mbps":0.3721676646706587}
+08-22 01:04:41.687 D/VD      (27526): Decode stats: input=123240, output=123239, dropped=0, availBufs=10
+08-22 01:04:41.690 D/VD      (27526): Output #123240: decoder latency avg=4.9ms max=9.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:41.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 60, avgLatencyMs: 3
+08-22 01:04:42.193 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123269); ignored
+08-22 01:04:42.395 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331882395,"event":"stream_stats","session_epoch":1,"fps":61.0,"mbps":0.372912}
+08-22 01:04:42.687 D/VD      (27526): Decode stats: input=123300, output=123299, dropped=0, availBufs=10
+08-22 01:04:42.694 D/VD      (27526): Output #123300: decoder latency avg=5.4ms max=8.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:42.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 60, avgLatencyMs: 3
+08-22 01:04:43.396 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331883395,"event":"stream_stats","session_epoch":1,"fps":58.0,"mbps":0.367152}
+08-22 01:04:43.689 D/VD      (27526): Decode stats: input=123360, output=123359, dropped=0, availBufs=10
+08-22 01:04:43.697 D/VD      (27526): Output #123360: decoder latency avg=5.3ms max=9.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:43.776 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123364); ignored
+08-22 01:04:43.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:04:43.938 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 123370/123381 (recycle/alloc) - 19/123373 (fetch/transfer)
+08-22 01:04:44.398 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331884398,"event":"stream_stats","session_epoch":1,"fps":57.884231536926144,"mbps":0.36641916167664673}
+08-22 01:04:44.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 53, output count: 53, rendered count 51, avgLatencyMs: 3
+08-22 01:04:44.820 D/VD      (27526): Decode stats: input=123420, output=123419, dropped=0, availBufs=10
+08-22 01:04:44.825 D/VD      (27526): Output #123420: decoder latency avg=5.5ms max=10.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:45.398 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331885398,"event":"stream_stats","session_epoch":1,"fps":55.94405594405595,"mbps":0.362949050949051}
+08-22 01:04:45.402 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123453); ignored
+08-22 01:04:45.759 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123475); ignored
+08-22 01:04:45.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 59, rendered count 62, avgLatencyMs: 3
+08-22 01:04:45.820 D/VD      (27526): Decode stats: input=123480, output=123479, dropped=0, availBufs=10
+08-22 01:04:45.824 D/VD      (27526): Output #123480: decoder latency avg=5.5ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:46.399 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331886399,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:04:46.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 61, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:46.820 D/VD      (27526): Decode stats: input=123540, output=123539, dropped=0, availBufs=10
+08-22 01:04:46.824 D/VD      (27526): Output #123540: decoder latency avg=5.3ms max=8.1ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:47.405 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331887404,"event":"stream_stats","session_epoch":1,"fps":60.636182902584494,"mbps":0.37068787276341947}
+08-22 01:04:47.742 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123594); ignored
+08-22 01:04:47.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:47.820 D/VD      (27526): Decode stats: input=123600, output=123599, dropped=0, availBufs=10
+08-22 01:04:47.826 D/VD      (27526): Output #123600: decoder latency avg=5.1ms max=8.4ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:48.408 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331888408,"event":"stream_stats","session_epoch":1,"fps":59.7609561752988,"mbps":0.36951394422310757}
+08-22 01:04:48.762 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123655); ignored
+08-22 01:04:48.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:48.821 D/VD      (27526): Decode stats: input=123660, output=123659, dropped=0, availBufs=10
+08-22 01:04:48.825 D/VD      (27526): Output #123660: decoder latency avg=5.1ms max=9.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:48.992 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 10(88473600 size) used buffers - 123669/123680 (recycle/alloc) - 19/123671 (fetch/transfer)
+08-22 01:04:49.420 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331889420,"event":"stream_stats","session_epoch":1,"fps":60.276679841897234,"mbps":0.3684901185770751}
+08-22 01:04:49.792 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:49.821 D/VD      (27526): Decode stats: input=123720, output=123719, dropped=0, availBufs=10
+08-22 01:04:49.826 D/VD      (27526): Output #123720: decoder latency avg=5.3ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:50.420 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331890420,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:04:50.578 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123764); ignored
+08-22 01:04:50.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 61, output count: 60, rendered count 59, avgLatencyMs: 3
+08-22 01:04:50.820 D/VD      (27526): Decode stats: input=123780, output=123779, dropped=0, availBufs=10
+08-22 01:04:50.825 D/VD      (27526): Output #123780: decoder latency avg=5.4ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:51.422 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331891422,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:51.592 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123825); ignored
+08-22 01:04:51.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 61, rendered count 61, avgLatencyMs: 3
+08-22 01:04:51.820 D/VD      (27526): Decode stats: input=123840, output=123839, dropped=0, availBufs=10
+08-22 01:04:51.825 D/VD      (27526): Output #123840: decoder latency avg=5.4ms max=9.5ms over 60 samples, input bufs avail=9, dropped=0
+08-22 01:04:52.410 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123872); ignored
+08-22 01:04:52.438 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331892437,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 01:04:52.775 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123896); ignored
+08-22 01:04:52.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 60, avgLatencyMs: 3
+08-22 01:04:52.822 D/VD      (27526): Decode stats: input=123900, output=123899, dropped=0, availBufs=10
+08-22 01:04:52.828 D/VD      (27526): Output #123900: decoder latency avg=5.5ms max=8.8ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:53.040 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123912); ignored
+08-22 01:04:53.437 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331893437,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.370992}
+08-22 01:04:53.707 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123952); ignored
+08-22 01:04:53.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:04:53.820 D/VD      (27526): Decode stats: input=123960, output=123959, dropped=0, availBufs=10
+08-22 01:04:53.824 D/VD      (27526): Output #123960: decoder latency avg=5.1ms max=7.9ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:54.073 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 123974/123985 (recycle/alloc) - 19/123976 (fetch/transfer)
+08-22 01:04:54.409 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (123992); ignored
+08-22 01:04:54.439 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331894439,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:54.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 59, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:54.819 D/VD      (27526): Decode stats: input=124020, output=124019, dropped=0, availBufs=10
+08-22 01:04:54.822 D/VD      (27526): Output #124020: decoder latency avg=5.3ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:55.007 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (124030); ignored
+08-22 01:04:55.454 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331895454,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+08-22 01:04:55.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 61, output count: 61, rendered count 60, avgLatencyMs: 3
+08-22 01:04:55.820 D/VD      (27526): Decode stats: input=124080, output=124079, dropped=0, availBufs=10
+08-22 01:04:55.826 D/VD      (27526): Output #124080: decoder latency avg=5.2ms max=7.5ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:56.455 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331896455,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 01:04:56.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 59, rendered count 59, avgLatencyMs: 3
+08-22 01:04:56.819 D/VD      (27526): Decode stats: input=124140, output=124139, dropped=0, availBufs=10
+08-22 01:04:56.828 D/VD      (27526): Output #124140: decoder latency avg=5.1ms max=8.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:56.860 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (124141); ignored
+08-22 01:04:57.456 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331897456,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+08-22 01:04:57.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 60, output count: 60, rendered count 61, avgLatencyMs: 3
+08-22 01:04:57.820 D/VD      (27526): Decode stats: input=124200, output=124199, dropped=0, availBufs=10
+08-22 01:04:57.826 D/VD      (27526): Output #124200: decoder latency avg=4.6ms max=8.6ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:58.008 D/PipelineWatcher(27526): onInputBufferReleased: frameIndex not found (124210); ignored
+08-22 01:04:58.460 I/VibeScreenTelemetry(27526): {"schema_version":1,"timestamp_ms":1787331898460,"event":"stream_stats","session_epoch":1,"fps":55.776892430278885,"mbps":0.36186454183266936}
+08-22 01:04:58.791 D/CypressMediaAnalyticsHelper(27526): collectPerformanceData: per sec input count: 57, output count: 58, rendered count 56, avgLatencyMs: 3
+08-22 01:04:58.870 D/VD      (27526): Decode stats: input=124260, output=124259, dropped=0, availBufs=10
+08-22 01:04:58.875 D/VD      (27526): Output #124260: decoder latency avg=4.8ms max=7.7ms over 60 samples, input bufs avail=10, dropped=0
+08-22 01:04:59.121 D/AidlBufferPool(27526): bufferpool2 0xb400007c025c4998 : 11(97320960 size) total buffers - 11(97320960 size) used buffers - 124273/124284 (recycle/alloc) - 19/124275 (fetch/transfer)
+exit=0

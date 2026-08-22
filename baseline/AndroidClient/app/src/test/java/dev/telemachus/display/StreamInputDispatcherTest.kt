@@ -133,6 +133,19 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun rejectedStylusForwardingReportsNotAdmitted() {
+        val recorder = RecordingSubmitter(OutboundCommandScheduler.Submission.CLOSED)
+        val dispatcher = dispatcher(
+            state = negotiatedState(stylus = true, extendedStylus = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendMotionStylus(listOf(stylusSample())))
+
+        assertEquals(1, recorder.submissions.size)
+    }
+
+    @Test
     fun pointerKeyboardAndReleaseRoutesUseStructuralProtocolBatches() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
