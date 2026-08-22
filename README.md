@@ -605,6 +605,19 @@ network quality may increase it.
   transport, resume-capable Host interoperability, or real-device behavior.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
+- The [current-base gate audit](docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md)
+  identifies the MatePad Mini aggregate package as the single owner for final
+  Phase 4 README claims and keeps focused DevEco/HAP/AVCodec/HUKS/Host interop
+  PRs scoped to their prerequisite gates.
+
+  | Gate area | Current-base owner | Status boundary |
+  | --- | --- | --- |
+  | Final README claim | MatePad Mini aggregate evidence package | Open until strict device and package gates pass on a real MatePad Mini |
+  | DevEco/HAP lifecycle | HarmonyOS client build/release gate | Open without DevEco sync, API checker, signed HAP, install, upgrade, and cleanup evidence |
+  | AVCodec | HarmonyOS decoder gate plus Host video-negotiation dependency | Open without H.264 and HEVC hardware-render evidence |
+  | HUKS/authenticated transport | HarmonyOS security gate plus Authority/Signaling/Host dependencies | Open without HUKS-backed pairing, authenticated records, replay, and revocation evidence |
+  | Resume interop | Joint Mac Host and HarmonyOS client gate | Open without resume-capable Host interop across lifecycle and network recovery |
+  | Input, soak, and latency | MatePad Mini evidence package | Open without device input matrix, eight-hour soak, and external-camera latency evidence |
 - HarmonyOS device acceptance must follow the
   [MatePad Mini runbook](docs/runbook/harmony-matepad-mini.md); Android results
   are never treated as HarmonyOS evidence.
@@ -614,6 +627,11 @@ network quality may increase it.
   `harmony-readiness.json`. It fails closed while any prerequisite is missing
   and is not HAP, installation, streaming, secure-pairing, soak, latency, or
   MatePad Mini acceptance evidence.
+- `make harmony-device-gate EVIDENCE_DIR=...` validates the strict final
+  manifest with the same evidence directory as its root, so a strict pass also
+  requires local relative evidence artifacts and fails closed on missing files,
+  absolute paths, URLs, directories, or path traversal. Direct strict script
+  invocations default the evidence root to the manifest directory.
 
 ### Phase 5 — iOS and advanced capabilities
 

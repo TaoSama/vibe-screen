@@ -129,15 +129,38 @@ python3 scripts/harmony_device_gate.py --template
   PASS: prints a redaction-safe manifest template only
 make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
   PASS only when /path/to/evidence/harmony-device-gates.json has every required
-  real-device gate marked pass with evidence references
+  real-device gate marked pass with evidence references that exist under
+  /path/to/evidence
 python3 scripts/harmony_device_gate.py --allow-blocked /path/to/evidence/harmony-device-gates.json
   STRUCTURE-ONLY: may document blocked readiness, but is not acceptance evidence
 ```
+
+The strict path validates evidence references with `--evidence-root`; direct
+strict script invocations default the evidence root to the manifest directory.
+Every `pass` gate reference must be a local relative artifact file below the
+evidence directory. Missing artifacts, directories, absolute paths, URLs, and
+`..` traversal fail closed. `--allow-blocked` intentionally skips file-existence
+checks so blocked readiness manifests can be archived without being mistaken for
+acceptance.
 
 This validator does not run DevEco, install a HAP, pair a device, decode media,
 or interoperate with the Host. It exists to keep those external observations
 complete and correctly scoped once a MatePad Mini and signing environment are
 available.
+
+## 2026-08-22 current-base gate ownership audit
+
+The current-base audit records the open PR owner map, conflict graph, and
+recommended merge sequence for PRs #202, #203, #204, #205, #206, #210, #239,
+and #250. It designates the MatePad Mini acceptance package branch as the
+single aggregate owner for final Phase 4 README claims, while focused PRs keep
+ownership of their prerequisite gates. See
+`docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md`.
+
+This audit does not close any HarmonyOS real-device gate. It found no current
+DevEco SDK, signed HAP, HUKS-backed secure pairing, AVCodec hardware decode,
+resume-capable Host interop, eight-hour MatePad Mini soak, or external latency
+evidence on main.
 
 ## 2026-08-21 HarmonyOS readiness preflight
 
