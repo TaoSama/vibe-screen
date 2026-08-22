@@ -247,6 +247,9 @@ class FileTransferSessionTest {
         assertEquals(2L, second.header.offset)
         assertArrayEquals("llo".toByteArray(), second.payload)
         assertTrue(second.header.final)
+        assertFalse(transfer.hasCompletedAcknowledgement())
+        assertEquals(null, transfer.acknowledgeOffset(5))
+        assertTrue(transfer.hasCompletedAcknowledgement())
         assertEquals(null, transfer.nextChunk(maximumBytes = 8, sessionEpoch = 7))
     }
 
@@ -260,11 +263,16 @@ class FileTransferSessionTest {
             policy = FileTransferPolicy(maximumChunkBytes = 3),
         )
 
+        assertEquals("incomplete_file", transfer.acknowledgeOffset(0))
+        assertFalse(transfer.hasCompletedAcknowledgement())
         val chunk = requireNotNull(transfer.nextChunk(maximumBytes = 2, sessionEpoch = 7))
         assertEquals(0L, chunk.header.offset)
         assertEquals(0, chunk.header.payloadLength)
         assertTrue(chunk.header.final)
         assertEquals(sha256(ByteArray(0)), chunk.header.chunkSha256)
+        assertFalse(transfer.hasCompletedAcknowledgement())
+        assertEquals(null, transfer.acknowledgeOffset(0))
+        assertTrue(transfer.hasCompletedAcknowledgement())
         val decoded = FileChunk.fromFrame(chunk.toFrame())
         assertEquals(chunk.header, decoded.header)
         assertArrayEquals(chunk.payload, decoded.payload)

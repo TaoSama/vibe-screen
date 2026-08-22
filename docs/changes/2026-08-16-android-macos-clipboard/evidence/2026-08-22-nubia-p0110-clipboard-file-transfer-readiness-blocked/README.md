@@ -21,8 +21,8 @@ ClipboardManager or SAF and macOS NSPasteboard or Downloads.
   SDK 36.
 - Debug app and androidTest APKs installed on the P0110.
 - ClipboardManagerInstrumentedTest passed on the device: OK (3 tests).
-- Android focused clipboard JVM tests passed.
-- Android focused file-transfer JVM tests passed, including non-blocking
+- Android-focused clipboard JVM tests passed.
+- Android-focused file-transfer JVM tests passed, including non-blocking
   incoming file approval, negotiated peer file-size limit enforcement, and
   mismatched completion SHA-256 rejection.
 - Android assembleDebug assembleDebugAndroidTest passed.

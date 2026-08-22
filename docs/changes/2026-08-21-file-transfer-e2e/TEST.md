@@ -78,7 +78,7 @@ Result: passed locally on 2026-08-21.
 MacHost XCTest attempt:
 
     cd baseline/MacHost
-    swift test --filter StreamingServerClipboardTests
+    swift test --filter ProtocolV1FileTransferTests
 
 Result: blocked locally before executing tests because the active toolchain is
 Command Line Tools only and cannot import `XCTest` (`no such module 'XCTest'`).

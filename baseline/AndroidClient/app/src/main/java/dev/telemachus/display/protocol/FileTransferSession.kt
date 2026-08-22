@@ -282,6 +282,8 @@ internal class OutgoingFileTransfer(
     private val effectivePolicy = policy.applying(remotePolicy)
     private val handle: RandomAccessFile
     private var offset = 0L
+    private var acknowledgedOffset = 0L
+    private var receivedAcknowledgement = false
     private var cancelled = false
     private var emittedEmptyFileChunk = false
     private var acceptedMaximumChunkBytes: Int? = null
@@ -378,7 +380,20 @@ internal class OutgoingFileTransfer(
     fun maximumChunkBytes(defaultBytes: Int): Int = acceptedMaximumChunkBytes ?: defaultBytes
 
     @Synchronized
-    fun hasAcknowledgedOffset(receivedBytes: Long): Boolean = receivedBytes == offset
+    fun acknowledgeOffset(receivedBytes: Long): String? {
+        if (receivedBytes != offset) return "unexpected_progress"
+        if (receivedBytes == offer.byteLength && !isComplete()) return "incomplete_file"
+        acknowledgedOffset = receivedBytes
+        receivedAcknowledgement = true
+        return null
+    }
+
+    @Synchronized
+    fun hasCompletedAcknowledgement(): Boolean =
+        receivedAcknowledgement && isComplete() && acknowledgedOffset == offer.byteLength
+
+    private fun isComplete(): Boolean =
+        if (offer.byteLength == 0L) emittedEmptyFileChunk else offset == offer.byteLength
 
     companion object {
         private fun digest(file: File, chunkBytes: Int): ByteString {

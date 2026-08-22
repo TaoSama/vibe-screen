@@ -2121,6 +2121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.screenCapture === configuredCapture else { return }
                     let activeServer = configuredServer
                     let clipboardAvailable = activeServer.clipboardAvailable
+                    let fileTransferAvailable = activeServer.fileTransferAvailable
                     self.performSessionCallback(
                             token: startToken,
                             server: activeServer,
@@ -2138,7 +2139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         }
                         self.fileTransferController?.bind(
                             server: activeServer,
-                            fileTransferAvailable: activeServer.fileTransferAvailable
+                            fileTransferAvailable: fileTransferAvailable
                         )
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0

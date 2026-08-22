@@ -278,11 +278,15 @@ final class ProtocolV1FileTransferTests: XCTestCase {
             policy: ProtocolV1FileTransferPolicy(maximumChunkBytes: 3)
         )
 
+        XCTAssertThrowsError(try transfer.validateAcknowledgedOffset(0)) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .incompleteFile)
+        }
         let chunk = try XCTUnwrap(transfer.nextChunk(maximumBytes: 2, sessionEpoch: 7))
         XCTAssertEqual(chunk.header.offset, 0)
         XCTAssertEqual(chunk.header.payloadLength, 0)
         XCTAssertTrue(chunk.header.final)
         XCTAssertEqual(chunk.header.chunkSha256, Data(SHA256.hash(data: Data())))
+        XCTAssertNoThrow(try transfer.validateAcknowledgedOffset(0))
         XCTAssertEqual(try ProtocolV1FileChunk(serializedFrame: chunk.serializedFrame()), chunk)
         XCTAssertNil(try transfer.nextChunk(maximumBytes: 2, sessionEpoch: 7))
         XCTAssertTrue(transfer.isComplete)
@@ -323,6 +327,11 @@ final class ProtocolV1FileTransferTests: XCTestCase {
         XCTAssertThrowsError(try transfer.validateAcknowledgedOffset(1)) { error in
             XCTAssertEqual(error as? ProtocolV1FileTransferError, .unexpectedOffset(expected: 2, actual: 1))
         }
+        _ = try XCTUnwrap(transfer.nextChunk(maximumBytes: 3, sessionEpoch: 7))
+        XCTAssertThrowsError(try transfer.validateCompletionDigest(Data(SHA256.hash(data: payload)))) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .incompleteFile)
+        }
+        XCTAssertNoThrow(try transfer.validateAcknowledgedOffset(5))
         XCTAssertNoThrow(try transfer.validateCompletionDigest(Data(SHA256.hash(data: payload))))
         XCTAssertThrowsError(try transfer.validateCompletionDigest(Data(repeating: 0xFF, count: SHA256.byteCount))) { error in
             XCTAssertEqual(error as? ProtocolV1FileTransferError, .digestMismatch)

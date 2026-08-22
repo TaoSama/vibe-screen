@@ -48,6 +48,7 @@ import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.protobuf.ByteString
 import dev.telemachus.display.databinding.ActivityMainBinding
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
@@ -2289,6 +2290,7 @@ class MainActivity : AppCompatActivity() {
                             R.string.file_transfer_offer_message,
                             safeIncomingDisplayName(offer.fileName),
                             readableByteCount(offer.byteLength),
+                            fileTransferDestinationLabel(),
                         ),
                     )
                     .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
@@ -2336,24 +2338,28 @@ class MainActivity : AppCompatActivity() {
     private fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
         lifecycleScope.launch(Dispatchers.IO) {
             val displayName = safeIncomingDisplayName(completed.fileName)
+            val stagedBytes = completed.stagingFile.length()
             val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }
+            completed.stagingFile.deleteBestEffort()
             runOnUiThread {
                 saved
-                    .onSuccess { uri ->
-                        val stagedBytes = completed.stagingFile.length()
-                        completed.stagingFile.deleteBestEffort()
+                    .onSuccess {
                         mainDiag(
-                            "file transfer saved name=$displayName bytes=$stagedBytes " +
-                                "sha256=${completed.sha256.toByteArray().toHex()} uri=$uri",
+                            "file transfer saved bytes=$stagedBytes " +
+                                "transfer_id=${completed.transferId.shortDebugId()}",
                         )
                         Toast.makeText(
                             this@MainActivity,
-                            getString(R.string.file_transfer_saved_to_downloads, displayName),
+                            getString(fileTransferSavedMessage(), displayName),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
                     .onFailure { failure ->
-                        mainDiag("file transfer save failed: " + failure.javaClass.simpleName)
+                        mainDiag(
+                            "file transfer save failed bytes=$stagedBytes " +
+                                "transfer_id=${completed.transferId.shortDebugId()} " +
+                                failure.javaClass.simpleName,
+                        )
                         Toast.makeText(
                             this@MainActivity,
                             getString(R.string.file_transfer_save_failed, displayName),
@@ -2402,6 +2408,23 @@ class MainActivity : AppCompatActivity() {
         return Uri.fromFile(target)
     }
 
+    private fun fileTransferDestinationLabel(): String =
+        getString(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                R.string.file_transfer_downloads_destination
+            } else {
+                R.string.file_transfer_app_downloads_destination
+            },
+        )
+
+    private fun fileTransferSavedMessage(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            R.string.file_transfer_saved_to_downloads
+        } else {
+            R.string.file_transfer_saved_to_app_downloads
+        }
+
+
     private fun copyFileTo(source: File, output: OutputStream) {
         BufferedInputStream(source.inputStream()).use { input ->
             BufferedOutputStream(output).use { bufferedOutput ->
@@ -2439,7 +2462,8 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+    private fun ByteString.shortDebugId(): String =
+        toByteArray().take(4).joinToString("") { "%02x".format(it) }
 
     /**
      * Builds the menu without inspecting Android's clipboard. The local text is

@@ -2455,12 +2455,22 @@ class StreamingServer: EncodedFrameSink {
                 }
                 do {
                     try transfer.validateCompletionDigest(result.sha256)
-                } catch {
-                    debugLog("File transfer completion digest mismatch for \(transfer.offer.fileName)")
+                } catch let error as ProtocolV1FileTransferError {
+                    debugLog("File transfer completion rejected for \(transfer.offer.fileName): \(error.reasonCode)")
                     applyProtocolV1Actions(
                         session.makeFileTransferCancel(
                             transferID: result.transferID,
-                            reasonCode: ProtocolV1FileTransferError.digestMismatch.reasonCode
+                            reasonCode: error.reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                } catch {
+                    debugLog("File transfer completion rejected for \(transfer.offer.fileName): \(error.localizedDescription)")
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: result.transferID,
+                            reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
                         ),
                         connection: conn,
                         generation: generation

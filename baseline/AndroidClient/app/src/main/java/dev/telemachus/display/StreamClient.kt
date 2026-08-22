@@ -1794,14 +1794,15 @@ class StreamClient(
                     }
                     is ProtocolV1Session.Action.FileProgressReceived -> {
                         outgoingFileTransfers[action.progress.transferId]?.let { transfer ->
-                            if (transfer.hasAcknowledgedOffset(action.progress.receivedBytes)) {
+                            val rejectionReason = transfer.acknowledgeOffset(action.progress.receivedBytes)
+                            if (rejectionReason == null) {
                                 sendNextOutgoingFileChunk(out, session, transfer)
                             } else {
                                 outgoingFileTransfers.remove(action.progress.transferId)?.cancel()
-                                session.fileCancel(action.progress.transferId, "unexpected_progress")?.let {
+                                session.fileCancel(action.progress.transferId, rejectionReason)?.let {
                                     writeProtocolEnvelope(out, it)
                                 }
-                                onFileTransferResult?.invoke(false, "unexpected_progress")
+                                onFileTransferResult?.invoke(false, rejectionReason)
                             }
                         }
                     }
@@ -1813,18 +1814,16 @@ class StreamClient(
                     is ProtocolV1Session.Action.FileCompleteReceived -> {
                         val transfer = outgoingFileTransfers.remove(action.result.transferId)
                         transfer?.cancel()
-                        val digestMatches = transfer != null && transfer.offer.sha256 == action.result.sha256
-                        val accepted = action.result.accepted && digestMatches
-                        val reason =
-                            if (accepted) {
-                                ""
-                            } else if (!digestMatches) {
-                                "digest_mismatch"
-                            } else {
-                                action.result.rejectionReason
-                            }
-                        if (transfer != null && !digestMatches) {
-                            session.fileCancel(action.result.transferId, "digest_mismatch")?.let {
+                        val reason = when {
+                            !action.result.accepted -> action.result.rejectionReason
+                            transfer == null -> "unknown_transfer"
+                            !transfer.hasCompletedAcknowledgement() -> "incomplete_file"
+                            transfer.offer.sha256 != action.result.sha256 -> "digest_mismatch"
+                            else -> ""
+                        }
+                        val accepted = action.result.accepted && reason.isEmpty()
+                        if (transfer != null && action.result.accepted && reason.isNotEmpty()) {
+                            session.fileCancel(action.result.transferId, reason)?.let {
                                 writeProtocolEnvelope(out, it)
                             }
                         }

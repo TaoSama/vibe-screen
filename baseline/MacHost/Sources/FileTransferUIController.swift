@@ -53,7 +53,7 @@ final class NSAlertFileTransferPresenter: FileTransferAlertPresenter {
 }
 
 @MainActor
-final class FileTransferUIController: NSObject {
+final class FileTransferUIController: NSObject, NSMenuItemValidation {
     private let alertPresenter: FileTransferAlertPresenter
     private weak var server: FileTransferServer?
     private var fileTransferAvailable = false
@@ -93,19 +93,28 @@ final class FileTransferUIController: NSObject {
     }
 
     func handleIncomingFileCompleted(_ completed: ProtocolV1CompletedIncomingFile) {
-        do {
-            let destination = try saveIncomingFileToDownloads(completed)
-            alertPresenter.presentInformation(
-                title: "File Received",
-                message: "Saved \(completed.fileName) to Downloads.\nSHA-256: \(Self.hexString(completed.sha256))\nPath: \(destination.path)"
-            )
-            debugLog("Received file saved to Downloads: name=\(completed.fileName) sha256=\(Self.hexString(completed.sha256))")
-        } catch {
-            alertPresenter.presentWarning(
-                title: "File Save Failed",
-                message: "The received file remains in temporary storage.\n\(error.localizedDescription)\nPath: \(completed.stagingURL.path)"
-            )
-            debugLog("Received file save failed: \(error.localizedDescription)")
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = Result { try Self.saveIncomingFileToDownloads(completed) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                switch result {
+                case .success(let destination):
+                    self.alertPresenter.presentInformation(
+                        title: "File Received",
+                        message: "Saved \(completed.fileName) to Downloads.\nSHA-256: \(Self.hexString(completed.sha256))\nPath: \(destination.path)"
+                    )
+                    debugLog(
+                        "Received file saved to Downloads: bytes=\(completed.byteLength) " +
+                            "transfer_id=\(Self.shortDebugID(completed.transferID))"
+                    )
+                case .failure(let error):
+                    self.alertPresenter.presentWarning(
+                        title: "File Save Failed",
+                        message: "The received file remains in temporary storage.\n\(error.localizedDescription)\nPath: \(completed.stagingURL.path)"
+                    )
+                    debugLog("Received file save failed: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -143,7 +152,7 @@ final class FileTransferUIController: NSObject {
         }
     }
 
-    private func saveIncomingFileToDownloads(_ completed: ProtocolV1CompletedIncomingFile) throws -> URL {
+    nonisolated private static func saveIncomingFileToDownloads(_ completed: ProtocolV1CompletedIncomingFile) throws -> URL {
         guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
             throw CocoaError(.fileNoSuchFile)
         }
@@ -162,6 +171,11 @@ final class FileTransferUIController: NSObject {
         sendMenuItem.isEnabled = server != nil && fileTransferAvailable
     }
 
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem === sendMenuItem else { return true }
+        return server != nil && fileTransferAvailable
+    }
+
     private static func mimeType(for fileURL: URL) -> String {
         if let type = UTType(filenameExtension: fileURL.pathExtension),
            let mimeType = type.preferredMIMEType {
@@ -170,7 +184,7 @@ final class FileTransferUIController: NSObject {
         return "application/octet-stream"
     }
 
-    private static func availableDestination(in directory: URL, fileName: String) -> URL {
+    nonisolated private static func availableDestination(in directory: URL, fileName: String) -> URL {
         let proposed = directory.appendingPathComponent(fileName, isDirectory: false)
         guard FileManager.default.fileExists(atPath: proposed.path) else { return proposed }
         let baseName = (fileName as NSString).deletingPathExtension
@@ -185,7 +199,11 @@ final class FileTransferUIController: NSObject {
         return directory.appendingPathComponent("\(UUID().uuidString)-\(fileName)", isDirectory: false)
     }
 
-    private static func hexString(_ data: Data) -> String {
+    nonisolated private static func hexString(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    nonisolated private static func shortDebugID(_ data: Data) -> String {
+        data.prefix(4).map { String(format: "%02x", $0) }.joined()
     }
 }
