@@ -402,6 +402,7 @@ internal class ProtocolV1Session(
     private var displayHeight = 0
     private var displayGeometryPublished = false
     private var availableDisplays = emptyList<DisplayOption>()
+    private var displaySelectionConfirmationPending = false
     private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
@@ -708,6 +709,7 @@ internal class ProtocolV1Session(
         if (availableDisplays.none { it.id == targetDisplayId }) return null
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
+        displaySelectionConfirmationPending = true
         // Adopt the requested id up front so the StartDisplayResponse and later
         // DisplayChanged for the new display validate against the selection.
         displayId = targetDisplayId
@@ -1391,6 +1393,7 @@ internal class ProtocolV1Session(
             )
         if (!accepted) {
             videoPreferencesRequestInFlight = false
+            displaySelectionConfirmationPending = false
             return listOf(
                 result,
                 Action.VideoConfigurationRejected(
@@ -1407,13 +1410,18 @@ internal class ProtocolV1Session(
         awaitingConfigurationKeyframe = true
         state = State.STREAMING
         val appliesClientVideoPreferences = videoPreferencesRequestInFlight
+        val confirmsDisplaySelection = displaySelectionConfirmationPending
         videoPreferencesRequestInFlight = false
+        displaySelectionConfirmationPending = false
         val actions =
             mutableListOf<Action>(
                 result,
                 Action.Send(requestKeyframe("decoder_configuration_committed")),
                 Action.VideoConfigurationCommitted(configEpoch, appliesClientVideoPreferences),
             )
+        if (confirmsDisplaySelection && availableDisplays.any { it.id == displayId }) {
+            actions += Action.DisplaysAvailable(availableDisplays, displayId)
+        }
         if (!displayGeometryPublished) {
             actions +=
                 Action.DisplayGeometryChanged(

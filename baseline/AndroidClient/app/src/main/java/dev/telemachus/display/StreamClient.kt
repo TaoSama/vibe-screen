@@ -1676,20 +1676,7 @@ class StreamClient(
             actions.forEach { action ->
                 when (action) {
                     is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
-                    is ProtocolV1Session.Action.DisplaysAvailable -> {
-                        val options =
-                            action.displays.map {
-                                StreamDisplayOption(
-                                    it.id,
-                                    it.name,
-                                    it.width,
-                                    it.height,
-                                    it.isPrimary,
-                                    it.isVirtual,
-                                )
-                            }
-                        onDisplaysAvailable?.invoke(options, action.selectedId)
-                    }
+                    is ProtocolV1Session.Action.DisplaysAvailable -> publishDisplaysAvailable(action)
                     is ProtocolV1Session.Action.VideoConfigurationRequested -> {
                         streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
                         codecNegotiated = true
@@ -2168,6 +2155,7 @@ class StreamClient(
                     }
                 }
                 is ProtocolV1Session.Action.VideoConfigurationRejected -> Unit
+                is ProtocolV1Session.Action.DisplaysAvailable -> publishDisplaysAvailable(action)
                 is ProtocolV1Session.Action.DisplayGeometryChanged -> {
                     onDisplayGeometry?.invoke(
                         StreamDisplayGeometry(
@@ -2177,11 +2165,10 @@ class StreamClient(
                         ),
                     )
                 }
-               is ProtocolV1Session.Action.VideoConfigurationRequested,
-               is ProtocolV1Session.Action.PongReceived,
-               is ProtocolV1Session.Action.ControllerInputAck,
+                is ProtocolV1Session.Action.VideoConfigurationRequested,
+                is ProtocolV1Session.Action.PongReceived,
+                is ProtocolV1Session.Action.ControllerInputAck,
                 is ProtocolV1Session.Action.Disconnected,
-                is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,
                 is ProtocolV1Session.Action.HostActionCompleted,
                 is ProtocolV1Session.Action.ClipboardOffered,
@@ -2194,7 +2181,7 @@ class StreamClient(
                 is ProtocolV1Session.Action.FileCompleteReceived,
                 is ProtocolV1Session.Action.WakeHost,
                 is ProtocolV1Session.Action.WakeHostCompleted,
-               -> throw IllegalStateException("Unexpected action while completing decoder configuration")
+                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }
         out.flush()
@@ -2206,6 +2193,21 @@ class StreamClient(
             )
         }
         rejectedFailure?.let(::requestConnectionEnd)
+    }
+
+    private fun publishDisplaysAvailable(action: ProtocolV1Session.Action.DisplaysAvailable) {
+        val options =
+            action.displays.map {
+                StreamDisplayOption(
+                    it.id,
+                    it.name,
+                    it.width,
+                    it.height,
+                    it.isPrimary,
+                    it.isVirtual,
+                )
+            }
+        onDisplaysAvailable?.invoke(options, action.selectedId)
     }
 
     private fun isCurrentProtocolSession(

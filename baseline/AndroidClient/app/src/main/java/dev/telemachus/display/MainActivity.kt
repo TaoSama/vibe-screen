@@ -2044,8 +2044,6 @@ class MainActivity : AppCompatActivity() {
             if (option.id != selectedDisplayId) {
                 mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
                 streamClient?.selectDisplay(option.id)
-                selectedDisplayId = option.id
-                refreshDisplayCapsuleLabel()
             }
             true
         }

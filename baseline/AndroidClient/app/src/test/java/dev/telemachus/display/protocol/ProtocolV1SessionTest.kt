@@ -394,8 +394,8 @@ class ProtocolV1SessionTest {
             )
         val result = actions[0] as ProtocolV1Session.Action.Send
         val keyframe = actions[1] as ProtocolV1Session.Action.Send
-        val committed = actions[2] as ProtocolV1Session.Action.VideoConfigurationCommitted
-        val geometry = actions[3] as ProtocolV1Session.Action.DisplayGeometryChanged
+        val committed = actions.filterIsInstance<ProtocolV1Session.Action.VideoConfigurationCommitted>().single()
+        val geometry = actions.filterIsInstance<ProtocolV1Session.Action.DisplayGeometryChanged>().single()
         assertTrue(result.envelope.videoConfigResult.accepted)
         assertEquals(6L, result.envelope.correlationId)
         assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, keyframe.envelope.payloadCase)
@@ -1092,6 +1092,43 @@ class ProtocolV1SessionTest {
             request.payloadCase,
         )
         assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+        assertEquals("display-2", session.selectedDisplayId)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionPublishesActiveDisplayOnlyAfterConfigurationCommit() {
+        val session = multiDisplayStreamingSession()
+
+        session.selectDisplay("display-2")
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(true)
+                    .setStreamId(42)
+                    .setDisplay(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                    ),
+            ).build(),
+        )
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        val available = committed.filterIsInstance<ProtocolV1Session.Action.DisplaysAvailable>().single()
+        assertEquals(listOf("display-main", "display-2"), available.displays.map { it.id })
+        assertEquals("display-2", available.selectedId)
     }
 
     @Test
@@ -1251,6 +1288,35 @@ class ProtocolV1SessionTest {
                 .single()
                 .appliesClientVideoPreferences,
         )
+    }
+
+    @Test
+    fun videoPreferenceCommitDoesNotRepublishDisplaySelection() {
+        val session = videoControlStreamingSession()
+        session.setVideoPreferences(
+            bitrateKbps = 8_000,
+            framesPerSecond = 30,
+            qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+        )
+        val requested =
+            session.receive(videoConfig(30, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+
+        assertTrue(
+            committed
+                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationCommitted>()
+                .single()
+                .appliesClientVideoPreferences,
+        )
+        assertTrue(committed.filterIsInstance<ProtocolV1Session.Action.DisplaysAvailable>().isEmpty())
     }
 
     @Test
