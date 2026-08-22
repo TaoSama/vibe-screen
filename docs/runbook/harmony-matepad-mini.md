@@ -6,15 +6,24 @@ Keep a redacted structured manifest beside the raw evidence and validate it
 before claiming the HarmonyOS gate is closed:
 
 ```bash
+make harmony-readiness EVIDENCE_DIR=/path/to/evidence
 python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
 # Fill every field from the exact DevEco build, signed HAP, MatePad Mini,
 # Protocol v1 Mac host, logs, metrics, and external-camera evidence.
 python3 scripts/harmony_device_gate.py /path/to/evidence/harmony-device-gates.json
 ```
 
-For a readiness or blocked dry run, `--allow-blocked` may validate the manifest
-shape, but the resulting output is not acceptance evidence and must not close
-the README gate.
+`make harmony-readiness` writes `/path/to/evidence/harmony-readiness.json` and
+returns exit code 2 while DevEco Studio, `hvigor`/`ohpm`, `hdc`, the signed HAP,
+the signing-certificate hash, the checksum manifest, the Protocol v1 Host build
+hash, or the MatePad Mini target is missing. That blocked output is useful for
+readiness tracking only. It does not build, install, launch, pair, stream,
+decode, inject input, soak, or measure latency, and it cannot close the
+HarmonyOS gate.
+
+For a readiness or blocked dry run, `--allow-blocked` may validate the final
+manifest shape, but the resulting output is not acceptance evidence and must not
+close the README gate.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.

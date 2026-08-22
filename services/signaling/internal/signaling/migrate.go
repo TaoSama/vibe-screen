@@ -10,6 +10,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	previousWaiterCountSchemaChecksum = "10d8417ba2f7ecba631db9e6c076befd5a8beb9e6e06af9cbe133e20a5278ee1"
+	signalingMigrationLockTimeout     = "5s"
+)
+
 func ApplyMigration(ctx context.Context, databaseURL, source string) error {
 	connection, err := pgx.Connect(ctx, databaseURL)
 	if err != nil {
@@ -29,7 +34,26 @@ func ApplyMigration(ctx context.Context, databaseURL, source string) error {
 	err = connection.QueryRow(ctx, "SELECT checksum_sha256 FROM signaling_schema_migrations WHERE version=1").Scan(&existing)
 	if err == nil {
 		if existing != checksum {
-			return errors.New("signaling migration 1 checksum mismatch")
+			if existing != previousWaiterCountSchemaChecksum || checksum != requiredSignalingSchemaChecksum {
+				return errors.New("signaling migration 1 checksum mismatch")
+			}
+			tx, err := connection.Begin(ctx)
+			if err != nil {
+				return fmt.Errorf("begin signaling waiter lease upgrade: %w", err)
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			if err := setMigrationLockTimeout(ctx, tx); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, source); err != nil {
+				return fmt.Errorf("upgrade signaling waiter leases: %w", err)
+			}
+			if _, err := tx.Exec(ctx, "UPDATE signaling_schema_migrations SET checksum_sha256=$1, applied_at=now() WHERE version=1", checksum); err != nil {
+				return fmt.Errorf("record signaling waiter lease upgrade: %w", err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return fmt.Errorf("commit signaling waiter lease upgrade: %w", err)
+			}
 		}
 		return nil
 	}
@@ -41,6 +65,9 @@ func ApplyMigration(ctx context.Context, databaseURL, source string) error {
 		return fmt.Errorf("begin signaling migration: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setMigrationLockTimeout(ctx, tx); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, source); err != nil {
 		return fmt.Errorf("apply signaling migration: %w", err)
 	}
@@ -49,6 +76,13 @@ func ApplyMigration(ctx context.Context, databaseURL, source string) error {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit signaling migration: %w", err)
+	}
+	return nil
+}
+
+func setMigrationLockTimeout(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, "SELECT set_config('lock_timeout', $1, true)", signalingMigrationLockTimeout); err != nil {
+		return fmt.Errorf("set signaling migration lock timeout: %w", err)
 	}
 	return nil
 }

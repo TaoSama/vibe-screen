@@ -419,6 +419,8 @@ def _project_public_report(report: dict[str, Any]) -> dict[str, Any]:
                 name: _statistics(battery.get(name), f"metrics.battery.{name}")
                 for name in (
                     "level_percent",
+                    "plugged",
+                    "status",
                     "temperature_celsius",
                     "voltage_mv",
                     "charge_counter",

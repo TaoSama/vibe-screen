@@ -498,6 +498,8 @@ class SoakPublicReportTest(unittest.TestCase):
         encoded = json.dumps(public, sort_keys=True)
         for private_value in ("private-device", "private_power_rail", "power", "run-1"):
             self.assertNotIn(private_value, encoded)
+        self.assertEqual(public["metrics"]["battery"]["plugged"]["min"], 1.0)
+        self.assertEqual(public["metrics"]["battery"]["status"]["max"], 2.0)
         self._assert_public_schema(public)
 
     def test_public_report_rejects_partial_and_source_errors_with_fixed_codes(self):

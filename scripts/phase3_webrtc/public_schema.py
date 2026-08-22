@@ -23,8 +23,10 @@ REVISION_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 PUBLIC_LIMITATIONS = (
     "local_loopback_only",
     "synthetic_protocol_v1_device",
+    "synthetic_videotoolbox_input_frames",
     "no_android_device_or_ui",
     "no_real_screen_capture",
+    "no_android_mediacodec_decode",
     "no_public_internet_path",
 )
 DIAGNOSTIC_INPUTS = {
@@ -211,12 +213,18 @@ def _validate_public_evidence(value: dict[str, Any], expected_mode: str) -> None
         product = expect_mapping(product, "public product session")
         expect_exact_keys(
             product,
-            required={"host", "synthetic_device", "capture_or_stream_server_started"},
+            required={
+                "host",
+                "synthetic_device",
+                "media_source",
+                "capture_or_stream_server_started",
+            },
             label="public product session",
         )
         if product != {
             "host": "InternetProductSession",
             "synthetic_device": True,
+            "media_source": "videotoolbox-hevc",
             "capture_or_stream_server_started": False,
         }:
             raise E2EFailure("public product session boundary is invalid")
