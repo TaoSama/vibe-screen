@@ -8,7 +8,7 @@ Repository/context checks:
 
 Outcome:
 
-  HEAD and origin/main were both 660dae5231fb1ac4decf5088f911f22a9285abf8
+  HEAD and origin/main were both de2752e0033713ad48bb7f86960f9180d8e7342f
   after the current-base latency preflight/tooling successor slice was refreshed.
 
 PR context checked with GitHub CLI/MCP during the task:
@@ -21,7 +21,7 @@ PR context checked with GitHub CLI/MCP during the task:
   current-base closure owner.
 
   PR #264: open, based on an older main commit before origin/main advanced to
-  660dae5231fb1ac4decf5088f911f22a9285abf8. Its
+  de2752e0033713ad48bb7f86960f9180d8e7342f. Its
   fail-closed tooling shape was cherry-picked into this successor branch and
   refreshed against current origin/main rather than modifying PR #264's dirty
   local worktree.
@@ -48,7 +48,7 @@ Fail-closed latency preflight generation:
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked \
   LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/device-info.json \
   LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/preflight-input.json \
-  LATENCY_REPOSITORY_REVISION=660dae5231fb1ac4decf5088f911f22a9285abf8 \
+  LATENCY_REPOSITORY_REVISION=de2752e0033713ad48bb7f86960f9180d8e7342f \
   make evidence-latency-preflight
 
 Outcome:
