@@ -45,3 +45,21 @@ jobs:
           PY
           python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
           python3 scripts/harmony_device_gate.py --allow-blocked /tmp/harmony-device-gates.json
+          set +e
+          PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_current_base_gate \
+            --readiness /tmp/harmony-readiness.json \
+            --device-gates /tmp/harmony-device-gates.json \
+            --output /tmp/harmony-current-base-gate.json
+          current_base_status=$?
+          set -e
+          test "$current_base_status" = "1"
+          python3 - <<'PY'
+          import json
+          with open("/tmp/harmony-current-base-gate.json", encoding="utf-8") as handle:
+              report = json.load(handle)
+          assert report["schema_version"] == "vibescreen.evidence/v1"
+          assert report["kind"] == "harmony_current_base_owner_gate"
+          assert report["verdict"] == "blocked"
+          assert report["can_close_readme_phase4_owner_gates"] is False
+          assert report["can_claim_harmony_device_pass"] is False
+          PY
