@@ -163,6 +163,9 @@ class StreamClient(
     internal var onVideoConfigurationApplied: ((StreamVideoConfiguration) -> Unit)? = null
     internal var onDisplayGeometry: ((StreamDisplayGeometry) -> Unit)? = null
     internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
+    internal var onDisplaySelectionPending: ((selectedId: String, pendingId: String) -> Unit)? = null
+    internal var onDisplaySelectionConfirmed: ((selectedId: String) -> Unit)? = null
+    internal var onDisplaySelectionRejected: ((selectedId: String, rejectedId: String, reason: String) -> Unit)? = null
     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
     /** A peer clipboard offer has arrived; the UI may request the content by changeId. */
@@ -1417,16 +1420,26 @@ class StreamClient(
      * session is streaming, display selection was negotiated, and the id names a
      * known, non-current display.
      */
-    fun selectDisplay(displayId: String) {
-        if (!isConnected || wireMode != WireMode.V1) return
-        val session = protocolSession ?: return
-        if (!session.isStreaming) return
-        submitOutbound(
-            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
-                activeSession.selectDisplay(displayId)?.let { listOf(it) } ?: emptyList()
-            },
-        )
+    fun selectDisplay(displayId: String): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.isStreaming) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command =
+                    StreamOutboundCommand.ProtocolActionBatch(
+                        build = { activeSession -> activeSession.selectDisplay(displayId) },
+                        onEmpty = { activeSession ->
+                            onDisplaySelectionRejected?.invoke(
+                                activeSession.selectedDisplayId,
+                                displayId,
+                                "request_not_sent",
+                            )
+                        },
+                    ),
+            )
+        return isOutboundAdmitted(submission)
     }
 
     /**
@@ -1639,6 +1652,22 @@ class StreamClient(
                 command.build(session).forEach { writeProtocolEnvelope(out, it) }
             }
 
+            is StreamOutboundCommand.ProtocolActionBatch -> {
+                val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
+                val actions = command.build(session)
+                if (actions.isEmpty()) {
+                    command.onEmpty?.invoke(session)
+                }
+                actions.forEach { action ->
+                    when (action) {
+                        is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
+                        is ProtocolV1Session.Action.DisplaySelectionPending ->
+                            onDisplaySelectionPending?.invoke(action.selectedId, action.pendingId)
+                        else -> throw IllegalStateException("Unexpected outbound protocol action: $action")
+                    }
+                }
+            }
+
             is StreamOutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
 
             is StreamOutboundCommand.ProtocolVideoConfigurationCompletion ->
@@ -1656,6 +1685,7 @@ class StreamClient(
                 processWakeHostCompletion(out, command)
         }
         if (command !is StreamOutboundCommand.ProtocolBatch &&
+            command !is StreamOutboundCommand.ProtocolActionBatch &&
             command !is StreamOutboundCommand.ProtocolReceive &&
             command !is StreamOutboundCommand.ProtocolBulk &&
             command !is StreamOutboundCommand.ProtocolSendBulk &&
@@ -1676,19 +1706,15 @@ class StreamClient(
             actions.forEach { action ->
                 when (action) {
                     is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
-                    is ProtocolV1Session.Action.DisplaysAvailable -> {
-                        val options =
-                            action.displays.map {
-                                StreamDisplayOption(
-                                    it.id,
-                                    it.name,
-                                    it.width,
-                                    it.height,
-                                    it.isPrimary,
-                                    it.isVirtual,
-                                )
-                            }
-                        onDisplaysAvailable?.invoke(options, action.selectedId)
+                    is ProtocolV1Session.Action.DisplaysAvailable -> publishDisplaysAvailable(action)
+                    is ProtocolV1Session.Action.DisplaySelectionPending -> {
+                        onDisplaySelectionPending?.invoke(action.selectedId, action.pendingId)
+                    }
+                    is ProtocolV1Session.Action.DisplaySelectionConfirmed -> {
+                        onDisplaySelectionConfirmed?.invoke(action.selectedId)
+                    }
+                    is ProtocolV1Session.Action.DisplaySelectionRejected -> {
+                        onDisplaySelectionRejected?.invoke(action.selectedId, action.rejectedId, action.reason)
                     }
                     is ProtocolV1Session.Action.VideoConfigurationRequested -> {
                         streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
@@ -2168,6 +2194,13 @@ class StreamClient(
                     }
                 }
                 is ProtocolV1Session.Action.VideoConfigurationRejected -> Unit
+                is ProtocolV1Session.Action.DisplaySelectionConfirmed -> {
+                    onDisplaySelectionConfirmed?.invoke(action.selectedId)
+                }
+                is ProtocolV1Session.Action.DisplaySelectionRejected -> {
+                    onDisplaySelectionRejected?.invoke(action.selectedId, action.rejectedId, action.reason)
+                }
+                is ProtocolV1Session.Action.DisplaysAvailable -> publishDisplaysAvailable(action)
                 is ProtocolV1Session.Action.DisplayGeometryChanged -> {
                     onDisplayGeometry?.invoke(
                         StreamDisplayGeometry(
@@ -2177,11 +2210,11 @@ class StreamClient(
                         ),
                     )
                 }
-               is ProtocolV1Session.Action.VideoConfigurationRequested,
-               is ProtocolV1Session.Action.PongReceived,
-               is ProtocolV1Session.Action.ControllerInputAck,
+                is ProtocolV1Session.Action.VideoConfigurationRequested,
+                is ProtocolV1Session.Action.DisplaySelectionPending,
+                is ProtocolV1Session.Action.PongReceived,
+                is ProtocolV1Session.Action.ControllerInputAck,
                 is ProtocolV1Session.Action.Disconnected,
-                is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,
                 is ProtocolV1Session.Action.HostActionCompleted,
                 is ProtocolV1Session.Action.ClipboardOffered,
@@ -2194,7 +2227,7 @@ class StreamClient(
                 is ProtocolV1Session.Action.FileCompleteReceived,
                 is ProtocolV1Session.Action.WakeHost,
                 is ProtocolV1Session.Action.WakeHostCompleted,
-               -> throw IllegalStateException("Unexpected action while completing decoder configuration")
+                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }
         out.flush()
@@ -2206,6 +2239,21 @@ class StreamClient(
             )
         }
         rejectedFailure?.let(::requestConnectionEnd)
+    }
+
+    private fun publishDisplaysAvailable(action: ProtocolV1Session.Action.DisplaysAvailable) {
+        val options =
+            action.displays.map {
+                StreamDisplayOption(
+                    it.id,
+                    it.name,
+                    it.width,
+                    it.height,
+                    it.isPrimary,
+                    it.isVirtual,
+                )
+            }
+        onDisplaysAvailable?.invoke(options, action.selectedId)
     }
 
     private fun isCurrentProtocolSession(

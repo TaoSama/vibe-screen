@@ -1,0 +1,332 @@
+WINDOW MANAGER DISPLAY CONTENTS (dumpsys window displays)
+  Display: mDisplayId=0 (organized)
+    init=1264x2800 560dpi mMinSizeOfResizeableTaskDp=220 cur=1264x2800 app=1264x2800 rng=1264x1264-2800x2800
+    deferred=false mLayoutNeeded=false
+  mLastOrientationSource=WindowedMagnification:0:31@123413106
+  deepestLastOrientationSource=ActivityRecord{217952804 u0 dev.telemachus.display/.MainActivity t543}
+  overrideConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.23529 fontWeightAdjustment=0}
+  ignoreOrientationRequest=false
+  mLayoutSeq=124274
+  mCurrentFocus=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{217952804 u0 dev.telemachus.display/.MainActivity t543}
+
+  mHoldScreenWindow=null
+  mObscuringWindow=null
+  mLastWakeLockHoldingWindow=null
+  mLastWakeLockObscuringWindow=Window{c774921 u0 com.android.systemui.wallpapers.ImageWallpaper}
+
+   mPointerEventDispatcher: com.android.server.wm.PointerEventDispatcher@ebeef8b
+  com.android.server.wm.PointerEventDispatcher
+   mInputChannel: PointerEventDispatcher0
+   mSeqMap: {}
+   mReceiverPtr:
+    mInputConsumer:
+      mResampleTouch = true
+      mChannel = PointerEventDispatcher0
+      mMsgDeferred: false
+      Batches:
+          <empty>
+      mSeqChains:
+          <empty>
+      mConsumeTimes:
+          <empty>
+      mLastRecvInputSeq=9146
+      mLastRecvInputTime=2026-08-22 21:04:27.825
+      mLastSendFinishSeq=9146
+      mLastSendInputFinishTime=2026-08-22 21:04:27.825
+
+    mBatchedInputEventPending: false
+    mOutboundQueue:
+      <empty>
+
+  displayId=0
+  mWallpaperTarget=null
+  mLastWallpaperZoomOut=0.0
+  token WallpaperWindowToken{8b8185e showWhenLocked=true}:
+    mWallpaperX=0.0
+    mWallpaperY=0.5
+    mWallpaperXStep=0.33333334
+    mWallpaperYStep=1.0
+    mWallpaperDisplayOffsetX=NA
+    mWallpaperDisplayOffsetY=NA
+
+  mSystemGestureExclusion=SkRegion()
+
+  Display areas in top down Z order:
+    * Leaf:36:36
+    * HideDisplayCutout:32:35
+      * OneHanded:34:35
+        * AppZoomOut:34:35
+          * Leaf:34:35
+      * AppZoomOut:33:33
+        * Leaf:33:33
+      * OneHanded:32:32
+        * AppZoomOut:32:32
+          * Leaf:32:32
+    * WindowedMagnification:0:31
+      * HideDisplayCutout:26:31
+        * OneHanded:26:31
+          * AppZoomOut:26:31
+            * Leaf:26:31
+      * Leaf:24:25
+      * HideDisplayCutout:18:23
+        * OneHanded:18:23
+          * AppZoomOut:23:23
+            * Leaf:23:23
+          * Leaf:22:22
+          * AppZoomOut:20:21
+            * Leaf:20:21
+          * Leaf:19:19
+          * AppZoomOut:18:18
+            * Leaf:18:18
+      * OneHanded:17:17
+        * Leaf:17:17
+      * HideDisplayCutout:16:16
+        * OneHanded:16:16
+          * AppZoomOut:16:16
+            * Leaf:16:16
+      * OneHanded:15:15
+        * Leaf:15:15
+      * HideDisplayCutout:0:14
+        * OneHanded:0:14
+          * AppZoomOut:2:14
+            * ImePlaceholder:13:14
+              * ImeContainer
+            * Leaf:3:12
+            * DefaultTaskDisplayArea (organized)
+          * Leaf:1:1
+          * AppZoomOut:0:0
+            * Leaf:0:0
+
+  Task display areas in top down Z order:
+    TaskDisplayArea DefaultTaskDisplayArea
+      overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+      mPreferredTopFocusableRootTask=Task{24018d #543 type=standard A=10262:dev.telemachus.display}
+      mLastFocusedRootTask=Task{24018d #543 type=standard A=10262:dev.telemachus.display}
+      Application tokens in top down Z order:
+      * Task{24018d #543 type=standard A=10262:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        bounds=[0,0][1264,2800]
+        * ActivityRecord{217952804 u0 dev.telemachus.display/.MainActivity t543}
+      * Task{63adf90 #538 type=home U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+        bounds=[0,0][1264,2800]
+        * Task{8f4089 #539 type=home I=com.android.launcher3/com.obric.feature.ObricLauncher U=0 rootTaskId=538 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+          bounds=[0,0][1264,2800]
+          * ActivityRecord{201001555 u0 com.android.launcher3/com.obric.feature.ObricLauncher t539}
+      * Task{ec1b523 #3 type=undefined U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=2}
+        bounds=[0,0][1264,2800]
+        * Task{9bcfa20 #5 type=undefined U=0 rootTaskId=3 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+          bounds=[0,2800][1264,4200]
+        * Task{e6c6fd9 #4 type=undefined U=0 rootTaskId=3 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+          bounds=[0,0][1264,2800]
+
+  rootHomeTask=Task=538
+
+  PinnedTaskController
+    mIsImeShowing=false
+    mImeHeight=0
+    mMinAspectRatio=0.41841003
+    mMaxAspectRatio=2.39
+
+  DisplayFrames w=1264 h=2800 r=0
+
+  DisplayPolicy
+    mCarDockEnablesAccelerometer=true mDeskDockEnablesAccelerometer=true
+    mDockMode=EXTRA_DOCK_STATE_UNDOCKED mLidState=LID_ABSENT
+    mAwake=true mScreenOnEarly=true mScreenOnFully=true
+    mKeyguardDrawComplete=true mWindowManagerDrawComplete=true
+    mHdmiPlugged=false
+    mLastBehavior=SHOW_TRANSIENT_BARS_BY_SWIPE
+    mShowingDream=false mDreamingLockscreen=false
+    mStatusBar=Window{4d1baea u0 StatusBar}
+    mExpandedPanel=Window{7a38ead u0 NotificationShade}
+    isKeyguardShowing=false
+    mNavigationBar=Window{6083da3 u0 NavigationBar0}
+    mNavBarOpacityMode=2
+    mNavigationBarCanMove=false
+    mHasBottomNavigationBar=true
+    mLeftGestureHost=Window{6083da3 u0 NavigationBar0}
+    mTopGestureHost=Window{4d1baea u0 StatusBar}
+    mRightGestureHost=Window{6083da3 u0 NavigationBar0}
+    mBottomGestureHost=Window{6083da3 u0 NavigationBar0}
+    mFocusedWindow=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mTopFullscreenOpaqueWindowState=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mSystemBarColorApps={ActivityRecord{217952804 u0 dev.telemachus.display/.MainActivity t543}}
+    mNavBarColorWindowCandidate=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mNavBarBackgroundWindowCandidate=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mLastStatusBarAppearanceRegions=
+      AppearanceRegion{ bounds=[0,0][1264,2800]}
+    mLastLetterboxDetails=
+    mStatusBarBackgroundWindows=
+      Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mTopIsFullscreen=true
+    mImeInsetsConsumed=false
+    mForceShowNavigationBarEnabled=false mAllowLockscreenWhenOn=false
+    mRemoteInsetsControllerControlsSystemBars=false
+    mDecorInsetsInfo:
+      ROTATION_0={nonDecorInsets=[0,0][0,0], overrideNonDecorInsets=[0,140][0,56], configInsets=[0,0][0,0], overrideConfigInsets=[0,140][0,56], nonDecorFrame=[0,0][1264,2800], overrideNonDecorFrame=[0,140][1264,2744], configFrame=[0,0][1264,2800], overrideConfigFrame=[0,140][1264,2744]}
+      ROTATION_90={nonDecorInsets=[0,0][0,0], overrideNonDecorInsets=[140,0][0,56], configInsets=[0,0][0,0], overrideConfigInsets=[140,140][0,56], nonDecorFrame=[0,0][2800,1264], overrideNonDecorFrame=[140,0][2800,1208], configFrame=[0,0][2800,1264], overrideConfigFrame=[140,140][2800,1208]}
+      ROTATION_180={nonDecorInsets=[0,0][0,0], overrideNonDecorInsets=[0,0][0,196], configInsets=[0,0][0,0], overrideConfigInsets=[0,140][0,196], nonDecorFrame=[0,0][1264,2800], overrideNonDecorFrame=[0,0][1264,2604], configFrame=[0,0][1264,2800], overrideConfigFrame=[0,140][1264,2604]}
+      ROTATION_270={nonDecorInsets=[0,0][0,0], overrideNonDecorInsets=[0,0][140,56], configInsets=[0,0][0,0], overrideConfigInsets=[0,140][140,56], nonDecorFrame=[0,0][2800,1264], overrideNonDecorFrame=[0,0][2660,1208], configFrame=[0,0][2800,1264], overrideConfigFrame=[0,140][2660,1208]}
+    SystemGestures:
+      mDisplayCutoutTouchableRegionSize=42
+      mSwipeStartThreshold=Rect(84, 136 - 84, 84)
+      mSwipeDistanceThreshold=84
+
+  DisplayRotation
+    mCurrentAppOrientation=SCREEN_ORIENTATION_FULL_SENSOR
+    mLastOrientation=10
+    mRotation=0 mDeferredRotationPauseCount=0
+    mLandscapeRotation=ROTATION_90 mSeascapeRotation=ROTATION_270
+    mPortraitRotation=ROTATION_0 mUpsideDownRotation=ROTATION_180
+    mSupportAutoRotation=true
+    WindowOrientationListener
+      mEnabled=true
+      mCurrentRotation=ROTATION_0
+      mSensorType=null
+      mSensor={Sensor name="Device Orientation  Non-wakeup", vendor="QTI", version=1, type=27, maxRange=1.0, resolution=1.0, power=0.025, minDelay=0}
+      mRate=2
+      OrientationSensorJudge
+        mDesiredRotation=ROTATION_0
+        mProposedRotation=ROTATION_0
+        mTouching=false
+        mTouchEndedTimestampNanos=1566274084484866
+        mLastRotationResolution=0
+
+    mCarDockRotation=-1 mDeskDockRotation=-1
+    mUserRotationMode=USER_ROTATION_FREE mUserRotation=ROTATION_0 mCameraRotationMode=0 mAllowAllRotations=unknown
+    mDemoHdmiRotation=ROTATION_90 mDemoHdmiRotationLock=false mUndockedHdmiRotation=-1
+    mLidOpenRotation=-1
+    mFixedToUserRotation=false
+
+    RotationHistory
+      08-22 16:34:04.133 ROTATION_0 to ROTATION_90
+        source=ActivityRecord{136103892 u0 dev.telemachus.display/.MainActivity t514} SCREEN_ORIENTATION_LANDSCAPE
+        mode=USER_ROTATION_LOCKED user=ROTATION_0 sensor=ROTATION_0
+      08-22 16:45:53.453 ROTATION_90 to ROTATION_0
+        source=ActivityRecord{94028885 u0 com.android.launcher3/com.obric.feature.ObricLauncher t299} SCREEN_ORIENTATION_NOSENSOR
+        mode=USER_ROTATION_LOCKED user=ROTATION_90 sensor=ROTATION_0
+      08-22 16:46:22.396 ROTATION_0 to ROTATION_90
+        source=ActivityRecord{85357987 u0 dev.telemachus.display/.MainActivity t515} SCREEN_ORIENTATION_LANDSCAPE
+        mode=USER_ROTATION_LOCKED user=ROTATION_0 sensor=ROTATION_0
+      08-22 16:49:54.415 ROTATION_90 to ROTATION_0
+        source=ActivityRecord{94028885 u0 com.android.launcher3/com.obric.feature.ObricLauncher t299} SCREEN_ORIENTATION_NOSENSOR
+        mode=USER_ROTATION_LOCKED user=ROTATION_90 sensor=ROTATION_0
+      08-22 16:50:19.470 ROTATION_0 to ROTATION_90
+        source=ActivityRecord{242338674 u0 dev.telemachus.display/.MainActivity t516} SCREEN_ORIENTATION_LANDSCAPE
+        mode=USER_ROTATION_LOCKED user=ROTATION_0 sensor=ROTATION_0
+      08-22 16:50:20.966 ROTATION_90 to ROTATION_0
+        source=ActivityRecord{139285068 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t517} SCREEN_ORIENTATION_PORTRAIT
+        mode=USER_ROTATION_LOCKED user=ROTATION_0 sensor=ROTATION_0
+      08-22 16:52:38.781 ROTATION_0 to ROTATION_90
+        source=ActivityRecord{2949497 u0 dev.telemachus.display/.MainActivity t518} SCREEN_ORIENTATION_LANDSCAPE
+        mode=USER_ROTATION_LOCKED user=ROTATION_90 sensor=ROTATION_0
+      08-22 16:52:40.182 ROTATION_90 to ROTATION_0
+        source=ActivityRecord{7684975 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t519} SCREEN_ORIENTATION_PORTRAIT
+        mode=USER_ROTATION_LOCKED user=ROTATION_90 sensor=ROTATION_0
+
+        RotationLockHistory
+          08-22 20:59:05.961: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:00:47.916: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:00:54.149: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:02:29.360: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:03:22.910: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:03:27.434: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:04:26.674: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+          08-22 21:04:37.512: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=UiAutomationConnection#restoreRotationStateLocked
+
+  InputConsumers:
+    name=recents_animation_input_consumer pid=29854 user=UserHandle{0}
+
+  WindowInsetsStateController
+    InsetsState
+      mDisplayFrame=Rect(0, 0 - 1264, 2800)
+      mDisplayCutout=DisplayCutout{insets=Rect(0, 140 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(599, 46 - 665, 140), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1264 displayHeight=2800 physicalDisplayWidth=1264 physicalDisplayHeight=2800 density={3.5} cutoutSpec={M -33,46 L -33,112 L 33,112 L 33,46 Z} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}} sideOverrides={}}
+      mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=147, center=Point(147, 147)}, RoundedCorner{position=TopRight, radius=147, center=Point(1117, 147)}, RoundedCorner{position=BottomRight, radius=147, center=Point(1117, 2653)}, RoundedCorner{position=BottomLeft, radius=147, center=Point(147, 2653)}]}
+      mRoundedCornerFrame=Rect(0, 0 - 0, 0)
+      mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(900, 0 - 1180, 140) rotation=0}
+      mDisplayShape=DisplayShape{ spec=1406003047 displayWidth=1264 displayHeight=2800 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}
+        InsetsSource id=1 type=navigationBars frame=[0,0][0,0] visible=true flags= sideHint=NONE boundingRects=null
+        InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= sideHint=NONE boundingRects=null
+        InsetsSource id=27 type=displayCutout frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+        InsetsSource id=65490000 type=statusBars frame=[0,0][1264,140] visible=false flags= sideHint=TOP boundingRects=null
+        InsetsSource id=65490005 type=mandatorySystemGestures frame=[0,0][1264,182] visible=true flags= sideHint=TOP boundingRects=null
+        InsetsSource id=65490006 type=tappableElement frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+        InsetsSource id=79ac0001 type=navigationBars frame=[0,2744][1264,2800] visible=false flags=SUPPRESS_SCRIM sideHint=BOTTOM boundingRects=null
+        InsetsSource id=79ac0004 type=systemGestures frame=[0,0][70,2800] visible=true flags= sideHint=LEFT boundingRects=null
+        InsetsSource id=79ac0005 type=mandatorySystemGestures frame=[0,2716][1264,2800] visible=true flags= sideHint=BOTTOM boundingRects=null
+        InsetsSource id=79ac0006 type=tappableElement frame=[0,0][0,0] visible=true flags= sideHint=NONE boundingRects=null
+        InsetsSource id=79ac0024 type=systemGestures frame=[1194,0][1264,2800] visible=true flags= sideHint=RIGHT boundingRects=null
+    Control map:
+      Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+        InsetsSourceControl: {3 mType=ime mSurfacePosition=Point(0, 140) mInsetsHint=Insets{left=0, top=0, right=0, bottom=1042}}
+        InsetsSourceControl: {65490000 mType=statusBars initiallyVisible mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=140, right=0, bottom=0}}
+        InsetsSourceControl: {79ac0001 mType=navigationBars initiallyVisible mSurfacePosition=Point(0, 2744) mInsetsHint=Insets{left=0, top=0, right=0, bottom=56}}
+    InsetsSourceProviders:
+      InsetsSourceProvider
+        mSource=InsetsSource id=79ac0024 type=systemGestures frame=[1194,0][1264,2800] visible=true flags= sideHint=RIGHT boundingRects=null
+        mSourceFrame=Rect(1194, 0 - 1264, 2800)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{6083da3 u0 NavigationBar0}
+      InsetsSourceProvider
+        mSource=InsetsSource id=79ac0006 type=tappableElement frame=[0,0][0,0] visible=true flags= sideHint=NONE boundingRects=null
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{6083da3 u0 NavigationBar0}
+      InsetsSourceProvider
+        mSource=InsetsSource id=79ac0005 type=mandatorySystemGestures frame=[0,2716][1264,2800] visible=true flags= sideHint=BOTTOM boundingRects=null
+        mSourceFrame=Rect(0, 2716 - 1264, 2800)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{6083da3 u0 NavigationBar0}
+      InsetsSourceProvider
+        mSource=InsetsSource id=79ac0004 type=systemGestures frame=[0,0][70,2800] visible=true flags= sideHint=LEFT boundingRects=null
+        mSourceFrame=Rect(0, 0 - 70, 2800)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{6083da3 u0 NavigationBar0}
+      InsetsSourceProvider
+        mSource=InsetsSource id=79ac0001 type=navigationBars frame=[0,2744][1264,2800] visible=false flags=SUPPRESS_SCRIM sideHint=BOTTOM boundingRects=null
+        mSourceFrame=Rect(0, 2744 - 1264, 2800)
+        mControl=InsetsSourceControl mId=79ac0001 mType=navigationBars mLeash=Surface(name=Surface(name=6083da3 NavigationBar0)/@0xb2701e - animation-leash of insets_animation)/@0xdeccaa1 mInitiallyVisible=true mSurfacePosition=Point(0, 2744) mInsetsHint=Insets{left=0, top=0, right=0, bottom=56} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=56}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWindowContainer=Window{6083da3 u0 NavigationBar0}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=6083da3 NavigationBar0)/@0xb2701e - animation-leash of insets_animation)/@0xdeccaa1
+        mControlTarget=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      InsetsSourceProvider
+        mSource=InsetsSource id=65490006 type=tappableElement frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+        mSourceFrame=Rect(0, 0 - 1264, 140)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{4d1baea u0 StatusBar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=65490005 type=mandatorySystemGestures frame=[0,0][1264,182] visible=true flags= sideHint=TOP boundingRects=null
+        mSourceFrame=Rect(0, 0 - 1264, 182)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWindowContainer=Window{4d1baea u0 StatusBar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=65490000 type=statusBars frame=[0,0][1264,140] visible=false flags= sideHint=TOP boundingRects=null
+        mSourceFrame=Rect(0, 0 - 1264, 140)
+        mControl=InsetsSourceControl mId=65490000 mType=statusBars mLeash=Surface(name=Surface(name=4d1baea StatusBar)/@0x93ca521 - animation-leash of insets_animation)/@0xd1584c6 mInitiallyVisible=true mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=140, right=0, bottom=0} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=140, right=0, bottom=0}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWindowContainer=Window{4d1baea u0 StatusBar}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=4d1baea StatusBar)/@0x93ca521 - animation-leash of insets_animation)/@0xd1584c6
+        mControlTarget=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      ImeInsetsSourceProvider
+        mSource=InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= sideHint=NONE boundingRects=null
+        mSourceFrame=Rect(0, 2800 - 1264, 2800)
+        mControl=InsetsSourceControl mId=3 mType=ime mLeash=Surface(name=Surface(name=97f6988 InputMethod)/@0x6aa2f46 - animation-leash of insets_animation)/@0x7c20c87 mInitiallyVisible=false mSurfacePosition=Point(0, 140) mInsetsHint=Insets{left=0, top=0, right=0, bottom=1042} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=1042} stale
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWindowContainer=Window{97f6988 u0 InputMethod}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=97f6988 InputMethod)/@0x6aa2f46 - animation-leash of insets_animation)/@0x7c20c87
+        mControlTarget=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mImeShowing=true mLastDrawn=false        showImePostLayout not scheduled, mImeRequester=null
+
+      InsetsSourceProvider
+        mSource=InsetsSource id=1 type=navigationBars frame=[0,0][0,0] visible=true flags= sideHint=NONE boundingRects=null
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=0} stale
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mPendingControlTarget=Window{1995c86 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  InsetsPolicy
+    status: WINDOW_STATE_HIDDEN
+    nav: WINDOW_STATE_HIDDEN

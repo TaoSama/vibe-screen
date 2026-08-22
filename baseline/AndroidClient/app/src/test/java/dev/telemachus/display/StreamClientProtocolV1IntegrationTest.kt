@@ -747,6 +747,89 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun runtimeDisplaySelectionPublishesConfirmedDisplayAfterDecoderCommit() = runBlocking {
+        ServerSocket(0).use { server ->
+            val displaysSeen = Collections.synchronizedList(mutableListOf<String>())
+            val connected = CountDownLatch(1)
+            val confirmedDisplay = CountDownLatch(1)
+            val initialConfigurationApplied = CountDownLatch(1)
+            val switchedConfigurationApplied = CountDownLatch(1)
+            val appliedConfigurations = AtomicInteger()
+            val ended = CountDownLatch(1)
+            val failure = AtomicReference<SessionFailure?>()
+            val secondDisplay = display(id = "display-2", logicalWidth = 2560, logicalHeight = 1440)
+            val capabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = capabilities,
+                            negotiatedCapabilities = capabilities,
+                            displays = listOf(display(), secondDisplay),
+                        )
+                        peer.soTimeout = 3_000
+                        val request = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, request.payloadCase)
+                        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+                        write(peer, startDisplay(id = 6, display = secondDisplay))
+                        write(
+                            peer,
+                            videoConfig(
+                                id = 7,
+                                rotation = 0,
+                                configEpoch = 4,
+                                encodedWidth = 2560,
+                                encodedHeight = 1440,
+                            ),
+                        )
+                        val result = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
+                        assertTrue(result.videoConfigResult.accepted)
+                        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+                        assertTrue(confirmedDisplay.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(id = 8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.apply {
+                acceptVideoConfigurations()
+                onConnectionStatus = { isConnected ->
+                    if (isConnected) connected.countDown()
+                }
+                onVideoConfigurationApplied = {
+                    when (appliedConfigurations.incrementAndGet()) {
+                        1 -> initialConfigurationApplied.countDown()
+                        2 -> switchedConfigurationApplied.countDown()
+                    }
+                }
+                onDisplaysAvailable = { _, selectedId ->
+                    displaysSeen += selectedId
+                    if (selectedId == "display-2") confirmedDisplay.countDown()
+                }
+                onSessionEnded = {
+                    failure.set(it)
+                    ended.countDown()
+                }
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(connected.await(8, TimeUnit.SECONDS))
+            assertTrue(initialConfigurationApplied.await(8, TimeUnit.SECONDS))
+            client.selectDisplay("display-2")
+            assertTrue(switchedConfigurationApplied.await(8, TimeUnit.SECONDS))
+            assertTrue(confirmedDisplay.await(8, TimeUnit.SECONDS))
+            assertEquals(listOf("display-main", "display-2"), displaysSeen)
+            assertTrue(ended.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.SERVER_SHUTDOWN, checkNotNull(failure.get()).kind)
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
     fun twoPointerMoveIsAnAtomicSchedulerBatchOnWire() = runBlocking {
         ServerSocket(0).use { server ->
             val ready = CountDownLatch(1)
@@ -1662,6 +1745,7 @@ class StreamClientProtocolV1IntegrationTest {
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         maxFileBytes: Long = 0L,
         maxFileChunkBytes: Int = 0,
+        displays: List<DisplayDescriptor> = listOf(display()),
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         beginHandshake(
@@ -1673,6 +1757,7 @@ class StreamClientProtocolV1IntegrationTest {
             maxClipboardBytes,
             maxFileBytes,
             maxFileChunkBytes,
+            displays,
             onClientHello,
         )
         val result = readEnvelope(peer)
@@ -1690,6 +1775,7 @@ class StreamClientProtocolV1IntegrationTest {
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         maxFileBytes: Long = 0L,
         maxFileChunkBytes: Int = 0,
+        displays: List<DisplayDescriptor> = listOf(display()),
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -1722,9 +1808,9 @@ class StreamClientProtocolV1IntegrationTest {
         )
         assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
-        write(peer, displayList(3))
+        write(peer, displayList(3, displays))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
-        write(peer, startDisplay(4))
+        write(peer, startDisplay(4, displays.first()))
         write(peer, videoConfig(5, initialRotation))
     }
 
@@ -1936,14 +2022,20 @@ class StreamClientProtocolV1IntegrationTest {
                     ),
             ).build()
 
-    private fun displayList(id: Long): Envelope =
+    private fun displayList(
+        id: Long,
+        displays: List<DisplayDescriptor> = listOf(display()),
+    ): Envelope =
         base(id).setListDisplaysResponse(
-            ListDisplaysResponse.newBuilder().addDisplays(display()),
+            ListDisplaysResponse.newBuilder().addAllDisplays(displays),
         ).build()
 
-    private fun startDisplay(id: Long): Envelope =
+    private fun startDisplay(
+        id: Long,
+        display: DisplayDescriptor = display(),
+    ): Envelope =
         base(id).setStartDisplayResponse(
-            StartDisplayResponse.newBuilder().setAccepted(true).setDisplay(display()).setStreamId(42),
+            StartDisplayResponse.newBuilder().setAccepted(true).setDisplay(display).setStreamId(42),
         ).build()
 
     private fun videoConfig(
@@ -2128,9 +2220,10 @@ class StreamClientProtocolV1IntegrationTest {
     private fun display(
         logicalWidth: Int = 1920,
         logicalHeight: Int = 1080,
+        id: String = "display-main",
     ): DisplayDescriptor =
         DisplayDescriptor.newBuilder()
-            .setDisplayId("display-main")
+            .setDisplayId(id)
             .setLogicalSize(Dimensions.newBuilder().setWidth(logicalWidth).setHeight(logicalHeight))
             .build()
 

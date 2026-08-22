@@ -277,6 +277,25 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun displaySelectionMenuDoesNotOptimisticallyRelabelTheActiveDisplay() {
+        val displaysMenu = extractMethod(mainActivitySource(), "private fun showDisplaysMenu")
+        val clickHandler = extractCallback(displaysMenu, "popup.setOnMenuItemClickListener { item ->")
+
+        assertTrue(
+            "Selecting a menu item must still request the host-side switch",
+            clickHandler.contains("streamClient?.selectDisplay(option.id)"),
+        )
+        assertTrue(
+            "Selecting a menu item should surface pending UI only after the request is accepted for sending",
+            clickHandler.contains("markDisplaySelectionPending(previousDisplayId, option.id)"),
+        )
+        assertFalse(
+            "The capsule label must wait for the confirmed Host display state",
+            clickHandler.contains("selectedDisplayId = option.id"),
+        )
+    }
+
+    @Test
     fun lanClipboardPromptsUseNegotiatedProtectionState() {
         val source = mainActivitySource()
         val send = extractMethod(source, "private fun beginSendLocalClipboard")

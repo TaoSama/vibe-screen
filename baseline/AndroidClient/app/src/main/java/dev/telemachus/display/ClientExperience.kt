@@ -460,11 +460,23 @@ internal object DisplayCapsulePolicy {
         displays: List<StreamDisplayOption>,
     ): Boolean = displaySelection && displays.size > 1
 
+    /** Disable the selector while a host-side display switch is still settling. */
+    fun isEnabled(
+        displaySelection: Boolean,
+        displays: List<StreamDisplayOption>,
+        pendingDisplayId: String?,
+    ): Boolean = isSelectable(displaySelection, displays) && pendingDisplayId == null
+
     /** Resolve the option currently marked active, if any. */
     fun activeOption(
         displays: List<StreamDisplayOption>,
         selectedId: String,
     ): StreamDisplayOption? = displays.firstOrNull { it.id == selectedId }
+
+    fun pendingOption(
+        displays: List<StreamDisplayOption>,
+        pendingId: String?,
+    ): StreamDisplayOption? = pendingId?.let { id -> displays.firstOrNull { it.id == id } }
 
     /**
      * Label shown on the capsule. Falls back to the primary/first display when

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
@@ -37,6 +38,8 @@ class ConnectionStateAccessibilityInstrumentedTest {
             listOf(
                 R.id.connectionTitle,
                 R.id.connectionSubtitle,
+                R.id.connectionErrorTitle,
+                R.id.connectionErrorMessage,
                 R.id.statusText,
                 R.id.internetProfileSummary,
                 R.id.internetStateText,
@@ -253,6 +256,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
         withProductionLayout { root ->
             listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
                 val button = root.findViewById<MaterialButton>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    button.autoSizeMinTextSize >= sp(root.context, 12),
+                )
                 val checkedBackground = stateColor(button.backgroundTintList, state_enabled, state_checked)
                 val checkedText = stateColor(button.textColors, state_enabled, state_checked)
                 val disabledBackground = stateColor(button.backgroundTintList, -state_enabled, state_checked)
@@ -261,6 +268,19 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 assertTrue(ColorUtils.calculateContrast(checkedText, checkedBackground) >= 4.5)
                 assertNotEquals(checkedBackground, disabledBackground)
                 assertNotEquals(checkedText, disabledText)
+            }
+        }
+    }
+
+    @Test
+    fun internetRouteToggleDoesNotAutosizeBelowReadableText() {
+        withProductionLayout { root ->
+            listOf(R.id.internetPreferDirect, R.id.internetForceRelay).forEach { id ->
+                val button = root.findViewById<MaterialButton>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    button.autoSizeMinTextSize >= sp(root.context, 12),
+                )
             }
         }
     }
@@ -416,6 +436,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).roundToInt()
+
+    private fun sp(context: Context, value: Int): Int =
+        TypedValue
+            .applyDimension(TypedValue.COMPLEX_UNIT_SP, value.toFloat(), context.resources.displayMetrics)
+            .roundToInt()
 
     private fun stateColor(colors: android.content.res.ColorStateList?, vararg states: Int): Int {
         checkNotNull(colors)

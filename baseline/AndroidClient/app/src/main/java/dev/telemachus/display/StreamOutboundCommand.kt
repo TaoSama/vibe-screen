@@ -33,6 +33,11 @@ internal sealed interface StreamOutboundCommand {
         val build: (ProtocolV1Session) -> List<Envelope>,
     ) : StreamOutboundCommand
 
+    class ProtocolActionBatch(
+        val build: (ProtocolV1Session) -> List<ProtocolV1Session.Action>,
+        val onEmpty: ((ProtocolV1Session) -> Unit)? = null,
+    ) : StreamOutboundCommand
+
     data class ProtocolReceive(
         val envelope: Envelope,
         val completion: CompletableFuture<Unit>,
