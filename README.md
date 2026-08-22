@@ -619,6 +619,14 @@ network quality may increase it.
   `harmony-readiness.json`. It fails closed while any prerequisite is missing
   and is not HAP, installation, streaming, secure-pairing, soak, latency, or
   MatePad Mini acceptance evidence.
+- The read-only `make harmony-current-base-gate EVIDENCE_DIR=...` aggregate
+  owner gate now binds the Phase 4 README owner surface for hardware decode
+  capability, HAP install, and resume-capable Host interoperability to
+  `harmony-readiness.json` plus `harmony-device-gates.json`. It reports
+  `blocked` until DevEco, a signed HAP, a MatePad Mini target, a Protocol v1
+  Host build, H.264/HEVC hardware-decode evidence, HAP install evidence, and
+  resume interop evidence are all present; Android, portable-only, or blocked
+  readiness records cannot close those owner gates.
 
 ### Phase 5 — iOS and advanced capabilities
 

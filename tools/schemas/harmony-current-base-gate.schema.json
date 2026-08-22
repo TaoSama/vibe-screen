@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/harmony-current-base-gate.schema.json",
+  "title": "Vibe Screen HarmonyOS Phase 4 current-base owner gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "owner",
+    "source",
+    "source_docs",
+    "can_close_readme_phase4_owner_gates",
+    "can_claim_harmony_device_pass",
+    "checks",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "harmony_current_base_owner_gate"},
+    "derivation_status": {"const": "complete"},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "repository", "scope", "gate_owners"],
+      "properties": {
+        "aggregate": {"const": "current-base-harmony-phase4-owner-gates"},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "scope": {
+          "type": "array",
+          "items": {"enum": ["hardware_decode_capability", "hap_install", "host_resume_interop"]},
+          "minItems": 3,
+          "uniqueItems": true
+        },
+        "gate_owners": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hardware_decode_capability", "hap_install", "host_resume_interop"],
+          "properties": {
+            "hardware_decode_capability": {"type": "string", "minLength": 1},
+            "hap_install": {"type": "string", "minLength": 1},
+            "host_resume_interop": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readiness", "device_gates"],
+      "properties": {
+        "readiness": {"type": "string", "minLength": 1},
+        "device_gates": {"type": "string", "minLength": 1}
+      }
+    },
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "can_close_readme_phase4_owner_gates": {"type": "boolean"},
+    "can_claim_harmony_device_pass": {"type": "boolean"},
+    "checks": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}
