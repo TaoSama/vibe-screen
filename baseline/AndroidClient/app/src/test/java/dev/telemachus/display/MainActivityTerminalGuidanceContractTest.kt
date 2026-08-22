@@ -285,13 +285,13 @@ class MainActivityTerminalGuidanceContractTest {
             "Selecting a menu item must still request the host-side switch",
             clickHandler.contains("streamClient?.selectDisplay(option.id)"),
         )
+        assertTrue(
+            "Selecting a menu item should surface pending UI only after the request is accepted for sending",
+            clickHandler.contains("markDisplaySelectionPending(previousDisplayId, option.id)"),
+        )
         assertFalse(
             "The capsule label must wait for the confirmed Host display state",
             clickHandler.contains("selectedDisplayId = option.id"),
-        )
-        assertFalse(
-            "The capsule label must not refresh from an unconfirmed menu choice",
-            clickHandler.contains("refreshDisplayCapsuleLabel()"),
         )
     }
 
