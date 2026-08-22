@@ -219,7 +219,7 @@ only.
 
 | Gate | Current-base state | Evidence boundary |
 | --- | --- | --- |
-| signing | blocked-readiness | Requires signed archive, unique bundle ID, certificate, and provisioning profile. |
+| signing | blocked-readiness | Requires a signed archive, a unique bundle ID, a certificate, and a provisioning profile. |
 | VideoToolbox H.264/HEVC | open | Implementation and CI build evidence exist; hardware decode requires iPhone and iPad records. |
 | advanced adapters | open | Client/core and Mac/Android slices are offline-tested; host/product E2E remains separate. |
 | AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
@@ -285,8 +285,11 @@ memory/latency series. Raw logs belong under this change directory's
 `evidence/` subdirectory or an external release bundle after privacy review.
 Every committed run summary must include sanitized `acceptance.json`,
 `ios-device-acceptance-gate.json`, a hash manifest, and the privacy-reviewed
-artifact list. The gate is read-only and fails closed: open or blocked evidence
-returns `insufficient`, while Android-substituted evidence returns `fail`.
+artifact list. The aggregate gate is read-only and fails closed: missing
+metadata, environment, signing, device, or formal E1-E7 gate evidence returns
+`blocked`; missing broader Phase 5 HDR, advanced-adapter, or trusted-LAN
+secure-record evidence returns `insufficient`; Android-substituted evidence
+returns `fail`.
 
 While the Phase 0 soak owns the controlled endpoint (redacted as
 `$ADB_ENDPOINT`), Phase 5 performs only

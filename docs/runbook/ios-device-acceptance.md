@@ -219,7 +219,7 @@ gate.
 To turn this runbook record into current-base aggregate evidence, copy sanitized
 field values into `ios-current-base-manifest.json` or generate a fresh default
 manifest with `make ios-current-base-manifest`, then run
-`python3 -m vibescreen_evidence.ios_current_base_gate`. The aggregate gate is
+`PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate`. The aggregate gate is
 stricter than this runbook: it keeps the current-base aggregate open until the
 E1-E7 device gates and the broader HDR, advanced-adapter, and trusted-LAN
 secure-record gates all carry retained evidence.

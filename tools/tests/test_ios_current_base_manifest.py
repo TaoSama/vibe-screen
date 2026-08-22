@@ -42,6 +42,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertEqual(manifest["schema_version"], SCHEMA_VERSION)
         self.assertEqual(manifest["kind"], "ios_current_base_readiness_manifest")
+        self.assertEqual(manifest["source_root"], str(root.resolve()))
         self.assertEqual(manifest["owner"]["aggregate_pr"], "#182")
         self.assertEqual(manifest["owner"]["device_acceptance_pr"], "#182")
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
@@ -74,6 +75,21 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             with self.assertRaisesRegex(ManifestError, "missing source document"):
                 build_manifest(command=[], repo=Path(directory_name))
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_rejects_non_owner_device_acceptance_pr(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            with self.assertRaisesRegex(ManifestError, "must remain #182"):
+                build_manifest(
+                    command=[],
+                    repo=root,
+                    device_acceptance_owner_pr="#999",
+                )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

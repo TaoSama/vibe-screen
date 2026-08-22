@@ -26,6 +26,24 @@ HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 PASS_STATUSES = {"pass", "passed", "passed-offline"}
 OPEN_STATUSES = {"open", "blocked", "blocked-readiness", "not-evidence"}
 DEVICE_ROLES = {"iphone", "ipad"}
+REQUIRED_SIGNING_FIELDS = {
+    "status",
+    "bundle_id",
+    "unique_bundle_id",
+    "team_id_redacted",
+    "certificate_identity_recorded",
+    "provisioning_profile_recorded",
+    "signed_archive_sha256",
+}
+REQUIRED_DEVICE_FIELDS = {"role", "runtime_class", "install_status", "evidence"}
+REQUIRED_GATE_FIELDS = {
+    "status",
+    "category",
+    "requirement",
+    "blocking",
+    "evidence",
+    "notes",
+}
 
 INTERPRETATION = (
     "A pass means the current-base iOS aggregate has signed iPhone and iPad "
@@ -81,11 +99,93 @@ def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, bl
     }
 
 
+def _require_object(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise IOSCurrentBaseGateError(
+            f"manifest schema violation: {name} must be an object"
+        )
+    return value
+
+
+def _require_fields(record: dict[str, Any], fields: set[str], name: str) -> None:
+    missing = sorted(field for field in fields if field not in record)
+    if missing:
+        raise IOSCurrentBaseGateError(
+            f"manifest schema violation: {name} missing required field(s): {', '.join(missing)}"
+        )
+
+
+def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
+    _require_fields(
+        manifest,
+        {
+            "schema_version",
+            "kind",
+            "run_id",
+            "created_at",
+            "command",
+            "repository",
+            "source_root",
+            "owner",
+            "scope_prs",
+            "source_docs",
+            "local_environment",
+            "build_evidence",
+            "signing",
+            "devices",
+            "gates",
+            "android_evidence_used_for_ios_gates",
+            "limitations",
+            "notes",
+        },
+        "manifest",
+    )
+    _require_object(manifest.get("repository"), "repository")
+    _require_object(manifest.get("owner"), "owner")
+
+    source_root = manifest.get("source_root")
+    if not _non_empty_string(source_root):
+        raise IOSCurrentBaseGateError(
+            "manifest schema violation: source_root must be a non-empty string"
+        )
+
+    signing = _require_object(manifest.get("signing"), "signing")
+    _require_fields(signing, REQUIRED_SIGNING_FIELDS, "signing")
+
+    devices = manifest.get("devices")
+    if not isinstance(devices, list):
+        raise IOSCurrentBaseGateError("manifest schema violation: devices must be an array")
+    for index, device in enumerate(devices):
+        device_record = _require_object(device, f"devices[{index}]")
+        _require_fields(device_record, REQUIRED_DEVICE_FIELDS, f"devices[{index}]")
+        if not isinstance(device_record.get("evidence"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: devices[{index}].evidence must be an array"
+            )
+
+    gates = _require_object(manifest.get("gates"), "gates")
+    expected_gates = {*FORMAL_DEVICE_GATES, *BROADER_GATES}
+    _require_fields(gates, expected_gates, "gates")
+    for name in sorted(expected_gates):
+        gate_record = _require_object(gates.get(name), f"gates.{name}")
+        _require_fields(gate_record, REQUIRED_GATE_FIELDS, f"gates.{name}")
+        if not isinstance(gate_record.get("evidence"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: gates.{name}.evidence must be an array"
+            )
+        if not isinstance(gate_record.get("notes"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: gates.{name}.notes must be an array"
+            )
+
+
 def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str, dict[str, Any]]:
     owner = manifest.get("owner") if isinstance(manifest.get("owner"), dict) else {}
     scope_prs = set(_string_list(manifest.get("scope_prs")))
     source_docs = set(_string_list(manifest.get("source_docs")))
-    package_root = manifest_path.parent
+    source_root = Path(str(manifest.get("source_root"))).expanduser()
+    if not source_root.is_absolute():
+        source_root = manifest_path.parent / source_root
 
     source_doc_exists = []
     for source_doc in SOURCE_DOCS:
@@ -93,9 +193,7 @@ def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str,
         if candidate.is_absolute():
             source_doc_exists.append(candidate.is_file())
         else:
-            source_doc_exists.append(
-                candidate.is_file() or (package_root / candidate).is_file()
-            )
+            source_doc_exists.append((source_root / candidate).is_file())
 
     return {
         "schema_version": _check(
@@ -279,7 +377,11 @@ def _substitution_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def derive_gate(manifest_path: Path) -> dict[str, Any]:
-    manifest = _load_json(manifest_path)
+    try:
+        manifest = _load_json(manifest_path)
+        _validate_manifest_contract(manifest)
+    except IOSCurrentBaseGateError as error:
+        return _failure_report(manifest_path, str(error))
     metadata = _metadata_checks(manifest, manifest_path)
     environment = _environment_checks(manifest)
     signing = _signing_checks(manifest)

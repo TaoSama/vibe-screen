@@ -99,7 +99,12 @@ def _normalize_pr(value: str) -> str:
         digits = candidate
     if not digits.isdigit():
         raise ManifestError("--device-acceptance-owner-pr must be a PR number such as #182")
-    return f"#{int(digits)}"
+    owner_pr = f"#{int(digits)}"
+    if owner_pr != DEVICE_ACCEPTANCE_OWNER_PR:
+        raise ManifestError(
+            f"device acceptance owner PR must remain {DEVICE_ACCEPTANCE_OWNER_PR}"
+        )
+    return owner_pr
 
 
 def _ensure_source_docs(repo: Path, source_docs: Sequence[str]) -> list[str]:
@@ -186,6 +191,7 @@ def build_manifest(
         "created_at": _utc_timestamp(),
         "command": list(command),
         "repository": repository_state(repo),
+        "source_root": str(repo),
         "owner": {
             "aggregate": AGGREGATE_OWNER,
             "aggregate_pr": owner_pr,

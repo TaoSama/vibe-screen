@@ -162,6 +162,7 @@ harmony-device-gate:
 
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)
+	mkdir -p "$(dir $(IOS_ACCEPTANCE_GATE_JSON))"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_device_acceptance_gate \
 		--acceptance "$(IOS_ACCEPTANCE_JSON)" \
 		--evidence-root "$$(dirname "$(IOS_ACCEPTANCE_JSON)")" \

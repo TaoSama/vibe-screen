@@ -169,6 +169,67 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_current_base_aggregate"])
         self.assertTrue(report["can_claim_device_pass"])
 
+    def test_manifest_contract_violation_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            del manifest["source_root"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["derivation_status"], "failed")
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("manifest schema violation", report["reasons"][0])
+
+    def test_missing_nested_evidence_contract_cannot_pass(self):
+        cases = {
+            "signing": lambda manifest: manifest["signing"].pop("certificate_identity_recorded"),
+            "device": lambda manifest: manifest["devices"][0].pop("runtime_class"),
+            "gate": lambda manifest: manifest["gates"]["signing"].pop("status"),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory_name:
+                root = Path(directory_name)
+                manifest = complete_manifest(root)
+                mutate(manifest)
+                manifest_path = write_manifest(root, manifest)
+
+                report = derive_gate(manifest_path)
+
+                self.assertEqual(report["derivation_status"], "failed")
+                self.assertEqual(report["verdict"], "blocked")
+                self.assertFalse(report["can_close_ios_device_acceptance"])
+                self.assertIn("manifest schema violation", report["reasons"][0])
+
+    def test_source_docs_resolve_from_manifest_source_root(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name) / "repo"
+            output_dir = Path(directory_name) / "out"
+            output_dir.mkdir()
+            manifest = complete_manifest(root)
+            manifest_path = output_dir / "ios-current-base-manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_source_docs_do_not_resolve_from_process_cwd(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            other_root = root / "other"
+            other_root.mkdir()
+            manifest["source_root"] = str(other_root)
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("metadata: source_docs", report["reasons"])
+
     def test_report_matches_schema_required_top_level_fields(self):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
