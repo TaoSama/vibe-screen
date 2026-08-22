@@ -26,7 +26,7 @@ platform scaffolding under active development.
 | --- | --- |
 | macOS host + Android client | Builds and runs from source |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
-| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
+| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode. AV1 is protocol-enumerated and fail-closed in offline codec-admission tests, but no AV1 real-stream Host/device acceptance is recorded |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
@@ -149,8 +149,11 @@ boundaries:
   existing displays, and restores windows after disconnection.
 - ScreenCaptureKit captures a selected display, with a compatibility fallback
   where required.
-- VideoToolbox provides hardware HEVC and H.264 encoding, with AV1 added when
-  supported by host and client hardware.
+- VideoToolbox provides hardware HEVC and H.264 encoding. AV1 remains planned:
+  Protocol v1 reserves CODEC_AV1, and offline admission tests require
+  fail-closed or H.264/HEVC fallback unless both peers expose real AV1 support,
+  but the current Host does not advertise AV1 and no AV1 real-stream device
+  acceptance is recorded.
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity
@@ -413,13 +416,16 @@ glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
 reconnection within three seconds, and no latency or memory growth over a
 two-hour run. USB and LAN glass-to-glass latency gates require external-camera
 evidence, while the input-latency gate requires external-camera evidence or a
-documented synchronized-clock setup with a reviewable error budget. The gate
-profiles are `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
-`input-p95-sub50`; host and client telemetry are diagnostic only and cannot
-close these gates. As of the 2026-08-20 readiness check, the latency toolchain
-passes its fixture gates but no real external-camera package is available in
-the repository, so all three external latency gates remain open; see
-[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+documented synchronized-clock setup with a reviewable sub-5 ms total error
+budget. The gate profiles are `usb-glass-to-glass-sub50`,
+`lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
+are diagnostic only and cannot close these gates. As of the 2026-08-21 Nubia
+P0110/pacific latency preflight, the toolchain has formal manifest/checker
+coverage for external-camera packages and synchronized-clock input packages,
+but no raw camera package, annotated latency samples, or synchronized-clock
+proof from a real physical-input run is available in the repository. All three
+latency gates therefore remain open; see
+[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 
@@ -474,6 +480,12 @@ forced-local-coturn synthetic product E2E all passed on that source. The
 synthetic E2E record is explicitly loopback-only, uses a synthetic Protocol v1
 peer, and records no Android UI, real screen capture, or public Internet path;
 the release gates below remain unchanged.
+The current worktree strengthens the local product E2E media payload from fixed
+synthetic strings to real VideoToolbox-generated HEVC keyframe and delta frames
+over the production WebRTC media DataChannel, still with a synthetic Protocol
+v1 peer and synthetic pixel-buffer input. That check does not start
+ScreenCaptureKit or CGDisplayStream and is not Android MediaCodec, visible UI,
+or public-Internet evidence.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
@@ -518,6 +530,7 @@ Reproduce the local Mac integration checks with:
 ```bash
 cd baseline/MacHost
 swift build -c release
+".build/release/Vibe Screen" --phase3-real-media-self-test
 ".build/release/Vibe Screen" --phase3-internet-self-test
 ".build/release/Vibe Screen" --phase3-webrtc-loopback-self-test
 cd ../..
@@ -526,9 +539,11 @@ python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --sk
 ```
 
 Start/configure signaling through [`services/signaling`](services/signaling/README.md)
-and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). Both
-services require deployment TLS, secret management, monitoring and limits
-described in their runbooks; the example local profile is loopback-only.
+and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). The
+Phase 3 production-shaped Compose profile includes signaling, relay, and coturn
+services, but it still requires an external TLS/private-ingress layer, managed
+PostgreSQL, secret management, monitoring, and limits described in their
+runbooks; the example local profile is loopback-only.
 `scripts/phase3/coturn_reconcile.py` now provides a bounded operator helper that
 accepts a trusted structured coturn allocation snapshot, submits it to Authority's
 reconciliation API, and requires an external active-allocation disconnect executor
@@ -551,9 +566,14 @@ Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
+features. Signaling and relay stores now use shared PostgreSQL state for
+multi-instance correctness paths; signaling long-poll waiter slots are backed by
+connection-scoped database leases so a replacement instance can reclaim a slot
+after the failed instance loses its PostgreSQL backend. Multi-instance
+throughput, cross-replica rate limiting, load-balancer behavior, and
+multi-region consistency remain unproved. Relay credential admission is wired to Authority,
+and Authority can debit accepted coturn usage into the control-plane daily-byte ledger.
+The structured
 coturn reconcile helper can fail closed when active source allocations require a
 disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
@@ -592,12 +612,19 @@ network quality may increase it.
 - HarmonyOS device acceptance must follow the
   [MatePad Mini runbook](docs/runbook/harmony-matepad-mini.md); Android results
   are never treated as HarmonyOS evidence.
+- The read-only `make harmony-readiness EVIDENCE_DIR=...` preflight now records
+  DevEco/OHPM/Hvigor/HDC, signed-HAP checksum/signature metadata, Protocol v1
+  Host build identity, and MatePad Mini HDC-target readiness into
+  `harmony-readiness.json`. It fails closed while any prerequisite is missing
+  and is not HAP, installation, streaming, secure-pairing, soak, latency, or
+  MatePad Mini acceptance evidence.
 
 ### Phase 5 — iOS and advanced capabilities
 
 - A native SwiftUI + VideoToolbox iPhone/iPad foundation now lives in
   [`apps/ios`](apps/ios/README.md): generated Protocol v1 bindings, capability
-  negotiation, multi-display routing, H.264/HEVC decode, PCM audio, explicit
+  negotiation, multi-display routing, H.264/HEVC decode, AV1 fail-closed
+  validation, PCM audio, explicit
   clipboard, bounded verified files, epoch filtering, native touch plus
   hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
   implemented and core-self-tested.
@@ -617,9 +644,11 @@ network quality may increase it.
 - The Android and macOS Internet record layers now derive separate directional
   keys, durable nonce counters, and replay domains for control, media, audio,
   and bulk. A shared fixed-vector fixture covers all four AES-256-GCM record
-  channels and legacy-compatible key rotation. Audio/bulk WebRTC DataChannels,
-  admission/backlog limits, and public-network end-to-end behavior remain
-  unproved.
+  channels and legacy-compatible key rotation. Audio/bulk WebRTC transport
+  channels are now wired into the macOS and Android Internet product sessions
+  as raw Protocol v1 records with owner-scoped admission and bounded backlog
+  behavior. Audio capture/playback, clipboard/file-transfer product flows over
+  those channels, and public-network end-to-end behavior remain unproved.
 - The macOS Host and Android client now share a transport-neutral, bounded
   single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
   session. File offers require explicit receiver approval and default to reject;
@@ -636,9 +665,9 @@ network quality may increase it.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
-  HDR output, audio/bulk Internet transport, native input behavior, reconnect
-  behavior, and all advanced real-device behavior remain separate device
-  gates. Android results are never treated as iOS evidence; see the
+  HDR output, audio/bulk product flows over Internet DataChannels, native input
+  behavior, reconnect behavior, and all advanced real-device behavior remain
+  separate device gates. Android results are never treated as iOS evidence; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy

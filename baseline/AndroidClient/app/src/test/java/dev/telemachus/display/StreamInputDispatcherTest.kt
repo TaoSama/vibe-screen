@@ -133,6 +133,19 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun rejectedStylusForwardingReportsNotAdmitted() {
+        val recorder = RecordingSubmitter(OutboundCommandScheduler.Submission.CLOSED)
+        val dispatcher = dispatcher(
+            state = negotiatedState(stylus = true, extendedStylus = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendMotionStylus(listOf(stylusSample())))
+
+        assertEquals(1, recorder.submissions.size)
+    }
+
+    @Test
     fun pointerKeyboardAndReleaseRoutesUseStructuralProtocolBatches() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
@@ -172,6 +185,27 @@ class StreamInputDispatcherTest {
         assertEquals(false, release[0].keyEvent.pressed)
         assertEquals(24L, release[1].pointerEvent.inputId)
         assertEquals(InputPhase.INPUT_PHASE_CANCELLED, release[1].pointerEvent.phase)
+    }
+
+    @Test
+    fun nativePointerMoveUsesMoveBatchAndPreservesButtonMask() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+            firstInputId = 40,
+        )
+
+        assertTrue(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.6f, 0.4f, NativeInputWire.BUTTON_PRIMARY))
+
+        val submission = recorder.single()
+        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        val pointer = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_POINTER)).single().pointerEvent
+        assertEquals(40L, pointer.inputId)
+        assertEquals(InputPhase.INPUT_PHASE_CHANGED, pointer.phase)
+        assertEquals(0.6, pointer.position.x, 0.000001)
+        assertEquals(0.4, pointer.position.y, 0.000001)
+        assertEquals(NativeInputWire.BUTTON_PRIMARY, pointer.buttonMask)
     }
 
     @Test

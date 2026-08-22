@@ -20,6 +20,8 @@ from scripts.phase3_webrtc.privacy import (
 )
 from scripts.phase3_webrtc.processes import assert_no_new_coturn_residue
 from scripts.phase3_webrtc.public_evidence import (
+    PRODUCT_MEDIA_PROOF,
+    PRODUCT_MEDIA_SOURCE,
     PUBLIC_PATHS,
     build_public_artifact_tree,
     validate_public_artifact_tree,
@@ -91,7 +93,8 @@ def private_evidence(mode: str) -> dict[str, object]:
             "initial_video_config_ack_epoch": 1,
             "runtime_video_config_ack_epoch": 2,
             "runtime_rotation_degrees": 90,
-            "media": "synthetic keyframe and delta pass",
+            "media": PRODUCT_MEDIA_PROOF,
+            "media_source": PRODUCT_MEDIA_SOURCE,
             "touch_input": "pass",
             "seeded_plaintext_log_scan": "pass",
             "capture_or_stream_server_started": False,
@@ -357,6 +360,7 @@ class LocalWebRTCPrivacyTests(unittest.TestCase):
             ("data_channels", "media"),
             ("product_session", "client_hello"),
             ("product_session", "media"),
+            ("product_session", "media_source"),
             ("product_session", "touch_input"),
         ):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
