@@ -740,10 +740,12 @@ internal class ProtocolV1Session(
         if (state != State.STREAMING) return emptyList()
         if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return emptyList()
         if (targetDisplayId.isBlank() || targetDisplayId == displayId) return emptyList()
-        if (availableDisplays.none { it.id == targetDisplayId }) return emptyList()
+        val targetDisplay = availableDisplays.firstOrNull { it.id == targetDisplayId } ?: return emptyList()
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
         pendingDisplaySelectionIdValue = targetDisplayId
+        pendingDisplaySelectionWidth = targetDisplay.width
+        pendingDisplaySelectionHeight = targetDisplay.height
         val request =
             StartDisplayRequest
                 .newBuilder()

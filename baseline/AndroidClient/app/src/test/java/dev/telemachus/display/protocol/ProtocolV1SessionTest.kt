@@ -1154,6 +1154,40 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun runtimeDisplaySelectionCommitsKnownGeometryWhenStartResponseOmitsDescriptor() {
+        val session = multiDisplayStreamingSession()
+
+        session.selectDisplay("display-2")
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(true)
+                    .setStreamId(43),
+            ).build(),
+        )
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4, streamId = 43)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        val geometry = committed.filterIsInstance<ProtocolV1Session.Action.DisplayGeometryChanged>().single()
+
+        assertEquals("display-2", session.selectedDisplayId)
+        assertEquals(2560, geometry.width)
+        assertEquals(1440, geometry.height)
+        val touch = session.touch(100, 1, InputPhase.INPUT_PHASE_BEGAN, 0.25, 0.75)
+        assertEquals("display-2", touch.touchEvent.target.displayId)
+        assertEquals(43L, touch.touchEvent.target.streamId)
+    }
+
+    @Test
     fun runtimeDisplaySelectionRejectsWithoutChangingActiveDisplayWhenHostDeclines() {
         val session = multiDisplayStreamingSession()
 
