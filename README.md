@@ -564,6 +564,13 @@ coturn reconcile helper can fail closed when active source allocations require a
 disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
 remain release gates.
+The script scripts/phase3/production_e2e_enforcement.py is the explicit owner
+and evidence contract for closing that final production enforcement gate. It
+fails closed when real deployed configuration is absent, when
+authority/signaling/coturn policy values diverge, or when local loopback and
+synthetic-peer evidence is presented as public production E2E. The current
+blocked record is retained under
+[2026-08-22-production-e2e-enforcement-blocked](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-22-production-e2e-enforcement-blocked/README.md).
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.

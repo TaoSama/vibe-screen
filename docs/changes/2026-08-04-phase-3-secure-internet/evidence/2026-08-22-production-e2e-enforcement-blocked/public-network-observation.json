@@ -1,0 +1,20 @@
+{
+  "classification": "public_internet",
+  "local_loopback": false,
+  "missing": [
+    "public Authority endpoint",
+    "public signaling endpoint",
+    "remote TURN route"
+  ],
+  "observed": false,
+  "public_endpoint_hosts": [],
+  "public_route_observed": false,
+  "remote_turn_observed": false,
+  "result": "not_run",
+  "run_id": "phase3-production-e2e-enforcement-20260822-blocked",
+  "schema": "dev.vibescreen.phase3-production-public-network-observation/v1",
+  "source": {
+    "commit": "845d914a4f52cdb65684975de788e656c9eb2bd8"
+  },
+  "synthetic_peer": false
+}
