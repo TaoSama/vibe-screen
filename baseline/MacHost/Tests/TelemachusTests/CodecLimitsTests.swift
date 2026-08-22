@@ -2,6 +2,24 @@ import XCTest
 @testable import Telemachus
 
 final class CodecLimitsTests: XCTestCase {
+    func testAV1CapabilityProbeDoesNotAdvertiseUnsupportedStreamCodec() {
+        let snapshot = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: true,
+            hevcHardwareEncoderAvailable: true,
+            av1HardwareEncoderAvailable: true
+        )
+
+        XCTAssertEqual(snapshot.protocolV1SupportedCodecs, [.hevc, .h264])
+        XCTAssertEqual(
+            VideoCodecAdmissionPolicy.protocolCodecs(
+                from: [.av1, .hevc, .h264],
+                capabilities: snapshot
+            ),
+            [.hevc, .h264]
+        )
+        XCTAssertNil(VideoCodecAdmissionPolicy.streamCodec(for: .av1))
+    }
+
     func testBooxPanelClampsToFitAvcLimit() {
         // Boox Nova Air C panel: 1872x1404. AVC HW decoder max: 1920x1088.
         let r = CodecLimits.clampForAvc(width: 1872, height: 1404)

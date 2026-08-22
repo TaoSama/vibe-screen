@@ -131,6 +131,8 @@ class StreamClient(
     private val pendingInboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
+    internal val currentLanProtectionState: LanRecordProtectionState
+        get() = lanRecordProtectionState
     @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
     // Android currently sends only client-to-host control messages on the trusted-LAN record layer.
     @Volatile private var nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
@@ -668,12 +670,7 @@ class StreamClient(
             deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_BYTES),
             transport = transport,
             codecs =
-                CodecCapabilities.advertisedStreamCodecs.map { codec ->
-                    when (codec) {
-                        StreamCodec.HEVC -> Codec.CODEC_HEVC
-                        StreamCodec.H264 -> Codec.CODEC_H264
-                    }
-                },
+                CodecCapabilities.advertisedStreamCodecs.mapNotNull(StreamCodec::toProtocolCodecOrNull),
             advertiseController = advertiseController,
             fileTransferPolicy = fileTransferPolicy,
             wakeHostPolicy = wakeHostPolicy,

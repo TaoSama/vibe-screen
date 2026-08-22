@@ -1,5 +1,6 @@
 /config/relay.production.json
 /config/authority.production.json
+/config/signaling.production.json
 /secrets/*.txt
 /secrets/authority/
 /tls/*

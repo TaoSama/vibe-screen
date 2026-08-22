@@ -25,8 +25,14 @@ PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
+HARMONY_HDC_TARGET ?=
+HARMONY_HAP ?=
+HARMONY_SHA256SUMS ?=
+HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
+HARMONY_HOST_COMMIT ?=
+HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -61,16 +67,16 @@ phase3-local-synthetic-product-e2e:
 	rm -f "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct.json" "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay.json"
 	rm -rf "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct-logs" "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay-logs" "$(PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR)"
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3_webrtc/run_local_e2e.py --mode direct --slice product --timeout-seconds "$(PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS)" --diagnostics-dir "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct-logs" --output "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct.json"
-	@jq -e 'select(.schema == "$(PHASE3_WEBRTC_E2E_SCHEMA)" and .result == "pass" and .mode == "direct" and .slice == "product" and .signaling.real_process == true and .webrtc.selected_route == "direct" and (.webrtc.selected_candidate_pair | startswith("direct(")) and .product_session.host == "InternetProductSession" and .product_session.device == "synthetic Protocol v1 harness" and .product_session.capture_or_stream_server_started == false)' "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct.json" >/dev/null
+	@jq -e 'select(.schema == "$(PHASE3_WEBRTC_E2E_SCHEMA)" and .result == "pass" and .mode == "direct" and .slice == "product" and .signaling.real_process == true and .webrtc.selected_route == "direct" and (.webrtc.selected_candidate_pair | startswith("direct(")) and .product_session.host == "InternetProductSession" and .product_session.device == "synthetic Protocol v1 harness" and .product_session.media_source == "videotoolbox-hevc" and .product_session.capture_or_stream_server_started == false)' "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/direct.json" >/dev/null
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --skip-build --turnserver "$(PHASE3_TURNSERVER)" --timeout-seconds "$(PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS)" --diagnostics-dir "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay-logs" --output "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay.json"
-	@jq -e 'select(.schema == "$(PHASE3_WEBRTC_E2E_SCHEMA)" and .result == "pass" and .mode == "relay" and .slice == "product" and .signaling.real_process == true and .webrtc.selected_route == "relay" and (.webrtc.selected_candidate_pair | startswith("relay(")) and .coturn.real_process == true and .coturn.forced_libwebrtc_relay == "pass" and .product_session.host == "InternetProductSession" and .product_session.device == "synthetic Protocol v1 harness" and .product_session.capture_or_stream_server_started == false)' "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay.json" >/dev/null
+	@jq -e 'select(.schema == "$(PHASE3_WEBRTC_E2E_SCHEMA)" and .result == "pass" and .mode == "relay" and .slice == "product" and .signaling.real_process == true and .webrtc.selected_route == "relay" and (.webrtc.selected_candidate_pair | startswith("relay(")) and .coturn.real_process == true and .coturn.forced_libwebrtc_relay == "pass" and .product_session.host == "InternetProductSession" and .product_session.device == "synthetic Protocol v1 harness" and .product_session.media_source == "videotoolbox-hevc" and .product_session.capture_or_stream_server_started == false)' "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/relay.json" >/dev/null
 	$(MAKE) phase3-local-synthetic-public-artifacts-check
 
 phase3-local-synthetic-public-artifacts-check:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3_webrtc/public_artifacts.py --root "$(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)" --output "$(PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR)"
 
 phase3-local-product-e2e:
-	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness only; no Android device or ScreenCaptureKit capture).' >&2
+	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness with real VideoToolbox HEVC payloads only; no Android device, ScreenCaptureKit capture, or MediaCodec decode).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
 
 baseline-macos-build:
@@ -131,6 +137,17 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
 		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
 
+harmony-readiness:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_readiness.py --output "$(EVIDENCE_DIR)/harmony-readiness.json" \
+		$(if $(strip $(HARMONY_HDC_TARGET)),--target "$(HARMONY_HDC_TARGET)",) \
+		$(if $(strip $(HARMONY_HAP)),--hap "$(HARMONY_HAP)",) \
+		$(if $(strip $(HARMONY_SHA256SUMS)),--sha256sums "$(HARMONY_SHA256SUMS)",) \
+		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
+		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
+		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",)
+
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py "$(EVIDENCE_DIR)/harmony-device-gates.json"
@@ -175,3 +192,7 @@ phase2-tablet-manifest: require-evidence-serial
 phase2-tablet-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-8h/summary.json --samples $(EVIDENCE_DIR)/soak-8h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-8h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-8h/exact-window-report.json
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/soak-8h/phase2-tablet-gate.json
+
+hardware-keyboard-gate:
+	@test -f "$(EVIDENCE_DIR)/hardware-keyboard-observations.json" || (echo "error: collect $(EVIDENCE_DIR)/hardware-keyboard-observations.json before hardware-keyboard-gate" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json

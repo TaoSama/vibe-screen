@@ -26,17 +26,64 @@ class ClientExperienceTest {
     @Test
     fun `streaming status distinguishes transport security`() {
         val usb = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.USB)
-        val lan = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.WIRELESS)
+        val lan =
+            ConnectionSecurityPresentationPolicy.presentation(
+                ConnectionMode.WIRELESS,
+                LanRecordProtectionState.ENCRYPTED,
+            )
         val internet = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.INTERNET)
 
         assertEquals(R.string.stream_status_usb_label, usb.labelResource)
         assertFalse(usb.warning)
         assertEquals(R.string.stream_status_lan_label, lan.labelResource)
-        assertEquals(R.string.stream_status_lan_detail, lan.detailResource)
+        assertEquals(R.string.stream_status_lan_encrypted_detail, lan.detailResource)
         assertFalse(lan.warning)
         assertEquals(R.string.stream_status_internet_label, internet.labelResource)
         assertEquals(R.string.stream_status_internet_detail, internet.detailResource)
         assertFalse(internet.warning)
+    }
+
+    @Test
+    fun `lan streaming status does not report legacy or unknown protection as encrypted`() {
+        val legacy =
+            ConnectionSecurityPresentationPolicy.presentation(
+                ConnectionMode.WIRELESS,
+                LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK,
+            )
+        val unknown =
+            ConnectionSecurityPresentationPolicy.presentation(
+                ConnectionMode.WIRELESS,
+                LanRecordProtectionState.NOT_APPLICABLE,
+            )
+
+        assertEquals(R.string.stream_status_lan_legacy_plaintext_detail, legacy.detailResource)
+        assertTrue(legacy.warning)
+        assertEquals(R.string.stream_status_lan_unknown_detail, unknown.detailResource)
+        assertTrue(unknown.warning)
+    }
+
+    @Test
+    fun `lan clipboard confirmation mirrors negotiated protection state`() {
+        assertEquals(
+            R.string.clipboard_lan_confirm_message,
+            LanClipboardProtectionMessagePolicy.sendMessage(LanRecordProtectionState.ENCRYPTED),
+        )
+        assertEquals(
+            R.string.clipboard_lan_legacy_confirm_message,
+            LanClipboardProtectionMessagePolicy.sendMessage(LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK),
+        )
+        assertEquals(
+            R.string.clipboard_lan_unknown_confirm_message,
+            LanClipboardProtectionMessagePolicy.sendMessage(LanRecordProtectionState.NOT_APPLICABLE),
+        )
+        assertEquals(
+            R.string.clipboard_lan_legacy_receive_confirm_message,
+            LanClipboardProtectionMessagePolicy.receiveMessage(LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK),
+        )
+        assertEquals(
+            R.string.clipboard_lan_unknown_direct_receive_confirm_message,
+            LanClipboardProtectionMessagePolicy.directReceiveMessage(LanRecordProtectionState.NEGOTIATING),
+        )
     }
 
     @Test

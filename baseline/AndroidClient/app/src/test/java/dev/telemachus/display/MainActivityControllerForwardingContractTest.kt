@@ -37,13 +37,16 @@ class MainActivityControllerForwardingContractTest {
         val source = mainActivitySource()
         val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
 
-        assertContains(dispatchKeyEvent, "if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)")
+        assertContains(dispatchKeyEvent, "if (!isInForeground || event.isSystemKey()) return super.dispatchKeyEvent(event)")
         assertContains(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)?.let { change ->")
-        assertContains(dispatchKeyEvent, "streamControllerSessionState.applyKey(change)")
+        assertContains(dispatchKeyEvent, "val active = canSendControllerInput()")
+        assertContains(dispatchKeyEvent, "activeControllerSessionState()")
+        assertContains(dispatchKeyEvent, "state.applyKey(change)")
         assertContains(dispatchKeyEvent, "sendStreamControllerDispatch(dispatch,")
         assertContains(dispatchKeyEvent, "controller key")
-        assertContains(dispatchKeyEvent, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
         assertBefore(dispatchKeyEvent, "if (!isInForeground", "ControllerInputMapper.keyChange(event)")
+        assertContains(dispatchKeyEvent, "if (!isConnected) return super.dispatchKeyEvent(event)")
+        assertContains(dispatchKeyEvent, "ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)")
         assertBefore(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)", "AndroidKeyInputMapper.map(")
     }
 
@@ -56,7 +59,8 @@ class MainActivityControllerForwardingContractTest {
         assertContains(source, "handleGenericMotion(view, event)")
         assertContains(genericMotion, "if (!isInForeground) return false")
         assertContains(genericMotion, "if (!isConnected) return false")
-        assertContains(genericMotion, "ControllerInputMapper.snapshot(event)?.let { snapshot ->")
+        assertContains(genericMotion, "val active = canSendControllerInput(session)")
+        assertContains(genericMotion, "if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->")
         assertContains(genericMotion, "streamControllerSessionState.applyMotion(snapshot)")
         assertContains(genericMotion, "sendStreamControllerDispatch(dispatch,")
         assertContains(genericMotion, "controller motion")
@@ -80,15 +84,45 @@ class MainActivityControllerForwardingContractTest {
     fun controllerDispatchUsesNegotiatedSessionBindingAndStreamClientSink() {
         val source = mainActivitySource()
         val dispatch = extractMethod(source, "private fun sendStreamControllerDispatch")
+        val internetDispatch = extractMethod(source, "private fun sendInternetControllerDispatch")
         val sink = extractClass(source, "private inner class StreamClientInputSink")
 
+        assertContains(dispatch, "if (prefs.connectionMode == ConnectionMode.INTERNET)")
+        assertContains(dispatch, "return sendInternetControllerDispatch(dispatch, source)")
         assertContains(dispatch, "ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))")
         assertContains(dispatch, "ClientInputDispatchResult.SENT -> true")
         assertContains(dispatch, "ClientInputDispatchResult.REJECTED ->")
         assertContains(dispatch, "ClientInputDispatchResult.UNSUPPORTED ->")
+        assertContains(internetDispatch, "ProductControllerEvent(internetInputIds.next(), sample)")
+        assertContains(internetDispatch, "targetSession: InternetProductSession? = internetSession")
+        assertContains(internetDispatch, "session.sendController(events, delivery)")
         assertContains(sink, "override fun sendController(input: ClientControllerInput): Boolean")
         assertContains(sink, "if (!isCurrentSession(client, generation)) return false")
         assertContains(sink, "return client.sendController(input.dispatch)")
+    }
+
+    @Test
+    fun internetControllerUsesNegotiatedProductSessionAndResyncsOnVideoConfiguration() {
+        val source = mainActivitySource()
+        val genericMotion = extractMethod(source, "private fun handleGenericMotion")
+        val internetConnect = extractMethod(source, "private fun connectInternet(")
+
+        assertContains(genericMotion, "if (prefs.connectionMode == ConnectionMode.INTERNET)")
+        assertContains(genericMotion, "val active = canSendControllerInput(session)")
+        assertContains(genericMotion, "if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->")
+        assertContains(genericMotion, "internetControllerSessionState.applyMotion(snapshot)")
+        assertContains(genericMotion, "ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)")
+        assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "handleInternetStylus(view, event, session")
+        assertContains(internetConnect, "advertiseController = true")
+        assertContains(internetConnect, "override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration)")
+        assertContains(internetConnect, "internetControllerSessionState.resynchronize()")
+        assertContains(internetConnect, "override fun onInputAck(")
+        assertContains(internetConnect, "ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted)")
+        assertContains(internetConnect, "internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)")
+        assertContains(source, "sendInternetControllerDispatch(dispatch, \"internet controller video configuration\")")
+        assertContains(source, "internetControllerSessionState.takeRelease()?.let { release ->")
+        assertContains(source, "sendInternetControllerDispatch(release, \"internet controller release\", internet)")
+        assertContains(source, "internet controller release")
     }
 
     @Test

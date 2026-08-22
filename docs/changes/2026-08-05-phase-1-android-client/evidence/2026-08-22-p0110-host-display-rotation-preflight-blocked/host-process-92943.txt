@@ -1,0 +1,3 @@
+  PID  PPID USER     COMMAND
+92943     1 luwentao /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+exit=0

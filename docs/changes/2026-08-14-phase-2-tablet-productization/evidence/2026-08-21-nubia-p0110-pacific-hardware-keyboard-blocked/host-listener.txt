@@ -1,0 +1,2 @@
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
+exit_code=1
