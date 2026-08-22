@@ -7,6 +7,7 @@ passes. Run all Python checks from the repository root:
 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 python3 scripts/phase3/network_profile.py --profile handoff --output /tmp/vibe-screen-phase3/handoff.json
 python3 scripts/phase3/security_vectors.py --output /tmp/vibe-screen-phase3/security-model.json
+python3 scripts/phase3/release_gate_summary.py --output /tmp/vibe-screen-phase3/release-gate-summary.json
 ```
 
 The security command without `--sut` validates only the attack-vector policy
@@ -83,6 +84,30 @@ credential expiry, relay byte accounting, rate limiting, or abuse controls.
 Those claims require the external SUT mode and deployed relay/Android evidence;
 the reference policy model is intentionally labelled so it cannot be mistaken
 for such evidence.
+
+`release_gate_summary.py` is the current-base aggregation gate. It inspects the
+local synthetic public artifact projection, the dated Nubia local interop record,
+and the current-main blocked real-media attempt, then writes a single summary in
+which every public Internet release gate remains `open`. Use
+`--require-release-pass` only for a future release-blocking job; today that mode
+is expected to exit non-zero because local loopback, synthetic Protocol v1 peers,
+forced local coturn, and blocked attempts are readiness evidence only.
+
+The aggregate owner is PR #258 (`codex/phase3-current-base-gates`). Keep that PR
+as the only current-base source of truth for overall Phase 3 public Internet
+release-gate status; child PRs own bounded evidence packages instead of
+duplicating aggregate status. The summary records #194 as the public Internet and
+real remote TURN owner, #173 as the ScreenCaptureKit-to-Android-decoder owner,
+PRs #224 and #171 as the network-handoff/recovery owners, #190 as the revocation
+propagation owner, #214 as the soak owner, and #254 as the production enforcement
+owner. The merged #241 coverage audit is a docs-only baseline that informs this
+ownership map, not an executable aggregate verifier. Older broad
+manifest/contract candidates such as #164 and #188 should be
+narrowed or superseded for aggregate ownership. None of those child gates can
+close from loopback, synthetic media, forced local coturn, or blocked deployment
+records; public deployment evidence must fail closed until the real external
+route, remote TURN, capture-to-device decoder, handoff, revocation, latency, and
+soak artifacts exist.
 
 Use the explicit product slice to exercise the macOS product-session composition
 through real signaling/libwebrtc and, in relay mode, forced local coturn:
