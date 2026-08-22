@@ -463,12 +463,20 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
 def main(arguments: list[str] | None = None) -> int:
     args = parse_arguments(arguments)
     try:
+        resolved_commit = git_revision(args.repo.resolve())
+        current_commit = resolved_commit
+        if args.current_commit is not None:
+            current_commit = args.current_commit.lower()
+            if current_commit != resolved_commit:
+                raise GateSummaryError(
+                    "--current-commit does not match the checked-out repository HEAD"
+                )
         summary = build_summary(
             args.repo,
             local_public_dir=args.local_public_dir,
             android_interop_acceptance=args.android_interop_acceptance,
             blocked_real_media_acceptance=args.blocked_real_media_acceptance,
-            current_commit=args.current_commit,
+            current_commit=current_commit,
         )
     except (E2EFailure, GateSummaryError) as error:
         print(f"Phase 3 release gate summary: FAIL ({error})", file=sys.stderr)

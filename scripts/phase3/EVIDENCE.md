@@ -98,7 +98,7 @@ as the only current-base source of truth for overall Phase 3 public Internet
 release-gate status; child PRs own bounded evidence packages instead of
 duplicating aggregate status. The summary records #194 as the public Internet and
 real remote TURN owner, #173 as the ScreenCaptureKit-to-Android-decoder owner,
-#224/#171 as the network-handoff/recovery owners, #190 as the revocation
+PRs #224 and #171 as the network-handoff/recovery owners, #190 as the revocation
 propagation owner, #214 as the soak owner, and #254 as the production enforcement
 owner. Older broad manifest/contract candidates such as #164 and #188 should be
 narrowed or superseded for aggregate ownership. None of those child gates can
