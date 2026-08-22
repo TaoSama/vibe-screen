@@ -248,15 +248,15 @@ make phase2-tablet-soak-preflight \
   PHASE2_VIDEO_PREFERENCES="preflight only" \
   PHASE2_HOST_IDENTITY="$(uname -a)" \
   PHASE2_HOST_BUILD="not stable-signed formal Host for 8h gate" \
-  PHASE2_APK_SHA256="readiness-only-no-apk-hash" \
   PHASE2_SOAK_PREFLIGHT_DURATION=2s \
   PHASE2_SOAK_INTERVAL=1s
 ```
 
-The readiness-only APK hash placeholder is allowed only for preflight blocker
-records. A formal eight-hour run must provide `PHASE2_APK_PATH` or a real
-64-character hexadecimal `PHASE2_APK_SHA256`; otherwise the wrapper rejects the
-run before it can close the Phase 2 gate.
+Preflight may omit APK identity; the wrapper records that as a readiness-only
+blocker instead of writing fake SHA-256 evidence. A formal eight-hour run must
+provide `PHASE2_APK_PATH` or a real 64-character hexadecimal
+`PHASE2_APK_SHA256`; otherwise the wrapper rejects the run before it can close
+the Phase 2 gate.
 
 A formal run needs a physical 8-9 inch tablet, a stand-mounted charging setup,
 the signed Host process PID, and a Host started with `VIBE_SCREEN_TELEMETRY_PATH`

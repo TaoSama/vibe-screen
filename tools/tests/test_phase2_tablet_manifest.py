@@ -106,7 +106,16 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertIn("stylus-evidence.json", manifest["required_artifacts"])
         self.assertIn("hardware-keyboard-evidence.json", manifest["required_artifacts"])
         self.assertIn("phase2-tablet-preflight.json", manifest["required_artifacts"])
+        self.assertEqual(manifest["android_artifact"]["identity_status"], "present")
         self.assertTrue(any("does not close" in item for item in manifest["limitations"]))
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_allows_missing_preflight_apk_identity(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        manifest = make_manifest(apk_sha256=None)
+
+        self.assertIsNone(manifest["android_artifact"]["apk_sha256"])
+        self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_build_manifest_matches_schema_required_fields(self, state):

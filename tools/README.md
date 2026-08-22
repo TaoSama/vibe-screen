@@ -382,7 +382,6 @@ make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
   PHASE2_VIDEO_PREFERENCES="preflight only" \
   PHASE2_HOST_IDENTITY="Mac model and macOS version" \
   PHASE2_HOST_BUILD="not a formal signed Host run" \
-  PHASE2_APK_SHA256="readiness-only-no-apk-hash" \
   PHASE2_SOAK_PREFLIGHT_DURATION=2s \
   PHASE2_SOAK_INTERVAL=1s
 ```
@@ -390,10 +389,11 @@ make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
 If the wrapper finds `/tmp/vibe-screen-device-android.lock` or
 `/tmp/vibe-screen-device-soak.lock`, it writes only
 `phase2-soak-readiness.json` and `README.md` with `result=blocked`; it does not
-run ADB or create static, logcat, or soak artifacts. Preflight may record a
-readiness-only placeholder APK hash as blocker context. Formal `run` mode must
-use `PHASE2_APK_PATH` or a real 64-character hexadecimal `PHASE2_APK_SHA256`;
-placeholder values are rejected before the gate can close.
+run ADB or create static, logcat, or soak artifacts. Preflight may omit APK
+identity; the wrapper records that as a readiness-only blocker instead of
+writing fake SHA-256 evidence. Formal `run` mode must use `PHASE2_APK_PATH` or a
+real 64-character hexadecimal `PHASE2_APK_SHA256`; placeholder values are
+rejected before the gate can close.
 
 Use `phase2-tablet-soak-run` only after the physical tablet, stand-mounted
 charging setup, signed Host PID, and `VIBE_SCREEN_TELEMETRY_PATH` JSONL are all

@@ -53,8 +53,8 @@
       "path": "host.txt"
     },
     {
-      "kind": "android_artifact",
-      "path": "apk-sha256.txt"
+      "kind": "android_artifact_missing",
+      "path": "apk-identity-missing.txt"
     },
     {
       "kind": "command",
@@ -114,7 +114,7 @@
     }
   ],
   "blockers": [
-    "--apk-sha256 must be a 64-character hexadecimal digest",
+    "APK identity was not provided; preflight cannot close the Phase 2 gate",
     "device_class is not physical_8_9_inch_tablet, so this run cannot close the tablet hardware gate",
     "host PID was not provided, so Host RSS cannot be sampled",
     "host telemetry JSONL path was not provided"
@@ -132,8 +132,6 @@
     "preflight",
     "--package",
     "dev.telemachus.display",
-    "--apk-sha256",
-    "readiness-only-no-apk-hash",
     "--device-class",
     "android_substitute",
     "--stand-setup",

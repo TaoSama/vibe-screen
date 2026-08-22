@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -39,7 +39,7 @@ def make_args(directory: Path, **overrides):
         "host_telemetry_jsonl": None,
         "host_log": None,
         "apk": None,
-        "apk_sha256": "test-sha",
+        "apk_sha256": "a" * 64,
         "repo": REPO_ROOT,
         "tablet_size_inches": None,
         "stand_setup": "bench substitute phone, no tablet stand",
@@ -87,12 +87,20 @@ class Phase2TabletSoakTests(unittest.TestCase):
         artifacts = runner_required_artifacts("preflight")
 
         self.assertIn("phase2-soak-readiness.json", artifacts)
+        self.assertIn("apk-sha256.txt", artifacts)
         self.assertIn("soak-preflight/samples.jsonl", artifacts)
         self.assertIn("soak-preflight/summary.json", artifacts)
         self.assertIn("host.txt", artifacts)
         self.assertNotIn("samples.jsonl", artifacts)
         self.assertNotIn("summary.json", artifacts)
         self.assertNotIn("host.log", artifacts)
+
+    def test_preflight_manifest_artifacts_use_missing_apk_identity_marker(self):
+        artifacts = runner_required_artifacts("preflight", has_apk_identity=False)
+
+        self.assertIn("phase2-soak-readiness.json", artifacts)
+        self.assertIn("apk-identity-missing.txt", artifacts)
+        self.assertNotIn("apk-sha256.txt", artifacts)
 
     def test_sha256_digest_validation(self):
         self.assertTrue(is_sha256_digest("a" * 64))
@@ -112,8 +120,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
                     command=["phase2-tablet-soak"],
                     output_dir=directory,
                     device_class="android_substitute",
-                    blockers=["--apk-sha256 must be a 64-character hexadecimal digest"],
-                    artifacts=[{"path": "apk-sha256.txt", "kind": "android_artifact"}],
+                    blockers=["APK identity was not provided; preflight cannot close the Phase 2 gate"],
+                    artifacts=[{"path": "apk-identity-missing.txt", "kind": "android_artifact_missing"}],
                     soak_summary=None,
                     gate=None,
                 ),
@@ -122,7 +130,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
 
         self.assertIn("phase2-soak-readiness.json", readme)
         self.assertIn("can_close_phase2_gate=true", readme)
-        self.assertIn("readiness-only blocker context", readme)
+        self.assertIn("APK identity is readiness-only blocker context", readme)
 
     def test_existing_device_lock_writes_blocked_readiness_without_adb(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -136,7 +144,10 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 patch("vibescreen_evidence.phase2_tablet_soak.subprocess.run") as run,
                 patch("vibescreen_evidence.phase2_tablet_soak.subprocess.Popen") as popen,
             ):
-                readiness = run_or_preflight(make_args(directory), ["phase2-tablet-soak"])
+                readiness = run_or_preflight(
+                    make_args(directory, apk_sha256="readiness-only-no-apk-hash"),
+                    ["phase2-tablet-soak"],
+                )
 
             persisted = json.loads((directory / "phase2-soak-readiness.json").read_text())
             output_files = sorted(
@@ -229,7 +240,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertIn("not physical_8_9_inch_tablet", " ".join(readiness["blockers"]))
         runner.assert_not_called()
 
-    def test_preflight_placeholder_apk_sha256_blocks_but_still_runs_soak(self):
+    def test_preflight_missing_apk_identity_blocks_but_still_runs_soak(self):
         device_info = {
             "device": {
                 "adb_serial": "EP0110PZ0B9110300B",
@@ -258,16 +269,113 @@ class Phase2TabletSoakTests(unittest.TestCase):
                     device_info,
                     [],
                     [{"path": "device-info.json", "kind": "device_info"}],
-                    "readiness-only-no-apk-hash",
+                    None,
                 )
                 start_logcat.return_value = (object(), object())
                 runner_class.return_value.run.return_value = {"status": "complete"}
 
-                readiness = run_or_preflight(make_args(directory), ["phase2-tablet-soak"])
+                readiness = run_or_preflight(
+                    make_args(directory, apk_sha256=None),
+                    ["phase2-tablet-soak"],
+                )
+
+                self.assertTrue((directory / "apk-identity-missing.txt").exists())
+                self.assertFalse((directory / "apk-sha256.txt").exists())
+                manifest = json.loads((directory / "phase2-tablet-manifest.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(readiness["result"], "blocked")
+        self.assertIn("APK identity was not provided", "\n".join(readiness["blockers"]))
+        self.assertIn({"path": "apk-identity-missing.txt", "kind": "android_artifact_missing"}, readiness["artifacts"])
+        self.assertIsNone(manifest["android_artifact"]["apk_sha256"])
+        self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
+        self.assertIn("apk-identity-missing.txt", manifest["required_artifacts"])
+        self.assertNotIn("apk-sha256.txt", manifest["required_artifacts"])
+        runner_class.assert_called_once()
+
+    def test_preflight_invalid_apk_sha256_blocks_without_sha_artifact(self):
+        device_info = {
+            "device": {
+                "adb_serial": "EP0110PZ0B9110300B",
+                "device_serial": "EP0110PZ0B9110300B",
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "codename": "pacific",
+                "android_release": "16",
+                "sdk": 36,
+                "build_fingerprint": "nubia/pacific/test",
+                "abi": "arm64-v8a",
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            with (
+                patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", directory / "soak.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.ANDROID_LOCK", directory / "android.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.collect_static_artifacts") as collect,
+                patch("vibescreen_evidence.phase2_tablet_soak.start_logcat") as start_logcat,
+                patch("vibescreen_evidence.phase2_tablet_soak.SoakRunner") as runner_class,
+                patch("vibescreen_evidence.phase2_tablet_soak.collect_after_artifacts", return_value=[]),
+                patch("vibescreen_evidence.phase2_tablet_soak.stop_process"),
+            ):
+                collect.return_value = (
+                    device_info,
+                    [],
+                    [{"path": "device-info.json", "kind": "device_info"}],
+                    None,
+                )
+                start_logcat.return_value = (object(), object())
+                runner_class.return_value.run.return_value = {"status": "complete"}
+
+                readiness = run_or_preflight(
+                    make_args(directory, apk_sha256="readiness-only-no-apk-hash"),
+                    ["phase2-tablet-soak"],
+                )
+
+                self.assertTrue((directory / "apk-identity-missing.txt").exists())
+                self.assertFalse((directory / "apk-sha256.txt").exists())
 
         self.assertEqual(readiness["result"], "blocked")
         self.assertIn("--apk-sha256 must be a 64-character hexadecimal digest", readiness["blockers"])
         runner_class.assert_called_once()
+
+    def test_preflight_mode_allows_missing_apk_identity(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            with (
+                redirect_stderr(io.StringIO()),
+                redirect_stdout(io.StringIO()),
+                patch("vibescreen_evidence.phase2_tablet_soak.run_or_preflight") as runner,
+            ):
+                runner.return_value = {
+                    "result": "blocked",
+                    "can_close_phase2_gate": False,
+                }
+                exit_code = main([
+                    "--serial",
+                    "EP0110PZ0B9110300B",
+                    "--output-dir",
+                    str(directory),
+                    "--mode",
+                    "preflight",
+                    "--device-class",
+                    "android_substitute",
+                    "--stand-setup",
+                    "bench substitute phone",
+                    "--charger",
+                    "unknown charger",
+                    "--cable-or-dock",
+                    "USB-C cable",
+                    "--video-preferences",
+                    "preflight only",
+                    "--host-identity",
+                    "test host",
+                    "--host-build",
+                    "test host build",
+                    "--allow-existing-device-lock",
+                ])
+
+        self.assertEqual(exit_code, 2)
+        runner.assert_called_once()
 
     def test_formal_run_logcat_failure_blocks_and_skips_gate(self):
         device_info = {
@@ -381,6 +489,36 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         "run",
                         "--apk-sha256",
                         "readiness-only-no-apk-hash",
+                        "--device-class",
+                        "physical_8_9_inch_tablet",
+                        "--stand-setup",
+                        "desktop stand",
+                        "--charger",
+                        "vendor charger",
+                        "--cable-or-dock",
+                        "USB-C cable",
+                        "--video-preferences",
+                        "Balanced",
+                        "--host-identity",
+                        "test host",
+                        "--host-build",
+                        "signed host",
+                    ])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_formal_mode_requires_apk_identity(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    main([
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--output-dir",
+                        str(directory),
+                        "--mode",
+                        "run",
                         "--device-class",
                         "physical_8_9_inch_tablet",
                         "--stand-setup",

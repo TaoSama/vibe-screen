@@ -408,7 +408,7 @@ phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
 	@test -n "$(strip $(PHASE2_VIDEO_PREFERENCES))" || (echo "error: set PHASE2_VIDEO_PREFERENCES" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_HOST_IDENTITY))" || (echo "error: set PHASE2_HOST_IDENTITY" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_HOST_BUILD))" || (echo "error: set PHASE2_HOST_BUILD" >&2; exit 2)
-	@test -n "$(strip $(PHASE2_APK_PATH)$(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_PATH or PHASE2_APK_SHA256" >&2; exit 2)
+	@if [ "$@" = "phase2-tablet-soak-run" ]; then test -n "$(strip $(PHASE2_APK_PATH)$(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_PATH or PHASE2_APK_SHA256" >&2; exit 2); fi
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_soak \
 		--serial $(EVIDENCE_SERIAL) \
@@ -418,7 +418,7 @@ phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
 		$(if $(strip $(PHASE2_HOST_PID)),--host-pid $(PHASE2_HOST_PID),) \
 		$(if $(strip $(PHASE2_HOST_TELEMETRY_JSONL)),--host-telemetry-jsonl "$(PHASE2_HOST_TELEMETRY_JSONL)",) \
 		$(if $(strip $(PHASE2_HOST_LOG)),--host-log "$(PHASE2_HOST_LOG)",) \
-		$(if $(strip $(PHASE2_APK_PATH)),--apk "$(PHASE2_APK_PATH)",--apk-sha256 "$(PHASE2_APK_SHA256)") \
+		$(if $(strip $(PHASE2_APK_PATH)),--apk "$(PHASE2_APK_PATH)",$(if $(strip $(PHASE2_APK_SHA256)),--apk-sha256 "$(PHASE2_APK_SHA256)",)) \
 		--device-class $(PHASE2_DEVICE_CLASS) \
 		$(if $(strip $(PHASE2_TABLET_SIZE_INCHES)),--tablet-size-inches "$(PHASE2_TABLET_SIZE_INCHES)",) \
 		--stand-setup "$(PHASE2_STAND_SETUP)" \

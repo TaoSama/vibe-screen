@@ -159,7 +159,7 @@ def build_manifest(
     recovery_scenarios: Sequence[str],
     host_identity: str,
     host_build: str,
-    apk_sha256: str,
+    apk_sha256: str | None,
     notes: str | None,
 ) -> dict[str, Any]:
     if duration_seconds < MINIMUM_DURATION_SECONDS:
@@ -205,7 +205,8 @@ def build_manifest(
             "build": host_build.strip(),
         },
         "android_artifact": {
-            "apk_sha256": apk_sha256.strip(),
+            "apk_sha256": apk_sha256.strip() if apk_sha256 is not None else None,
+            "identity_status": "present" if apk_sha256 is not None else "missing",
         },
         "session": {
             "transport": transport.strip(),

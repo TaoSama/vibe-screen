@@ -300,6 +300,14 @@ def collect_static_artifacts(
     return device_info, errors, artifacts, apk_sha256
 
 
+def record_missing_apk_identity(output_dir: Path, artifacts: list[dict[str, Any]]) -> None:
+    write_text(
+        output_dir / "apk-identity-missing.txt",
+        "APK identity was not provided; preflight evidence is readiness-only and cannot close the Phase 2 gate.\n",
+    )
+    artifacts.append({"path": "apk-identity-missing.txt", "kind": "android_artifact_missing"})
+
+
 def collect_after_artifacts(
     *,
     output_dir: Path,
@@ -399,7 +407,7 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
         "",
         "Result: " + str(readiness["result"]) + ".",
         "",
-        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-soak-readiness.json reports can_close_phase2_gate=true, soak-8h/phase2-tablet-gate.json reports verdict=pass, and the raw physical-tablet artifacts are present. A non-64-hex value in apk-sha256.txt is readiness-only blocker context, not formal APK pass evidence.",
+        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-soak-readiness.json reports can_close_phase2_gate=true, soak-8h/phase2-tablet-gate.json reports verdict=pass, and the raw physical-tablet artifacts are present. Missing or invalid APK identity is readiness-only blocker context, not formal APK pass evidence.",
         "",
         "## Command",
         "",
@@ -501,7 +509,8 @@ def is_sha256_digest(value: str | None) -> bool:
     return bool(value and re.fullmatch(r"[0-9a-fA-F]{64}", value.strip()))
 
 
-def runner_required_artifacts(mode: str) -> list[str]:
+def runner_required_artifacts(mode: str, *, has_apk_identity: bool = True) -> list[str]:
+    apk_artifact = "apk-sha256.txt" if has_apk_identity else "apk-identity-missing.txt"
     if mode == "preflight":
         return [
             "README.md",
@@ -511,7 +520,7 @@ def runner_required_artifacts(mode: str) -> list[str]:
             "device.txt",
             "host.txt",
             "build.txt",
-            "apk-sha256.txt",
+            apk_artifact,
             "soak-preflight/samples.jsonl",
             "soak-preflight/summary.json",
             "adb-battery-before.txt",
@@ -583,8 +592,14 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             )
 
     with lock_context:
-        if arguments.apk is None and not is_sha256_digest(arguments.apk_sha256):
-            blockers.append("--apk-sha256 must be a 64-character hexadecimal digest")
+        apk_sha256_argument = arguments.apk_sha256.strip() if arguments.apk_sha256 is not None else None
+        has_valid_apk_sha256_argument = is_sha256_digest(apk_sha256_argument)
+        missing_apk_identity = arguments.apk is None and not has_valid_apk_sha256_argument
+        if missing_apk_identity:
+            if apk_sha256_argument:
+                blockers.append("--apk-sha256 must be a 64-character hexadecimal digest")
+            else:
+                blockers.append("APK identity was not provided; preflight cannot close the Phase 2 gate")
         device_info, setup_errors, setup_artifacts, apk_sha256 = collect_static_artifacts(
             output_dir=output_dir,
             serial=arguments.serial,
@@ -593,10 +608,12 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             host_pid=arguments.host_pid,
             package_name=arguments.package,
             apk=arguments.apk,
-            apk_sha256=arguments.apk_sha256,
+            apk_sha256=apk_sha256_argument if has_valid_apk_sha256_argument else None,
         )
         blockers.extend(setup_errors)
         artifacts.extend(setup_artifacts)
+        if arguments.mode == "preflight" and apk_sha256 is None:
+            record_missing_apk_identity(output_dir, artifacts)
         append_preflight_blockers(
             blockers,
             device_class=arguments.device_class,
@@ -604,7 +621,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             host_pid=arguments.host_pid,
             telemetry_jsonl=arguments.host_telemetry_jsonl,
         )
-        if device_info is not None and apk_sha256 is not None:
+        if device_info is not None:
             try:
                 manifest = build_manifest(
                     command=command,
@@ -633,7 +650,10 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     apk_sha256=apk_sha256,
                     notes=arguments.notes,
                 )
-                manifest["required_artifacts"] = runner_required_artifacts(arguments.mode)
+                manifest["required_artifacts"] = runner_required_artifacts(
+                    arguments.mode,
+                    has_apk_identity=apk_sha256 is not None,
+                )
                 write_json(output_dir / "phase2-tablet-manifest.json", manifest)
                 artifacts.append({"path": "phase2-tablet-manifest.json", "kind": "phase2_manifest"})
             except (ManifestError, OSError, ValueError) as error:
@@ -771,8 +791,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--host-pid must be positive")
     if arguments.interval < 1 or arguments.interval > 60:
         parser.error("--interval must be between 1s and 60s for Phase 2 evidence")
-    if arguments.apk is None and not arguments.apk_sha256:
-        parser.error("provide --apk or --apk-sha256")
     if arguments.mode == "run" and arguments.apk is None and not is_sha256_digest(arguments.apk_sha256):
         parser.error("formal --apk-sha256 must be a 64-character hexadecimal digest")
     command = [sys.executable, "-m", "vibescreen_evidence.phase2_tablet_soak", *(argv or sys.argv[1:])]
