@@ -1,0 +1,28 @@
+12:[1787385047795] SC: Connected to 127.0.0.1:54321
+14:[1787385047810] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+15:[1787385047810] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+23:[1787385047872] MA: Decoder configuration committed 1512x982 epoch=1
+762:[1787387469187] SC: Connected to 127.0.0.1:54321
+764:[1787387469197] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+765:[1787387469198] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+773:[1787387469301] MA: Decoder configuration committed 1512x982 epoch=1
+1126:[1787387643990] SC: Connected to 127.0.0.1:54321
+1128:[1787387644021] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+1129:[1787387644021] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+1137:[1787387644119] MA: Decoder configuration committed 1512x982 epoch=1
+2566:[1787388382304] SC: Connected to 127.0.0.1:54321
+2568:[1787388382308] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+2569:[1787388382308] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+2577:[1787388382383] MA: Decoder configuration committed 1512x982 epoch=1
+3003:[1787388619279] SC: Connected to 127.0.0.1:54321
+3005:[1787388619299] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+3006:[1787388619300] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+3014:[1787388619453] MA: Decoder configuration committed 1512x982 epoch=1
+3123:[1787388758571] SC: Connected to 127.0.0.1:54321
+3125:[1787388758593] MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+3126:[1787388758593] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false
+3134:[1787388758694] MA: Decoder configuration committed 1512x982 epoch=1
+3139:[1787388759503] MA: capsule selectDisplay target=2 from=1
+3147:[1787388759647] MA: Decoder configuration committed 1920x1080 epoch=2
+3148:[1787388759651] MA: onDisplaysAvailable: count=3 selected=2 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+3149:[1787388759651] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=false

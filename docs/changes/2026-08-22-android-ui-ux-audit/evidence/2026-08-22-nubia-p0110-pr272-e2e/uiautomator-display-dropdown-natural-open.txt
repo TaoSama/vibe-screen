@@ -1,0 +1,1 @@
+UI hierchary dumped to: /sdcard/window-display-dropdown-natural-open.xml
