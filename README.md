@@ -536,9 +536,11 @@ python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --sk
 ```
 
 Start/configure signaling through [`services/signaling`](services/signaling/README.md)
-and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). Both
-services require deployment TLS, secret management, monitoring and limits
-described in their runbooks; the example local profile is loopback-only.
+and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). The
+Phase 3 production-shaped Compose profile includes signaling, relay, and coturn
+services, but it still requires an external TLS/private-ingress layer, managed
+PostgreSQL, secret management, monitoring, and limits described in their
+runbooks; the example local profile is loopback-only.
 `scripts/phase3/coturn_reconcile.py` now provides a bounded operator helper that
 accepts a trusted structured coturn allocation snapshot, submits it to Authority's
 reconciliation API, and requires an external active-allocation disconnect executor
@@ -561,9 +563,14 @@ Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
+features. Signaling and relay stores now use shared PostgreSQL state for
+multi-instance correctness paths; signaling long-poll waiter slots are backed by
+connection-scoped database leases so a replacement instance can reclaim a slot
+after the failed instance loses its PostgreSQL backend. Multi-instance
+throughput, cross-replica rate limiting, load-balancer behavior, and
+multi-region consistency remain unproved. Relay credential admission is wired to Authority,
+and Authority can debit accepted coturn usage into the control-plane daily-byte ledger.
+The structured
 coturn reconcile helper can fail closed when active source allocations require a
 disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
