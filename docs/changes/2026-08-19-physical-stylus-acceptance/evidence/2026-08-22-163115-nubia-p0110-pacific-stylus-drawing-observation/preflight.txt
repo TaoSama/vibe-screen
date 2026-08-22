@@ -1,0 +1,28 @@
+Created device lease:
+pid=69893
+agent=root
+task=physical-stylus-drawing-app-closure
+created=2026-08-22T08:31:10Z
+
+Device identity:
+manufacturer=nubia
+model=P0110
+device=pacific
+product=pacific
+release=16
+sdk=36
+fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+
+Foreground:
+  mCurrentFocus=Window{20eb33a u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{169508639 u0 dev.telemachus.display/.MainActivity t513}
+
+ADB reverse:
+UsbFfs tcp:54321 tcp:54321
+
+
+Host process:
+92943 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+
+Host log:
+-rw-------@ 1 luwentao  staff  726594 Aug 22 16:31 /Users/luwentao/Library/Logs/Telemachus/telemachus.log
