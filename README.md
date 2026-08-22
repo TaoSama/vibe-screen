@@ -905,6 +905,13 @@ increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- The host-side advanced adapter readiness owner is now the
+  `phase5-host-advanced-adapters-gate`. It records the minimum iOS/MacHost
+  adapter matrix for multi-client/display allocation, audio, clipboard, file
+  transfer, HDR/color, host actions, wake, and managed policy, and verifies
+  that unsupported Host adapters stay unadvertised or explicitly policy-gated.
+  This is a source/readiness gate only, not iOS device or advanced product-flow
+  acceptance.
 - The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
   current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.
   The current iOS renderer still advertises SDR only and has no HDR/EDR output
