@@ -1075,7 +1075,32 @@ enum ProtocolV1SelfTest {
             guard apply.count == 1,
                   apply[0].1 == 8_000, apply[0].2 == 30,
                   apply[0].3 == .unspecified, apply[0].4 == false else {
-                failures.append("SetVideoPreferences did not apply the clamped bitrate/fps or dropped preset incorrectly")
+                failures.append("SetVideoPreferences did not apply the clamped bitrate/fps or drop preset correctly")
+                return
+            }
+
+            // A bitrate request may also reset quality to AUTO. The explicit
+            // bitrate still drops the preset, but the reset flag must survive so
+            // the host encoder does not keep a stale preset while the client UI
+            // shows AUTO.
+            let bitrateResetSession = try readySession(clientCapabilities: [.touch, .clientVideoControl])
+            var bitrateReset = VSSetVideoPreferences()
+            bitrateReset.bitrateKbps = 12_000
+            bitrateReset.qualityPreset = .sharp
+            bitrateReset.resetQualityToAuto = true
+            let bitrateResetActions = bitrateResetSession.handleControl(try envelope(
+                id: 4,
+                payload: .setVideoPreferences(bitrateReset)
+            ).serializedData())
+            let bitrateResetApply = bitrateResetActions.compactMap { action -> (UInt32, VSVideoQualityPreset, Bool)? in
+                if case .applyVideoPreferences(_, let b, _, let q, let r) = action { return (b, q, r) }
+                return nil
+            }
+            guard bitrateResetApply.count == 1,
+                  bitrateResetApply[0].0 == 12_000,
+                  bitrateResetApply[0].1 == .unspecified,
+                  bitrateResetApply[0].2 == true else {
+                failures.append("SetVideoPreferences dropped reset_quality_to_auto when explicit bitrate was present")
                 return
             }
             // The apply action alone must not renegotiate video: no
