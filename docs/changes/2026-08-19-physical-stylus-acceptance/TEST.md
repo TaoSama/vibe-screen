@@ -59,6 +59,27 @@ Evidence:
   candidate. No physical stylus drawing, Host stylus injection excerpt, or
   visible drawing-app screenshot was captured, so the README gate remains open.
 
+## 2026-08-22 P0110 drawing-app closure attempt
+
+The latest `origin/main` snapshot at `ebd2e3a2` was rechecked on the same target
+serial with explicit `adb -s EP0110PZ0B9110300B ...` commands. The device again
+identified as nubia P0110 / pacific / Android 16 / SDK 36, with no active
+device coordination lock. `dumpsys input` still exposes a pass-eligible
+`goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus
+pressure, orientation, tilt, X, and Y axes. The run did not start a physical
+drawing observation window and did not supply a Host log path, so the acceptance
+script wrote fail-closed evidence with no same-window Host `Stylus injected:`
+excerpt, no same-session `Stylus forwarded:` sample, and no visible macOS
+drawing-app output. The README drawing-app gate therefore remains open.
+
+Evidence:
+
+- `evidence/2026-08-22-nubia-p0110-pacific-stylus-drawing-blocked/`: refreshed
+  fail-closed closure attempt on current `origin/main`; status is
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate, no physical drawing observation, no Host stylus log, and no
+  drawing-app screenshot.
+
 ## Tooling change
 
 `scripts/android_stylus_acceptance.py` now writes lock-blocked evidence with
@@ -105,6 +126,11 @@ Results:
 - P0110 read-only preflight: `blocked_physical_stylus_not_observed` on nubia
   P0110 / pacific / Android 16 / SDK 36, with one pass-eligible
   `goodix_stylus_input` capability candidate but no physical drawing
+  observation, no Host stylus log, and no same-session `Stylus forwarded:`
+  samples.
+- 2026-08-22 P0110 closure attempt: `blocked_physical_stylus_not_observed`
+  again on nubia P0110 / pacific / Android 16 / SDK 36, with no device lock,
+  one pass-eligible `goodix_stylus_input` candidate, no physical drawing
   observation, no Host stylus log, and no same-session `Stylus forwarded:`
   samples.
 - Android focused stylus dispatcher/mapper/protocol tests: Gradle
