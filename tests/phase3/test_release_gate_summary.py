@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -441,7 +442,13 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "summary.json"
             stderr = io.StringIO()
-            with redirect_stderr(stderr):
+            with (
+                patch(
+                    "scripts.phase3.release_gate_summary.git_revision",
+                    return_value="b" * 40,
+                ),
+                redirect_stderr(stderr),
+            ):
                 exit_code = main(
                     [
                         "--repo",
@@ -465,6 +472,34 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
             summary = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(summary["result"], "open")
             self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_current_commit_must_match_checked_out_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stderr = io.StringIO()
+            with (
+                patch(
+                    "scripts.phase3.release_gate_summary.git_revision",
+                    return_value="a" * 40,
+                ),
+                redirect_stderr(stderr),
+            ):
+                exit_code = main(
+                    [
+                        "--repo",
+                        str(ROOT),
+                        "--current-commit",
+                        "b" * 40,
+                        "--local-public-dir",
+                        str(Path(directory) / "missing-public"),
+                        "--android-interop-acceptance",
+                        str(Path(directory) / "missing-android.json"),
+                        "--blocked-real-media-acceptance",
+                        str(Path(directory) / "missing-blocked.json"),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn("does not match the checked-out repository HEAD", stderr.getvalue())
 
 
 if __name__ == "__main__":
