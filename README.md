@@ -416,13 +416,16 @@ glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
 reconnection within three seconds, and no latency or memory growth over a
 two-hour run. USB and LAN glass-to-glass latency gates require external-camera
 evidence, while the input-latency gate requires external-camera evidence or a
-documented synchronized-clock setup with a reviewable error budget. The gate
-profiles are `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
-`input-p95-sub50`; host and client telemetry are diagnostic only and cannot
-close these gates. As of the 2026-08-20 readiness check, the latency toolchain
-passes its fixture gates but no real external-camera package is available in
-the repository, so all three external latency gates remain open; see
-[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+documented synchronized-clock setup with a reviewable sub-5 ms total error
+budget. The gate profiles are `usb-glass-to-glass-sub50`,
+`lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
+are diagnostic only and cannot close these gates. As of the 2026-08-21 Nubia
+P0110/pacific latency preflight, the toolchain has formal manifest/checker
+coverage for external-camera packages and synchronized-clock input packages,
+but no raw camera package, annotated latency samples, or synchronized-clock
+proof from a real physical-input run is available in the repository. All three
+latency gates therefore remain open; see
+[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 
@@ -536,9 +539,11 @@ python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --sk
 ```
 
 Start/configure signaling through [`services/signaling`](services/signaling/README.md)
-and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). Both
-services require deployment TLS, secret management, monitoring and limits
-described in their runbooks; the example local profile is loopback-only.
+and the coturn stack through [`deploy/phase3`](deploy/phase3/README.md). The
+Phase 3 production-shaped Compose profile includes signaling, relay, and coturn
+services, but it still requires an external TLS/private-ingress layer, managed
+PostgreSQL, secret management, monitoring, and limits described in their
+runbooks; the example local profile is loopback-only.
 `scripts/phase3/coturn_reconcile.py` now provides a bounded operator helper that
 accepts a trusted structured coturn allocation snapshot, submits it to Authority's
 reconciliation API, and requires an external active-allocation disconnect executor
@@ -561,9 +566,14 @@ Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
+features. Signaling and relay stores now use shared PostgreSQL state for
+multi-instance correctness paths; signaling long-poll waiter slots are backed by
+connection-scoped database leases so a replacement instance can reclaim a slot
+after the failed instance loses its PostgreSQL backend. Multi-instance
+throughput, cross-replica rate limiting, load-balancer behavior, and
+multi-region consistency remain unproved. Relay credential admission is wired to Authority,
+and Authority can debit accepted coturn usage into the control-plane daily-byte ledger.
+The structured
 coturn reconcile helper can fail closed when active source allocations require a
 disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
@@ -634,9 +644,11 @@ network quality may increase it.
 - The Android and macOS Internet record layers now derive separate directional
   keys, durable nonce counters, and replay domains for control, media, audio,
   and bulk. A shared fixed-vector fixture covers all four AES-256-GCM record
-  channels and legacy-compatible key rotation. Audio/bulk WebRTC DataChannels,
-  admission/backlog limits, and public-network end-to-end behavior remain
-  unproved.
+  channels and legacy-compatible key rotation. Audio/bulk WebRTC transport
+  channels are now wired into the macOS and Android Internet product sessions
+  as raw Protocol v1 records with owner-scoped admission and bounded backlog
+  behavior. Audio capture/playback, clipboard/file-transfer product flows over
+  those channels, and public-network end-to-end behavior remain unproved.
 - The macOS Host and Android client now share a transport-neutral, bounded
   single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
   session. File offers require explicit receiver approval and default to reject;
@@ -653,9 +665,9 @@ network quality may increase it.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
-  HDR output, audio/bulk Internet transport, native input behavior, reconnect
-  behavior, and all advanced real-device behavior remain separate device
-  gates. Android results are never treated as iOS evidence; see the
+  HDR output, audio/bulk product flows over Internet DataChannels, native input
+  behavior, reconnect behavior, and all advanced real-device behavior remain
+  separate device gates. Android results are never treated as iOS evidence; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy

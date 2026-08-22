@@ -132,6 +132,11 @@ acceptance run and does not close the unattended recovery gate.
 - selected-display hot-plug while streaming;
 - Android touch/reconnect/keyboard/native-mouse checks after the device lease
   is released (keyboard/native mouse also require a future transport entry);
-- Phase 1 two-hour no-growth result and external input/glass-to-glass latency.
+- Phase 1 two-hour no-growth result, USB glass-to-glass
+  (`usb-glass-to-glass-sub50`), LAN glass-to-glass
+  (`lan-glass-to-glass-sub80`), and input P95 (`input-p95-sub50`) latency. The
+  glass-to-glass gates require external-camera evidence, and the input gate
+  requires external-camera evidence or a synchronized-clock package with a
+  sub-5 ms total error budget.
 
 None of these gates is inferred from compilation or private-symbol presence.

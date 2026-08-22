@@ -63,9 +63,9 @@ Fail-closed rules:
   playback.
 
 README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
-Internet transport, and advanced real-device behavior open; those broader gates
-remain tracked in the Phase 5 verification record rather than closed by this
-device runbook.
+product flows over Internet DataChannels, and advanced real-device behavior
+open; those broader gates remain tracked in the Phase 5 verification record
+rather than closed by this device runbook.
 
 ## Checklist
 

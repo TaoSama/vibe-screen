@@ -262,11 +262,11 @@ Detailed commands, hashes, and artifact locations are recorded in
 
 Main commit 0844991ea6ca55905349abb5f57291990454f0ad completed a short
 current-tree USB smoke on the connected Nubia P0110 (pacific) device,
-serial EP0110PZ0B9110300B, Android 16 / SDK 36. The macOS Host and Android
-debug APK were rebuilt from that commit, a stale Host from another worktree was
-recorded and stopped, adb reverse tcp:54321 tcp:54321 was established for the
-P0110 serial, and the current-tree Host listened on 127.0.0.1:54321 as PID
-97995.
+recorded as a pseudonymous explicit ADB target, Android 16 / SDK 36. The macOS
+Host and Android debug APK were rebuilt from that commit, a stale Host from
+another worktree was recorded and stopped, adb reverse tcp:54321 tcp:54321 was
+established for the P0110 target, and the current-tree Host listened on
+127.0.0.1:54321 as PID 97995.
 
 The Android client connected over loopback USB, negotiated Protocol v1,
 received a three-display catalog with virtual display 6 selected, configured
@@ -297,6 +297,16 @@ the synthetic `tools/fixtures/latency/` data. Therefore this record is blocked
 readiness evidence only and does not close any external latency gate. Evidence
 is retained under
 [evidence/2026-08-20-latency-gates-readiness-blocked/](evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+
+On 2026-08-21, origin/main commit
+`cc26a84c829016fa61c721f73a128284fdf64f92` refreshed the same gate boundary
+with the connected Nubia P0110/pacific Android 16 substitute recorded under a
+pseudonymous device id. The UTC machine timestamps correspond to the local
+2026-08-21 evidence date. The device identity preflight passed, but no
+high-frame-rate external-camera package or synchronized-clock input package was
+available, so `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
+`input-p95-sub50` all remain open. Evidence is retained under
+[evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/](evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
 ## Still unproved
 

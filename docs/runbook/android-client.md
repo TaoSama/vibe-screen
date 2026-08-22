@@ -89,19 +89,22 @@ device orientation.
 To close the rotated host-display gate, run a fresh Protocol v1 real-device
 pass for both an existing physical Mac display and a virtual display after the
 host display itself is rotated to 90°, 180°, or 270°. For each display kind,
-record the original and rotated host-display snapshots, Android visual result,
-corner/center touch matrix, Host log, Android logcat, stable stream/no-teardown
-result, and proof that the original macOS rotation was restored. The existing
-client-local Follow Mac/90°/180°/270° matrix with `hostRotation=0` is not host
-display rotation evidence.
+record the explicit device identity, Host signing/TCC preflight for the exact
+installed Host bundle, original and rotated host-display snapshots, Android
+visual result, corner/center touch matrix, Host log, Android logcat, stable
+stream/no-teardown result, and proof that the original macOS rotation was
+restored. The existing client-local Follow Mac/90°/180°/270° matrix with
+`hostRotation=0` is not host display rotation evidence. The detailed operator
+checklist is in `docs/runbook/host-display-rotation-acceptance.md`.
 
 After collecting those artifacts, summarize them in `host-display-rotation.json`
 and run the offline evidence-summary gate. The gate only validates the retained
 record; it does not rotate displays, start the Host, or touch ADB:
 
 ```bash
-python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
   docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --check-artifacts \
   --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
 ```
 
@@ -211,7 +214,9 @@ This records device identity, `dumpsys input`, stylus input-device candidates,
 and the app private diagnostic log when `run-as` can read it. A result of
 `blocked_physical_stylus_not_observed` is expected when no human has drawn with
 the pen; pressure/tilt/barrel capability in `dumpsys input` is necessary
-evidence, not acceptance.
+evidence, not acceptance. For a later pass, at least one candidate must expose
+the Android `STYLUS` source and both pressure and tilt axes; stylus-named
+devices or touch-only pressure axes are readiness clues only.
 
 If a shared device lock exists before the first ADB command, write a blocked
 readiness record instead of probing the device:
@@ -228,10 +233,15 @@ For a passing run, open a non-sensitive macOS drawing app in the streamed displa
 and record all of the following in the evidence directory:
 
 - the same script output with `--observed-physical-drawing`,
-  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`;
+  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`; in this mode the
+  tool records the Host log cursor before the observation window and validates
+  only the new Host log bytes appended while the operator draws;
+- Android diag log entries from the same connected session with
+  `Stylus forwarded:` plus sample count, extended-stylus negotiation state,
+  raw Android `MotionEvent` source, raw action, raw tool type, phase, contact
+  state, tool kind, buttons, pressure, and signed `tiltX` / `tiltY`;
 - host log excerpts showing stylus injection with pressure and signed two-axis
   tilt, plus barrel/proximity fields when exercised;
-- Android diag log entries from the same connected session;
 - a written observation or external-camera note that the drawing app received a
   visible stylus stroke. If pressure or barrel behavior is claimed, the visible
   result must exercise that claim.
