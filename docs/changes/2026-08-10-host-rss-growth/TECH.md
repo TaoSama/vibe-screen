@@ -116,12 +116,21 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   后半程出现 +117.0 KiB/min 的迟发上升；不得据此宣称正式 no-growth 通过。
 - 后续单次真机稳定性验证保持在 30 分钟以内；正式两小时门禁继续开放。
 - 当前短窗回归门禁仅完成离线工具与阈值验证，尚无基于本分支源码的 Xiaomi 13
-  10-17 分钟短窗实测证据；本次变更未引入新的生产内存修复，正式两小时 Host RSS
-  no-growth 门禁仍需 `host_rss_gate` 独立输出 `pass` 方可关闭。
+  10-17 分钟短窗实测证据；正式两小时 Host RSS no-growth 门禁仍需
+  `host_rss_gate` 独立输出 `pass` 方可关闭。
 - 短窗诊断报告现在把 watched heap 类按 `swiftui_observation`、`autorelease_pool`
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
   `heap_class_growth` 列表中重建首末漂移。
+- 2026-08-22 对 P0110 运行态做只读前置检查时，确认当前已安装 Host 正在推流但
+  未以 `VIBE_SCREEN_TELEMETRY_PATH` 启动，且本机 keychain 不暴露 `Vibe Screen Dev`
+  签名 identity，不能重签并证明当前源码二进制与 TCC 授权一致。因此没有启动短窗
+  诊断或正式两小时 soak。
+- 本分支修复一个真实资源保留候选：服务端 `NWConnection.stateUpdateHandler` 原来
+  强捕获同一个连接对象，连接关闭后可能让 Host 继续持有已进入 `CLOSED` 状态的
+  TCP socket FD。现在连接接收、替换、结束、token 轮换和 stop 路径都会断开 handler
+  并取消未采纳连接；新增 `host_socket_fd` 只读诊断用于把 saved/live `lsof` 样本
+  汇总为 `pass`/`fail`/`insufficient`，但该诊断不能关闭 Host RSS no-growth gate。
 
 正式复测仍必须由具备 Screen Recording/Accessibility 权限的主任务执行：
 
@@ -130,18 +139,16 @@ export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
 export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
-# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
-make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
-PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --host-telemetry "$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/exact-window-report.json"
-PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/host-rss-gate.json"
+# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后，记录该进程 PID：
+export HOST_PID='<running-host-pid>'
+make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"
+make host-rss-gate EVIDENCE_DIR="$EVIDENCE_DIR"
 ```
+
+也可用 `make soak-2h-host-rss-gate EVIDENCE_SERIAL="$EVIDENCE_SERIAL"
+EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"` 串联正式两小时采集和门禁判定；
+`make soak-2h` 和组合目标都会在 `HOST_PID` 缺失时立即失败，避免产生缺少
+`host.rss_kb` 的不可关闭证据。
 
 只有来源 summary 为 `complete` 且无错误、流/客户端指标有效，并且
 `host_rss_gate` 独立输出 `pass` 时才能关闭门禁。短诊断、30 分钟前缀或 partial
