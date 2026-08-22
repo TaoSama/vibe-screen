@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
+import plistlib
 import re
 import subprocess
 import sys
@@ -706,6 +707,13 @@ class ArchiveArtifactTests(unittest.TestCase):
 
 
 class MacOSSigningIdentityTests(unittest.TestCase):
+    def test_packaged_host_requests_virtual_hid_entitlement(self) -> None:
+        entitlements = plistlib.loads(
+            (REPOSITORY_ROOT / "baseline/MacHost/Telemachus.entitlements").read_bytes()
+        )
+
+        self.assertIs(entitlements.get("com.apple.developer.hid.virtual.device"), True)
+
     def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
         with mock.patch.object(package_macos.subprocess, "run") as run_mock:
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")

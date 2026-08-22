@@ -79,6 +79,13 @@ Keep all artifacts under one dated directory:
 - Disconnect neutral-release log with before/after controller state.
 - `commands.txt` and checksums for manually collected artifacts.
 
+Do not hand-author standalone boolean observations without artifact support. For
+each `true` value in `controller-runtime-observations.json`, include the raw or
+focused artifact that proves it in the same bundle: Android controller source
+and production forwarding logs, Protocol v1 capability and lifecycle logs, Host
+codesign/entitlement output, Host availability and injection logs, Mac-side
+observer output, and disconnect neutral-release proof.
+
 The gate closes only when `controller-runtime-summary.json` reports
 `can_close_runtime_gate=true`. A `blocked` or `insufficient` verdict documents
 readiness state only.

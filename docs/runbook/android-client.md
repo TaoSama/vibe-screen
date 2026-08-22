@@ -195,6 +195,10 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
   --output controller-runtime-summary.json
 ```
 
+The summarizer exits `0` only when the runtime gate passes. A `blocked` summary
+exits `2`, and `insufficient` or malformed evidence exits `1`, so automation
+must read the JSON summary instead of treating any generated summary as a pass.
+
 ## Physical stylus acceptance
 
 Use this gate only with a Protocol v1 USB/LAN/Internet session and a real stylus
