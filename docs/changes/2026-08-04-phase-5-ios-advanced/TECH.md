@@ -173,6 +173,34 @@ these channels, public-network E2E, and the client's plaintext trusted-LAN
 implementation remain separate gates and are not evidence of the
 macOS/Android secure-record LAN path.
 
+## Host-side advanced adapter readiness owner
+
+The Phase 5 host-side advanced adapter readiness owner is the
+phase5-host-advanced-adapters-gate source gate. It owns the minimum MacHost
+and iOS adapter contract matrix below and fails closed when documentation or
+production Host capability defaults drift toward claiming unsupported behavior.
+It is not a device-acceptance gate and cannot close iPhone/iPad installation,
+hardware VideoToolbox, AVAudioEngine audible playback, HDR/EDR output,
+clipboard/file product-flow, native input, reconnect, or Internet
+audio/bulk-DataChannel gates.
+
+| Adapter family | Minimum interface | Fail-closed contract | Current shipped surface |
+| --- | --- | --- | --- |
+| Multi-client/display | Per-client session_id + session_epoch, unique display/stream IDs, targeted input routing, bounded client/display/stream limits | Do not advertise CAPABILITY_MULTI_CLIENT; reject duplicate, stale, or over-limit bindings before capture allocation | Single-client multi-display Protocol v1 host path is offline/self-test covered; multi-client host allocation remains open |
+| Audio capture/playback | AudioConfig/AudioConfigResult, PCM S16LE packets on channel 3 or negotiated audio DataChannel, current session/config epoch validation, bounded jitter/backlog | Do not advertise audio capabilities by default; reject unsupported codecs and malformed byte counts before native capture/playback | MacHost capture and iOS playback cores are offline-tested; audible device playback and host/iOS product flow remain open |
+| Clipboard | ClipboardOffer/ClipboardRequest/ClipboardContent, origin/change-ID loop suppression, MIME/byte-limit/SHA-256 validation, explicit local read/write action | Managed denial removes clipboard from negotiation; oversize, digest-mismatched, or unmatched content never reaches native pasteboard | Protocol and local adapters are self-tested; iOS prompt/write behavior and host/iOS flow remain open |
+| File transfer | Offer/accept/progress/cancel/complete control flow, ordered bulk chunks with per-chunk/final SHA-256, safe basename staging, aggregate/chunk/concurrency limits | Production Host advertises files only behind fileTransferAllowed and policy; receivers default to reject; policy, digest, disk, backpressure, disconnect, or cancel cleans staging | MacHost/Android USB/LAN file domain is offline-tested; host/iOS and Internet bulk product flows remain open |
+| HDR/color | Video color metadata, explicit fallback/retry with a new config_epoch, structured rejection for unsupported Main10/PQ/HLG | Do not advertise CAPABILITY_HDR_VIDEO; fallback must be 8-bit BT.709 SDR and must not mutate the current stream silently | 8-bit SDR color management/fallback is offline-tested; HDR/EDR output remains open |
+| Host actions/gestures | Finite HostActionCatalog, correlated HostActionInvoke, session target validation, local gesture mapping to catalogued IDs only | Require capability plus deny-wins policy; unknown, over-limit, pre-stream, or foreign-target actions return structured failure | Host action catalog and iOS gesture persistence are offline-tested; device gesture behavior remains open |
+| Wake host | WakeHostRequest/WakeHostResult, paired-device authorization, replay-safe host proof, local policy check before Magic Packet | Advertise wake only when the helper is available and policy allows it; default authorizer denies; host mismatch fails | WOL packet construction is self-tested; authenticated wake helper acceptance remains open |
+| Managed policy | ManagedPolicyStatus, deny-wins merge, normalized allowed-host restriction | Unset managed fields default denied; disjoint allowed hosts deny all; policy denial disables native side effects | Local and remote policy merge semantics are offline-tested; managed App Configuration injection remains open |
+
+The gate writes phase5-host-advanced-adapters-readiness.json with the same
+matrix, device_evidence="not_collected", and an empty device_gates_closed
+list. The JSON is release-readiness evidence only: unsupported adapters must
+stay unadvertised or explicitly policy-gated until their product path and
+device-specific acceptance records exist.
+
 ## Rendering and color
 
 VideoToolbox creates hardware-capable H.264 or HEVC decompression sessions from

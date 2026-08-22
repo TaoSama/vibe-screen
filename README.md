@@ -647,6 +647,13 @@ network quality may increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- The host-side advanced adapter readiness owner is now the
+  phase5-host-advanced-adapters-gate. It records the minimum iOS/MacHost
+  adapter matrix for multi-client/display allocation, audio, clipboard, file
+  transfer, HDR/color, host actions, wake, and managed policy, and verifies
+  that unsupported Host adapters stay unadvertised or explicitly policy-gated.
+  This is a source/readiness gate only, not iOS device or advanced product-flow
+  acceptance.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware

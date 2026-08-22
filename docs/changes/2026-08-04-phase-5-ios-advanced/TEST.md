@@ -188,6 +188,27 @@ tests because the selected Command Line Tools SwiftPM environment could not
 import `XCTest`; the full-Xcode CI gate remains responsible for Mac XCTest
 execution.
 
+## Host-side advanced adapter readiness gate
+
+The Phase 5 host-side advanced adapter readiness owner is exercised by
+make phase5-host-advanced-adapters-gate
+EVIDENCE_DIR=.build/evidence/phase5-host-advanced-adapters.
+
+The gate writes
+.build/evidence/phase5-host-advanced-adapters/phase5-host-advanced-adapters-readiness.json
+with a machine-readable matrix for the MacHost and iOS advanced adapter
+families: host-side multi-client/display, audio capture/playback,
+clipboard, file transfer, HDR/color, host actions/gestures, wake host, and
+managed policy. It also verifies that production Host capability defaults do
+not advertise unsupported HDR, audio, audio DataChannel, or multi-client
+adapters, and that file transfer, wake, host actions, and clipboard remain
+explicitly gated by availability and deny-wins policy.
+
+This is source/readiness evidence only. It does not close iOS installation,
+hardware VideoToolbox, AVAudioEngine audible playback, HDR/EDR output,
+clipboard/file product-flow, native input, reconnect, Internet
+audio/bulk-DataChannel, or advanced real-device behavior gates.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.
