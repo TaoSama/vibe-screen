@@ -318,6 +318,26 @@ this source tree, and this change introduces no new production memory fix. The
 formal two-hour Host RSS no-growth gate remains open until a matching
 `host_rss_gate` run reports `pass`.
 
+## macOS Host compatibility evidence
+
+Use `macos-hardware-compatibility-gate` to summarize one macOS Host hardware
+compatibility matrix row after the row artifacts have already been collected:
+
+```sh
+make macos-hardware-compatibility-gate EVIDENCE_DIR=.build/evidence/macos-host-compatibility
+```
+
+The target consumes `macos-hardware-compatibility.json` and writes
+`macos-hardware-compatibility-gate.json`. A `pass` closes only the exact row
+recorded in the input: CPU architecture, Mac model, macOS build, display
+topology, transport, Android counterpart, Host build/signing/TCC state, capture
+backend, and retained artifacts. Missing row identity, packaged Host launch,
+Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`;
+missing runtime probes are `insufficient`. Marking CI-only evidence or
+extrapolating Apple silicon, OS-version, display-topology, or virtual-display
+claims across rows is `failed`. The collection checklist is in
+`docs/runbook/macos-host-compatibility.md`.
+
 ## Latency evidence
 
 Latency evidence is split by what the measurement can prove:
