@@ -245,7 +245,9 @@ This records device identity, `dumpsys input`, stylus input-device candidates,
 and the app private diagnostic log when `run-as` can read it. A result of
 `blocked_physical_stylus_not_observed` is expected when no human has drawn with
 the pen; pressure/tilt/barrel capability in `dumpsys input` is necessary
-evidence, not acceptance.
+evidence, not acceptance. For a later pass, at least one candidate must expose
+the Android `STYLUS` source and both pressure and tilt axes; stylus-named
+devices or touch-only pressure axes are readiness clues only.
 
 If a shared device lock exists before the first ADB command, write a blocked
 readiness record instead of probing the device:
@@ -262,10 +264,15 @@ For a passing run, open a non-sensitive macOS drawing app in the streamed displa
 and record all of the following in the evidence directory:
 
 - the same script output with `--observed-physical-drawing`,
-  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`;
+  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`; in this mode the
+  tool records the Host log cursor before the observation window and validates
+  only the new Host log bytes appended while the operator draws;
+- Android diag log entries from the same connected session with
+  `Stylus forwarded:` plus sample count, extended-stylus negotiation state,
+  raw Android `MotionEvent` source, raw action, raw tool type, phase, contact
+  state, tool kind, buttons, pressure, and signed `tiltX` / `tiltY`;
 - host log excerpts showing stylus injection with pressure and signed two-axis
   tilt, plus barrel/proximity fields when exercised;
-- Android diag log entries from the same connected session;
 - a written observation or external-camera note that the drawing app received a
   visible stylus stroke. If pressure or barrel behavior is claimed, the visible
   result must exercise that claim.
