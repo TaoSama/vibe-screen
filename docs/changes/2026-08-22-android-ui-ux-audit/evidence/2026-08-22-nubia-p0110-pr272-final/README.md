@@ -27,7 +27,7 @@ adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.disp
 ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.DisplayCapsulePolicyTest :app:compileDebugAndroidTestKotlin
 ```
 
-Raw outputs are saved as `assemble-debug-and-androidtest.txt`, `adb-install-debug.txt`, `adb-install-androidtest.txt`, `instrumentation-controlbar-rerun.txt`, `instrumentation-settings-rerun.txt`, `instrumentation-connection-accessibility-rerun.txt`, and `gradle-focused-final.txt`.
+Raw outputs are saved as `assemble-debug-and-androidtest.txt`, `adb-install-debug.txt`, `adb-install-androidtest.txt`, `instrumentation-controlbar-rerun.txt`, `instrumentation-settings-rerun.txt`, `instrumentation-connection-accessibility-rerun.txt`, `instrumentation-route-toggle-method-rerun.txt`, and `gradle-focused-final.txt`.
 
 ## Passing Evidence
 
@@ -37,9 +37,12 @@ The reinstalled device test APK passed the focused Android UI/UX instrumentation
 ControlBarLayoutInstrumentedTest: OK (10 tests)
 SettingsDialogLayoutInstrumentedTest: OK (7 tests)
 ConnectionStateAccessibilityInstrumentedTest: OK (12 tests)
+ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText: OK (1 test)
 ```
 
-These runs cover the control capsule layout and reveal action, hidden display-selector boundaries, control hit targets, settings dialog responsive option groups, sustained-use/settings controls, connection-state live region behavior, mode toggle readable text, connection checklist state, and connected status announcement behavior.
+These runs cover the control capsule layout and reveal action, hidden display-selector boundaries, control hit targets, settings dialog responsive option groups, sustained-use/settings controls, connection-state live region behavior, mode toggle readable text, Internet route-toggle readable text, connection checklist state, and connected status announcement behavior.
+
+The targeted route-toggle rerun supersedes the earlier `2026-08-22-nubia-p0110-ui-ux-readiness/accessibility-route-toggle-raw-instrumentation-final.txt` selector attempt, which returned `OK (0 tests)` and remains intentionally not claimed as passing evidence in that older readiness directory.
 
 ## Manual Screenshots And UI Dumps
 
