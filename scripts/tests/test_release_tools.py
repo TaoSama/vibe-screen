@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
+import plistlib
 import re
 import subprocess
 import sys
@@ -31,6 +32,7 @@ PHASE0_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/phase0.yml"
 MAKEFILE = REPOSITORY_ROOT / "Makefile"
 PHASE3_RUNNER = REPOSITORY_ROOT / "scripts/phase3_webrtc/run_local_e2e.py"
 ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
+MAC_HOST_ENTITLEMENTS = REPOSITORY_ROOT / "baseline/MacHost/Telemachus.entitlements"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
@@ -706,6 +708,15 @@ class ArchiveArtifactTests(unittest.TestCase):
 
 
 class MacOSSigningIdentityTests(unittest.TestCase):
+    def test_host_entitlements_request_virtual_hid_device(self) -> None:
+        with MAC_HOST_ENTITLEMENTS.open("rb") as handle:
+            entitlements = plistlib.load(handle)
+
+        self.assertIs(
+            entitlements.get("com.apple.developer.hid.virtual.device"),
+            True,
+        )
+
     def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
         with mock.patch.object(package_macos.subprocess, "run") as run_mock:
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")

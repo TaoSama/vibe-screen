@@ -26,8 +26,18 @@ creating a virtual gamepad. The evidence summary is therefore intentionally
 
 - [blocked-local/controller-runtime-summary.json](evidence/blocked-local/controller-runtime-summary.json)
 - [blocked-local/controller-runtime-observations.json](evidence/blocked-local/controller-runtime-observations.json)
+- [2026-08-21-host-virtual-gamepad-hid-readiness/controller-runtime-summary.json](evidence/2026-08-21-host-virtual-gamepad-hid-readiness/controller-runtime-summary.json)
+- [2026-08-21-host-virtual-gamepad-hid-readiness/controller-runtime-observations.json](evidence/2026-08-21-host-virtual-gamepad-hid-readiness/controller-runtime-observations.json)
 - [2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json](evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json)
 - [2026-08-20-p0110-controller-runtime-readiness/controller-runtime-readiness.json](evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-readiness.json)
+
+The 2026-08-21 Host readiness update records source-level progress only: the
+packaging entitlements plist now requests
+`com.apple.developer.hid.virtual.device`, and Host offline tests cover neutral
+release when controller disconnect or Internet route invalidation tears down an
+active virtual gamepad. It did not run an identity-signed entitled Host, a
+physical Android controller, or a Mac-side observer, so its summary remains
+`blocked`.
 
 The 2026-08-20 P0110 readiness run was collected under the shared Android device
 lock with `adb -s EP0110PZ0B9110300B`. It recorded the connected Nubia P0110

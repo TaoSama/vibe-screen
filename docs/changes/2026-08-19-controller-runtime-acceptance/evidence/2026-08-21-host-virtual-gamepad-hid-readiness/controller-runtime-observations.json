@@ -1,0 +1,21 @@
+{
+  "device_identity_recorded": false,
+  "apk_identity_recorded": false,
+  "physical_controller_attached": false,
+  "android_controller_source_observed": false,
+  "protocol_controller_capability_negotiated": false,
+  "android_production_forwarding_observed": false,
+  "controller_connected_state_disconnected_observed": false,
+  "host_identity_signed": false,
+  "host_virtual_hid_entitlement_present": false,
+  "host_virtual_gamepad_available": false,
+  "mac_side_controller_response_observed": false,
+  "neutral_release_on_disconnect_observed": false,
+  "artifact_paths": [
+    "baseline/MacHost/Telemachus.entitlements",
+    "baseline/MacHost/Sources/GameControllerInput.swift",
+    "baseline/MacHost/Tests/TelemachusTests/GameControllerInjectorTests.swift",
+    "scripts/tests/test_release_tools.py"
+  ],
+  "notes": "Host source readiness advanced: the packaging entitlements plist now requests com.apple.developer.hid.virtual.device, and offline tests cover neutral release when a controller disconnects or an Internet controller route is invalidated. This local run used no physical Android controller, no identity-signed entitled Host app, and no Mac-side controller observer, so controller runtime acceptance remains blocked."
+}
