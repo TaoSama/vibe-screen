@@ -181,6 +181,7 @@ class StreamClient(
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
     internal var onSessionEnded: ((failure: SessionFailure) -> Unit)? = null
+    internal var onTelemetryEvent: ((event: String, fields: Map<String, Any?>) -> Unit)? = null
 
     /** Invoked when the server confirms the stream codec (true = HEVC). */
     var onCodecSelected: ((Boolean) -> Unit)? = null
@@ -201,6 +202,7 @@ class StreamClient(
     private var bytesReceived = 0L
     private var framesReceived = 0L
     private var diagFrameCount = 0L
+    private var firstFrameTelemetryEpoch = 0L
     private var lastStatsTime = System.currentTimeMillis()
     private val keyframeRequestLock = Any()
     private var lastKeyframeRequestNs = 0L
@@ -311,6 +313,7 @@ class StreamClient(
                 streamCodecIsHevc = true
                 codecNegotiated = false
                 connectionEpoch = SESSION_EPOCHS.beginSession()
+                firstFrameTelemetryEpoch = 0L
                 val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_USB)
                 if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
                     reopenUsbAsLegacy(connectionEpoch)
@@ -551,6 +554,7 @@ class StreamClient(
                         }
                         streamCodecIsHevc = true
                         codecNegotiated = false
+                        firstFrameTelemetryEpoch = 0L
                         val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
                         if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
                             reopenWirelessAsLegacy(
@@ -658,6 +662,10 @@ class StreamClient(
                 controllerConnectionAcks.reset()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
+                emitTelemetry(
+                    "protocol_v1_accepted",
+                    mapOf("session_epoch" to connectionEpoch, "transport" to transport.name),
+                )
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
                 configureLegacyMode(decision.firstByte)
@@ -1181,13 +1189,33 @@ class StreamClient(
                         mapOf(
                             "reason" to mediaDisposition.name.lowercase(),
                             "config_epoch" to payload.header.configEpoch,
-                            "session_epoch" to connectionEpoch,
+                            "session_epoch" to payload.header.sessionEpoch,
+                        ),
+                    )
+                    return
+                }
+                val frameEpoch = connectionEpoch
+                if (!isCurrentProtocolSession(session, frameEpoch)) {
+                    releaseBuffer(payload.annexB)
+                    emitTelemetry(
+                        "frame_dropped",
+                        mapOf(
+                            "reason" to "stale_session_epoch",
+                            "frame_epoch" to frameEpoch,
+                            "current_epoch" to SESSION_EPOCHS.currentEpoch(),
                         ),
                     )
                     return
                 }
                 val receiveTimestamp = System.nanoTime()
                 checkKeyframeFreshness(receiveTimestamp, payload.header.keyframe)
+                recordFirstReceivedFrame(
+                    frameSize = payload.annexB.size,
+                    isKeyframe = payload.header.keyframe,
+                    hasMetadata = true,
+                    sessionEpoch = frameEpoch,
+                    configEpoch = payload.header.configEpoch,
+                )
                 val callback = onFrameReceived
                 if (callback == null) {
                     releaseBuffer(payload.annexB)
@@ -1197,7 +1225,7 @@ class StreamClient(
                         payload.annexB.size,
                         receiveTimestamp,
                         payload.header.keyframe,
-                        connectionEpoch,
+                        frameEpoch,
                         payload.header.configEpoch,
                     )
                 }
@@ -2318,12 +2346,13 @@ class StreamClient(
         }
         checkKeyframeFreshness(receiveTimestamp, isKeyframe)
         diagFrameCount++
-        if (diagFrameCount == 1L) {
-            diagLog(
-                "First video frame: size=$frameSize, keyframe=$isKeyframe, " +
-                    "metadata=$hasMetadata, callback=${onFrameReceived != null}",
-            )
-        }
+        recordFirstReceivedFrame(
+            frameSize = frameSize,
+            isKeyframe = isKeyframe,
+            hasMetadata = hasMetadata,
+            sessionEpoch = epoch,
+            configEpoch = LEGACY_CONFIG_EPOCH,
+        )
         if (diagFrameCount % 60L == 0L) {
             diagLog("Frames received: $diagFrameCount")
         }
@@ -2342,6 +2371,33 @@ class StreamClient(
             releaseBuffer(frameData)
         }
         updateStats(frameSize)
+    }
+
+    private fun recordFirstReceivedFrame(
+        frameSize: Int,
+        isKeyframe: Boolean,
+        hasMetadata: Boolean,
+        sessionEpoch: Long,
+        configEpoch: Long,
+    ) {
+        if (configEpoch <= LEGACY_CONFIG_EPOCH) return
+        if (firstFrameTelemetryEpoch == sessionEpoch) return
+        firstFrameTelemetryEpoch = sessionEpoch
+        diagLog(
+            "First frame: size=$frameSize, keyframe=$isKeyframe, " +
+                "metadata=$hasMetadata, session_epoch=$sessionEpoch, config_epoch=$configEpoch, " +
+                "callback=${onFrameReceived != null}",
+        )
+        emitTelemetry(
+            "first_frame_received",
+            mapOf(
+                "session_epoch" to sessionEpoch,
+                "config_epoch" to configEpoch,
+                "size" to frameSize,
+                "keyframe" to isKeyframe,
+                "metadata" to hasMetadata,
+            ),
+        )
     }
 
     private fun checkKeyframeFreshness(
@@ -2574,6 +2630,7 @@ class StreamClient(
         event: String,
         fields: Map<String, Any?> = emptyMap(),
     ) {
+        onTelemetryEvent?.invoke(event, fields)
         Log.i(TELEMETRY_TAG, TelemetryJson.encode(event, System.currentTimeMillis(), fields))
     }
 

@@ -331,6 +331,73 @@ this source tree, and this change introduces no new production memory fix. The
 formal two-hour Host RSS no-growth gate remains open until a matching
 `host_rss_gate` run reports `pass`.
 
+## Reconnect timing evidence
+
+The Phase 1 reconnect-within-three-seconds gate is separate from
+glass-to-glass latency. It measures one recovery window from a declared
+disruption start to the Android decoder's first output frame after a fresh
+Protocol v1 recovery. A retry loop, Activity lifecycle callback, Host accept
+line, or first received encoded frame alone is not sufficient.
+
+For a complete gate record, collect one attempt for each required disruption:
+
+- `client-kill`: force-stop or kill the Android client, cold-start it, and
+  record the disruption timestamp before the kill.
+- `adb-reverse-disconnect`: remove `tcp:54321`, restore it, and record the
+  disruption timestamp before the removal plus `adb_reverse_restored=true`.
+- `lan-network-interrupt`: interrupt the trusted-LAN route, restore it, and
+  record secure-record markers proving encrypted LAN rather than plaintext
+  fallback.
+
+Each attempt must include the same Host PID before and after recovery, the Host
+Protocol v1 connection epoch, and the disruption start in the same Android
+millisecond timebase as the recovery markers. Those markers can come from the
+private diag log (`Protocol v1 upgrade accepted`, `First frame:`, and `First
+output frame!`) or from `VibeScreenTelemetry` logcat events. For logcat-only
+attempts, `protocol_v1_accepted` with `session_epoch` is the Protocol v1
+acceptance marker; existing `connection_opened`, `first_frame_received`, and
+`first_output_frame` logcat events only supply connection/session and decoder
+timing evidence and cannot independently prove Protocol v1. Until the
+`protocol_v1_accepted` event is present in the captured logcat, the attempt must
+remain `insufficient` or use the private diag log instead. Run the evaluator on
+the observation JSON:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing observations.json \
+  --output reconnect-timing-summary.json
+```
+
+The summary exits `0` only for `pass`, `1` for insufficient evidence, `2` for a
+measured failure, and `3` for blocked prerequisites. During incremental real
+device work, use `--require-disruption client-kill` or another single scenario
+to validate a partial run without claiming the full three-scenario gate.
+
+When prerequisites block the run, write a blocked record instead of promoting
+older reconnect logs:
+
+```sh
+make evidence-reconnect-timing-blocked \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
+  RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable" --blocker "Host is not listening on 127.0.0.1:54321"' \
+  RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
+  RECONNECT_TIMING_NOTES_ARG='--notes "Blocked readiness record only; no real Protocol v1 reconnect timing attempt was run."'
+```
+
+or pass exact blockers directly:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
+  --blocker "Vibe Screen Dev signing identity is unavailable" \
+  --blocker "Host is not listening on 127.0.0.1:54321" \
+  --output reconnect-timing-summary.json
+```
+
+Blocked or insufficient summaries cannot close the README reconnect timing
+gate. Evidence from the Nubia P0110 must remain labeled P0110/pacific and must
+not be relabeled as Xiaomi 13/fuxi.
+
 ## Latency evidence
 
 Latency evidence is split by what the measurement can prove:
