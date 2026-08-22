@@ -208,6 +208,26 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_ms"], 10_850)
 
+    def test_parses_android_diag_skips_legacy_first_frame_marker(self) -> None:
+        events = parse_android_diag_events(
+            "\n".join(
+                [
+                    '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":4}',
+                    "[10700] VD: First frame: size=1, keyframe=true, session_epoch=3, config_epoch=0",
+                    "[10750] VD: First output frame! size=1, flags=1",
+                    "[10800] VD: First frame: size=1, keyframe=true, session_epoch=4, config_epoch=9",
+                    "[10850] VD: First output frame! size=1, flags=1, session_epoch=4",
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_ms"], 10_800)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_ms"], 10_850)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
+
     def test_parses_android_logcat_telemetry_after_disruption_start(self) -> None:
         events = parse_android_logcat_events(
             "\n".join(
@@ -227,6 +247,26 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["first_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_ms"], 10_850)
+
+    def test_parses_android_logcat_skips_legacy_first_frame_marker(self) -> None:
+        events = parse_android_logcat_events(
+            "\n".join(
+                [
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10600,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10700,"session_epoch":3,"config_epoch":0}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10750,"session_epoch":0}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_ms"], 10_800)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_ms"], 10_850)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
 
     def test_logcat_connection_and_first_frame_without_decoder_output_do_not_pass(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")

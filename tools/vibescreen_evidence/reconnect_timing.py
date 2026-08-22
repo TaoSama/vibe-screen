@@ -47,6 +47,25 @@ _CONFIG_EPOCH_FIELD = re.compile(r"\bconfig_epoch=(?P<epoch>\d+)\b")
 _JSON_OBJECT = re.compile(r"\{.*\}")
 
 
+def _positive_epoch_from_match(match: re.Match[str] | None) -> int | None:
+    if match is None:
+        return None
+    epoch = int(match.group("epoch"))
+    return epoch if epoch > 0 else None
+
+
+def _positive_epoch_from_value(value: Any, field: str) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        raise ReconnectTimingEvidenceError(f"{field} must be a positive integer")
+    try:
+        epoch = int(value)
+    except (TypeError, ValueError) as error:
+        raise ReconnectTimingEvidenceError(f"{field} must be a positive integer") from error
+    return epoch if epoch > 0 else None
+
+
 class ReconnectTimingEvidenceError(ValueError):
     """Raised when reconnect evidence is malformed."""
 
@@ -132,18 +151,17 @@ def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> di
         if "Protocol v1 upgrade accepted" in body and "protocol_v1_accepted_ms" not in events:
             events["protocol_v1_accepted_ms"] = timestamp_ms
         if "First frame:" in body and "first_frame_ms" not in events:
-            events["first_frame_ms"] = timestamp_ms
-            epoch = _SESSION_EPOCH_FIELD.search(body)
-            if epoch:
-                events["first_frame_session_epoch"] = int(epoch.group("epoch"))
-            config_epoch = _CONFIG_EPOCH_FIELD.search(body)
-            if config_epoch:
-                events.setdefault("config_epoch", int(config_epoch.group("epoch")))
+            config_epoch = _positive_epoch_from_match(_CONFIG_EPOCH_FIELD.search(body))
+            frame_epoch = _positive_epoch_from_match(_SESSION_EPOCH_FIELD.search(body))
+            if config_epoch is not None and frame_epoch is not None:
+                events["first_frame_ms"] = timestamp_ms
+                events["first_frame_session_epoch"] = frame_epoch
+                events.setdefault("config_epoch", config_epoch)
         if "First output frame!" in body and "first_output_frame_ms" not in events:
-            events["first_output_frame_ms"] = timestamp_ms
-            epoch = _SESSION_EPOCH_FIELD.search(body)
-            if epoch:
-                events["first_output_frame_session_epoch"] = int(epoch.group("epoch"))
+            frame_epoch = _positive_epoch_from_match(_SESSION_EPOCH_FIELD.search(body))
+            if frame_epoch is not None:
+                events["first_output_frame_ms"] = timestamp_ms
+                events["first_output_frame_session_epoch"] = frame_epoch
         if "session ended" in body and "session_ended_ms" not in events:
             events["session_ended_ms"] = timestamp_ms
         if "connection_opened" in body and "android_session_epoch" not in events:
@@ -151,9 +169,9 @@ def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> di
             if epoch:
                 events["android_session_epoch"] = int(epoch.group("epoch"))
         if "onVideoConfiguration" in body and "config_epoch" not in events:
-            epoch = _CONFIG_EPOCH.search(body)
-            if epoch:
-                events["config_epoch"] = int(epoch.group("epoch"))
+            epoch = _positive_epoch_from_match(_CONFIG_EPOCH.search(body))
+            if epoch is not None:
+                events["config_epoch"] = epoch
     return events
 
 
@@ -189,17 +207,16 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
             if epoch is not None:
                 events["android_session_epoch"] = epoch
         elif event == "first_frame_received" and "first_frame_ms" not in events:
-            events["first_frame_ms"] = timestamp_ms
-            epoch = _optional_positive_int(payload.get("session_epoch"), "session_epoch")
-            if epoch is not None:
+            config_epoch = _positive_epoch_from_value(payload.get("config_epoch"), "config_epoch")
+            epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
+            if config_epoch is not None and epoch is not None:
+                events["first_frame_ms"] = timestamp_ms
                 events["first_frame_session_epoch"] = epoch
-            config_epoch = _optional_positive_int(payload.get("config_epoch"), "config_epoch")
-            if config_epoch is not None:
                 events.setdefault("config_epoch", config_epoch)
         elif event == "first_output_frame" and "first_output_frame_ms" not in events:
-            events["first_output_frame_ms"] = timestamp_ms
-            epoch = _optional_positive_int(payload.get("session_epoch"), "session_epoch")
+            epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
             if epoch is not None:
+                events["first_output_frame_ms"] = timestamp_ms
                 events["first_output_frame_session_epoch"] = epoch
     return events
 
