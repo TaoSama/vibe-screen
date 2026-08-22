@@ -1,0 +1,73 @@
+{
+  "collected_at": "2026-08-22T17:31:15.692618+00:00",
+  "device_identity": {
+    "api_level": "36",
+    "device": "pacific",
+    "fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "os_release": "16",
+    "serialno": "EP0110PZ0B9110300B",
+    "wm_density": "Physical density: 560",
+    "wm_size": "Physical size: 1264x2800"
+  },
+  "diag_log_read_error": null,
+  "drawing_observation": "",
+  "existing_locks": [
+    "/tmp/vibe-screen-device-android.lock"
+  ],
+  "host_log_appended_bytes": 0,
+  "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "host_log_name": null,
+  "observation_seconds": 0.0,
+  "observed_physical_drawing": false,
+  "pass_eligible_stylus_candidates": [
+    {
+      "axes": [
+        "ORIENTATION",
+        "PRESSURE",
+        "TILT",
+        "X",
+        "Y"
+      ],
+      "buttons": [],
+      "descriptor": null,
+      "name": "goodix_stylus_input",
+      "sources": [
+        "KEYBOARD",
+        "STYLUS",
+        "TOUCHSCREEN"
+      ]
+    }
+  ],
+  "status": "blocked_physical_stylus_not_observed",
+  "stylus_candidates": [
+    {
+      "axes": [
+        "PRESSURE",
+        "TILT"
+      ],
+      "buttons": [],
+      "descriptor": "2eae456e51a294467747b34134d9bcbee02b2bff",
+      "name": "goodix_stylus_input",
+      "sources": []
+    },
+    {
+      "axes": [
+        "ORIENTATION",
+        "PRESSURE",
+        "TILT",
+        "X",
+        "Y"
+      ],
+      "buttons": [],
+      "descriptor": null,
+      "name": "goodix_stylus_input",
+      "sources": [
+        "KEYBOARD",
+        "STYLUS",
+        "TOUCHSCREEN"
+      ]
+    }
+  ]
+}

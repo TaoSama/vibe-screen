@@ -1,0 +1,6 @@
+[1787413456764] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787413456764] MA: lifecycle foreground connected=false
+[1787413456805] MA: surfaceCreated
+[1787413456805] MA: surfaceChanged: 1264x2800
+[1787413502779] MA: surfaceDestroyed
+[1787413502803] MA: lifecycle background connected=true; retries paused

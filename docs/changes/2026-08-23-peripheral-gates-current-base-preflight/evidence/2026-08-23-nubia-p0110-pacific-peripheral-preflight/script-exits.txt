@@ -1,0 +1,3 @@
+native_pointer_exit=2
+controller_runtime_exit=2
+physical_stylus_exit=0
