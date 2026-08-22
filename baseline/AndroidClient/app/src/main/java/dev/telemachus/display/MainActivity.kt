@@ -5116,7 +5116,13 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
-        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
+        val callbackClient = StreamClient(
+            host,
+            port,
+            applicationContext,
+            advertiseController = true,
+            wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf()),
+        )
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {

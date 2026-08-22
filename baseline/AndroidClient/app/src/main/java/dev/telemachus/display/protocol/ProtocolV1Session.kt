@@ -5,6 +5,7 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
 import dev.telemachus.display.WakeHostPolicy
+import dev.telemachus.display.WakeHostProof
 import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
@@ -884,6 +885,7 @@ internal class ProtocolV1Session(
         requestId: ByteString,
         targetMacAddress: ByteString,
         secureOnPassword: ByteString = ByteString.EMPTY,
+        authorizationSecret: ByteArray? = null,
     ): Envelope? {
         if (state != State.STREAMING) return null
         if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
@@ -894,6 +896,28 @@ internal class ProtocolV1Session(
             pendingWakeHostRequests.removeFirst()
         }
         pendingWakeHostRequests.addLast(requestId)
+        val keyId = authorizationSecret?.let(WakeHostProof::keyId).orEmpty()
+        val issuedAtUnixSeconds = if (authorizationSecret != null) System.currentTimeMillis() / 1_000L else 0L
+        val expiresAtUnixSeconds = if (authorizationSecret != null) issuedAtUnixSeconds + WAKE_HOST_AUTHORIZATION_LIFETIME_SECONDS else 0L
+        val nonce =
+            authorizationSecret?.let {
+                ByteString.copyFrom(ByteArray(WakeHostProof.MINIMUM_NONCE_BYTES).also(secureRandom::nextBytes))
+            } ?: ByteString.EMPTY
+        val signature =
+            authorizationSecret?.let { secret ->
+                WakeHostProof.signature(
+                    requestId = requestId,
+                    targetMacAddress = targetMacAddress,
+                    secureOnPassword = secureOnPassword,
+                    hostId = peerHostId,
+                    deviceId = deviceId,
+                    keyId = keyId,
+                    issuedAtUnixSeconds = issuedAtUnixSeconds,
+                    expiresAtUnixSeconds = expiresAtUnixSeconds,
+                    nonce = nonce,
+                    secret = secret,
+                )
+            } ?: ByteString.EMPTY
         val request =
             WakeHostRequest
                 .newBuilder()
@@ -902,6 +926,11 @@ internal class ProtocolV1Session(
                 .setSecureOnPassword(secureOnPassword)
                 .setHostId(peerHostId)
                 .setDeviceId(deviceId)
+                .setKeyId(keyId)
+                .setIssuedAtUnixSeconds(issuedAtUnixSeconds)
+                .setExpiresAtUnixSeconds(expiresAtUnixSeconds)
+                .setNonce(nonce)
+                .setSignature(signature)
                 .build()
         return envelope().setWakeHostRequest(request).build()
     }
@@ -1808,6 +1837,9 @@ internal class ProtocolV1Session(
         if (request.hostId.isBlank() || request.hostId != peerHostId) {
             throw protocolFailure("WakeHostRequest targets a different host")
         }
+        if (request.deviceId.isBlank() || request.deviceId != deviceId) {
+            throw protocolFailure("WakeHostRequest device identity does not match this session")
+        }
         return listOf(Action.WakeHost(request.toContext(), envelope.messageId))
     }
 
@@ -2172,6 +2204,7 @@ internal class ProtocolV1Session(
         private const val MAX_HOST_ACTIONS = 8
         private const val MAX_PENDING_HOST_ACTIONS = 16
         private const val MAX_PENDING_WAKE_HOST_REQUESTS = 16
+        private const val WAKE_HOST_AUTHORIZATION_LIFETIME_SECONDS = 60L
 
         // Clipboard transfer limits and wire constants.
         const val LOCAL_MAX_CLIPBOARD_BYTES: Long = 1024L * 1024L

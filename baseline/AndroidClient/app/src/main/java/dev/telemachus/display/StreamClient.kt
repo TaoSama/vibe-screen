@@ -125,6 +125,7 @@ class StreamClient(
     @Volatile private var lastTerminationFailure: SessionFailure? = null
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
+    @Volatile private var wakeHostAuthorizationSecret: ByteArray? = null
     @Volatile private var protocolSession: ProtocolV1Session? = null
     @Volatile private var fileTransferApprovalCallback: ((FileOffer) -> Unit)? = null
     private val nextInputId = AtomicLong(1L)
@@ -294,6 +295,7 @@ class StreamClient(
             pendingOutboundFailure.set(null)
             pendingDecoderFailure.set(null)
             pendingInboundFailure.set(null)
+            wakeHostAuthorizationSecret = null
             try {
                 val candidate = registerInitialTransportCandidate() ?: return@withContext
                 if (terminationDispatcher.isClaimed()) {
@@ -380,6 +382,7 @@ class StreamClient(
         pendingOutboundFailure.set(null)
         pendingDecoderFailure.set(null)
         pendingInboundFailure.set(null)
+        wakeHostAuthorizationSecret = null
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -538,7 +541,9 @@ class StreamClient(
                                 rawOutput
                             }
                         candidate.connection.installStreams(protectedInput, protectedOutput)
+                        wakeHostAuthorizationSecret = token.copyOf()
                         if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
+                            wakeHostAuthorizationSecret = null
                             outboundScheduler.shutdownNow()
                             return@withContext
                         }
@@ -680,7 +685,7 @@ class StreamClient(
                 CodecCapabilities.advertisedStreamCodecs.mapNotNull(StreamCodec::toProtocolCodecOrNull),
             advertiseController = advertiseController,
             fileTransferPolicy = fileTransferPolicy,
-            wakeHostPolicy = wakeHostPolicy,
+            wakeHostPolicy = wakeHostAuthorizationSecret?.let { SharedSecretWakeHostPolicy(it.copyOf()) } ?: wakeHostPolicy,
         ).also {
             incomingFileTransfers.set(
                 IncomingFileTransferManager(
@@ -1468,7 +1473,12 @@ class StreamClient(
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                 command = StreamOutboundCommand.ProtocolBatch { activeSession ->
-                    activeSession.requestWakeHost(requestId, targetMacAddress, secureOnPassword)?.let { listOf(it) }
+                    activeSession.requestWakeHost(
+                        requestId,
+                        targetMacAddress,
+                        secureOnPassword,
+                        authorizationSecret = wakeHostAuthorizationSecret?.copyOf(),
+                    )?.let { listOf(it) }
                         ?: emptyList()
                 },
             )
@@ -2004,7 +2014,16 @@ class StreamClient(
                     WakeHostRequestFailure.INVALID_REQUEST_ID -> "invalid_request_id"
                     WakeHostRequestFailure.INVALID_MAC_ADDRESS -> "invalid_mac_address"
                     WakeHostRequestFailure.INVALID_SECURE_ON_PASSWORD -> "invalid_secure_on_password"
+                    WakeHostRequestFailure.INVALID_AUTHORIZATION -> "wake_host_unauthorized"
+                    WakeHostRequestFailure.EXPIRED_AUTHORIZATION -> "wake_host_authorization_expired"
+                    WakeHostRequestFailure.REPLAYED_REQUEST -> "wake_host_replay"
                     WakeHostRequestFailure.POLICY_DENIED -> "wake_host_policy_denied"
+                }
+        } catch (failure: WakeHostPacketSenderException) {
+            false to
+                when (failure.failure) {
+                    WakeHostPacketSenderFailure.INVALID_BROADCAST_ADDRESS -> "invalid_broadcast_target"
+                    WakeHostPacketSenderFailure.INVALID_PORT -> "invalid_broadcast_target"
                 }
         } catch (failure: Exception) {
             Log.w(TAG, "WakeHost packet send failed with ${failure.javaClass.simpleName}", failure)
@@ -2498,6 +2517,7 @@ class StreamClient(
             Log.e(TAG, "Error during cleanup", e)
         }
         protocolSession = null
+        wakeHostAuthorizationSecret = null
         incomingFileTransfers.getAndSet(null)?.cancelAll()
         cancelActiveFileTransfers()
         remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED

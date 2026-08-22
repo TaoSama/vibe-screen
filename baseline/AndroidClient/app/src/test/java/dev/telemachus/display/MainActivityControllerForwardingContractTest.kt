@@ -138,7 +138,8 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "if (keyboard || nativePointer || controller)")
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
         assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
-        assertContains(wirelessConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
+        assertContains(wirelessConnect, "advertiseController = true")
+        assertContains(wirelessConnect, "wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf())")
         assertContains(streamClient, "advertiseController = advertiseController")
     }
 
