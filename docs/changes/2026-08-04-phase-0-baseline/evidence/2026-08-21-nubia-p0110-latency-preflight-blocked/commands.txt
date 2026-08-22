@@ -1,0 +1,39 @@
+Repository: $WORKTREE
+Commit: cc26a84c829016fa61c721f73a128284fdf64f92
+Collected at: 2026-08-20T19:38:41Z
+Published as: 2026-08-21-nubia-p0110-latency-preflight-blocked
+
+Fetched latest origin before creating worktree:
+  git -C $REPOSITORY_ROOT fetch origin --prune
+
+Created isolated worktree from latest origin/main:
+  git -C $REPOSITORY_ROOT worktree add -B codex/latency-evidence-gates $WORKTREE origin/main
+
+Device preflight with pseudonymous device id:
+  ADB_SERIAL=nubia-p0110-pacific-device-1
+
+  adb -s "$ADB_SERIAL" get-state
+  outcome: device
+
+  adb -s "$ADB_SERIAL" shell getprop ro.product.manufacturer
+  outcome: nubia
+
+  adb -s "$ADB_SERIAL" shell getprop ro.product.model
+  outcome: P0110
+
+  adb -s "$ADB_SERIAL" shell getprop ro.product.device
+  outcome: pacific
+
+  adb -s "$ADB_SERIAL" shell getprop ro.build.version.release
+  outcome: 16
+
+  adb -s "$ADB_SERIAL" shell getprop ro.build.version.sdk
+  outcome: 36
+
+Device info artifact:
+  PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial "$ADB_SERIAL" --no-connect --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/device-info.json
+  outcome: exit 0
+
+Latency gate boundary:
+  No external-camera or synchronized-clock latency capture was available in this session.
+  No telemetry-stage, decoder, RTT, screen recording, or ADB synthetic input result was used to close a gate.
