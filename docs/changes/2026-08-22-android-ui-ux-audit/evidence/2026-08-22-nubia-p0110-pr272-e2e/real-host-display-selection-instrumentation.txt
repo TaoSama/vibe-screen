@@ -1,0 +1,45 @@
+
+dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest:
+Error in initializationError(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest):
+java.lang.RuntimeException: Failed loading specified test class 'dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest'
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:50)
+	at androidx.test.internal.runner.TestLoader.getRunnersFor(TestLoader.java:64)
+	at androidx.test.internal.runner.TestRequestBuilder.build(TestRequestBuilder.java:842)
+	at androidx.test.runner.AndroidJUnitRunner.buildRequest(AndroidJUnitRunner.java:672)
+	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:453)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2634)
+Caused by: java.lang.ClassNotFoundException: dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:597)
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:44)
+	... 5 more
+Caused by: java.lang.ClassNotFoundException: Didn't find class "dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest" on path: DexPathList[[zip file "/system/framework/android.test.runner.jar", zip file "/system/framework/android.test.mock.jar", zip file "/system/framework/android.test.base.jar", zip file "/data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/base.apk", zip file "/data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/base.apk"],nativeLibraryDirectories=[/data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/lib/arm64, /data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/lib/arm64, /data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/base.apk!/lib/arm64-v8a, /data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/base.apk!/lib/arm64-v8a, /system/lib64, /system_ext/lib64, /system/lib64/vulkan]]
+	at dalvik.system.BaseDexClassLoader.findClass(BaseDexClassLoader.java:259)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:637)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:573)
+	... 8 more
+
+
+Time: 0.006
+There was 1 failure:
+1) initializationError(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest)
+java.lang.RuntimeException: Failed loading specified test class 'dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest'
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:50)
+	at androidx.test.internal.runner.TestLoader.getRunnersFor(TestLoader.java:64)
+	at androidx.test.internal.runner.TestRequestBuilder.build(TestRequestBuilder.java:842)
+	at androidx.test.runner.AndroidJUnitRunner.buildRequest(AndroidJUnitRunner.java:672)
+	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:453)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2634)
+Caused by: java.lang.ClassNotFoundException: dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:597)
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:44)
+	... 5 more
+Caused by: java.lang.ClassNotFoundException: Didn't find class "dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest" on path: DexPathList[[zip file "/system/framework/android.test.runner.jar", zip file "/system/framework/android.test.mock.jar", zip file "/system/framework/android.test.base.jar", zip file "/data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/base.apk", zip file "/data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/base.apk"],nativeLibraryDirectories=[/data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/lib/arm64, /data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/lib/arm64, /data/app/~~NOqf64qaaUXK_AcZDH8HXA==/dev.telemachus.display.test-koykZCPqMeBh9NMknJQpXg==/base.apk!/lib/arm64-v8a, /data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/base.apk!/lib/arm64-v8a, /system/lib64, /system_ext/lib64, /system/lib64/vulkan]]
+	at dalvik.system.BaseDexClassLoader.findClass(BaseDexClassLoader.java:259)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:637)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:573)
+	... 8 more
+
+FAILURES!!!
+Tests run: 1,  Failures: 1

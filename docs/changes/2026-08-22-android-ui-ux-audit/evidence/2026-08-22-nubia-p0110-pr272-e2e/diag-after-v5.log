@@ -1,0 +1,56 @@
+[1787389109412] MA: device health battery=100 charging=true saver=false thermal=elevated
+[1787389109413] MA: lifecycle foreground connected=false
+[1787389109460] MA: surfaceCreated
+[1787389109460] MA: surfaceChanged: 1264x2800
+[1787389109578] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389111103] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389112632] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389114163] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389115697] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389117229] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389118760] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389120308] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389121847] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389123380] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389124902] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389126439] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389127975] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389129495] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389131020] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389132557] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389134073] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389135594] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389137146] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389138678] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389140199] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389141715] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389143235] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389144755] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389146278] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389147811] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389149340] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389150858] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389152393] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389153928] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389155447] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389156960] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389158484] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389160023] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389161553] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389163079] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389164596] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389166120] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389167644] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389169179] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389170701] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389172222] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389173765] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389175319] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389176843] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389178366] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389179898] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389181428] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389182959] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389184486] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787389185405] MA: surfaceDestroyed
+[1787389185410] MA: lifecycle background connected=false; retries paused
