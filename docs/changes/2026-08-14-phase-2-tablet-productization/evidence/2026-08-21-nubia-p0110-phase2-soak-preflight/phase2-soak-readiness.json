@@ -114,6 +114,7 @@
     }
   ],
   "blockers": [
+    "--apk-sha256 must be a 64-character hexadecimal digest",
     "device_class is not physical_8_9_inch_tablet, so this run cannot close the tablet hardware gate",
     "host PID was not provided, so Host RSS cannot be sampled",
     "host telemetry JSONL path was not provided"
