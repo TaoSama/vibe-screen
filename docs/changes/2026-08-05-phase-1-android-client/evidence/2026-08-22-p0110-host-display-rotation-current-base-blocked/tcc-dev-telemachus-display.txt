@@ -1,0 +1,3 @@
+sqlite3 user TCC read-only check for dev.telemachus.display
+Error: unable to open database "/Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db": authorization denied
+exit=1

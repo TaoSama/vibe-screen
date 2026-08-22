@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,13 @@ EVIDENCE_SCHEMA_PATH = (
 
 
 def complete_run(display_kind: str, rotation: int = 90) -> dict:
+    mapping_points = [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center",
+    ]
     return {
         "display_kind": display_kind,
         "display_id": f"{display_kind}-display-1",
@@ -55,14 +63,33 @@ def complete_run(display_kind: str, rotation: int = 90) -> dict:
             "no_session_teardown": True,
             "restored_original_host_rotation": True,
         },
+        "inverse_touch_mapping": {
+            "coordinate_space": "host-logical-display",
+            "tolerance_px": 8.0,
+            "points": [
+                {
+                    "name": name,
+                    "android_x": float(index),
+                    "android_y": float(index),
+                    "expected_host_x": float(index * 10),
+                    "expected_host_y": float(index * 10),
+                    "observed_host_x": float(index * 10 + 1),
+                    "observed_host_y": float(index * 10 + 1),
+                    "error_px": 1.5,
+                    "within_tolerance": True,
+                }
+                for index, name in enumerate(mapping_points, start=1)
+            ],
+            "all_points_within_tolerance": True,
+        },
         "artifacts": {
-            "device_identity": f"{display_kind}-device-and-artifact-identity.txt",
-            "host_display_snapshot_before": f"{display_kind}-host-display-before.txt",
-            "host_display_snapshot_rotated": f"{display_kind}-host-display-rotated.txt",
-            "android_screenshot": f"{display_kind}-android-rotated-host-display.png",
-            "touch_matrix": f"{display_kind}-touch-matrix.txt",
-            "host_log": f"{display_kind}-host.log",
-            "android_logcat": f"{display_kind}-logcat.txt",
+            "device_identity": f"{display_kind}-{rotation}-device-and-artifact-identity.txt",
+            "host_display_snapshot_before": f"{display_kind}-{rotation}-host-display-before.txt",
+            "host_display_snapshot_rotated": f"{display_kind}-{rotation}-host-display-rotated.txt",
+            "android_screenshot": f"{display_kind}-{rotation}-android-rotated-host-display.png",
+            "touch_matrix": f"{display_kind}-{rotation}-touch-matrix.txt",
+            "host_log": f"{display_kind}-{rotation}-host.log",
+            "android_logcat": f"{display_kind}-{rotation}-logcat.txt",
         },
     }
 
@@ -71,7 +98,11 @@ def complete_document() -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
-        "runs": [complete_run("physical"), complete_run("virtual", 270)],
+        "runs": [
+            complete_run(display_kind, rotation)
+            for display_kind in ("physical", "virtual")
+            for rotation in (90, 180, 270)
+        ],
     }
 
 
@@ -112,6 +143,11 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             self.assertNotIsInstance(value, bool, path)
             if "minimum" in node:
                 self.assertGreaterEqual(value, node["minimum"], path)
+        elif expected_type == "number":
+            self.assertIsInstance(value, (int, float), path)
+            self.assertNotIsInstance(value, bool, path)
+            if "minimum" in node:
+                self.assertGreaterEqual(value, node["minimum"], path)
         elif expected_type == "boolean":
             self.assertIsInstance(value, bool, path)
 
@@ -124,6 +160,10 @@ class HostDisplayRotationGateTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["covered_display_kinds"], ["physical", "virtual"])
+        self.assertEqual(
+            result["covered_host_rotations_by_display_kind"],
+            {"physical": [90, 180, 270], "virtual": [90, 180, 270]},
+        )
         self.assertEqual(result["errors"], [])
 
     def test_complete_evidence_matches_published_input_schema(self) -> None:
@@ -155,13 +195,71 @@ class HostDisplayRotationGateTest(unittest.TestCase):
 
     def test_requires_both_display_kinds(self) -> None:
         document = complete_document()
-        document["runs"] = [complete_run("physical")]
+        document["runs"] = [complete_run("physical", rotation) for rotation in (90, 180, 270)]
 
         result = evaluate(document)
 
         self.assertEqual(result["status"], "failed")
         self.assertIn(
             "runs: missing rotated virtual host-display evidence", result["errors"]
+        )
+        self.assertIn(
+            "runs: missing virtual host-display rotation coverage for [90, 180, 270]",
+            result["errors"],
+        )
+
+    def test_requires_every_host_rotation_for_each_display_kind(self) -> None:
+        document = complete_document()
+        document["runs"] = [
+            run
+            for run in document["runs"]
+            if not (
+                run["display_kind"] == "virtual"
+                and run["host_rotation_degrees"] == 180
+            )
+        ]
+
+        result = evaluate(document)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(
+            result["covered_host_rotations_by_display_kind"],
+            {"physical": [90, 180, 270], "virtual": [90, 270]},
+        )
+        self.assertIn(
+            "runs: missing virtual host-display rotation coverage for [180]",
+            result["errors"],
+        )
+
+    def test_requires_rotation_specific_artifacts_per_display_kind(self) -> None:
+        document = complete_document()
+        document["runs"][1]["artifacts"]["host_display_snapshot_rotated"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_rotated"]
+        document["runs"][1]["artifacts"]["android_screenshot"] = document["runs"][0][
+            "artifacts"
+        ]["android_screenshot"]
+        document["runs"][1]["artifacts"]["touch_matrix"] = document["runs"][0][
+            "artifacts"
+        ]["touch_matrix"]
+
+        result = evaluate(document)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn(
+            "runs[1].artifacts.host_display_snapshot_rotated: must be unique "
+            "for each physical host rotation; already used by runs[0]",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[1].artifacts.android_screenshot: must be unique for each "
+            "physical host rotation; already used by runs[0]",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[1].artifacts.touch_matrix: must be unique for each physical "
+            "host rotation; already used by runs[0]",
+            result["errors"],
         )
 
     def test_rejects_client_local_matrix_as_host_rotation_evidence(self) -> None:
@@ -194,30 +292,52 @@ class HostDisplayRotationGateTest(unittest.TestCase):
 
     def test_requires_distinct_display_evidence(self) -> None:
         document = complete_document()
-        document["runs"][1]["display_id"] = document["runs"][0]["display_id"]
-        document["runs"][1]["artifacts"]["host_display_snapshot_before"] = document[
+        physical_index = 0
+        virtual_index = next(
+            index
+            for index, run in enumerate(document["runs"])
+            if run["display_kind"] == "virtual"
+        )
+        document["runs"][virtual_index]["display_id"] = document["runs"][physical_index][
+            "display_id"
+        ]
+        document["runs"][virtual_index]["artifacts"]["host_display_snapshot_before"] = document[
             "runs"
-        ][0]["artifacts"]["host_display_snapshot_before"]
-        document["runs"][1]["artifacts"]["host_display_snapshot_rotated"] = document[
+        ][physical_index]["artifacts"]["host_display_snapshot_before"]
+        document["runs"][virtual_index]["artifacts"]["host_display_snapshot_rotated"] = document[
             "runs"
-        ][0]["artifacts"]["host_display_snapshot_rotated"]
+        ][physical_index]["artifacts"]["host_display_snapshot_rotated"]
 
         result = evaluate(document)
 
         self.assertEqual(result["status"], "failed")
         self.assertIn(
-            "runs[1].display_id: must differ from runs[0].display_id "
+            "runs[3].display_id: must differ from runs[0].display_id "
             "for distinct physical and virtual evidence",
             result["errors"],
         )
         self.assertIn(
-            "runs[1].artifacts.host_display_snapshot_before: must differ from "
+            "runs[3].artifacts.host_display_snapshot_before: must differ from "
             "runs[0].artifacts.host_display_snapshot_before",
             result["errors"],
         )
         self.assertIn(
-            "runs[1].artifacts.host_display_snapshot_rotated: must differ from "
+            "runs[3].artifacts.host_display_snapshot_rotated: must differ from "
             "runs[0].artifacts.host_display_snapshot_rotated",
+            result["errors"],
+        )
+
+    def test_requires_rotated_snapshot_to_differ_from_before_snapshot(self) -> None:
+        document = complete_document()
+        document["runs"][0]["artifacts"]["host_display_snapshot_rotated"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_before"]
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].artifacts.host_display_snapshot_rotated: "
+            "must differ from host_display_snapshot_before",
             result["errors"],
         )
 
@@ -231,6 +351,56 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         self.assertIn("runs[1].probes.input_mapping: must be true", result["errors"])
         self.assertIn(
             "runs[1].artifacts.touch_matrix: must reference a retained artifact",
+            result["errors"],
+        )
+
+    def test_requires_structured_inverse_touch_mapping_points(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["coordinate_space"] = "android-view"
+        document["runs"][0]["inverse_touch_mapping"]["all_points_within_tolerance"] = False
+        document["runs"][0]["inverse_touch_mapping"]["points"] = [
+            point
+            for point in document["runs"][0]["inverse_touch_mapping"]["points"]
+            if point["name"] != "center"
+        ]
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.coordinate_space: must be host-logical-display",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.all_points_within_tolerance: must be true",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.points: missing center probe",
+            result["errors"],
+        )
+
+    def test_rejects_non_finite_inverse_touch_mapping_numbers(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["points"][0]["error_px"] = math.inf
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "evidence.runs[0].inverse_touch_mapping.points[0].error_px: "
+            "must be a number",
+            result["errors"],
+        )
+
+    def test_rejects_inverse_touch_mapping_error_above_tolerance(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["tolerance_px"] = 8.0
+        document["runs"][0]["inverse_touch_mapping"]["points"][0]["error_px"] = 8.1
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.points[0].error_px: "
+            "must be less than or equal to tolerance_px",
             result["errors"],
         )
 

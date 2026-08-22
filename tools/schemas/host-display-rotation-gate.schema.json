@@ -9,7 +9,10 @@
     "kind",
     "status",
     "covered_display_kinds",
+    "covered_host_rotations_by_display_kind",
     "required_display_kinds",
+    "required_host_rotations",
+    "required_input_mapping_points",
     "required_transports",
     "required_device_fields",
     "required_host_preflight_fields",
@@ -26,10 +29,41 @@
       "type": "array",
       "items": {"enum": ["physical", "virtual"]}
     },
+    "covered_host_rotations_by_display_kind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical", "virtual"],
+      "properties": {
+        "physical": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]}
+        },
+        "virtual": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]}
+        }
+      }
+    },
     "required_display_kinds": {
       "type": "array",
       "items": {"enum": ["physical", "virtual"]},
       "const": ["physical", "virtual"]
+    },
+    "required_host_rotations": {
+      "type": "array",
+      "items": {"enum": [90, 180, 270]},
+      "const": [90, 180, 270]
+    },
+    "required_input_mapping_points": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center"
+      ]
     },
     "required_transports": {
       "type": "array",

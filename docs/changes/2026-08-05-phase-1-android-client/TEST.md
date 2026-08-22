@@ -222,14 +222,15 @@ combined into the Android Surface/input transform. It is not an acceptance run
 for a rotated physical or virtual Mac display.
 
 Before claiming rotated host-display acceptance, run a fresh real-device pass
-that records both display kinds:
+that records both display kinds across all required host rotations:
 
-1. Rotate an existing physical Mac display, stream it over a Protocol v1 USB or
-   LAN session, capture visual source orientation, corner/center input mapping,
-   stable stream state, no session teardown, and restoration of the original
-   macOS rotation.
-2. Repeat the same probes for a virtual display in its rotated host-display
-   state.
+1. Rotate an existing physical Mac display through 90, 180, and 270 degrees;
+   for each angle, stream it over a Protocol v1 USB or LAN session, capture
+   visual source orientation, corner/center inverse touch mapping in host
+   logical-display coordinates, stable stream state, no session teardown, and
+   restoration of the original macOS rotation.
+2. Repeat the same 90/180/270 probes for a virtual display in its rotated
+   host-display state.
 3. Keep client rotation as an explicit client-local setting, usually Follow Mac
    or 0 for the host-display run, and do not treat the existing client-local
    90/180/270 matrix as host-display rotation evidence.
@@ -295,6 +296,28 @@ Minimum summary shape:
         "no_session_teardown": true,
         "restored_original_host_rotation": true
       },
+      "inverse_touch_mapping": {
+        "coordinate_space": "host-logical-display",
+        "tolerance_px": 8,
+        "points": [
+          {
+            "name": "top_left",
+            "android_x": 16,
+            "android_y": 16,
+            "expected_host_x": 0,
+            "expected_host_y": 0,
+            "observed_host_x": 2,
+            "observed_host_y": 1,
+            "error_px": 2.2,
+            "within_tolerance": true
+          },
+          {"name": "top_right", "android_x": 1248, "android_y": 16, "expected_host_x": 1999, "expected_host_y": 0, "observed_host_x": 1997, "observed_host_y": 2, "error_px": 2.8, "within_tolerance": true},
+          {"name": "bottom_left", "android_x": 16, "android_y": 2784, "expected_host_x": 0, "expected_host_y": 1199, "observed_host_x": 1, "observed_host_y": 1196, "error_px": 3.2, "within_tolerance": true},
+          {"name": "bottom_right", "android_x": 1248, "android_y": 2784, "expected_host_x": 1999, "expected_host_y": 1199, "observed_host_x": 1998, "observed_host_y": 1197, "error_px": 2.2, "within_tolerance": true},
+          {"name": "center", "android_x": 632, "android_y": 1400, "expected_host_x": 1000, "expected_host_y": 600, "observed_host_x": 1001, "observed_host_y": 601, "error_px": 1.4, "within_tolerance": true}
+        ],
+        "all_points_within_tolerance": true
+      },
       "artifacts": {
         "device_identity": "device-and-artifact-identity.txt",
         "host_display_snapshot_before": "host-display-before.txt",
@@ -351,6 +374,10 @@ Minimum summary shape:
   ]
 }
 ```
+
+The final evidence file must contain six successful entries: physical
+90/180/270 and virtual 90/180/270. A shorter file remains a readiness or
+blocked record only.
 
 ## Xiaomi 13 window-action and recovery follow-up
 
@@ -524,3 +551,36 @@ host-display evidence.
 Evidence:
 
 - [`evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/)
+
+## P0110 rotated host-display current-base follow-up
+
+On 2026-08-22, draft PR #262 was checked again after GitHub update-branch
+moved it to head `71f0a96e721fdadbfd4601568237e9a6307474c0`, with
+`origin/main` at `4dc84505e6e0a07fa1052df12bca03824f161bf6`. The branch
+merge-base matched current `origin/main`, so this is a current-base readiness
+snapshot rather than a stale evidence record.
+
+The Android coordination lock `/tmp/vibe-screen-device-android.lock` was absent
+before sampling. Read-only ADB identity commands used the explicit serial
+`adb -s EP0110PZ0B9110300B` and identified the connected device as nubia P0110 /
+pacific / Android 16 / SDK 36. No install, launch, reverse mutation, host
+display rotation, or input injection was performed.
+
+The attempt remained blocked before real rotated host-display acceptance because
+the stable signed Host preflight still failed: `security find-identity -v -p
+codesigning` reported `0 valid identities found`, and
+`scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"`
+reported that the `Vibe Screen Dev` codesigning identity is not present in the
+keychain. A read-only TCC query for `dev.telemachus.display` returned
+authorization denied, so Screen Recording and Accessibility grants could not be
+proven from this task.
+
+The retained `host-display-rotation.json` intentionally contains no completed
+physical or virtual run. The offline gate output is `status=failed`, with
+missing physical and virtual host-display evidence and missing 90/180/270
+coverage for both display kinds. This remains blocked/readiness evidence only;
+the rotated host-display acceptance gate is still open.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/)
