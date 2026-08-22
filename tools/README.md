@@ -239,6 +239,24 @@ readiness records and intentionally evaluate as `insufficient` for the formal
 stand-mounted charging, login, headless, and background-recovery artifacts
 required by the Phase 2 runbook.
 
+To keep the split Phase 2 workstreams from claiming the same README gate, derive
+the current-base aggregate owner report after the child summaries are available:
+
+```sh
+make phase2-aggregate-owner EVIDENCE_DIR=.build/evidence \
+  PHASE2_TABLET_GATE=.build/evidence/soak-8h/phase2-tablet-gate.json \
+  PHASE2_TABLET_MANIFEST=.build/evidence/phase2-tablet-manifest.json \
+  PHASE2_HARDWARE_KEYBOARD=.build/evidence/hardware-keyboard-summary.json
+```
+
+Optional inputs such as `PHASE2_DEVICE_MEMORY`, `PHASE2_DEVICE_ENVIRONMENT`,
+`PHASE2_SOAK_READINESS`, `PHASE2_STAND_CHARGING`, `PHASE2_TABLET_UI`,
+`PHASE2_RECOVERY`, and `PHASE2_LOGIN_HEADLESS` can be supplied by their owning PRs or evidence runs.
+Missing inputs are reported as blocked, not ignored. The aggregate report can
+close the README Phase 2 tablet productization gates only when every child gate
+has an explicit pass or close signal and the package-aware tablet gate passes
+with a physical 8-9 inch tablet manifest.
+
 ### Short Host memory regression gate
 
 Use the bounded short diagnostic as a 10-17 minute regression gate before

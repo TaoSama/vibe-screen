@@ -235,6 +235,30 @@ hardware-keyboard workflow gate only when `verdict=pass` and
 the gate open and must explain the missing physical keyboard, Host listener,
 stable signed/TCC Host, logs, or visible Mac result.
 
+## Current-base aggregate owner
+
+After child evidence owners produce their gate summaries, write a single
+current-base aggregate report so README status updates have one owner per Phase
+2 sub-gate and missing evidence stays fail-closed:
+
+```bash
+make phase2-aggregate-owner EVIDENCE_DIR="$RUN_DIR" \
+  PHASE2_TABLET_GATE="$RUN_DIR/soak-8h/phase2-tablet-gate.json" \
+  PHASE2_TABLET_MANIFEST="$RUN_DIR/phase2-tablet-manifest.json" \
+  PHASE2_HARDWARE_KEYBOARD="$RUN_DIR/hardware-keyboard-summary.json"
+```
+
+Add `PHASE2_DEVICE_MEMORY`, `PHASE2_DEVICE_ENVIRONMENT`,
+`PHASE2_SOAK_READINESS`, `PHASE2_STAND_CHARGING`, `PHASE2_TABLET_UI`,
+`PHASE2_RECOVERY`, and `PHASE2_LOGIN_HEADLESS` when those owners provide JSON
+summaries. Missing
+summaries appear as blocked rows in `phase2-aggregate-owner.json`. The aggregate
+report can close the README Phase 2 tablet productization gates only when every
+sub-gate reports an explicit pass or close boolean and the package-aware tablet
+gate passes with a manifest declaring `physical_8_9_inch_tablet`. A Nubia
+P0110/pacific phone run must remain `android_substitute` readiness and cannot
+be upgraded by the aggregate layer.
+
 ## Pass criteria
 
 - The evidence identifies the real device and host, not only a synthetic layout

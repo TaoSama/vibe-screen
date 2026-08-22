@@ -243,3 +243,43 @@ phone substitute, a 30-second placeholder window, no Host PID, no Host RSS
 series, no charging/full-state series, and no thermal-status series. No new
 physical-tablet run or eight-hour soak was performed, so the Phase 2
 device-memory gate remains open.
+
+## 2026-08-22 current-base aggregate owner readiness
+
+This follow-up added a current-base aggregate owner report for the open Phase 2
+tablet productization workstreams. The aggregate does not replace the child
+gates; it records the non-conflicting merge order and one owner per sub-gate so
+README status changes do not double-count readiness evidence from the open PRs.
+
+Pending owner order recorded by the aggregate report:
+
+1. #234 `codex/android-tablet-ui-optimization` owns tablet UI ergonomics.
+2. #174 `codex/phase2-soak-evidence-runner` owns the eight-hour soak runner.
+3. #189 `codex/phase2-tablet-acceptance-verifier-20260821` owns physical tablet
+   identity and pre-run acceptance metadata.
+4. #252 `codex/phase2-device-environment-gates` owns device power, battery,
+   thermal, and environment readiness.
+5. #240 `codex/phase2-hardware-keyboard-gate` owns physical hardware-keyboard
+   workflow evidence.
+6. #255 `codex/phase2-stand-charging-owner-gate` owns stand-mounted charging
+   thresholds and gate-owner wiring.
+7. `codex/phase2-aggregate-owner-20260822` owns the cross-PR matrix and final
+   fail-closed README aggregate.
+
+#213 is already in the current base and remains the device-memory owner; this
+aggregate consumes its insufficient summary instead of re-owning or duplicating
+that gate.
+
+Validation performed for this tooling/readiness update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-22-phase2-aggregate-owner-current-base ...`
+
+The generated `phase2-aggregate-owner.json` records `verdict=blocked` and
+`can_close_readme_phase2_gates=false`. It consumes the existing P0110 substitute
+manifest, the existing package-aware tablet gate readiness output, the existing
+hardware-keyboard blocked summary, and the current-base device-memory
+insufficient summary where available. Missing child owner summaries for tablet
+UI, eight-hour soak readiness, device environment, stand charging, recovery, and
+login/headless, plus the `android_substitute` device class and the non-passing
+tablet gate, keep every formal Phase 2 README gate open.
