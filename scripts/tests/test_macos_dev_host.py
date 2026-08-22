@@ -367,6 +367,59 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 with self.assertRaisesRegex(SystemExit, "bad signature"):
                     macos_dev_host.collect_signing_metadata(app)
 
+    def test_collect_signing_metadata_reports_codesign_timeout_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            MacOSDevHostInstallTests.write_app(app, executable=b"binary")
+            with mock.patch.object(
+                macos_dev_host,
+                "run",
+                side_effect=subprocess.TimeoutExpired(("/usr/bin/codesign", "--verify"), 30),
+            ):
+                with self.assertRaisesRegex(SystemExit, "codesign inspection timed out"):
+                    macos_dev_host.collect_signing_metadata(app)
+
+    def test_preflight_command_records_source_identity_timeout_with_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path("TCC.db"),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity"),
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "query_tcc_rows",
+                    return_value=macos_dev_host.PermissionStatus(
+                        database_path=Path("TCC.db"),
+                        readable=True,
+                        rows=(
+                            macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                            macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                        ),
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "current_source_identity",
+                    side_effect=SystemExit("git source identity lookup timed out after 30s while running git status --porcelain"),
+                ),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.preflight_command(args)
+
+            self.assertEqual(result, 2)
+            content = report.read_text(encoding="utf-8")
+            self.assertIn("Expected source commit: not checked", content)
+            self.assertIn("git source identity lookup timed out", content)
+
     def test_install_command_checks_installed_identity_against_configured_identity(self) -> None:
         args = mock.Mock(
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
@@ -658,6 +711,18 @@ class MacOSDevHostXCTestToolchainTests(unittest.TestCase):
 
         self.assertIsNotNone(warning)
         self.assertIn("preflight uses /usr/bin/xcrun", warning or "")
+
+    def test_command_status_reports_timeout_as_failed_probe(self) -> None:
+        with mock.patch.object(
+            macos_dev_host.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(("/usr/bin/xcodebuild", "-version"), 30),
+        ):
+            status, output = macos_dev_host.command_status("/usr/bin/xcodebuild", "-version")
+
+        self.assertNotEqual(status, 0)
+        self.assertIn("timed out after 30s", output)
+        self.assertIn("/usr/bin/xcodebuild -version", output)
 
     def test_xctest_preflight_command_writes_report_and_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

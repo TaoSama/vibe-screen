@@ -715,6 +715,15 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         self.assertEqual(identity.tree, "b" * 40)
         self.assertTrue(identity.dirty)
 
+    def test_collect_source_identity_times_out_fail_closed(self) -> None:
+        with mock.patch.object(
+            package_macos,
+            "run",
+            side_effect=subprocess.TimeoutExpired(("git", "status", "--porcelain"), 30),
+        ):
+            with self.assertRaisesRegex(SystemExit, "git source identity lookup timed out"):
+                package_macos.collect_source_identity(Path("/tmp/repo"))
+
     def test_bundled_plist_records_source_identity(self) -> None:
         info = package_macos.bundled_plist(
             {"CFBundleIdentifier": "dev.telemachus.display"},
@@ -752,6 +761,18 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 package_macos.resolve_sign_identity("Vibe Screen Dev"),
                 "Vibe Screen Dev",
             )
+
+    def test_named_identity_lookup_timeout_fails_closed(self) -> None:
+        with mock.patch.object(
+            package_macos.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(
+                ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
+                30,
+            ),
+        ):
+            with self.assertRaisesRegex(SystemExit, "security find-identity -v -p codesigning timed out"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
 
     def test_identity_lookup_requires_an_exact_name(self) -> None:
         lookup = subprocess.CompletedProcess(

@@ -25,6 +25,7 @@ DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 DEFAULT_XCTEST_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = package_macos.PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
@@ -183,7 +184,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
 
-def run(*command: str, cwd: Path | None = None) -> str:
+def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -191,18 +192,34 @@ def run(*command: str, cwd: Path | None = None) -> str:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        timeout=timeout,
     )
     return completed.stdout.strip()
 
 
-def command_status(*command: str) -> tuple[int, str]:
-    completed = subprocess.run(
-        command,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+def command_text(command: tuple[str, ...] | list[str] | str) -> str:
+    return package_macos.command_text(command)
+
+
+def timeout_message(command: tuple[str, ...] | list[str] | str, timeout: float) -> str:
+    return f"timed out after {timeout:g}s while running {command_text(command)}"
+
+
+def command_status(
+    *command: str,
+    timeout: float = PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+) -> tuple[int, str]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, timeout_message(command, timeout)
     return completed.returncode, completed.stdout.strip()
 
 
@@ -265,12 +282,37 @@ def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
 def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
     try:
-        run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
-        details = run("/usr/bin/codesign", "-dvvv", str(app_path))
-        requirement_output = run("/usr/bin/codesign", "-d", "-r-", str(app_path))
+        run(
+            "/usr/bin/codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        details = run(
+            "/usr/bin/codesign",
+            "-dvvv",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        requirement_output = run(
+            "/usr/bin/codesign",
+            "-d",
+            "-r-",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
     except subprocess.CalledProcessError as error:
         output = (error.stdout or str(error)).strip()
         raise SystemExit(f"codesign inspection failed for {app_path}: {output}") from error
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"codesign inspection timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s while running "
+            f"{command_text(error.cmd)}; refusing to treat the installed Host as verified."
+        ) from error
     fields = parse_codesign_details(details)
     requirement = parse_designated_requirement(requirement_output)
     plist = read_bundle_plist(app_path)
@@ -664,16 +706,21 @@ def metadata_and_permissions(
     signing_identity_errors: list[str] | None = None,
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
-) -> tuple[SigningMetadata, PermissionStatus, package_macos.SourceIdentity, list[str]]:
+) -> tuple[SigningMetadata, PermissionStatus, package_macos.SourceIdentity | None, list[str]]:
     metadata = collect_signing_metadata(install_path)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    expected_source = current_source_identity(source_root)
+    source_identity_errors: list[str] = []
+    try:
+        expected_source = current_source_identity(source_root)
+    except SystemExit as error:
+        expected_source = None
+        source_identity_errors.append(str(error))
     errors = validate_preflight(
         metadata,
         permissions,
         install_path=install_path,
         expected_sign_identity=expected_sign_identity,
-        signing_identity_errors=signing_identity_errors,
+        signing_identity_errors=[*(signing_identity_errors or []), *source_identity_errors],
         expected_source=expected_source,
         allow_source_mismatch=allow_source_mismatch,
     )
