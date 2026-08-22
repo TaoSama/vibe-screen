@@ -97,7 +97,7 @@
     "stability": false,
     "trusted_lan_encrypted": false
   },
-  "collected_at": "2026-08-22T04:20:59.594620+00:00",
+  "collected_at": "2026-08-22T09:16:25.899258+00:00",
   "host": {
     "host_preflight_command": [
       "/opt/homebrew/opt/python@3.11/bin/python3.11",
@@ -119,7 +119,7 @@
         "timed_out": false
       },
       "has_lan_listener": false,
-      "has_loopback_listener": true,
+      "has_loopback_listener": false,
       "host_port": 54321,
       "ifconfig": {
         "command": [
@@ -137,9 +137,9 @@
           "-iTCP:54321",
           "-sTCP:LISTEN"
         ],
-        "returncode": 0,
+        "returncode": 1,
         "stderr": "",
-        "stdout": "COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 92943 <redacted-user>    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)",
+        "stdout": "",
         "timed_out": false
       },
       "mac_ipv4_candidates": [
@@ -165,10 +165,24 @@
   "profile": "trusted-lan-current-worktree-preflight",
   "repository": {
     "dirty": true,
-    "revision": "1e81ecbdff154a87c7ac7a72bfd378483b71dcbb",
+    "revision": "ab4926f08940b5ef82246ce7c2264e697c0eb007",
     "status_porcelain": [
-      "M tools/tests/test_trusted_lan_preflight.py",
-      " M tools/vibescreen_evidence/trusted_lan_preflight.py"
+      "M docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-blocked/commands.txt",
+      " M docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-blocked/trusted-lan-preflight.json",
+      " M docs/runbook/android-client.md",
+      " M docs/runbook/macos-host.md",
+      " M tools/README.md",
+      " M tools/tests/test_trusted_lan_preflight.py",
+      " M tools/vibescreen_evidence/trusted_lan_preflight.py",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-device.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-get-state.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-manufacturer.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-model.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-release.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/adb-sdk.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/commands.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/device-lock.txt",
+      "?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-recheck-pr261/preflight-command.txt"
     ]
   },
   "result": "blocked",
@@ -233,7 +247,7 @@
     {
       "name": "host_listener",
       "status": "not_run",
-      "summary": "TCP 54321 LAN listener was not required for this pre-launch preflight; loopback listener was observed and is not LAN evidence"
+      "summary": "TCP 54321 LAN listener was not required for this pre-launch preflight"
     },
     {
       "name": "qr_token_admission",

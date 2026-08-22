@@ -175,7 +175,9 @@ workloads cannot leak.
 Before a real-device trusted-LAN smoke or reconnect run, collect the read-only
 preflight result:
 
-    make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/trusted-lan-preflight
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/trusted-lan-preflight
+```
 
 The tool checks the explicit Nubia P0110/pacific/Android 16 identity, Android
 Wi-Fi association, wlan0 IPv4, route to a Mac LAN IPv4 candidate, and the stable

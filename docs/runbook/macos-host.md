@@ -269,7 +269,9 @@ Before a real-device trusted-LAN stream or reconnect run, collect the read-only
 preflight package while the Android device is USB-attached and identified by its
 exact serial:
 
-    make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+```
 
 The preflight confirms the Nubia P0110/pacific/Android 16 identity, Android
 Wi-Fi association, wlan0 IPv4, route to the Mac LAN candidate, and the stable
