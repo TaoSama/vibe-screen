@@ -1,0 +1,14 @@
+git fetch origin --prune
+git worktree add -b codex/phase3-public-gate-readiness .claude/worktrees/phase3-public-gate-readiness origin/main
+git rev-parse HEAD
+git status --short --branch
+rg -n "Phase 3|Internet|TURN|coturn|public|loopback|synthetic|release gate|gate" README.md docs/changes/2026-08-04-phase-3-secure-internet deploy/phase3 services tools
+for pr in 258 248 276 254 164 188 194 214 212 190 200; do gh pr view "$pr" --json number,title,headRefName,baseRefName,state,mergeStateStatus,url,files; done
+for pr in 215 216 228 172 173 171 224; do gh pr view "$pr" --json number,title,headRefName,baseRefName,state,mergeStateStatus,url,files; done
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness/privacy-scan.json
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness && find . -type f ! -name SHA256SUMS -print | sort | xargs shasum -a 256 > SHA256SUMS)
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness --check
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness && shasum -a 256 -c SHA256SUMS)
+git diff --check

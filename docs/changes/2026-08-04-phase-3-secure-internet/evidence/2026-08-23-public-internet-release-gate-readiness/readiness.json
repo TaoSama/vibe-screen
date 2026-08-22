@@ -1,0 +1,115 @@
+{
+  "schema": "dev.vibescreen.phase3-public-release-readiness/v1",
+  "recorded_local_date": "2026-08-22",
+  "result": "blocked",
+  "source_commit": "de2752e0033713ad48bb7f86960f9180d8e7342f",
+  "source_matched_origin_main": true,
+  "source_dirty_before_record": false,
+  "scope": {
+    "audited_gate": "phase3_public_internet_release",
+    "audited_paths": [
+      "README.md",
+      "docs/changes/2026-08-04-phase-3-secure-internet",
+      "services/signaling",
+      "services/authority",
+      "services/relay",
+      "deploy/phase3",
+      "scripts/phase3",
+      "tools/vibescreen_evidence"
+    ],
+    "not_attempted": [
+      "public deployment",
+      "remote TURN allocation",
+      "Android device Internet session",
+      "network handoff",
+      "active revocation propagation",
+      "external-camera latency",
+      "two-hour mixed-route soak"
+    ]
+  },
+  "local_evidence_boundaries": {
+    "local_loopback_only": true,
+    "forced_local_coturn_only": true,
+    "synthetic_protocol_v1_device": true,
+    "synthetic_videotoolbox_input_frames": true,
+    "no_android_device_or_ui": true,
+    "no_real_screen_capture": true,
+    "no_android_mediacodec_decode": true,
+    "no_public_internet_path": true,
+    "can_close_public_internet_release_gate": false
+  },
+  "open_pr_overlap_review": [
+    {"pr": 258, "area": "current-base release gate summary", "avoid_duplicate": true},
+    {"pr": 248, "area": "current-base aggregation plan", "avoid_duplicate": true},
+    {"pr": 276, "area": "Android interop evidence gate", "avoid_duplicate": true},
+    {"pr": 254, "area": "production enforcement evidence gate", "avoid_duplicate": true},
+    {"pr": 164, "area": "release gate manifest verifier", "avoid_duplicate": true},
+    {"pr": 188, "area": "release gate contracts and coturn exporter", "avoid_duplicate": true},
+    {"pr": 194, "area": "public Internet evidence gates", "avoid_duplicate": true},
+    {"pr": 214, "area": "public Internet soak gate", "avoid_duplicate": true},
+    {"pr": 212, "area": "Internet latency gate verifier", "avoid_duplicate": true},
+    {"pr": 190, "area": "revocation propagation verifier", "avoid_duplicate": true},
+    {"pr": 200, "area": "Authority session profile issuance", "avoid_duplicate": true},
+    {"pr": 215, "area": "signaling production PostgreSQL store", "avoid_duplicate": true},
+    {"pr": 216, "area": "QR pairing verification", "avoid_duplicate": true},
+    {"pr": 228, "area": "coturn production reconciliation", "avoid_duplicate": true},
+    {"pr": 172, "area": "coturn reconciliation contract", "avoid_duplicate": true},
+    {"pr": 173, "area": "real media continuity preflight", "avoid_duplicate": true},
+    {"pr": 171, "area": "network recovery gate evidence", "avoid_duplicate": true},
+    {"pr": 224, "area": "bounded network handoff recovery", "avoid_duplicate": true}
+  ],
+  "production_blockers": [
+    {
+      "id": "public_deployment",
+      "status": "open",
+      "missing": "production signaling, Authority, relay, and coturn stack on a public host with external TLS/private ingress, managed PostgreSQL, secret delivery, NTP monitoring, backup/restore, logs, alerts, quotas, and rate limits"
+    },
+    {
+      "id": "remote_turn_nat",
+      "status": "open",
+      "missing": "real remote TURN candidate pair and public Internet path across NAT rather than local loopback or forced local coturn"
+    },
+    {
+      "id": "android_device_media",
+      "status": "open",
+      "missing": "current-commit Host ScreenCaptureKit output through VideoToolbox and Android MediaCodec decode in the Internet product session"
+    },
+    {
+      "id": "network_handoff",
+      "status": "open",
+      "missing": "Wi-Fi/cellular or independently routed handoff with new session epoch, keyframe recovery, and old-packet rejection"
+    },
+    {
+      "id": "active_revocation",
+      "status": "open",
+      "missing": "active peer disconnect and active coturn allocation termination after revocation"
+    },
+    {
+      "id": "latency",
+      "status": "open",
+      "missing": "external-camera latency package for direct and relay Internet routes"
+    },
+    {
+      "id": "mixed_route_soak",
+      "status": "open",
+      "missing": "two-hour mixed direct, relay, and network-change soak with memory, queue, loss, RTT, FPS, bitrate, relay-byte, ICE-restart, drop, thermal, battery, and latency series"
+    },
+    {
+      "id": "scale_operations",
+      "status": "open",
+      "missing": "multi-instance signaling, load-balancer behavior, global create-rate enforcement, multi-region consistency, and provider billing reconciliation"
+    }
+  ],
+  "claims": {
+    "stable_public_internet_release": false,
+    "public_deployment_verified": false,
+    "remote_turn_verified": false,
+    "real_android_device_ui_verified": false,
+    "real_screen_capture_verified": false,
+    "android_mediacodec_decode_verified": false,
+    "network_handoff_verified": false,
+    "active_revocation_verified": false,
+    "external_camera_latency_verified": false,
+    "two_hour_mixed_route_soak_verified": false
+  }
+}
