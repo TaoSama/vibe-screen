@@ -1,0 +1,13 @@
+Purpose: read-only physical stylus preflight after fail-closed evidence tightening.
+Device identity captured in stylus-evidence.json: nubia P0110 / pacific / Android 16 / SDK 36.
+
+Commands:
+  git fetch origin main
+  git checkout -b codex/physical-stylus-acceptance
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+  printf 'codex physical stylus preflight rerun 2026-08-20T21:26:14Z' > /tmp/vibe-screen-device-android.lock
+  python3 scripts/android_stylus_acceptance.py     --serial DEVICE_SERIAL     --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-21-nubia-p0110-pacific-stylus-preflight-failclosed     --allow-existing-device-lock
+  unlink /tmp/vibe-screen-device-android.lock
+
+The script internally runs only adb commands in the form adb -s DEVICE_SERIAL ... for start-server, get-state, getprop, wm size, wm density, dumpsys input, and run-as diagnostic log collection. After start-server, the device operations are read-only.
