@@ -46,5 +46,12 @@
     "mounting": "n/a",
     "clock_domain": "synchronized-host-device-clocks",
     "notes": "Synchronized-clock input latency fixture; not acceptance evidence."
+  },
+  "gate_artifacts": {
+    "input_actuation_record": {
+      "file": "input-actuation.txt",
+      "sha256": "d56a69969077d7fb6be3f9552a97e6e9ecfd7bdce00c80429543ef03a007c230",
+      "description": "Synthetic physical-input proof for checker tests only."
+    }
   }
 }

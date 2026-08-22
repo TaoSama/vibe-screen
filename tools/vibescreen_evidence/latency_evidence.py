@@ -37,6 +37,20 @@ FORMAL_LATENCY_PROFILES = (
     GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_INPUT_P95_SUB50,
 )
+PROFILE_ARTIFACT_REQUIREMENTS = {
+    GATE_USB_GLASS_TO_GLASS_SUB50: (
+        "usb_connection",
+        "retain ADB reverse/USB connection setup and active USB stream proof",
+    ),
+    GATE_LAN_GLASS_TO_GLASS_SUB80: (
+        "lan_network_preflight",
+        "retain LAN network preflight plus active trusted-LAN stream proof",
+    ),
+    GATE_INPUT_P95_SUB50: (
+        "input_actuation_record",
+        "retain real physical input actuation and visible Mac-side result proof",
+    ),
+}
 
 SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
@@ -373,6 +387,7 @@ def _validate_manifest_matches_summary(
 def _validate_referenced_files(
     manifest_path: Path,
     manifest: dict[str, Any],
+    gate_profile: str,
 ) -> tuple[list[str], dict[str, Path | None]]:
     errors: list[str] = []
     is_external_camera = manifest.get("measurement_method") == METHOD_EXTERNAL_CAMERA
@@ -381,6 +396,18 @@ def _validate_referenced_files(
     raw_references: dict[str, Any] = {"samples.file": samples.get("file")}
     if is_external_camera:
         raw_references["recording.raw_video"] = recording.get("raw_video")
+    gate_artifacts = manifest.get("gate_artifacts")
+    if not isinstance(gate_artifacts, dict):
+        errors.append(
+            "gate_artifacts must be an object containing profile-specific retained artifacts"
+        )
+        gate_artifacts = {}
+    required_artifact, requirement = PROFILE_ARTIFACT_REQUIREMENTS[gate_profile]
+    artifact = gate_artifacts.get(required_artifact)
+    if not isinstance(artifact, dict):
+        errors.append(f"gate_artifacts.{required_artifact} is required: {requirement}")
+    else:
+        raw_references[f"gate_artifacts.{required_artifact}.file"] = artifact.get("file")
     references: dict[str, Path | None] = {}
     for field, raw_path in raw_references.items():
         path = _resolve_package_path(manifest_path, raw_path, field, errors)
@@ -394,6 +421,14 @@ def _validate_referenced_files(
     if is_external_camera:
         digest_bindings.append(
             ("recording.sha256", recording.get("sha256"), references.get("recording.raw_video"))
+        )
+    if isinstance(artifact, dict):
+        digest_bindings.append(
+            (
+                f"gate_artifacts.{required_artifact}.sha256",
+                artifact.get("sha256"),
+                references.get(f"gate_artifacts.{required_artifact}.file"),
+            )
         )
     for field, expected_sha256, path in digest_bindings:
         if not isinstance(expected_sha256, str) or SHA256_PATTERN.fullmatch(expected_sha256) is None:
@@ -485,7 +520,7 @@ def build_latency_evidence_report(
     schema_errors = _validate_manifest_schema(manifest)
     errors = list(schema_errors)
     errors.extend(_validate_required_metadata(manifest))
-    reference_errors, references = _validate_referenced_files(manifest_path, manifest)
+    reference_errors, references = _validate_referenced_files(manifest_path, manifest, gate_profile)
     errors.extend(reference_errors)
 
     samples_section = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}

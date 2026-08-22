@@ -234,6 +234,16 @@ def summarize(
             "glass-to-glass latency requires an external-camera measurement on one timebase; "
             "host/device timestamps are not glass-to-glass evidence"
         )
+    if measurement_method == METHOD_SYNCHRONIZED_CLOCK:
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise LatencyInputError(f"sample {index}: expected an object/CSV row")
+            frame_fields = ("start_frame", "end_frame", "camera_fps")
+            if any(row.get(field) not in (None, "") for field in frame_fields):
+                raise LatencyInputError(
+                    "synchronized-clock samples must provide direct latency_ms values; "
+                    "frame-count samples require external-camera measurement"
+                )
     if kind == KIND_TELEMETRY_STAGE and measurement_method not in TELEMETRY_STAGE_METHODS:
         raise LatencyInputError(
             "telemetry-stage latency requires --measurement-method host-telemetry "
