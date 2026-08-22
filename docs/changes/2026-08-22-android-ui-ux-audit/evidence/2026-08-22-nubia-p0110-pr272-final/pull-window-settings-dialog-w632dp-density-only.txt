@@ -1,0 +1,1 @@
+/sdcard/pr272-final-settings-dialog-w632dp-density-only.xml: 1 file pulled, 0 skipped. 3.5 MB/s (14725 bytes in 0.004s)
