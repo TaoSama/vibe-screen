@@ -263,8 +263,11 @@ the signed Host process PID, and a Host started with `VIBE_SCREEN_TELEMETRY_PATH
 pointing at the run Host JSONL file:
 
 ```bash
-VIBE_SCREEN_TELEMETRY_PATH="$RUN_DIR/soak-8h/host-telemetry.jsonl" \
-  open -a "Vibe Screen"
+PHASE2_HOST_TELEMETRY_JSONL="$RUN_DIR/soak-8h/host-telemetry.jsonl"
+mkdir -p "$(dirname "$PHASE2_HOST_TELEMETRY_JSONL")"
+osascript -e 'quit app "Vibe Screen"' || true
+launchctl setenv VIBE_SCREEN_TELEMETRY_PATH "$PHASE2_HOST_TELEMETRY_JSONL"
+open -n -a "Vibe Screen"
 
 make phase2-tablet-soak-run \
   EVIDENCE_SERIAL="$ADB_SERIAL" \
@@ -278,7 +281,7 @@ make phase2-tablet-soak-run \
   PHASE2_HOST_IDENTITY="Mac model and macOS version" \
   PHASE2_HOST_BUILD="signed Host build, signing identity, and SHA" \
   PHASE2_HOST_PID="$HOST_PID" \
-  PHASE2_HOST_TELEMETRY_JSONL="$RUN_DIR/soak-8h/host-telemetry.jsonl" \
+  PHASE2_HOST_TELEMETRY_JSONL="$PHASE2_HOST_TELEMETRY_JSONL" \
   PHASE2_APK_PATH=baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 ```
 
