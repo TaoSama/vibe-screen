@@ -4,11 +4,11 @@ This directory contains dependency-free Python tools for collecting reproducible
 device evidence and summarizing externally measured latency samples. Run each
 CLI with `--help` for its accepted inputs and output contract.
 
-Evidence is data, not a pass/fail claim. In particular, glass-to-glass and
-input latency must come from a single external-camera timeline. Host and device
-timestamps are useful for local ordering, but are not interchangeable with an
-external measurement unless their clock synchronization and uncertainty are
-independently documented.
+Evidence is data, not a pass/fail claim. In particular, USB and LAN
+glass-to-glass latency must come from a single external-camera timeline. Input
+latency may use the same external-camera method or a synchronized-clock package
+whose clock synchronization and uncertainty are independently documented. Host
+and device timestamps without that proof are diagnostics only.
 
 The JSON schemas in `schemas/` are versioned as `vibescreen.evidence/v1`.
 Producers should write a manifest beside raw JSONL/CSV and derived summaries so
@@ -383,6 +383,8 @@ create the manifest with the dedicated helper:
       --lighting "lighting conditions" \
       --mounting "camera and device mounting" \
       --max-frame-annotation-uncertainty-ms 4.2 \
+      --gate-artifact latency-run/usb-connection.txt \
+      --gate-artifact-description "ADB reverse/USB setup and active USB stream proof" \
       --notes "run-specific notes"
 
 For a formal gate claim, validate the whole evidence directory with the stricter
@@ -397,13 +399,31 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
 the run ID, transport, profile, sample file, device identity, build identity,
-and annotation method. External-camera packages also bind the raw camera
-recording and camera mode; synchronized-clock input packages bind the clock
-sources, skew, drift, timestamp methods, and sub-5 ms total error budget. The
-checker exits `0` only when the profile verdict is `pass` and provenance is
-complete; missing raw video, mismatched metadata, or incomplete synchronization
-proof stays `insufficient`. The step-by-step method is in
+annotation method, and the profile-specific retained artifact: USB connection
+proof for `usb-glass-to-glass-sub50`, LAN network/stream preflight proof for
+`lan-glass-to-glass-sub80`, or physical input actuation proof for
+`input-p95-sub50`. External-camera packages also bind the raw camera recording
+and camera mode; synchronized-clock input packages bind the clock sources,
+skew, drift, timestamp methods, and sub-5 ms total error budget. The checker
+exits `0` only when the profile verdict is `pass` and provenance is complete;
+missing raw video, missing profile artifacts, mismatched metadata, or incomplete
+synchronization proof stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
+
+Before spending device time on a full capture, record a fail-closed readiness
+snapshot for the three README gate profiles:
+
+```sh
+make evidence-latency-preflight \
+  EVIDENCE_DIR=.build/evidence/latency-preflight \
+  LATENCY_DEVICE_INFO=.build/evidence/latency-preflight/device-info.json \
+  LATENCY_PREFLIGHT_INPUT=.build/evidence/latency-preflight/preflight-input.json
+```
+
+The target writes `latency-preflight.json` and
+`latency-preflight-exit.txt`. Exit `2` means the run is blocked before a formal
+gate attempt, which is an expected fail-closed outcome when external-camera or
+synchronized-clock artifacts are missing.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:
