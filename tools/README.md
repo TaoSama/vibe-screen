@@ -170,6 +170,24 @@ evidence is `insufficient` and exits nonzero. A pass means the recorded window
 did not show practically significant growth, not that longer or different
 workloads cannot leak.
 
+### Trusted LAN preflight
+
+Before a real-device trusted-LAN smoke or reconnect run, collect the read-only
+preflight result:
+
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/trusted-lan-preflight
+```
+
+The tool checks the explicit Nubia P0110/pacific/Android 16 identity, Android
+Wi-Fi association, wlan0 IPv4, route to a Mac LAN IPv4 candidate, and the stable
+Host signing/TCC preflight. It exits 0 only when the environment is ready to
+start the real LAN smoke. It exits 2 for a blocked preflight and still writes
+trusted-lan-preflight.json; keep that JSON as blocked evidence and stop before
+Host launch, QR/token exchange, stream, reconnect, or latency capture. The
+preflight intentionally does not start the Host, run instrumentation, modify
+TCC, alter Keychain, change saved Wi-Fi credentials, or write pairing secrets.
+
 For the Phase 2 tablet productization eight-hour soak, derive the exact-window
 report and then evaluate the tablet gate:
 
