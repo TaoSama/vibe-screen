@@ -30,6 +30,9 @@ REQUIRED_IDENTITY_FIELDS = [
 REQUIRED_GATES = [
     "physical_8_9_inch_tablet",
     "stand_mounted_charging",
+    "portrait_landscape_ui",
+    "physical_stylus",
+    "hardware_keyboard",
     "thermal_power_sampling",
     "device_memory_sampling",
     "foreground_background_recovery",
@@ -65,6 +68,13 @@ REQUIRED_ARTIFACTS = [
     "reconnects.log",
     "frame-drops.log",
     "decoder-telemetry.jsonl",
+    "screenshots/sustained-use-portrait.png",
+    "screenshots/sustained-use-landscape.png",
+    "orientation-evidence.json",
+    "stylus-evidence.json",
+    "hardware-keyboard-evidence.json",
+    "recovery-evidence.json",
+    "phase2-tablet-preflight.json",
 ]
 
 DEFAULT_LIMITATIONS = [

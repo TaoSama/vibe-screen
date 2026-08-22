@@ -66,6 +66,37 @@ adb -s EP0110PZ0B9110300B shell dumpsys power > adb-power-before.txt
 adb -s EP0110PZ0B9110300B shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
 ```
 
+Blocked Phase 2 tablet preflight generated from the retained substitute-device
+record:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
+  --output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness/phase2-tablet-manifest.json \
+  --device-info docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness/device-info.json \
+  --device-class android_substitute \
+  --stand-setup "bench phone stand; not 8-9 inch tablet hardware" \
+  --charger "AC powered device state from retained P0110 readiness evidence" \
+  --cable-or-dock "USB-C data cable used for P0110 readiness collection" \
+  --transport usb \
+  --video-preferences "Balanced 60 FPS readiness placeholder; no eight-hour stream" \
+  --allow-missing-host-pid \
+  --battery-temperature-limit-celsius 45 \
+  --maximum-net-battery-drain-percent 0 \
+  --recovery-scenarios "blocked_no_physical_tablet" \
+  --host-identity "local Mac host used for retained readiness evidence" \
+  --host-build "no formal signed Phase 2 tablet host build; readiness evidence only" \
+  --apk-sha256 "cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba" \
+  -- make soak-8h \
+    EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+    EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
+make phase2-tablet-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
+```
+
+`make phase2-tablet-preflight` exits nonzero for this directory by design. The
+generated `phase2-tablet-preflight.json` reports `verdict=blocked` because the
+manifest records `device_class=android_substitute`.
+
 ## Evidence
 
 - `DeviceHealthMonitorTest` and `assembleDebug`: `BUILD SUCCESSFUL in 35s`.
@@ -89,6 +120,9 @@ adb -s EP0110PZ0B9110300B shell dumpsys thermalservice > thermal-before.txt 2> t
   `am-start-reverify-status.txt` reporting `exit_code=0`.
 - Platform state before/after remained consistent for this short check: battery
   100%, AC powered, power saver disabled, thermal status `0`.
+- `phase2-tablet-manifest.json` and `phase2-tablet-preflight.json` are retained
+  blocked-readiness records. They do not turn this phone substitute into
+  physical tablet evidence.
 
 ## Limits
 
@@ -100,3 +134,7 @@ They do not prove a real 8-9 inch tablet panel, split/freeform window behavior,
 stand-mounted charging stability, controlled thermal behavior, background or
 transport recovery, login startup, headless Mac recovery, or eight-hour memory /
 thermal / power stability.
+The preflight also records the still-missing physical stylus, hardware keyboard,
+eight-hour soak, stand-mounted thermal/power, and recovery evidence gates so the
+same command can be rerun unchanged when a real 8-9 inch Android tablet is
+available.

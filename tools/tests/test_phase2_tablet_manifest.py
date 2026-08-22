@@ -88,15 +88,24 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(manifest["session"]["duration_seconds"], 28800)
         self.assertIn("stand_mounted_charging", manifest["required_gates"])
         self.assertIn("device_memory_sampling", manifest["required_gates"])
-        self.assertIn("phase2-tablet-manifest.json", manifest["required_artifacts"])
-        self.assertIn("soak-8h/samples.jsonl", manifest["required_artifacts"])
-        self.assertIn("soak-8h/phase2-device-memory-gate.json", manifest["required_artifacts"])
         self.assertEqual(
             manifest["memory_sampling"]["android_pss_source"],
             "ADB dumpsys meminfo app TOTAL PSS",
         )
         self.assertTrue(manifest["memory_sampling"]["require_host_pid"])
         self.assertEqual(manifest["memory_sampling"]["host_pid"], 4242)
+        self.assertIn("portrait_landscape_ui", manifest["required_gates"])
+        self.assertIn("physical_stylus", manifest["required_gates"])
+        self.assertIn("hardware_keyboard", manifest["required_gates"])
+        self.assertIn("phase2-tablet-manifest.json", manifest["required_artifacts"])
+        self.assertIn("soak-8h/samples.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/host-telemetry.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/phase2-device-memory-gate.json", manifest["required_artifacts"])
+        self.assertIn("screenshots/sustained-use-landscape.png", manifest["required_artifacts"])
+        self.assertIn("orientation-evidence.json", manifest["required_artifacts"])
+        self.assertIn("stylus-evidence.json", manifest["required_artifacts"])
+        self.assertIn("hardware-keyboard-evidence.json", manifest["required_artifacts"])
+        self.assertIn("phase2-tablet-preflight.json", manifest["required_artifacts"])
         self.assertTrue(any("does not close" in item for item in manifest["limitations"]))
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")

@@ -11,12 +11,13 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── build.txt
 ├── apk-sha256.txt
 ├── phase2-tablet-manifest.json
-├── samples.jsonl
-├── summary.json
-├── soak-8h/exact-window-report.json
-├── soak-8h/phase2-device-memory-gate.json
-├── soak-8h/phase2-tablet-gate.json
-├── host-telemetry.jsonl
+├── soak-8h/
+│   ├── samples.jsonl
+│   ├── summary.json
+│   ├── host-telemetry.jsonl
+│   ├── exact-window-report.json
+│   ├── phase2-device-memory-gate.json
+│   └── phase2-tablet-gate.json
 ├── samples.csv              # optional derived conversion; keep raw JSONL
 ├── adb-battery-before.txt
 ├── adb-battery-after.txt
@@ -31,7 +32,14 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── reconnects.log
 ├── frame-drops.log
 ├── decoder-telemetry.jsonl
+├── stylus-evidence.json
+├── hardware-keyboard-evidence.json
+├── orientation-evidence.json
+├── recovery-evidence.json
+├── phase2-tablet-preflight.json
 └── screenshots/
+    ├── sustained-use-portrait.png
+    └── sustained-use-landscape.png
 ```
 
 Collect `device-info.json` with:
@@ -47,6 +55,11 @@ and planned recovery scenarios. The file must validate against
 `tools/schemas/phase2-tablet-manifest.schema.json`. It also records the Android
 PSS source, Host RSS source, Host PID, minimum eight-hour duration, sample
 cadence, and required memory/charging/thermal fields.
+After the eight-hour soak and `phase2-tablet-gate` derivation, run
+`make phase2-tablet-preflight EVIDENCE_DIR="$RUN_DIR"`. The generated
+`phase2-tablet-preflight.json` is the final machine-readable bundle check for
+physical-tablet identity, portrait/landscape UI, stylus, hardware keyboard,
+recovery, thermal/power, and the eight-hour soak gate.
 
 The artifact must validate against `tools/schemas/device-info.schema.json`;
 `device.txt` and `phase2-tablet-manifest.json` are supporting records, not substitutes for the
@@ -93,3 +106,21 @@ The summary closes the hardware-keyboard workflow gate only when
 be kept here when the Android device lock, physical keyboard, Host listener, or
 stable signed/TCC Host prerequisite is missing; blocked evidence must not run
 ADB when the shared Android lock is already held.
+
+## Blocked evidence
+
+When no physical 8-9 inch tablet is available, create a blocked record instead
+of a pass-shaped directory. The minimum blocked package is:
+
+```text
+YYYY-MM-DD-<device>-blocked-no-physical-tablet/
+├── README.md
+├── device-info.json
+├── phase2-tablet-manifest.json    # PHASE2_DEVICE_CLASS=android_substitute
+└── phase2-tablet-preflight.json   # verdict=blocked
+```
+
+The README must name the substitute device, state that it is not an 8-9 inch
+tablet, link any short readiness evidence, and include the exact rerun commands
+for the future physical-tablet pass. The blocked preflight should preserve all
+missing gates rather than editing them out.

@@ -219,6 +219,7 @@ make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
+make phase2-tablet-preflight EVIDENCE_DIR=.build/evidence
 ```
 
 The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
@@ -228,9 +229,10 @@ The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
 `.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
-Android PSS and Host RSS growth, and battery/thermal readings below the Phase 2
-thresholds, a manifest declaring `physical_8_9_inch_tablet`, and the required
-raw README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+Android PSS and Host RSS growth, battery/thermal readings below the Phase 2
+thresholds, net battery drain within the manifest-declared limit, a manifest
+declaring `physical_8_9_inch_tablet`, and the required raw
+README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
@@ -238,6 +240,17 @@ readiness records and intentionally evaluate as `insufficient` for the formal
 8-9 inch tablet gate. The commands do not replace the raw physical-tablet,
 stand-mounted charging, login, headless, and background-recovery artifacts
 required by the Phase 2 runbook.
+
+The preflight consumes the whole evidence directory and writes
+`.build/evidence/phase2-tablet-preflight.json`. It is fail-closed and exits
+nonzero for `blocked`, `fail`, or `insufficient`. A `pass` requires the
+schema-backed manifest to identify a physical 8-9 inch tablet, portrait and
+landscape tablet screenshots, physical stylus evidence, hardware-keyboard
+evidence, foreground/background and transport recovery evidence, the raw
+thermal/power/log artifacts, and a passing eight-hour tablet soak gate. Use it
+with `PHASE2_DEVICE_CLASS=android_substitute` to create blocked evidence for the
+Nubia P0110/pacific or another non-tablet Android device; that result is useful
+readiness evidence but cannot close Phase 2 tablet acceptance.
 
 ### Short Host memory regression gate
 

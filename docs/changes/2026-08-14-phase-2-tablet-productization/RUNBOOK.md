@@ -75,6 +75,19 @@ only and do not invalidate the run by themselves.
 `android-pid.txt` is a diagnostic process-identity snapshot for comparing the
 start and end of a run; it is not a required evidence artifact.
 
+When the physical 8-9 inch tablet is not available, still write a blocked
+preflight record instead of leaving an ambiguous partial directory. Use
+`PHASE2_DEVICE_CLASS=android_substitute` for the attached Nubia P0110/pacific or
+another non-tablet Android device, generate the manifest, then run:
+
+```bash
+make phase2-tablet-preflight EVIDENCE_DIR="$RUN_DIR"
+```
+
+The command writes `phase2-tablet-preflight.json` and exits nonzero for
+`blocked`, `insufficient`, or `fail`. That nonzero status is expected for a
+phone substitute and is the evidence that the 8-9 inch tablet gate remains open.
+
 Capture the matching end-of-run platform state before stopping the app or host:
 
 ```bash
@@ -91,6 +104,70 @@ evidence directory.
 Also capture settings screenshots in portrait and landscape, including any
 split-screen or freeform window size that the tablet supports. The screenshots
 must show the sustained-use card and the active stream state.
+
+## Portrait and landscape streaming UI
+
+Record real tablet screenshots, not only synthetic 600dp instrumentation, for
+both orientations:
+
+- `screenshots/sustained-use-portrait.png` and
+  `screenshots/sustained-use-landscape.png` must show the active stream and the
+  sustained-use status card.
+- Open the control capsule, display picker, settings dialog, and disconnect
+  affordance in each orientation. Keep screenshots or screen recordings that
+  show no clipped text, overlapped controls, or unreachable buttons.
+- Rotate portrait -> landscape -> portrait without recreating the Host session
+  unless the scenario is explicitly testing reconnect. Record the session epoch,
+  display mode, and whether touch mapping still lands on the intended Mac
+  points after rotation.
+- For split-screen or freeform modes available on the tablet, capture the
+  smallest supported window that still claims Phase 2 readiness.
+
+If the optional `orientation-evidence.json` is present, its top-level `status`
+or `verdict` must be `pass` for the preflight checker to accept the orientation
+gate.
+
+## Physical stylus workflow
+
+Physical stylus acceptance requires both Android capability evidence and a
+human-observed drawing-app pass through the production Host path:
+
+```bash
+python3 scripts/android_stylus_acceptance.py \
+  --serial "$ADB_SERIAL" \
+  --output-dir "$RUN_DIR/stylus" \
+  --observed-physical-drawing \
+  --drawing-observation "physical stylus produced visible pressure-aware ink" \
+  --host-log "$RUN_DIR/host-stylus.log"
+cp "$RUN_DIR/stylus/stylus-evidence.json" "$RUN_DIR/stylus-evidence.json"
+```
+
+The host log excerpt must include the stylus contact/tool/buttons/pressure/tilt
+fields required by the script. Capability-only or lock-blocked stylus records
+are useful blocked evidence but do not close the Phase 2 stylus gate.
+
+## Hardware keyboard workflow
+
+Attach the keyboard that will be used with the tablet stand setup and record a
+structured `hardware-keyboard-evidence.json` at the run root. The minimum
+contract for a passing file is:
+
+```json
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "pass",
+  "observed_physical_keyboard": true,
+  "host_input_observed": true,
+  "keys": ["A", "B", "C", "ArrowLeft", "ArrowRight"],
+  "shortcuts": ["Command-C", "Command-V"],
+  "artifacts": ["dumpsys-input.txt", "host-keyboard.log", "mac-input-observation.txt"]
+}
+```
+
+The raw evidence must include `dumpsys input` showing the physical keyboard, a
+Host log excerpt with the received key events, and a Mac-side observation such
+as text insertion or shortcut behavior in the focused application. Synthetic
+ADB key events are not physical-keyboard evidence.
 
 ## Eight-hour sampling
 
@@ -235,6 +312,14 @@ hardware-keyboard workflow gate only when `verdict=pass` and
 the gate open and must explain the missing physical keyboard, Host listener,
 stable signed/TCC Host, logs, or visible Mac result.
 
+The default eight-hour stability gate expects zero unplanned
+`session_disconnected` events. If a deliberate transport interruption is folded
+into the same eight-hour run, the run README and `recovery-evidence.json` must
+identify the exact planned interruption window; otherwise `phase2-tablet-gate`
+will treat the disconnect as a productization failure. A cleaner evidence
+package keeps the uninterrupted eight-hour soak and the destructive recovery
+pass as separate directories.
+
 ## Pass criteria
 
 - The evidence identifies the real device and host, not only a synthetic layout
@@ -269,7 +354,8 @@ Each run directory should include at minimum:
 - `device.txt`, `host.txt`, `apk-sha256.txt`, `build.txt`, and
   `phase2-tablet-manifest.json` valid against
   `tools/schemas/phase2-tablet-manifest.schema.json`;
-- `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
+- `soak-8h/samples.jsonl`, `soak-8h/summary.json`, and
+  `soak-8h/host-telemetry.jsonl` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
 - `host-telemetry.jsonl`, `soak-8h/exact-window-report.json`,
   `soak-8h/phase2-device-memory-gate.json`, and
@@ -280,12 +366,26 @@ Each run directory should include at minimum:
 - `raw-logcat.txt`, `host.log`, `reconnects.log`, `frame-drops.log`, and
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
-  and end-of-run states.
+  and end-of-run states;
 - for hardware-keyboard passes, `hardware-keyboard-observations.json`,
   `hardware-keyboard-summary.json`, `dumpsys-input.txt`, `android-keyboard.log`,
   `host-keyboard.log`, `host-listener.txt`, `host-signing-and-permissions.txt`,
   `codesign-identities.txt`, and a screenshot or recording of the visible Mac
-  result.
+  result;
+- `stylus-evidence.json`, `hardware-keyboard-evidence.json`,
+  `recovery-evidence.json`, `soak-8h/phase2-tablet-gate.json`, and
+  `phase2-tablet-preflight.json`.
+
+After deriving the eight-hour gate, run:
+
+```bash
+make phase2-tablet-gate EVIDENCE_DIR="$RUN_DIR"
+make phase2-tablet-preflight EVIDENCE_DIR="$RUN_DIR"
+```
+
+Only a `phase2-tablet-preflight.json` verdict of `pass` can close the README
+Phase 2 8-9 inch tablet acceptance gap. A `blocked` verdict is the expected
+result when the available device is the Nubia P0110/pacific phone substitute.
 
 Do not mark Phase 2 accepted from this runbook unless the raw evidence exists in
 the directory and the summary explains every failed or skipped gate.
