@@ -165,6 +165,181 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     latency-method.md          # copy or link docs/runbook/latency-measurement.md
 ```
 
+When a curated evidence package is intended to close the Phase 3 release gate,
+add a `release-gate-manifest.json` beside those artifacts and validate it before
+changing release language:
+
+```bash
+python3 scripts/phase3/release_gate_manifest.py --print-matrix
+python3 scripts/phase3/release_gate_manifest.py \
+  docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/release-gate-manifest.json \
+  --evidence-root docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>
+```
+
+The manifest schema is `dev.vibescreen.phase3-release-gate-manifest/v1`. It is a
+necessary-condition verifier, not an automatic release approval: a pass requires
+the manifest to cover every open gate below with repository-relative evidence
+files, clean-source artifact hashes, truthful device identity, and real-world
+observations. Local loopback, synthetic media, blocked runs, or Nubia evidence
+claiming Xiaomi/fuxi identity fail closed.
+
+```json
+{
+  "schema": "dev.vibescreen.phase3-release-gate-manifest/v1",
+  "result": "pass",
+  "source": {
+    "commit": "<40-character-clean-source-commit>",
+    "tree_status": "clean"
+  },
+  "device": {
+    "manufacturer": "<exact observed manufacturer>",
+    "model": "<exact observed model>",
+    "codename": "<exact observed codename>",
+    "os_version": "<exact observed Android version>",
+    "evidence_role": "<evidence role for this exact observed device>"
+  },
+  "artifacts": {
+    "mac_host_sha256": "<sha256>",
+    "android_apk_sha256": "<sha256>"
+  },
+  "claims": ["Exact human-readable claims for this evidence package"],
+  "gates": {
+    "public_internet_direct_path": {
+      "status": "pass",
+      "route": "direct",
+      "public_internet_path": true,
+      "selected_candidate_pair": "direct(...)",
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["direct-session.jsonl"]
+    },
+    "remote_turn_relay_path": {
+      "status": "pass",
+      "route": "relay",
+      "public_internet_path": true,
+      "remote_turn_deployment": true,
+      "local_coturn_only": false,
+      "selected_candidate_pair": "relay(...)",
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["relay-session.jsonl"]
+    },
+    "real_screencapturekit_to_android_media": {
+      "status": "pass",
+      "capture_source": "ScreenCaptureKit",
+      "android_decoder": "MediaCodec",
+      "screen_capture_frames": 1,
+      "encoded_frames": 1,
+      "android_decoded_frames": 1,
+      "first_android_output_observed": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["real-media.jsonl"]
+    },
+    "network_handoff_recovery": {
+      "status": "pass",
+      "handoff_count": 1,
+      "controlled_impairment": true,
+      "impairment_tool": "linux-netns-tc-or-equivalent",
+      "impairment_profile": {
+        "latency_ms": 95,
+        "jitter_ms": 20,
+        "loss_percent": 2.0,
+        "bandwidth_kbps": 6000
+      },
+      "route_before": "direct",
+      "route_after": "relay",
+      "fresh_session_requested": true,
+      "ice_restart_attempted": true,
+      "old_session_closed": true,
+      "initial_session_epoch": 7,
+      "recovered_session_epoch": 8,
+      "stream_pause_detected": true,
+      "stream_resume_detected": true,
+      "recovery_started_at_monotonic_ms": 1000,
+      "recovery_completed_at_monotonic_ms": 5200,
+      "session_epoch_advanced": true,
+      "stale_epoch_rejected": true,
+      "recovered_streaming": true,
+      "recovery_seconds": 4.2,
+      "approved_limit_seconds": 5,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["network-handoff.jsonl"]
+    },
+    "cross_service_revocation": {
+      "status": "pass",
+      "active_session_disconnected": true,
+      "direct_reconnect_rejected": true,
+      "relay_reconnect_rejected": true,
+      "turn_allocation_disconnected": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["replay-revocation.jsonl"]
+    },
+    "packet_capture_confidentiality": {
+      "status": "pass",
+      "capture_reviewed": true,
+      "no_plaintext_media": true,
+      "no_plaintext_input": true,
+      "no_credentials": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["packet-capture-notes.md"]
+    },
+    "external_camera_latency": {
+      "status": "pass",
+      "method": "external_camera",
+      "sample_count": 5,
+      "direct_p95_ms": 150,
+      "relay_p95_ms": 150,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["latency-method.md"]
+    },
+    "two_hour_mixed_route_soak": {
+      "status": "pass",
+      "duration_seconds": 7200,
+      "routes": ["direct", "relay"],
+      "controlled_impairment": true,
+      "impairment_tool": "linux-netns-tc-or-equivalent",
+      "impairment_profile": {
+        "latency_ms": 120,
+        "jitter_ms": 35,
+        "loss_percent": 2.0,
+        "bandwidth_kbps": 10000
+      },
+      "route_before": "direct",
+      "route_after": "relay",
+      "network_change_count": 1,
+      "bounded_queues": true,
+      "bounded_memory": true,
+      "no_nonce_reuse": true,
+      "no_steady_latency_growth": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "evidence_files": ["soak-summary.json"]
+    }
+  }
+}
+```
+
+For blocked readiness, write a separate blocked package instead of weakening the
+pass manifest. This records the blocker and intentionally creates a
+`release-gate-manifest.json` that fails the pass verifier:
+
+```bash
+python3 scripts/phase3/network_recovery_blocked_evidence.py \
+  --output-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked
+python3 scripts/phase3/release_gate_manifest.py \
+  docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked/release-gate-manifest.json \
+  --evidence-root docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked
+```
+
+The second command is expected to fail for blocked evidence. A blocked package is
+evidence of non-execution and readiness gaps only; it must not be used to mark
+public Internet, handoff, real media, or soak complete.
+
 Start by proving device identity, not merely that some ADB endpoint responded:
 
 ```bash
