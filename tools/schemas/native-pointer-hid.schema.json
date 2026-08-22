@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/native-pointer-hid.schema.json",
+  "title": "Vibe Screen native pointer HID mouse acceptance summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_native_pointer_hid_gate",
+    "collector_status",
+    "requires_physical_mouse",
+    "synthetic_adb_pointer_is_not_physical_hid_evidence",
+    "required_device_identity",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "native_pointer_hid_acceptance"},
+    "profile": {"const": "native-pointer-hid-mouse"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_native_pointer_hid_gate": {"type": "boolean"},
+    "collector_status": {"type": "string", "minLength": 1},
+    "requires_physical_mouse": {"const": true},
+    "synthetic_adb_pointer_is_not_physical_hid_evidence": {"const": true},
+    "required_device_identity": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adb_was_run",
+        "device_identity_recorded",
+        "physical_mouse_attached",
+        "default_gate_events_required",
+        "android_move_forwarded",
+        "android_button_press_forwarded",
+        "android_button_release_forwarded",
+        "host_pointer_changed_injected",
+        "host_pointer_began_injected",
+        "host_pointer_ended_injected",
+        "visible_mac_result_observed",
+        "android_logcat_window_retained",
+        "host_log_window_retained",
+        "collector_reported_passed"
+      ],
+      "properties": {
+        "adb_was_run": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "physical_mouse_attached": {"type": "boolean"},
+        "default_gate_events_required": {"type": "boolean"},
+        "android_move_forwarded": {"type": "boolean"},
+        "android_button_press_forwarded": {"type": "boolean"},
+        "android_button_release_forwarded": {"type": "boolean"},
+        "host_pointer_changed_injected": {"type": "boolean"},
+        "host_pointer_began_injected": {"type": "boolean"},
+        "host_pointer_ended_injected": {"type": "boolean"},
+        "visible_mac_result_observed": {"type": "boolean"},
+        "android_logcat_window_retained": {"type": "boolean"},
+        "host_log_window_retained": {"type": "boolean"},
+        "collector_reported_passed": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}
