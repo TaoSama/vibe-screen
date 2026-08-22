@@ -183,7 +183,8 @@ struct ProtocolV1SessionConfiguration {
         controllerAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
         fileTransferAllowed: Bool = false,
-        wakeHostAvailable: Bool = false
+        wakeHostAvailable: Bool = false,
+        peripheralInputFrameworkAvailable: Bool = false
     ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
@@ -201,6 +202,7 @@ struct ProtocolV1SessionConfiguration {
         if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
         if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
         if controllerAvailable { capabilities.insert(.controller) }
+        if peripheralInputFrameworkAvailable { capabilities.insert(.peripheralInputFramework) }
         if fileTransferAllowed && managedPolicy.fileTransferAllowed {
             capabilities.insert(.fileTransfer)
         }
@@ -1054,6 +1056,22 @@ final class ProtocolV1SessionCoordinator {
                 return sendActions(payload: .inputAck(ack), correlationID: envelope.messageID)
             }
 
+        case .peripheralEvent(let peripheral):
+            guard negotiatedCapabilities.contains(.peripheralInputFramework) else {
+                return unsupportedCapability("Peripheral input framework was not negotiated.", envelope.messageID)
+            }
+            guard peripheral.inputID > 0,
+                  acceptsPeripheralKind(peripheral.peripheralKind),
+                  peripheral.payload.count <= Self.maximumPeripheralPayloadBytes,
+                  inputTargetMatchesActiveStream(peripheral.hasTarget ? peripheral.target : nil) else {
+                return invalidState("PeripheralEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            var ack = VSInputAck()
+            ack.inputID = peripheral.inputID
+            ack.accepted = false
+            ack.rejectionReason = "unsupported_peripheral_kind"
+            return sendActions(payload: .inputAck(ack), correlationID: envelope.messageID)
+
         case .setVideoPreferences(let prefs):
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
                 return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
@@ -1325,6 +1343,8 @@ final class ProtocolV1SessionCoordinator {
     /// window actions are effectively serial in practice, so a small cap is ample.
     private static let maximumPendingHostActionInvocations = 16
     private static let maximumPendingWakeHostRequests = 16
+    private static let maximumPeripheralKindBytes = 128
+    private static let maximumPeripheralPayloadBytes = 64 * 1_024
 
     // Bounds the host applies to a client SetVideoPreferences request. The
     // client can express intent but never drive the encoder outside this range.
@@ -1421,6 +1441,11 @@ final class ProtocolV1SessionCoordinator {
         guard let target else { return true }
         if target.displayID.isEmpty && target.streamID == 0 { return true }
         return target.displayID == configuration.displayID && target.streamID == streamID
+    }
+
+    private func acceptsPeripheralKind(_ kind: String) -> Bool {
+        let length = kind.lengthOfBytes(using: .utf8)
+        return length > 0 && length <= Self.maximumPeripheralKindBytes
     }
 
     private func acceptClientHello(_ hello: VSClientHello, correlationID: UInt64) -> [ProtocolV1SessionAction] {

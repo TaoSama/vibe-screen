@@ -109,6 +109,7 @@ class StreamClient(
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
     private val wakeHostExecutor: Executor = WAKE_HOST_EXECUTOR,
     private val advertiseController: Boolean = false,
+    private val advertisePeripheralInputFramework: Boolean = false,
     private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
     private val wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
 ) {
@@ -672,6 +673,7 @@ class StreamClient(
             codecs =
                 CodecCapabilities.advertisedStreamCodecs.mapNotNull(StreamCodec::toProtocolCodecOrNull),
             advertiseController = advertiseController,
+            advertisePeripheralInputFramework = advertisePeripheralInputFramework,
             fileTransferPolicy = fileTransferPolicy,
             wakeHostPolicy = wakeHostPolicy,
         ).also {
@@ -1241,6 +1243,7 @@ class StreamClient(
             canSendStylus = session?.canSendStylus == true,
             canSendExtendedStylus = session?.canSendExtendedStylus == true,
             canSendController = session?.canSendController == true,
+            canSendPeripheral = session?.canSendPeripheral == true,
         )
     }
 
@@ -1315,6 +1318,10 @@ class StreamClient(
 
     internal fun sendController(dispatch: ControllerDispatch): Boolean {
         return inputDispatcher.sendController(dispatch)
+    }
+
+    internal fun sendPeripheral(peripheralKind: String, payload: ByteArray): Boolean {
+        return inputDispatcher.sendPeripheral(peripheralKind, payload)
     }
 
     /** True when clipboard transfer is available on the active Protocol v1 session. */

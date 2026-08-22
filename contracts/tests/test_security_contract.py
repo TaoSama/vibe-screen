@@ -40,6 +40,7 @@ class SecurityContractTest(unittest.TestCase):
         self.assertEqual(27, capabilities["CAPABILITY_USB_HID_MODIFIER_BYTE"])
         self.assertEqual(28, capabilities["CAPABILITY_AUDIO_DATA_CHANNEL"])
         self.assertEqual(29, capabilities["CAPABILITY_BULK_DATA_CHANNEL"])
+        self.assertEqual(30, capabilities["CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK"])
         self.assertEqual(len(capabilities), len(set(capabilities.values())))
         self.assertEqual(
             {
@@ -275,6 +276,33 @@ class SecurityContractTest(unittest.TestCase):
             message_fields(input_source, "InputAck"),
         )
         self.assertRegex(session_source, r"CAPABILITY_CONTROLLER\s*=\s*26\s*;")
+
+    def test_peripheral_event_is_admission_only_and_additive(self) -> None:
+        input_source = (PROTO_ROOT / "input.proto").read_text()
+        envelope_source = (PROTO_ROOT / "envelope.proto").read_text()
+        session_source = (PROTO_ROOT / "session.proto").read_text()
+        self.assertEqual(
+            {
+                "input_id": 1,
+                "peripheral_kind": 2,
+                "payload": 3,
+                "target": 4,
+            },
+            message_fields(input_source, "PeripheralEvent"),
+        )
+        declaration = input_source[
+            input_source.index("// Generic peripheral input"):input_source.index("message PeripheralEvent")
+        ]
+        normalized_declaration = " ".join(
+            line.removeprefix("//").strip() for line in declaration.splitlines()
+        )
+        self.assertIn("CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK", normalized_declaration)
+        self.assertIn("admission boundary only", normalized_declaration)
+        self.assertIn("does not define support for any concrete peripheral kind", normalized_declaration)
+        self.assertIn("fail closed for every kind they do not implement", normalized_declaration)
+        self.assertIn("unsupported_peripheral_kind", normalized_declaration)
+        self.assertEqual(67, message_fields(envelope_source, "Envelope")["peripheral_event"])
+        self.assertRegex(session_source, r"CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK\s*=\s*30\s*;")
 
     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
         source = (PROTO_ROOT / "envelope.proto").read_text()

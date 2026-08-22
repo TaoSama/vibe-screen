@@ -51,6 +51,9 @@ enum Capability {
   // Negotiates an encrypted WebRTC SCTP data channel for future bulk records.
   // This does not imply clipboard or file-transfer product behavior.
   CAPABILITY_BULK_DATA_CHANNEL = 29;
+  // Negotiates the generic peripheral-input admission framework only. This does
+  // not imply support for any concrete peripheral kind or hardware path.
+  CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK = 30;
 }
 
 message ClientHello {
