@@ -31,6 +31,7 @@ REQUIRED_GATES = [
     "physical_8_9_inch_tablet",
     "stand_mounted_charging",
     "thermal_power_sampling",
+    "device_memory_sampling",
     "foreground_background_recovery",
     "transport_reconnect_recovery",
     "login_startup_or_headless_recovery",
@@ -45,8 +46,12 @@ REQUIRED_ARTIFACTS = [
     "host.txt",
     "build.txt",
     "apk-sha256.txt",
-    "samples.jsonl",
-    "summary.json",
+    "soak-8h/samples.jsonl",
+    "soak-8h/summary.json",
+    "soak-8h/host-telemetry.jsonl",
+    "soak-8h/exact-window-report.json",
+    "soak-8h/phase2-device-memory-gate.json",
+    "soak-8h/phase2-tablet-gate.json",
     "adb-battery-before.txt",
     "adb-battery-after.txt",
     "adb-power-before.txt",
@@ -135,6 +140,10 @@ def build_manifest(
     video_preferences: str,
     duration_seconds: int,
     sample_interval_seconds: int,
+    host_pid: int | None,
+    host_rss_source: str,
+    android_pss_source: str,
+    require_host_pid: bool,
     thermal_limit_status: int,
     battery_temperature_limit_celsius: float | None,
     maximum_net_battery_drain_percent: int | None,
@@ -152,6 +161,10 @@ def build_manifest(
         raise ManifestError("--thermal-limit-status must be non-negative")
     if maximum_net_battery_drain_percent is not None and maximum_net_battery_drain_percent < 0:
         raise ManifestError("--maximum-net-battery-drain-percent must be non-negative")
+    if host_pid is not None and host_pid <= 0:
+        raise ManifestError("--host-pid must be positive when provided")
+    if require_host_pid and host_pid is None:
+        raise ManifestError("--host-pid is required and must be positive for Phase 2 device-memory evidence")
 
     limitations = list(DEFAULT_LIMITATIONS)
     normalized_class = device_class.strip()
@@ -190,6 +203,21 @@ def build_manifest(
             "video_preferences": video_preferences.strip(),
             "duration_seconds": duration_seconds,
             "sample_interval_seconds": sample_interval_seconds,
+        },
+        "memory_sampling": {
+            "android_pss_source": android_pss_source.strip(),
+            "host_rss_source": host_rss_source.strip(),
+            "host_pid": host_pid,
+            "require_host_pid": require_host_pid,
+            "sample_interval_seconds": sample_interval_seconds,
+            "minimum_duration_seconds": MINIMUM_DURATION_SECONDS,
+            "required_fields": [
+                "device.memory.app_total_pss_kb",
+                "host.rss_kb",
+                "device.battery.level",
+                "device.battery.status",
+                "device.thermal.status",
+            ],
         },
         "thresholds": {
             "thermal_limit_status": thermal_limit_status,
@@ -234,6 +262,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--video-preferences", required=True)
     parser.add_argument("--duration-seconds", type=int, default=MINIMUM_DURATION_SECONDS)
     parser.add_argument("--sample-interval-seconds", type=int, default=30)
+    parser.add_argument("--host-pid", type=int, help="Host process PID used for RSS sampling")
+    parser.add_argument(
+        "--host-rss-source",
+        default="soak --host-pid sampling via ps -o rss=",
+        help="How Host RSS will be sampled during the eight-hour run",
+    )
+    parser.add_argument(
+        "--android-pss-source",
+        default="ADB dumpsys meminfo app TOTAL PSS",
+        help="How Android app PSS will be sampled during the eight-hour run",
+    )
+    parser.add_argument(
+        "--allow-missing-host-pid",
+        action="store_true",
+        help="Record a non-closing preparation manifest when Host PID sampling is intentionally unavailable",
+    )
     parser.add_argument("--thermal-limit-status", type=int, default=2)
     parser.add_argument("--battery-temperature-limit-celsius", type=float)
     parser.add_argument("--maximum-net-battery-drain-percent", type=int)
@@ -272,6 +316,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             video_preferences=_require_non_empty(arguments.video_preferences, "--video-preferences"),
             duration_seconds=arguments.duration_seconds,
             sample_interval_seconds=arguments.sample_interval_seconds,
+            host_pid=arguments.host_pid,
+            host_rss_source=_require_non_empty(arguments.host_rss_source, "--host-rss-source"),
+            android_pss_source=_require_non_empty(arguments.android_pss_source, "--android-pss-source"),
+            require_host_pid=not arguments.allow_missing_host_pid,
             thermal_limit_status=arguments.thermal_limit_status,
             battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
             maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,

@@ -61,6 +61,7 @@ def write_inputs(directory: Path):
                         "status": 2,
                         "temperature": 370 + minute,
                         "voltage": 4200 - minute,
+                        "AC_powered": True,
                     },
                     "power": {"current_now_ua": -500000 + minute},
                 },
@@ -192,6 +193,9 @@ class SoakReportTest(unittest.TestCase):
         self.assertEqual(report["metrics"]["battery"]["plugged_counts"], {"1": 5})
         self.assertEqual(report["metrics"]["battery"]["status"]["max"], 2.0)
         self.assertEqual(report["metrics"]["battery"]["status_counts"], {"2": 5})
+        self.assertEqual(
+            report["metrics"]["battery"]["charging_or_full"]["min"], 1.0
+        )
         self.assertIn("not a no-leak", report["interpretation"])
 
     def test_invalid_lines_and_missing_window_data_are_partial(self):
