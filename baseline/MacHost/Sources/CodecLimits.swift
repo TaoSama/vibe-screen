@@ -93,6 +93,8 @@ struct VideoCodecCapabilitySnapshot: Equatable {
 }
 
 enum VideoCodecAdmissionPolicy {
+    static let productionConfiguredCodecs: [VSCodec] = [.hevc, .h264, .av1]
+
     static func streamCodec(for codec: VSCodec) -> StreamCodec? {
         switch codec {
         case .hevc: return .hevc
@@ -107,6 +109,15 @@ enum VideoCodecAdmissionPolicy {
     ) -> [VSCodec] {
         let available = Set(capabilities.protocolV1SupportedCodecs)
         return configuredCodecs.filter { available.contains($0) && streamCodec(for: $0) != nil }
+    }
+
+    static func productionSupportedCodecs(
+        capabilities: VideoCodecCapabilitySnapshot = VideoCodecCapabilitySnapshot.probe()
+    ) -> [VSCodec] {
+        protocolCodecs(
+            from: productionConfiguredCodecs,
+            capabilities: capabilities
+        )
     }
 }
 
