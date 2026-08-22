@@ -269,6 +269,19 @@ threshold miss all return nonzero with a JSON report whose verdict is
 insufficient or fail. Referenced files must use package-relative paths and stay
 inside the evidence directory.
 
+For committed evidence directories, the Make wrapper runs the same formal
+checker and writes the canonical report name in place:
+
+```bash
+make evidence-latency-gate \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  LATENCY_GATE_PROFILE=usb-glass-to-glass-sub50
+```
+
+Set `LATENCY_MANIFEST` only when the manifest is not
+`$EVIDENCE_DIR/manifest.json`; otherwise leave it at the default. The target
+returns `0` only when `latency-evidence-report.json` records `verdict=pass`.
+
 ## Fail-closed readiness preflight
 
 When external-camera hardware, synchronized-clock proof, physical input
