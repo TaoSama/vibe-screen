@@ -12,6 +12,19 @@ soak by default, and it must not reset macOS or Android permissions or clear
 Android application data. The machine gate validates retained summaries after a
 run; it does not start Xcode, the Host, LAN traffic, ADB, or device automation.
 
+The current-base aggregate owner is #182 (`current-base-ios-acceptance`). Before
+reporting readiness or a blocked run, produce the aggregate summary from the
+current base:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+The expected no-device result is fail-closed `blocked`. A nonzero exit from this
+command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
+retained gate evidence are missing. Do not convert that readiness output into a
+device pass.
+
 ## Open gates
 
 These README Phase 5 device-acceptance gates remain open until the evidence
@@ -131,6 +144,13 @@ gate.
   "kind": "ios_device_acceptance",
   "platform": "ios",
   "status": "open",
+  "aggregate_owner": {
+    "aggregate": "current-base-ios-acceptance",
+    "aggregate_pr": "#182",
+    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+  },
+  "readiness_status": "blocked",
+  "blocked_reasons": [],
   "repository": {
     "commit": "",
     "branch": "",
@@ -186,10 +206,23 @@ gate.
     "reconnect": { "status": "open", "evidence": [] },
     "audio_playback": { "status": "open", "evidence": [] }
   },
+  "broader_gates": {
+    "hdr_output": { "status": "open", "evidence": [] },
+    "advanced_adapters": { "status": "open", "evidence": [] },
+    "trusted_lan_secure_records": { "status": "open", "evidence": [] }
+  },
   "android_evidence_used_for_ios_gates": false,
   "notes": []
 }
 ```
+
+To turn this runbook record into current-base aggregate evidence, copy sanitized
+field values into `ios-current-base-manifest.json` or generate a fresh default
+manifest with `make ios-current-base-manifest`, then run
+`python3 -m vibescreen_evidence.ios_current_base_gate`. The aggregate gate is
+stricter than this runbook: it keeps the current-base aggregate open until the
+E1-E7 device gates and the broader HDR, advanced-adapter, and trusted-LAN
+secure-record gates all carry retained evidence.
 
 Store raw logs under the active Phase 5 evidence directory or an external
 release bundle, depending on privacy review. Commit only sanitized summaries,

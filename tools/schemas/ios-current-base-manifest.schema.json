@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-current-base-manifest.schema.json",
+  "title": "Vibe Screen iOS current-base readiness manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "owner",
+    "scope_prs",
+    "source_docs",
+    "local_environment",
+    "build_evidence",
+    "signing",
+    "devices",
+    "gates",
+    "android_evidence_used_for_ios_gates",
+    "limitations",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_current_base_readiness_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "aggregate_pr", "device_acceptance_pr", "repository"],
+      "properties": {
+        "aggregate": {"const": "current-base-ios-acceptance"},
+        "aggregate_pr": {"const": "#182"},
+        "device_acceptance_pr": {"const": "#182"},
+        "repository": {"const": "TaoSama/vibe-screen"}
+      }
+    },
+    "scope_prs": {"type": "array", "items": {"type": "string", "pattern": "^#[0-9]+$"}},
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "local_environment": {"type": "object"},
+    "build_evidence": {"type": "object"},
+    "signing": {"type": "object"},
+    "devices": {"type": "array", "items": {"type": "object"}},
+    "gates": {"type": "object"},
+    "android_evidence_used_for_ios_gates": {"type": "boolean"},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  }
+}

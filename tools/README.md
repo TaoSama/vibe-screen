@@ -15,6 +15,26 @@ Producers should write a manifest beside raw JSONL/CSV and derived summaries so
 the exact command, repository state, host, device, and measurement method remain
 auditable.
 
+## iOS current-base readiness
+
+The current-base iOS aggregate owner is PR #182. Use the aggregate gate to keep
+that owner connected to the narrower signing, VideoToolbox, advanced-adapter,
+AVAudioEngine/PCM, HDR, native-input, reconnect, and trusted-LAN secure-record
+tasks without claiming a device pass before real iPhone and iPad evidence
+exists:
+
+```sh
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+The target writes `ios-current-base-manifest.json` and
+`ios-current-base-gate.json`. The command exits `0` only for a complete formal
+aggregate pass. Missing signing identities, missing iPhone/iPad hardware,
+Simulator-only evidence, unsigned archives, MacHost loopback, Android evidence,
+or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
+`can_close_ios_device_acceptance=false`. That nonzero result is the expected
+fail-closed readiness evidence when no iOS device run is scheduled.
+
 Codec capability evidence must record the negotiated Protocol v1 codec, the
 Host encoder capability and implementation path, the client decoder name, and
 the first decoded output frame before it is used to close a codec gate. AV1 is

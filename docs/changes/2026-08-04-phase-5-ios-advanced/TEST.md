@@ -188,6 +188,62 @@ tests because the selected Command Line Tools SwiftPM environment could not
 import `XCTest`; the full-Xcode CI gate remains responsible for Mac XCTest
 execution.
 
+## Current-base aggregate readiness
+
+The current-base aggregate owner is #182. It owns the aggregate iOS acceptance
+tracking entry point for the current base, while the narrower readiness work
+remains scoped to the related PR/task owners: #196 gesture/action mapping, #207
+managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM, #238
+reconnect, #251 VideoToolbox, #253 host advanced adapters, and #257 native
+input. The aggregate must not pass by owner declaration alone; it passes only
+when the machine-readable gate can prove every required iOS hardware and broader
+Phase 5 gate from retained evidence.
+
+Use the fail-closed current-base collector before scheduling or reporting an iOS
+device run:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+That command writes `ios-current-base-manifest.json` and
+`ios-current-base-gate.json`. On the current development baseline without signed
+iPhone and iPad hardware evidence, the expected verdict is `blocked`, the
+command exits nonzero, and both `can_close_ios_device_acceptance` and
+`can_close_current_base_aggregate` remain false. A `pass` requires signing,
+device install, Protocol session, H.264 and HEVC VideoToolbox decode, input,
+reconnect, audio playback, HDR output, host advanced adapters, and trusted-LAN
+secure-record evidence. Simulator UI, unsigned archives, MacHost loopback,
+Android device evidence, and plaintext legacy fallback are readiness inputs
+only.
+
+| Gate | Current-base state | Evidence boundary |
+| --- | --- | --- |
+| signing | blocked-readiness | Requires signed archive, unique bundle ID, certificate, and provisioning profile. |
+| VideoToolbox H.264/HEVC | open | Implementation and CI build evidence exist; hardware decode requires iPhone and iPad records. |
+| advanced adapters | open | Client/core and Mac/Android slices are offline-tested; host/product E2E remains separate. |
+| AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
+| HDR | open | SDR fallback is implemented; HDR/EDR output is not recorded. |
+| native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
+| reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
+| trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
+
+2026-08-22 current-base readiness smoke on this worktree ran:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base-smoke-20260822
+```
+
+The command wrote the manifest and gate report, then exited nonzero as expected
+with `verdict=blocked`. The retained gate JSON recorded
+`can_close_ios_device_acceptance=false`,
+`can_close_current_base_aggregate=false`, and
+`can_claim_device_pass=false`. Blocking reasons included full Xcode/iPhoneOS SDK
+unavailability in the active Command Line Tools environment, missing signing
+identity/profile/signed archive, missing physical iPhone and iPad install
+evidence, and missing E1-E7 gate evidence. The broader HDR, advanced-adapter,
+and trusted-LAN secure-record gates remained insufficient.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.
