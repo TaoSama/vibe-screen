@@ -41,6 +41,26 @@ class StreamInputBoundaryContractTest {
         }
     }
 
+    @Test
+    fun `stream client delegates local session lifecycle state to boundary owner`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val sessionState = source(PRODUCTION_LOCAL_SESSION_STATE)
+
+        assertTrue(streamClient.contains("private val localSessionState = StreamClientLocalSessionState"))
+        assertTrue(streamClient.contains("localSessionState.prepareConnectionStart()"))
+        assertTrue(streamClient.contains("localSessionState.markConnected()"))
+        assertTrue(streamClient.contains("localSessionState.markTerminationClaimed(request.failure)"))
+        assertTrue(streamClient.contains("localSessionState.markReady()"))
+        assertTrue(streamClient.contains("localSessionState.nextReconnectDelayMs()"))
+
+        FORBIDDEN_STREAM_CLIENT_LOCAL_STATE_FIELDS.forEach { field ->
+            assertFalse("StreamClient must not own local session field `$field` directly", streamClient.contains(field))
+        }
+        FORBIDDEN_LOCAL_SESSION_STATE_REFERENCES.forEach { reference ->
+            assertFalse("StreamClientLocalSessionState must not depend on `$reference`", sessionState.contains(reference))
+        }
+    }
+
     private fun source(relativePath: String): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -56,6 +76,8 @@ class StreamInputBoundaryContractTest {
     private companion object {
         const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"
         const val PRODUCTION_INPUT_DISPATCHER = "app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt"
+        const val PRODUCTION_LOCAL_SESSION_STATE =
+            "app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt"
 
         val INPUT_ENVELOPE_BUILDERS =
             listOf(
@@ -74,6 +96,28 @@ class StreamInputBoundaryContractTest {
                 "MainActivity",
                 "StreamTransport",
                 "java.net.Socket",
+            )
+
+        val FORBIDDEN_STREAM_CLIENT_LOCAL_STATE_FIELDS =
+            listOf(
+                "@Volatile private var isConnected",
+                "@Volatile private var sessionReady",
+                "@Volatile private var stopRequested",
+                "@Volatile private var connectionEpoch",
+                "@Volatile private var lastTerminationFailure",
+                "private val reconnectBackoff = ReconnectBackoff()",
+            )
+
+        val FORBIDDEN_LOCAL_SESSION_STATE_REFERENCES =
+            listOf(
+                "import android.",
+                "import androidx.",
+                "MainActivity",
+                "StreamTransport",
+                "StreamTransportOwner",
+                "java.net.Socket",
+                "ProtocolV1Session",
+                "onConnectionStatus",
             )
     }
 }
