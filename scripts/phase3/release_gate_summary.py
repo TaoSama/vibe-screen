@@ -94,19 +94,24 @@ class GateSummaryError(RuntimeError):
 
 
 def git_revision(repo: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=10,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except OSError as exception:
+        raise GateSummaryError("cannot execute git to resolve repository HEAD") from exception
     if result.returncode != 0:
         raise GateSummaryError("cannot resolve repository HEAD")
     revision = result.stdout.strip().lower()
-    if len(revision) < 40 or any(character not in "0123456789abcdef" for character in revision):
+    if len(revision) < 40 or any(
+        character not in "0123456789abcdef" for character in revision
+    ):
         raise GateSummaryError("repository HEAD is not a Git revision")
     return revision
 
@@ -142,7 +147,7 @@ def inspect_local_public_artifacts(
         files = validate_public_artifact_tree(path, require_complete=True)
         direct = read_json_file(path / "direct.json", "public direct evidence")
         relay = read_json_file(path / "relay.json", "public relay evidence")
-    except E2EFailure as error:
+    except (E2EFailure, OSError) as error:
         return {
             "kind": "local_synthetic_product_e2e",
             "status": "invalid",
@@ -213,12 +218,15 @@ def inspect_blocked_real_media(
     value = read_json_file(path, "blocked real-media acceptance")
     claims = value.get("claims", {})
     source_commit = value.get("source_commit")
+    source_clean_before_run = value.get("source_dirty_before_run") is False
     return {
         "kind": "current_main_real_media_attempt",
         "status": value.get("result", "unknown"),
         "path": path_label,
-        "current_base": source_commit == current_commit,
+        "current_base": source_commit == current_commit and source_clean_before_run,
         "source_commit": source_commit,
+        "source_clean_before_run": source_clean_before_run,
+        "source_matched_origin_main": value.get("source_matched_origin_main"),
         "device": value.get("device", {}),
         "blocker": value.get("blocker", {}),
         "claims": claims,
@@ -281,7 +289,11 @@ def _historical_android_boundaries(value: object) -> dict[str, Any]:
 
 def _historical_source_assertions(value: dict[str, Any]) -> dict[str, Any]:
     runs = value.get("runs")
-    first = runs[0] if isinstance(runs, list) and runs and isinstance(runs[0], dict) else value
+    first = (
+        runs[0]
+        if isinstance(runs, list) and runs and isinstance(runs[0], dict)
+        else value
+    )
     assertions = first.get("assertions") if isinstance(first, dict) else None
     if not isinstance(assertions, dict):
         return {}
@@ -382,6 +394,10 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--local-public-dir", type=Path, default=DEFAULT_LOCAL_PUBLIC_DIR)
     parser.add_argument("--android-interop-acceptance", type=Path, default=DEFAULT_ANDROID_INTEROP)
     parser.add_argument("--blocked-real-media-acceptance", type=Path, default=DEFAULT_BLOCKED_REAL_MEDIA)
+    parser.add_argument(
+        "--current-commit",
+        help="Git revision to record as the current base; defaults to git rev-parse HEAD.",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--require-release-pass",
@@ -399,6 +415,7 @@ def main(arguments: list[str] | None = None) -> int:
             local_public_dir=args.local_public_dir,
             android_interop_acceptance=args.android_interop_acceptance,
             blocked_real_media_acceptance=args.blocked_real_media_acceptance,
+            current_commit=args.current_commit,
         )
     except (E2EFailure, GateSummaryError) as error:
         print(f"Phase 3 release gate summary: FAIL ({error})", file=sys.stderr)

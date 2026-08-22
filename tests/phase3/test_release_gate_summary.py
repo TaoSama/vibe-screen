@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.phase3.release_gate_summary import (  # noqa: E402
     HISTORICAL_ANDROID_BOUNDARY_DEFAULTS,
+    RELEASE_GATES,
     SCHEMA,
     build_summary,
     main,
@@ -26,7 +27,9 @@ from scripts.phase3_webrtc.public_evidence import (  # noqa: E402
 from scripts.phase3_webrtc.privacy import write_private_text, write_public_diagnostic  # noqa: E402
 
 
-def private_product_evidence(mode: str, commit: str) -> dict[str, object]:
+def private_product_evidence(
+    mode: str, commit: str, *, dirty: bool = False
+) -> dict[str, object]:
     evidence: dict[str, object] = {
         "schema": EVIDENCE_SCHEMA,
         "mode": mode,
@@ -66,7 +69,7 @@ def private_product_evidence(mode: str, commit: str) -> dict[str, object]:
             "repository_commit": commit,
             "repository_source": {
                 "repository_commit": commit,
-                "dirty": False,
+                "dirty": dirty,
                 "source_fingerprint": "e" * 64,
             },
         },
@@ -96,6 +99,23 @@ def private_product_evidence(mode: str, commit: str) -> dict[str, object]:
 
 
 class Phase3ReleaseGateSummaryTests(unittest.TestCase):
+    def test_release_gate_name_set_is_explicit(self) -> None:
+        self.assertEqual(
+            [name for name, _ in RELEASE_GATES],
+            [
+                "public_internet_path",
+                "real_remote_turn",
+                "screencapturekit_to_android_mediacodec",
+                "visible_input_effects",
+                "network_handoff",
+                "cross_service_revocation",
+                "packet_capture_confidentiality",
+                "two_hour_mixed_route_soak",
+                "production_services",
+                "independent_security_review",
+            ],
+        )
+
     def test_summary_keeps_release_gates_open_for_current_local_public_artifacts(self) -> None:
         commit = "1" * 40
         with tempfile.TemporaryDirectory() as directory:
@@ -144,6 +164,68 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
             {gate["gate"] for gate in summary["release_gates"]},
         )
 
+    def test_local_public_artifacts_are_not_current_base_when_dirty(self) -> None:
+        commit = "8" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            private = root / "private"
+            private.mkdir(mode=0o700)
+            for mode in ("direct", "relay"):
+                write_private_text(
+                    private / f"{mode}.json",
+                    json.dumps(private_product_evidence(mode, commit, dirty=True)),
+                )
+            for relative_path in (
+                "direct-logs/peer.log",
+                "direct-logs/signaling.log",
+                "relay-logs/peer.log",
+                "relay-logs/signaling.log",
+            ):
+                write_public_diagnostic(private / relative_path, "PASS")
+            write_public_diagnostic(
+                private / "relay-logs/turnserver.log",
+                "PASS",
+                metadata={"version": "4.16.0"},
+            )
+            public = private / "public"
+            build_public_artifact_tree(private, public)
+
+            summary = build_summary(
+                root,
+                local_public_dir=public,
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit=commit,
+            )
+
+        local = summary["readiness_observations"][0]
+        self.assertEqual(local["status"], "pass")
+        self.assertFalse(local["current_base"])
+        self.assertEqual(local["release_gate_impact"], "readiness_only")
+        self.assertEqual(summary["result"], "open")
+
+    def test_invalid_local_public_artifacts_are_reported_without_closing_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            public = root / "public"
+            public.mkdir(mode=0o700)
+            unexpected = public / "unexpected.json"
+            unexpected.write_text("{}", encoding="utf-8")
+            unexpected.chmod(0o600)
+
+            summary = build_summary(
+                root,
+                local_public_dir=public,
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit="9" * 40,
+            )
+
+        local = summary["readiness_observations"][0]
+        self.assertEqual(local["status"], "invalid")
+        self.assertEqual(local["release_gate_impact"], "none")
+        self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
     def test_historical_android_interop_is_not_current_base(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -156,7 +238,16 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
                         "routes": ["direct", "relay"],
                         "evidence_boundaries": {"screen_capture_kit": "not_claimed"},
                         "source": {"commit": "2" * 40},
-                        "runs": [{"adb_gate": {"commit": "2" * 40}}],
+                        "runs": [
+                            {
+                                "adb_gate": {"commit": "2" * 40},
+                                "assertions": {
+                                    "real_android_app_and_instrumentation": "pass",
+                                    "real_local_signaling_process": "pass",
+                                    "synthetic_video_config_keyframe_delta": "pass",
+                                },
+                            }
+                        ],
                     }
                 ),
                 encoding="utf-8",
@@ -176,6 +267,14 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         self.assertFalse(android["current_base"])
         self.assertTrue(android["run_commits_match_source"])
         self.assertEqual(android["relay_kind"], "forced_local_coturn")
+        self.assertEqual(
+            android["source_assertions"],
+            {
+                "real_android_app_and_instrumentation": "pass",
+                "real_local_signaling_process": "pass",
+                "synthetic_video_config_keyframe_delta": "pass",
+            },
+        )
         for key, value in HISTORICAL_ANDROID_BOUNDARY_DEFAULTS.items():
             self.assertEqual(android["evidence_boundaries"][key], value)
         self.assertEqual(android["release_gate_impact"], "readiness_only")
@@ -222,6 +321,8 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
                     {
                         "result": "blocked",
                         "source_commit": commit,
+                        "source_dirty_before_run": False,
+                        "source_matched_origin_main": True,
                         "device": {"product": "P0110", "codename": "pacific"},
                         "blocker": {"component": "macOS Screen Recording permission"},
                         "claims": {
@@ -247,9 +348,39 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         self.assertEqual(observation["kind"], "current_main_real_media_attempt")
         self.assertTrue(observation["current_base"])
         self.assertEqual(observation["status"], "blocked")
+        self.assertTrue(observation["source_clean_before_run"])
+        self.assertTrue(observation["source_matched_origin_main"])
         self.assertEqual(observation["release_gate_impact"], "blocked_readiness_only")
         self.assertTrue(all(claim is False for claim in observation["claims"].values()))
         self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_blocked_real_media_dirty_source_is_not_current_base(self) -> None:
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blocked = root / "blocked.json"
+            blocked.write_text(
+                json.dumps(
+                    {
+                        "result": "blocked",
+                        "source_commit": commit,
+                        "source_dirty_before_run": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=blocked,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][2]
+        self.assertFalse(observation["current_base"])
+        self.assertFalse(observation["source_clean_before_run"])
 
     def test_summary_observations_never_have_release_gate_pass_impact(self) -> None:
         summary = build_summary(
@@ -261,7 +392,10 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {observation["release_gate_impact"] for observation in summary["readiness_observations"]},
+            {
+                observation["release_gate_impact"]
+                for observation in summary["readiness_observations"]
+            },
             {"none"},
         )
 
@@ -274,6 +408,8 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
                     [
                         "--repo",
                         str(ROOT),
+                        "--current-commit",
+                        "b" * 40,
                         "--local-public-dir",
                         str(Path(directory) / "missing-public"),
                         "--android-interop-acceptance",
