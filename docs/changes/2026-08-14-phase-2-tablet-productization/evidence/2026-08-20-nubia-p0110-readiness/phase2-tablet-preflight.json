@@ -105,7 +105,7 @@
       "status": "missing"
     }
   ],
-  "generated_at": "2026-08-21T23:39:47.898452+00:00",
+  "generated_at": "2026-08-22T18:06:35.200334+00:00",
   "interpretation": "A pass means this evidence bundle contains the required physical 8-9 inch tablet, portrait/landscape UI, stylus, hardware keyboard, recovery, thermal/power, and eight-hour soak artifacts. A blocked verdict means the run cannot close Phase 2 because the available device or setup is not the required tablet hardware.",
   "kind": "phase2_tablet_acceptance_preflight",
   "reasons": [

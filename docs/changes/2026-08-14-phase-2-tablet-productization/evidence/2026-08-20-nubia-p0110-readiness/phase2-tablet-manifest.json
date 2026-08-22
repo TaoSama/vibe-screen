@@ -8,7 +8,7 @@
     "EVIDENCE_SERIAL=EP0110PZ0B9110300B",
     "EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness"
   ],
-  "created_at": "2026-08-21T23:39:47.529270+00:00",
+  "created_at": "2026-08-22T18:06:35.102762+00:00",
   "device": {
     "device_class": "android_substitute",
     "identity": {
@@ -34,6 +34,21 @@
     "Nubia P0110/pacific/Android 16 may be recorded as a general Android substitute only and must not be relabeled as Xiaomi 13/fuxi or as 8-9 inch tablet evidence.",
     "The recorded device class is not a physical 8-9 inch tablet, so this manifest cannot close the tablet hardware gate."
   ],
+  "memory_sampling": {
+    "android_pss_source": "ADB dumpsys meminfo app TOTAL PSS",
+    "host_pid": null,
+    "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+    "minimum_duration_seconds": 28800,
+    "require_host_pid": false,
+    "required_fields": [
+      "device.memory.app_total_pss_kb",
+      "host.rss_kb",
+      "device.battery.level",
+      "device.battery.status",
+      "device.thermal.status"
+    ],
+    "sample_interval_seconds": 30
+  },
   "notes": null,
   "physical_setup": {
     "ambient_temperature_celsius": null,
@@ -46,7 +61,7 @@
   ],
   "repository": {
     "dirty": false,
-    "revision": "37624437ce44f4c81dec1c3933ec279a25cda31d",
+    "revision": "87d06d93c105706d5ffb5f090c6b6f70db9ea571",
     "status_porcelain": []
   },
   "required_artifacts": [
@@ -60,6 +75,9 @@
     "soak-8h/samples.jsonl",
     "soak-8h/summary.json",
     "soak-8h/host-telemetry.jsonl",
+    "soak-8h/exact-window-report.json",
+    "soak-8h/phase2-device-memory-gate.json",
+    "soak-8h/phase2-tablet-gate.json",
     "adb-battery-before.txt",
     "adb-battery-after.txt",
     "adb-power-before.txt",
@@ -79,7 +97,6 @@
     "stylus-evidence.json",
     "hardware-keyboard-evidence.json",
     "recovery-evidence.json",
-    "soak-8h/phase2-tablet-gate.json",
     "phase2-tablet-preflight.json"
   ],
   "required_gates": [
@@ -89,12 +106,13 @@
     "physical_stylus",
     "hardware_keyboard",
     "thermal_power_sampling",
+    "device_memory_sampling",
     "foreground_background_recovery",
     "transport_reconnect_recovery",
     "login_startup_or_headless_recovery",
     "eight_hour_sustained_stream"
   ],
-  "run_id": "30dff71c-40a7-4c63-9648-8ad2a87ff310",
+  "run_id": "20996c0c-33bb-437c-b800-68b13f355751",
   "schema_version": "vibescreen.evidence/v1",
   "session": {
     "duration_seconds": 28800,
