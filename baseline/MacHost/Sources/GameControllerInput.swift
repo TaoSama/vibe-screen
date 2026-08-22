@@ -264,6 +264,7 @@ final class SessionGameControllerInputRoute: @unchecked Sendable {
     private let lock = NSLock()
     private let input: SessionGameControllerInput
     private var active = true
+    private var resetError: Error?
 
     init(input: SessionGameControllerInput) {
         self.input = input
@@ -272,13 +273,22 @@ final class SessionGameControllerInputRoute: @unchecked Sendable {
     func handle(_ event: GameControllerInputEvent, generation: UInt64) throws {
         lock.lock()
         defer { lock.unlock() }
-        guard active else { throw GameControllerInputError.invalidTransition }
+        guard active else { throw resetError ?? GameControllerInputError.invalidTransition }
         try input.handle(event, generation: generation)
     }
 
     func invalidate() {
         lock.lock()
+        guard active else {
+            lock.unlock()
+            return
+        }
         active = false
+        do {
+            try input.reset()
+        } catch {
+            resetError = error
+        }
         lock.unlock()
     }
 }
@@ -410,7 +420,18 @@ final class GameControllerInjector {
                 throw GameControllerInputError.invalidTransition
             }
             attachments.removeValue(forKey: event.controllerID)
-            try attachment.device.close()
+            var firstError: Error?
+            do {
+                try attachment.device.submit(.neutral)
+            } catch {
+                firstError = error
+            }
+            do {
+                try attachment.device.close()
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+            if let firstError { throw firstError }
         }
     }
 
