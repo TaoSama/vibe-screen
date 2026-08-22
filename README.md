@@ -659,6 +659,13 @@ network quality may increase it.
   progress-driven backpressure, and cancel/disconnect cleanup. This is offline
   and self-test evidence only: no Android real-device file-transfer acceptance,
   public-Internet run, or WebRTC bulk DataChannel path is claimed.
+- The macOS Host and Android client now wire authenticated Protocol v1
+  WakeHostRequest messages to real UDP Wake-on-LAN magic-packet senders. Wake
+  remains default-deny, is advertised only when an HMAC authorizer is available,
+  and validates key ID, nonce, expiry, signature, session device identity, and
+  broadcast target before sending. This is offline and loopback test evidence
+  only: sleeping-Mac wake, router broadcast behavior, NIC firmware settings, and
+  cross-subnet delivery remain real-device gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

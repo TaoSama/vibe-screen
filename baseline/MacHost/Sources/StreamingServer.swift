@@ -1993,14 +1993,12 @@ class StreamingServer: EncodedFrameSink {
             touchEnabled: touchEnabled,
             controllerAvailable: controllerAvailable,
             managedPolicy: managedPolicy,
-            fileTransferAllowed: incomingFiles != nil && filePolicy.allowed
+            fileTransferAllowed: incomingFiles != nil && filePolicy.allowed,
+            wakeHostAvailable: wakeHostAuthorizer.wakeAllowed
         )
         if activeConnectionIsWireless && lanRecordProtectionState == .encrypted {
             hostCapabilities.insert(.endToEndEncryption)
             hostCapabilities.insert(.replayProtection)
-        }
-        if wakeHostAuthorizer.wakeAllowed {
-            hostCapabilities.insert(.wakeHost)
         }
         protocolV1Session = ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -2673,6 +2671,18 @@ class StreamingServer: EncodedFrameSink {
             return (false, "invalid_mac_address")
         } catch WakeHostRequestError.invalidSecureOnPassword {
             return (false, "invalid_secure_on_password")
+        } catch WakeHostRequestError.invalidAuthorization {
+            return (false, "wake_host_unauthorized")
+        } catch WakeHostRequestError.expiredAuthorization {
+            return (false, "wake_host_authorization_expired")
+        } catch WakeHostRequestError.replayedRequest {
+            return (false, "wake_host_replay")
+        } catch WakeHostPacketSenderError.invalidBroadcastAddress {
+            return (false, "invalid_broadcast_target")
+        } catch WakeHostPacketSenderError.invalidPort {
+            return (false, "invalid_broadcast_target")
+        } catch WakeHostPacketSenderError.timedOut {
+            return (false, "wake_packet_send_timeout")
         } catch {
             return (false, "wake_packet_send_failed")
         }

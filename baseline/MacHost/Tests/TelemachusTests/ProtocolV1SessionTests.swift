@@ -1324,6 +1324,25 @@ final class ProtocolV1SessionTests: XCTestCase {
             )).code,
             .invalidState
         )
+
+        request.hostID = "host"
+        request.deviceID = ""
+        let missingDeviceSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: missingDeviceSession.handleControl(
+                try envelope(id: 7, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        request.deviceID = "other-device"
+        let deviceMismatchSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: deviceMismatchSession.handleControl(
+                try envelope(id: 8, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
     }
 
     func testWakeHostCompletionEchoesRequestAndCorrelation() throws {
@@ -2109,6 +2128,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         request.requestID = Data([0x31])
         request.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
         request.hostID = hostID
+        request.deviceID = "device"
         return request
     }
 

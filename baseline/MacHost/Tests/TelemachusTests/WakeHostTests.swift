@@ -83,6 +83,81 @@ final class WakeHostTests: XCTestCase {
         }
     }
 
+    func testSharedSecretAuthorizerAcceptsSignedRequestOnce() throws {
+        let secret = Data((0..<32).map(UInt8.init))
+        let request = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060)
+        let store = InMemoryWakeHostReplayStore()
+        let authorizer = SharedSecretWakeHostAuthorizer(secret: secret, replayStore: store, now: { 1_010 })
+
+        XCTAssertNil(authorizer.authorizationFailure(for: request))
+        XCTAssertEqual(authorizer.authorizationFailure(for: request), .replayedRequest)
+
+        let secondRequest = signedRequest(
+            secret: secret,
+            issuedAt: 1_000,
+            expiresAt: 1_060,
+            nonce: Data(repeating: 0x11, count: WakeHostProof.minimumNonceByteCount)
+        )
+        XCTAssertNil(authorizer.authorizationFailure(for: secondRequest))
+    }
+
+    func testSharedSecretAuthorizerHandlesMaximumTimestampWithoutOverflow() {
+        let secret = Data((0..<32).map(UInt8.init))
+        let request = signedRequest(secret: secret, issuedAt: UInt64.max - 60, expiresAt: UInt64.max)
+        let authorizer = SharedSecretWakeHostAuthorizer(secret: secret, now: { UInt64.max })
+
+        XCTAssertNil(authorizer.authorizationFailure(for: request))
+    }
+
+    func testSharedSecretAuthorizerRejectsTamperedExpiredAndMalformedProofs() {
+        let secret = Data((0..<32).map(UInt8.init))
+        let authorizer = SharedSecretWakeHostAuthorizer(secret: secret, now: { 1_010 })
+
+        let tampered = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060) { signature in
+            signature[0] ^= 0x01
+        }
+        XCTAssertEqual(authorizer.authorizationFailure(for: tampered), .invalidAuthorization)
+
+        let wrongKey = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060, keyID: "wrong")
+        XCTAssertEqual(authorizer.authorizationFailure(for: wrongKey), .invalidAuthorization)
+
+        let shortNonce = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060, nonce: Data([0x01]))
+        XCTAssertEqual(authorizer.authorizationFailure(for: shortNonce), .invalidAuthorization)
+
+        let expired = signedRequest(secret: secret, issuedAt: 900, expiresAt: 950)
+        XCTAssertEqual(authorizer.authorizationFailure(for: expired), .expiredAuthorization)
+
+        let tooLong = signedRequest(secret: secret, issuedAt: 900, expiresAt: 1_200)
+        XCTAssertEqual(authorizer.authorizationFailure(for: tooLong), .expiredAuthorization)
+    }
+
+    func testWakeHostProofGoldenVector() {
+        let secret = Data((0..<32).map(UInt8.init))
+        let request = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060)
+        XCTAssertEqual(request.keyID, "630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd")
+        XCTAssertEqual(
+            request.signature.map { String(format: "%02x", $0) }.joined(),
+            "5651fe6601bff89f975e6a02981b020fbb219e3b920477c02bfe37775ae08ea7"
+        )
+    }
+
+    func testBroadcastTargetValidation() throws {
+        XCTAssertEqual(try WakeHostBroadcastTarget(address: "255.255.255.255", port: 9), try WakeHostBroadcastTarget(address: "255.255.255.255", port: 9))
+        XCTAssertEqual(try WakeHostBroadcastTarget(address: "192.168.1.255", port: 7).address, "192.168.1.255")
+        XCTAssertThrowsError(try WakeHostBroadcastTarget(address: "192.168.1.10", port: 9)) { error in
+            XCTAssertEqual(error as? WakeHostPacketSenderError, .invalidBroadcastAddress)
+        }
+        XCTAssertThrowsError(try WakeHostBroadcastTarget(address: "0.0.0.0", port: 9)) { error in
+            XCTAssertEqual(error as? WakeHostPacketSenderError, .invalidBroadcastAddress)
+        }
+        XCTAssertThrowsError(try WakeHostBroadcastTarget(address: "example.test", port: 9)) { error in
+            XCTAssertEqual(error as? WakeHostPacketSenderError, .invalidBroadcastAddress)
+        }
+        XCTAssertThrowsError(try WakeHostBroadcastTarget(address: "255.255.255.255", port: 0)) { error in
+            XCTAssertEqual(error as? WakeHostPacketSenderError, .invalidPort)
+        }
+    }
+
     func testStreamingServerWakeHostRequestMapsPolicyAndSenderResults() {
         let request = WakeHostRequestContext(
             requestID: Data([0x42]),
@@ -128,6 +203,85 @@ final class WakeHostTests: XCTestCase {
         XCTAssertFalse(failed.accepted)
         XCTAssertEqual(failed.reason, "wake_packet_send_failed")
     }
+
+    func testStreamingServerWakeHostRequestRequiresValidAuthorizationBeforeSending() {
+        let secret = Data((0..<32).map(UInt8.init))
+        let request = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060)
+        let store = InMemoryWakeHostReplayStore()
+        let authorizer = SharedSecretWakeHostAuthorizer(secret: secret, replayStore: store, now: { 1_010 })
+
+        let acceptedSender = RecordingWakeHostPacketSender()
+        let accepted = StreamingServer.performWakeHostRequest(
+            request,
+            authorizer: authorizer,
+            packetSender: acceptedSender
+        )
+        XCTAssertTrue(accepted.accepted)
+        XCTAssertEqual(accepted.reason, "")
+        XCTAssertEqual(acceptedSender.sentPackets.count, 1)
+
+        let replaySender = RecordingWakeHostPacketSender()
+        let replayed = StreamingServer.performWakeHostRequest(
+            request,
+            authorizer: authorizer,
+            packetSender: replaySender
+        )
+        XCTAssertFalse(replayed.accepted)
+        XCTAssertEqual(replayed.reason, "wake_host_replay")
+        XCTAssertTrue(replaySender.sentPackets.isEmpty)
+
+        let tampered = signedRequest(secret: secret, issuedAt: 1_000, expiresAt: 1_060) { signature in
+            signature[0] ^= 0x01
+        }
+        let tamperedSender = RecordingWakeHostPacketSender()
+        let unauthorized = StreamingServer.performWakeHostRequest(
+            tampered,
+            authorizer: authorizer,
+            packetSender: tamperedSender
+        )
+        XCTAssertFalse(unauthorized.accepted)
+        XCTAssertEqual(unauthorized.reason, "wake_host_unauthorized")
+        XCTAssertTrue(tamperedSender.sentPackets.isEmpty)
+    }
+}
+
+private func signedRequest(
+    secret: Data,
+    issuedAt: UInt64,
+    expiresAt: UInt64,
+    keyID overrideKeyID: String? = nil,
+    nonce overrideNonce: Data? = nil,
+    signatureMutator: ((inout Data) -> Void)? = nil
+) -> WakeHostRequestContext {
+    let keyID = overrideKeyID ?? WakeHostProof.keyID(secret: secret)
+    let nonce = overrideNonce ?? Data((0..<16).map { UInt8(0xa0 + $0) })
+    let requestID = Data([0x42])
+    let mac = Data([1, 2, 3, 4, 5, 6])
+    var signature = WakeHostProof.signature(
+        requestID: requestID,
+        targetMACAddress: mac,
+        secureOnPassword: Data(),
+        hostID: "host",
+        deviceID: "device",
+        keyID: keyID,
+        issuedAtUnixSeconds: issuedAt,
+        expiresAtUnixSeconds: expiresAt,
+        nonce: nonce,
+        secret: secret
+    )
+    signatureMutator?(&signature)
+    return WakeHostRequestContext(
+        requestID: requestID,
+        targetMACAddress: mac,
+        secureOnPassword: Data(),
+        hostID: "host",
+        deviceID: "device",
+        keyID: keyID,
+        issuedAtUnixSeconds: issuedAt,
+        expiresAtUnixSeconds: expiresAt,
+        nonce: nonce,
+        signature: signature
+    )
 }
 
 private enum RecordingWakeHostPacketSenderError: Error {
