@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-current-base-manifest.schema.json",
+  "title": "Vibe Screen iOS current-base readiness manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "source_root",
+    "owner",
+    "scope_prs",
+    "source_docs",
+    "local_environment",
+    "build_evidence",
+    "signing",
+    "devices",
+    "gates",
+    "android_evidence_used_for_ios_gates",
+    "limitations",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_current_base_readiness_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "source_root": {"type": "string", "minLength": 1},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "aggregate_pr", "device_acceptance_pr", "repository"],
+      "properties": {
+        "aggregate": {"const": "current-base-ios-acceptance"},
+        "aggregate_pr": {"const": "#182"},
+        "device_acceptance_pr": {"const": "#182"},
+        "repository": {"const": "TaoSama/vibe-screen"}
+      }
+    },
+    "scope_prs": {"type": "array", "items": {"type": "string", "pattern": "^#[0-9]+$"}},
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "local_environment": {"type": "object"},
+    "build_evidence": {"type": "object"},
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "bundle_id",
+        "unique_bundle_id",
+        "team_id_redacted",
+        "certificate_identity_recorded",
+        "provisioning_profile_recorded",
+        "signed_archive_sha256"
+      ],
+      "properties": {
+        "status": {"type": "string"},
+        "bundle_id": {"type": ["string", "null"]},
+        "unique_bundle_id": {"type": "boolean"},
+        "team_id_redacted": {"type": "boolean"},
+        "certificate_identity_recorded": {"type": "boolean"},
+        "provisioning_profile_recorded": {"type": "boolean"},
+        "signed_archive_sha256": {"type": ["string", "null"]}
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "runtime_class", "install_status", "evidence"],
+        "properties": {
+          "role": {"enum": ["iphone", "ipad"]},
+          "runtime_class": {"type": "string"},
+          "install_status": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signing",
+        "device_install",
+        "protocol_session",
+        "videotoolbox_h264",
+        "videotoolbox_hevc",
+        "input",
+        "reconnect",
+        "audio_playback",
+        "hdr_output",
+        "advanced_adapters",
+        "trusted_lan_secure_records"
+      ],
+      "properties": {
+        "signing": {"$ref": "#/$defs/gate_record"},
+        "device_install": {"$ref": "#/$defs/gate_record"},
+        "protocol_session": {"$ref": "#/$defs/gate_record"},
+        "videotoolbox_h264": {"$ref": "#/$defs/gate_record"},
+        "videotoolbox_hevc": {"$ref": "#/$defs/gate_record"},
+        "input": {"$ref": "#/$defs/gate_record"},
+        "reconnect": {"$ref": "#/$defs/gate_record"},
+        "audio_playback": {"$ref": "#/$defs/gate_record"},
+        "hdr_output": {"$ref": "#/$defs/gate_record"},
+        "advanced_adapters": {"$ref": "#/$defs/gate_record"},
+        "trusted_lan_secure_records": {"$ref": "#/$defs/gate_record"}
+      }
+    },
+    "android_evidence_used_for_ios_gates": {"type": "boolean"},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "gate_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "properties": {
+        "status": {"type": "string"},
+        "category": {"enum": ["device_acceptance", "broader_phase5"]},
+        "requirement": {"type": "string", "minLength": 1},
+        "blocking": {"type": "boolean"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-device-acceptance-gate.schema.json",
+  "title": "Vibe Screen iOS device acceptance gate result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "verdict",
+    "acceptance_status",
+    "covered_devices",
+    "required_devices",
+    "completed_gates",
+    "required_gates",
+    "missing",
+    "failures",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_device_acceptance_gate"},
+    "verdict": {"enum": ["pass", "fail", "insufficient"]},
+    "acceptance_status": {"type": ["string", "null"]},
+    "covered_devices": {"type": "array", "items": {"enum": ["iphone", "ipad"]}},
+    "required_devices": {"type": "array", "items": {"enum": ["iphone", "ipad"]}},
+    "completed_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "required_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "missing": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

@@ -33,7 +33,7 @@ platform scaffolding under active development.
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-20 Nubia P0110 preflight was blocked by device Wi-Fi and Host signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
-| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; Simulator UI and device acceptance remain gated |
+| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
@@ -623,7 +623,8 @@ network quality may increase it.
   validation, PCM audio, explicit
   clipboard, bounded verified files, epoch filtering, native touch plus
   hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
-  implemented and core-self-tested.
+  implemented and covered by offline/core self-tests; no iOS device evidence is
+  recorded yet.
 - The trusted-LAN iOS Core client still uses the explicit plaintext legacy
   fallback to interoperate with the baseline MacHost on TCP `54321`:
   authenticated `SSWA`/`SSWR` admission and the `0D` upgrade lead into the
@@ -663,8 +664,9 @@ network quality may increase it.
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
   HDR output, audio/bulk product flows over Internet DataChannels, native input
   behavior, reconnect behavior, and all advanced real-device behavior remain
-  separate device gates. Android results are never treated as iOS evidence; see the
-  [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
+  separate device gates. Android results are never treated as iOS evidence; see
+  the [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
+  and [iOS device acceptance runbook](docs/runbook/ios-device-acceptance.md).
 
 ## Device Strategy
 

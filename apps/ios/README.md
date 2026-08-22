@@ -42,6 +42,17 @@ swift test --package-path apps/ios --configuration release
 apps/ios/.build/release/vibescreen-ios-selftest
 ```
 
+Before reporting current-base iOS acceptance readiness, generate the aggregate
+fail-closed summary from the repository root:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+Without full Xcode, signing, and real iPhone plus iPad evidence, this command is
+expected to exit nonzero with `verdict=blocked`. That output is readiness
+evidence only and does not claim device acceptance.
+
 The self-test decodes the shared
 `contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
 codec, in addition to its protocol/session/media checks.
