@@ -1,0 +1,25 @@
+Commands executed for current-base blocked readiness evidence
+
+created_at_utc=2026-08-22T09:33:38Z
+worktree=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/rotated-host-display-closure-262
+branch=codex/rotated-host-display-readiness-closure
+head=71f0a96e721fdadbfd4601568237e9a6307474c0
+origin_main=4dc84505e6e0a07fa1052df12bca03824f161bf6
+merge_base=4dc84505e6e0a07fa1052df12bca03824f161bf6
+remote_pr_head=71f0a96e721fdadbfd4601568237e9a6307474c0
+
+git status --short --branch
+## codex/rotated-host-display-readiness-closure...origin/codex/rotated-host-display-readiness
+?? docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/
+
+gh pr view 262
+{"baseRefName":"main","baseRefOid":"4dc84505e6e0a07fa1052df12bca03824f161bf6","headRefName":"codex/rotated-host-display-readiness","headRefOid":"71f0a96e721fdadbfd4601568237e9a6307474c0","isDraft":true,"mergeStateStatus":"BLOCKED","number":262,"state":"OPEN","title":"test: require full host display rotation evidence","url":"https://github.com/TaoSama/vibe-screen/pull/262"}
+
+lock_path=/tmp/vibe-screen-device-android.lock
+status=absent
+
+ADB commands used explicit serial EP0110PZ0B9110300B and were skipped if the device lock was present.
+security find-identity -v -p codesigning
+python3 scripts/macos_dev_host.py preflight --install-path /Applications/Vibe Screen.app --report docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/host-preflight-report.txt
+system_profiler SPDisplaysDataType
+sqlite3 ~/Library/Application Support/com.apple.TCC/TCC.db ... dev.telemachus.display

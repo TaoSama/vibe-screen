@@ -1,0 +1,54 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_display_rotation_readiness",
+  "status": "blocked",
+  "created_at_utc": "2026-08-22T09:33:38Z",
+  "pull_request": {
+    "number": 262,
+    "url": "https://github.com/TaoSama/vibe-screen/pull/262",
+    "branch": "codex/rotated-host-display-readiness",
+    "head": "71f0a96e721fdadbfd4601568237e9a6307474c0",
+    "base": "main",
+    "base_head": "4dc84505e6e0a07fa1052df12bca03824f161bf6",
+    "state": "open_draft"
+  },
+  "repository": {
+    "local_branch": "codex/rotated-host-display-readiness-closure",
+    "head": "71f0a96e721fdadbfd4601568237e9a6307474c0",
+    "origin_main": "4dc84505e6e0a07fa1052df12bca03824f161bf6",
+    "merge_base": "4dc84505e6e0a07fa1052df12bca03824f161bf6",
+    "worktree_state": "independent worktree; no source changes before evidence capture"
+  },
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys"
+  },
+  "coordination": {
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "lock_status_before_adb": "absent",
+    "adb_commands_used_explicit_serial": true,
+    "mutating_adb_commands_executed": false
+  },
+  "host_environment": {
+    "codesigning_identity_check": "0 valid identities found",
+    "host_preflight": "blocked: codesign identity Vibe Screen Dev not found in the keychain",
+    "tcc_query": "blocked: authorization denied reading the user TCC database",
+    "physical_display_rotation_capability_observed": "DELL U2723QE reports Rotation: Supported"
+  },
+  "gate_input": {
+    "host_display_rotation_json": "host-display-rotation.json",
+    "completed_runs": 0
+  },
+  "blocking_reasons": [
+    "The stable Vibe Screen Dev codesigning identity is not available in the keychain.",
+    "The Host preflight failed before a current-base real-device host-rotation run could be claimed.",
+    "Screen Recording and Accessibility authorization for dev.telemachus.display could not be proven because the read-only TCC query returned authorization denied.",
+    "No physical or virtual macOS display was rotated and no retained 90/180/270 evidence bundle was collected."
+  ],
+  "acceptance_claim": "blocked_only_no_rotated_host_display_acceptance"
+}

@@ -293,6 +293,17 @@ def _validate_artifacts(run: dict[str, Any], run_index: int, errors: list[str]) 
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: must reference a retained artifact"
             )
+    before_snapshot = artifacts.get("host_display_snapshot_before")
+    rotated_snapshot = artifacts.get("host_display_snapshot_rotated")
+    if (
+        _is_non_empty_string(before_snapshot)
+        and _is_non_empty_string(rotated_snapshot)
+        and before_snapshot == rotated_snapshot
+    ):
+        errors.append(
+            f"runs[{run_index}].artifacts.host_display_snapshot_rotated: "
+            "must differ from host_display_snapshot_before"
+        )
 
 
 def _validate_artifact_files(
@@ -484,6 +495,14 @@ def _validate_inverse_touch_mapping(
             "must be true"
         )
 
+    tolerance = mapping.get("tolerance_px")
+    has_valid_tolerance = (
+        isinstance(tolerance, (int, float))
+        and not isinstance(tolerance, bool)
+        and math.isfinite(tolerance)
+        and tolerance >= 0
+    )
+
     points = mapping.get("points")
     seen_points: set[str] = set()
     if not isinstance(points, list) or not points:
@@ -502,6 +521,18 @@ def _validate_inverse_touch_mapping(
             name = point.get("name")
             if isinstance(name, str):
                 seen_points.add(name)
+            error_px = point.get("error_px")
+            if (
+                has_valid_tolerance
+                and isinstance(error_px, (int, float))
+                and not isinstance(error_px, bool)
+                and math.isfinite(error_px)
+                and error_px > tolerance
+            ):
+                errors.append(
+                    f"runs[{run_index}].inverse_touch_mapping.points[{point_index}].error_px: "
+                    "must be less than or equal to tolerance_px"
+                )
 
     for point_name in REQUIRED_INPUT_MAPPING_POINTS:
         if point_name not in seen_points:

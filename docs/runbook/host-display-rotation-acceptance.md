@@ -195,8 +195,13 @@ evidence directory.
 - Reused rotated snapshot, Android screenshot, or touch-matrix artifact across
   rotations of the same display kind: the gate must fail until each angle has
   retained evidence from that angle.
+- A run whose before and rotated host-display snapshots reference the same
+  artifact: the gate must fail until it records a distinct rotated-display
+  snapshot.
 - Missing structured inverse-touch point, or a point outside tolerance: the
   gate must fail even if a free-form touch matrix artifact exists.
+- An inverse-touch point whose numeric `error_px` exceeds the run-level
+  `tolerance_px`: the gate must fail even if `within_tolerance` is marked true.
 - Client-local rotation substituted for host rotation: the gate must fail if
   host_rotation_degrees is 0 or if host_rotation_combined_with_client_transform
   is true.

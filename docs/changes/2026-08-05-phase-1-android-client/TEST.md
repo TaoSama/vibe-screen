@@ -551,3 +551,36 @@ host-display evidence.
 Evidence:
 
 - [`evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/)
+
+## P0110 rotated host-display current-base follow-up
+
+On 2026-08-22, draft PR #262 was checked again after GitHub update-branch
+moved it to head `71f0a96e721fdadbfd4601568237e9a6307474c0`, with
+`origin/main` at `4dc84505e6e0a07fa1052df12bca03824f161bf6`. The branch
+merge-base matched current `origin/main`, so this is a current-base readiness
+snapshot rather than a stale evidence record.
+
+The Android coordination lock `/tmp/vibe-screen-device-android.lock` was absent
+before sampling. Read-only ADB identity commands used the explicit serial
+`adb -s EP0110PZ0B9110300B` and identified the connected device as nubia P0110 /
+pacific / Android 16 / SDK 36. No install, launch, reverse mutation, host
+display rotation, or input injection was performed.
+
+The attempt remained blocked before real rotated host-display acceptance because
+the stable signed Host preflight still failed: `security find-identity -v -p
+codesigning` reported `0 valid identities found`, and
+`scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"`
+reported that the `Vibe Screen Dev` codesigning identity is not present in the
+keychain. A read-only TCC query for `dev.telemachus.display` returned
+authorization denied, so Screen Recording and Accessibility grants could not be
+proven from this task.
+
+The retained `host-display-rotation.json` intentionally contains no completed
+physical or virtual run. The offline gate output is `status=failed`, with
+missing physical and virtual host-display evidence and missing 90/180/270
+coverage for both display kinds. This remains blocked/readiness evidence only;
+the rotated host-display acceptance gate is still open.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-current-base-blocked/)

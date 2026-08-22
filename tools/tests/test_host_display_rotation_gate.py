@@ -327,6 +327,20 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             result["errors"],
         )
 
+    def test_requires_rotated_snapshot_to_differ_from_before_snapshot(self) -> None:
+        document = complete_document()
+        document["runs"][0]["artifacts"]["host_display_snapshot_rotated"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_before"]
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].artifacts.host_display_snapshot_rotated: "
+            "must differ from host_display_snapshot_before",
+            result["errors"],
+        )
+
     def test_requires_probe_and_artifact_records(self) -> None:
         document = complete_document()
         del document["runs"][1]["probes"]["input_mapping"]
@@ -374,6 +388,19 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         self.assertIn(
             "evidence.runs[0].inverse_touch_mapping.points[0].error_px: "
             "must be a number",
+            result["errors"],
+        )
+
+    def test_rejects_inverse_touch_mapping_error_above_tolerance(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["tolerance_px"] = 8.0
+        document["runs"][0]["inverse_touch_mapping"]["points"][0]["error_px"] = 8.1
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.points[0].error_px: "
+            "must be less than or equal to tolerance_px",
             result["errors"],
         )
 

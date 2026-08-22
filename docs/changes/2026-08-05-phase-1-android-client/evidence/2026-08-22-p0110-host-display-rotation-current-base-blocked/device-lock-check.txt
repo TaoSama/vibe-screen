@@ -1,0 +1,2 @@
+lock_path=/tmp/vibe-screen-device-android.lock
+status=absent
