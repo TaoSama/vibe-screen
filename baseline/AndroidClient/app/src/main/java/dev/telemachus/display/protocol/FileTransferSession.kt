@@ -83,6 +83,7 @@ internal data class RemoteManagedPolicy(
 internal data class CompletedIncomingFile(
     val transferId: ByteString,
     val fileName: String,
+    val mimeType: String,
     val stagingFile: File,
     val sha256: ByteString,
 )
@@ -226,7 +227,7 @@ internal class IncomingFileTransferManager(
             throw fileTransferFailure("io_failure", "Unable to close staging file", failure)
         }
         transfers.remove(transferId)
-        return CompletedIncomingFile(transferId, state.offer.fileName, state.file, digest)
+        return CompletedIncomingFile(transferId, state.offer.fileName, state.offer.mimeType, state.file, digest)
     }
 
     @Synchronized
@@ -281,6 +282,8 @@ internal class OutgoingFileTransfer(
     private val effectivePolicy = policy.applying(remotePolicy)
     private val handle: RandomAccessFile
     private var offset = 0L
+    private var acknowledgedOffset = 0L
+    private var receivedAcknowledgement = false
     private var cancelled = false
     private var emittedEmptyFileChunk = false
     private var acceptedMaximumChunkBytes: Int? = null
@@ -375,6 +378,22 @@ internal class OutgoingFileTransfer(
 
     @Synchronized
     fun maximumChunkBytes(defaultBytes: Int): Int = acceptedMaximumChunkBytes ?: defaultBytes
+
+    @Synchronized
+    fun acknowledgeOffset(receivedBytes: Long): String? {
+        if (receivedBytes != offset) return "unexpected_progress"
+        if (receivedBytes == offer.byteLength && !isComplete()) return "incomplete_file"
+        acknowledgedOffset = receivedBytes
+        receivedAcknowledgement = true
+        return null
+    }
+
+    @Synchronized
+    fun hasCompletedAcknowledgement(): Boolean =
+        receivedAcknowledgement && isComplete() && acknowledgedOffset == offer.byteLength
+
+    private fun isComplete(): Boolean =
+        if (offer.byteLength == 0L) emittedEmptyFileChunk else offset == offer.byteLength
 
     companion object {
         private fun digest(file: File, chunkBytes: Int): ByteString {

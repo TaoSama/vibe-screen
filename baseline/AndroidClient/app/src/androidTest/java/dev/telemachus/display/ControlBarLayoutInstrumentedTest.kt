@@ -535,6 +535,7 @@ class ControlBarLayoutInstrumentedTest {
                 actions = root.findViewById(R.id.controlActionsGroup),
                 hostAction = root.findViewById(R.id.controlHostActionsButton),
                 clipboard = root.findViewById(R.id.controlClipboardButton),
+                fileTransfer = root.findViewById(R.id.controlFileTransferButton),
                 settings = root.findViewById(R.id.controlSettingsButton),
                 disconnect = root.findViewById(R.id.controlDisconnectButton),
             )
@@ -550,6 +551,7 @@ class ControlBarLayoutInstrumentedTest {
         views.displaySelector.visibility = if (selectorVisible) View.VISIBLE else View.GONE
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
         views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
+        views.fileTransfer.visibility = View.GONE
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,

@@ -29,6 +29,7 @@ import dev.telemachus.display.transport.StreamTransportOwner
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.TransportKind
 import kotlinx.coroutines.CancellationException
@@ -51,6 +52,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -124,6 +126,7 @@ class StreamClient(
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
     @Volatile private var protocolSession: ProtocolV1Session? = null
+    @Volatile private var fileTransferApprovalCallback: ((FileOffer) -> Unit)? = null
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
@@ -137,7 +140,7 @@ class StreamClient(
     // Android currently sends only client-to-host control messages on the trusted-LAN record layer.
     @Volatile private var nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
     private val incomingFileTransfers = AtomicReference<IncomingFileTransferManager?>(null)
-    private val outgoingFileTransfers = mutableMapOf<ByteString, OutgoingFileTransfer>()
+    private val outgoingFileTransfers = ConcurrentHashMap<ByteString, OutgoingFileTransfer>()
     private var remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
     private val fileTransferPolicy = FileTransferPolicy()
     private val pendingInboundWakeHostRequests = ArrayDeque<ByteString>()
@@ -166,7 +169,11 @@ class StreamClient(
     internal var onClipboardOffered: ((offer: ClipboardOfferData) -> Unit)? = null
     /** Peer clipboard content has arrived. pending=true means no offer/request handshake preceded it. */
     internal var onClipboardContentReceived: ((content: ClipboardContentData) -> Unit)? = null
-    internal var onFileOffer: ((dev.vibescreen.protocol.v1.FileOffer) -> Boolean)? = null
+    internal var onFileOffer: ((FileOffer) -> Unit)?
+        get() = fileTransferApprovalCallback
+        set(value) {
+            fileTransferApprovalCallback = value
+        }
     internal var onIncomingFileCompleted: ((CompletedIncomingFile) -> Unit)? = null
     internal var onFileTransferResult: ((accepted: Boolean, reason: String) -> Unit)? = null
     internal var onWakeHostResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
@@ -679,7 +686,7 @@ class StreamClient(
                 IncomingFileTransferManager(
                     policy = fileTransferPolicy,
                     directory = fileTransferStagingDirectory(),
-                    approve = { offer -> onFileOffer?.invoke(offer) == true },
+                    approve = { true },
                 ),
             )
             remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
@@ -1321,6 +1328,21 @@ class StreamClient(
     val canSendClipboard: Boolean
         get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
 
+    /** True when file transfer is available on the active Protocol v1 session. */
+    val canTransferFiles: Boolean
+        get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canTransferFiles == true
+
+    /** Negotiated file byte limit for the active session; defaults locally when unavailable. */
+    val negotiatedMaxFileBytes: Long
+        get() {
+            val session = protocolSession
+            return if (isConnected && wireMode == WireMode.V1 && session?.canTransferFiles == true) {
+                session.negotiatedFilePolicy.maximumFileBytes
+            } else {
+                FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES
+            }
+        }
+
     /** Negotiated clipboard byte limit for the active session; 0 when not negotiated. */
     val negotiatedMaxClipboardBytes: Long
         get() = if (wireMode == WireMode.V1) protocolSession?.negotiatedMaxClipboardBytes ?: 0L else 0L
@@ -1624,6 +1646,9 @@ class StreamClient(
 
             is StreamOutboundCommand.ProtocolBulk -> processProtocolBulk(out, command)
 
+            is StreamOutboundCommand.ProtocolFileOfferDecision ->
+                processProtocolFileOfferDecision(out, command)
+
             is StreamOutboundCommand.ProtocolSendBulk ->
                 ProtocolV1Framing.write(out, ProtocolChannel.BULK, command.chunk.toFrame())
 
@@ -1741,21 +1766,20 @@ class StreamClient(
                     }
                     is ProtocolV1Session.Action.ManagedPolicyReceived -> {
                         remoteManagedPolicy = RemoteManagedPolicy(action.status)
+                        if (!remoteManagedPolicy.fileTransferAllowed) {
+                            cancelActiveFileTransfers()
+                        }
                     }
                     is ProtocolV1Session.Action.FileOfferReceived -> {
-                        val manager = checkNotNull(incomingFileTransfers.get()) { "Incoming file manager is closed" }
-                        val response =
-                            try {
-                                manager.accept(
-                                    action.offer,
-                                    remotePolicy = remoteManagedPolicy,
-                                    negotiatedPolicy = session.negotiatedFilePolicy,
-                                    sessionEpoch = session.activeSessionEpoch,
-                                )
-                            } catch (failure: FileTransferException) {
-                                rejectedFileAccept(action.offer.transferId, failure.reasonCode)
+                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        val callback = fileTransferApprovalCallback
+                        if (callback == null) {
+                            session.fileAccept(rejectedFileAccept(action.offer.transferId, "user_denied"))?.let {
+                                writeProtocolEnvelope(out, it)
                             }
-                        session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+                        } else {
+                            callback.invoke(action.offer)
+                        }
                     }
                     is ProtocolV1Session.Action.FileAcceptReceived -> {
                         if (action.response.accepted) {
@@ -1770,7 +1794,16 @@ class StreamClient(
                     }
                     is ProtocolV1Session.Action.FileProgressReceived -> {
                         outgoingFileTransfers[action.progress.transferId]?.let { transfer ->
-                            sendNextOutgoingFileChunk(out, session, transfer)
+                            val rejectionReason = transfer.acknowledgeOffset(action.progress.receivedBytes)
+                            if (rejectionReason == null) {
+                                sendNextOutgoingFileChunk(out, session, transfer)
+                            } else {
+                                outgoingFileTransfers.remove(action.progress.transferId)?.cancel()
+                                session.fileCancel(action.progress.transferId, rejectionReason)?.let {
+                                    writeProtocolEnvelope(out, it)
+                                }
+                                onFileTransferResult?.invoke(false, rejectionReason)
+                            }
                         }
                     }
                     is ProtocolV1Session.Action.FileCancelReceived -> {
@@ -1779,8 +1812,22 @@ class StreamClient(
                         onFileTransferResult?.invoke(false, action.cancellation.reasonCode)
                     }
                     is ProtocolV1Session.Action.FileCompleteReceived -> {
-                        outgoingFileTransfers.remove(action.result.transferId)?.cancel()
-                        onFileTransferResult?.invoke(action.result.accepted, action.result.rejectionReason)
+                        val transfer = outgoingFileTransfers.remove(action.result.transferId)
+                        transfer?.cancel()
+                        val reason = when {
+                            !action.result.accepted -> action.result.rejectionReason
+                            transfer == null -> "unknown_transfer"
+                            !transfer.hasCompletedAcknowledgement() -> "incomplete_file"
+                            transfer.offer.sha256 != action.result.sha256 -> "digest_mismatch"
+                            else -> ""
+                        }
+                        val accepted = action.result.accepted && reason.isEmpty()
+                        if (transfer != null && action.result.accepted && reason.isNotEmpty()) {
+                            session.fileCancel(action.result.transferId, reason)?.let {
+                                writeProtocolEnvelope(out, it)
+                            }
+                        }
+                        onFileTransferResult?.invoke(accepted, reason)
                     }
                     is ProtocolV1Session.Action.WakeHost -> {
                         dispatchWakeHostRequest(
@@ -1863,7 +1910,7 @@ class StreamClient(
     ) {
         val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
         val manager = incomingFileTransfers.get()
-        if (manager == null) {
+        if (!session.canTransferFiles || manager == null) {
             session.fileCancel(command.chunk.header.transferId, "policy_denied")?.let { writeProtocolEnvelope(out, it) }
             command.completion.complete(Unit)
             return
@@ -1895,6 +1942,37 @@ class StreamClient(
             command.completion.completeExceptionally(failure)
             throw failure
         }
+    }
+
+    private fun processProtocolFileOfferDecision(
+        out: java.io.DataOutputStream,
+        command: StreamOutboundCommand.ProtocolFileOfferDecision,
+    ) {
+        val session = protocolSession
+        if (session == null ||
+            session !== command.session ||
+            !isCurrentProtocolSession(session, command.connectionGeneration)
+        ) {
+            return
+        }
+        val manager = incomingFileTransfers.get()
+        val response =
+            if (!command.acceptedByUser || manager == null) {
+                rejectedFileAccept(command.offer.transferId, if (command.acceptedByUser) "policy_denied" else "user_denied")
+            } else {
+                try {
+                    manager.accept(
+                        command.offer,
+                        remotePolicy = remoteManagedPolicy,
+                        negotiatedPolicy = session.negotiatedFilePolicy,
+                        sessionEpoch = session.activeSessionEpoch,
+                    )
+                } catch (failure: FileTransferException) {
+                    rejectedFileAccept(command.offer.transferId, failure.reasonCode)
+                }
+            }
+        session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
     }
 
     private fun sendNextOutgoingFileChunk(
@@ -2296,29 +2374,31 @@ class StreamClient(
         requestConnectionEnd(SessionFailure.codec(reason))
     }
 
-    fun offerFile(file: File, mimeType: String = "application/octet-stream") {
-        if (!isConnected || wireMode != WireMode.V1) return
+    fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canTransferFiles) return false
         val transfer =
             try {
                 OutgoingFileTransfer(
                     file = file,
                     mimeType = mimeType,
-                    policy = fileTransferPolicy,
+                    policy = session.negotiatedFilePolicy,
                     remotePolicy = remoteManagedPolicy,
                 )
             } catch (failure: FileTransferException) {
                 onFileTransferResult?.invoke(false, failure.reasonCode)
-                return
+                return false
             }
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
-            command = StreamOutboundCommand.ProtocolBatch { session ->
-                if (!session.canTransferFiles || outgoingFileTransfers.isNotEmpty()) {
+            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                if (!activeSession.canTransferFiles || outgoingFileTransfers.isNotEmpty()) {
                     transfer.cancel()
                     emptyList()
                 } else {
                     outgoingFileTransfers[transfer.offer.transferId] = transfer
-                    listOfNotNull(session.offerFile(transfer.offer))
+                    listOfNotNull(activeSession.offerFile(transfer.offer))
                 }
             },
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
@@ -2328,7 +2408,34 @@ class StreamClient(
         ) {
             transfer.cancel()
             onFileTransferResult?.invoke(false, "outbound_backpressure")
+            return false
         }
+        return true
+    }
+
+    fun respondToFileOffer(offer: FileOffer, accepted: Boolean): Boolean {
+        val session = protocolSession ?: return false
+        if (!isConnected || wireMode != WireMode.V1 || !session.canTransferFiles) return false
+        val submission = submitOutbound(
+            kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
+            command = StreamOutboundCommand.ProtocolFileOfferDecision(
+                session = session,
+                connectionGeneration = connectionEpoch,
+                offer = offer,
+                acceptedByUser = accepted,
+            ),
+            timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+        )
+        if (!isOutboundAdmitted(submission)) {
+            requestConnectionEnd(
+                SessionFailure.protocol(
+                    SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                    "File offer response queue unavailable: $submission",
+                ),
+            )
+            return false
+        }
+        return true
     }
 
     private fun requestConnectionEnd(failure: SessionFailure) {
@@ -2392,8 +2499,7 @@ class StreamClient(
         }
         protocolSession = null
         incomingFileTransfers.getAndSet(null)?.cancelAll()
-        outgoingFileTransfers.values.forEach { it.cancel() }
-        outgoingFileTransfers.clear()
+        cancelActiveFileTransfers()
         remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
         pendingInboundWakeHostRequests.clear()
         controllerConnectionAcks.reset()
@@ -2402,6 +2508,12 @@ class StreamClient(
         lanSecureRecordSession = null
         lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
         nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
+    }
+
+    private fun cancelActiveFileTransfers() {
+        incomingFileTransfers.get()?.cancelAll()
+        outgoingFileTransfers.values.forEach { it.cancel() }
+        outgoingFileTransfers.clear()
     }
 
     private fun cleanupCandidateTransport(

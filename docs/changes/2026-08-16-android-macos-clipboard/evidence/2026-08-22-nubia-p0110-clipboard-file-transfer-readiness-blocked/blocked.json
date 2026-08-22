@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "blocked",
+  "gate_closed": false,
+  "date": "2026-08-22",
+  "source_branch": "codex/clipboard-file-transfer-gate",
+  "origin_main_at_collection": "47207c5bc82f9931eb82ec886d2d55e96c3f3e5b",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36"
+  },
+  "passed": [
+    "Android ClipboardManagerInstrumentedTest OK (3 tests) on P0110",
+    "Android focused clipboard JVM tests passed",
+    "Android focused file-transfer JVM tests passed, including negotiated peer file-size limit enforcement",
+    "Android assembleDebug assembleDebugAndroidTest passed",
+    "Android lintDebug passed",
+    "Protocol fixture tests passed: 16 tests",
+    "Evidence tools passed: 237 tests",
+    "MacHost swift build passed"
+  ],
+  "blockers": [
+    "No valid macOS code-signing identity",
+    "Only Command Line Tools are selected; xcodebuild is unavailable",
+    "MacHost XCTest cannot import XCTest in this environment",
+    "No stable-signed TCC-authorized Host session was available for USB/LAN E2E"
+  ],
+  "not_proven": [
+    "Android ClipboardManager to macOS NSPasteboard USB transfer",
+    "macOS NSPasteboard to Android ClipboardManager USB transfer",
+    "Trusted LAN clipboard transfer",
+    "Android SAF to macOS filesystem file transfer",
+    "macOS file picker to Android Downloads file transfer"
+  ]
+}
