@@ -274,7 +274,7 @@ claiming Xiaomi/fuxi identity fail closed.
       "session_epoch_advanced": true,
       "stale_epoch_rejected": true,
       "recovered_streaming": true,
-      "recovery_seconds": 5,
+      "recovery_seconds": 4.2,
       "approved_limit_seconds": 5,
       "synthetic_media": false,
       "local_loopback_only": false,

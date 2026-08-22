@@ -134,6 +134,7 @@ def blocked_release_manifest(args: argparse.Namespace, source: dict[str, Any]) -
 def build_evidence(args: argparse.Namespace, source: dict[str, Any]) -> dict[str, Any]:
     if not args.blocker:
         raise BlockedEvidenceError("at least one blocker is required")
+    adb_command = f"adb -s {args.device_serial} ..." if args.device_serial else "adb -s <device-serial> ..."
     return {
         "schema": SCHEMA,
         "result": "blocked",
@@ -148,7 +149,7 @@ def build_evidence(args: argparse.Namespace, source: dict[str, Any]) -> dict[str
             "adb_serial_used": False,
         },
         "blocked_before_adb": True,
-        "adb_command_required_for_future_run": "adb -s EP0110PZ0B9110300B ...",
+        "adb_command_required_for_future_run": adb_command,
         "blocked_gates": list(BLOCKED_GATES),
         "blockers": list(args.blocker),
         "readiness_improvements": [
@@ -171,11 +172,12 @@ def build_readme(evidence: dict[str, Any]) -> str:
     source = evidence["source"]
     device = evidence["device"]
     blockers = "\n".join(f"- {item}" for item in evidence["blockers"])
+    adb_command = evidence["adb_command_required_for_future_run"]
     return (
         "# Phase 3 network handoff and soak readiness - BLOCKED\n\n"
         "This is a blocked readiness record, not release evidence. No ADB command was run "
         "and no local network state was changed. The future Android command boundary must use "
-        "`adb -s EP0110PZ0B9110300B ...`; that endpoint is recorded only as the intended shared "
+        f"`{adb_command}`; that endpoint is recorded only as the intended shared "
         "device handle. The device identity for this run remains "
         f"`{device['manufacturer']} {device['model']} / {device['codename']} / {device['os_version']}`.\n\n"
         "## Result\n\n"
@@ -207,6 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device-codename", default="pacific")
     parser.add_argument("--device-os-version", default="Android 16")
     parser.add_argument("--device-api-level", type=int, default=36)
+    parser.add_argument("--device-serial", default="EP0110PZ0B9110300B")
     parser.add_argument("--blocker", action="append", default=list(DEFAULT_BLOCKERS))
     return parser
 

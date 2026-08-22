@@ -16,6 +16,7 @@ from scripts.phase3.network_recovery_blocked_evidence import (
     SCHEMA,
     build_evidence,
     build_parser,
+    build_readme,
     main,
 )
 from scripts.phase3.release_gate_manifest import validate_manifest
@@ -35,7 +36,33 @@ class NetworkRecoveryBlockedEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["blocked_gates"], list(BLOCKED_GATES))
         self.assertEqual(evidence["device"]["model"], "P0110")
         self.assertFalse(evidence["device"]["adb_serial_used"])
+        self.assertEqual(evidence["adb_command_required_for_future_run"], "adb -s EP0110PZ0B9110300B ...")
         self.assertFalse(evidence["claims"]["phase3_release_gate_closed"])
+
+    def test_blocked_evidence_keeps_adb_command_aligned_with_configured_serial(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "--output-dir",
+                "/tmp/unused",
+                "--device-manufacturer",
+                "Samsung",
+                "--device-model",
+                "Galaxy",
+                "--device-codename",
+                "galaxy",
+                "--device-serial",
+                "SAMSUNG123",
+            ]
+        )
+        evidence = build_evidence(
+            args,
+            {"commit": "b" * 40, "tree_status": "dirty", "status_sha256": "c" * 64},
+        )
+
+        self.assertEqual(evidence["device"]["manufacturer"], "Samsung")
+        self.assertEqual(evidence["adb_command_required_for_future_run"], "adb -s SAMSUNG123 ...")
+        self.assertIn("adb -s SAMSUNG123 ...", build_readme(evidence))
+        self.assertNotIn("EP0110PZ0B9110300B", build_readme(evidence))
 
     def test_cli_writes_blocked_manifest_that_fails_pass_verifier(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -53,7 +80,9 @@ class NetworkRecoveryBlockedEvidenceTests(unittest.TestCase):
 
             blocked = json.loads((output_dir / "blocked-evidence.json").read_text(encoding="utf-8"))
             manifest = json.loads((output_dir / "release-gate-manifest.json").read_text(encoding="utf-8"))
+            readme = (output_dir / "README.md").read_text(encoding="utf-8")
             self.assertEqual(blocked["result"], "blocked")
+            self.assertIn("adb -s EP0110PZ0B9110300B ...", readme)
             self.assertTrue((output_dir / "README.md").is_file())
             self.assertNotEqual(validate_manifest(manifest, evidence_root=output_dir), [])
 
