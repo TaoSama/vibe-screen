@@ -24,19 +24,27 @@ import android.media.MediaFormat
  * path for them.
  */
 object CodecCapabilities {
-    val hasHevcDecoder: Boolean by lazy {
+    private fun hasUsableDecoder(mime: String): Boolean =
         try {
             MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
                 if (info.isEncoder) return@any false
-                val handlesHevc =
-                    info.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) }
-                if (!handlesHevc) return@any false
+                val handlesMime =
+                    info.supportedTypes.any { it.equals(mime, ignoreCase = true) }
+                if (!handlesMime) return@any false
 
-                DecoderNameRules.isUsableForMime(info.name, MediaFormat.MIMETYPE_VIDEO_HEVC)
+                DecoderNameRules.isUsableForMime(info.name, mime)
             }
         } catch (_: Exception) {
-            true // fail open: assume HEVC, preserving legacy behavior
+            mime == MediaFormat.MIMETYPE_VIDEO_HEVC // preserve legacy HEVC fail-open behavior only
         }
+
+    val hasHevcDecoder: Boolean by lazy {
+        hasUsableDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
+    }
+
+    /** Diagnostic-only until AV1 frame admission is explicitly enabled. */
+    val hasAv1Decoder: Boolean by lazy {
+        hasUsableDecoder(MediaFormat.MIMETYPE_VIDEO_AV1)
     }
 
     /** True when the next connection must explicitly negotiate H.264. */
@@ -45,8 +53,29 @@ object CodecCapabilities {
 
     /** Snapshot used when constructing a new connection's wire offer. */
     val advertisedStreamCodecs: List<StreamCodec>
-        get() = CodecFallbackPolicy.candidates(hasHevcDecoder)
+        get() = CodecFallbackPolicy.candidates(
+            hasUsableHevcDecoder = hasHevcDecoder,
+            hasUsableAv1Decoder = hasAv1Decoder,
+        )
 }
 
+internal fun StreamCodec.toProtocolCodecOrNull(): dev.vibescreen.protocol.v1.Codec? =
+    when (this) {
+        StreamCodec.HEVC -> dev.vibescreen.protocol.v1.Codec.CODEC_HEVC
+        StreamCodec.H264 -> dev.vibescreen.protocol.v1.Codec.CODEC_H264
+        StreamCodec.AV1 -> null
+    }
+
+internal fun StreamCodec.toProductVideoCodecOrNull(): dev.telemachus.display.internet.ProductVideoCodec? =
+    when (this) {
+        StreamCodec.HEVC -> dev.telemachus.display.internet.ProductVideoCodec.HEVC
+        StreamCodec.H264 -> dev.telemachus.display.internet.ProductVideoCodec.H264
+        StreamCodec.AV1 -> null
+    }
+
 internal fun String.toStreamCodec(): StreamCodec =
-    if (this == MediaFormat.MIMETYPE_VIDEO_HEVC) StreamCodec.HEVC else StreamCodec.H264
+    when (this) {
+        MediaFormat.MIMETYPE_VIDEO_HEVC -> StreamCodec.HEVC
+        MediaFormat.MIMETYPE_VIDEO_AV1 -> StreamCodec.AV1
+        else -> StreamCodec.H264
+    }

@@ -1,0 +1,115 @@
+Repository and PR state
+
+  git fetch origin --prune
+  git status --short --branch
+  git rev-parse HEAD
+  git rev-list --left-right --count HEAD...origin/main
+  git remote get-url origin
+
+Observed result:
+
+  HEAD was e948b96550a5e9288ea8fa6a04d9d9c6fc61251c on
+  codex/host-display-rotation-readiness. The branch was clean and equal to
+  origin/codex/host-display-rotation-readiness after the previous force-with-lease
+  push. HEAD was 5 commits ahead of origin/main and 0 commits behind
+  origin/main cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b.
+
+Operator-provided P0110 availability update
+
+  Device: nubia P0110 / pacific / Android 16 / SDK 36.
+  ADB serial: EP0110PZ0B9110300B.
+  Current USB smoke: adb reverse tcp:54321 healthy, dev.telemachus.display
+  foreground, device-side 127.0.0.1:54321 ESTABLISHED, stream_stats fps
+  55-61, decoder dropped=0, and no current process E-level errors.
+  Screenshot copied from /tmp/vibescreen_p0110_20260822_003615.png to
+  upstream-usb-smoke-screenshot.png.
+
+Device lock check before any adb command
+
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+  (set -C; ... > /tmp/vibe-screen-device-android.lock)
+  lsof /tmp/vibe-screen-device-android.lock
+  python3 - <<'PY'  # non-blocking fcntl.flock stale-marker reassessment
+
+Observed result:
+
+  /tmp/vibe-screen-device-soak.lock was absent.
+  /tmp/vibe-screen-device-android.lock already existed with size 0 and mtime
+  Aug 22 00:25:45 2026. The atomic noclobber lock-acquire attempt failed with
+  cannot overwrite existing file, and lsof reported no owner for that stale
+  empty marker. This task then acquired a non-blocking fcntl.flock exclusive
+  lock on the same path, wrote owner=codex-pr162-host-display-rotation with
+  pid=77019, and held the lock while running limited read-only preflight
+  sampling. It did not install, launch, force-stop, change reverse mappings,
+  rotate a host display, or send device input.
+
+Read-only Android sampling under the exclusive lock
+
+  adb devices -l
+  adb -s EP0110PZ0B9110300B get-state
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+  adb -s EP0110PZ0B9110300B reverse --list
+  adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
+  adb -s EP0110PZ0B9110300B shell dumpsys activity activities
+  adb -s EP0110PZ0B9110300B shell netstat -an
+  adb -s EP0110PZ0B9110300B logcat -d --pid 27526
+  adb -s EP0110PZ0B9110300B exec-out screencap -p
+
+Observed result:
+
+  The explicit serial identified nubia P0110 / pacific / Android 16 / SDK 36.
+  adb reverse still mapped tcp:54321 to tcp:54321, dev.telemachus.display was
+  foreground, loopback tcp:54321 was ESTABLISHED, app stream_stats remained
+  around 55-60 fps with decoder dropped=0, and PID-filtered E-level logcat
+  search found no matching app error lines. The screenshot matched the upstream
+  operator-provided USB smoke screenshot hash.
+
+Host preflight and local environment
+
+  python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
+  system_profiler SPDisplaysDataType
+  lsof -nP -iTCP:54321
+  ps -p 92943 -o pid,ppid,user,command
+
+Observed result:
+
+  Host preflight exited 1: codesign identity 'Vibe Screen Dev' was not found in
+  the keychain, and ad-hoc signing is refused for local device reruns.
+  system_profiler reported Color LCD online and DELL U2723QE online; the DELL
+  U2723QE entry reported Rotation: Supported.
+  /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen was running as PID
+  92943 and listening on TCP 54321, but this task did not claim that existing
+  session as rotated host-display acceptance because Host stable signing/TCC
+  preflight was blocked and it did not collect both required rotated display
+  runs under the host-display rotation runbook.
+
+Offline gate command
+
+  PYTHONPATH=tools /opt/homebrew/opt/python@3.11/bin/python3.11 -m vibescreen_evidence.host_display_rotation_gate \
+    docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/host-display-rotation.json \
+    --check-artifacts \
+    --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/host-display-rotation-gate.json
+
+Expected result:
+
+  exit=1. The retained host-display-rotation.json contains no completed
+  physical or virtual run, so the gate must remain failed/open.
+
+Device lock release
+
+  ps -p 77019 -o pid,ppid,stat,command
+  lsof /tmp/vibe-screen-device-android.lock
+  kill -TERM 77019
+  rm /tmp/vibe-screen-device-android.lock  # only after owner/pid matched and no lsof holder remained
+
+Observed result:
+
+  The holder process exited. The remaining lock file still contained
+  owner=codex-pr162-host-display-rotation and pid=77019, lsof no longer showed
+  a holder, so the owned stale file was removed. The unrelated
+  /tmp/vibe-screen-device-android-test.lock file was left untouched.

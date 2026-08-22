@@ -2,6 +2,7 @@
 
 HVIGOR ?= $(shell command -v hvigorw 2>/dev/null || command -v hvigor 2>/dev/null)
 OHPM ?= $(shell command -v ohpm 2>/dev/null)
+HDC ?= $(shell command -v hdc 2>/dev/null)
 VERSION := 0.1.0
 HARMONY_NOTICE := entry/src/main/resources/rawfile/third_party_notices.md
 
@@ -19,6 +20,7 @@ ci: install verify
 doctor:
 	@printf 'hvigor: %s\n' "$(if $(HVIGOR),$(HVIGOR),not found)"
 	@printf 'ohpm: %s\n' "$(if $(OHPM),$(OHPM),not found)"
+	@printf 'hdc: %s\n' "$(if $(HDC),$(HDC),not found)"
 
 require-build-environment:
 	@test -n "$(HVIGOR)" || (echo "HarmonyOS build blocked: hvigorw/hvigor not found; install DevEco Studio and its command-line tools" >&2; exit 2)

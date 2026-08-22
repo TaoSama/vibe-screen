@@ -15,6 +15,12 @@ Producers should write a manifest beside raw JSONL/CSV and derived summaries so
 the exact command, repository state, host, device, and measurement method remain
 auditable.
 
+Codec capability evidence must record the negotiated Protocol v1 codec, the
+Host encoder capability and implementation path, the client decoder name, and
+the first decoded output frame before it is used to close a codec gate. AV1 is
+currently a planned codec only: offline fail-closed/admission tests and blocked
+runbooks do not prove an AV1 stream.
+
 Run the tests without installing third-party packages:
 
 ```sh
@@ -112,7 +118,9 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_VIDEO_PREFERENCES="Balanced, 60 FPS, AUTO bitrate" \
   PHASE2_HOST_IDENTITY="Mac model and macOS version" \
   PHASE2_HOST_BUILD="host build command, signing identity, and SHA" \
-  PHASE2_APK_SHA256="debug or release APK SHA-256"
+  PHASE2_APK_SHA256="debug or release APK SHA-256" \
+  PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
+  PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
@@ -124,15 +132,20 @@ evidence.
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 ```
 
-The gate consumes `.build/evidence/soak-8h/exact-window-report.json` and writes
+The gate consumes `.build/evidence/soak-8h/exact-window-report.json`,
+`.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
+`.build/evidence/`, then writes
 `.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
-client and host memory growth, and battery/thermal readings below the Phase 2
-thresholds. `fail` means the evidence is complete but a productization threshold
-was violated; `insufficient` means the evidence cannot close the gate. The
-command does not replace the raw physical-tablet, stand-mounted charging, login,
-headless, and background-recovery artifacts required by the Phase 2 runbook.
+client and host memory growth, battery/thermal readings below the Phase 2
+thresholds, a manifest declaring `physical_8_9_inch_tablet`, and the required
+raw README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+`fail` means the evidence is complete but a productization threshold was
+violated; `insufficient` means the evidence package cannot close the gate. Phone
+substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
+readiness records and intentionally evaluate as `insufficient` for the formal
+8-9 inch tablet gate.
 
 ### Short Host memory regression gate
 
@@ -250,11 +263,38 @@ summary. When a gate profile is supplied the exit status follows the verdict:
 `0` for `pass`, `1` for `fail` or `insufficient`. Without `--gate-profile` the
 command always exits `0`. The tool deliberately rejects a glass-to-glass claim
 based on unsynchronized host and Android clocks. Keep the raw camera file,
-sample CSV, summary, device info, and a manifest together; create the latter
-with `python3 -m vibescreen_evidence.manifest --help`.
+sample CSV, summary, device info, and a formal latency manifest together;
+create the manifest with the dedicated helper:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+      --evidence-dir latency-run \
+      --latency-kind glass-to-glass \
+      --transport usb \
+      --gate-profile usb-glass-to-glass-sub50 \
+      --raw-video latency-run/raw-camera.mov \
+      --samples latency-run/samples.csv \
+      --samples-format csv \
+      --annotation-method manual-frame-count \
+      --camera-manufacturer "camera vendor" \
+      --camera-model "camera model" \
+      --camera-mode 1080p240 \
+      --camera-frame-rate-fps 240 \
+      --camera-shutter-mode fixed \
+      --operator "operator name" \
+      --annotator "annotator name" \
+      --device-info latency-run/device-info.json \
+      --host-artifact "host binary identity or hash" \
+      --client-artifact "APK identity or hash" \
+      --stimulus "visible Mac-side stimulus" \
+      --start-event-definition "first camera frame where the stimulus is visible" \
+      --end-event-definition "first camera frame where the result is visible" \
+      --lighting "lighting conditions" \
+      --mounting "camera and device mounting" \
+      --max-frame-annotation-uncertainty-ms 4.2 \
+      --notes "run-specific notes"
 
 For a formal gate claim, validate the whole evidence directory with the stricter
-external-camera provenance checker:
+latency provenance checker:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
@@ -264,10 +304,13 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 ```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
-the run ID, transport, profile, raw camera recording, sample file, camera mode,
-device identity, build identity, and annotation method. The checker exits `0`
-only when the profile verdict is `pass` and provenance is complete; missing raw
-video or mismatched metadata stays `insufficient`. The step-by-step method is in
+the run ID, transport, profile, sample file, device identity, build identity,
+and annotation method. External-camera packages also bind the raw camera
+recording and camera mode; synchronized-clock input packages bind the clock
+sources, skew, drift, timestamp methods, and sub-5 ms total error budget. The
+checker exits `0` only when the profile verdict is `pass` and provenance is
+complete; missing raw video, mismatched metadata, or incomplete synchronization
+proof stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark

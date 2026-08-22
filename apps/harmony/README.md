@@ -36,6 +36,8 @@ cd apps/harmony
 pnpm install --frozen-lockfile
 pnpm run verify
 make doctor
+cd ../..
+make harmony-readiness EVIDENCE_DIR=.build/harmony-readiness
 ```
 
 `pnpm run verify` checks the real project layout, type-checks only the portable
@@ -47,7 +49,13 @@ constant-false, short-circuit, and directly post-return dead paths but is not a
 general control-flow proof; capability guards must also precede every protected
 send in their straight-line platform method. It does not run the ArkTS API/type checker, parse
 the complete declarative ArkUI builder grammar, invoke DevEco, or produce a
-HAP. `make doctor` reports whether OHPM and Hvigor are available.
+HAP. `make doctor` reports whether OHPM, Hvigor, and HDC are available.
+`make harmony-readiness` is a read-only preflight that writes
+`.build/harmony-readiness/harmony-readiness.json`; it exits 2 until the local
+DevEco toolchain, signed HAP/checksum/signature metadata, Protocol v1 Host build
+hash, and an attached MatePad Mini-class HDC target are all present. A passing
+readiness preflight is still not installation, streaming, secure-pairing, soak,
+or latency evidence.
 
 ## DevEco build and test
 

@@ -380,6 +380,12 @@ named by that run:
   `relay(local=relay,remote=relay,protocol=udp)`. No independent `turnutils`
   datagram result is claimed by this runner. This did not start capture/UI and
   is not Android, real screen/input, or packet-capture evidence.
+- The current worktree updates that local product slice so post-rotation media is
+  real VideoToolbox-generated HEVC keyframe and delta payloads sent through the
+  production WebRTC media DataChannel to the same synthetic Protocol v1 device
+  peer. The input frames are synthetic `CVPixelBuffer`s and the check still does
+  not start ScreenCaptureKit/CGDisplayStream, instantiate Android MediaCodec, or
+  produce Android UI evidence.
 - The prior curated Android interop record remains
   [withdrawn](evidence/android-product-interop.json). Its claimed source commit
   does not exist in this repository, and raw host output, instrumentation output,
@@ -429,7 +435,8 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   direct UDP plus forced local coturn relay candidate-pair selection through the
   real signaling process and production macOS WebRTC adapter, and explicitly
   record `local_loopback_only`, `synthetic_protocol_v1_device`,
-  `no_android_device_or_ui`, `no_real_screen_capture`, and
+  `synthetic_videotoolbox_input_frames`, `no_android_device_or_ui`,
+  `no_real_screen_capture`, `no_android_mediacodec_decode`, and
   `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.

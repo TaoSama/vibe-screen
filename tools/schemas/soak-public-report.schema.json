@@ -171,9 +171,11 @@
             "battery": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["level_percent", "temperature_celsius", "voltage_mv", "charge_counter"],
+              "required": ["level_percent", "plugged", "status", "temperature_celsius", "voltage_mv", "charge_counter"],
               "properties": {
                 "level_percent": {"$ref": "#/$defs/statistics"},
+                "plugged": {"$ref": "#/$defs/statistics"},
+                "status": {"$ref": "#/$defs/statistics"},
                 "temperature_celsius": {"$ref": "#/$defs/statistics"},
                 "voltage_mv": {"$ref": "#/$defs/statistics"},
                 "charge_counter": {"$ref": "#/$defs/statistics"}

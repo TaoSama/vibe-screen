@@ -324,9 +324,11 @@ shipped:
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
-- PostgreSQL durable signaling routing is implemented, but multi-instance
-  operation, global create-rate enforcement, and throughput under multiple
-  replicas remain unproved.
+- PostgreSQL durable signaling routing is implemented, including cross-instance
+  message delivery and connection-scoped long-poll waiter leases that can be
+  reclaimed after a failed instance loses its database backend. Global
+  create-rate enforcement, throughput under multiple replicas, production
+  load-balancer behavior, and multi-region consistency remain unproved.
 - Per-message remote authority authorization and the global PostgreSQL advisory-lock
   create serialization are fail-closed correctness choices, not a
   high-throughput design.

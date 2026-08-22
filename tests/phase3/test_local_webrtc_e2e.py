@@ -685,7 +685,8 @@ class LocalWebRTCE2ETests(unittest.TestCase):
         output = (
             "Phase 3 product signaling self-test: PASS "
             "(productSession=true, protocolV1=true, route=relay, epoch=1, "
-            "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, applicationE2EE=true, "
+            "configEpoch=2, rotation=90, mediaSource=videotoolbox-hevc, "
+            "keyframe=true, delta=true, input=true, applicationE2EE=true, "
             "selectedCandidatePair=relay(local=relay,remote=relay,protocol=udp), "
             "controlChannel=ordered-reliable, mediaChannel=unordered-zero-retransmit)"
         )
@@ -706,7 +707,8 @@ class LocalWebRTCE2ETests(unittest.TestCase):
         output = (
             "Phase 3 product signaling self-test: PASS "
             "(productSession=true, protocolV1=true, route=direct, epoch=1, "
-            "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, applicationE2EE=true, "
+            "configEpoch=2, rotation=90, mediaSource=videotoolbox-hevc, "
+            "keyframe=true, delta=true, input=true, applicationE2EE=true, "
             "selectedCandidatePair=direct(local=host,remote=host,protocol=udp), "
             "controlChannel=ordered-reliable, mediaChannel=unordered-zero-retransmit)"
         )
@@ -717,7 +719,8 @@ class LocalWebRTCE2ETests(unittest.TestCase):
         output = (
             "Phase 3 product signaling self-test: PASS "
             "(productSession=true, protocolV1=true, route=direct, epoch=1, "
-            "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, "
+            "configEpoch=2, rotation=90, mediaSource=videotoolbox-hevc, "
+            "keyframe=true, delta=true, input=true, "
             "applicationE2EE=true, "
             "selectedCandidatePair=direct(local=host,remote=host,"
             "protocol=udp-private-token), controlChannel=ordered-reliable, "

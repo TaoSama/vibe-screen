@@ -4,7 +4,7 @@
   "title": "Vibe Screen Phase 2 tablet productization gate v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema_version", "kind", "derivation_status", "verdict", "thresholds", "sufficiency", "criteria", "reasons", "interpretation"],
+  "required": ["schema_version", "kind", "derivation_status", "verdict", "thresholds", "sufficiency", "criteria", "evidence_package", "reasons", "interpretation"],
   "properties": {
     "schema_version": {"const": "vibescreen.evidence/v1"},
     "kind": {"const": "phase2_tablet_productization_gate"},
@@ -16,6 +16,7 @@
     "thresholds": {"type": "object"},
     "sufficiency": {"type": "object"},
     "criteria": {"type": "object"},
+    "evidence_package": {"type": ["object", "null"]},
     "reasons": {"type": "array", "items": {"type": "string"}},
     "interpretation": {"type": "string"}
   }

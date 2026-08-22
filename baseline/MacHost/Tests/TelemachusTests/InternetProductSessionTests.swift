@@ -172,6 +172,91 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(harness.waitForPong(sequence: 77))
     }
 
+    func testStreamingSessionSendsAndReceivesAudioAndBulkRecords() throws {
+        let harness = try Harness()
+        let audioReceived = expectation(description: "audio record received")
+        let bulkReceived = expectation(description: "bulk record received")
+        harness.session.onAudioRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xA1, 0xA2]))
+            audioReceived.fulfill()
+        }
+        harness.session.onBulkRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xB1, 0xB2, 0xB3]))
+            bulkReceived.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        XCTAssertTrue(harness.session.sendAudioRecord(Data([0x11, 0x12])))
+        XCTAssertTrue(harness.waitForSentAudioCount(1))
+        let sentAudio = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .audio })
+        XCTAssertEqual(sentAudio.payload, Data([0x11, 0x12]))
+
+        XCTAssertTrue(harness.session.sendBulkRecord(
+            Data([0x21, 0x22]),
+            transferID: Data(repeating: 0x33, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+        let sentBulk = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .bulk })
+        XCTAssertEqual(sentBulk.payload, Data([0x21, 0x22]))
+
+        harness.receiveAudio(Data([0xA1, 0xA2]))
+        harness.receiveBulk(Data([0xB1, 0xB2, 0xB3]))
+        wait(for: [audioReceived, bulkReceived], timeout: 1)
+    }
+
+    func testAdvancedChannelRecordsFailClosedWhenPayloadExceedsProductAdmissionLimit() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 1,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        let sent = harness.session.sendBulkRecord(
+            Data([0x41, 0x42]),
+            transferID: Data(repeating: 0x55, count: 16)
+        )
+
+        XCTAssertFalse(sent)
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected product admission rejection to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("payload is 2 bytes; maximum is 1"),
+            "Expected payload limit rejection, got: " + reason
+        )
+    }
+
+    func testAdvancedChannelGateInitializationErrorIsReportedOnFirstRecord() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 0,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        XCTAssertFalse(harness.session.sendBulkRecord(
+            Data([0x41]),
+            transferID: Data(repeating: 0x55, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected gate initialization failure to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("invalidLimits"),
+            "Expected gate initialization failure, got: " + reason
+        )
+    }
+
     func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {
         let harness = try Harness()
         let routed = expectation(description: "stylus routed")
@@ -2218,56 +2303,82 @@ final class InternetProductSessionTests: XCTestCase {
         let harness = try Harness()
         try reachStreaming(harness)
 
-        let encoder = VideoEncoder(
-            width: 640,
-            height: 480,
-            codec: .hevc,
-            bitrateMbps: 20,
-            quality: "medium",
-            frameRate: 60
-        )
-        guard encoder.hasActiveCompressionSession else {
+        let frames: InternetProductRealEncodedMediaFrames
+        do {
+            frames = try InternetProductRealEncodedMediaSource.makeHEVCFrames()
+        } catch InternetProductRealEncodedMediaSource.Failure.compressionSessionUnavailable {
             throw XCTSkip("VideoToolbox HEVC compression session is unavailable on this host")
+        } catch {
+            throw error
         }
-
-        guard let pixelBuffer = makeSyntheticPixelBuffer(width: 640, height: 480) else {
-            return XCTFail("Failed to create a synthetic CVPixelBuffer for the real-media gate")
-        }
-
-        let frameReceived = DispatchSemaphore(value: 0)
-        let payloadStore = NSLock()
-        var encodedPayload: Data?
-        encoder.onEncodedFrame = { data, _, isKeyframe, _ in
-            guard isKeyframe else { return }
-            payloadStore.lock()
-            encodedPayload = data
-            payloadStore.unlock()
-            frameReceived.signal()
-        }
-        encoder.requestKeyframe()
-        encoder.encode(
-            pixelBuffer: pixelBuffer,
-            presentationTimeStamp: CMTime(value: 1, timescale: 60),
-            sessionEpoch: harness.session.currentSessionEpoch
-        )
-
-        guard frameReceived.wait(timeout: .now() + 10) == .success else {
-            return XCTFail("VideoToolbox did not deliver an encoded HEVC keyframe within the gate window")
-        }
-        let payload: Data
-        payloadStore.lock()
-        payload = encodedPayload ?? Data()
-        payloadStore.unlock()
-        XCTAssertFalse(payload.isEmpty)
+        XCTAssertFalse(frames.keyframe.isEmpty)
+        XCTAssertFalse(frames.delta.isEmpty)
         // Annex-B HEVC keyframes begin with a start code followed by a VPS/SPS/PPS or IDR NAL unit.
-        XCTAssertTrue(payload.starts(with: [0x00, 0x00, 0x00, 0x01]))
+        XCTAssertTrue(frames.keyframe.starts(with: Data([0x00, 0x00, 0x00, 0x01])))
 
         let sessionEpoch = harness.session.currentSessionEpoch
         harness.session.sendFrame(
-            payload,
+            frames.keyframe,
             timestamp: 1_000,
             isKeyframe: true,
             sessionEpoch: sessionEpoch
+        )
+        XCTAssertTrue(harness.waitForSentMediaCount(1))
+        harness.session.sendFrame(
+            frames.delta,
+            timestamp: 2_000,
+            isKeyframe: false,
+            sessionEpoch: sessionEpoch
+        )
+
+        XCTAssertTrue(harness.waitForSentMediaCount(2))
+        let mediaRecords = harness.engine.sentPlaintext
+            .filter { $0.channel == .media }
+            .map { $0.payload }
+        XCTAssertEqual(mediaRecords.count, 2)
+
+        var fragments: [(header: VSMediaPacketHeader, payload: Data)] = []
+        for record in mediaRecords {
+            let decoded = try ProtocolV1MediaPacketCodec.decode(record)
+            fragments.append(decoded)
+        }
+
+        let keyframe = try XCTUnwrap(fragments.first { $0.header.keyframe })
+        XCTAssertEqual(keyframe.header.sessionEpoch, sessionEpoch)
+        XCTAssertEqual(keyframe.header.captureTimestampNs, 1_000)
+        XCTAssertEqual(keyframe.header.codec, .hevc)
+        XCTAssertEqual(keyframe.header.fragmentIndex, 0)
+        XCTAssertEqual(keyframe.header.fragmentCount, 1)
+        XCTAssertEqual(keyframe.payload, frames.keyframe)
+
+        let delta = try XCTUnwrap(fragments.first { !$0.header.keyframe })
+        XCTAssertEqual(delta.header.sessionEpoch, sessionEpoch)
+        XCTAssertEqual(delta.header.captureTimestampNs, 2_000)
+        XCTAssertEqual(delta.header.codec, .hevc)
+        XCTAssertEqual(delta.header.fragmentIndex, 0)
+        XCTAssertEqual(delta.header.fragmentCount, 1)
+        XCTAssertEqual(delta.payload, frames.delta)
+        XCTAssertNotEqual(delta.payload, Data(InternetProductSessionSelfTest.deltaPlaintextSeed.utf8))
+    }
+
+    func testRealVideoToolboxHEVCFramePacketReassemblesThroughProtocolV1MediaPath() throws {
+        let harness = try Harness()
+        try reachStreaming(harness)
+
+        let frames: InternetProductRealEncodedMediaFrames
+        do {
+            frames = try InternetProductRealEncodedMediaSource.makeHEVCFrames()
+        } catch InternetProductRealEncodedMediaSource.Failure.compressionSessionUnavailable {
+            throw XCTSkip("VideoToolbox HEVC compression session is unavailable on this host")
+        } catch {
+            throw error
+        }
+
+        harness.session.sendFrame(
+            frames.keyframe,
+            timestamp: 1_000,
+            isKeyframe: true,
+            sessionEpoch: harness.session.currentSessionEpoch
         )
 
         XCTAssertTrue(harness.waitForSentMediaCount(1))
@@ -2276,55 +2387,21 @@ final class InternetProductSessionTests: XCTestCase {
             .map { $0.payload }
         XCTAssertFalse(mediaRecords.isEmpty)
 
-        var fragments: [(header: VSMediaPacketHeader, payload: Data)] = []
-        for record in mediaRecords {
-            let decoded = try ProtocolV1MediaPacketCodec.decode(record)
-            fragments.append(decoded)
-        }
+        let decodedFragments = try mediaRecords.map { try ProtocolV1MediaPacketCodec.decode($0) }
+        let frameID = try XCTUnwrap(decodedFragments.first?.header.frameID)
+        XCTAssertTrue(decodedFragments.allSatisfy { $0.header.frameID == frameID })
+        XCTAssertEqual(decodedFragments[0].header.sessionEpoch, harness.session.currentSessionEpoch)
+        XCTAssertTrue(decodedFragments[0].header.keyframe)
+        XCTAssertEqual(decodedFragments[0].header.codec, .hevc)
 
-        let frameID = fragments[0].header.frameID
-        XCTAssertTrue(fragments.allSatisfy { $0.header.frameID == frameID })
-        XCTAssertEqual(fragments[0].header.sessionEpoch, sessionEpoch)
-        XCTAssertTrue(fragments[0].header.keyframe)
-        XCTAssertEqual(fragments[0].header.codec, .hevc)
-
-        let sorted = fragments.sorted { $0.header.fragmentIndex < $1.header.fragmentIndex }
+        let sorted = decodedFragments.sorted { $0.header.fragmentIndex < $1.header.fragmentIndex }
         XCTAssertEqual(sorted.count, Int(sorted[0].header.fragmentCount))
         for (index, fragment) in sorted.enumerated() {
             XCTAssertEqual(fragment.header.fragmentIndex, UInt32(index))
         }
 
         let reassembled = sorted.reduce(into: Data()) { $0.append($1.payload) }
-        XCTAssertEqual(reassembled, payload, "Reassembled Protocol v1 media payload must match the original VideoToolbox HEVC keyframe")
-    }
-
-    private func makeSyntheticPixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
-        var pixelBuffer: CVPixelBuffer?
-        let attributes: [CFString: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey: [:],
-            kCVPixelBufferMetalCompatibilityKey: true
-        ]
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            width,
-            height,
-            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            attributes as CFDictionary,
-            &pixelBuffer
-        )
-        guard status == kCVReturnSuccess, let pixelBuffer else { return nil }
-
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
-        for plane in 0..<CVPixelBufferGetPlaneCount(pixelBuffer) {
-            guard let baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, plane) else {
-                return nil
-            }
-            let byteCount = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, plane)
-                * CVPixelBufferGetHeightOfPlane(pixelBuffer, plane)
-            memset(baseAddress, plane == 0 ? 16 : 128, byteCount)
-        }
-        return pixelBuffer
+        XCTAssertEqual(reassembled, frames.keyframe, "Reassembled Protocol v1 media payload must match the original VideoToolbox HEVC keyframe")
     }
 
 }
@@ -2442,6 +2519,16 @@ private final class Harness {
         let plaintext = try! envelope.serializedData()
         let record = try! deviceCiphers[engineIndex].seal(plaintext, channel: .control)
         selectedEngine(engineIndex).receive(record, channel: .control)
+    }
+
+    func receiveAudio(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .audio)
+        selectedEngine(engineIndex).receive(record, channel: .audio)
+    }
+
+    func receiveBulk(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .bulk)
+        selectedEngine(engineIndex).receive(record, channel: .bulk)
     }
 
     func clientHello(
@@ -2597,6 +2684,14 @@ private final class Harness {
 
     func waitForSentMediaCount(_ count: Int) -> Bool {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .media }.count >= count }
+    }
+
+    func waitForSentAudioCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .audio }.count >= count }
+    }
+
+    func waitForSentBulkCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .bulk }.count >= count }
     }
 
     func waitForPong(sequence: UInt64) -> Bool {
