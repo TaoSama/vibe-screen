@@ -34,4 +34,33 @@ class SettingsDialogLayoutPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `tablet landscape can use two settings columns`() {
+        assertTrue(
+            SettingsDialogLayoutPolicy.shouldUseTwoColumns(
+                availableWidthPx = 600,
+                availableHeightPx = 420,
+                minimumWidthPx = 600,
+            ),
+        )
+    }
+
+    @Test
+    fun `tablet portrait and narrow landscape keep one settings column`() {
+        assertFalse(
+            SettingsDialogLayoutPolicy.shouldUseTwoColumns(
+                availableWidthPx = 600,
+                availableHeightPx = 960,
+                minimumWidthPx = 600,
+            ),
+        )
+        assertFalse(
+            SettingsDialogLayoutPolicy.shouldUseTwoColumns(
+                availableWidthPx = 599,
+                availableHeightPx = 360,
+                minimumWidthPx = 600,
+            ),
+        )
+    }
 }
