@@ -1,0 +1,25 @@
+# Commands
+
+Working directory: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/fb8c/vibe-screen
+Date UTC: 2026-08-22
+Branch: codex/trusted-lan-preflight
+HEAD: a8346626f07de98a54508c2d05ba138d0c969ef0
+
+All ADB commands used explicit -s EP0110PZ0B9110300B.
+
+git fetch origin --prune
+adb -s EP0110PZ0B9110300B get-state
+adb -s EP0110PZ0B9110300B devices -l
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+adb -s EP0110PZ0B9110300B shell cmd wifi status
+adb -s EP0110PZ0B9110300B shell ip addr show wlan0
+adb -s EP0110PZ0B9110300B shell ip route
+adb -s EP0110PZ0B9110300B shell svc wifi enable
+python3 scripts/macos_dev_host.py preflight
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-lan-preflight-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight -v

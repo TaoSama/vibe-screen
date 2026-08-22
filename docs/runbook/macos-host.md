@@ -263,6 +263,22 @@ token-admitted LAN session with per-session AES-256-GCM application records;
 explicit legacy fallback remains plaintext and must be called out separately if
 it is ever used.
 
+### Trusted LAN evidence preflight
+
+Before a real-device trusted-LAN stream or reconnect run, collect the read-only
+preflight package while the Android device is USB-attached and identified by its
+exact serial:
+
+    make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+
+The preflight confirms the Nubia P0110/pacific/Android 16 identity, Android
+Wi-Fi association, wlan0 IPv4, route to the Mac LAN candidate, and the stable
+Host signing/TCC preflight. It does not launch the Host, generate a QR code,
+write a pairing token, modify Keychain, reset TCC, or change saved Wi-Fi
+credentials. If the JSON reports blocked, keep it as the evidence output and
+stop before Host launch, pairing, streaming, reconnect, or latency measurement.
+Loopback-only TCP 54321 listeners are not LAN evidence.
+
 ### Capture is black, frozen, or unavailable
 
 - Recheck Screen Recording permission and relaunch.

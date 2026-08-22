@@ -1,0 +1,4 @@
+/tmp/vibe-screen-device-android.lock acquired before device probing.
+acquired_at: 2026-08-22T03:42:40Z
+pid: 46412
+No /tmp/vibe-screen-device-soak.lock was present at acquisition time.
