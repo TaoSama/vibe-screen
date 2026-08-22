@@ -1,0 +1,24 @@
+Controller runtime current-base readiness verification
+
+Source base: 1b6f52a2c886c0615cff3c4b85069e29015e7869
+Working branch: codex/controller-runtime-current-base-owner
+Run ID: 2026-08-22-current-base-controller-runtime-readiness
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial <device-serial>
+
+Readiness collection:
+- scripts/controller_runtime_readiness.py exited 2, which is expected for a blocked readiness result.
+- controller-runtime-summary.json verdict is blocked and can_close_runtime_gate is false.
+- Blocking requirements remain: physical_controller_attached, host_identity_signed, host_virtual_hid_entitlement_present, host_virtual_gamepad_available.
+
+Targeted validation commands run after source changes:
+- PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness -v: pass, 16 tests.
+- PYTHONPATH=. python3 -m unittest contracts.tests.test_controller_reference contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract -v: pass, 32 tests.
+- PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v: pass, 255 tests.
+- PYTHONPATH=tools python3 -m unittest scripts.tests.test_release_tools.MacOSSigningIdentityTests -v: pass, 7 tests.
+- cd baseline/AndroidClient && ./gradlew testDebugUnitTest --tests "*Controller*" --tests "*StreamInputDispatcher*" --tests "*ProtocolV1Session*": pass.
+- cd baseline/MacHost && swift build: pass.
+- cd baseline/MacHost && swift test --filter GameControllerInjectorTests: blocked by local toolchain, no such module XCTest; xcode-select points to /Library/Developer/CommandLineTools.
+- git diff --check: pass.
+
+Boundary:
+- This is not controller runtime acceptance. No physical Android controller source, Protocol v1 controller lifecycle sample, Mac-side observer response, or runtime neutral-release artifact was observed.
