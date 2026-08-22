@@ -93,6 +93,20 @@ which every public Internet release gate remains `open`. Use
 is expected to exit non-zero because local loopback, synthetic Protocol v1 peers,
 forced local coturn, and blocked attempts are readiness evidence only.
 
+The aggregate owner is PR #258 (`codex/phase3-current-base-gates`). Keep that PR
+as the only current-base source of truth for overall Phase 3 public Internet
+release-gate status; child PRs own bounded evidence packages instead of
+duplicating aggregate status. The summary records #194 as the public Internet and
+real remote TURN owner, #173 as the ScreenCaptureKit-to-Android-decoder owner,
+#224/#171 as the network-handoff/recovery owners, #190 as the revocation
+propagation owner, #214 as the soak owner, and #254 as the production enforcement
+owner. Older broad manifest/contract candidates such as #164 and #188 should be
+narrowed or superseded for aggregate ownership. None of those child gates can
+close from loopback, synthetic media, forced local coturn, or blocked deployment
+records; public deployment evidence must fail closed until the real external
+route, remote TURN, capture-to-device decoder, handoff, revocation, latency, and
+soak artifacts exist.
+
 Use the explicit product slice to exercise the macOS product-session composition
 through real signaling/libwebrtc and, in relay mode, forced local coturn:
 

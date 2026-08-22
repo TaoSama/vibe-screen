@@ -28,6 +28,12 @@ from scripts.phase3_webrtc.public_schema import (  # noqa: E402
 )
 
 SCHEMA = "dev.vibescreen.phase3-release-gate-summary/v1"
+AGGREGATE_OWNER = {
+    "pull_request": 258,
+    "title": "Add Phase 3 current-base release gate summary",
+    "head_ref": "codex/phase3-current-base-gates",
+    "role": "current_base_aggregate_owner",
+}
 DEFAULT_LOCAL_PUBLIC_DIR = Path(".build/phase3-local-synthetic-product-e2e/public")
 DEFAULT_ANDROID_INTEROP = Path(
     "docs/changes/2026-08-04-phase-3-secure-internet/evidence/"
@@ -42,43 +48,86 @@ RELEASE_GATES = (
     (
         "public_internet_path",
         "Real Android and macOS peers traverse a genuine public Internet path.",
+        194,
+        "blocked_pending_public_deployment",
     ),
     (
         "real_remote_turn",
         "A deployed remote TURN route is selected and distinguished from forced local coturn.",
+        194,
+        "blocked_pending_remote_turn_deployment",
     ),
     (
         "screencapturekit_to_android_mediacodec",
         "Real ScreenCaptureKit or CGDisplayStream output reaches Android MediaCodec.",
+        173,
+        "blocked_current_base_attempt_no_capture_or_decode",
     ),
     (
         "visible_input_effects",
         "Touch and keyboard produce visible, host-side Mac input effects.",
+        173,
+        "blocked_pending_real_capture_session",
     ),
     (
         "network_handoff",
         "Wi-Fi/cellular or independently routed handoff resumes with a larger session epoch.",
+        224,
+        "blocked_pending_real_handoff_run",
     ),
     (
         "cross_service_revocation",
         "Authority, signaling, relay credential issuance, and active transport allocation all fail closed after revoke.",
+        190,
+        "blocked_pending_cross_service_active_allocation_proof",
     ),
     (
         "packet_capture_confidentiality",
         "Direct and TURN packet captures prove no plaintext content or credentials.",
+        194,
+        "blocked_pending_public_path_packet_capture",
     ),
     (
         "two_hour_mixed_route_soak",
         "A two-hour mixed direct/relay/network-change soak has bounded memory, queues, latency, and nonce use.",
+        214,
+        "blocked_pending_two_hour_public_mixed_route_run",
     ),
     (
         "production_services",
         "Production Authority/signaling/relay/coturn deployment gates pass with TLS, HA, PITR, NTP, and multi-node coverage.",
+        254,
+        "blocked_pending_deployed_production_enforcement",
     ),
     (
         "independent_security_review",
         "Protocol transcript, KDF, nonce, replay, rotation, revocation, and key storage pass independent review.",
+        188,
+        "blocked_pending_independent_security_review",
     ),
+)
+
+CANDIDATE_PRS = tuple(
+    {"pull_request": number, "role": role, "recommendation": recommendation, "reason": reason}
+    for number, role, recommendation, reason in (
+        (164, "legacy_manifest_candidate", "supersede_with_aggregate_owner", "overlaps release-gate manifest ownership and is older-base/dirty"),
+        (171, "network_recovery_handoff_slice", "keep_as_child_gate_after_rebase", "owns network recovery evidence, not aggregate status"),
+        (172, "coturn_reconciliation_slice", "keep_as_child_gate_serialized_late", "touches authority/signaling/relay/coturn service state"),
+        (173, "real_media_continuity_slice", "keep_as_child_gate", "owns ScreenCaptureKit-to-decoder blocked evidence"),
+        (188, "release_gate_contracts_candidate", "narrow_or_supersede_aggregate_parts", "broad gate contracts duplicate aggregate ownership"),
+        (190, "revocation_propagation_slice", "keep_as_child_gate", "owns fail-closed cross-service revocation checks"),
+        (194, "public_internet_remote_turn_slice", "keep_as_child_gate", "owns public deployment and remote TURN blocked/readiness evidence"),
+        (200, "authority_profile_issuance_slice", "keep_as_service_child_gate", "authority issuance supports production services but is not aggregate status"),
+        (212, "internet_latency_slice", "keep_as_child_gate", "owns external-camera latency manifest/readiness"),
+        (214, "internet_soak_slice", "keep_as_child_gate", "owns two-hour mixed-route soak gate"),
+        (215, "signaling_multinode_slice", "superseded_by_merged_223_for_aggregate_accounting", "open PR overlaps merged signaling multi-node work"),
+        (216, "qr_pairing_flow_slice", "keep_as_child_gate", "owns pairing-flow evidence and remains bounded"),
+        (223, "merged_signaling_multinode_slice", "record_as_merged_child_gate", "merged into current base and supports production service readiness only"),
+        (224, "runtime_network_handoff_slice", "keep_as_child_gate_after_rebase", "owns bounded handoff runtime changes, not release closure"),
+        (228, "production_coturn_enforcement_slice", "keep_as_child_gate_serialized_late", "broad authority/relay/coturn changes should not be duplicated here"),
+        (254, "production_e2e_enforcement_slice", "keep_as_child_gate", "owns blocked production enforcement package"),
+        (258, "current_base_aggregate_owner", "use_as_unique_aggregate_owner", "current-base summary is executable and keeps all public release gates open"),
+    )
 )
 HISTORICAL_ANDROID_BOUNDARY_DEFAULTS = {
     "network_scope": "local_direct_and_forced_local_coturn_only",
@@ -315,8 +364,10 @@ def release_gate_rows() -> list[dict[str, Any]]:
             "status": "open",
             "required_evidence": required,
             "current_base_evidence": "not_present",
+            "owner_pr": owner_pr,
+            "evidence_state": evidence_state,
         }
-        for name, required in RELEASE_GATES
+        for name, required, owner_pr, evidence_state in RELEASE_GATES
     ]
 
 
@@ -353,7 +404,9 @@ def build_summary(
     return {
         "schema": SCHEMA,
         "result": "open",
+        "aggregate_owner": dict(AGGREGATE_OWNER),
         "current_base": {"repository_commit": commit},
+        "candidate_prs": list(CANDIDATE_PRS),
         "readiness_observations": observations,
         "release_gates": release_gate_rows(),
         "classification_rules": {
