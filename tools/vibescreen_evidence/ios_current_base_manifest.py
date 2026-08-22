@@ -28,7 +28,19 @@ AGGREGATE_OWNER_PR = "#182"
 DEVICE_ACCEPTANCE_OWNER_PR = "#182"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 
-SCOPE_PRS = ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+SCOPE_PRS = [
+    "#182",
+    "#196",
+    "#207",
+    "#208",
+    "#209",
+    "#238",
+    "#251",
+    "#253",
+    "#257",
+    "#279",
+    "#282",
+]
 SOURCE_DOCS = [
     "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",

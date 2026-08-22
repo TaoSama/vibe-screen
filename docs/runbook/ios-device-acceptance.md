@@ -25,6 +25,16 @@ command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
 retained gate evidence are missing. Do not convert that readiness output into a
 device pass.
 
+Before starting any install or device session, record and check the local iOS
+toolchain prerequisites. If any of these fail, stop at blocked readiness and do
+not begin the device run:
+
+```bash
+xcodebuild -version
+xcodebuild -showsdks | grep iphoneos
+security find-identity -p codesigning -v
+```
+
 ## Open gates
 
 These README Phase 5 device-acceptance gates remain open until the evidence
@@ -147,7 +157,7 @@ gate.
   "aggregate_owner": {
     "aggregate": "current-base-ios-acceptance",
     "aggregate_pr": "#182",
-    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257", "#279", "#282"]
   },
   "readiness_status": "blocked",
   "blocked_reasons": [],
