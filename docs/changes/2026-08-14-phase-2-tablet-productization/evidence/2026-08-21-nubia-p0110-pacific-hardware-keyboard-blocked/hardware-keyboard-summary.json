@@ -2,29 +2,23 @@
   "adb_input_is_not_physical_keyboard_evidence": true,
   "artifact_paths": [
     "device-lock.txt",
+    "device-identity.txt",
+    "dumpsys-input.txt",
     "host-listener.txt",
     "codesign-identities.txt",
     "host-preflight-command.txt",
     "host-signing-and-permissions.txt"
   ],
   "blocking_notes": [
-    "/tmp/vibe-screen-device-android.lock already existed before this run; no ADB commands were executed.",
-    "No macOS Host listener was present on TCP 54321.",
-    "The local keychain reported 0 valid code-signing identities, so stable signed Host/TCC readiness could not be established.",
-    "Physical keyboard attachment was not evaluated because the device lock and Host prerequisites failed first."
+    "Device lock acquired for this run; device identity confirmed as nubia P0110 / pacific / Android 16 (SDK 36).",
+    "No external hardware keyboard is attached to EP0110PZ0B9110300B; dumpsys input lists only built-in key devices (gpio-keys, pmic_pwrkey, pmic_resin, qbt_key_input, goodix_stylus_input, gdix_input_agent, sun-qrd-sku2-snd-card Button Jack) and the virtual keyboard. ADB input keyevent cannot satisfy the physical-keyboard gate.",
+    "A macOS Host listener is present on TCP 54321, but the local keychain reports 0 valid code-signing identities, so a stable signed Host with Screen Recording and Accessibility TCC grants cannot be established.",
+    "Because no physical keyboard is attached and the Host is not stable-signed, Protocol v1 keyboard/USB HID modifier negotiation, production forwarding, Host key injection, press/release, shortcut, modifier-cleanup, and visible Mac result evidence were not collected."
   ],
   "blocking_reasons": [
     {
-      "field": "android_device_lock_acquired",
-      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
-    },
-    {
       "field": "physical_keyboard_attached",
       "requirement": "attach and name a real external or hardware Android keyboard"
-    },
-    {
-      "field": "host_listener_observed",
-      "requirement": "record the macOS Host listener for the transport under test"
     },
     {
       "field": "host_stable_signed_tcc_ready",
@@ -34,18 +28,6 @@
   "can_close_hardware_keyboard_gate": false,
   "kind": "phase2_hardware_keyboard_workflow",
   "missing_requirements": [
-    {
-      "field": "android_device_lock_acquired",
-      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
-    },
-    {
-      "field": "device_identity_recorded",
-      "requirement": "record Android serial, manufacturer, model, codename, OS/build, SDK, and ABI"
-    },
-    {
-      "field": "device_identity_matches_claim",
-      "requirement": "label the evidence with the observed device identity, without relabeling P0110/pacific as Xiaomi/fuxi"
-    },
     {
       "field": "apk_identity_recorded",
       "requirement": "record APK version/signing identity and install timestamp"
@@ -69,10 +51,6 @@
     {
       "field": "android_production_forwarding_observed",
       "requirement": "observe MainActivity/StreamClient production keyboard forwarding, not only adb input dispatch"
-    },
-    {
-      "field": "host_listener_observed",
-      "requirement": "record the macOS Host listener for the transport under test"
     },
     {
       "field": "host_stable_signed_tcc_ready",
@@ -107,17 +85,17 @@
       "requirement": "retain Android logs/input snapshots covering the keyboard workflow"
     }
   ],
-  "notes": "Target serial for a future run is EP0110PZ0B9110300B and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
+  "notes": "Target serial EP0110PZ0B9110300B confirmed as nubia P0110 / pacific / Android 16. The Phase 2 hardware-keyboard workflow gate stays blocked until a real external keyboard is attached to this Android device and a stable signed Host with Screen Recording + Accessibility permission is running. ADB input keyevent is diagnostic only and does not prove a physical keyboard source.",
   "observations": {
-    "android_device_lock_acquired": false,
+    "android_device_lock_acquired": true,
     "android_keyboard_source_observed": false,
     "android_logs_retained": false,
     "android_production_forwarding_observed": false,
     "apk_identity_recorded": false,
-    "device_identity_matches_claim": false,
-    "device_identity_recorded": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
     "host_key_injection_observed": false,
-    "host_listener_observed": false,
+    "host_listener_observed": true,
     "host_logs_retained": false,
     "host_stable_signed_tcc_ready": false,
     "key_press_release_observed": false,
@@ -131,7 +109,7 @@
   "profile": "phase2-hardware-keyboard-workflow",
   "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
   "requires_physical_keyboard": true,
-  "run_id": "8ec1ff10-0285-48ef-bf30-f716528ee687",
+  "run_id": "2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "verdict": "blocked"
 }

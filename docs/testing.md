@@ -26,9 +26,9 @@ For every device run, record:
 - Mac pointer positions before/after Android touches;
 - For native pointer, HID mouse/controller, stylus, and physical keyboard runs,
   the exact attached peripheral name, Android input source observed in logs, the
-  Protocol v1 negotiated capabilities, host-side injection logs, and visible Mac
-  result. ADB `input` commands may exercise Android dispatch but do not prove a
-  physical HID peripheral;
+  Protocol v1 negotiated capabilities, Host Accessibility/TCC readiness,
+  host-side injection logs, and visible Mac result. ADB `input` commands may
+  exercise Android dispatch but do not prove a physical HID peripheral;
 - when closing rotated host-display acceptance, the physical and virtual
   display identities, original and rotated macOS display rotation, client
   rotation mode, screenshots, touch matrix, and proof that the original macOS
