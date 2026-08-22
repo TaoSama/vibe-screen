@@ -108,6 +108,33 @@ def _required_bool(gate: dict[str, Any]) -> bool:
     return value
 
 
+def _guard_string_list(
+    guard: dict[str, Any], field: str, defaults: Sequence[str]
+) -> tuple[str, ...]:
+    value = guard.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise Phase0StableReleaseError(f"readme_guard.{field} must be a list of strings")
+    if any(not item.strip() for item in value):
+        raise Phase0StableReleaseError(
+            f"readme_guard.{field} must contain only non-empty strings"
+        )
+
+    combined: list[str] = []
+    for item in [*defaults, *value]:
+        if item not in combined:
+            combined.append(item)
+    return tuple(combined)
+
+
+def _compile_guard_pattern(pattern: str) -> re.Pattern[str]:
+    try:
+        return re.compile(pattern, re.IGNORECASE)
+    except re.error as error:
+        raise Phase0StableReleaseError(
+            f"readme_guard.forbidden_regexes contains invalid regex {pattern!r}: {error}"
+        ) from error
+
+
 def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
     gate_id = _string(gate, "id")
     title = _string(gate, "title")
@@ -167,20 +194,12 @@ def _readme_guard(
         guard = {}
     if not isinstance(guard, dict):
         raise Phase0StableReleaseError("readme_guard must be an object")
-    required_phrases = tuple(
-        guard.get("required_phrases", DEFAULT_README_GUARD_PHRASES)
+    required_phrases = _guard_string_list(
+        guard, "required_phrases", DEFAULT_README_GUARD_PHRASES
     )
-    forbidden_patterns = tuple(
-        guard.get("forbidden_regexes", DEFAULT_FORBIDDEN_README_PATTERNS)
+    forbidden_patterns = _guard_string_list(
+        guard, "forbidden_regexes", DEFAULT_FORBIDDEN_README_PATTERNS
     )
-    if not all(isinstance(item, str) and item.strip() for item in required_phrases):
-        raise Phase0StableReleaseError(
-            "readme_guard.required_phrases must contain non-empty strings"
-        )
-    if not all(isinstance(item, str) and item.strip() for item in forbidden_patterns):
-        raise Phase0StableReleaseError(
-            "readme_guard.forbidden_regexes must contain non-empty strings"
-        )
 
     normalized_readme_text = re.sub(
         r"\s+", " ", re.sub(r"(?m)^\s*>\s?", "", readme_text)
@@ -193,7 +212,7 @@ def _readme_guard(
     forbidden_matches = []
     if not aggregate_passed:
         for pattern in forbidden_patterns:
-            compiled = re.compile(pattern, re.IGNORECASE)
+            compiled = _compile_guard_pattern(pattern)
             for match in compiled.finditer(normalized_readme_text):
                 start = max(0, match.start() - 40)
                 end = min(len(normalized_readme_text), match.end() + 40)
@@ -293,6 +312,8 @@ def evaluate_manifest(
 
     if readme_guard["verdict"] == STATUS_FAIL:
         aggregate_verdict = STATUS_FAIL
+    elif readme_guard["verdict"] == STATUS_INSUFFICIENT:
+        aggregate_verdict = STATUS_INSUFFICIENT
     elif malformed_reasons or any(summary["issues"] for summary in gate_summaries):
         aggregate_verdict = STATUS_INSUFFICIENT
     elif blocking_gates:

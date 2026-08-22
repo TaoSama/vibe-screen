@@ -235,6 +235,38 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["readme_guard"]["verdict"], "fail")
         self.assertTrue(summary["readme_guard"]["missing_required_phrases"])
 
+    def test_missing_readme_guard_cannot_pass_aggregate(self) -> None:
+        summary = evaluate_manifest(complete_manifest(), readme_text=None)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(summary["readme_guard"]["verdict"], "insufficient")
+
+    def test_empty_readme_guard_config_cannot_disable_default_guard(self) -> None:
+        manifest = complete_manifest()
+        manifest["readme_guard"] = {
+            "required_phrases": [],
+            "forbidden_regexes": [],
+        }
+        gate_by_id(manifest, "native_pointer_hid_mouse")["verdict"] = "open"
+
+        summary = evaluate_manifest(manifest, readme_text="Phase 0 is now stable.")
+
+        self.assertEqual(summary["aggregate_verdict"], "fail")
+        self.assertEqual(summary["readme_guard"]["verdict"], "fail")
+        self.assertTrue(summary["readme_guard"]["missing_required_phrases"])
+        self.assertTrue(summary["readme_guard"]["forbidden_matches"])
+
+    def test_invalid_readme_guard_regex_reports_manifest_error(self) -> None:
+        manifest = complete_manifest()
+        manifest["readme_guard"] = {"forbidden_regexes": ["("]}
+        gate_by_id(manifest, "native_pointer_hid_mouse")["verdict"] = "open"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "invalid regex"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
     def test_rejects_invalid_manifest_shape(self) -> None:
         with self.assertRaisesRegex(Phase0StableReleaseError, "kind must be"):
             evaluate_manifest({"schema_version": "vibescreen.evidence/v1", "kind": "wrong"})
