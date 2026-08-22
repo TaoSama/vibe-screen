@@ -2376,6 +2376,7 @@ class StreamClient(
         sessionEpoch: Long,
         configEpoch: Long,
     ) {
+        if (configEpoch <= LEGACY_CONFIG_EPOCH) return
         if (firstFrameTelemetryEpoch == sessionEpoch) return
         firstFrameTelemetryEpoch = sessionEpoch
         diagLog(
