@@ -248,7 +248,7 @@ def _read_limited_stdout(
         while True:
             now = time.monotonic()
             if now >= deadline:
-                _terminate_process(process)
+                _terminate_process(process, force_group=True)
                 _fail(timeout_message)
             remaining = min(0.1, deadline - now)
             events = selector.select(remaining)
@@ -282,20 +282,24 @@ def _drain_process_stdout(
             return True
         output.extend(chunk)
         if len(output) > byte_limit:
-            _terminate_process(process)
+            _terminate_process(process, force_group=True)
             _fail(overflow_message)
 
 
-def _terminate_process(process: subprocess.Popen[bytes]) -> None:
-    _kill_process_group(process)
+def _terminate_process(process: subprocess.Popen[bytes], *, force_group: bool = False) -> None:
+    if not force_group and process.poll() is not None:
+        return
+    _kill_process_group(process, force=force_group)
     try:
         process.wait(timeout=1)
     except subprocess.TimeoutExpired:
-        _kill_process_group(process)
+        _kill_process_group(process, force=True)
         process.wait()
 
 
-def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+def _kill_process_group(process: subprocess.Popen[bytes], *, force: bool = False) -> None:
+    if not force and process.poll() is not None:
+        return
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -313,12 +317,12 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
 def _wait_for_process(process: subprocess.Popen[bytes], deadline: float, timeout_message: str) -> None:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        _terminate_process(process)
+        _terminate_process(process, force_group=True)
         _fail(timeout_message)
     try:
         process.wait(timeout=remaining)
     except subprocess.TimeoutExpired:
-        _terminate_process(process)
+        _terminate_process(process, force_group=True)
         _fail(timeout_message)
 
 
