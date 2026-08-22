@@ -34,6 +34,8 @@ enum VideoEncoderSelfTest {
     }
 
     static func run() -> Bool {
+        guard runKeyframeRecoveryStateChecks() else { return false }
+
         guard let pixelBuffer = makePixelBuffer() else {
             FileHandle.standardError.write(Data("video encoder self-test: pixel buffer creation failed\n".utf8))
             return false
@@ -106,6 +108,34 @@ enum VideoEncoderSelfTest {
             ))
         }
         return passed
+    }
+
+    private static func runKeyframeRecoveryStateChecks() -> Bool {
+        let keyframeState = VideoEncoderKeyframeRequestState()
+        keyframeState.requestKeyframe()
+        guard keyframeState.consumePendingRequest() else {
+            FileHandle.standardError.write(Data("video encoder self-test: keyframe request was not consumed\n".utf8))
+            return false
+        }
+        guard !keyframeState.hasPendingRequest else {
+            FileHandle.standardError.write(Data("video encoder self-test: consumed keyframe request stayed pending\n".utf8))
+            return false
+        }
+        keyframeState.restoreConsumedRequest(true)
+        guard keyframeState.hasPendingRequest else {
+            FileHandle.standardError.write(Data("video encoder self-test: consumed keyframe request was not restored\n".utf8))
+            return false
+        }
+        guard keyframeState.consumePendingRequest() else {
+            FileHandle.standardError.write(Data("video encoder self-test: restored keyframe request was not consumable\n".utf8))
+            return false
+        }
+        keyframeState.restoreConsumedRequest(false)
+        guard !keyframeState.hasPendingRequest else {
+            FileHandle.standardError.write(Data("video encoder self-test: unconsumed keyframe request was restored\n".utf8))
+            return false
+        }
+        return true
     }
 
     private static func makePixelBuffer() -> CVPixelBuffer? {

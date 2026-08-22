@@ -194,6 +194,63 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertNil(registry.claim(sourceFrameRefcon))
     }
 
+    func testConsumedKeyframeRequestIsRestoredAfterSynchronousSubmissionFailure() {
+        let keyframeState = VideoEncoderKeyframeRequestState()
+        keyframeState.requestKeyframe()
+
+        let consumedRequest = keyframeState.consumePendingRequest()
+        XCTAssertTrue(consumedRequest)
+        XCTAssertFalse(keyframeState.hasPendingRequest)
+
+        keyframeState.restoreConsumedRequest(consumedRequest)
+        XCTAssertTrue(keyframeState.hasPendingRequest)
+        XCTAssertTrue(keyframeState.consumePendingRequest())
+    }
+
+    func testUnconsumedKeyframeRequestIsNotCreatedAfterOrdinarySubmissionFailure() {
+        let keyframeState = VideoEncoderKeyframeRequestState()
+
+        keyframeState.restoreConsumedRequest(false)
+
+        XCTAssertFalse(keyframeState.hasPendingRequest)
+    }
+
+    func testAtCapacityDoesNotConsumePendingKeyframeRequest() {
+        let admission = VideoEncoderInFlightAdmission(capacity: 1)
+        let keyframeState = VideoEncoderKeyframeRequestState()
+        keyframeState.requestKeyframe()
+        XCTAssertEqual(admission.submit { _ in noErr }, .submitted(noErr))
+
+        XCTAssertEqual(admission.submit { _ in
+            _ = keyframeState.consumePendingRequest()
+            return noErr
+        }, .atCapacity)
+
+        XCTAssertTrue(keyframeState.hasPendingRequest)
+    }
+
+    func testCallbackFailureRequestsReplacementKeyframeOnActiveEncoder() {
+        let encoder = VideoEncoder(width: 16, height: 16, codec: .h264)
+        let owner = VideoEncoderCallbackOwner()
+        owner.activate(encoder)
+        XCTAssertFalse(encoder.hasPendingKeyframeRequest)
+
+        VideoEncoderCallbackFailureRecovery.requestKeyframe(owner: owner)
+
+        XCTAssertTrue(encoder.hasPendingKeyframeRequest)
+    }
+
+    func testCallbackFailureDoesNotRequestKeyframeAfterOwnerDeactivation() {
+        let encoder = VideoEncoder(width: 16, height: 16, codec: .h264)
+        let owner = VideoEncoderCallbackOwner()
+        owner.activate(encoder)
+        owner.deactivate()
+
+        VideoEncoderCallbackFailureRecovery.requestKeyframe(owner: owner)
+
+        XCTAssertFalse(encoder.hasPendingKeyframeRequest)
+    }
+
     func testCallbackAndTeardownRaceClaimsFrameExactlyOnce() {
         for iteration in 0..<100 {
             let admission = VideoEncoderInFlightAdmission(capacity: 1)
