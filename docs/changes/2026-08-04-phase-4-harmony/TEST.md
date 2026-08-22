@@ -164,6 +164,33 @@ by `tools/schemas/harmony-readiness.schema.json`. The Harmony workflow runs a
 blocked dry run and rejects script or schema drift, but it still labels the job
 as portable/no-HAP evidence only.
 
+## 2026-08-22 MatePad Mini acceptance package readiness
+
+The MatePad Mini path now has a final aggregation runner after the individual
+readiness and device-gate manifests:
+
+```text
+make harmony-readiness EVIDENCE_DIR=/path/to/evidence
+python3 scripts/harmony_matepad_acceptance.py --evidence-dir /path/to/evidence --write-blocked
+make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
+```
+
+`scripts/harmony_matepad_acceptance.py` groups the strict device-gate IDs into
+the acceptance domains needed for a MatePad Mini release decision: toolchain and
+source identity, HAP install/signing, AVCodec H.264/HEVC decode, HUKS-backed
+secure pairing and revocation, Protocol v1 Host resume interoperability, UI and
+device identity, sustained soak, and external-camera latency. It exits 2 and
+writes `harmony-matepad-acceptance.json` when readiness or any domain is
+blocked. It exits 0 only when `harmony-readiness.json` is pass and
+`harmony-device-gates.json` passes strict validation with every required
+real-device gate marked pass.
+
+`--write-blocked` creates a structurally valid blocked `harmony-device-gates.json`
+from the readiness prefill when no MatePad Mini or signing environment exists.
+That path is for evidence tracking only. It is not HAP installation, streaming,
+secure pairing, hardware decode, Host interop, soak, latency, or MatePad Mini
+acceptance evidence, and it must not close the README HarmonyOS gate.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

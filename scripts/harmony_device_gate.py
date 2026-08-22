@@ -36,6 +36,7 @@ REQUIRED_GATE_IDS = (
     "resume_network_roam",
     "resume_host_restart",
     "no_old_epoch_render",
+    "ui_device_identity_record",
     "input_touch_keyboard_pointer_stylus",
     "eight_hour_soak",
     "external_latency",
@@ -109,7 +110,10 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
     _hex(repository["commit"], "repository.commit", HEX_40, allow_placeholder=allow_blocked)
     _hex(repository["tree"], "repository.tree", HEX_40, allow_placeholder=allow_blocked)
     if repository["status"] != "clean":
-        raise ManifestError("repository.status: expected clean")
+        if allow_blocked:
+            warnings.append(f"repository.status: {repository['status']}")
+        else:
+            raise ManifestError("repository.status: expected clean")
 
     toolchain = _mapping(document.get("toolchain"), "toolchain")
     _require_keys(toolchain, REQUIRED_TOOLCHAIN_KEYS, "toolchain")
