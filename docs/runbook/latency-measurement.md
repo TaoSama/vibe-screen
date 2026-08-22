@@ -56,6 +56,7 @@ Store each run in an immutable directory with these files:
       summary.json
       latency-evidence-report.json
       device-info.json
+      usb-connection.txt
       commands.txt
 
 The sample file contains either direct latency_ms rows or frame deltas from
@@ -96,6 +97,13 @@ and annotation method. A minimal shape is:
         "annotation_method": "manual-frame-count",
         "annotator": "annotator name"
       },
+      "gate_artifacts": {
+        "usb_connection": {
+          "file": "usb-connection.txt",
+          "sha256": "USB connection artifact sha256",
+          "description": "ADB reverse/USB setup and active USB stream proof"
+        }
+      },
       "device": {
         "manufacturer": "device manufacturer",
         "model": "device model",
@@ -127,6 +135,12 @@ The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
 
+The `gate_artifacts` object is profile-specific. Use `usb_connection` for
+`usb-glass-to-glass-sub50`, `lan_network_preflight` for
+`lan-glass-to-glass-sub80`, and `input_actuation_record` for
+`input-p95-sub50`. Each entry must point to a retained package-relative file
+with a matching SHA-256 digest.
+
 After collecting raw-camera.mov, samples.csv, and device-info.json, create the
 manifest with the dedicated helper instead of adapting the generic evidence
 manifest tool:
@@ -156,6 +170,8 @@ manifest tool:
       --lighting "lighting conditions" \
       --mounting "camera and device mounting" \
       --max-frame-annotation-uncertainty-ms 4.2 \
+      --gate-artifact latency-run/usb-connection.txt \
+      --gate-artifact-description "ADB reverse/USB setup and active USB stream proof" \
       --notes "run-specific notes"
 
 ## Commands
@@ -183,9 +199,31 @@ For input latency, use `--kind input` with `input-p95-sub50`. The checker exits
 synchronized-clock provenance is complete. Missing raw video, mismatched
 manifest fields, changed sample annotations, frame-rate mismatches, annotation
 uncertainty or clock error budget that crosses the threshold, too few samples,
-wrong transport, or a threshold miss all return nonzero with a JSON report whose
-verdict is insufficient or fail. Referenced files must use package-relative
-paths and stay inside the evidence directory.
+wrong transport, missing profile artifact, or a threshold miss all return
+nonzero with a JSON report whose verdict is insufficient or fail. Referenced
+files must use package-relative paths and stay inside the evidence directory.
+
+## Fail-closed readiness preflight
+
+When external-camera hardware, synchronized-clock proof, physical input
+actuation, or transport proof is not ready, record that blocked state before
+leaving the gate. Create `preflight-input.json` with the checks that are known
+true and leave missing checks false, then run:
+
+```bash
+make evidence-latency-preflight \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  LATENCY_DEVICE_INFO="$EVIDENCE_DIR/device-info.json" \
+  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json"
+```
+
+The target writes `latency-preflight.json` and
+`latency-preflight-exit.txt`. Exit `0` means the declared artifacts are ready
+for a formal checker attempt, exit `2` means the run is blocked before formal
+gate closure, and exit `1` means the preflight input itself failed validation.
+This readiness record cannot close `usb-glass-to-glass-sub50`,
+`lan-glass-to-glass-sub80`, or `input-p95-sub50`; it only preserves why the
+gate is still open.
 
 ## Synchronized-clock input latency
 
@@ -261,6 +299,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --total-error-budget-ms 3.5 \
   --input-timestamp-method "physical input timestamp method" \
   --result-timestamp-method "visible result timestamp method" \
+  --gate-artifact "$EVIDENCE_DIR/input-actuation.txt" \
+  --gate-artifact-description "physical input actuation and visible Mac result proof" \
   --notes "run-specific notes"
 ```
 
