@@ -3,6 +3,7 @@ BUF := go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
+EVIDENCE_PORT ?= 54321
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -32,7 +33,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -128,6 +129,10 @@ require-evidence-serial:
 evidence-device-info: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --output $(EVIDENCE_DIR)/device-info.json
+
+evidence-usb-live-smoke: require-evidence-serial
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --port $(EVIDENCE_PORT) --output $(EVIDENCE_DIR)/usb-live-smoke.json
 
 evidence-touch-rerun-preflight: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
