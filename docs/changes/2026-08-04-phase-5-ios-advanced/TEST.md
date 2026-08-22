@@ -60,6 +60,13 @@ startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
 
+Native-input offline coverage also includes key-release modifier policy: an
+explicit key-up uses the release-time modifier mask supplied by SwiftUI, while
+session/focus cleanup sends zero modifiers for forced key-up events. The
+`VibeScreenAppUnitTests` Xcode target covers the `StreamViewModel` envelope
+path for Shift+A release ordering; this remains simulator/unit-test evidence
+only and does not close the real iOS native-input behavior gate.
+
 Project metadata also passes:
 
 ```text

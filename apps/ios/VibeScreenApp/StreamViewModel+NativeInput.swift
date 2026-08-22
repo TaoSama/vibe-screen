@@ -84,11 +84,15 @@ extension StreamViewModel {
                 ) != nil
             }
         } else {
+            guard let wireModifierMask = NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+                standardModifierMask: standardModifierMask,
+                standardByteNegotiated: negotiatedCapabilities.contains(.usbHidModifierByte)
+            ) else { return false }
             accepted = nextState.enqueueRelease(usbHIDUsage: usbHIDUsage) { pressedKey in
                 enqueueKey(
                     usbHIDUsage: pressedKey.usbHIDUsage,
                     pressed: false,
-                    wireModifierMask: pressedKey.wireModifierMask,
+                    wireModifierMask: wireModifierMask,
                     text: ""
                 ) != nil
             }
@@ -109,7 +113,7 @@ extension StreamViewModel {
                 releaseTicket = enqueueKey(
                     usbHIDUsage: pressedKey.usbHIDUsage,
                     pressed: false,
-                    wireModifierMask: pressedKey.wireModifierMask,
+                    wireModifierMask: NativeKeyReleaseModifierPolicy.wireMaskForCleanupRelease,
                     text: "",
                     reportErrors: reportErrors
                 )

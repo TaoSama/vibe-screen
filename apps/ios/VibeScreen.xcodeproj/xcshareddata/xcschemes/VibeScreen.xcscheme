@@ -12,6 +12,9 @@
       <TestableReference skipped="NO">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B60000000000000000000001" BuildableName="VibeScreenAppTests.xctest" BlueprintName="VibeScreenAppTests" ReferencedContainer="container:VibeScreen.xcodeproj"/>
       </TestableReference>
+      <TestableReference skipped="NO">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="C60000000000000000000001" BuildableName="VibeScreenAppUnitTests.xctest" BlueprintName="VibeScreenAppUnitTests" ReferencedContainer="container:VibeScreen.xcodeproj"/>
+      </TestableReference>
     </Testables>
   </TestAction>
   <LaunchAction buildConfiguration="Debug" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
