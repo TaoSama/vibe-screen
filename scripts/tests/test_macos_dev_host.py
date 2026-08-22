@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import plistlib
 import sqlite3
 import subprocess
@@ -241,6 +242,141 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             Path("TCC.db"),
             expected_sign_identity="Vibe Screen Dev",
         )
+
+    def test_parse_entitlements_detects_virtual_hid_boolean(self) -> None:
+        self.assertTrue(
+            macos_dev_host.parse_entitlements(
+                """
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.developer.hid.virtual.device</key>
+  <true/>
+</dict>
+</plist>
+"""
+            ).get(macos_dev_host.VIRTUAL_HID_ENTITLEMENT)
+        )
+        self.assertEqual(macos_dev_host.parse_entitlements("not a plist"), {})
+
+    def test_build_readiness_document_maps_shared_gate_prerequisites(self) -> None:
+        permissions = macos_dev_host.PermissionStatus(
+            database_path=Path("TCC.db"),
+            readable=True,
+            rows=(
+                macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+            ),
+        )
+        document = macos_dev_host.build_readiness_document(
+            self.metadata(),
+            permissions,
+            [],
+            macos_dev_host.ListenerStatus(54321, True, "Vibe Screen 123 user TCP 127.0.0.1:54321 (LISTEN)"),
+            macos_dev_host.EntitlementStatus(
+                macos_dev_host.DEFAULT_INSTALL_PATH,
+                False,
+                {},
+                "",
+            ),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertTrue(document["can_start_host_rss_gate"])
+        self.assertTrue(document["can_start_trusted_lan_gate"])
+        self.assertTrue(document["can_start_native_hid_gate"])
+        self.assertTrue(document["can_start_stylus_gate"])
+        self.assertTrue(document["can_start_hardware_keyboard_gate"])
+        self.assertTrue(document["can_start_headless_login_gate"])
+        self.assertFalse(document["can_start_controller_runtime_gate"])
+        self.assertEqual(document["virtual_hid_status"], "blocked")
+        self.assertIn("Host is missing com.apple.developer.hid.virtual.device entitlement", document["blockers"])
+
+    def test_build_readiness_document_blocks_all_start_flags_when_signing_tcc_missing(self) -> None:
+        document = macos_dev_host.build_readiness_document(
+            None,
+            macos_dev_host.missing_permission_status("not inspected"),
+            ["codesign identity missing"],
+            macos_dev_host.ListenerStatus(54321, True, "listener"),
+            macos_dev_host.EntitlementStatus(
+                macos_dev_host.DEFAULT_INSTALL_PATH,
+                True,
+                {macos_dev_host.VIRTUAL_HID_ENTITLEMENT: True},
+                "",
+            ),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertEqual(document["signing_tcc_status"], "blocked")
+        self.assertFalse(document["can_start_host_rss_gate"])
+        self.assertFalse(document["can_start_controller_runtime_gate"])
+        self.assertFalse(document["can_start_stylus_gate"])
+        self.assertFalse(document["can_start_hardware_keyboard_gate"])
+        self.assertIsNone(document["host"]["identity"])
+
+    def test_inspect_listener_reports_missing_listener_without_raising(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run",
+            side_effect=subprocess.CalledProcessError(1, ["lsof"], output=""),
+        ):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertFalse(status.observed)
+        self.assertEqual(status.port, 54321)
+        self.assertEqual(status.error, "listener not observed")
+
+    def test_readiness_command_writes_blocked_json_when_identity_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Missing Dev",
+                tcc_db=Path("TCC.db"),
+                report=root / "host.txt",
+                json_output=root / "host.json",
+                port=54321,
+            )
+            with (
+                mock.patch.object(
+                    macos_dev_host.package_macos,
+                    "resolve_sign_identity",
+                    side_effect=SystemExit("missing identity"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    side_effect=SystemExit("Host bundle not found"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(54321, False, "", "listener not observed"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        macos_dev_host.DEFAULT_INSTALL_PATH,
+                        False,
+                        {},
+                        "Host bundle not found",
+                        "Host bundle not found",
+                    ),
+                ),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            document = json.loads(args.json_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 2)
+        self.assertEqual(document["status"], "blocked")
+        self.assertIn("missing identity", "\n".join(document["blockers"]))
+        self.assertIn("Host bundle not found", "\n".join(document["blockers"]))
 
     @staticmethod
     def metadata(

@@ -76,10 +76,12 @@ serial `EP0110PZ0B9110300B`.
    battery, and boot state. Label the run only as Nubia P0110 / pacific.
 3. Confirm the Android device has a `wlan0` IPv4 address and can route to the
    Mac LAN IPv4 from step 1 before starting the Host.
-4. Verify `scripts/macos_dev_host.py preflight` passes for a current-source Host
-   bundle installed at `/Applications/Vibe Screen.app`. If the `Vibe Screen Dev`
-   signing identity is missing, recreate/select it before generating device
-   acceptance evidence.
+4. Collect shared Host readiness with
+   `make baseline-macos-host-readiness EVIDENCE_DIR="$RUN_DIR"`. The
+   resulting `host-readiness.json` must have `can_start_trusted_lan_gate=true`
+   before LAN pairing starts. If the `Vibe Screen Dev` signing identity, TCC
+   grants, or listener are missing, keep the JSON as blocked readiness evidence
+   and do not generate device acceptance evidence.
 5. Build/install the matching Android debug APK if needed. Do not clear app data
    unless the run explicitly records why the previous pairing state was invalid.
 6. Start the macOS Host in Wireless mode on a trusted private LAN. Retain
