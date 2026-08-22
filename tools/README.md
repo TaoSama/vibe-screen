@@ -331,12 +331,15 @@ The target consumes `macos-hardware-compatibility.json` and writes
 `macos-hardware-compatibility-gate.json`. A `pass` closes only the exact row
 recorded in the input: CPU architecture, Mac model, macOS build, display
 topology, transport, Android counterpart, Host build/signing/TCC state, capture
-backend, and retained artifacts. Missing row identity, packaged Host launch,
-Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`;
-missing runtime probes are `insufficient`. Marking CI-only evidence or
-extrapolating Apple silicon, OS-version, display-topology, or virtual-display
-claims across rows is `failed`. The collection checklist is in
-`docs/runbook/macos-host-compatibility.md`.
+backend, and retained artifacts. Missing row identity, clean 40-character
+repository commit, packaged Host launch, Protocol v1 stream, artifact retention,
+or exact-row scoping is `blocked`; missing runtime probes are `insufficient`.
+Marking CI-only evidence, extrapolating Apple silicon, OS-version,
+display-topology, capture-backend, or virtual-display claims across rows, or
+recording contradictory capture backend results is `failed`. The Python CLI exits
+`0` only for `pass`, `1` for `blocked` or `insufficient`, and `2` for `failed`;
+Make reports any non-pass verdict as target failure after writing the summary.
+The collection checklist is in `docs/runbook/macos-host-compatibility.md`.
 
 ## Latency evidence
 

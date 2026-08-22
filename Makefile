@@ -235,4 +235,4 @@ ios-current-base-gate:
 
 macos-hardware-compatibility-gate:
 	@test -f "$(EVIDENCE_DIR)/macos-hardware-compatibility.json" || (echo "error: collect $(EVIDENCE_DIR)/macos-hardware-compatibility.json before macos-hardware-compatibility-gate" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.macos_hardware_compatibility $(EVIDENCE_DIR)/macos-hardware-compatibility.json --output $(EVIDENCE_DIR)/macos-hardware-compatibility-gate.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.macos_hardware_compatibility "$(EVIDENCE_DIR)/macos-hardware-compatibility.json" --evidence-dir "$(EVIDENCE_DIR)" --output "$(EVIDENCE_DIR)/macos-hardware-compatibility-gate.json"

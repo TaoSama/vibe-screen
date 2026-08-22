@@ -30,9 +30,11 @@ Define one matrix row with these dimensions before running the gate:
 - Exact macOS version and build.
 - Display topology: `built_in`, `single_external`, `multi_display`,
   `dummy_or_headless`, or `screen_sharing`.
-- Capture backend observed: ScreenCaptureKit, CGDisplayStream fallback, private
-  virtual display path, current-main fallback, or explicit unavailable result.
-- VideoToolbox encoder path for H.264 and HEVC, or explicit unavailable result.
+- Capture backend observed: `screencapturekit`, `cgdisplaystream_fallback`,
+  `current_main_fallback`, or `unavailable`, with first-frame or terminal-failure
+  evidence.
+- VideoToolbox encoder path: `h264_hevc_available`, `h264_only`, `hevc_only`,
+  or `unavailable`.
 - Transport: USB or trusted LAN.
 - Android counterpart identity used to prove a real Protocol v1 stream.
 
@@ -99,11 +101,14 @@ Summarize the row with:
 make macos-hardware-compatibility-gate EVIDENCE_DIR=<evidence-dir>
 ```
 
-The target reads `<evidence-dir>/macos-hardware-compatibility.json` and writes
-`<evidence-dir>/macos-hardware-compatibility-gate.json`. It exits successfully
-after writing any well-formed summary; consumers must check
-`verdict=pass` and `can_close_macos_host_compatibility_row=true` before treating
-the row as accepted.
+The target reads `<evidence-dir>/macos-hardware-compatibility.json`, verifies
+listed artifacts relative to that directory, and writes
+`<evidence-dir>/macos-hardware-compatibility-gate.json`. The underlying Python
+CLI exits `0` for `pass`, `1` for `blocked` or `insufficient`, and `2` for
+`failed` invalid extrapolation claims; Make reports any non-pass result as a
+failed target while still leaving the summary JSON behind. Treat the row as
+accepted only when the summary contains `verdict=pass` and
+`can_close_macos_host_compatibility_row=true`.
 
 ## Gate input
 
@@ -114,6 +119,8 @@ artifact exists:
 {
   "owner": "Vibe Screen core team / macOS Host maintainer",
   "implementation_path": "support as accepted for this exact row",
+  "repository_commit": "<40-character hexadecimal git commit>",
+  "repository_dirty_state": "clean",
   "cpu_architecture": "apple_silicon",
   "host_model_identifier": "Mac14,10",
   "host_cpu_name": "Apple M2 Pro",
@@ -123,9 +130,14 @@ artifact exists:
   "swift_version": "Swift 6.x",
   "host_build_identity": "Vibe Screen Dev, bundle id, SHA-256, signing identity",
   "display_topology": "built_in",
-  "capture_backend": "ScreenCaptureKit",
+  "capture_backend": "screencapturekit",
+  "screen_capturekit_result": "selected_display_first_frame",
+  "cgdisplaystream_result": "not_used",
+  "videotoolbox_result": "h264_hevc_available",
+  "virtual_display_result": "created_online_captured",
+  "mirror_result": "current_main_fallback",
   "stream_transport": "usb",
-  "android_counterpart": "manufacturer/model/codename/Android build",
+  "android_counterpart": "manufacturer/model/codename/Android build/SDK",
   "compatibility_scope": "exact row only",
   "owner_recorded": true,
   "implementation_path_recorded": true,
@@ -154,7 +166,11 @@ artifact exists:
   "claims_intel_from_apple_silicon": false,
   "claims_os_range_from_single_build": false,
   "claims_display_topology_from_different_setup": false,
+  "claims_screencapturekit_from_cgdisplaystream": false,
   "claims_virtual_display_without_result": false,
+  "claims_virtual_display_from_symbol_probe": false,
+  "claims_virtual_display_from_current_main_fallback": false,
+  "claims_dummy_headless_from_attached_monitor": false,
   "artifact_paths": ["host-identity.txt", "host.log"],
   "blocking_notes": [],
   "notes": ""
@@ -162,11 +178,15 @@ artifact exists:
 ```
 
 Missing observations default to `false`. If any `claims_*` or `ci_runner_only`
-field is `true`, the summary is `failed` because the evidence attempts to close
-a row from another environment. Missing owner, implementation path, Host
-identity, architecture, OS build, topology, automated macOS checks, packaged
-launch, Protocol v1 stream, artifact retention, or exact-row scoping is
-`blocked`. Other missing runtime probes are `insufficient`.
+field is `true`, or the capture backend contradicts the recorded first-frame or
+fallback result, the summary is `failed` because the evidence attempts to close
+a row from another environment or implementation path. Missing owner,
+implementation path, a clean 40-character repository commit, Host identity,
+architecture, OS build, topology, automated macOS checks, packaged launch,
+Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`. Other
+missing runtime probes are `insufficient`. Artifact paths must be existing
+non-empty relative paths under the evidence directory; absolute paths, `..`
+escapes, or stdin input without `--evidence-dir` keep the row blocked.
 
 ## Reporting rules
 

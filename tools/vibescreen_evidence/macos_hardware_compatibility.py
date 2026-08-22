@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -29,6 +30,43 @@ DISPLAY_TOPOLOGIES = frozenset((
     "dummy_or_headless",
     "screen_sharing",
 ))
+TRANSPORTS = frozenset(("usb", "lan"))
+CAPTURE_BACKENDS = frozenset((
+    "screencapturekit",
+    "cgdisplaystream_fallback",
+    "current_main_fallback",
+    "unavailable",
+))
+SCREEN_CAPTUREKIT_RESULTS = frozenset((
+    "selected_display_first_frame",
+    "unavailable_fallback_used",
+    "unavailable_terminal",
+))
+CGDISPLAYSTREAM_RESULTS = frozenset((
+    "fallback_first_frame",
+    "not_used",
+    "unavailable_terminal",
+))
+VIRTUAL_DISPLAY_RESULTS = frozenset((
+    "created_online_captured",
+    "fallback_current_main",
+    "unavailable",
+    "not_applicable",
+))
+MIRROR_RESULTS = frozenset((
+    "hardware_mirror",
+    "current_main_fallback",
+    "unavailable",
+    "not_applicable",
+))
+VIDEOTOOLBOX_RESULTS = frozenset((
+    "h264_hevc_available",
+    "h264_only",
+    "hevc_only",
+    "unavailable",
+))
+REPOSITORY_DIRTY_STATES = frozenset(("clean", "dirty"))
+COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 REQUIRED_FIELDS = (
     ("owner_recorded", "record the macOS Host compatibility gate owner for this row"),
@@ -59,6 +97,7 @@ REQUIRED_FIELDS = (
 BLOCKING_FIELDS = frozenset((
     "owner_recorded",
     "implementation_path_recorded",
+    "repository_commit_recorded",
     "host_model_recorded",
     "cpu_architecture_recorded",
     "macos_version_build_recorded",
@@ -75,7 +114,11 @@ INVALID_CLAIM_FIELDS = (
     ("claims_intel_from_apple_silicon", "Intel compatibility cannot be inferred from Apple silicon evidence"),
     ("claims_os_range_from_single_build", "a single macOS build cannot prove the whole macOS 13+ range"),
     ("claims_display_topology_from_different_setup", "display topology claims cannot be inferred from another monitor/dummy/headless setup"),
+    ("claims_screencapturekit_from_cgdisplaystream", "ScreenCaptureKit compatibility cannot be inferred from a CGDisplayStream fallback run"),
     ("claims_virtual_display_without_result", "private virtual-display support needs a success result or explicit fallback/unavailable result"),
+    ("claims_virtual_display_from_symbol_probe", "runtime symbol presence is diagnostic only and cannot prove CGVirtualDisplay create/apply/online/capture behavior"),
+    ("claims_virtual_display_from_current_main_fallback", "current-main fallback evidence cannot be reported as private virtual-display support"),
+    ("claims_dummy_headless_from_attached_monitor", "dummy/headless compatibility cannot be inferred from an attached-monitor run"),
 )
 
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
@@ -83,6 +126,8 @@ INVALID_BOOLEAN_FIELDS = tuple(field for field, _ in INVALID_CLAIM_FIELDS)
 REQUIRED_METADATA_FIELDS = (
     ("owner", "owner_recorded", "record a non-empty macOS Host compatibility gate owner"),
     ("implementation_path", "implementation_path_recorded", "record a non-empty implementation path or follow-up path"),
+    ("repository_commit", "repository_commit_recorded", "record the exact repository commit used for the row"),
+    ("repository_dirty_state", "repository_commit_recorded", "record whether the repository was clean or dirty"),
     ("host_model_identifier", "host_model_recorded", "record a non-empty Mac model identifier"),
     ("cpu_architecture", "cpu_architecture_recorded", "record apple_silicon or intel CPU architecture"),
     ("macos_version", "macos_version_build_recorded", "record a non-empty macOS product version"),
@@ -92,6 +137,11 @@ REQUIRED_METADATA_FIELDS = (
     ("host_build_identity", "host_build_identity_recorded", "record a non-empty Host build identity"),
     ("display_topology", "display_topology_recorded", "record a concrete display topology"),
     ("capture_backend", "capture_backend_recorded", "record a non-empty capture backend or unavailable result"),
+    ("screen_capturekit_result", "capture_backend_recorded", "record ScreenCaptureKit first-frame, fallback, or terminal-unavailable result"),
+    ("cgdisplaystream_result", "capture_backend_recorded", "record CGDisplayStream fallback first-frame, not-used, or terminal-unavailable result"),
+    ("videotoolbox_result", "video_encoder_path_recorded", "record VideoToolbox H.264/HEVC availability or unavailable result"),
+    ("virtual_display_result", "virtual_display_or_fallback_recorded", "record CGVirtualDisplay create/apply/online/capture success or explicit fallback/unavailable result"),
+    ("mirror_result", "mirror_or_fallback_recorded", "record hardware mirror success or explicit current-main fallback/unavailable result"),
     ("stream_transport", "protocol_v1_stream_observed", "record a non-empty stream transport"),
     ("android_counterpart", "protocol_v1_stream_observed", "record the Android counterpart used for the stream"),
     ("compatibility_scope", "claim_scoped_to_exact_row", "record a non-empty exact-row compatibility scope"),
@@ -176,6 +226,102 @@ def _display_topology(record: dict[str, Any]) -> str:
     return value
 
 
+def _enum_value(record: dict[str, Any], field: str, allowed: frozenset[str]) -> str:
+    value = _string_value(record, field)
+    if value and value not in allowed:
+        raise MacOSHardwareCompatibilityError(
+            f"{field} must be one of {sorted(allowed)}"
+        )
+    return value
+
+
+def _artifact_path_report(
+    artifact_paths: Sequence[str], evidence_dir: Path | None
+) -> dict[str, Any]:
+    if evidence_dir is None:
+        return {
+            "enabled": False,
+            "evidence_dir": "",
+            "missing_paths": [],
+            "invalid_paths": [],
+            "empty_paths": [],
+        }
+
+    resolved_evidence_dir = evidence_dir.resolve()
+    missing_paths: list[str] = []
+    invalid_paths: list[str] = []
+    empty_paths: list[str] = []
+    for artifact_path in artifact_paths:
+        path = Path(artifact_path)
+        if path.is_absolute():
+            invalid_paths.append(artifact_path)
+            continue
+        resolved_path = (resolved_evidence_dir / path).resolve()
+        try:
+            resolved_path.relative_to(resolved_evidence_dir)
+        except ValueError:
+            invalid_paths.append(artifact_path)
+            continue
+        if not resolved_path.exists():
+            missing_paths.append(artifact_path)
+        elif resolved_path.is_file() and resolved_path.stat().st_size == 0:
+            empty_paths.append(artifact_path)
+        elif resolved_path.is_dir() and not any(resolved_path.iterdir()):
+            empty_paths.append(artifact_path)
+    return {
+        "enabled": True,
+        "evidence_dir": str(resolved_evidence_dir),
+        "missing_paths": missing_paths,
+        "invalid_paths": invalid_paths,
+        "empty_paths": empty_paths,
+    }
+
+
+def _capture_backend_failures(record: dict[str, Any]) -> list[dict[str, str]]:
+    capture_backend = _enum_value(record, "capture_backend", CAPTURE_BACKENDS)
+    screen_capturekit_result = _enum_value(
+        record, "screen_capturekit_result", SCREEN_CAPTUREKIT_RESULTS
+    )
+    cgdisplaystream_result = _enum_value(
+        record, "cgdisplaystream_result", CGDISPLAYSTREAM_RESULTS
+    )
+    virtual_display_result = _enum_value(
+        record, "virtual_display_result", VIRTUAL_DISPLAY_RESULTS
+    )
+    mirror_result = _enum_value(record, "mirror_result", MIRROR_RESULTS)
+    failures: list[dict[str, str]] = []
+
+    def add(reason: str) -> None:
+        failures.append({"field": "capture_backend_consistency", "reason": reason})
+
+    if capture_backend == "screencapturekit":
+        if screen_capturekit_result != "selected_display_first_frame":
+            add("ScreenCaptureKit backend requires selected-display first-frame evidence")
+        if cgdisplaystream_result != "not_used":
+            add("ScreenCaptureKit backend cannot also report CGDisplayStream fallback use")
+    elif capture_backend == "cgdisplaystream_fallback":
+        if screen_capturekit_result != "unavailable_fallback_used":
+            add("CGDisplayStream fallback requires ScreenCaptureKit fallback evidence")
+        if cgdisplaystream_result != "fallback_first_frame":
+            add("CGDisplayStream fallback requires fallback first-frame evidence")
+    elif capture_backend == "current_main_fallback":
+        if screen_capturekit_result != "selected_display_first_frame":
+            add("current-main fallback requires first-frame capture of the fallback display")
+        if cgdisplaystream_result == "fallback_first_frame":
+            add("current-main fallback cannot also report CGDisplayStream fallback use")
+        if (
+            virtual_display_result != "fallback_current_main"
+            and mirror_result != "current_main_fallback"
+        ):
+            add("current-main fallback must be tied to virtual-display or mirror fallback evidence")
+    elif capture_backend == "unavailable":
+        if screen_capturekit_result == "selected_display_first_frame":
+            add("unavailable capture backend cannot report a ScreenCaptureKit first frame")
+        if cgdisplaystream_result == "fallback_first_frame":
+            add("unavailable capture backend cannot report a CGDisplayStream first frame")
+    return failures
+
+
 def _append_missing_once(
     missing: list[dict[str, str]], field: str, requirement: str
 ) -> None:
@@ -183,7 +329,9 @@ def _append_missing_once(
         missing.append({"field": field, "requirement": requirement})
 
 
-def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
+def summarize(
+    record: dict[str, Any], *, run_id: str | None = None, evidence_dir: Path | None = None
+) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     invalid_claim_values = {
         field: _bool_value(record, field) for field in INVALID_BOOLEAN_FIELDS
@@ -197,11 +345,48 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
     for metadata_field, observation_field, requirement in REQUIRED_METADATA_FIELDS:
         if not _string_value(record, metadata_field).strip():
             _append_missing_once(missing, observation_field, requirement)
+    repository_commit = _string_value(record, "repository_commit")
+    repository_dirty_state = _enum_value(
+        record, "repository_dirty_state", REPOSITORY_DIRTY_STATES
+    )
+    if repository_commit and COMMIT_SHA_RE.fullmatch(repository_commit) is None:
+        _append_missing_once(
+            missing,
+            "repository_commit_recorded",
+            "record repository_commit as a 40-character hexadecimal git commit",
+        )
+    if repository_dirty_state == "dirty":
+        _append_missing_once(
+            missing,
+            "repository_commit_recorded",
+            "rerun the compatibility row from a clean repository state before closing it",
+        )
     if field_values["artifacts_retained"] and not artifact_paths:
         _append_missing_once(
             missing,
             "artifacts_retained",
             "record at least one retained artifact path for this compatibility row",
+        )
+    artifact_file_check = _artifact_path_report(artifact_paths, evidence_dir)
+    if field_values["artifacts_retained"] and not artifact_file_check["enabled"]:
+        _append_missing_once(
+            missing,
+            "artifacts_retained",
+            "provide --evidence-dir or a file input so retained artifacts can be verified",
+        )
+    if (
+        field_values["artifacts_retained"]
+        and artifact_file_check["enabled"]
+        and (
+            artifact_file_check["missing_paths"]
+            or artifact_file_check["invalid_paths"]
+            or artifact_file_check["empty_paths"]
+        )
+    ):
+        _append_missing_once(
+            missing,
+            "artifacts_retained",
+            "retain artifact paths as existing relative files inside the evidence directory",
         )
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
@@ -211,6 +396,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         for field, reason in INVALID_CLAIM_FIELDS
         if invalid_claim_values[field]
     ]
+    invalid_claims.extend(_capture_backend_failures(record))
 
     if invalid_claims:
         verdict = STATUS_FAILED
@@ -233,6 +419,8 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "row_scope": {
             "owner": _string_value(record, "owner"),
             "implementation_path": _string_value(record, "implementation_path"),
+            "repository_commit": repository_commit,
+            "repository_dirty_state": repository_dirty_state,
             "cpu_architecture": _cpu_architecture(record),
             "host_model_identifier": _string_value(record, "host_model_identifier"),
             "host_cpu_name": _string_value(record, "host_cpu_name"),
@@ -242,8 +430,21 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
             "swift_version": _string_value(record, "swift_version"),
             "host_build_identity": _string_value(record, "host_build_identity"),
             "display_topology": _display_topology(record),
-            "capture_backend": _string_value(record, "capture_backend"),
-            "stream_transport": _string_value(record, "stream_transport"),
+            "capture_backend": _enum_value(record, "capture_backend", CAPTURE_BACKENDS),
+            "screen_capturekit_result": _enum_value(
+                record, "screen_capturekit_result", SCREEN_CAPTUREKIT_RESULTS
+            ),
+            "cgdisplaystream_result": _enum_value(
+                record, "cgdisplaystream_result", CGDISPLAYSTREAM_RESULTS
+            ),
+            "videotoolbox_result": _enum_value(
+                record, "videotoolbox_result", VIDEOTOOLBOX_RESULTS
+            ),
+            "virtual_display_result": _enum_value(
+                record, "virtual_display_result", VIRTUAL_DISPLAY_RESULTS
+            ),
+            "mirror_result": _enum_value(record, "mirror_result", MIRROR_RESULTS),
+            "stream_transport": _enum_value(record, "stream_transport", TRANSPORTS),
             "android_counterpart": _string_value(record, "android_counterpart"),
             "compatibility_scope": _string_value(record, "compatibility_scope"),
         },
@@ -253,10 +454,19 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "missing_requirements": missing,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": artifact_paths,
+        "artifact_file_check": artifact_file_check,
         "blocking_notes": _string_list(record, "blocking_notes"),
         "notes": _string_value(record, "notes"),
     }
     return summary
+
+
+def _exit_code_for_verdict(verdict: str) -> int:
+    if verdict == STATUS_PASS:
+        return 0
+    if verdict == STATUS_FAILED:
+        return 2
+    return 1
 
 
 def _write_summary(summary: dict[str, Any], output: TextIO) -> None:
@@ -276,6 +486,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("input", help="macOS compatibility evidence .json file, or - for stdin")
     parser.add_argument("--output", help="output summary JSON file (default: stdout)")
     parser.add_argument("--run-id", help="identifier shared with the evidence bundle")
+    parser.add_argument(
+        "--evidence-dir",
+        help=(
+            "directory used to verify artifact_paths. Defaults to the input file's "
+            "parent for file input; disabled for stdin unless set explicitly"
+        ),
+    )
     return parser
 
 
@@ -284,10 +501,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.input == "-":
             record = load_record(sys.stdin)
+            evidence_dir = Path(args.evidence_dir) if args.evidence_dir else None
         else:
-            with Path(args.input).open("r", encoding="utf-8") as stream:
+            input_path = Path(args.input)
+            with input_path.open("r", encoding="utf-8") as stream:
                 record = load_record(stream)
-        summary = summarize(record, run_id=args.run_id)
+            evidence_dir = Path(args.evidence_dir) if args.evidence_dir else input_path.parent
+        summary = summarize(record, run_id=args.run_id, evidence_dir=evidence_dir)
         if args.output:
             output_path = Path(args.output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,7 +518,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (MacOSHardwareCompatibilityError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    return 0
+    return _exit_code_for_verdict(summary["verdict"])
 
 
 if __name__ == "__main__":
