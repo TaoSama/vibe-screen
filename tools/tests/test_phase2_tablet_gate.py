@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from typing import Any
 
 from vibescreen_evidence.phase2_tablet_gate import derive_gate, main
 
@@ -243,28 +244,31 @@ def write_manifest(
     directory: Path,
     *,
     device_class: str = "physical_8_9_inch_tablet",
+    device_identity: dict[str, Any] | None = None,
+    tablet_size_inches: str | None = "8.8",
     thermal_limit_status: int = 2,
     battery_temperature_limit_celsius: float = 45.0,
     maximum_net_battery_drain_percent: int = 5,
 ) -> Path:
+    identity = device_identity or {
+        "adb_serial": "tablet-serial",
+        "device_serial": "tablet-serial",
+        "manufacturer": "example",
+        "model": "Tab 8 Pro",
+        "codename": "tab8pro",
+        "android_release": "16",
+        "sdk": "36",
+        "build_fingerprint": "example/tab8pro/test",
+        "abi": "arm64-v8a",
+    }
     manifest = {
         "schema_version": "vibescreen.evidence/v1",
         "kind": "phase2_tablet_sustained_use_manifest",
         "run_id": "phase2-run",
         "device": {
-            "identity": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
-                "manufacturer": "nubia",
-                "model": "P0110",
-                "codename": "pacific",
-                "android_release": "16",
-                "sdk": "36",
-                "build_fingerprint": "nubia/pacific/test",
-                "abi": "arm64-v8a",
-            },
+            "identity": identity,
             "device_class": device_class,
-            "tablet_size_inches": "8.8" if device_class == "physical_8_9_inch_tablet" else None,
+            "tablet_size_inches": tablet_size_inches,
         },
         "physical_setup": {
             "stand_setup": "desktop stand, portrait",
@@ -281,10 +285,29 @@ def write_manifest(
             "battery_temperature_limit_celsius": battery_temperature_limit_celsius,
             "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
         },
+        "gate_owners": {
+            "stand_mounted_charging": "phase2-device-environment",
+            "thermal_power_sampling": "phase2-device-environment",
+            "posture_and_mount": "phase2-device-environment",
+            "eight_hour_sustained_stream": "phase2-tablet-gate",
+        },
     }
     path = directory / "phase2-tablet-manifest.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
+
+
+P0110_IDENTITY = {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "device_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "build_fingerprint": "nubia/pacific/test",
+    "abi": "arm64-v8a",
+}
 
 
 def write_evidence_artifacts(directory: Path) -> None:
@@ -344,12 +367,20 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["verdict"], "pass")
         self.assertEqual(gate["reasons"], [])
         self.assertTrue(gate["evidence_package"]["passed"])
+        self.assertTrue(
+            gate["evidence_package"]["gate_owners"]["stand_mounted_charging"]["passed"]
+        )
 
     def test_android_substitute_package_stays_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             report_path = write_report(directory)
-            write_manifest(directory, device_class="android_substitute")
+            write_manifest(
+                directory,
+                device_class="android_substitute",
+                device_identity=P0110_IDENTITY,
+                tablet_size_inches=None,
+            )
             write_evidence_artifacts(directory)
             gate = derive_gate(
                 report_path,
@@ -360,6 +391,48 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["verdict"], "insufficient")
         self.assertIn(
             "insufficient evidence package: manifest.physical_8_9_inch_tablet",
+            gate["reasons"],
+        )
+
+    def test_p0110_cannot_be_mislabeled_as_physical_tablet(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory, device_identity=P0110_IDENTITY)
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertFalse(
+            gate["evidence_package"]["manifest"]["not_nubia_p0110_substitute"]["passed"]
+        )
+        self.assertIn(
+            "insufficient evidence package: manifest.not_nubia_p0110_substitute",
+            gate["reasons"],
+        )
+
+    def test_physical_tablet_requires_size_in_range(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory, tablet_size_inches=None)
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertFalse(
+            gate["evidence_package"]["manifest"]["tablet_size_inches"]["passed"]
+        )
+        self.assertIn(
+            "insufficient evidence package: manifest.tablet_size_inches",
             gate["reasons"],
         )
 
@@ -379,6 +452,30 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["verdict"], "insufficient")
         self.assertIn(
             "insufficient evidence package: artifact.adb_power_after",
+            gate["reasons"],
+        )
+
+    def test_missing_gate_owner_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            manifest_path = write_manifest(directory)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["gate_owners"].pop("stand_mounted_charging")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=manifest_path,
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertFalse(
+            gate["evidence_package"]["gate_owners"]["stand_mounted_charging"]["passed"]
+        )
+        self.assertIn(
+            "insufficient evidence package: gate_owner.stand_mounted_charging",
             gate["reasons"],
         )
 

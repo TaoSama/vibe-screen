@@ -248,3 +248,30 @@ physical 8-9 inch tablet evidence. Stand-mounted charging stability, controlled
 thermal-load behavior, power stability, background/transport recovery, login
 startup, headless Mac recovery, and the eight-hour physical-tablet sample series
 remain open.
+
+## 2026-08-22 Phase 2 stand-mounted charging gate owner readiness
+
+This follow-up makes the Phase 2 stand-mounted charging owner explicit in the
+pre-run evidence manifest and auditable in `phase2-tablet-gate`. New manifest
+runs must provide `PHASE2_GATE_OWNERS`, including owners for
+`stand_mounted_charging`, `thermal_power_sampling`, `posture_and_mount`, and
+`eight_hour_sustained_stream`. The gate reports each owner under
+`evidence_package.gate_owners` and keeps the evidence `insufficient` when any
+owner is missing. The follow-up also makes `gate_owners` schema-required for
+new manifests, requires physical-tablet manifests to declare an 8.0-9.0 inch
+size, and rejects Nubia P0110/pacific when a hand-written manifest mislabels it
+as `physical_8_9_inch_tablet`.
+
+Validation performed for this tooling/readiness update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_manifest tools.tests.test_phase2_tablet_gate tools.tests.test_schemas -v`
+  - 31 tests passed.
+- `make evidence-tools-test`
+  - 221 tests passed.
+
+No ADB command or new Android device run was performed for this update. The
+existing Nubia P0110/pacific records remain Android substitute evidence only;
+they are useful for readiness and blocked-preflight documentation, but they do
+not close the physical 8-9 inch tablet, stand-mounted charging, thermal-load,
+power, recovery, login-startup, headless Mac, or eight-hour sustained-stream
+gates.

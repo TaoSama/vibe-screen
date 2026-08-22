@@ -11,7 +11,12 @@ from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
 from .phase2_tablet_manifest import KIND as MANIFEST_KIND
+from .phase2_tablet_manifest import MAXIMUM_TABLET_SIZE_INCHES
 from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS as MANIFEST_MINIMUM_DURATION_SECONDS
+from .phase2_tablet_manifest import MINIMUM_TABLET_SIZE_INCHES
+from .phase2_tablet_manifest import NUBIA_P0110_CODENAME
+from .phase2_tablet_manifest import NUBIA_P0110_MODEL
+from .phase2_tablet_manifest import PHYSICAL_TABLET_DEVICE_CLASS
 from .soak_public_report import EvidenceInputError, read_json as _read_json
 from .soak_report import SOAK_REPORT_KIND
 
@@ -34,6 +39,24 @@ MAXIMUM_HOST_RSS_SECOND_HALF_SLOPE_KIB_PER_MINUTE = 40.0
 MAXIMUM_HOST_RSS_SECOND_HALF_DRIFT_KIB = 8 * 1024.0
 ANDROID_BATTERY_STATUS_CHARGING = 2
 ANDROID_BATTERY_STATUS_FULL = 5
+REQUIRED_GATE_OWNERS: tuple[tuple[str, str], ...] = (
+    (
+        "stand_mounted_charging",
+        "owner for stand-mounted charging stability acceptance",
+    ),
+    (
+        "thermal_power_sampling",
+        "owner for thermal and power sampling acceptance",
+    ),
+    (
+        "posture_and_mount",
+        "owner for stand posture, mount, charger, cable, and ambient setup review",
+    ),
+    (
+        "eight_hour_sustained_stream",
+        "owner for the eight-hour sustained streaming verdict",
+    ),
+)
 
 PHASE2_MANIFEST_NAME = "phase2-tablet-manifest.json"
 REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] = (
@@ -231,6 +254,41 @@ def _boolean_check(passed: bool, expected: str) -> dict[str, Any]:
     return {"passed": passed, "expected": expected}
 
 
+def _gate_owner_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    owners = _manifest_get(manifest, "gate_owners")
+    if not isinstance(owners, dict):
+        owners = {}
+    checks: dict[str, dict[str, Any]] = {}
+    for key, description in REQUIRED_GATE_OWNERS:
+        value = owners.get(key)
+        checks[key] = {
+            "passed": _non_empty_string(value),
+            "owner": value if isinstance(value, str) else None,
+            "expected": f"gate_owners.{key} declares {description}",
+        }
+    return checks
+
+
+def _tablet_size_inches(manifest: dict[str, Any]) -> float | None:
+    value = _manifest_get(manifest, "device", "tablet_size_inches")
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return _finite_number(value)
+
+
+def _is_nubia_p0110_manifest(manifest: dict[str, Any]) -> bool:
+    model = str(_manifest_get(manifest, "device", "identity", "model") or "").strip().lower()
+    codename = str(_manifest_get(manifest, "device", "identity", "codename") or "").strip().lower()
+    return model == NUBIA_P0110_MODEL and codename == NUBIA_P0110_CODENAME
+
+
 def _artifact_check(
     evidence_dir: Path,
     candidates: tuple[str, ...],
@@ -289,8 +347,17 @@ def _evaluate_evidence_package(
             MANIFEST_KIND,
         ),
         "physical_8_9_inch_tablet": _boolean_check(
-            _manifest_get(manifest, "device", "device_class") == "physical_8_9_inch_tablet",
+            _manifest_get(manifest, "device", "device_class") == PHYSICAL_TABLET_DEVICE_CLASS,
             "device.device_class is physical_8_9_inch_tablet",
+        ),
+        "tablet_size_inches": _boolean_check(
+            (size_inches := _tablet_size_inches(manifest)) is not None
+            and MINIMUM_TABLET_SIZE_INCHES <= size_inches <= MAXIMUM_TABLET_SIZE_INCHES,
+            "device.tablet_size_inches is a numeric 8.0..9.0 value",
+        ),
+        "not_nubia_p0110_substitute": _boolean_check(
+            not _is_nubia_p0110_manifest(manifest),
+            "Nubia P0110/pacific cannot close the physical 8-9 inch tablet gate",
         ),
         "stand_setup_declared": _boolean_check(
             _non_empty_string(_manifest_get(manifest, "physical_setup", "stand_setup")),
@@ -348,11 +415,17 @@ def _evaluate_evidence_package(
         name: _artifact_check(evidence_dir, candidates, require_non_empty, artifact_type)
         for name, candidates, require_non_empty, artifact_type in REQUIRED_EVIDENCE_ARTIFACTS
     }
+    gate_owner_checks = _gate_owner_checks(manifest)
     reasons = [
         f"insufficient evidence package: manifest.{name}"
         for name, item in manifest_checks.items()
         if not item["passed"]
     ]
+    reasons.extend(
+        f"insufficient evidence package: gate_owner.{name}"
+        for name, item in gate_owner_checks.items()
+        if not item["passed"]
+    )
     reasons.extend(
         f"insufficient evidence package: artifact.{name}"
         for name, item in artifacts.items()
@@ -365,6 +438,7 @@ def _evaluate_evidence_package(
         "evidence_dir": str(evidence_dir),
         "manifest_document": manifest,
         "manifest": manifest_checks,
+        "gate_owners": gate_owner_checks,
         "artifacts": artifacts,
         "reasons": reasons,
     }
