@@ -1,6 +1,8 @@
 package dev.telemachus.display
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.internet.security.InternetPairingSigner
+import dev.telemachus.display.internet.security.SecurityTranscript
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -27,7 +29,100 @@ data class WakeHostRequestContext(
     val expiresAtUnixSeconds: Long = 0,
     val nonce: ByteString = ByteString.EMPTY,
     val signature: ByteString = ByteString.EMPTY,
+    val sessionId: ByteString = ByteString.EMPTY,
+    val sessionEpoch: Long = 0,
 )
+
+data class WakeHostProof(
+    val deviceId: String,
+    val keyId: String,
+    val issuedAtUnixSeconds: Long,
+    val expiresAtUnixSeconds: Long,
+    val nonce: ByteString,
+    val signature: ByteString,
+)
+
+object WakeHostProofFactory {
+    const val NONCE_BYTES = 16
+    const val MAXIMUM_LIFETIME_SECONDS = 300L
+
+    fun create(
+        signer: InternetPairingSigner,
+        requestId: ByteString,
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString,
+        hostId: String,
+        issuedAtUnixSeconds: Long,
+        expiresAtUnixSeconds: Long,
+        nonce: ByteString,
+        sessionId: ByteString,
+        sessionEpoch: Long,
+    ): WakeHostProof {
+        val identity = signer.publicIdentity
+        require(requestId.size() > 0) { "Wake host request id is required" }
+        require(hostId.isNotBlank()) { "Wake host target host id is required" }
+        require(identity.deviceId.isNotBlank() && identity.keyId.isNotBlank()) { "Paired device identity is required" }
+        require(nonce.size() >= NONCE_BYTES && nonce.toByteArray().any { it != 0.toByte() }) {
+            "Wake host nonce requires at least $NONCE_BYTES non-zero-capable bytes"
+        }
+        require(sessionId.size() > 0 && sessionEpoch > 0) { "Wake host proof requires an active session" }
+        require(issuedAtUnixSeconds > 0 && expiresAtUnixSeconds > issuedAtUnixSeconds) {
+            "Wake host proof requires a bounded validity window"
+        }
+        require(expiresAtUnixSeconds - issuedAtUnixSeconds <= MAXIMUM_LIFETIME_SECONDS) {
+            "Wake host proof validity exceeds $MAXIMUM_LIFETIME_SECONDS seconds"
+        }
+        val digest = proofDigest(
+            requestId = requestId,
+            targetMacAddress = targetMacAddress,
+            secureOnPassword = secureOnPassword,
+            hostId = hostId,
+            deviceId = identity.deviceId,
+            keyId = identity.keyId,
+            issuedAtUnixSeconds = issuedAtUnixSeconds,
+            expiresAtUnixSeconds = expiresAtUnixSeconds,
+            nonce = nonce,
+            sessionId = sessionId,
+            sessionEpoch = sessionEpoch,
+        )
+        return WakeHostProof(
+            deviceId = identity.deviceId,
+            keyId = identity.keyId,
+            issuedAtUnixSeconds = issuedAtUnixSeconds,
+            expiresAtUnixSeconds = expiresAtUnixSeconds,
+            nonce = nonce,
+            signature = ByteString.copyFrom(signer.signTranscriptDigest(digest)),
+        )
+    }
+
+    fun proofDigest(
+        requestId: ByteString,
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString,
+        hostId: String,
+        deviceId: String,
+        keyId: String,
+        issuedAtUnixSeconds: Long,
+        expiresAtUnixSeconds: Long,
+        nonce: ByteString,
+        sessionId: ByteString,
+        sessionEpoch: Long,
+    ): ByteArray =
+        SecurityTranscript.digest(
+            "vibescreen/wake-host-request/v1",
+            requestId.toByteArray(),
+            targetMacAddress.toByteArray(),
+            secureOnPassword.toByteArray(),
+            hostId.toByteArray(Charsets.UTF_8),
+            deviceId.toByteArray(Charsets.UTF_8),
+            keyId.toByteArray(Charsets.UTF_8),
+            SecurityTranscript.uint64(issuedAtUnixSeconds),
+            SecurityTranscript.uint64(expiresAtUnixSeconds),
+            nonce.toByteArray(),
+            sessionId.toByteArray(),
+            SecurityTranscript.uint64(sessionEpoch),
+        )
+}
 
 interface WakeHostPolicy {
     val wakeAllowed: Boolean

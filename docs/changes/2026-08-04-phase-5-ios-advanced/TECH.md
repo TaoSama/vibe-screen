@@ -88,7 +88,9 @@ Negotiation rules:
   gated action catalog/invocation API; UI gesture definitions never enter the
   protocol.
 - **Wake:** only an already paired device may request wake with replay-safe
-  proof. Wake-on-LAN is transport behavior, not authentication.
+  proof. The proof is signed by the paired device identity and bound to the
+  active Protocol v1 session id/epoch; Wake-on-LAN packet emission is transport
+  helper behavior, not authentication. Real sleep/wake acceptance remains open.
 - **Managed devices:** Apple MDM configuration is read locally. The protocol
   carries product restrictions/results, not vendor-specific MDM payloads.
 
@@ -149,7 +151,8 @@ Negotiation rules:
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
   action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
-  produces the standard 102-byte packet only after local authorization/policy.
+  produces the standard 102-byte packet only after paired-identity proof,
+  session binding, short validity, and nonce replay checks pass.
 
 ## Host and security TODO
 
@@ -162,7 +165,7 @@ touch, protocol error, and disconnect. It does not implement or prove advanced
 host behavior. A compatible advanced host still must provide per-client
 resource allocation, multi-display stream IDs, PCM capture, advanced control
 handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
-an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
+real Wake-on-LAN acceptance for the authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
 channels. Shared fixed vectors prove offline record interoperability only. The

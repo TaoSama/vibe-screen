@@ -1667,6 +1667,12 @@ enum ProtocolV1SelfTest {
             wakeRequest.requestID = Data([0x31])
             wakeRequest.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
             wakeRequest.hostID = "host"
+            wakeRequest.deviceID = "paired-device"
+            wakeRequest.keyID = "paired-key"
+            wakeRequest.issuedAtUnixSeconds = 900
+            wakeRequest.expiresAtUnixSeconds = 1_100
+            wakeRequest.nonce = Data(Array(0..<16).map(UInt8.init))
+            wakeRequest.signature = Data([0x30, 0x44])
             let ungatedError = try protocolError(ungated.handleControl(try envelope(
                 id: 4,
                 payload: .wakeHostRequest(wakeRequest)
@@ -1703,8 +1709,24 @@ enum ProtocolV1SelfTest {
                   wakeIntents[0].0.requestID == Data([0x31]),
                   wakeIntents[0].0.targetMACAddress == Data([1, 2, 3, 4, 5, 6]),
                   wakeIntents[0].0.hostID == "host",
+                  wakeIntents[0].0.deviceID == "paired-device",
+                  wakeIntents[0].0.keyID == "paired-key",
+                  wakeIntents[0].0.sessionID == sessionID,
+                  wakeIntents[0].0.sessionEpoch == sessionEpoch,
                   wakeIntents[0].1 == 4 else {
                 failures.append("WakeHostRequest did not forward exactly one wakeHost intent with the expected context")
+                return
+            }
+
+            var missingProofRequest = wakeRequest
+            missingProofRequest.deviceID = ""
+            let missingProofSession = try readyWakeHostSessionForSelfTest()
+            let missingProofError = try protocolError(missingProofSession.handleControl(try envelope(
+                id: 7,
+                payload: .wakeHostRequest(missingProofRequest)
+            ).serializedData()))
+            guard missingProofError.code == .invalidState else {
+                failures.append("WakeHostRequest without paired proof fields was not rejected with invalidState")
                 return
             }
 

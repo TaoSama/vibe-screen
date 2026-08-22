@@ -1302,10 +1302,24 @@ final class ProtocolV1SessionTests: XCTestCase {
                 return context.requestID == Data([0x31])
                     && context.targetMACAddress == Data([1, 2, 3, 4, 5, 6])
                     && context.hostID == "host"
+                    && context.deviceID == "paired-device"
+                    && context.keyID == "paired-key"
+                    && context.sessionID == sessionID
+                    && context.sessionEpoch == sessionEpoch
                     && correlationID == 4
             }
             return false
         })
+
+        var missingProofRequest = wakeHostRequest(hostID: "host")
+        missingProofRequest.deviceID = ""
+        let missingProofSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: missingProofSession.handleControl(
+                try envelope(id: 7, payload: .wakeHostRequest(missingProofRequest)).serializedData()
+            )).code,
+            .invalidState
+        )
 
         request.hostID = ""
         let missingHostSession = try readyWakeHostSession()
@@ -2109,6 +2123,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         request.requestID = Data([0x31])
         request.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
         request.hostID = hostID
+        request.deviceID = "paired-device"
+        request.keyID = "paired-key"
+        request.issuedAtUnixSeconds = 900
+        request.expiresAtUnixSeconds = 1_100
+        request.nonce = Data(Array(0..<16).map(UInt8.init))
+        request.signature = Data([0x30, 0x44])
         return request
     }
 

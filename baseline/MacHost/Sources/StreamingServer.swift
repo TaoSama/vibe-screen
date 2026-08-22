@@ -464,6 +464,7 @@ class StreamingServer: EncodedFrameSink {
     private let telemetry: TelemetryRecording?
     private let wakeHostAuthorizer: any WakeHostAuthorizing
     private let wakeHostPacketSender: any WakeHostPacketSending
+    private let protocolV1HostID: String
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
 
@@ -474,7 +475,8 @@ class StreamingServer: EncodedFrameSink {
         allowPlaintextWirelessLegacyFallback: Bool = false,
         protocolUpgradeGraceMillisecondsOverride: Int? = nil,
         wakeHostAuthorizer: any WakeHostAuthorizing = DenyWakeHostAuthorizer(),
-        wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender()
+        wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender(),
+        protocolV1HostID: String = "macos-host"
     ) {
         self.port = port
         self.mode = mode
@@ -482,6 +484,7 @@ class StreamingServer: EncodedFrameSink {
         self.protocolUpgradeGraceMillisecondsOverride = protocolUpgradeGraceMillisecondsOverride
         self.wakeHostAuthorizer = wakeHostAuthorizer
         self.wakeHostPacketSender = wakeHostPacketSender
+        self.protocolV1HostID = protocolV1HostID
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -2013,7 +2016,7 @@ class StreamingServer: EncodedFrameSink {
             hostCapabilities: hostCapabilities,
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
-            hostID: "macos-host",
+            hostID: protocolV1HostID,
             hostName: Host.current().localizedName ?? "Mac",
             displayID: protocolV1DisplayID,
             displayName: protocolV1DisplayName,
@@ -2673,6 +2676,18 @@ class StreamingServer: EncodedFrameSink {
             return (false, "invalid_mac_address")
         } catch WakeHostRequestError.invalidSecureOnPassword {
             return (false, "invalid_secure_on_password")
+        } catch WakeHostRequestError.invalidHostIdentity {
+            return (false, "invalid_host_identity")
+        } catch WakeHostRequestError.invalidDeviceIdentity {
+            return (false, "unpaired_device")
+        } catch WakeHostRequestError.expiredProof {
+            return (false, "wake_host_proof_expired")
+        } catch WakeHostRequestError.invalidNonce {
+            return (false, "invalid_wake_nonce")
+        } catch WakeHostRequestError.replayedNonce {
+            return (false, "wake_host_replay")
+        } catch WakeHostRequestError.invalidSignature {
+            return (false, "invalid_wake_signature")
         } catch {
             return (false, "wake_packet_send_failed")
         }

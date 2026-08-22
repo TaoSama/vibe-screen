@@ -20,6 +20,7 @@ import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.UpgradeFallbackDecision
 import dev.telemachus.display.protocol.UpgradeProbeOutcome
+import dev.telemachus.display.internet.security.InternetPairingSigner
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.transport.SocketStreamTransportConnection
 import dev.telemachus.display.transport.StreamTransportCandidate
@@ -1451,15 +1452,36 @@ class StreamClient(
     fun requestWakeHost(
         targetMacAddress: ByteString,
         secureOnPassword: ByteString = ByteString.EMPTY,
+        proof: WakeHostProof? = null,
     ): Boolean {
         val requestId = ByteString.copyFrom(ByteArray(WAKE_HOST_REQUEST_ID_BYTES).also(protocolRequestRandom::nextBytes))
-        return requestWakeHost(requestId, targetMacAddress, secureOnPassword)
+        return requestWakeHost(requestId, targetMacAddress, secureOnPassword, proof)
+    }
+
+    fun requestWakeHost(
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString = ByteString.EMPTY,
+        signer: InternetPairingSigner,
+        nowUnixSeconds: Long = System.currentTimeMillis() / 1_000L,
+    ): Boolean {
+        val requestId = ByteString.copyFrom(ByteArray(WAKE_HOST_REQUEST_ID_BYTES).also(protocolRequestRandom::nextBytes))
+        val nonce = randomNonZeroByteString(WakeHostProofFactory.NONCE_BYTES)
+        return requestWakeHost(
+            requestId = requestId,
+            targetMacAddress = targetMacAddress,
+            secureOnPassword = secureOnPassword,
+            signer = signer,
+            issuedAtUnixSeconds = nowUnixSeconds,
+            expiresAtUnixSeconds = nowUnixSeconds + WakeHostProofFactory.MAXIMUM_LIFETIME_SECONDS,
+            nonce = nonce,
+        )
     }
 
     internal fun requestWakeHost(
         requestId: ByteString,
         targetMacAddress: ByteString,
         secureOnPassword: ByteString = ByteString.EMPTY,
+        proof: WakeHostProof? = null,
     ): Boolean {
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
@@ -1468,11 +1490,49 @@ class StreamClient(
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                 command = StreamOutboundCommand.ProtocolBatch { activeSession ->
-                    activeSession.requestWakeHost(requestId, targetMacAddress, secureOnPassword)?.let { listOf(it) }
+                    activeSession.requestWakeHost(requestId, targetMacAddress, secureOnPassword, proof)?.let { listOf(it) }
                         ?: emptyList()
+                },
+        )
+        return isOutboundAdmitted(submission)
+    }
+
+    internal fun requestWakeHost(
+        requestId: ByteString,
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString = ByteString.EMPTY,
+        signer: InternetPairingSigner,
+        issuedAtUnixSeconds: Long,
+        expiresAtUnixSeconds: Long,
+        nonce: ByteString,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canRequestWakeHost) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.requestWakeHost(
+                        requestId = requestId,
+                        targetMacAddress = targetMacAddress,
+                        secureOnPassword = secureOnPassword,
+                        signer = signer,
+                        issuedAtUnixSeconds = issuedAtUnixSeconds,
+                        expiresAtUnixSeconds = expiresAtUnixSeconds,
+                        nonce = nonce,
+                    )?.let { listOf(it) } ?: emptyList()
                 },
             )
         return isOutboundAdmitted(submission)
+    }
+
+    private fun randomNonZeroByteString(byteCount: Int): ByteString {
+        val bytes = ByteArray(byteCount)
+        do {
+            protocolRequestRandom.nextBytes(bytes)
+        } while (bytes.all { it == 0.toByte() })
+        return ByteString.copyFrom(bytes)
     }
 
     /**
