@@ -29,6 +29,20 @@ DEVICE_ACCEPTANCE_OWNER_PR = "#182"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 
 SCOPE_PRS = ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+GATE_OWNERS = {
+    "signing": "#182",
+    "device_install": "#182",
+    "protocol_session": "#182",
+    "videotoolbox_h264": "#251",
+    "videotoolbox_hevc": "#251",
+    "input": "#257",
+    "reconnect": "#238",
+    "audio_playback": "#209",
+    "hdr_output": "#196",
+    "advanced_adapters": "#253",
+    "host_advanced_adapters": "#253",
+    "trusted_lan_secure_records": "#208",
+}
 SOURCE_DOCS = [
     "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
@@ -49,7 +63,8 @@ FORMAL_DEVICE_GATES = {
 
 BROADER_GATES = {
     "hdr_output": "HDR/EDR output on iOS hardware, not SDR fallback only",
-    "advanced_adapters": "host/product adapters for multi-client/display, audio, clipboard, files, actions, wake, and managed policy",
+    "advanced_adapters": "iOS app/product adapters for multi-client/display, audio, clipboard, files, HDR/color, actions, wake, and managed policy",
+    "host_advanced_adapters": "MacHost advanced adapters for multi-client/display streams, audio capture, clipboard/file handlers, HDR/color retry, host actions, wake helper, and managed policy",
     "trusted_lan_secure_records": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
 }
 
@@ -141,6 +156,7 @@ def _gate_record(name: str, requirement: str, *, category: str, blocking: bool) 
     return {
         "status": "open",
         "category": category,
+        "owner_pr": GATE_OWNERS[name],
         "requirement": requirement,
         "blocking": blocking,
         "evidence": [],

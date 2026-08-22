@@ -667,6 +667,12 @@ network quality may increase it.
   separate device gates. Android results are never treated as iOS evidence; see
   the [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
   and [iOS device acceptance runbook](docs/runbook/ios-device-acceptance.md).
+  The current-base aggregate gate is owned by #182, while the open readiness
+  owners for hardware VideoToolbox and host-side advanced adapters are #251 and
+  #253 respectively. Those two gates must fail closed without retained physical
+  iPhone/iPad VideoToolbox decode evidence and reviewed MacHost advanced-adapter
+  product evidence; Simulator, unsigned archive, loopback, and Android evidence
+  are readiness inputs only.
 
 ## Device Strategy
 

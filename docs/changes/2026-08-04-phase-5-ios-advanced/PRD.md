@@ -68,3 +68,8 @@ aggregate must continue to include the narrower readiness owners for signing,
 VideoToolbox hardware decode, host advanced adapters, AVAudioEngine/PCM, HDR,
 native input, reconnect, and trusted-LAN secure records. Without real signed
 iPhone and iPad evidence, the aggregate remains fail-closed readiness only.
+The current-base manifest records the narrower owner per gate so aggregate
+tracking cannot hide missing evidence: hardware H.264/HEVC VideoToolbox decode
+is owned by #251, and MacHost advanced adapters are owned by #253. Both remain
+open until their retained evidence passes through the machine gate; #182 does
+not close either gate by aggregation alone.

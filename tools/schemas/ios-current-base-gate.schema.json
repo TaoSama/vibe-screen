@@ -11,6 +11,7 @@
     "verdict",
     "run_id",
     "owner",
+    "gate_owners",
     "source",
     "can_close_ios_device_acceptance",
     "can_close_current_base_aggregate",
@@ -26,6 +27,38 @@
     "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
     "run_id": {"type": ["string", "null"]},
     "owner": {"type": ["object", "null"]},
+    "gate_owners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signing",
+        "device_install",
+        "protocol_session",
+        "videotoolbox_h264",
+        "videotoolbox_hevc",
+        "input",
+        "reconnect",
+        "audio_playback",
+        "hdr_output",
+        "advanced_adapters",
+        "host_advanced_adapters",
+        "trusted_lan_secure_records"
+      ],
+      "properties": {
+        "signing": {"const": "#182"},
+        "device_install": {"const": "#182"},
+        "protocol_session": {"const": "#182"},
+        "videotoolbox_h264": {"const": "#251"},
+        "videotoolbox_hevc": {"const": "#251"},
+        "input": {"const": "#257"},
+        "reconnect": {"const": "#238"},
+        "audio_playback": {"const": "#209"},
+        "hdr_output": {"const": "#196"},
+        "advanced_adapters": {"const": "#253"},
+        "host_advanced_adapters": {"const": "#253"},
+        "trusted_lan_secure_records": {"const": "#208"}
+      }
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,

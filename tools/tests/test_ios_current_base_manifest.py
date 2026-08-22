@@ -10,6 +10,7 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
+    GATE_OWNERS,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -48,6 +49,8 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
         self.assertEqual(set(manifest["source_docs"]), set(SOURCE_DOCS))
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
+        for name, gate in manifest["gates"].items():
+            self.assertEqual(gate["owner_pr"], GATE_OWNERS[name])
         self.assertEqual(manifest["signing"]["status"], "blocked")
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
