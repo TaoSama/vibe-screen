@@ -240,6 +240,41 @@ final class StreamingServerLifecycleTests: XCTestCase {
         wait(for: [disconnected], timeout: 2)
     }
 
+    func testClosedUSBConnectionsReleaseServerSocketWrappers() throws {
+        let port = testPort(offset: 18)
+        let server = StreamingServer(port: port)
+        defer { server.stop() }
+        var serverConnections: [WeakServerConnection] = []
+        server.observeAcceptedConnectionsForSelfTest { connection in
+            serverConnections.append(WeakServerConnection(connection))
+        }
+        try server.start()
+
+        for index in 0..<8 {
+            let connected = expectation(description: "client connected \(index)")
+            let disconnected = expectation(description: "client disconnected \(index)")
+            server.onClientConnected = { _ in connected.fulfill() }
+            server.onClientDisconnected = { _ in disconnected.fulfill() }
+
+            try autoreleasepool {
+                let client = try readyClient(port: port)
+                wait(for: [connected], timeout: 2)
+                client.cancel()
+            }
+            wait(for: [disconnected], timeout: 2)
+            waitForNetworkQueue(server)
+        }
+
+        server.onClientConnected = nil
+        server.onClientDisconnected = nil
+        server.observeAcceptedConnectionsForSelfTest(nil)
+        XCTAssertEqual(serverConnections.count, 8)
+        XCTAssertTrue(
+            waitUntilReleased(serverConnections),
+            "Closed server-side NWConnection instances must not retain their TCP file descriptors"
+        )
+    }
+
     func testProtocolV1UpgradeInvalidatesPendingLegacyCodecCompletion() throws {
         let port = testPort(offset: 8)
         let server = StreamingServer(port: port)
@@ -1175,12 +1210,36 @@ final class StreamingServerLifecycleTests: XCTestCase {
         resume.signal()
     }
 
+    private func waitUntilReleased(
+        _ connections: [WeakServerConnection],
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            autoreleasepool {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            }
+            if connections.allSatisfy({ $0.connection == nil }) {
+                return true
+            }
+        }
+        return connections.allSatisfy { $0.connection == nil }
+    }
+
     private func testPort(offset: UInt16) -> UInt16 {
         56_000 + UInt16(ProcessInfo.processInfo.processIdentifier % 500) + offset
     }
 
     private enum TestError: Error {
         case connectionClosed
+    }
+}
+
+private final class WeakServerConnection {
+    weak var connection: NWConnection?
+
+    init(_ connection: NWConnection) {
+        self.connection = connection
     }
 }
 

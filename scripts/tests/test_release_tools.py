@@ -669,6 +669,22 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("scripts/harmony_device_gate.py", makefile)
         self.assertIn("$(EVIDENCE_DIR)/harmony-device-gates.json", makefile)
 
+    def test_host_rss_makefile_requires_host_pid_for_two_hour_gate(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("HOST_PID ?=\n", makefile)
+        self.assertIn("require-host-pid:", makefile)
+        self.assertRegex(
+            makefile,
+            r"(?m)^soak-2h\s*:\s*require-evidence-serial\s+require-host-pid\s*$",
+        )
+        self.assertIn(
+            "$(if $(strip $(HOST_PID)),--host-pid $(HOST_PID),$(if $(strip $(EVIDENCE_HOST_PID)),--host-pid $(EVIDENCE_HOST_PID),))",
+            makefile,
+        )
+        self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
+        self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
+
 
 class ArchiveArtifactTests(unittest.TestCase):
     def test_archive_is_deterministic_when_source_mtime_changes(self) -> None:
