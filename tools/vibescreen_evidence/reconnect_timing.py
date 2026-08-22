@@ -204,7 +204,7 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
             continue
         event = payload.get("event")
         if event == "connection_opened" and "android_session_epoch" not in events:
-            epoch = _optional_positive_int(payload.get("session_epoch"), "session_epoch")
+            epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
             if epoch is not None:
                 events["android_session_epoch"] = epoch
         elif event == "first_frame_received" and "first_frame_ms" not in events:
@@ -232,11 +232,15 @@ def _merged_events(attempt: dict[str, Any], base_dir: Path | None) -> dict[str, 
     start_value = attempt.get("disruption_started_at_ms", events.get("disruption_started_ms"))
     start_ms = _finite_number(start_value, "disruption_started_at_ms") if start_value not in (None, "") else None
     android_diag = _read_optional_text(attempt, "android_diag", base_dir)
+    android_logcat = _read_optional_text(attempt, "android_logcat", base_dir)
+    if android_diag and android_logcat:
+        raise ReconnectTimingEvidenceError(
+            "provide android_diag or android_logcat, not both: their timestamps use different timebases"
+        )
     if android_diag:
         parsed = parse_android_diag_events(android_diag, after_ms=start_ms)
         for key, value in parsed.items():
             events.setdefault(key, value)
-    android_logcat = _read_optional_text(attempt, "android_logcat", base_dir)
     if android_logcat:
         parsed = parse_android_logcat_events(android_logcat, after_ms=start_ms)
         for key, value in parsed.items():
@@ -265,6 +269,11 @@ def _artifact_paths(record: dict[str, Any], attempt: dict[str, Any]) -> list[str
         if isinstance(value, str) and value:
             paths.append(value)
     return sorted(dict.fromkeys(paths))
+
+
+def _attempt_or_event(attempt: dict[str, Any], events: dict[str, Any], key: str) -> Any:
+    value = attempt.get(key)
+    return events.get(key) if value in (None, "") else value
 
 
 def _validate_attempt(
@@ -333,18 +342,18 @@ def _validate_attempt(
         failures.append("Host PID changed during reconnect")
 
     host_epoch = _optional_positive_int(
-        attempt.get("host_connection_epoch", events.get("host_connection_epoch")),
+        _attempt_or_event(attempt, events, "host_connection_epoch"),
         "host_connection_epoch",
     )
     if host_epoch is None:
         reasons.append("missing Host Protocol v1 connection epoch")
 
     android_epoch = _optional_positive_int(
-        attempt.get("android_session_epoch", events.get("android_session_epoch")),
+        _attempt_or_event(attempt, events, "android_session_epoch"),
         "android_session_epoch",
     )
     config_epoch = _optional_positive_int(
-        attempt.get("config_epoch", events.get("config_epoch")),
+        _attempt_or_event(attempt, events, "config_epoch"),
         "config_epoch",
     )
     if android_epoch is None:
@@ -509,8 +518,15 @@ def summarize(
         "blocked_reasons": blocked_reasons,
         "notes": record.get("notes", "") if isinstance(record.get("notes", ""), str) else "",
     }
-    if verdict == "insufficient" and missing_required:
-        summary["reasons"] = [f"missing required disruption: {item}" for item in missing_required]
+    if verdict == "insufficient":
+        summary["reasons"] = [
+            f"missing required disruption: {item}" for item in missing_required
+        ] + [
+            reason
+            for attempt in attempts
+            if attempt["verdict"] == "insufficient"
+            for reason in attempt.get("reasons", [])
+        ]
     elif verdict == "blocked":
         summary["reasons"] = blocked_reasons or ["run was blocked before timing evidence could be collected"]
     elif verdict == "fail":
@@ -593,7 +609,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             if not args.input:
-                parser.error("input is required unless --blocked is used")
+                raise ReconnectTimingEvidenceError("input is required unless --blocked is used")
             if args.input == "-":
                 record = load_record(sys.stdin)
             else:
