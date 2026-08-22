@@ -1,0 +1,42 @@
+{
+  "status": "blocked_device_coordination_lock",
+  "reason": "Android device coordination lock exists; no ADB command was run and native pointer HID acceptance could not start.",
+  "created_at": "2026-08-22T09:12:33Z",
+  "observation_seconds": 0.0,
+  "device": {
+    "serial": "not-collected-device-lock",
+    "endpoint": "not collected because a device coordination lock exists",
+    "manufacturer": "not collected",
+    "model": "not collected",
+    "device": "device-lock-blocked",
+    "android_release": "not collected",
+    "sdk": "not collected",
+    "fingerprint_sha256": "not collected",
+    "display_size": "not collected",
+    "display_density": "not collected",
+    "battery_summary": "not collected",
+    "boot_completed": "not collected"
+  },
+  "external_mouse_devices": [],
+  "host_log": "host-log-appended.txt",
+  "host_log_appended_bytes": 0,
+  "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "android_logcat_bytes": 0,
+  "android_logcat_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "required_pointer_events": [
+    "move",
+    "press",
+    "release"
+  ],
+  "observed_host_pointer_events": [],
+  "observed_android_pointer_events": [],
+  "visible_mac_result": "",
+  "existing_locks": [
+    {
+      "path": "/tmp/vibe-screen-device-android.lock",
+      "detail": "pid=59387\nagent=root\ntask=trusted-lan-p0110-pr261\ncreated=2026-08-22T17:12:21+0800"
+    }
+  ],
+  "adb_was_run": false,
+  "requested_serial": "redacted-requested-serial"
+}

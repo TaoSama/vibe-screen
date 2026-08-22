@@ -41,6 +41,17 @@ the first decoded output frame before it is used to close a codec gate. AV1 is
 currently a planned codec only: offline fail-closed/admission tests and blocked
 runbooks do not prove an AV1 stream.
 
+Native pointer HID mouse evidence is hardware-gated in the same way. The Android
+device must expose a real external mouse-like source (`MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), and the same observation
+window must retain Android forwarding logs, Host `Pointer injected` logs, and a
+visible Mac pointer/click result note. Synthetic `adb shell input mouse` or
+direct Protocol v1 calls are diagnostics only; they cannot close the native
+pointer move/click gate. Use `make native-pointer-hid-acceptance` to collect a
+bundle and `make native-pointer-hid-gate` to re-check an existing bundle. The
+gate is closed only when `native-pointer-hid-summary.json` reports
+`verdict=pass` and `can_close_native_pointer_hid_gate=true`.
+
 Run the tests without installing third-party packages:
 
 ```sh
