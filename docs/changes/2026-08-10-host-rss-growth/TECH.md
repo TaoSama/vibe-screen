@@ -122,6 +122,12 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
   `heap_class_growth` 列表中重建首末漂移。
+- 2026-08-22 在最新 `origin/main`（`baaec28a`）上准备 Nubia P0110/pacific
+  复跑时，正式计时在开始前被阻塞：macOS console session 处于锁屏状态，且
+  Screen Recording 权限在预检中被重置；同时本机没有可用 codesigning identity，
+  无法构建并安装可继承 TCC 的当前源码 Host。证据见
+  `evidence/2026-08-22-p0110-2h-rerun-blocked/README.md`。该记录不是 soak
+  evidence，不关闭 no-growth 门禁。
 
 正式复测仍必须由具备 Screen Recording/Accessibility 权限的主任务执行：
 
@@ -131,7 +137,17 @@ export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
 # 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
-make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
+export HOST_PID='<running-vibe-screen-host-pid>'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak \
+  --serial "$EVIDENCE_SERIAL" \
+  --preset 2h \
+  --interval 30s \
+  --package dev.telemachus.display \
+  --host-pid "$HOST_PID" \
+  --telemetry-jsonl "$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl" \
+  --require-stream-telemetry \
+  --output-jsonl "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
+  --summary-json "$EVIDENCE_DIR/soak-2h/summary.json"
 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
   --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
   --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
