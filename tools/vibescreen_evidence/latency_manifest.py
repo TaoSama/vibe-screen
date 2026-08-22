@@ -16,7 +16,10 @@ from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
 from .latency import (
+    GATE_INPUT_P95_SUB50,
+    GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_PROFILES,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
     KIND_GLASS_TO_GLASS,
     KIND_INPUT,
     METHOD_EXTERNAL_CAMERA,
@@ -30,6 +33,11 @@ ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
 CLOCK_DOMAIN_EXTERNAL_CAMERA = "single-external-camera-timebase"
 CLOCK_DOMAIN_SYNCHRONIZED_CLOCK = "synchronized-host-device-clocks"
 MEASUREMENT_METHODS = (METHOD_EXTERNAL_CAMERA, METHOD_SYNCHRONIZED_CLOCK)
+PROFILE_ARTIFACT_FIELDS = {
+    GATE_USB_GLASS_TO_GLASS_SUB50: "usb_connection",
+    GATE_LAN_GLASS_TO_GLASS_SUB80: "lan_network_preflight",
+    GATE_INPUT_P95_SUB50: "input_actuation_record",
+}
 
 
 class LatencyManifestError(RuntimeError):
@@ -79,6 +87,15 @@ def _package_relative_path(path: Path, evidence_dir: Path, field: str) -> str:
     if not resolved.exists():
         raise LatencyManifestError(f"{field} does not exist: {resolved}")
     return relative.as_posix()
+
+
+def _artifact_reference(path: Path, evidence_dir: Path, field: str, description: str) -> dict[str, str]:
+    relative = _package_relative_path(path, evidence_dir, field)
+    return {
+        "file": relative,
+        "sha256": _sha256(evidence_dir.resolve() / relative),
+        "description": _non_empty(description, f"{field}.description"),
+    }
 
 
 def _repository_revision(repo: Path) -> str:
@@ -177,6 +194,8 @@ def build_latency_manifest(
     camera: dict[str, Any] | None = None,
     recording_operator: str | None = None,
     synchronization: dict[str, Any] | None = None,
+    gate_artifact: Path | None = None,
+    gate_artifact_description: str | None = None,
     recorded_at: str | None = None,
 ) -> dict[str, Any]:
     """Build a manifest matching tools/schemas/latency-evidence.schema.json."""
@@ -189,6 +208,12 @@ def build_latency_manifest(
         raise LatencyManifestError(
             "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms"
         )
+    if gate_artifact is None:
+        raise LatencyManifestError(
+            f"gate artifact is required for {gate_profile}: {PROFILE_ARTIFACT_FIELDS[gate_profile]}"
+        )
+    if gate_artifact_description is None:
+        raise LatencyManifestError("gate artifact description is required")
 
     samples_relative = _package_relative_path(samples, evidence_dir, "samples file")
     manifest = {
@@ -209,6 +234,14 @@ def build_latency_manifest(
         "host": host,
         "build": build,
         "measurement_setup": measurement_setup,
+        "gate_artifacts": {
+            PROFILE_ARTIFACT_FIELDS[gate_profile]: _artifact_reference(
+                gate_artifact,
+                evidence_dir,
+                f"gate_artifacts.{PROFILE_ARTIFACT_FIELDS[gate_profile]}",
+                gate_artifact_description,
+            )
+        },
     }
     if measurement_method == METHOD_EXTERNAL_CAMERA:
         if raw_video is None:
@@ -298,6 +331,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--total-error-budget-ms", type=float)
     parser.add_argument("--input-timestamp-method")
     parser.add_argument("--result-timestamp-method")
+    parser.add_argument("--gate-artifact", type=Path, required=True)
+    parser.add_argument("--gate-artifact-description", required=True)
     parser.add_argument("--notes", required=True)
     return parser
 
@@ -426,6 +461,8 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
         measurement_setup=measurement_setup,
         measurement_method=args.measurement_method,
         synchronization=synchronization,
+        gate_artifact=args.gate_artifact,
+        gate_artifact_description=args.gate_artifact_description,
         recorded_at=args.recorded_at,
     )
 
