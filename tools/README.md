@@ -544,6 +544,26 @@ Blocked or insufficient summaries cannot close the README reconnect timing
 gate. Evidence from the Nubia P0110 must remain labeled P0110/pacific and must
 not be relabeled as Xiaomi 13/fuxi.
 
+## macOS Host compatibility evidence
+
+Use `macos-hardware-compatibility-gate` to summarize one macOS Host hardware
+compatibility matrix row after the row artifacts have already been collected:
+
+```sh
+make macos-hardware-compatibility-gate EVIDENCE_DIR=.build/evidence/macos-host-compatibility
+```
+
+The target consumes `macos-hardware-compatibility.json` and writes
+`macos-hardware-compatibility-gate.json`. A `pass` closes only the exact row
+recorded in the input: CPU architecture, Mac model, macOS build, display
+topology, transport, Android counterpart, Host build/signing/TCC state, capture
+backend, and retained artifacts. Missing row identity, packaged Host launch,
+Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`;
+missing runtime probes are `insufficient`. Marking CI-only evidence or
+extrapolating Apple silicon, OS-version, display-topology, or virtual-display
+claims across rows is `failed`. The collection checklist is in
+`docs/runbook/macos-host-compatibility.md`.
+
 ## Latency evidence
 
 Latency evidence is split by what the measurement can prove:
