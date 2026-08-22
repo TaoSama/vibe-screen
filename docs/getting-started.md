@@ -16,6 +16,13 @@ build from source; there is no notarized stable release yet.
 - Python 3 for local `.app` packaging;
 - Android Platform Tools (`adb`) for USB mode.
 
+macOS 13 or newer is a minimum source/runtime requirement, not a published
+hardware compatibility matrix. Apple silicon is locally exercised; Intel Macs,
+additional macOS builds, and built-in/external/multi-display/dummy/headless or
+Screen Sharing display setups need exact-row evidence from the
+[macOS Host compatibility gate](runbook/macos-host-compatibility.md) before they
+are listed as supported.
+
 Select full Xcode and verify it:
 
 ```bash
@@ -115,6 +122,11 @@ adb -s "$ANDROID_SERIAL" shell am start -S -W \
 The client connects to `127.0.0.1:54321`; ADB reverse carries that socket to
 the host. A successful session shows an active stream, rising frame counters,
 and touch changes the Mac pointer position.
+
+If the run is intended to add a macOS Host compatibility row, record the Host
+identity, macOS build, display topology, Host build/signing/TCC state, capture
+backend, VideoToolbox path, Android counterpart, logs, and screenshots before
+summarizing the row with `make macos-hardware-compatibility-gate`.
 
 ## Trusted LAN mode
 

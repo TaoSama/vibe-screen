@@ -5,7 +5,11 @@ exists today, not the complete product vision in the root README.
 
 ## Support and prerequisites
 
-- Apple silicon Mac running macOS 13 or newer.
+- macOS 13 or newer. Apple silicon is the currently locally exercised Host
+  class; Intel Macs, additional macOS builds, and distinct display topologies
+  require the separate
+  [macOS Host compatibility matrix gate](macos-host-compatibility.md) before
+  they are listed as supported.
 - Android device with the Vibe Screen client installed.
 - Android Platform Tools (`adb`) for USB mode.
 - A monitor attached during first setup. A headless Mac cannot grant its own

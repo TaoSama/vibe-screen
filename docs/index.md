@@ -6,6 +6,7 @@
 - [Testing and real-device acceptance](testing.md)
 - [Troubleshooting](troubleshooting.md)
 - [Development preview release runbook](runbook/releasing.md)
+- [macOS Host compatibility matrix gate](runbook/macos-host-compatibility.md)
 - [Third-party source inventory](../THIRD_PARTY.md)
 
 ## Active changes
