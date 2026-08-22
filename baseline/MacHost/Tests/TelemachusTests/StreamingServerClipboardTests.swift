@@ -785,7 +785,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     ) throws -> [VSEnvelope] {
         guard let client else { throw TestError.noClient }
         var envelopes: [VSEnvelope] = []
-        let done = DispatchSemaphore(value: 0)
+        let done = expectation(description: "protocol v1 control envelopes received")
         var receiveFailure: Error?
 
         func receiveNext() {
@@ -798,22 +798,22 @@ final class StreamingServerClipboardTests: XCTestCase {
                         }
                     } catch {
                         receiveFailure = error
-                        done.signal()
+                        done.fulfill()
                         return
                     }
                 }
                 if let error {
                     receiveFailure = error
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 if connectionComplete {
                     receiveFailure = TestError.connectionClosed
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 if envelopes.contains(where: matchesTarget) {
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 receiveNext()
@@ -821,9 +821,9 @@ final class StreamingServerClipboardTests: XCTestCase {
         }
         receiveNext()
 
-        let result = done.wait(timeout: .now() + timeout)
-        if result == .timedOut { throw TestError.timeout }
+        wait(for: [done], timeout: timeout)
         if let receiveFailure { throw receiveFailure }
+        guard envelopes.contains(where: matchesTarget) else { throw TestError.timeout }
         return envelopes
     }
 
@@ -832,7 +832,7 @@ final class StreamingServerClipboardTests: XCTestCase {
         timeout: TimeInterval
     ) throws -> ProtocolV1TransportFrame {
         guard let client else { throw TestError.noClient }
-        let done = DispatchSemaphore(value: 0)
+        let done = expectation(description: "protocol v1 frame received")
         var matchedFrame: ProtocolV1TransportFrame?
         var receiveFailure: Error?
 
@@ -843,23 +843,23 @@ final class StreamingServerClipboardTests: XCTestCase {
                         let frames = try self.inboundFramer.append(data)
                         if let frame = frames.first(where: { $0.channel == channel }) {
                             matchedFrame = frame
-                            done.signal()
+                            done.fulfill()
                             return
                         }
                     } catch {
                         receiveFailure = error
-                        done.signal()
+                        done.fulfill()
                         return
                     }
                 }
                 if let error {
                     receiveFailure = error
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 if connectionComplete {
                     receiveFailure = TestError.connectionClosed
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 receiveNext()
@@ -867,8 +867,7 @@ final class StreamingServerClipboardTests: XCTestCase {
         }
         receiveNext()
 
-        let result = done.wait(timeout: .now() + timeout)
-        if result == .timedOut { throw TestError.timeout }
+        wait(for: [done], timeout: timeout)
         if let receiveFailure { throw receiveFailure }
         return try XCTUnwrap(matchedFrame)
     }
