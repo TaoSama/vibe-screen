@@ -43,6 +43,7 @@ protocol:
 
 protocol-tests:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s contracts/tests -p 'test_*.py' -v
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/verify_shared_protocol_model.py
 
 phase3-test: phase3-go-test
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
