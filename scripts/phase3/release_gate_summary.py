@@ -125,6 +125,7 @@ CANDIDATE_PRS = tuple(
         (223, "merged_signaling_multinode_slice", "record_as_merged_child_gate", "merged into current base and supports production service readiness only"),
         (224, "runtime_network_handoff_slice", "keep_as_child_gate_after_rebase", "owns bounded handoff runtime changes, not release closure"),
         (228, "production_coturn_enforcement_slice", "keep_as_child_gate_serialized_late", "broad authority/relay/coturn changes should not be duplicated here"),
+        (241, "merged_open_gates_audit_baseline", "record_as_docs_only_audit", "merged coverage audit informs ownership but is not an executable aggregate verifier"),
         (254, "production_e2e_enforcement_slice", "keep_as_child_gate", "owns blocked production enforcement package"),
         (258, "current_base_aggregate_owner", "use_as_unique_aggregate_owner", "current-base summary is executable and keeps all public release gates open"),
     )
