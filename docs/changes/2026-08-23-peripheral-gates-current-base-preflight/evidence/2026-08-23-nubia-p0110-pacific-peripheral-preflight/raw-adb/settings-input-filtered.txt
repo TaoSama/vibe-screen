@@ -1,0 +1,19 @@
+# filtered input-related settings
+
+## system
+keyboard_vibration_enabled=1
+pointer_speed=0
+
+## secure
+accessibility_soft_keyboard_mode=0
+default_input_method=com.bytedance.android.doubaoime/.ImeService
+enabled_input_methods=com.bytedance.android.doubaoime/.ImeService
+input_methods_subtype_history=com.bytedance.android.securityinput/.ImeService;-1:com.bytedance.android.doubaoime/.ImeService;100
+selected_input_method_subtype=100
+show_ime_with_hard_keyboard=0
+touch_exploration_enabled=0
+
+## global
+ambient_touch_to_wake=1
+game_float_app=nullcom.tencent.mm:0
+input_method_shown=0

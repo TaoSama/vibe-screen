@@ -1,0 +1,8 @@
+created_at=2026-08-22T17:30:58Z
+repo_head=de2752e0033713ad48bb7f86960f9180d8e7342f
+branch=codex/peripheral-gates-current-base-preflight
+lock_path=/tmp/vibe-screen-device-android.lock
+lock_size=0
+lock_mtime=2026-08-22T23:45:05Z
+lock_lsof_begin
+lock_lsof_end
