@@ -77,6 +77,16 @@ UI_MARKER_FLAGS = (
     "repair=true",
     "secure_dialogs=true",
 )
+PRODUCT_INTEROP_EVIDENCE_BOUNDARIES = {
+    "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case",
+    "screen_capture_kit": "not_claimed",
+    "real_display_content": "not_claimed",
+    "android_mediacodec_decode": "not_claimed",
+    "rotation": "open_harness_has_no_rotation_assertion",
+    "disconnect_reconnect": "not_claimed",
+    "revocation_repair": "local_android_keystore_and_profile_store_only",
+    "soak": "not_claimed",
+}
 
 
 class InteropError(RuntimeError):
@@ -866,9 +876,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "model": adb.device(["shell", "getprop", "ro.product.model"], name="identity-model"),
                 "device": adb.device(["shell", "getprop", "ro.product.device"], name="identity-device"),
                 "release": adb.device(["shell", "getprop", "ro.build.version.release"], name="identity-release"),
+                "sdk": adb.device(["shell", "getprop", "ro.build.version.sdk"], name="identity-sdk"),
             }
-            expected = ("nubia", "P0110", "pacific", "16")
-            actual = (identity["manufacturer"].lower(), identity["model"], identity["device"], identity["release"])
+            expected = ("nubia", "P0110", "pacific", "16", "36")
+            actual = (
+                identity["manufacturer"].lower(),
+                identity["model"],
+                identity["device"],
+                identity["release"],
+                identity["sdk"],
+            )
             if actual != expected:
                 raise InteropError("connected device identity does not match the authorized acceptance target")
             require_artifacts_unchanged(paths, artifacts)
@@ -1084,7 +1101,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "java": java_toolchain,
             "swift": swift_toolchain,
         },
-        "device": {"product": "Nubia P0110", "codename": "pacific", "operating_system": "Android 16"},
+        "device": {
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "product": "Nubia P0110",
+            "codename": "pacific",
+            "android_version": "16",
+            "operating_system": "Android 16",
+            "sdk": 36,
+        },
         "assertions": {
             "real_android_app_and_instrumentation": "pass",
             "real_local_signaling_process": "pass",
@@ -1125,15 +1150,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 hashlib.sha256,
             ).hexdigest(),
         },
-        "evidence_boundaries": {
-            "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case",
-            "screen_capture_kit": "not_claimed",
-            "real_display_content": "not_claimed",
-            "rotation": "open_harness_has_no_rotation_assertion",
-            "disconnect_reconnect": "not_claimed",
-            "revocation_repair": "local_android_keystore_and_profile_store_only",
-            "soak": "not_claimed",
-        },
+        "evidence_boundaries": dict(PRODUCT_INTEROP_EVIDENCE_BOUNDARIES),
     }
     return report
 

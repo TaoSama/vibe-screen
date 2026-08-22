@@ -142,6 +142,38 @@ latency or a mobile carrier path.
 
 ## Android Internet evidence template
 
+The current-base replacement owner for the historical/withdrawn Android interop
+record is `scripts/phase3/android_current_base_interop_gate.py`, exposed through
+`make phase3-android-current-base-interop-gate`. The gate is intentionally
+fail-closed and has three proof profiles:
+
+| Profile | What can pass | What remains open |
+| --- | --- | --- |
+| `product-interop` | Current clean `HEAD`, `nubia P0110 / pacific / Android 16 / SDK 36`, direct plus forced local coturn route reports from `android_product_session_interop_acceptance.py`, one stable device lease, Protocol v1, AES-256-GCM control/media, Android UI instrumentation, and synthetic config/keyframe/delta media | Real ScreenCaptureKit/CGDisplayStream, Android MediaCodec output, public Internet, handoff, latency, and soak |
+| `real-capture` | Current clean `HEAD`, the same P0110 identity, direct plus forced local coturn route reports, one stable device lease, Protocol v1, AES-256-GCM control/media, Android UI instrumentation, authenticated touch, plus `real_screen_capture`, `screen_capture_kit`, `videotoolbox_output`, `android_mediacodec_decode`, `mediacodec_first_output_frame`, `continuous_fps_and_decode_latency`, and `disconnect_reconnect` assertions with matching `evidence_boundaries` set to `pass` | Public NAT/TURN and carrier/remote-route evidence |
+| `public-internet` | Everything in `real-capture` plus `public_internet_path` and `public_nat_or_remote_turn` assertions | Release still also needs any separate soak, latency, revocation, multi-node, and operations gates called out below |
+
+The default Make target uses `PHASE3_ANDROID_INTEROP_GATE_PROFILE=real-capture`
+so local synthetic product evidence and the historical 2026-08-05 P0110 record
+remain blocked by default:
+
+```bash
+make phase3-android-current-base-interop-gate \
+  PHASE3_ANDROID_INTEROP_EVIDENCE=/absolute/path/to/acceptance.json
+```
+
+Use `PHASE3_ANDROID_INTEROP_GATE_PROFILE=product-interop` only when the intent is
+to replace the historical synthetic-media product-interop record on current
+source without claiming real capture, Android MediaCodec, public Internet,
+handoff, latency, or soak. A `blocked` output from this gate is valid evidence
+of the current blocker; it is not a pass. The gate rejects any `product-interop`
+route report that marks real-capture, public-Internet, handoff, latency, soak,
+or other out-of-profile assertions or boundaries as `pass`. The real-capture and
+public-Internet profiles require their matching `evidence_boundaries` entries to
+be `pass`, and the combined direct/relay report must prove the same ADB lease
+identity through the route-level `adb_gate` fields rather than relying only on
+the top-level `same_device_lease_holder` boolean.
+
 Store evidence under a new immutable run directory such as:
 
 ```text
@@ -168,13 +200,19 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
 Start by proving device identity, not merely that some ADB endpoint responded:
 
 ```bash
-export ADB_ENDPOINT='<lease-controlled-endpoint>'
-adb connect "$ADB_ENDPOINT"
+test ! -e /tmp/vibe-screen-device-android.lock
+export ADB_ENDPOINT='EP0110PZ0B9110300B'
 adb -s "$ADB_ENDPOINT" devices -l
-adb -s "$ADB_ENDPOINT" shell getprop ro.product.manufacturer
-adb -s "$ADB_ENDPOINT" shell getprop ro.product.model
-adb -s "$ADB_ENDPOINT" shell getprop ro.build.version.sdk
+adb -s "$ADB_ENDPOINT" shell getprop ro.product.manufacturer  # nubia
+adb -s "$ADB_ENDPOINT" shell getprop ro.product.model         # P0110
+adb -s "$ADB_ENDPOINT" shell getprop ro.product.device        # pacific
+adb -s "$ADB_ENDPOINT" shell getprop ro.build.version.release # 16
+adb -s "$ADB_ENDPOINT" shell getprop ro.build.version.sdk     # 36
 ```
+
+Use `adb -s EP0110PZ0B9110300B` explicitly for the Nubia path. The archived
+identity must be `nubia P0110 / pacific / Android 16 / SDK 36`; it must not be
+reported as Xiaomi 13/fuxi evidence.
 
 Then record the exact APK and installed version:
 
@@ -390,7 +428,7 @@ named by that run:
   runtime timestamps, exact commands/environment, artifact provenance,
   candidate-pair/E2EE logs, and UI source files were not retained. No pass result
   is recoverable from the summary, and none is inferred or reconstructed.
-- A new combined Android acceptance PASS is archived under
+- A historical combined Android acceptance PASS is archived under
   [`evidence/2026-08-05-nubia-p0110-internet/`](evidence/2026-08-05-nubia-p0110-internet/README.md).
   Its clean, reachable source is
   `597518f948075e396352bc353afcec01a30303f3`; the device boundary is only
@@ -408,7 +446,10 @@ That pass is not ScreenCaptureKit, real display content, visible Mac input,
 Android rotation, disconnect/reconnect or network-handoff evidence. It also does
 not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
-those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains open.
+those release gates remain open. It is not current-source evidence. Xiaomi 13
+(2211133C) acceptance also remains open. A future current-source replacement
+must pass `scripts/phase3/android_current_base_interop_gate.py` for the intended
+profile; otherwise the replacement state is `blocked`.
 
 - A 2026-08-18 attempt to re-verify current-main real display capture through
   the USB media path on `Nubia P0110 / pacific / Android 16` is archived as

@@ -25,6 +25,8 @@ PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
+PHASE3_ANDROID_INTEROP_EVIDENCE ?=
+PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 HARMONY_HDC_TARGET ?=
@@ -34,7 +36,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-android-current-base-interop-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -80,6 +82,11 @@ phase3-local-synthetic-public-artifacts-check:
 phase3-local-product-e2e:
 	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness with real VideoToolbox HEVC payloads only; no Android device, ScreenCaptureKit capture, or MediaCodec decode).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
+
+phase3-android-current-base-interop-gate:
+	@test -n "$(strip $(PHASE3_ANDROID_INTEROP_EVIDENCE))" || (echo "error: set PHASE3_ANDROID_INTEROP_EVIDENCE to a Phase 3 Android interop evidence JSON" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/android_current_base_interop_gate.py --evidence "$(PHASE3_ANDROID_INTEROP_EVIDENCE)" --profile "$(PHASE3_ANDROID_INTEROP_GATE_PROFILE)" --output "$(EVIDENCE_DIR)/phase3-android-current-base-interop-gate.json"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
