@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "4dc84505e6e0a07fa1052df12bca03824f161bf6",
+    "base_commit": "c8a2e771e3d89a785b4dc773185dc4b989add48d",
     "base_ref": "origin/main",
     "audit_date": "2026-08-22",
     "owner": "Vibe Screen core team",
@@ -16,8 +16,9 @@
       "Do not treat roadmap items below as shipped features"
     ],
     "forbidden_regexes": [
-      "\\bPhase\\s*0\\s+(?:is|now|has been|was|marked|declared|treated as)\\s+(?:complete|closed|shipped|released)\\b",
-      "\\bPhase\\s*0\\s+(?:stable[- ]release|release)\\s+(?:is|now|has been|was)\\s+(?:available|ready|complete|shipped|released)\\b"
+      "\\bPhase\\s*0\\s+(?:is(?:\\s+now)?|now|has(?:\\s+been|\\s+reached)?|was|marked|declared|treated as|reached)\\s+(?:complete|closed|shipped|released|stable|done|production[- ]ready|generally available|GA)\\b",
+      "\\bPhase\\s*0\\s+(?:stable[- ]release|release)\\s+(?:is|now|has been|was)\\s+(?:available|ready|complete|shipped|released|stable|done|production[- ]ready|generally available|GA)\\b",
+      "\\bPhase\\s*0\\s+(?:GA|generally available|production[- ]ready)\\b"
     ]
   },
   "required_gates": [
