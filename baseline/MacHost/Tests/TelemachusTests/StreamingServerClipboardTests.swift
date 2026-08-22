@@ -821,7 +821,8 @@ final class StreamingServerClipboardTests: XCTestCase {
         }
         receiveNext()
 
-        wait(for: [done], timeout: timeout)
+        let waitResult = XCTWaiter().wait(for: [done], timeout: timeout)
+        guard waitResult == .completed else { throw TestError.timeout }
         if let receiveFailure { throw receiveFailure }
         guard envelopes.contains(where: matchesTarget) else { throw TestError.timeout }
         return envelopes
@@ -867,9 +868,11 @@ final class StreamingServerClipboardTests: XCTestCase {
         }
         receiveNext()
 
-        wait(for: [done], timeout: timeout)
+        let waitResult = XCTWaiter().wait(for: [done], timeout: timeout)
+        guard waitResult == .completed else { throw TestError.timeout }
         if let receiveFailure { throw receiveFailure }
-        return try XCTUnwrap(matchedFrame)
+        guard let matchedFrame else { throw TestError.timeout }
+        return matchedFrame
     }
 
     private func temporaryDirectory() -> URL {
