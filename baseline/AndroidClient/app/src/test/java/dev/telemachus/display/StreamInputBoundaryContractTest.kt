@@ -70,8 +70,19 @@ class StreamInputBoundaryContractTest {
         assertTrue(streamClient.contains("protocolActionDispatcher.dispatchReceivedActions("))
         assertTrue(streamClient.contains("protocolActionDispatcher.dispatchVideoConfigurationCompletionActions("))
 
+        val receiveRouting = streamClient
+            .substringAfter("private fun processProtocolReceive(")
+            .substringBefore("    private fun processProtocolBulk(")
+        val videoCompletionRouting = streamClient
+            .substringAfter("private fun processVideoConfigurationCompletion(")
+            .substringBefore("    private fun publishDisplaysAvailable(")
         FORBIDDEN_STREAM_CLIENT_PROTOCOL_ACTION_REFERENCES.forEach { reference ->
-            assertFalse("StreamClient must not own protocol action routing `$reference`", streamClient.contains(reference))
+            assertFalse("StreamClient must not own protocol receive routing `$reference`", receiveRouting.contains(reference))
+            assertFalse(
+                "StreamClient must not own protocol video-completion routing `$reference`",
+                videoCompletionRouting.contains(reference),
+            )
+            assertTrue("StreamProtocolActionDispatcher should own protocol action routing `$reference`", protocolActionDispatcher.contains(reference))
         }
         FORBIDDEN_PROTOCOL_ACTION_DISPATCHER_REFERENCES.forEach { reference ->
             assertFalse("StreamProtocolActionDispatcher must not depend on `$reference`", protocolActionDispatcher.contains(reference))

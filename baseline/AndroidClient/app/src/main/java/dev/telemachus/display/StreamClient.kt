@@ -2399,7 +2399,7 @@ class StreamClient(
 
     fun respondToFileOffer(offer: FileOffer, accepted: Boolean): Boolean {
         val session = protocolSession ?: return false
-        if (!isConnected || wireMode != WireMode.V1 || !session.canTransferFiles) return false
+        if (!localSessionState.isConnected || wireMode != WireMode.V1 || !session.canTransferFiles) return false
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
             command = StreamOutboundCommand.ProtocolFileOfferDecision(
