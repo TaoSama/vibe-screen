@@ -58,6 +58,7 @@ internal class StreamClientLocalSessionState(
         markDisconnected()
     }
 
+    @Synchronized
     fun markReady(): Boolean {
         if (isReady) return false
         isReady = true

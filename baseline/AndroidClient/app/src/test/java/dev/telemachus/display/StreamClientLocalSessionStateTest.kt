@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class StreamClientLocalSessionStateTest {
     @Test
@@ -44,6 +47,30 @@ class StreamClientLocalSessionStateTest {
         assertTrue(state.markReady())
         assertFalse(state.markReady())
         assertEquals(ReconnectBackoff.INITIAL_DELAY_MS, reconnectBackoff.nextDelayMs(jitterUnit = 0.5))
+    }
+
+    @Test
+    fun readyTransitionIsClaimedByOnlyOneConcurrentCaller() {
+        val state = StreamClientLocalSessionState()
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(16)
+
+        try {
+            val results = (0 until 64).map {
+                executor.submit<Boolean> {
+                    start.await()
+                    state.markReady()
+                }
+            }
+
+            start.countDown()
+
+            val winners = results.count { it.get(5, TimeUnit.SECONDS) }
+            assertEquals(1, winners)
+            assertTrue(state.isReady)
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test
