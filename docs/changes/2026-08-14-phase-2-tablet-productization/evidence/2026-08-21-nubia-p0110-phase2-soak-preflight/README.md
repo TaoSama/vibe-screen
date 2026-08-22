@@ -2,7 +2,7 @@
 
 Result: blocked.
 
-This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-tablet-gate.json reports verdict=pass and the raw physical-tablet artifacts are present.
+This evidence record does not close the Phase 2 eight-hour tablet gate unless `phase2-soak-readiness.json` reports `can_close_phase2_gate=true`, `soak-8h/phase2-tablet-gate.json` reports `verdict=pass`, and the raw physical-tablet artifacts are present. This run records a readiness-only placeholder in `apk-sha256.txt`; that sentinel is a blocker context value, not formal APK pass evidence.
 
 ## Command
 

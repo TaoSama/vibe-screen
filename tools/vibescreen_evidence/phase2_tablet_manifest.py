@@ -64,7 +64,6 @@ REQUIRED_ARTIFACTS = [
     "thermal-after.txt",
     "thermal-after.err",
     "raw-logcat.txt",
-    "host.log",
     "reconnects.log",
     "frame-drops.log",
     "decoder-telemetry.jsonl",

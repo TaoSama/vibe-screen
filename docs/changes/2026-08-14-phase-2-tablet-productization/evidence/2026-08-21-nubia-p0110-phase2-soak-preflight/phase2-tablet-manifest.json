@@ -123,8 +123,8 @@
     "host.txt",
     "build.txt",
     "apk-sha256.txt",
-    "samples.jsonl",
-    "summary.json",
+    "soak-preflight/samples.jsonl",
+    "soak-preflight/summary.json",
     "adb-battery-before.txt",
     "adb-battery-after.txt",
     "adb-power-before.txt",
@@ -134,7 +134,6 @@
     "thermal-after.txt",
     "thermal-after.err",
     "raw-logcat.txt",
-    "host.log",
     "reconnects.log",
     "frame-drops.log",
     "decoder-telemetry.jsonl"

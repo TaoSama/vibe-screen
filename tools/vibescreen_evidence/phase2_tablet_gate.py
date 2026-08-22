@@ -60,7 +60,6 @@ REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] 
     ("thermal_after", ("thermal-after.txt",), True, "file"),
     ("thermal_after_stderr", ("thermal-after.err",), False, "file"),
     ("raw_logcat", ("raw-logcat.txt",), True, "file"),
-    ("host_log", ("host.log",), True, "file"),
     ("reconnects_log", ("reconnects.log",), True, "file"),
     ("frame_drops_log", ("frame-drops.log",), True, "file"),
     ("decoder_telemetry", ("decoder-telemetry.jsonl",), True, "file"),

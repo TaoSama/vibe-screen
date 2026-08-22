@@ -367,10 +367,10 @@ make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 ```
 
 For an end-to-end readiness check that gathers the same raw inputs and writes an
-explicit blocker record, use the wrapper target. It refuses to run ADB when an
-existing device lock is present, then writes `phase2-soak-readiness.json`,
-`README.md`, static device/Host artifacts, Android log derivatives, and either
-`soak-preflight/` or `soak-8h/` depending on mode:
+explicit blocker record, use the wrapper target. When no device lock is present,
+it writes `phase2-soak-readiness.json`, `README.md`, static device/Host
+artifacts, Android log derivatives, and either `soak-preflight/` or `soak-8h/`
+depending on mode:
 
 ```sh
 make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
@@ -387,6 +387,14 @@ make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
   PHASE2_SOAK_INTERVAL=1s
 ```
 
+If the wrapper finds `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock`, it writes only
+`phase2-soak-readiness.json` and `README.md` with `result=blocked`; it does not
+run ADB or create static, logcat, or soak artifacts. Preflight may record a
+readiness-only placeholder APK hash as blocker context. Formal `run` mode must
+use `PHASE2_APK_PATH` or a real 64-character hexadecimal `PHASE2_APK_SHA256`;
+placeholder values are rejected before the gate can close.
+
 Use `phase2-tablet-soak-run` only after the physical tablet, stand-mounted
 charging setup, signed Host PID, and `VIBE_SCREEN_TELEMETRY_PATH` JSONL are all
 ready. The formal target writes blocked evidence instead of starting the timer
@@ -401,7 +409,9 @@ The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
 `.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
 `.build/evidence/`, then write
 `.build/evidence/soak-8h/phase2-device-memory-gate.json` and
-`.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
+`.build/evidence/soak-8h/phase2-tablet-gate.json`. The wrapper closes only
+when `phase2-soak-readiness.json` reports `can_close_phase2_gate=true`. A
+`pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
 Android PSS and Host RSS growth, battery/thermal readings below the Phase 2

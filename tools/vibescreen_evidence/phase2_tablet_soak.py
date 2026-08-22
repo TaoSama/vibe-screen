@@ -8,6 +8,7 @@ evidence when the current host/device state cannot legitimately start it.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -398,7 +399,7 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
         "",
         "Result: " + str(readiness["result"]) + ".",
         "",
-        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-tablet-gate.json reports verdict=pass and the raw physical-tablet artifacts are present.",
+        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-soak-readiness.json reports can_close_phase2_gate=true, soak-8h/phase2-tablet-gate.json reports verdict=pass, and the raw physical-tablet artifacts are present. A non-64-hex value in apk-sha256.txt is readiness-only blocker context, not formal APK pass evidence.",
         "",
         "## Command",
         "",
@@ -458,6 +459,103 @@ def build_readiness(
     }
 
 
+def build_blocked_on_lock_readiness(
+    *,
+    arguments: argparse.Namespace,
+    command: Sequence[str],
+    locks: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    blockers = ["device coordination lock exists; no ADB command was run"]
+    artifacts = [
+        {"path": str(lock.get("path", "")), "kind": "blocking_lock"}
+        for lock in locks
+    ]
+    readiness = build_readiness(
+        mode=arguments.mode,
+        command=command,
+        output_dir=arguments.output_dir,
+        device_class=arguments.device_class,
+        blockers=blockers,
+        artifacts=artifacts,
+        soak_summary=None,
+        gate=None,
+        android_log_metrics=None,
+    )
+    write_json(arguments.output_dir / "phase2-soak-readiness.json", readiness)
+    write_readme(arguments.output_dir, readiness)
+    return readiness
+
+
+def acquire_device_locks(owner: dict[str, Any]) -> ExitStack:
+    stack = ExitStack()
+    try:
+        for lock_path in (ANDROID_LOCK, SOAK_LOCK):
+            stack.enter_context(DeviceLock(lock_path, owner=owner))
+    except Exception:
+        stack.close()
+        raise
+    return stack
+
+
+def is_sha256_digest(value: str | None) -> bool:
+    return bool(value and re.fullmatch(r"[0-9a-fA-F]{64}", value.strip()))
+
+
+def runner_required_artifacts(mode: str) -> list[str]:
+    if mode == "preflight":
+        return [
+            "README.md",
+            "phase2-soak-readiness.json",
+            "phase2-tablet-manifest.json",
+            "device-info.json",
+            "device.txt",
+            "host.txt",
+            "build.txt",
+            "apk-sha256.txt",
+            "soak-preflight/samples.jsonl",
+            "soak-preflight/summary.json",
+            "adb-battery-before.txt",
+            "adb-battery-after.txt",
+            "adb-power-before.txt",
+            "adb-power-after.txt",
+            "thermal-before.txt",
+            "thermal-before.err",
+            "thermal-after.txt",
+            "thermal-after.err",
+            "raw-logcat.txt",
+            "reconnects.log",
+            "frame-drops.log",
+            "decoder-telemetry.jsonl",
+        ]
+    return [
+        "README.md",
+        "phase2-soak-readiness.json",
+        "phase2-tablet-manifest.json",
+        "device-info.json",
+        "device.txt",
+        "host.txt",
+        "build.txt",
+        "apk-sha256.txt",
+        "soak-8h/samples.jsonl",
+        "soak-8h/summary.json",
+        "soak-8h/host-telemetry.jsonl",
+        "soak-8h/exact-window-report.json",
+        "soak-8h/phase2-tablet-gate.json",
+        "adb-battery-before.txt",
+        "adb-battery-after.txt",
+        "adb-power-before.txt",
+        "adb-power-after.txt",
+        "thermal-before.txt",
+        "thermal-before.err",
+        "thermal-after.txt",
+        "thermal-after.err",
+        "raw-logcat.txt",
+        "reconnects.log",
+        "frame-drops.log",
+        "decoder-telemetry.jsonl",
+    ]
+
+
 def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> dict[str, Any]:
     output_dir = arguments.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -469,86 +567,86 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
     manifest: dict[str, Any] | None = None
     android_log_metrics: dict[str, int] = {}
 
-    locks = existing_locks()
-    if locks and not arguments.allow_existing_device_lock:
-        blockers.append("device coordination lock exists; no ADB command was run")
-        artifacts.extend({"path": lock["path"], "kind": "blocking_lock"} for lock in locks)
-        readiness = build_readiness(
-            mode=arguments.mode,
-            command=command,
-            output_dir=output_dir,
-            device_class=arguments.device_class,
-            blockers=blockers,
-            artifacts=artifacts,
-            soak_summary=None,
-            gate=None,
-            android_log_metrics=None,
-        )
-        write_json(output_dir / "phase2-soak-readiness.json", readiness)
-        write_readme(output_dir, readiness)
-        return readiness
-
     owner = {"pid": os.getpid(), "serial": arguments.serial, "created_at": utc_now(), "output_dir": str(output_dir)}
-    lock_context = NullContext() if arguments.allow_existing_device_lock else DeviceLock(SOAK_LOCK, owner=owner)
-    try:
-        with lock_context:
-            device_info, setup_errors, setup_artifacts, apk_sha256 = collect_static_artifacts(
-                output_dir=output_dir,
-                serial=arguments.serial,
-                adb_path=arguments.adb,
-                adb_timeout=arguments.adb_timeout,
-                host_pid=arguments.host_pid,
-                package_name=arguments.package,
-                apk=arguments.apk,
-                apk_sha256=arguments.apk_sha256,
+    if arguments.allow_existing_device_lock:
+        lock_context = NullContext()
+    else:
+        # Acquire both coordination locks in a consistent order so no other
+        # Android operation can interleave before the first ADB command.
+        try:
+            lock_context = acquire_device_locks(owner)
+        except FileExistsError:
+            return build_blocked_on_lock_readiness(
+                arguments=arguments,
+                command=command,
+                locks=existing_locks(),
             )
-            blockers.extend(setup_errors)
-            artifacts.extend(setup_artifacts)
-            append_preflight_blockers(
-                blockers,
-                device_class=arguments.device_class,
-                device_info=device_info,
-                host_pid=arguments.host_pid,
-                telemetry_jsonl=arguments.host_telemetry_jsonl,
-            )
-            if device_info is not None and apk_sha256 is not None:
-                try:
-                    manifest = build_manifest(
-                        command=command,
-                        repo=arguments.repo,
-                        device_info=device_info,
-                        device_class=arguments.device_class,
-                        tablet_size_inches=arguments.tablet_size_inches,
-                        stand_setup=arguments.stand_setup,
-                        charger=arguments.charger,
-                        cable_or_dock=arguments.cable_or_dock,
-                        ambient_temperature_celsius=arguments.ambient_temperature_celsius,
-                        transport=arguments.transport,
-                        video_preferences=arguments.video_preferences,
-                        duration_seconds=int(arguments.duration),
-                        sample_interval_seconds=int(arguments.interval),
-                        host_pid=arguments.host_pid,
-                        host_rss_source=DEFAULT_HOST_RSS_SOURCE,
-                        android_pss_source=DEFAULT_ANDROID_PSS_SOURCE,
-                        require_host_pid=arguments.mode == "run",
-                        thermal_limit_status=arguments.thermal_limit_status,
-                        battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
-                        maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,
-                        recovery_scenarios=[item.strip() for item in arguments.recovery_scenarios.split(",") if item.strip()],
-                        host_identity=arguments.host_identity,
-                        host_build=arguments.host_build,
-                        apk_sha256=apk_sha256,
-                        notes=arguments.notes,
-                    )
-                    write_json(output_dir / "phase2-tablet-manifest.json", manifest)
-                    artifacts.append({"path": "phase2-tablet-manifest.json", "kind": "phase2_manifest"})
-                except (ManifestError, OSError, ValueError) as error:
-                    blockers.append("phase2-tablet-manifest: " + str(error))
 
-            if arguments.mode != "run" or not blockers:
-                soak_dir = output_dir / ("soak-8h" if arguments.mode == "run" else "soak-preflight")
-                logcat, logcat_handle = start_logcat(arguments.serial, arguments.adb, output_dir / "raw-logcat.txt")
-                try:
+    with lock_context:
+        if arguments.apk is None and not is_sha256_digest(arguments.apk_sha256):
+            blockers.append("--apk-sha256 must be a 64-character hexadecimal digest")
+        device_info, setup_errors, setup_artifacts, apk_sha256 = collect_static_artifacts(
+            output_dir=output_dir,
+            serial=arguments.serial,
+            adb_path=arguments.adb,
+            adb_timeout=arguments.adb_timeout,
+            host_pid=arguments.host_pid,
+            package_name=arguments.package,
+            apk=arguments.apk,
+            apk_sha256=arguments.apk_sha256,
+        )
+        blockers.extend(setup_errors)
+        artifacts.extend(setup_artifacts)
+        append_preflight_blockers(
+            blockers,
+            device_class=arguments.device_class,
+            device_info=device_info,
+            host_pid=arguments.host_pid,
+            telemetry_jsonl=arguments.host_telemetry_jsonl,
+        )
+        if device_info is not None and apk_sha256 is not None:
+            try:
+                manifest = build_manifest(
+                    command=command,
+                    repo=arguments.repo,
+                    device_info=device_info,
+                    device_class=arguments.device_class,
+                    tablet_size_inches=arguments.tablet_size_inches,
+                    stand_setup=arguments.stand_setup,
+                    charger=arguments.charger,
+                    cable_or_dock=arguments.cable_or_dock,
+                    ambient_temperature_celsius=arguments.ambient_temperature_celsius,
+                    transport=arguments.transport,
+                    video_preferences=arguments.video_preferences,
+                    duration_seconds=int(arguments.duration),
+                    sample_interval_seconds=int(arguments.interval),
+                    host_pid=arguments.host_pid,
+                    host_rss_source=DEFAULT_HOST_RSS_SOURCE,
+                    android_pss_source=DEFAULT_ANDROID_PSS_SOURCE,
+                    require_host_pid=arguments.mode == "run",
+                    thermal_limit_status=arguments.thermal_limit_status,
+                    battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
+                    maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,
+                    recovery_scenarios=[item.strip() for item in arguments.recovery_scenarios.split(",") if item.strip()],
+                    host_identity=arguments.host_identity,
+                    host_build=arguments.host_build,
+                    apk_sha256=apk_sha256,
+                    notes=arguments.notes,
+                )
+                manifest["required_artifacts"] = runner_required_artifacts(arguments.mode)
+                write_json(output_dir / "phase2-tablet-manifest.json", manifest)
+                artifacts.append({"path": "phase2-tablet-manifest.json", "kind": "phase2_manifest"})
+            except (ManifestError, OSError, ValueError) as error:
+                blockers.append("phase2-tablet-manifest: " + str(error))
+
+        if arguments.mode != "run" or not blockers:
+            soak_dir = output_dir / ("soak-8h" if arguments.mode == "run" else "soak-preflight")
+            logcat, logcat_handle = start_logcat(arguments.serial, arguments.adb, output_dir / "raw-logcat.txt")
+            logcat_started = logcat is not None and logcat_handle is not None
+            if not logcat_started:
+                blockers.append("logcat capture failed to start; Android logcat evidence is unavailable")
+            try:
+                if arguments.mode != "run" or logcat_started:
                     runner = SoakRunner(
                         ADBClient(arguments.serial, adb_path=arguments.adb, timeout_seconds=arguments.adb_timeout),
                         duration_seconds=arguments.duration if arguments.mode == "run" else arguments.preflight_duration,
@@ -577,7 +675,11 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                                 arguments.host_telemetry_jsonl,
                             )
                             write_json(soak_dir / "exact-window-report.json", report)
-                            gate = derive_gate(soak_dir / "exact-window-report.json")
+                            gate = derive_gate(
+                                soak_dir / "exact-window-report.json",
+                                manifest_path=output_dir / "phase2-tablet-manifest.json",
+                                evidence_dir=output_dir,
+                            )
                             write_json(soak_dir / "phase2-tablet-gate.json", gate)
                             artifacts.extend([
                                 {"path": str(soak_dir.relative_to(output_dir) / "exact-window-report.json"), "kind": "soak_report"},
@@ -587,30 +689,27 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                                 blockers.append("phase2 tablet gate verdict was " + str(gate.get("verdict")))
                         except (OSError, ValueError) as error:
                             blockers.append("phase2 tablet gate derivation failed: " + str(error))
-                finally:
-                    stop_process(logcat, logcat_handle)
-                    android_log_metrics = write_log_derivatives(output_dir / "raw-logcat.txt", output_dir)
-                    artifacts.extend([
-                        {"path": "raw-logcat.txt", "kind": "android_logcat"},
-                        {"path": "decoder-telemetry.jsonl", "kind": "android_telemetry"},
-                        {"path": "reconnects.log", "kind": "android_log_filter"},
-                        {"path": "frame-drops.log", "kind": "android_log_filter"},
-                    ])
-                    copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts)
-                    blockers.extend(
-                        collect_after_artifacts(
-                            output_dir=output_dir,
-                            serial=arguments.serial,
-                            adb_path=arguments.adb,
-                            adb_timeout=arguments.adb_timeout,
-                            package_name=arguments.package,
-                            artifacts=artifacts,
-                            command_runner=subprocess.run,
-                        )
+            finally:
+                stop_process(logcat, logcat_handle)
+                android_log_metrics = write_log_derivatives(output_dir / "raw-logcat.txt", output_dir)
+                artifacts.extend([
+                    {"path": "raw-logcat.txt", "kind": "android_logcat"},
+                    {"path": "decoder-telemetry.jsonl", "kind": "android_telemetry"},
+                    {"path": "reconnects.log", "kind": "android_log_filter"},
+                    {"path": "frame-drops.log", "kind": "android_log_filter"},
+                ])
+                copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts)
+                blockers.extend(
+                    collect_after_artifacts(
+                        output_dir=output_dir,
+                        serial=arguments.serial,
+                        adb_path=arguments.adb,
+                        adb_timeout=arguments.adb_timeout,
+                        package_name=arguments.package,
+                        artifacts=artifacts,
+                        command_runner=subprocess.run,
                     )
-    except FileExistsError:
-        blockers.append("device coordination lock exists: " + str(SOAK_LOCK))
-
+                )
     readiness = build_readiness(
         mode=arguments.mode,
         command=command,
@@ -674,6 +773,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--interval must be between 1s and 60s for Phase 2 evidence")
     if arguments.apk is None and not arguments.apk_sha256:
         parser.error("provide --apk or --apk-sha256")
+    if arguments.mode == "run" and arguments.apk is None and not is_sha256_digest(arguments.apk_sha256):
+        parser.error("formal --apk-sha256 must be a 64-character hexadecimal digest")
     command = [sys.executable, "-m", "vibescreen_evidence.phase2_tablet_soak", *(argv or sys.argv[1:])]
     try:
         readiness = run_or_preflight(arguments, command)

@@ -229,6 +229,10 @@ the current setup is not a physical tablet, lacks a Host PID, lacks Host JSONL
 telemetry, or is blocked by a device lock. The formal run target fails closed:
 if any precondition blocker is present, it writes `phase2-soak-readiness.json`
 and does not start the eight-hour sample loop.
+When either `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock` already exists, the wrapper writes only the
+blocked readiness record and `README.md`; it does not collect static ADB,
+logcat, or soak artifacts.
 
 For the attached Nubia P0110/pacific Android substitute, use an explicit serial
 and keep the result scoped to readiness only:
@@ -248,6 +252,11 @@ make phase2-tablet-soak-preflight \
   PHASE2_SOAK_PREFLIGHT_DURATION=2s \
   PHASE2_SOAK_INTERVAL=1s
 ```
+
+The readiness-only APK hash placeholder is allowed only for preflight blocker
+records. A formal eight-hour run must provide `PHASE2_APK_PATH` or a real
+64-character hexadecimal `PHASE2_APK_SHA256`; otherwise the wrapper rejects the
+run before it can close the Phase 2 gate.
 
 A formal run needs a physical 8-9 inch tablet, a stand-mounted charging setup,
 the signed Host process PID, and a Host started with `VIBE_SCREEN_TELEMETRY_PATH`
@@ -278,7 +287,11 @@ device and refuses to run ADB when either that lock or
 `/tmp/vibe-screen-device-android.lock` already exists. It writes
 `raw-logcat.txt`, Android telemetry derivatives, before/after battery, power,
 thermal dumps, Host identity, APK hash, and the manifest. A readiness result of
-`blocked` is useful evidence of why the gate could not start, not a pass.
+`blocked` is useful evidence of why the gate could not start, not a pass. The
+wrapper close contract is `phase2-soak-readiness.json` with
+`can_close_phase2_gate=true` plus `soak-8h/phase2-tablet-gate.json` reporting
+`verdict=pass`; README prose or placeholder hashes do not satisfy the formal
+gate.
 
 ## Required interruption scenarios
 
@@ -434,7 +447,7 @@ Each run directory should include at minimum:
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
   `adb-power-after.txt`, thermal dumps before/after, and the corresponding
   `thermal-*.err` stderr captures;
-- `raw-logcat.txt`, `host.log`, `reconnects.log`, `frame-drops.log`, and
+- `raw-logcat.txt`, `reconnects.log`, `frame-drops.log`, and
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states;
