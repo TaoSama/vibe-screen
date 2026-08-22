@@ -85,7 +85,10 @@
     <string name="stream_status_usb_label">USB</string>
     <string name="stream_status_usb_detail">ADB reverse</string>
     <string name="stream_status_lan_label">LAN</string>
-    <string name="stream_status_lan_detail">Encrypted records</string>
+    <string name="stream_status_lan_encrypted_detail">Encrypted records</string>
+    <string name="stream_status_lan_legacy_plaintext_detail">Legacy plaintext</string>
+    <string name="stream_status_lan_negotiating_detail">Checking protection</string>
+    <string name="stream_status_lan_unknown_detail">Protection unknown</string>
     <string name="stream_status_internet_label">Internet</string>
     <string name="stream_status_internet_detail">Encrypted records</string>
     <string name="stream_status_overlay_format">%1$s · %2$s</string>
@@ -124,7 +127,11 @@
     <string name="clipboard_get_from_mac">Get from Mac</string>
     <string name="clipboard_lan_confirm_title">Send over trusted LAN?</string>
     <string name="clipboard_lan_confirm_message">Clipboard text will use trusted-LAN encrypted application records. Use this only on a trusted private network.</string>
+    <string name="clipboard_lan_legacy_confirm_message">Clipboard text will use explicit trusted-LAN legacy plaintext. Use this only on a trusted private network.</string>
+    <string name="clipboard_lan_unknown_confirm_message">Clipboard text will use the current trusted-LAN session, but its protection state is not available. Use this only on a trusted private network.</string>
     <string name="clipboard_lan_confirm_action">Send</string>
+    <string name="clipboard_lan_legacy_receive_confirm_message">The Mac clipboard will use explicit trusted-LAN legacy plaintext. Use this only on a trusted private network.</string>
+    <string name="clipboard_lan_unknown_receive_confirm_message">The Mac clipboard will use the current trusted-LAN session, but its protection state is not available. Use this only on a trusted private network.</string>
     <string name="clipboard_lan_receive_confirm_title">Receive over trusted LAN?</string>
     <string name="clipboard_lan_receive_confirm_message">The Mac clipboard text will use trusted-LAN encrypted application records. Use this only on a trusted private network.</string>
     <!-- Toast shown after the local clipboard is sent to the Mac. -->
@@ -143,6 +150,8 @@
     <string name="clipboard_receive_confirm_title">Copy from Mac?</string>
     <string name="clipboard_receive_confirm_message">This Mac sent clipboard text directly. Copy it to this device?</string>
     <string name="clipboard_lan_direct_receive_confirm_message">This Mac sent clipboard text directly over trusted-LAN encrypted application records. Copy it and replace this device’s clipboard?</string>
+    <string name="clipboard_lan_legacy_direct_receive_confirm_message">This Mac sent clipboard text directly over explicit trusted-LAN legacy plaintext. Copy it and replace this device’s clipboard?</string>
+    <string name="clipboard_lan_unknown_direct_receive_confirm_message">This Mac sent clipboard text directly over the current trusted-LAN session, but its protection state is not available. Copy it and replace this device’s clipboard?</string>
     <string name="clipboard_receive_confirm_action">Copy</string>
     <string name="clipboard_plain_text_label">Text from Mac</string>
     <string name="clipboard_send_failed">Couldn\'t send the clipboard to the Mac.</string>

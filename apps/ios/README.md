@@ -172,6 +172,8 @@ currently no key migration step.
   epochs, and bounded jitter/playback queues.
 - File chunks use the bulk channel with sequential offsets, negotiated chunk
   size, per-chunk and final SHA-256, limits, cancellation, and cleanup.
+  These are iOS trusted-LAN/client-core semantics; they do not prove
+  Mac/Android Internet product-session audio/bulk end-to-end behavior.
 - The renderer does not advertise HDR output. HDR10/PQ/Main10 requests are
   explicitly rejected with an 8-bit BT.709 SDR fallback at a newer
   `config_epoch`; color is never changed silently.
@@ -234,7 +236,7 @@ must still preserve these client semantics:
 - finite host action catalogs, authenticated/replay-safe wake helpers, and
   deny-wins managed policy;
 - separate control/video/audio/bulk keys, sequences, and replay windows before
-  enabling advanced channels on Internet transport.
+  enabling advanced product flows over Internet transport.
 
 See the [Phase 5 verification record](../../docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
 and [dependency provenance](../../THIRD_PARTY.md) for exact evidence and

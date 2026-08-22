@@ -20,6 +20,31 @@ contact or HID actuation visible to the camera, and the end event the first
 visible Mac-side result. Keep input claims scoped to real physical input; ADB
 or synthetic events are mapper diagnostics, not input-latency evidence.
 
+## Capture procedure
+
+Before the run, lock the camera exposure, focus, shutter mode, frame rate, and
+white balance so frame boundaries stay readable across the full sample window.
+Mount the camera, Mac display, and Android device so both endpoint events are in
+one stable frame; do not hand-hold the camera or move either display after the
+first calibration clip. Record `adb -s EP0110PZ0B9110300B shell getprop` or the
+equivalent device-info helper output next to the run, and keep the device label
+as Nubia P0110/pacific/Android 16 when that serial is used.
+
+For USB glass-to-glass, start the macOS host and Android client over ADB reverse,
+then record at least five visible Mac stimulus transitions and their matching
+Android render results in one raw camera file. For LAN glass-to-glass, remove
+the ADB reverse dependency, confirm the LAN session is active, and repeat the
+same visible transition sampling with the LAN gate profile. For input latency,
+record real physical touch, stylus, keyboard, or mouse actuation and the first
+visible Mac-side result; do not use ADB-generated input as the start event.
+
+Annotate `samples.csv` from the raw recording only after capture. Use the first
+frame where the start event is visible and the first frame where the result is
+visible; if either boundary is ambiguous, record the worst-case endpoint
+uncertainty in the manifest. Keep failed, insufficient, and interrupted runs in
+their own evidence directories so the blocked reason is auditable rather than
+silently replaced by a later attempt.
+
 ## Evidence directory
 
 Store each run in an immutable directory with these files:
@@ -102,6 +127,37 @@ The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
 
+After collecting raw-camera.mov, samples.csv, and device-info.json, create the
+manifest with the dedicated helper instead of adapting the generic evidence
+manifest tool:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+      --evidence-dir latency-run \
+      --latency-kind glass-to-glass \
+      --transport usb \
+      --gate-profile usb-glass-to-glass-sub50 \
+      --raw-video latency-run/raw-camera.mov \
+      --samples latency-run/samples.csv \
+      --samples-format csv \
+      --annotation-method manual-frame-count \
+      --camera-manufacturer "camera vendor" \
+      --camera-model "camera model" \
+      --camera-mode 1080p240 \
+      --camera-frame-rate-fps 240 \
+      --camera-shutter-mode fixed \
+      --operator "operator name" \
+      --annotator "annotator name" \
+      --device-info latency-run/device-info.json \
+      --host-artifact "host binary identity or hash" \
+      --client-artifact "APK identity or hash" \
+      --stimulus "visible Mac-side stimulus" \
+      --start-event-definition "first camera frame where the stimulus is visible" \
+      --end-event-definition "first camera frame where the result is visible" \
+      --lighting "lighting conditions" \
+      --mounting "camera and device mounting" \
+      --max-frame-annotation-uncertainty-ms 4.2 \
+      --notes "run-specific notes"
+
 ## Commands
 
 First summarize the samples with the matching profile:
@@ -122,13 +178,14 @@ Then validate the formal evidence package:
       --output latency-run/latency-evidence-report.json
 
 For LAN glass-to-glass, use `--transport lan` with `lan-glass-to-glass-sub80`.
-For input latency, use `--kind input` with `input-p95-sub50`. The checker exits 0 only
-when the profile verdict is pass and required external-camera provenance is
-complete. Missing raw video, mismatched manifest fields, changed sample
-annotations, frame-rate mismatches, annotation uncertainty that crosses the
-threshold, too few samples, wrong transport, or a threshold miss all return
-nonzero with a JSON report whose verdict is insufficient or fail. Referenced
-files must use package-relative paths and stay inside the evidence directory.
+For input latency, use `--kind input` with `input-p95-sub50`. The checker exits
+0 only when the profile verdict is pass and the required external-camera or
+synchronized-clock provenance is complete. Missing raw video, mismatched
+manifest fields, changed sample annotations, frame-rate mismatches, annotation
+uncertainty or clock error budget that crosses the threshold, too few samples,
+wrong transport, or a threshold miss all return nonzero with a JSON report whose
+verdict is insufficient or fail. Referenced files must use package-relative
+paths and stay inside the evidence directory.
 
 ## Synchronized-clock input latency
 
@@ -144,11 +201,89 @@ the measurement window, and a worst-case error budget. The total timing error
 budget must be less than 5 ms, which is 10% of the sub-50 ms P95 input gate, or
 the claim remains `insufficient` even if the raw P95 is below 50 ms.
 
-The current formal provenance checker validates external-camera packages only.
-Until a synchronized-clock manifest schema and checker path exist, a
-synchronized-clock input run must keep its `vibescreen_evidence.latency` summary
-with the synchronization proof and must be reviewed manually before it can be
-used as acceptance evidence.
+A synchronized-clock input run still needs a real physical input event and a
+visible Mac-side result. Before sampling, record a before-skew measurement,
+perform the synchronization procedure, record an after-skew measurement, and
+repeat a drift check after the sample window. The manifest's total error budget
+must conservatively cover the remaining skew, drift, timestamp capture
+resolution, and trigger-detection uncertainty; if any component is guessed or
+omitted, the run remains blocked.
+
+The formal provenance checker now validates synchronized-clock input packages.
+The manifest generator can build this path with `--measurement-method
+synchronized-clock`; it sets `measurement_setup.clock_domain` to
+`synchronized-host-device-clocks`, omits the external-camera-only `camera` and
+`recording` sections, and writes the required `synchronization` section. That
+section must provide:
+
+- `host_clock_source` and `device_clock_source`: the clock domains used on each
+  side.
+- `sync_procedure`: how the two clocks were aligned before the run.
+- `before_skew_ms`, `after_skew_ms`, and `max_drift_ms`: measured skew and
+  drift over the measurement window.
+- `total_error_budget_ms`: the worst-case timing error, which must be less
+  than 5 ms.
+- `input_timestamp_method` and `result_timestamp_method`: how the physical
+  input actuation and the visible Mac result were timestamped.
+
+The checker applies `total_error_budget_ms` directly to the observed P95
+(rather than doubling it, as it does for per-frame camera annotation
+uncertainty). A pass requires `p95 + total_error_budget_ms <= 50 ms`.
+
+After collecting direct-latency samples and synchronization evidence, generate
+the manifest, then run the summarizer and checker:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --measurement-method synchronized-clock \
+  --latency-kind input \
+  --transport usb \
+  --gate-profile input-p95-sub50 \
+  --samples "$EVIDENCE_DIR/samples.csv" \
+  --samples-format csv \
+  --annotation-method direct-latency-ms \
+  --annotator "annotator name" \
+  --device-info "$EVIDENCE_DIR/device-info.json" \
+  --host-artifact "host binary identity or hash" \
+  --client-artifact "APK identity or hash" \
+  --stimulus "physical input actuation" \
+  --start-event-definition "physical input timestamp source" \
+  --end-event-definition "visible Mac result timestamp source" \
+  --lighting "n/a for synchronized-clock" \
+  --mounting "n/a for synchronized-clock" \
+  --host-clock-source "host clock source" \
+  --device-clock-source "device clock source" \
+  --sync-procedure "clock synchronization procedure" \
+  --before-skew-ms 1.2 \
+  --after-skew-ms 1.5 \
+  --max-drift-ms 0.8 \
+  --total-error-budget-ms 3.5 \
+  --input-timestamp-method "physical input timestamp method" \
+  --result-timestamp-method "visible result timestamp method" \
+  --notes "run-specific notes"
+```
+
+Then run the summary and checker commands:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \
+  --kind input \
+  --transport usb \
+  --measurement-method synchronized-clock \
+  --gate-profile input-p95-sub50 \
+  --run-id "$RUN_ID" \
+  --output "$EVIDENCE_DIR/summary.json"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile input-p95-sub50 \
+  --output "$EVIDENCE_DIR/latency-evidence-report.json"
+```
+
+A valid synchronized-clock fixture lives at
+`tools/fixtures/latency/synchronized-clock-input-valid/`. It exercises the
+checker path and is not real-device evidence.
 
 ## Claim boundary
 
