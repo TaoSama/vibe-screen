@@ -23,5 +23,8 @@ used to claim a shipped latency result.
   insufficient.
 - synchronized-clock-input-valid/: synthetic formal evidence package for the
   `input-p95-sub50` gate using the synchronized-clock measurement method plus a
-  synthetic physical-input artifact. It exercises the checker path without an
-  external camera and is not real-device evidence.
+  synthetic physical-input artifact and synchronization proof artifact. It
+  exercises the checker path without an external camera and is not real-device
+  evidence.
+- preflight-input.template.json: editable fail-closed readiness input template
+  for `vibescreen_evidence.latency_preflight`.

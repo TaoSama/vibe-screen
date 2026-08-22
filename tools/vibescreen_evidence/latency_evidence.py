@@ -51,6 +51,10 @@ PROFILE_ARTIFACT_REQUIREMENTS = {
         "retain real physical input actuation and visible Mac-side result proof",
     ),
 }
+SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT = (
+    "synchronization_record",
+    "retain clock synchronization proof, skew checks, drift check, and timing error-budget derivation",
+)
 
 SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
@@ -162,7 +166,7 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         errors.append(f"{path} must be {_describe_json_type(expected_type)}")
         return errors
 
-    if isinstance(value, dict) and (expected_type == "object" or isinstance(schema.get("properties"), dict)):
+    if isinstance(value, dict):
         properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []
         for field in required:
@@ -408,6 +412,15 @@ def _validate_referenced_files(
         errors.append(f"gate_artifacts.{required_artifact} is required: {requirement}")
     else:
         raw_references[f"gate_artifacts.{required_artifact}.file"] = artifact.get("file")
+    sync_artifact: dict[str, Any] | None = None
+    if manifest.get("measurement_method") == METHOD_SYNCHRONIZED_CLOCK:
+        sync_artifact_key, sync_requirement = SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT
+        candidate = gate_artifacts.get(sync_artifact_key)
+        if not isinstance(candidate, dict):
+            errors.append(f"gate_artifacts.{sync_artifact_key} is required: {sync_requirement}")
+        else:
+            sync_artifact = candidate
+            raw_references[f"gate_artifacts.{sync_artifact_key}.file"] = candidate.get("file")
     references: dict[str, Path | None] = {}
     for field, raw_path in raw_references.items():
         path = _resolve_package_path(manifest_path, raw_path, field, errors)
@@ -428,6 +441,15 @@ def _validate_referenced_files(
                 f"gate_artifacts.{required_artifact}.sha256",
                 artifact.get("sha256"),
                 references.get(f"gate_artifacts.{required_artifact}.file"),
+            )
+        )
+    if sync_artifact is not None:
+        sync_artifact_key = SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT[0]
+        digest_bindings.append(
+            (
+                f"gate_artifacts.{sync_artifact_key}.sha256",
+                sync_artifact.get("sha256"),
+                references.get(f"gate_artifacts.{sync_artifact_key}.file"),
             )
         )
     for field, expected_sha256, path in digest_bindings:

@@ -722,10 +722,11 @@ proof for `usb-glass-to-glass-sub50`, LAN network/stream preflight proof for
 `lan-glass-to-glass-sub80`, or physical input actuation proof for
 `input-p95-sub50`. External-camera packages also bind the raw camera recording
 and camera mode; synchronized-clock input packages bind the clock sources,
-skew, drift, timestamp methods, and sub-5 ms total error budget. The checker
-exits `0` only when the profile verdict is `pass` and provenance is complete;
-missing raw video, missing profile artifacts, mismatched metadata, or incomplete
-synchronization proof stays `insufficient`. The step-by-step method is in
+skew, drift, timestamp methods, sub-5 ms total error budget, and a retained
+`synchronization_record` artifact. The checker exits `0` only when the profile
+verdict is `pass` and provenance is complete; missing raw video, missing
+profile artifacts, mismatched metadata, or incomplete synchronization proof
+stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 Before spending device time on a full capture, record a fail-closed readiness
@@ -735,10 +736,12 @@ snapshot for the three README gate profiles:
 make evidence-latency-preflight \
   EVIDENCE_DIR=.build/evidence/latency-preflight \
   LATENCY_DEVICE_INFO=.build/evidence/latency-preflight/device-info.json \
-  LATENCY_PREFLIGHT_INPUT=.build/evidence/latency-preflight/preflight-input.json
+  LATENCY_PREFLIGHT_INPUT=.build/evidence/latency-preflight/preflight-input.json \
+  LATENCY_REPOSITORY_REVISION="$(git rev-parse origin/main)"
 ```
 
-The target writes `latency-preflight.json` and
+Start from `tools/fixtures/latency/preflight-input.template.json` when creating
+the input file. The target writes `latency-preflight.json` and
 `latency-preflight-exit.txt`. Exit `2` means the run is blocked before a formal
 gate attempt, which is an expected fail-closed outcome when external-camera or
 synchronized-clock artifacts are missing.

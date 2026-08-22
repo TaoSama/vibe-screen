@@ -196,6 +196,8 @@ def build_latency_manifest(
     synchronization: dict[str, Any] | None = None,
     gate_artifact: Path | None = None,
     gate_artifact_description: str | None = None,
+    synchronization_artifact: Path | None = None,
+    synchronization_artifact_description: str | None = None,
     recorded_at: str | None = None,
 ) -> dict[str, Any]:
     """Build a manifest matching tools/schemas/latency-evidence.schema.json."""
@@ -262,7 +264,19 @@ def build_latency_manifest(
     else:
         if synchronization is None:
             raise LatencyManifestError("synchronization metadata is required for synchronized-clock")
+        if synchronization_artifact is None:
+            raise LatencyManifestError(
+                "synchronization artifact is required for synchronized-clock"
+            )
+        if synchronization_artifact_description is None:
+            raise LatencyManifestError("synchronization artifact description is required")
         manifest["synchronization"] = synchronization
+        manifest["gate_artifacts"]["synchronization_record"] = _artifact_reference(
+            synchronization_artifact,
+            evidence_dir,
+            "gate_artifacts.synchronization_record",
+            synchronization_artifact_description,
+        )
     return manifest
 
 
@@ -333,6 +347,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--result-timestamp-method")
     parser.add_argument("--gate-artifact", type=Path, required=True)
     parser.add_argument("--gate-artifact-description", required=True)
+    parser.add_argument(
+        "--synchronization-artifact",
+        type=Path,
+        help="retained synchronization proof file; required for --measurement-method synchronized-clock",
+    )
+    parser.add_argument(
+        "--synchronization-artifact-description",
+        help="description of the synchronization proof; required for --measurement-method synchronized-clock",
+    )
     parser.add_argument("--notes", required=True)
     return parser
 
@@ -463,6 +486,8 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
         synchronization=synchronization,
         gate_artifact=args.gate_artifact,
         gate_artifact_description=args.gate_artifact_description,
+        synchronization_artifact=args.synchronization_artifact,
+        synchronization_artifact_description=args.synchronization_artifact_description,
         recorded_at=args.recorded_at,
     )
 

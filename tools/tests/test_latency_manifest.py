@@ -85,6 +85,12 @@ def _write_artifact(root: Path, name: str = "usb-connection.txt") -> Path:
     return artifact
 
 
+def _write_synchronization_artifact(root: Path) -> Path:
+    artifact = root / "synchronization-record.txt"
+    artifact.write_text("fixture clock synchronization proof\n", encoding="utf-8")
+    return artifact
+
+
 class LatencyManifestBuilderTest(unittest.TestCase):
     def test_builds_manifest_that_formal_checker_accepts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -249,6 +255,7 @@ class LatencyManifestCliTest(unittest.TestCase):
 
     def valid_synchronized_clock_cli_args(self, root: Path, samples: Path) -> list[str]:
         artifact = _write_artifact(root, "input-actuation.txt")
+        synchronization_artifact = _write_synchronization_artifact(root)
         return [
             "--evidence-dir",
             str(root),
@@ -320,6 +327,10 @@ class LatencyManifestCliTest(unittest.TestCase):
             str(artifact),
             "--gate-artifact-description",
             "Synthetic physical-input proof.",
+            "--synchronization-artifact",
+            str(synchronization_artifact),
+            "--synchronization-artifact-description",
+            "Synthetic clock synchronization proof.",
             "--notes",
             "Synthetic synchronized-clock package only.",
         ]
@@ -381,7 +392,21 @@ class LatencyManifestCliTest(unittest.TestCase):
             manifest["measurement_setup"]["clock_domain"],
             "synchronized-host-device-clocks",
         )
+        self.assertIn("synchronization_record", manifest["gate_artifacts"])
         self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_rejects_synchronized_clock_without_sync_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = _write_synchronized_clock_samples(root)
+            arguments = self.valid_synchronized_clock_cli_args(root, samples)
+            start = arguments.index("--synchronization-artifact")
+            del arguments[start : start + 4]
+
+            result = self.run_cli(*arguments)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synchronization artifact is required", result.stderr)
 
     def test_cli_rejects_non_finite_camera_frame_rate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

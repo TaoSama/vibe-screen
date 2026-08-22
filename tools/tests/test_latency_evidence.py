@@ -33,6 +33,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
         (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
         (root / "input-actuation.txt").write_bytes((source / "input-actuation.txt").read_bytes())
+        (root / "synchronization-record.txt").write_bytes(
+            (source / "synchronization-record.txt").read_bytes()
+        )
         return manifest
 
     def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
@@ -486,6 +489,47 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "insufficient")
         self.assertTrue(
             any("gate_artifacts.input_actuation_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_requires_sync_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            gate_artifacts.pop("synchronization_record", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.synchronization_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_sync_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            sync_record = gate_artifacts["synchronization_record"]
+            assert isinstance(sync_record, dict)
+            sync_record["sha256"] = "0" * 64
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.synchronization_record.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
         )
 
     def test_synchronized_clock_input_package_passes(self) -> None:

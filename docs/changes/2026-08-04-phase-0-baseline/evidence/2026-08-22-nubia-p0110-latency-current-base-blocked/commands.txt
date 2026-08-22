@@ -1,14 +1,15 @@
 Repository/context checks:
 
-  git fetch origin main
-  git checkout -B codex/latency-gate-closure-owner origin/main
+  git -C /Users/luwentao/Workspaces/vibe-screen fetch origin --prune
+  git -C /Users/luwentao/Workspaces/vibe-screen worktree add -b codex/external-camera-latency-readiness \
+    /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/external-camera-latency-readiness origin/main
   git rev-parse HEAD
   git rev-parse origin/main
 
 Outcome:
 
-  HEAD and origin/main were both 47207c5bc82f9931eb82ec886d2d55e96c3f3e5b
-  before the current-base latency preflight/tooling slice was created.
+  HEAD and origin/main were both 660dae5231fb1ac4decf5088f911f22a9285abf8
+  after the current-base latency preflight/tooling successor slice was refreshed.
 
 PR context checked with GitHub CLI/MCP during the task:
 
@@ -18,6 +19,12 @@ PR context checked with GitHub CLI/MCP during the task:
 
   PR #192: open draft, stale/conflicting, and not merged. It is not a
   current-base closure owner.
+
+  PR #264: open, based on an older main commit before origin/main advanced to
+  660dae5231fb1ac4decf5088f911f22a9285abf8. Its
+  fail-closed tooling shape was cherry-picked into this successor branch and
+  refreshed against current origin/main rather than modifying PR #264's dirty
+  local worktree.
 
 Android device lock and read-only identity preflight:
 
@@ -41,6 +48,7 @@ Fail-closed latency preflight generation:
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked \
   LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/device-info.json \
   LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/preflight-input.json \
+  LATENCY_REPOSITORY_REVISION=660dae5231fb1ac4decf5088f911f22a9285abf8 \
   make evidence-latency-preflight
 
 Outcome:

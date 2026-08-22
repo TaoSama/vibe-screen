@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/latency-preflight.schema.json",
+  "title": "Vibe Screen latency gate preflight result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "checked_at",
+    "repository_revision",
+    "status",
+    "claim_boundary",
+    "device",
+    "gate_profiles",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "latency_gate_preflight"},
+    "run_id": {"type": "string", "minLength": 1},
+    "checked_at": {"type": "string", "minLength": 1},
+    "repository_revision": {"type": ["string", "null"]},
+    "status": {"enum": ["ready", "blocked", "failed"]},
+    "claim_boundary": {"type": "string", "minLength": 1},
+    "device": {"type": ["object", "null"]},
+    "gate_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile_result"}
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "profile_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "status",
+        "latency_kind",
+        "transport",
+        "checks",
+        "can_attempt_formal_gate",
+        "can_close_performance_gate",
+        "missing_requirements",
+        "artifact_paths"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "usb-glass-to-glass-sub50",
+            "lan-glass-to-glass-sub80",
+            "input-p95-sub50"
+          ]
+        },
+        "status": {"enum": ["ready", "blocked", "failed"]},
+        "latency_kind": {"enum": ["glass-to-glass", "input"]},
+        "transport": {"enum": ["usb", "lan", null]},
+        "checks": {"type": "object"},
+        "can_attempt_formal_gate": {"type": "boolean"},
+        "can_close_performance_gate": {"type": "boolean"},
+        "missing_requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "requirement"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "requirement": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "artifact_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "formal_report": {"type": "object"},
+        "formal_gate_reasons": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

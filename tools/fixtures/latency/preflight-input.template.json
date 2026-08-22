@@ -1,12 +1,11 @@
 {
   "schema_version": "vibescreen.evidence/v1",
-  "run_id": "2026-08-22-nubia-p0110-latency-current-base-blocked",
-  "checked_at": "2026-08-22T04:50:00Z",
+  "run_id": "replace-with-run-id",
   "gate_profiles": [
     {
       "profile": "usb-glass-to-glass-sub50",
       "checks": {
-        "device_identity_recorded": true,
+        "device_identity_recorded": false,
         "host_build_identity_recorded": false,
         "external_camera_timebase_ready": false,
         "raw_camera_recording_retained": false,
@@ -19,7 +18,7 @@
     {
       "profile": "lan-glass-to-glass-sub80",
       "checks": {
-        "device_identity_recorded": true,
+        "device_identity_recorded": false,
         "host_build_identity_recorded": false,
         "external_camera_timebase_ready": false,
         "raw_camera_recording_retained": false,
@@ -32,7 +31,7 @@
     {
       "profile": "input-p95-sub50",
       "checks": {
-        "device_identity_recorded": true,
+        "device_identity_recorded": false,
         "host_build_identity_recorded": false,
         "measurement_timebase_ready": false,
         "sample_annotations_retained": false,
@@ -44,8 +43,6 @@
     }
   ],
   "notes": [
-    "Nubia P0110/pacific/Android 16 device identity was reachable and recorded under a pseudonymous device id.",
-    "No high-frame-rate external-camera package, annotated latency samples, synchronized-clock proof, or physical input actuation package was available in this worktree session.",
-    "PR #167 is merged into the current base and supplies synchronized-clock input tooling; PR #192 is draft/stale/conflicting and is not treated as a closure owner."
+    "Replace false checks with true only when the retained artifacts exist in this evidence directory."
   ]
 }

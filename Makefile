@@ -45,6 +45,7 @@ RECONNECT_TIMING_ARTIFACT_ARGS ?=
 RECONNECT_TIMING_NOTES_ARG ?=
 LATENCY_PREFLIGHT_INPUT ?=
 LATENCY_DEVICE_INFO ?=
+LATENCY_REPOSITORY_REVISION ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -288,6 +289,7 @@ evidence-latency-preflight:
 		python3 -m vibescreen_evidence.latency_preflight \
 		$(if $(strip $(LATENCY_PREFLIGHT_INPUT)),--input $(LATENCY_PREFLIGHT_INPUT),) \
 		$(if $(strip $(LATENCY_DEVICE_INFO)),--device-info $(LATENCY_DEVICE_INFO),) \
+		$(if $(strip $(LATENCY_REPOSITORY_REVISION)),--repository-revision $(LATENCY_REPOSITORY_REVISION),) \
 		--repo . \
 		--output $(EVIDENCE_DIR)/latency-preflight.json; \
 		status=$$?; printf '%s\n' "$$status" > $(EVIDENCE_DIR)/latency-preflight-exit.txt; exit $$status
