@@ -1,0 +1,66 @@
+# Local verification commands and outcomes
+
+## Pairing fixture tests
+
+Command:
+
+```bash
+uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
+```
+
+Result: passed, `4 passed in 0.12s`.
+
+Initial attempt with `python3 -m pytest contracts/tests/test_pairing_wire_fixtures.py -q`
+failed because this host Python environment does not have `pytest` installed.
+The globally installed `/usr/local/bin/pytest` wrapper also points at a removed
+`/usr/local/opt/python@3.11/bin/python3.11` interpreter, so the final run used
+`uvx` without changing repository dependencies.
+
+## Android QR pairing and profile tests
+
+Command:
+
+```bash
+cd baseline/AndroidClient
+./gradlew testDebugUnitTest \
+  --tests "dev.telemachus.display.internet.security.InternetPairingTest" \
+  --tests "dev.telemachus.display.internet.InternetSessionProfileCodecTest" \
+  --tests "dev.telemachus.display.internet.InternetSessionProfileStorePairingBindingTest"
+```
+
+Result: passed, Gradle `BUILD SUCCESSFUL`, 44 selected tests.
+
+## macOS Swift build and tests
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift build -c release
+```
+
+Result: passed, `Build complete! (0.30s)` on the incremental run after artifact
+fetch/build completed.
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift test --filter InternetPairingTests
+```
+
+Result: blocked by local Command Line Tools XCTest availability before test
+execution: Swift failed compiling the test target with `error: no such module
+'XCTest'`. This is an environment/toolchain failure, not a test assertion
+failure. The same XCTest module availability issue blocks running
+`InternetSessionLeaseIssuerTests` in this environment.
+
+## Diff hygiene
+
+Command:
+
+```bash
+git diff --check
+```
+
+Result: passed.

@@ -140,15 +140,19 @@ swift build -c release
 ```
 
 The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
-`pinned_host_id`, `signaling_url`, `signaling_session_id`, `session_epoch`,
-`identity_epoch`, `transcript_context`, `protocol_session_id`,
-`signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
-server contains exactly `urls`, `username`, and `credential`; nullable values
-must be JSON `null`. The issuer adds `lease_host_key_id` and the DER ECDSA
-`lease_signature` over the Android canonical transcript. `session_epoch` in the
-unsigned input is an untrusted compatibility field: the issuer ignores its value,
-atomically reserves the next epoch from pairing-scoped durable Keychain state,
-replaces the field, and only then signs. Input JSON cannot select or reset it.
+`pinned_host_id`, `pinned_device_id`, `lease_device_key_id`, `signaling_url`,
+`signaling_session_id`, `session_epoch`, `host_identity_epoch`,
+`device_identity_epoch`, `expires_at`, `transcript_context`,
+`protocol_session_id`, `signaling_token`, `ice_servers`, and
+`allow_insecure_for_testing`. Each ICE server contains exactly `urls`,
+`username`, and `credential`; nullable values must be JSON `null`. The issuer
+adds `lease_host_key_id` and the DER ECDSA `lease_signature` over the Android
+canonical transcript. `session_epoch` and `expires_at` in the unsigned input are
+untrusted compatibility fields: the issuer ignores their values, atomically
+reserves the next epoch from pairing-scoped durable Keychain state, rewrites
+`expires_at` to its configured local TTL, replaces those fields, and only then
+signs. Input JSON cannot select, reset, or extend either value; missing or
+reserved maximum `expires_at` fails closed before signing.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line
@@ -310,7 +314,8 @@ tokens, and log redaction). The following remain open and must not be treated as
 shipped:
 
 - Mac and Android automatic profile/account/session issuance is not wired to the
-  authority.
+  authority in this local QR pairing verifier slice; profile issuance remains
+  owned by the Authority service path.
 - Automatic account and device registration is not wired.
 - Relay credential admission is wired to the authority; the structured reconcile
   helper is locally tested, but coturn exporter, scheduled reconciliation loop,
