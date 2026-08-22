@@ -63,6 +63,54 @@ make ios-device-acceptance-gate \
   IOS_ACCEPTANCE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/acceptance.json
 ```
 
+## Phase 3 real-media continuity preflight
+
+Use the Phase 3 continuity evaluator after collecting retained Host and Android
+logs from a real Internet product-session attempt. It checks for the narrow
+ScreenCaptureKit/CGDisplayStream -> VideoToolbox -> WebRTC -> Android
+MediaCodec continuity slice: route/ICE evidence, Protocol v1 media epoch, real
+capture first frame, encoder output, decoder configuration, first decoder input,
+first decoder output, continuous output count, drops, and decoder errors.
+
+The evaluator is passive and fail-closed. It does not start the Host, change TCC,
+touch ADB, or close the Phase 3 release gate. A `pass` only means the supplied
+logs satisfy this continuity slice; the generated JSON always keeps
+`gate_can_close_phase3_release` false. Missing public-Internet route evidence,
+identity-signed Host evidence, Screen Recording permission, real capture,
+VideoToolbox output, MediaCodec output, or synthetic-media contamination returns
+`blocked`. Runtime decoder errors or excess dropped frames return `fail` only
+after the required runtime stages are otherwise present.
+
+Exit codes are `0` for `pass`, `1` for `blocked`, `2` for runtime `fail`, and
+`3` for input or invocation errors.
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_continuity \
+  --host-log path/to/host-log-redacted.txt \
+  --android-log path/to/logcat-redacted.txt \
+  --device-info path/to/device-info.json \
+  --network-path public_internet \
+  --host-signing identity_signed \
+  --screen-recording granted \
+  --minimum-output-frames 120 \
+  --maximum-dropped-frames 0 \
+  --output path/to/real-media-continuity.json
+```
+
+The Makefile wrapper writes `$(EVIDENCE_DIR)/real-media-continuity.json` and
+returns nonzero for `blocked` or `fail` results while preserving the output for
+audit:
+
+```sh
+make phase3-real-media-continuity \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_HOST_LOG=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/host-log-redacted.txt \
+  PHASE3_ANDROID_LOG=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/logcat-redacted.txt \
+  PHASE3_NETWORK_PATH=public_internet \
+  PHASE3_HOST_SIGNING=identity_signed \
+  PHASE3_SCREEN_RECORDING=granted
+```
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

@@ -487,6 +487,11 @@ over the production WebRTC media DataChannel, still with a synthetic Protocol
 v1 peer and synthetic pixel-buffer input. That check does not start
 ScreenCaptureKit or CGDisplayStream and is not Android MediaCodec, visible UI,
 or public-Internet evidence.
+No current-worktree Phase 3 Internet pass is recorded for real
+ScreenCaptureKit/CGDisplayStream output reaching Android MediaCodec on a real
+device over a public route; the continuity preflight remains blocked until
+public-route, identity-signed Host, Screen Recording, capture, encoder, and
+decoder-output evidence are all present.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
