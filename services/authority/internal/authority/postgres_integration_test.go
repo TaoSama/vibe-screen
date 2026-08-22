@@ -630,15 +630,16 @@ func TestPostgresMigrationUpgradesPublishedV1ToCurrentSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	closedAt := time.Now().UTC().Add(-time.Minute)
-	_, err = connection.Exec(ctx, `
-		INSERT INTO authority_accounts(account_id) VALUES ('legacy-account');
-		INSERT INTO authority_devices(device_id,account_id) VALUES ('legacy-host','legacy-account'),('legacy-client','legacy-account');
-		INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at)
-		VALUES ('legacy-session','legacy-request','legacy-account','legacy-host','legacy-client',1,$1::timestamptz + interval '1 hour');
-		INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,admitted_at,last_observed_at,closed_at)
-		VALUES ('legacy-closed','turn-prod-1','legacy-client','legacy-session',1,10,5,$1::timestamptz,$1::timestamptz,$1::timestamptz);
-	`, closedAt)
-	if err != nil {
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_accounts(account_id) VALUES ('legacy-account')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_devices(device_id,account_id) VALUES ('legacy-host','legacy-account'),('legacy-client','legacy-account')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at) VALUES ('legacy-session','legacy-request','legacy-account','legacy-host','legacy-client',1,$1::timestamptz + interval '1 hour')`, closedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,admitted_at,last_observed_at,closed_at) VALUES ('legacy-closed','turn-prod-1','legacy-client','legacy-session',1,10,5,$1::timestamptz,$1::timestamptz,$1::timestamptz)`, closedAt); err != nil {
 		t.Fatal(err)
 	}
 	cfg := testAuthorityConfig()
