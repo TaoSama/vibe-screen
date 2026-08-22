@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import re
 import selectors
+import signal
 import subprocess
 import sys
 import time
@@ -211,6 +212,7 @@ def _run_exporter_command(settings: Settings) -> bytes:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            start_new_session=(os.name == "posix"),
         )
     except OSError as exc:
         raise ReconcileError(f"coturn exporter could not start: {exc}") from exc
@@ -260,6 +262,7 @@ def _read_limited_stdout(
     finally:
         selector.close()
         process.stdout.close()
+        _terminate_process(process)
 
 
 def _drain_process_stdout(
@@ -284,13 +287,27 @@ def _drain_process_stdout(
 
 
 def _terminate_process(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is None:
-        process.kill()
+    _kill_process_group(process)
     try:
         process.wait(timeout=1)
     except subprocess.TimeoutExpired:
-        process.kill()
+        _kill_process_group(process)
         process.wait()
+
+
+def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+    try:
+        process.kill()
+    except OSError:
+        pass
 
 
 def _wait_for_process(process: subprocess.Popen[bytes], deadline: float, timeout_message: str) -> None:

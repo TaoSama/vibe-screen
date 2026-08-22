@@ -35,7 +35,7 @@ export VIBE_AUTHORITY_SIGNALING_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_RELAY_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_COTURN_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_ROLE_TOKEN_SECRET="$(openssl rand -base64 48)"
-go run ./cmd/vibe-authority --config config.json --migrate migrations/001_authority.sql
+go run ./cmd/vibe-authority --config config.json --migrate migrations
 go run ./cmd/vibe-authority --config config.json
 ```
 
@@ -43,15 +43,17 @@ Each environment variable above also supports an exclusive `_FILE` form, such
 as `VIBE_AUTHORITY_ADMIN_TOKEN_FILE`, for container secret mounts. Do not set
 both forms of the same value.
 
-Migration execution is an explicit one-shot operation. Application replicas
+Migration execution is an explicit one-shot operation. Pass the migration
+directory so every numbered SQL migration runs in order and existing versioned
+ledgers can upgrade without mutating earlier checksums. Application replicas
 must not receive DDL permission. Back up the database and record the migration
-checksum before applying it.
+checksums before applying them.
 
 ## Container and Compose
 
 `Dockerfile` uses the pinned Go 1.25.5 Alpine build image, verifies
 the locked modules, and copies only the static binary, CA bundle, container
-config, and versioned migration into a `scratch` runtime. The runtime
+config, and versioned migrations into a `scratch` runtime. The runtime
 uses UID/GID 65532. Its health check calls the binary's strict
 `--healthcheck` probe against `/readyz`, so schema or
 database failure makes the container unready while `/healthz` remains
@@ -252,10 +254,11 @@ lists `unauthorized_allocation_ids` that exist only at the source,
 `conflict_allocation_ids` whose identity or counters conflict with the ledger,
 and `revoked_allocation_ids` for source-observed allocations whose Authority
 ledger has already been closed by account suspension, device revocation,
-signaling invalidation, expiry, or quota policy. One conflict or revoked
-allocation does not stop processing the rest of the snapshot. Revoked allocation
-observations fail closed by refusing to advance counters, while still giving the
-operator's disconnect executor an exact allocation ID to terminate. Allocations
+signaling invalidation, or quota policy, or whose bound session has expired. One
+conflict or revoked allocation does not stop processing the rest of the snapshot.
+Revoked or expired allocation observations fail closed by refusing to advance
+counters, while still giving the operator's disconnect executor an exact
+allocation ID to terminate. Allocations
 applied earlier in that request remain committed and replay as duplicates or
 already-ahead entries on retry. Operators must disconnect unauthorized,
 conflicting, and revoked source allocations, and close ledger-only allocations

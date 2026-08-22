@@ -475,12 +475,36 @@ func testAuthorityConfig() Config {
 }
 
 func TestRequiredSchemaChecksumMatchesMigration(t *testing.T) {
-	contents, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
+	contents, err := os.ReadFile(filepath.Join("..", "..", "migrations", "002_authority_relay_allocation_closure_reason.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if checksum := fmt.Sprintf("%x", sha256.Sum256(contents)); checksum != requiredSchemaChecksum {
 		t.Fatalf("migration checksum=%s, readiness requires %s", checksum, requiredSchemaChecksum)
+	}
+}
+
+func TestLoadMigrationsSortsVersionedDirectory(t *testing.T) {
+	directory := t.TempDir()
+	files := map[string]string{
+		"002_second.sql": "SELECT 2",
+		"001_first.sql":  "SELECT 1",
+		"README.md":      "ignored",
+	}
+	for name, contents := range files {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	migrations, err := LoadMigrations(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) != 2 {
+		t.Fatalf("migration count=%d, want 2", len(migrations))
+	}
+	if migrations[0].Version != 1 || migrations[0].Source != "SELECT 1" || migrations[1].Version != 2 || migrations[1].Source != "SELECT 2" {
+		t.Fatalf("migrations=%+v", migrations)
 	}
 }
 

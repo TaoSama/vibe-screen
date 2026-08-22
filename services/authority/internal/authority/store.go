@@ -45,8 +45,8 @@ type PostgresStore struct {
 }
 
 const (
-	requiredSchemaVersion                  int64 = 1
-	requiredSchemaChecksum                       = "4a45b8c1510fb6823bab7c87ecb3b948b39d53a5b24be8a8f9eb58d4b3a7181d"
+	requiredSchemaVersion                  int64 = 2
+	requiredSchemaChecksum                       = "b9a720cb795a6f40f35e6719d1decb3a109021f4a2cb61248ef46d315713954b"
 	allocationClosedBySource                     = "source_closed"
 	allocationClosedByAccountSuspended           = "account_suspended"
 	allocationClosedByDeviceRevoked              = "device_revoked"
