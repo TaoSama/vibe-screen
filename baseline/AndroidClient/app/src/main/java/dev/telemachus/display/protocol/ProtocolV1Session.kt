@@ -1292,11 +1292,7 @@ internal class ProtocolV1Session(
         val runtimeDisplaySelection = state == State.REDISPLAY_REQUESTED && pendingDisplaySelectionIdValue != null
         val expectedDisplayId = pendingDisplaySelectionIdValue ?: displayId
         if (!response.accepted) {
-            pendingDisplaySelectionIdValue = null
-            pendingDisplaySelectionCommitId = null
-            pendingDisplaySelectionStreamId = 0L
-            pendingDisplaySelectionWidth = 0
-            pendingDisplaySelectionHeight = 0
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
             if (runtimeDisplaySelection && streamId > 0L && configEpoch > 0L) {
                 state = State.STREAMING
                 displayGeometryPublished = displayWidth > 0 && displayHeight > 0
@@ -1311,11 +1307,7 @@ internal class ProtocolV1Session(
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
         }
         if (response.streamId <= 0) {
-            pendingDisplaySelectionIdValue = null
-            pendingDisplaySelectionCommitId = null
-            pendingDisplaySelectionStreamId = 0L
-            pendingDisplaySelectionWidth = 0
-            pendingDisplaySelectionHeight = 0
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
         }
         if (runtimeDisplaySelection) {
@@ -1331,11 +1323,7 @@ internal class ProtocolV1Session(
                     commitDisplayId = !runtimeDisplaySelection,
                 )
             } catch (failure: ProtocolV1Failure) {
-                pendingDisplaySelectionIdValue = null
-                pendingDisplaySelectionCommitId = null
-                pendingDisplaySelectionStreamId = 0L
-                pendingDisplaySelectionWidth = 0
-                pendingDisplaySelectionHeight = 0
+                clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
                 throw failure
             }
         }
@@ -1485,11 +1473,7 @@ internal class ProtocolV1Session(
         if (!accepted) {
             videoPreferencesRequestInFlight = false
             val failedDisplaySelectionId = pendingDisplaySelectionCommitId
-            pendingDisplaySelectionIdValue = null
-            pendingDisplaySelectionCommitId = null
-            pendingDisplaySelectionStreamId = 0L
-            pendingDisplaySelectionWidth = 0
-            pendingDisplaySelectionHeight = 0
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = failedDisplaySelectionId != null)
             if (failedDisplaySelectionId != null) {
                 state = State.STREAMING
                 displayGeometryPublished = displayWidth > 0 && displayHeight > 0
@@ -1521,11 +1505,7 @@ internal class ProtocolV1Session(
             displayWidth = pendingDisplaySelectionWidth
             displayHeight = pendingDisplaySelectionHeight
         }
-        pendingDisplaySelectionIdValue = null
-        pendingDisplaySelectionCommitId = null
-        pendingDisplaySelectionStreamId = 0L
-        pendingDisplaySelectionWidth = 0
-        pendingDisplaySelectionHeight = 0
+        clearPendingDisplaySelectionState(clearQueuedVideoPreferences = false)
         retiredConfigEpoch = configEpoch
         configEpoch = pending.configEpoch
         configuredCodec = pending.codec
@@ -1614,16 +1594,21 @@ internal class ProtocolV1Session(
 
     private fun clearPendingDisplaySelection(): String? {
         val rejectedDisplaySelectionId = pendingDisplaySelectionCommitId ?: pendingDisplaySelectionIdValue
-        pendingDisplaySelectionIdValue = null
-        pendingDisplaySelectionCommitId = null
-        pendingDisplaySelectionStreamId = 0L
-        pendingDisplaySelectionWidth = 0
-        pendingDisplaySelectionHeight = 0
+        clearPendingDisplaySelectionState(clearQueuedVideoPreferences = rejectedDisplaySelectionId != null)
         if (rejectedDisplaySelectionId != null) {
             state = State.STREAMING
             displayGeometryPublished = displayWidth > 0 && displayHeight > 0
         }
         return rejectedDisplaySelectionId
+    }
+
+    private fun clearPendingDisplaySelectionState(clearQueuedVideoPreferences: Boolean) {
+        pendingDisplaySelectionIdValue = null
+        pendingDisplaySelectionCommitId = null
+        pendingDisplaySelectionStreamId = 0L
+        pendingDisplaySelectionWidth = 0
+        pendingDisplaySelectionHeight = 0
+        if (clearQueuedVideoPreferences) pendingVideoPreferences = null
     }
 
     private fun List<Action>.withDisplaySelectionRejected(

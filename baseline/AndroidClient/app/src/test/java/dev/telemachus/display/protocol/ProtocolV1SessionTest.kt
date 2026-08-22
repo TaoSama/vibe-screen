@@ -1418,6 +1418,52 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun preferenceChangeDuringRejectedDisplaySelectionIsNotFlushedLater() {
+        val session = multiDisplayVideoControlStreamingSession()
+        session.selectDisplay("display-2")
+
+        assertNull(
+            session.setVideoPreferences(
+                bitrateKbps = 20_000,
+                framesPerSecond = 60,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            ),
+        )
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(false)
+                    .setRejectionReason("display_unavailable"),
+            ).build(),
+        )
+
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+
+        assertFalse(
+            committed
+                .filterIsInstance<ProtocolV1Session.Action.Send>()
+                .map { it.envelope }
+                .any { it.payloadCase == Envelope.PayloadCase.SET_VIDEO_PREFERENCES },
+        )
+        assertFalse(
+            committed
+                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationCommitted>()
+                .single()
+                .appliesClientVideoPreferences,
+        )
+    }
+
+    @Test
     fun rejectedPreferenceConfigurationDoesNotMarkLaterHostConfigurationAsClientRequested() {
         val session = videoControlStreamingSession()
         session.setVideoPreferences(
@@ -2260,6 +2306,31 @@ class ProtocolV1SessionTest {
                 rejectionReason = "",
             )
         }
+
+    private fun multiDisplayVideoControlStreamingSession(): ProtocolV1Session {
+        val capabilities =
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+            )
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = capabilities))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = capabilities))
+            it.receive(twoDisplayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+    }
 
     private fun session(
         localManagedPolicy: ProtocolV1Session.ManagedPolicy = ProtocolV1Session.ManagedPolicy.UNMANAGED,
