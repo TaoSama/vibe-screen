@@ -198,50 +198,24 @@ class StreamClient(
         require(videoConfigurationCommitTimeoutMs > 0L) { "videoConfigurationCommitTimeoutMs must be positive" }
     }
 
-    private var bytesReceived = 0L
-    private var framesReceived = 0L
-    private var diagFrameCount = 0L
-    private var lastStatsTime = System.currentTimeMillis()
     private val keyframeRequestLock = Any()
     private var lastKeyframeRequestNs = 0L
-    private var lastKeyframeReceivedNs = 0L
-
-    // Buffer pooling to reduce GC pressure from per-frame allocations
-    // At 60fps with ~100KB frames, this prevents ~6MB/s of allocations
-    private val bufferPool = ArrayDeque<ByteArray>(8)
-    private val poolLock = Any()
-
-    /**
-     * Acquire a buffer from pool or allocate new one if needed
-     * @param minSize Minimum size required for the buffer
-     */
-    private fun acquireBuffer(minSize: Int): ByteArray {
-        synchronized(poolLock) {
-            val iterator = bufferPool.iterator()
-            while (iterator.hasNext()) {
-                val buffer = iterator.next()
-                if (buffer.size >= minSize) {
-                    iterator.remove()
-                    return buffer
-                }
-            }
-        }
-        // No suitable buffer found, allocate new one
-        return ByteArray(minSize)
-    }
+    private val mediaFrameRouter =
+        StreamMediaFrameRouter(
+            frameSink = ::deliverMediaFrame,
+            requestKeyframe = { reason -> requestKeyframe(reason = reason) },
+            onStats = { fps, mbps -> onStats?.invoke(fps, mbps) },
+            emitTelemetry = ::emitTelemetry,
+            diagLog = ::diagLog,
+            hasFrameSink = { onFrameReceived != null },
+        )
 
     /**
      * Release a buffer back to the pool for reuse
      * Called after decode completes via onFrameDecoded callback
      */
     fun releaseBuffer(buffer: ByteArray) {
-        synchronized(poolLock) {
-            // Keep pool size limited to prevent memory bloat
-            if (bufferPool.size < 8) {
-                bufferPool.addLast(buffer)
-            }
-            // If pool is full, let buffer be GC'd
-        }
+        mediaFrameRouter.releaseBuffer(buffer)
     }
 
     private val outboundScheduler =
@@ -322,7 +296,7 @@ class StreamClient(
                     return@withContext
                 }
                 heartbeat.reset(System.nanoTime())
-                lastKeyframeReceivedNs = 0L
+                mediaFrameRouter.resetStream()
                 synchronized(keyframeRequestLock) {
                     lastKeyframeRequestNs = 0L
                 }
@@ -574,6 +548,7 @@ class StreamClient(
                 if (!startupSucceeded) return@withContext
                 if (terminationDispatcher.isClaimed()) return@withContext
                 heartbeat.reset(System.nanoTime())
+                mediaFrameRouter.resetStream()
                 emitTelemetry(
                     "connection_opened",
                     mapOf(
@@ -1160,46 +1135,12 @@ class StreamClient(
                 heartbeat.recordInbound(System.nanoTime())
             }
             ProtocolChannel.VIDEO -> {
-                val payload =
-                    try {
-                        ProtocolV1Framing.decodeVideo(frame.payload)
-                    } catch (failure: Exception) {
-                        throw terminalProtocolFailure(
-                            reason = "invalid_media_payload",
-                            source = ProtocolV1Failure.Source.MEDIA_PAYLOAD,
-                            cause = failure,
-                        )
-                    }
                 val session = checkNotNull(protocolSession)
-                val mediaDisposition = session.validateMedia(payload.header)
-                if (mediaDisposition != ProtocolV1Session.MediaDisposition.ACCEPT) {
-                    releaseBuffer(payload.annexB)
-                    emitTelemetry(
-                        "frame_dropped",
-                        mapOf(
-                            "reason" to mediaDisposition.name.lowercase(),
-                            "config_epoch" to payload.header.configEpoch,
-                            "session_epoch" to localSessionState.connectionEpoch,
-                        ),
-                    )
-                    return
-                }
-                val receiveTimestamp = System.nanoTime()
-                checkKeyframeFreshness(receiveTimestamp, payload.header.keyframe)
-                val callback = onFrameReceived
-                if (callback == null) {
-                    releaseBuffer(payload.annexB)
-                } else {
-                    callback.invoke(
-                        payload.annexB,
-                        payload.annexB.size,
-                        receiveTimestamp,
-                        payload.header.keyframe,
-                        localSessionState.connectionEpoch,
-                        payload.header.configEpoch,
-                    )
-                }
-                updateStats(payload.annexB.size)
+                mediaFrameRouter.receiveProtocolFrame(
+                    payload = frame.payload,
+                    connectionEpoch = localSessionState.connectionEpoch,
+                    validateMedia = session::validateMedia,
+                )
             }
             ProtocolChannel.BULK -> {
                 val chunk =
@@ -2182,40 +2123,41 @@ class StreamClient(
     private fun dispatchWakeHostRequest(
         session: ProtocolV1Session,
         connectionGeneration: Long,
-        action: ProtocolV1Session.Action.WakeHost,
+        request: WakeHostRequestContext,
+        correlationId: Long,
     ) {
-        if (!trackInboundWakeHostRequest(action.request.requestId)) {
+        if (!trackInboundWakeHostRequest(request.requestId)) {
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                 command = StreamOutboundCommand.ProtocolWakeHostCompletion(
                     session = session,
                     connectionGeneration = connectionGeneration,
-                    requestId = action.request.requestId,
+                    requestId = request.requestId,
                     accepted = false,
                     rejectionReason = "too_many_pending_wake_host_requests",
-                    correlationId = action.correlationId,
+                    correlationId = correlationId,
                 ),
                 timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
             )
             return
         }
         wakeHostExecutor.execute {
-            val (accepted, reason) = performWakeHostRequest(action.request)
+            val (accepted, reason) = performWakeHostRequest(request)
             val submission =
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                     command = StreamOutboundCommand.ProtocolWakeHostCompletion(
                         session = session,
                         connectionGeneration = connectionGeneration,
-                        requestId = action.request.requestId,
+                        requestId = request.requestId,
                         accepted = accepted,
                         rejectionReason = reason,
-                        correlationId = action.correlationId,
+                        correlationId = correlationId,
                     ),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
             if (!isOutboundAdmitted(submission)) {
-                releaseInboundWakeHostRequest(action.request.requestId)
+                releaseInboundWakeHostRequest(request.requestId)
                 requestConnectionEnd(
                     SessionFailure.protocol(
                         SessionFailureKind.OUTBOUND_BACKPRESSURE,
@@ -2379,119 +2321,31 @@ class StreamClient(
         }
     }
 
-    private fun updateStats(bytes: Int) {
-        bytesReceived += bytes
-        framesReceived++
-
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastStatsTime
-
-        if (elapsed >= 1000) {
-            val mbps = (bytesReceived * 8.0) / (elapsed / 1000.0) / 1_000_000
-            val fps = (framesReceived * 1000.0) / elapsed
-            onStats?.invoke(fps, mbps)
-            emitTelemetry(
-                "stream_stats",
-                mapOf(
-                    "session_epoch" to localSessionState.connectionEpoch,
-                    "fps" to fps,
-                    "mbps" to mbps,
-                ),
-            )
-
-            bytesReceived = 0
-            framesReceived = 0
-            lastStatsTime = now
-        }
-    }
-
     private fun receiveVideoFrame(
         input: DataInputStream,
         hasMetadata: Boolean,
     ) {
-        val frameSize = input.readInt()
-
-        if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
-            throw SessionProtocolException(
-                SessionFailure.protocol(SessionFailureKind.INVALID_FRAME, "Invalid frame size: $frameSize"),
-            )
-        }
-
-        var isKeyframe = false
-        if (hasMetadata) {
-            val flags = input.readUnsignedByte()
-            input.readLong() // Host capture timestamp; clocks are not comparable with Android.
-            isKeyframe = (flags and FRAME_FLAG_KEYFRAME) != 0
-        }
-
-        val frameData = acquireBuffer(frameSize)
-        input.readFully(frameData, 0, frameSize)
-
-        if (!hasMetadata && !isKeyframe) {
-            isKeyframe = isSyncFrame(frameData, frameSize, streamCodecIsHevc)
-        }
-
-        // Capture timestamp after full frame received for accurate age tracking.
-        val receiveTimestamp = System.nanoTime()
-        val epoch = localSessionState.connectionEpoch
-        if (!localSessionState.acceptsEpoch(epoch)) {
-            releaseBuffer(frameData)
-            emitTelemetry(
-                "frame_dropped",
-                mapOf(
-                    "reason" to "stale_session_epoch",
-                    "frame_epoch" to epoch,
-                    "current_epoch" to localSessionState.currentEpoch(),
-                ),
-            )
-            return
-        }
-        checkKeyframeFreshness(receiveTimestamp, isKeyframe)
-        diagFrameCount++
-        if (diagFrameCount == 1L) {
-            diagLog(
-                "First video frame: size=$frameSize, keyframe=$isKeyframe, " +
-                    "metadata=$hasMetadata, callback=${onFrameReceived != null}",
-            )
-        }
-        if (diagFrameCount % 60L == 0L) {
-            diagLog("Frames received: $diagFrameCount")
-        }
-
-        val callback = onFrameReceived
-        if (callback != null) {
-            callback.invoke(
-                frameData,
-                frameSize,
-                receiveTimestamp,
-                isKeyframe,
-                epoch,
-                LEGACY_CONFIG_EPOCH,
-            )
-        } else {
-            releaseBuffer(frameData)
-        }
-        updateStats(frameSize)
+        mediaFrameRouter.receiveLegacyFrame(
+            input = input,
+            hasMetadata = hasMetadata,
+            streamCodecIsHevc = streamCodecIsHevc,
+            connectionEpoch = localSessionState.connectionEpoch,
+            acceptsEpoch = localSessionState::acceptsEpoch,
+            currentEpoch = localSessionState::currentEpoch,
+        )
     }
 
-    private fun checkKeyframeFreshness(
-        receiveTimestamp: Long,
-        isKeyframe: Boolean,
-    ) {
-        if (isKeyframe) {
-            lastKeyframeReceivedNs = receiveTimestamp
-            return
-        }
-
-        val lastKeyframeNs = lastKeyframeReceivedNs
-        if (lastKeyframeNs <= 0L) return
-
-        val keyframeAgeNs = receiveTimestamp - lastKeyframeNs
-        if (keyframeAgeNs > KEYFRAME_STALE_INTERVAL_NS) {
-            requestKeyframe(
-                reason = "last keyframe ${keyframeAgeNs / 1_000_000L}ms ago",
-            )
-        }
+    private fun deliverMediaFrame(frame: StreamMediaFrame): Boolean {
+        val callback = onFrameReceived ?: return false
+        callback.invoke(
+            frame.buffer,
+            frame.size,
+            frame.receiveTimestampNs,
+            frame.keyframe,
+            frame.connectionEpoch,
+            frame.configEpoch,
+        )
+        return true
     }
 
     fun disconnect() {
@@ -2928,9 +2782,7 @@ class StreamClient(
         private val ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES =
             setOf(VideoConfigurationCommitState.PENDING, VideoConfigurationCommitState.RESERVED)
         private const val TAG = "StreamClient"
-        private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 500_000_000L
-        private const val KEYFRAME_STALE_INTERVAL_NS = 1_500_000_000L
         private const val OUTBOUND_QUEUE_CAPACITY = 32
         private const val OUTBOUND_DRAIN_TIMEOUT_MS = 200L
         private const val CONNECT_TIMEOUT_MS = 5_000
@@ -2969,7 +2821,6 @@ class StreamClient(
 
         // Type 3 (gap between touch=2 and ping=4). Not 12 — that is device-info capability.
         private const val MESSAGE_SERVER_SHUTDOWN = 3
-        private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
         private val STREAM_CLIENT_EPOCHS = SessionEpochGate()
         private val VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR =
@@ -2986,58 +2837,5 @@ class StreamClient(
             }
 
         private enum class WireMode { LEGACY, V1 }
-
-        /**
-         * Codec-aware sync-frame (keyframe) detection on the legacy
-         * MESSAGE_VIDEO_FRAME path. HEVC: IRAP NAL types 16..21 from
-         * (header and 0x7E) shr 1. H.264: IDR slice, (header and 0x1F) == 5.
-         * Internal (not private) so unit tests can exercise both branches.
-         */
-        internal fun isSyncFrame(
-            data: ByteArray,
-            size: Int,
-            isHevc: Boolean,
-        ): Boolean {
-            var i = 0
-            while (i + 5 < size) {
-                var start = -1
-                var startCodeLength = 0
-
-                while (i + 3 < size) {
-                    if (data[i] == 0.toByte() && data[i + 1] == 0.toByte()) {
-                        if (data[i + 2] == 1.toByte()) {
-                            start = i
-                            startCodeLength = 3
-                            break
-                        }
-                        if (i + 3 < size && data[i + 2] == 0.toByte() && data[i + 3] == 1.toByte()) {
-                            start = i
-                            startCodeLength = 4
-                            break
-                        }
-                    }
-                    i++
-                }
-
-                if (start < 0) return false
-
-                val nalStart = start + startCodeLength
-                if (nalStart + 1 >= size) return false
-
-                val header = data[nalStart].toInt()
-                val isSync =
-                    if (isHevc) {
-                        ((header and 0x7E) shr 1) in 16..21
-                    } else {
-                        (header and 0x1F) == 5
-                    }
-                if (isSync) {
-                    return true
-                }
-
-                i = nalStart + 2
-            }
-            return false
-        }
     }
 }

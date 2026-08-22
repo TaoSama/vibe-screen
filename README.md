@@ -287,10 +287,12 @@ Implementation status and evidence are tracked in the
 
 Android TCP connection ownership is now enforced by a standalone JVM transport
 module with dependency-direction and resource-lifecycle contract tests.
-`StreamClient` now delegates local product-session lifecycle state to a focused
-boundary owner with offline contract coverage. This is still not completion of
-Phase 0 module ownership: the remaining protocol, session, media, input, and UI
-boundaries are still being extracted.
+`StreamClient` now delegates local product-session lifecycle state, Protocol v1
+action dispatch, input envelope routing, and media-frame routing to focused
+boundary owners with offline contract coverage. This is still not completion of
+Phase 0 module ownership: broader protocol/session ownership, file-transfer and
+wake-host side-effect ownership, decoder/renderer ownership, and UI/product
+session boundaries are still being extracted.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
