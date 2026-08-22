@@ -1,0 +1,37 @@
+Purpose: physical stylus drawing-app acceptance observation attempt.
+Target: Nubia P0110 / pacific / Android 16 / SDK 36, serial EP0110PZ0B9110300B.
+
+Coordination preflight:
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+
+Device lease created for this task:
+  pid=69893
+  agent=root
+  task=physical-stylus-drawing-app-closure
+  created=2026-08-22T08:31:10Z
+
+Commands:
+  adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
+  adb -s EP0110PZ0B9110300B shell am start -W -n dev.telemachus.display/.MainActivity
+  adb -s EP0110PZ0B9110300B shell getevent -lt /dev/input/event7 > android-getevent-stylus.log
+  python3 scripts/android_stylus_acceptance.py \
+    --serial EP0110PZ0B9110300B \
+    --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-163115-nubia-p0110-pacific-stylus-drawing-observation \
+    --allow-existing-device-lock \
+    --observed-physical-drawing \
+    --drawing-observation "Operator attempted a physical stylus stroke on Nubia P0110/pacific in the Vibe Screen stream while a macOS drawing surface was visible; acceptance remains subject to same-window Android and Host logs." \
+    --host-log /Users/luwentao/Library/Logs/Telemachus/telemachus.log \
+    --observe-seconds 30
+  adb -s EP0110PZ0B9110300B exec-out screencap -p > android-screen-after.png
+
+Result:
+  script_exit=2
+  error: Android diag log is missing a single stylus forwarding line with contact, non-zero pressure, and all required fields
+  android-getevent-stylus.log line count: 0
+
+Device lease cleanup:
+  /tmp/vibe-screen-device-android.lock was truncated to zero bytes after the attempt.
+
+Gate:
+  Physical-stylus drawing-app confirmation remains open.
