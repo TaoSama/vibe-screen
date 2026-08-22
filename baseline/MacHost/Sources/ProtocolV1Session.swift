@@ -181,6 +181,7 @@ struct ProtocolV1SessionConfiguration {
     static func productionHostCapabilities(
         touchEnabled: Bool,
         controllerAvailable: Bool = false,
+        hdrVideoAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
         fileTransferAllowed: Bool = false,
         wakeHostAvailable: Bool = false
@@ -201,6 +202,7 @@ struct ProtocolV1SessionConfiguration {
         if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
         if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
         if controllerAvailable { capabilities.insert(.controller) }
+        if hdrVideoAvailable { capabilities.insert(.hdrVideo) }
         if fileTransferAllowed && managedPolicy.fileTransferAllowed {
             capabilities.insert(.fileTransfer)
         }
@@ -222,11 +224,12 @@ struct ProtocolV1SessionConfiguration {
     var hostName: String
     var displayID: String
     var displayName: String
-   var displayIsVirtual: Bool
-   /// Full catalog exposed by ListDisplays. When empty, the session
-   /// synthesizes a single entry from the currently captured identity so the
-   /// single-display path keeps ListDisplays count == 1.
-   var displays: [ProtocolV1DisplayInfo] = []
+    var displayIsVirtual: Bool
+    var preferredColorDescription: VSColorDescription = HostVideoColorNegotiator.legacySDRColor
+    /// Full catalog exposed by ListDisplays. When empty, the session
+    /// synthesizes a single entry from the currently captured identity so the
+    /// single-display path keeps ListDisplays count == 1.
+    var displays: [ProtocolV1DisplayInfo] = []
     var managedPolicy: ManagedPolicy = .unmanaged
     var fileTransferPolicy: ProtocolV1FileTransferPolicy = .default
 }
@@ -611,7 +614,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        let config = videoConfig(configEpoch: nextEpoch, streamID: streamID, color: HostVideoColorNegotiator.legacySDRColor)
+        let config = videoConfig(configEpoch: nextEpoch, streamID: streamID, color: selectedVideoColor())
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
@@ -1603,7 +1606,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        let config = videoConfig(configEpoch: configEpoch, streamID: streamID, color: HostVideoColorNegotiator.legacySDRColor)
+        let config = videoConfig(configEpoch: configEpoch, streamID: streamID, color: selectedVideoColor())
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
@@ -1632,6 +1635,24 @@ final class ProtocolV1SessionCoordinator {
         config.colorDescription = HostVideoColorNegotiator.normalized(color)
         config.rotationDegrees = UInt32(clamping: configuration.rotation)
         return config
+    }
+
+    private func selectedVideoColor() -> VSColorDescription {
+        let negotiator = HostVideoColorNegotiator(
+            clientCapabilities: negotiatedCapabilities,
+            decodeCapabilities: clientDecodeCapabilities
+        )
+        switch negotiator.evaluate(
+            configuration.preferredColorDescription,
+            codec: selectedCodec,
+            encodedSize: dimensions(),
+            framesPerSecond: configuration.framesPerSecond
+        ) {
+        case let .accepted(color), let .fallback(color, _):
+            return color
+        case .rejected:
+            return HostVideoColorNegotiator.legacySDRColor
+        }
     }
 
     private func makeFallbackVideoConfigResult(

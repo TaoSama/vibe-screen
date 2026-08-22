@@ -16,6 +16,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.hdrVideo)
         )
+        XCTAssertTrue(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ).contains(.hdrVideo)
+        )
     }
 
     func testProductionHostCapabilitiesIncludeWakeHostOnlyWhenAvailable() {
@@ -629,6 +635,156 @@ final class ProtocolV1SessionTests: XCTestCase {
         let error = try protocolError(from: session.handleControl(try hello.serializedData()))
         XCTAssertEqual(error.code, .unsupportedCapability)
         XCTAssertEqual(error.message, "Host and client have no common locally encodable SDR video codec.")
+    }
+
+    func testHDRColorConfigRequiresHostAndClientCapability() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = [hdrDecodeCapability(codec: .hevc)]
+
+        let helloActions = session.handleControl(try hello.serializedData())
+        XCTAssertTrue(containsCodecNegotiated(helloActions, codec: .hevc))
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        XCTAssertEqual(config.colorDescription, hdrColor())
+    }
+
+    func testHDRPreferredColorFallsBackBeforeAdvertisingConfigWhenClientLacksHDR() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+        hello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+
+        _ = session.handleControl(try hello.serializedData())
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        assertLegacySDR(config.colorDescription)
+    }
+
+    func testHDRPreferredColorFallsBackBeforeAdvertisingConfigWhenDecodeProfileIsSDROnly() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+
+        _ = session.handleControl(try hello.serializedData())
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        assertLegacySDR(config.colorDescription)
+    }
+
+    func testHDRClientRejectionRenegotiatesSDRWithNewMediaEpoch() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = [hdrDecodeCapability(codec: .hevc)]
+
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let firstConfig)? = startResponses[1].payload else {
+            return XCTFail("Expected first VideoConfig")
+        }
+        XCTAssertEqual(firstConfig.colorDescription, hdrColor())
+
+        var rejection = VSVideoConfigResult()
+        rejection.configEpoch = firstConfig.configEpoch
+        rejection.streamID = firstConfig.streamID
+        rejection.accepted = false
+        rejection.rejectionReason = HostVideoColorNegotiator.unsupportedHDRFallbackReason
+        rejection.selectedColorDescription = HostVideoColorNegotiator.legacySDRColor
+
+        let fallbackResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 3,
+            payload: .videoConfigResult(rejection)
+        ).serializedData()))
+        guard case .videoConfig(let fallbackConfig)? = fallbackResponses.first?.payload else {
+            return XCTFail("Expected fallback VideoConfig")
+        }
+        XCTAssertEqual(fallbackConfig.configEpoch, firstConfig.configEpoch + 1)
+        assertLegacySDR(fallbackConfig.colorDescription)
+
+        var accepted = VSVideoConfigResult()
+        accepted.configEpoch = fallbackConfig.configEpoch
+        accepted.streamID = fallbackConfig.streamID
+        accepted.accepted = true
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .videoConfigResult(accepted)
+        ).serializedData())
+
+        let media = try XCTUnwrap(session.makeMediaFrame(
+            payload: Data([0, 0, 0, 1, 0x26]),
+            timestamp: 99,
+            keyframe: true
+        ))
+        let (header, _) = try decodeMedia(media)
+        XCTAssertEqual(header.configEpoch, fallbackConfig.configEpoch)
+        XCTAssertEqual(header.streamID, fallbackConfig.streamID)
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -1919,7 +2075,9 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     private func makeSession(
         managedPolicy: ManagedPolicy = .unmanaged,
-        fileTransferAvailable: Bool = false
+        fileTransferAvailable: Bool = false,
+        hostCapabilities: Set<VSCapability>? = nil,
+        preferredColorDescription: VSColorDescription = HostVideoColorNegotiator.legacySDRColor
     ) -> ProtocolV1SessionCoordinator {
         var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -1929,7 +2087,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+            hostCapabilities: hostCapabilities ?? ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 managedPolicy: managedPolicy,
                 fileTransferAllowed: fileTransferAvailable && managedPolicy.fileTransferAllowed
@@ -1943,6 +2101,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             displayIsVirtual: true
         )
         configuration.managedPolicy = managedPolicy
+        configuration.preferredColorDescription = preferredColorDescription
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -2056,6 +2215,22 @@ final class ProtocolV1SessionTests: XCTestCase {
         capability.bitDepths = [8]
         capability.transferFunctions = [.bt709, .srgb]
         return capability
+    }
+
+    private func hdrDecodeCapability(codec: VSCodec) -> VSVideoDecodeCapability {
+        var capability = sdrDecodeCapability(codec: codec)
+        capability.bitDepths = [8, 10]
+        capability.transferFunctions = [.bt709, .srgb, .pq]
+        return capability
+    }
+
+    private func hdrColor() -> VSColorDescription {
+        var color = VSColorDescription()
+        color.primaries = .bt2020
+        color.transferFunction = .pq
+        color.matrixCoefficients = .bt2020NonConstant
+        color.bitDepth = 10
+        return color
     }
 
     private func containsCodecNegotiated(

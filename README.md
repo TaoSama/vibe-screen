@@ -657,6 +657,12 @@ network quality may increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- The macOS Host now negotiates color/HDR output through color-management and
+  HDR video capabilities plus client decode profiles. Default production
+  output remains 8-bit BT.709 SDR, unsupported HDR requests fall back to SDR,
+  and client-driven color fallback bumps `config_epoch` before media resumes.
+  This is offline protocol and encoder-configuration evidence only; no
+  HDR-capable Mac, iOS, or Android real-device output is claimed.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
