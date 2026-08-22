@@ -322,6 +322,12 @@ device capability evidence and cannot close physical-stylus acceptance.
 For a passing run, open a non-sensitive macOS drawing app in the streamed display
 and record all of the following in the evidence directory:
 
+- a short raw Android event capture from the physical stylus device, for
+  example `adb -s DEVICE_SERIAL shell getevent -lt /dev/input/event7`, started
+  only after the device lease is acquired and stopped immediately after the
+  drawing stroke. On Nubia P0110/pacific the stylus device has appeared as
+  `goodix_stylus_input`; re-resolve the event path from `getevent -lp` for each
+  run rather than assuming it is still `/dev/input/event7`;
 - the same script output with `--observed-physical-drawing`,
   `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`; in this mode the
   tool records the Host log cursor before the observation window and validates
@@ -339,6 +345,14 @@ and record all of the following in the evidence directory:
 If the device exposes a stylus input device but no real pen action is available,
 commit or attach the script output as blocked evidence and keep the README
 physical-stylus drawing-app gate open.
+
+Do not use `adb shell cmd input stylus ...` or touchscreen `input tap/swipe` as
+physical stylus acceptance. Those commands are useful for dispatcher plumbing
+regressions only; they do not prove physical pen contact, barrel-button state,
+eraser behavior, proximity, or pressure/tilt reaching the macOS drawing app. If
+the device lease is held by another task, use `--write-blocked-on-lock` and
+record the lock owner instead of clearing the lock or starting a competing
+Host/client session.
 
 ## Permissions and lifecycle
 
