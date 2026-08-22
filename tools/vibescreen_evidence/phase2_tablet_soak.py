@@ -407,7 +407,7 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
         "",
         "Result: " + str(readiness["result"]) + ".",
         "",
-        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-soak-readiness.json reports can_close_phase2_gate=true, soak-8h/phase2-tablet-gate.json reports verdict=pass, and the raw physical-tablet artifacts are present. Missing or invalid APK identity is readiness-only blocker context, not formal APK pass evidence.",
+        "This evidence record does not close the Phase 2 eight-hour tablet gate unless phase2-soak-readiness.json reports can_close_phase2_gate=true and the raw physical-tablet artifacts are present. Preflight records do not include a formal soak-8h/phase2-tablet-gate.json pass artifact. Missing or invalid APK identity is readiness-only blocker context, not formal APK pass evidence.",
         "",
         "## Command",
         "",

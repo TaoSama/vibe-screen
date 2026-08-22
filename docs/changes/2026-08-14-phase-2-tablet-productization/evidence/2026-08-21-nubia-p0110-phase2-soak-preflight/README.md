@@ -2,7 +2,7 @@
 
 Result: blocked.
 
-This evidence record does not close the Phase 2 eight-hour tablet gate unless `phase2-soak-readiness.json` reports `can_close_phase2_gate=true`, `soak-8h/phase2-tablet-gate.json` reports `verdict=pass`, and the raw physical-tablet artifacts are present. This run records missing APK identity as readiness-only blocker context, not formal APK pass evidence.
+This evidence record does not close the Phase 2 eight-hour tablet gate unless `phase2-soak-readiness.json` reports `can_close_phase2_gate=true` and the raw physical-tablet artifacts are present. This preflight run has no formal `soak-8h/phase2-tablet-gate.json` pass artifact, and it records missing APK identity as readiness-only blocker context rather than formal APK pass evidence.
 
 ## Command
 

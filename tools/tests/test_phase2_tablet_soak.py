@@ -130,6 +130,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
 
         self.assertIn("phase2-soak-readiness.json", readme)
         self.assertIn("can_close_phase2_gate=true", readme)
+        self.assertNotIn("phase2-tablet-gate.json reports verdict=pass", readme)
         self.assertIn("APK identity is readiness-only blocker context", readme)
 
     def test_existing_device_lock_writes_blocked_readiness_without_adb(self):
