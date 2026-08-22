@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -12,6 +13,17 @@ from urllib import error
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
 
 from scripts.phase3.coturn_reconcile import (  # noqa: E402
     ReconcileError,
@@ -158,6 +170,54 @@ class CoturnReconcileTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ReconcileError, "exporter failed"):
             run_exporter(settings)
+
+    @mock.patch("scripts.phase3.coturn_reconcile.subprocess.Popen")
+    @mock.patch("scripts.phase3.coturn_reconcile._read_limited_stdout")
+    def test_exporter_runs_in_process_group_on_posix(self, read_stdout: mock.Mock, popen: mock.Mock) -> None:
+        process = mock.Mock(returncode=0)
+        popen.return_value = process
+        read_stdout.return_value = b'{"source_id":"turn-prod-1","observed_at":"2026-08-20T01:02:03Z","allocations":[]}'
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(sys.executable, "exporter.py"),
+            request_timeout_seconds=1,
+        )
+
+        self.assertEqual(run_exporter(settings)["source_id"], "turn-prod-1")
+
+        self.assertEqual(popen.call_args.kwargs["start_new_session"], os.name == "posix")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups are required")
+    def test_exporter_timeout_kills_child_process_group(self) -> None:
+        marker = Path(self.tempdir.name) / "child.pid"
+        command = (
+            sys.executable,
+            "-c",
+            "import os, subprocess, sys, time; "
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+            f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid)); "
+            "sys.stdout.flush(); time.sleep(60)",
+        )
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=command,
+            request_timeout_seconds=0.5,
+        )
+
+        with self.assertRaisesRegex(ReconcileError, "exporter timed out"):
+            run_exporter(settings)
+
+        deadline = time.monotonic() + 3
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(marker.exists(), "child exporter PID was not recorded")
+        child_pid = int(marker.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 3
+        while _pid_exists(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(_pid_exists(child_pid), f"child exporter process {child_pid} survived timeout")
 
     def test_exporter_rejects_stdout_over_max_snapshot_bytes(self) -> None:
         settings = Settings(

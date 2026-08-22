@@ -385,7 +385,7 @@ func buildRelay(t *testing.T, binaryPath string) {
 
 func migrateAuthority(t *testing.T, run *authorityProcessTest) {
 	t.Helper()
-	migrationPath, err := filepath.Abs("../authority/migrations/001_authority.sql")
+	migrationPath, err := filepath.Abs("../authority/migrations")
 	if err != nil {
 		t.Fatal(err)
 	}

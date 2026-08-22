@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
@@ -20,17 +22,14 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if databaseURL == "" {
 		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
 	}
-	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	migrationPath := filepath.Join("..", "..", "migrations")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := ApplyMigration(ctx, databaseURL, string(migration)); err != nil {
+	if err := ApplyMigrationPath(ctx, databaseURL, migrationPath); err != nil {
 		t.Fatal(err)
 	}
 	// A second application proves the checksum ledger makes migration retries safe.
-	if err := ApplyMigration(ctx, databaseURL, string(migration)); err != nil {
+	if err := ApplyMigrationPath(ctx, databaseURL, migrationPath); err != nil {
 		t.Fatal(err)
 	}
 	cfg := testAuthorityConfig()
@@ -538,6 +537,85 @@ func TestPostgresReadinessRejectsChecksumMismatch(t *testing.T) {
 	})
 	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
 		t.Fatalf("readiness checksum error=%v", err)
+	}
+}
+
+func TestPostgresMigrationUpgradesPublishedV1ToCurrentSchema(t *testing.T) {
+	databaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connection.Close(ctx) }()
+	if _, err := connection.Exec(ctx, `DROP TABLE IF EXISTS authority_audit_events,authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_signaling_sessions,authority_session_epoch_floors,authority_devices,authority_accounts,authority_schema_migrations CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyMigration(ctx, databaseURL, string(legacy)); err != nil {
+		t.Fatal(err)
+	}
+	closedAt := time.Now().UTC().Add(-time.Minute)
+	_, err = connection.Exec(ctx, `
+		INSERT INTO authority_accounts(account_id) VALUES ('legacy-account');
+		INSERT INTO authority_devices(device_id,account_id) VALUES ('legacy-host','legacy-account'),('legacy-client','legacy-account');
+		INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at)
+		VALUES ('legacy-session','legacy-request','legacy-account','legacy-host','legacy-client',1,$1::timestamptz + interval '1 hour');
+		INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,admitted_at,last_observed_at,closed_at)
+		VALUES ('legacy-closed','turn-prod-1','legacy-client','legacy-session',1,10,5,$1::timestamptz,$1::timestamptz,$1::timestamptz);
+	`, closedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := testAuthorityConfig()
+	cfg.DatabaseURL = databaseURL
+	if legacyOnly, err := OpenPostgres(ctx, cfg); err == nil {
+		legacyOnly.Close()
+		t.Fatal("legacy v1 schema unexpectedly passed current readiness")
+	} else if !errors.Is(err, ErrStorage) {
+		t.Fatalf("legacy v1 readiness error=%v, want ErrStorage", err)
+	}
+	if err := ApplyMigrationPath(ctx, databaseURL, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var versions []int64
+	rows, err := store.pool.Query(ctx, `SELECT version FROM authority_schema_migrations ORDER BY version`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version int64
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(versions, []int64{1, 2}) {
+		t.Fatalf("migration versions=%v, want [1 2]", versions)
+	}
+	var closureReason string
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE allocation_id='legacy-closed'`).Scan(&closureReason); err != nil {
+		t.Fatal(err)
+	}
+	if closureReason != allocationClosedBySource {
+		t.Fatalf("legacy closed allocation closure_reason=%q, want %q", closureReason, allocationClosedBySource)
 	}
 }
 
