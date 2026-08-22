@@ -142,5 +142,5 @@ rather than a formal `soak-8h/` result. When the wrapper is blocked by
 it writes only `phase2-soak-readiness.json` and `README.md`; it does not collect
 static ADB, logcat, or soak artifacts. A readiness result of `blocked` records
 why the gate could not start, such as a phone substitute, missing Host PID,
-missing Host JSONL telemetry, an existing device lock, or a readiness-only APK
-hash placeholder. It is not evidence that the eight-hour gate passed.
+missing Host JSONL telemetry, an existing device lock, or missing APK identity.
+It is not evidence that the eight-hour gate passed.

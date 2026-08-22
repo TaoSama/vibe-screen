@@ -86,7 +86,7 @@
     "android_artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["apk_sha256"],
+      "required": ["apk_sha256", "identity_status"],
       "properties": {
         "apk_sha256": {"type": ["string", "null"], "minLength": 1},
         "identity_status": {"enum": ["present", "missing"]}

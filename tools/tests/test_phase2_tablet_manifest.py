@@ -125,6 +125,9 @@ class Phase2TabletManifestTests(unittest.TestCase):
 
         assert_required_schema_fields(self, manifest, schema)
         assert_required_schema_fields(
+            self, manifest["android_artifact"], schema["properties"]["android_artifact"]
+        )
+        assert_required_schema_fields(
             self, manifest["device"]["identity"], schema["properties"]["device"]["properties"]["identity"]
         )
 
