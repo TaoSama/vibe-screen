@@ -1,0 +1,50 @@
+{
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain"
+  ],
+  "command": {
+    "argv": [
+      "/usr/bin/security",
+      "find-identity",
+      "-v",
+      "-p",
+      "codesigning"
+    ],
+    "output_line_count": 1,
+    "returncode": 0,
+    "stderr": ""
+  },
+  "created_at": "2026-08-21T16:06:13Z",
+  "installed_host": {
+    "authorities": [
+      "Vibe Screen Dev",
+      "Vibe Screen Dev Root"
+    ],
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
+    "error": null,
+    "identifier": "dev.telemachus.display",
+    "identity": "Vibe Screen Dev",
+    "inspected": true,
+    "is_ad_hoc": false,
+    "path": "/Applications/Vibe Screen.app",
+    "tcc_database_scope": "default current-user plus system databases",
+    "tcc_error": "current-user TCC database: unable to open database file; system TCC database: unable to open database file",
+    "tcc_interpretation": "unverified (current-user TCC database: unable to open database file; system TCC database: unable to open database file)",
+    "tcc_readable": false,
+    "tcc_rows": [],
+    "team_identifier": "not set"
+  },
+  "matching_identities": [],
+  "next_steps": [
+    "Create a self-signed Code Signing certificate named Vibe Screen Dev in Keychain Access, or set VIBE_SCREEN_SIGN_IDENTITY to one existing stable codesign identity.",
+    "Confirm the selected identity with: security find-identity -v -p codesigning | grep '\"Vibe Screen Dev\"'.",
+    "Run make baseline-macos-dev-install, grant Screen Recording and Accessibility to /Applications/Vibe Screen.app, relaunch it, then run make baseline-macos-touch-preflight."
+  ],
+  "requested_identity": "Vibe Screen Dev",
+  "sign_identity_env": null,
+  "status": "blocked",
+  "valid_identity_count": 0
+}

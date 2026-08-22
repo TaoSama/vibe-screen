@@ -18,6 +18,13 @@ cd baseline/AndroidClient
 
 For every device run, record:
 
+- stable Host signing/TCC preflight evidence before launching the run. Use
+  `python3 scripts/macos_signing_identity_preflight.py` first when the local
+  signing identity might be missing; use `make baseline-macos-dev-install` and
+  `make baseline-macos-touch-preflight` before any gate that depends on screen
+  capture or macOS input injection. Raw `.build/release/Vibe Screen` executables
+  and ad-hoc `.app` bundles are smoke-test artifacts only and cannot close a
+  Host/TCC-backed device gate;
 - ADB endpoint, hardware serial, manufacturer, model, Android version, SDK,
   build fingerprint, display size/density, battery, and boot state;
 - APK version/signing identity and install timestamp;

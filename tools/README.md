@@ -27,6 +27,22 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## macOS Host prerequisites
+
+Before a device gate depends on macOS Screen Recording or Accessibility, keep a
+read-only record of the stable local signing identity:
+
+```sh
+python3 scripts/macos_signing_identity_preflight.py
+```
+
+The command writes JSON and Markdown under
+`.build/dev-macos-host-signing-identity/`. It exits `2` when the configured
+identity is missing or duplicated, and it does not install a Host bundle, sign
+anything, edit Keychain ACLs, read private keys, modify TCC.db, or request macOS
+privacy permissions. Passing this prerequisite is not device evidence by
+itself; follow it with the Host install and TCC preflight from the macOS runbook.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB
