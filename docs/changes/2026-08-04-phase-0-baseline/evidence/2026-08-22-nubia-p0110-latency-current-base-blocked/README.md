@@ -1,7 +1,7 @@
 # 2026-08-22 Nubia P0110 latency current-base preflight: blocked
 
 This record refreshes the README external latency gates on origin/main commit
-`660dae5231fb1ac4decf5088f911f22a9285abf8`. It uses the connected Android
+`de2752e0033713ad48bb7f86960f9180d8e7342f`. It uses the connected Android
 acceptance substitute recorded as `nubia-p0110-pacific-device-1`.
 
 ## Verdict
