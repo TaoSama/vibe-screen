@@ -15,6 +15,30 @@ Android device identity, if used in a future Android run, must be recorded as:
 
 Do not label any result from this device as Xiaomi 13/fuxi evidence.
 
+## 2026-08-22 device capability probe
+
+Before issuing device commands, `/tmp/vibe-screen-device-android.lock` was
+checked and was absent. The following read-only ADB checks used the explicit
+serial `EP0110PZ0B9110300B`:
+
+    adb -s EP0110PZ0B9110300B get-state
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+    adb -s EP0110PZ0B9110300B shell cmd media.codec list
+    adb -s EP0110PZ0B9110300B shell 'grep -Rin "av1" /vendor/etc/*media*codec*.xml /vendor/etc/media_codecs*.xml 2>/dev/null | head -80'
+
+The connected device reported `nubia / P0110 / pacific / Android 16 / SDK 36`.
+`cmd media.codec list` failed with `Can't find service: media.codec`, so no
+runtime MediaCodec query result is available from that command. The vendor XML
+declares AV1 decoder entries such as `c2.qti.av1.decoder`,
+`c2.qti.av1.decoder.low_latency`, `c2.qti.av1.decoder.secure`, and
+`c2.android.av1.decoder`; these declarations are diagnostic only. They do not
+prove a Vibe Screen AV1 negotiation, MediaCodec configuration, first decoded
+output frame, or sustained AV1 stream.
+
 ## Blockers
 
 - The current macOS Host implementation only has HEVC and H.264 stream encoder
