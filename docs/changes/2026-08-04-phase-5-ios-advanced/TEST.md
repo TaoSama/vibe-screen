@@ -146,6 +146,32 @@ The portable self-test and HarmonyOS core test now consume the same exact
 fixture exactly; SwiftProtobuf must decode the same Hello fields. This does not
 satisfy the separate Android application fixture criterion.
 
+## iOS native-input behavior gate owner
+
+The README Phase 5 native-input behavior gate is owned by
+`phase5-ios-native-input-behavior`. The current repository includes a read-only
+evidence summary entry point:
+
+```bash
+make ios-native-input-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The gate consumes a sanitized `ios-native-input-observations.json` file and
+writes `ios-native-input-gate.json`. It requires a real signed iPhone or iPad
+run, Local Network permission, baseline MacHost listener identity, Protocol v1
+session negotiation, input capability negotiation, selected display/stream
+routing, touch tap and drag, hardware keyboard press/release, modifier cleanup,
+hover or pointer accessory movement, Host input acknowledgements, and retained
+iOS/Host logs. Missing iOS hardware, signed app, Host listener, hardware
+keyboard, or hover/pointer accessory evidence reports `blocked`; missing
+non-blocking behavior evidence reports `insufficient`; any claim that uses
+Android evidence, Simulator evidence, or offline tests as iOS input behavior
+reports `fail`. Only `pass` can close the iOS native-input behavior gate.
+
+This is an evidence/readiness owner, not device evidence. No signed iPhone or
+iPad native-input run is recorded in this repository yet, so the README Phase 5
+native-input behavior gate remains open.
+
 ## Mac/Android bounded file-transfer loop
 
 On 2026-08-19 the MacHost and Android Protocol v1 file-transfer implementation
