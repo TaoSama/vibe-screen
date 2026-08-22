@@ -54,6 +54,34 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_current_base_scope_includes_related_ios_owner_prs(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+
+            manifest = build_manifest(command=[], repo=root)
+
+        self.assertGreaterEqual(
+            set(manifest["scope_prs"]),
+            {
+                "#182",
+                "#196",
+                "#207",
+                "#208",
+                "#209",
+                "#238",
+                "#251",
+                "#253",
+                "#257",
+                "#279",
+                "#282",
+            },
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_manifest_matches_schema_required_top_level_fields(self, state, environment):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         environment.return_value = {}
