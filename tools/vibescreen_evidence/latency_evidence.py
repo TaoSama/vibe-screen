@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Validate an external-camera latency evidence package.
+"""Validate a formal latency evidence package.
 
 The latency summarizer accepts raw sample rows so offline fixtures can exercise
 pass/fail profiles. This checker is stricter: it requires provenance for the
-camera, raw recording, sample annotations, device/build, and trigger method
-before a latency profile can pass.
+measurement method (external-camera or synchronized-clock), sample annotations,
+device/build, and trigger method before a latency profile can pass.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from .latency import (
     GATE_PROFILES,
     GATE_USB_GLASS_TO_GLASS_SUB50,
     METHOD_EXTERNAL_CAMERA,
+    METHOD_SYNCHRONIZED_CLOCK,
     LatencyInputError,
     load_samples,
     summarize,
@@ -59,6 +60,13 @@ REQUIRED_TOP_LEVEL_OBJECTS = (
 REQUIRED_TEXT_FIELDS = {
     "camera": ("manufacturer", "model", "mode", "shutter_mode"),
     "recording": ("raw_video", "recorded_at", "operator", "sha256"),
+    "synchronization": (
+        "host_clock_source",
+        "device_clock_source",
+        "sync_procedure",
+        "input_timestamp_method",
+        "result_timestamp_method",
+    ),
     "samples": ("file", "format", "sha256", "annotation_method", "annotator"),
     "device": ("manufacturer", "model", "codename", "os_version"),
     "host": ("model", "macos_version"),
@@ -116,6 +124,19 @@ def _describe_json_type(expected_type: str) -> str:
 def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list[str]:
     errors: list[str] = []
 
+    for child_schema in schema.get("allOf", []):
+        if isinstance(child_schema, dict):
+            errors.extend(_validate_schema_node(value, child_schema, path))
+
+    condition_schema = schema.get("if")
+    then_schema = schema.get("then")
+    if (
+        isinstance(condition_schema, dict)
+        and isinstance(then_schema, dict)
+        and not _validate_schema_node(value, condition_schema, path)
+    ):
+        errors.extend(_validate_schema_node(value, then_schema, path))
+
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path} must be {schema['const']}")
     if "enum" in schema and value not in schema["enum"]:
@@ -127,8 +148,7 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         errors.append(f"{path} must be {_describe_json_type(expected_type)}")
         return errors
 
-    if expected_type == "object":
-        assert isinstance(value, dict)
+    if isinstance(value, dict) and (expected_type == "object" or isinstance(schema.get("properties"), dict)):
         properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []
         for field in required:
@@ -156,6 +176,12 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         minimum = schema.get("minimum")
         if isinstance(minimum, (int, float)) and number < float(minimum):
             errors.append(f"{path} must be at least {minimum}")
+        maximum = schema.get("maximum")
+        if isinstance(maximum, (int, float)) and number > float(maximum):
+            errors.append(f"{path} must be at most {maximum}")
+        exclusive_maximum = schema.get("exclusiveMaximum")
+        if isinstance(exclusive_maximum, (int, float)) and number >= float(exclusive_maximum):
+            errors.append(f"{path} must be less than {exclusive_maximum}")
 
     return errors
 
@@ -214,48 +240,110 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if manifest.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"schema_version must be {SCHEMA_VERSION}")
-    if manifest.get("measurement_method") != METHOD_EXTERNAL_CAMERA:
-        errors.append("measurement_method must be external-camera")
 
-    for section in REQUIRED_TOP_LEVEL_OBJECTS:
+    measurement_method = manifest.get("measurement_method")
+    if measurement_method not in (METHOD_EXTERNAL_CAMERA, METHOD_SYNCHRONIZED_CLOCK):
+        errors.append("measurement_method must be external-camera or synchronized-clock")
+
+    is_external_camera = measurement_method == METHOD_EXTERNAL_CAMERA
+    is_synchronized_clock = measurement_method == METHOD_SYNCHRONIZED_CLOCK
+
+    required_sections = list(REQUIRED_TOP_LEVEL_OBJECTS)
+    if is_synchronized_clock:
+        required_sections = [s for s in required_sections if s not in ("camera", "recording")]
+        required_sections.append("synchronization")
+
+    for section in required_sections:
         section_document = _require_object(manifest, section, errors)
-        for field in REQUIRED_TEXT_FIELDS[section]:
+        for field in REQUIRED_TEXT_FIELDS.get(section, ()):
             _as_non_empty_text(section_document.get(field), f"{section}.{field}", errors)
 
-    camera = manifest.get("camera") if isinstance(manifest.get("camera"), dict) else {}
-    frame_rate_value = camera.get("frame_rate_fps")
-    if isinstance(frame_rate_value, bool) or not isinstance(frame_rate_value, (int, float)):
-        errors.append("camera.frame_rate_fps must be a finite number")
-    else:
-        frame_rate = float(frame_rate_value)
-        if not math.isfinite(frame_rate):
+    if is_external_camera:
+        camera = manifest.get("camera") if isinstance(manifest.get("camera"), dict) else {}
+        frame_rate_value = camera.get("frame_rate_fps")
+        if isinstance(frame_rate_value, bool) or not isinstance(frame_rate_value, (int, float)):
             errors.append("camera.frame_rate_fps must be a finite number")
-        elif frame_rate < 120:
-            errors.append("camera.frame_rate_fps must be at least 120 for high-frame-rate evidence")
+        else:
+            frame_rate = float(frame_rate_value)
+            if not math.isfinite(frame_rate):
+                errors.append("camera.frame_rate_fps must be a finite number")
+            elif frame_rate < 120:
+                errors.append("camera.frame_rate_fps must be at least 120 for high-frame-rate evidence")
 
     samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
     if samples.get("annotation_method") not in ANNOTATION_METHODS:
         errors.append(
             "samples.annotation_method must be manual-frame-count or direct-latency-ms"
         )
+    elif is_synchronized_clock and samples.get("annotation_method") != ANNOTATION_DIRECT_LATENCY_MS:
+        errors.append(
+            "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms"
+        )
 
     setup = manifest.get("measurement_setup") if isinstance(manifest.get("measurement_setup"), dict) else {}
-    if setup.get("clock_domain") != "single-external-camera-timebase":
-        errors.append("measurement_setup.clock_domain must be single-external-camera-timebase")
-    uncertainty = setup.get("max_frame_annotation_uncertainty_ms")
-    if uncertainty in (None, ""):
-        errors.append("measurement_setup.max_frame_annotation_uncertainty_ms is required")
-    else:
-        try:
-            uncertainty_ms = float(uncertainty)
-            if not math.isfinite(uncertainty_ms):
+    if is_external_camera:
+        if setup.get("clock_domain") != "single-external-camera-timebase":
+            errors.append("measurement_setup.clock_domain must be single-external-camera-timebase")
+        uncertainty = setup.get("max_frame_annotation_uncertainty_ms")
+        if uncertainty in (None, ""):
+            errors.append("measurement_setup.max_frame_annotation_uncertainty_ms is required")
+        else:
+            try:
+                uncertainty_ms = float(uncertainty)
+                if not math.isfinite(uncertainty_ms):
+                    errors.append(
+                        "measurement_setup.max_frame_annotation_uncertainty_ms must be finite"
+                    )
+                elif uncertainty_ms < 0:
+                    errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must not be negative")
+            except (TypeError, ValueError):
+                errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must be numeric")
+    elif is_synchronized_clock:
+        if setup.get("clock_domain") != "synchronized-host-device-clocks":
+            errors.append("measurement_setup.clock_domain must be synchronized-host-device-clocks")
+        if manifest.get("latency_kind") != "input":
+            errors.append("synchronized-clock measurement_method requires latency_kind input")
+        sync = manifest.get("synchronization") if isinstance(manifest.get("synchronization"), dict) else {}
+        sync_components: dict[str, float] = {}
+        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+            value = sync.get(field)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors.append(f"synchronization.{field} must be a finite number")
+                continue
+            number = float(value)
+            if not math.isfinite(number):
+                errors.append(f"synchronization.{field} must be finite")
+            elif number < 0:
+                errors.append(f"synchronization.{field} must not be negative")
+            else:
+                sync_components[field] = number
+        budget_value = sync.get("total_error_budget_ms")
+        if isinstance(budget_value, bool) or not isinstance(budget_value, (int, float)):
+            errors.append("synchronization.total_error_budget_ms must be a finite number")
+        else:
+            budget_ms = float(budget_value)
+            if not math.isfinite(budget_ms):
+                errors.append("synchronization.total_error_budget_ms must be finite")
+            elif budget_ms < 0:
+                errors.append("synchronization.total_error_budget_ms must not be negative")
+            elif budget_ms >= 5:
                 errors.append(
-                    "measurement_setup.max_frame_annotation_uncertainty_ms must be finite"
+                    "synchronization.total_error_budget_ms must be less than 5 ms "
+                    "(10% of the sub-50 ms P95 input gate)"
                 )
-            elif uncertainty_ms < 0:
-                errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must not be negative")
-        except (TypeError, ValueError):
-            errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must be numeric")
+            else:
+                for field, component_ms in sync_components.items():
+                    if component_ms > budget_ms:
+                        errors.append(
+                            f"synchronization.{field} must be less than or equal to "
+                            "synchronization.total_error_budget_ms"
+                        )
+                if len(sync_components) == 3 and sum(sync_components.values()) > budget_ms:
+                    errors.append(
+                        "synchronization.before_skew_ms + synchronization.after_skew_ms + "
+                        "synchronization.max_drift_ms must be less than or equal to "
+                        "synchronization.total_error_budget_ms"
+                    )
 
     return errors
 
@@ -268,8 +356,11 @@ def _validate_manifest_matches_summary(
 
     if manifest.get("gate_profile") != gate_profile:
         errors.append("manifest.gate_profile must match --gate-profile")
-    if summary.get("measurement_method") != METHOD_EXTERNAL_CAMERA:
-        errors.append("summary.measurement_method must be external-camera")
+    manifest_method = manifest.get("measurement_method")
+    if manifest_method not in (METHOD_EXTERNAL_CAMERA, METHOD_SYNCHRONIZED_CLOCK):
+        errors.append("manifest.measurement_method must be external-camera or synchronized-clock")
+    if summary.get("measurement_method") != manifest_method:
+        errors.append("summary.measurement_method must match manifest.measurement_method")
     if summary.get("latency_kind") != profile["kind"]:
         errors.append(f"summary.latency_kind must be {profile['kind']}")
     expected_transport = profile["transport"]
@@ -284,12 +375,12 @@ def _validate_referenced_files(
     manifest: dict[str, Any],
 ) -> tuple[list[str], dict[str, Path | None]]:
     errors: list[str] = []
+    is_external_camera = manifest.get("measurement_method") == METHOD_EXTERNAL_CAMERA
     recording = manifest.get("recording") if isinstance(manifest.get("recording"), dict) else {}
     samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
-    raw_references = {
-        "recording.raw_video": recording.get("raw_video"),
-        "samples.file": samples.get("file"),
-    }
+    raw_references: dict[str, Any] = {"samples.file": samples.get("file")}
+    if is_external_camera:
+        raw_references["recording.raw_video"] = recording.get("raw_video")
     references: dict[str, Path | None] = {}
     for field, raw_path in raw_references.items():
         path = _resolve_package_path(manifest_path, raw_path, field, errors)
@@ -297,10 +388,13 @@ def _validate_referenced_files(
         if path is not None and not path.is_file():
             errors.append(f"{field} does not exist: {path}")
 
-    digest_bindings = (
-        ("recording.sha256", recording.get("sha256"), references["recording.raw_video"]),
+    digest_bindings: list[tuple[str, Any, Path | None]] = [
         ("samples.sha256", samples.get("sha256"), references["samples.file"]),
-    )
+    ]
+    if is_external_camera:
+        digest_bindings.append(
+            ("recording.sha256", recording.get("sha256"), references.get("recording.raw_video"))
+        )
     for field, expected_sha256, path in digest_bindings:
         if not isinstance(expected_sha256, str) or SHA256_PATTERN.fullmatch(expected_sha256) is None:
             errors.append(f"{field} must be a 64-character hexadecimal SHA-256 digest")
@@ -431,20 +525,31 @@ def build_latency_evidence_report(
     conservative_observed_ms: float | None = None
     if summary is not None and summary_verdict == "pass":
         try:
-            endpoint_uncertainty_ms = float(
-                manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"]
-            )
             observed_ms = float(gate["observed_ms"])
             threshold_ms = float(gate["threshold_ms"])
-            conservative_observed_ms = observed_ms + (2 * endpoint_uncertainty_ms)
+            if manifest.get("measurement_method") == METHOD_SYNCHRONIZED_CLOCK:
+                total_uncertainty_ms = float(
+                    manifest["synchronization"]["total_error_budget_ms"]
+                )
+                conservative_observed_ms = observed_ms + total_uncertainty_ms
+            else:
+                endpoint_uncertainty_ms = float(
+                    manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"]
+                )
+                conservative_observed_ms = observed_ms + (2 * endpoint_uncertainty_ms)
         except (KeyError, TypeError, ValueError):
             pass
         else:
             if math.isfinite(conservative_observed_ms) and conservative_observed_ms > threshold_ms:
                 formal_verdict = "insufficient"
-                reasons.append(
-                    "p95 plus start/end annotation uncertainty exceeds the gate threshold"
-                )
+                if manifest.get("measurement_method") == METHOD_SYNCHRONIZED_CLOCK:
+                    reasons.append(
+                        "p95 plus synchronization error budget exceeds the gate threshold"
+                    )
+                else:
+                    reasons.append(
+                        "p95 plus start/end annotation uncertainty exceeds the gate threshold"
+                    )
     verdict = "insufficient" if errors else formal_verdict
     reasons.extend(errors)
 

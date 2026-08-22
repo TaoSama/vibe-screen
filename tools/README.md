@@ -15,6 +15,12 @@ Producers should write a manifest beside raw JSONL/CSV and derived summaries so
 the exact command, repository state, host, device, and measurement method remain
 auditable.
 
+Codec capability evidence must record the negotiated Protocol v1 codec, the
+Host encoder capability and implementation path, the client decoder name, and
+the first decoded output frame before it is used to close a codec gate. AV1 is
+currently a planned codec only: offline fail-closed/admission tests and blocked
+runbooks do not prove an AV1 stream.
+
 Run the tests without installing third-party packages:
 
 ```sh
@@ -264,11 +270,38 @@ summary. When a gate profile is supplied the exit status follows the verdict:
 `0` for `pass`, `1` for `fail` or `insufficient`. Without `--gate-profile` the
 command always exits `0`. The tool deliberately rejects a glass-to-glass claim
 based on unsynchronized host and Android clocks. Keep the raw camera file,
-sample CSV, summary, device info, and a manifest together; create the latter
-with `python3 -m vibescreen_evidence.manifest --help`.
+sample CSV, summary, device info, and a formal latency manifest together;
+create the manifest with the dedicated helper:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+      --evidence-dir latency-run \
+      --latency-kind glass-to-glass \
+      --transport usb \
+      --gate-profile usb-glass-to-glass-sub50 \
+      --raw-video latency-run/raw-camera.mov \
+      --samples latency-run/samples.csv \
+      --samples-format csv \
+      --annotation-method manual-frame-count \
+      --camera-manufacturer "camera vendor" \
+      --camera-model "camera model" \
+      --camera-mode 1080p240 \
+      --camera-frame-rate-fps 240 \
+      --camera-shutter-mode fixed \
+      --operator "operator name" \
+      --annotator "annotator name" \
+      --device-info latency-run/device-info.json \
+      --host-artifact "host binary identity or hash" \
+      --client-artifact "APK identity or hash" \
+      --stimulus "visible Mac-side stimulus" \
+      --start-event-definition "first camera frame where the stimulus is visible" \
+      --end-event-definition "first camera frame where the result is visible" \
+      --lighting "lighting conditions" \
+      --mounting "camera and device mounting" \
+      --max-frame-annotation-uncertainty-ms 4.2 \
+      --notes "run-specific notes"
 
 For a formal gate claim, validate the whole evidence directory with the stricter
-external-camera provenance checker:
+latency provenance checker:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
@@ -278,10 +311,13 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 ```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
-the run ID, transport, profile, raw camera recording, sample file, camera mode,
-device identity, build identity, and annotation method. The checker exits `0`
-only when the profile verdict is `pass` and provenance is complete; missing raw
-video or mismatched metadata stays `insufficient`. The step-by-step method is in
+the run ID, transport, profile, sample file, device identity, build identity,
+and annotation method. External-camera packages also bind the raw camera
+recording and camera mode; synchronized-clock input packages bind the clock
+sources, skew, drift, timestamp methods, and sub-5 ms total error budget. The
+checker exits `0` only when the profile verdict is `pass` and provenance is
+complete; missing raw video, mismatched metadata, or incomplete synchronization
+proof stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark

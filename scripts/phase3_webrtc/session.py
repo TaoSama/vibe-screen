@@ -79,6 +79,7 @@ _PRODUCT_TERMINAL_PATTERN = re.compile(
     + r"epoch=(?P<epoch>[0-9]+), "
     + r"configEpoch=(?P<config_epoch>[0-9]+), "
     + r"rotation=(?P<rotation>[0-9]+), "
+    + r"mediaSource=(?P<media_source>[a-z0-9_-]+), "
     + r"keyframe=(?P<keyframe>true|false), "
     + r"delta=(?P<delta>true|false), "
     + r"input=(?P<input>true|false), "
@@ -172,6 +173,7 @@ def validate_peer_output(output: str, *, mode: str, slice_name: str) -> str:
             "epoch": "1",
             "config_epoch": "2",
             "rotation": "90",
+            "media_source": "videotoolbox-hevc",
             "keyframe": "true",
             "delta": "true",
             "input": "true",
@@ -429,13 +431,14 @@ def _run_direct_verified(
             "initial_video_config_ack_epoch": 1,
             "runtime_video_config_ack_epoch": 2,
             "runtime_rotation_degrees": 90,
-            "media": "synthetic keyframe and delta pass",
+            "media": "real VideoToolbox HEVC keyframe and delta over WebRTC media DataChannel pass",
+            "media_source": "videotoolbox-hevc",
             "touch_input": "pass",
             "seeded_plaintext_log_scan": "pass",
             "capture_or_stream_server_started": False,
         }
         evidence["limitations"].append(
-            "Product slice uses a local synthetic Protocol v1 device peer; it is not Android device or UI evidence."
+            "Product slice uses a local synthetic Protocol v1 device peer and synthetic VideoToolbox input frames; it does not start ScreenCaptureKit/CGDisplayStream and is not Android device, UI, or MediaCodec evidence."
         )
     return evidence
 

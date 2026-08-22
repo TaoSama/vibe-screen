@@ -166,6 +166,16 @@ public func runVideoConfigValidatorSelfTest() throws {
     capability.transferFunctions = [.bt709]
     try VideoConfigValidator(decodeCapabilities: [capability]).validate(valid)
 
+    var av1 = valid
+    av1.codec = .av1
+    try VideoConfigValidator.validateProtocol(av1)
+    do {
+        try VideoConfigValidator(decodeCapabilities: [capability]).validate(av1)
+        throw VideoMediaGateSelfTestError.failed("AV1 config was accepted without an AV1 decode capability")
+    } catch VideoConfigValidationError.unsupportedDecodeProfile {
+        // Expected: protocol knows CODEC_AV1, but local admission is explicit.
+    }
+
     var invalidConfigurations: [VSVideoConfig] = []
     var missingSize = valid
     missingSize.clearEncodedSize()

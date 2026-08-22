@@ -1,0 +1,35 @@
+{
+  "android_device_lock_acquired": false,
+  "android_keyboard_source_observed": false,
+  "android_logs_retained": false,
+  "android_production_forwarding_observed": false,
+  "apk_identity_recorded": false,
+  "artifact_paths": [
+    "device-lock.txt",
+    "host-listener.txt",
+    "codesign-identities.txt",
+    "host-preflight-command.txt",
+    "host-signing-and-permissions.txt"
+  ],
+  "blocking_notes": [
+    "/tmp/vibe-screen-device-android.lock already existed before this run; no ADB commands were executed.",
+    "No macOS Host listener was present on TCP 54321.",
+    "The local keychain reported 0 valid code-signing identities, so stable signed Host/TCC readiness could not be established.",
+    "Physical keyboard attachment was not evaluated because the device lock and Host prerequisites failed first."
+  ],
+  "device_identity_matches_claim": false,
+  "device_identity_recorded": false,
+  "host_key_injection_observed": false,
+  "host_listener_observed": false,
+  "host_logs_retained": false,
+  "host_stable_signed_tcc_ready": false,
+  "key_press_release_observed": false,
+  "modifier_release_no_leak_observed": false,
+  "notes": "Target serial for a future run is EP0110PZ0B9110300B and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
+  "physical_keyboard_attached": false,
+  "protocol_keyboard_capability_negotiated": false,
+  "protocol_usb_hid_modifier_capability_negotiated": false,
+  "run_id": "8ec1ff10-0285-48ef-bf30-f716528ee687",
+  "shortcut_combo_observed": false,
+  "visible_mac_result_observed": false
+}

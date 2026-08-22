@@ -1,0 +1,46 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_display_rotation_readiness",
+  "status": "blocked",
+  "created_at_utc": "2026-08-21T16:58:19Z",
+  "repository": {
+    "head": "e948b96550a5e9288ea8fa6a04d9d9c6fc61251c",
+    "origin_main": "cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b",
+    "worktree_state": "codex/host-display-rotation-readiness clean; rebased onto origin/main before evidence write"
+  },
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "current_availability_update": "operator reported adb reverse tcp:54321 healthy, dev.telemachus.display foreground, device-side 127.0.0.1:54321 ESTABLISHED, stream_stats fps 55-61, decoder dropped=0, and no current process E-level errors",
+    "upstream_screenshot": "upstream-usb-smoke-screenshot.png",
+    "upstream_screenshot_sha256": "149160d30934af3bad5395012fdac7d51c34104dad8066fdbfd47b9690652c48"
+  },
+  "coordination": {
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "initial_lock_status": "empty stale marker existed before first adb command; lsof reported no holder",
+    "initial_lock_acquire_attempt": "atomic noclobber create failed because the empty lock file already existed",
+    "reassessment": "non-blocking fcntl.flock exclusive lock acquired on the same path after recording the stale marker state",
+    "lock_owner": "codex-pr162-host-display-rotation",
+    "lock_holder_pid": 77019,
+    "exclusive_device_run_started": true,
+    "adb_commands_executed_by_this_run": "read-only preflight sampling only; no install, launch, force-stop, reverse change, host-display rotation, or input injection"
+  },
+  "local_environment": {
+    "installed_host_path": "/Applications/Vibe Screen.app",
+    "host_process_pid": 92943,
+    "host_listener_54321": "observed listening before this task attempted device ownership",
+    "host_preflight": "blocked: codesign identity Vibe Screen Dev not found in the keychain; ad-hoc signing is refused for local device reruns",
+    "display_snapshot": "host-displays-before.txt records Color LCD and DELL U2723QE online; DELL U2723QE reports Rotation: Supported"
+  },
+  "blocking_reasons": [
+    "The stable signed Host preflight failed because the Vibe Screen Dev codesigning identity is not visible in the current keychain.",
+    "The read-only TCC database query returned authorization denied, so Screen Recording and Accessibility authorization for the installed Host could not be proven.",
+    "No physical or virtual macOS display was rotated under this task's exclusive device lease.",
+    "No retained physical and virtual rotated host-display artifacts were collected by this task."
+  ],
+  "acceptance_claim": "blocked_only_no_rotated_host_display_acceptance"
+}

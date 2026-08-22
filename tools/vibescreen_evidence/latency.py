@@ -272,8 +272,8 @@ def summarize(
         evidence_kind = "input_latency"
         gate_summary = {
             "can_close_performance_gate": True,
-            "requires_external_hardware": measurement_method == METHOD_EXTERNAL_CAMERA,
-            "reason": "input samples use an accepted single timebase",
+            "requires_external_hardware": True,
+            "reason": "input samples require physical input and use external-camera or calibrated synchronized clocks",
         }
         status = "complete"
     else:

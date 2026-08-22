@@ -112,6 +112,31 @@ interruption recovery, login startup, headless Mac recovery, stylus and hardware
 keyboard workflows, and the eight-hour sample series required by
 [RUNBOOK.md](RUNBOOK.md).
 
+## 2026-08-21 hardware-keyboard blocked preflight
+
+This follow-up added a schema-backed hardware-keyboard workflow evidence summary
+for the Phase 2 peripheral gate. The target serial for a future run is
+`EP0110PZ0B9110300B`, which must be recorded as nubia P0110 / pacific /
+Android 16 when used. The real-device workflow did not start because the shared
+Android lock already existed, no Host listener was present on TCP `54321`, and
+the local keychain reported `0 valid identities found` for code signing. No ADB
+commands were run and no physical keyboard condition was evaluated.
+
+Evidence is under
+[`evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked`](evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked/README.md).
+
+Validation performed for this tooling and evidence update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_hardware_keyboard tools.tests.test_schemas -v`
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked`
+
+The generated `hardware-keyboard-summary.json` records `verdict=blocked` and
+`can_close_hardware_keyboard_gate=false`. The Phase 2 hardware-keyboard workflow
+gate remains open until a physical keyboard attached to the recorded Android
+device drives production Protocol v1 keyboard forwarding into a stable
+signed/TCC-ready Host with retained Host `Key injected:` logs and a visible Mac
+result.
+
 ## 2026-08-21 Phase 2 evidence manifest readiness
 
 This follow-up added a schema-backed `phase2-tablet-manifest.json` preparation
