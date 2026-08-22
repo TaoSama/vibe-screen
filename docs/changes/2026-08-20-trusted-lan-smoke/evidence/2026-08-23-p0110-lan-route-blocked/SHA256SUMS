@@ -1,0 +1,8 @@
+5a33c7015044f2ed2cb1c16abd783418de2c0a05f5d94b938f6b705aac78f2cf  ./android-network-blocker-sanitized.txt
+3e8e39d8d19b3d4586eff9633aabc6a69adf005245c83a20d0366b6c1f1d283c  ./commands.txt
+da2f7ee3c0cc1613c5097aca0438433108810afdc525d66ba1bcf61f4f7fe1cc  ./device-info.json
+be27ce5d1ef6090115c300af0dc1e8f263775113bc3d0dd3f0320c73c7a3e153  ./device-lock.txt
+8bc51aaee3d2ce8786a6387e46897a3daf0ce071affca4f075d49f036ac819e9  ./host-preflight-console.txt
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./host-preflight.exit
+c2b1850196abc462429365ae6e1381916eed92208fe842fd2de2030ea6d93f31  ./mac-lan-preflight.txt
+98d31dde5d87ddd17d9ca1f9dc3f0374d7a42c01fb0e045718c77dfcfa2e60b5  ./README.md

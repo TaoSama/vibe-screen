@@ -1,0 +1,26 @@
+# Mac LAN preflight
+## sw_vers
+ProductName:		macOS
+ProductVersion:		26.4.1
+BuildVersion:		25E253
+
+## xcodebuild
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+
+## codesigning identities
+     0 valid identities found
+
+## route default
+   route to: default
+destination: default
+       mask: default
+    gateway: <default-gateway>
+  interface: en0
+      flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>
+ recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu     expire
+       0         0         0         0         0         0      1500         0 
+
+## en0 IPv4
+<mac-lan-ip>
+
+## TCP 54321 listeners

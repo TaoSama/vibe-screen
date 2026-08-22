@@ -1,0 +1,4 @@
+# Device lock
+-rw-r--r--@ 1 luwentao  wheel  0 Aug 22 23:45 /tmp/vibe-screen-device-android.lock
+
+# Lock holders
