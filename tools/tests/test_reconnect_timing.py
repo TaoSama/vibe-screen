@@ -228,6 +228,24 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["first_output_frame_ms"], 10_850)
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
 
+    def test_parses_android_diag_skips_zero_epoch_connection_opened(self) -> None:
+        events = parse_android_diag_events(
+            "\n".join(
+                [
+                    '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":0}',
+                    '[10650] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":4}',
+                    "[10800] VD: First frame: size=1, keyframe=true, session_epoch=4, config_epoch=9",
+                    "[10850] VD: First output frame! size=1, flags=1, session_epoch=4",
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["android_session_epoch"], 4)
+        self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
+
     def test_parses_android_logcat_telemetry_after_disruption_start(self) -> None:
         events = parse_android_logcat_events(
             "\n".join(

@@ -166,8 +166,9 @@ def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> di
             events["session_ended_ms"] = timestamp_ms
         if "connection_opened" in body and "android_session_epoch" not in events:
             epoch = _ANDROID_SESSION_EPOCH_JSON.search(body)
-            if epoch:
-                events["android_session_epoch"] = int(epoch.group("epoch"))
+            session_epoch = _positive_epoch_from_match(epoch)
+            if session_epoch is not None:
+                events["android_session_epoch"] = session_epoch
         if "onVideoConfiguration" in body and "config_epoch" not in events:
             epoch = _positive_epoch_from_match(_CONFIG_EPOCH.search(body))
             if epoch is not None:
