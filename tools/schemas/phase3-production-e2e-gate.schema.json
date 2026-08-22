@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-production-e2e-gate.schema.json",
+  "title": "Vibe Screen Phase 3 production E2E gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "run_id",
+    "owner",
+    "source",
+    "can_close_phase3_production_e2e",
+    "can_claim_public_internet_release",
+    "can_claim_real_screen_capture_android_decode",
+    "can_claim_revocation_soak_enforcement",
+    "checks",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_production_e2e_gate"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "run_id": {"type": ["string", "null"]},
+    "owner": {"type": ["object", "null"]},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest"],
+      "properties": {"manifest": {"type": "string", "minLength": 1}}
+    },
+    "can_close_phase3_production_e2e": {"type": "boolean"},
+    "can_claim_public_internet_release": {"type": "boolean"},
+    "can_claim_real_screen_capture_android_decode": {"type": "boolean"},
+    "can_claim_revocation_soak_enforcement": {"type": "boolean"},
+    "checks": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

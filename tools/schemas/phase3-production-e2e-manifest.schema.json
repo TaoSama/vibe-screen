@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-production-e2e-manifest.schema.json",
+  "title": "Vibe Screen Phase 3 production E2E manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "source_root",
+    "owner",
+    "scope_prs",
+    "source_docs",
+    "production_environment",
+    "device",
+    "host",
+    "android_artifact",
+    "claims",
+    "gates",
+    "required_artifacts",
+    "limitations",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_production_e2e_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "source_root": {"type": "string", "minLength": 1},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "aggregate_pr", "repository", "scope_prs"],
+      "properties": {
+        "aggregate": {"const": "phase3-production-e2e-current-base"},
+        "aggregate_pr": {"type": ["string", "null"]},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "scope_prs": {"type": "array", "items": {"type": "string", "pattern": "^#[0-9]+$"}}
+      }
+    },
+    "scope_prs": {"type": "array", "items": {"type": "string", "pattern": "^#[0-9]+$"}},
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "production_environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_internet_path",
+        "remote_turn",
+        "production_authority",
+        "managed_postgresql",
+        "tls_public_ingress",
+        "ntp_monitoring"
+      ],
+      "properties": {
+        "public_internet_path": {"type": "boolean"},
+        "remote_turn": {"type": "boolean"},
+        "production_authority": {"type": "boolean"},
+        "managed_postgresql": {"type": "boolean"},
+        "tls_public_ingress": {"type": "boolean"},
+        "ntp_monitoring": {"type": "boolean"}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_class", "manufacturer", "model", "codename", "android_release", "sdk", "identity_label", "evidence"],
+      "properties": {
+        "runtime_class": {"type": "string"},
+        "manufacturer": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]},
+        "codename": {"type": ["string", "null"]},
+        "android_release": {"type": ["string", "null"]},
+        "sdk": {"type": ["string", "integer", "null"]},
+        "identity_label": {"type": ["string", "null"]},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capture_source", "capture_api", "encoder", "build_identity", "screen_recording_permission", "evidence"],
+      "properties": {
+        "capture_source": {"type": "string"},
+        "capture_api": {"type": ["string", "null"]},
+        "encoder": {"type": ["string", "null"]},
+        "build_identity": {"type": ["string", "null"]},
+        "screen_recording_permission": {"type": "string"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "android_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apk_sha256", "version_name", "version_code", "evidence"],
+      "properties": {
+        "apk_sha256": {"type": ["string", "null"]},
+        "version_name": {"type": ["string", "null"]},
+        "version_code": {"type": ["string", "integer", "null"]},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_loopback_used_for_production",
+        "synthetic_protocol_v1_used_for_production",
+        "simulator_or_emulator_used_for_production",
+        "legacy_plaintext_fallback_used",
+        "historical_or_stale_source_used_for_current_gate"
+      ],
+      "properties": {
+        "local_loopback_used_for_production": {"type": "boolean"},
+        "synthetic_protocol_v1_used_for_production": {"type": "boolean"},
+        "simulator_or_emulator_used_for_production": {"type": "boolean"},
+        "legacy_plaintext_fallback_used": {"type": "boolean"},
+        "historical_or_stale_source_used_for_current_gate": {"type": "boolean"}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_deployment",
+        "public_internet_path",
+        "real_remote_turn",
+        "real_capture_to_mediacodec",
+        "android_device_ui",
+        "input_round_trip",
+        "network_handoff_recovery",
+        "revocation_propagation",
+        "mixed_route_soak",
+        "latency",
+        "privacy_scan",
+        "local_synthetic_e2e",
+        "service_contracts",
+        "pr_coordination"
+      ],
+      "properties": {
+        "production_deployment": {"$ref": "#/$defs/gate_record"},
+        "public_internet_path": {"$ref": "#/$defs/gate_record"},
+        "real_remote_turn": {"$ref": "#/$defs/gate_record"},
+        "real_capture_to_mediacodec": {"$ref": "#/$defs/gate_record"},
+        "android_device_ui": {"$ref": "#/$defs/gate_record"},
+        "input_round_trip": {"$ref": "#/$defs/gate_record"},
+        "network_handoff_recovery": {"$ref": "#/$defs/gate_record"},
+        "revocation_propagation": {"$ref": "#/$defs/gate_record"},
+        "mixed_route_soak": {"$ref": "#/$defs/gate_record"},
+        "latency": {"$ref": "#/$defs/gate_record"},
+        "privacy_scan": {"$ref": "#/$defs/gate_record"},
+        "local_synthetic_e2e": {"$ref": "#/$defs/gate_record"},
+        "service_contracts": {"$ref": "#/$defs/gate_record"},
+        "pr_coordination": {"$ref": "#/$defs/gate_record"}
+      }
+    },
+    "required_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "gate_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "properties": {
+        "status": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "requirement": {"type": "string", "minLength": 1},
+        "blocking": {"type": "boolean"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "metrics": {"type": "object"}
+      }
+    }
+  }
+}
