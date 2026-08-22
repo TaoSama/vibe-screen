@@ -706,6 +706,41 @@ class ArchiveArtifactTests(unittest.TestCase):
 
 
 class MacOSSigningIdentityTests(unittest.TestCase):
+    def test_collect_source_identity_records_commit_tree_and_dirty_state(self) -> None:
+        outputs = iter(["a" * 40, "b" * 40, " M README.md"])
+        with mock.patch.object(package_macos, "run", side_effect=lambda *args, **kwargs: next(outputs)):
+            identity = package_macos.collect_source_identity(Path("/tmp/repo"))
+
+        self.assertEqual(identity.commit, "a" * 40)
+        self.assertEqual(identity.tree, "b" * 40)
+        self.assertTrue(identity.dirty)
+
+    def test_collect_source_identity_times_out_fail_closed(self) -> None:
+        with mock.patch.object(
+            package_macos,
+            "run",
+            side_effect=subprocess.TimeoutExpired(("git", "status", "--porcelain"), 30),
+        ):
+            with self.assertRaisesRegex(SystemExit, "git source identity lookup timed out"):
+                package_macos.collect_source_identity(Path("/tmp/repo"))
+
+    def test_bundled_plist_records_source_identity(self) -> None:
+        info = package_macos.bundled_plist(
+            {"CFBundleIdentifier": "dev.telemachus.display"},
+            "1.2.3",
+            package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+        )
+
+        self.assertEqual(info["CFBundleExecutable"], "Vibe Screen")
+        self.assertEqual(info["CFBundleVersion"], "1.2.3")
+        self.assertEqual(info["VibeScreenSourceCommit"], "a" * 40)
+        self.assertEqual(info["VibeScreenSourceTree"], "b" * 40)
+        self.assertFalse(info["VibeScreenSourceDirty"])
+
     def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
         with mock.patch.object(package_macos.subprocess, "run") as run_mock:
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")
@@ -726,6 +761,18 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 package_macos.resolve_sign_identity("Vibe Screen Dev"),
                 "Vibe Screen Dev",
             )
+
+    def test_named_identity_lookup_timeout_fails_closed(self) -> None:
+        with mock.patch.object(
+            package_macos.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(
+                ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
+                30,
+            ),
+        ):
+            with self.assertRaisesRegex(SystemExit, "security find-identity -v -p codesigning timed out"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
 
     def test_identity_lookup_requires_an_exact_name(self) -> None:
         lookup = subprocess.CompletedProcess(
@@ -1147,6 +1194,13 @@ class PrepareReleaseTests(unittest.TestCase):
         runner = PHASE3_RUNNER.read_text(encoding="utf-8")
         self.assertNotIn("print(peer_output", runner)
         self.assertIn("print_success_summary(arguments.mode, arguments.slice)", runner)
+
+    def test_baseline_macos_test_fails_closed_before_swiftpm_xctest(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
+        self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
 
     def test_phase0_macos_job_gates_local_synthetic_product_direct_and_forced_relay_e2e(
         self,

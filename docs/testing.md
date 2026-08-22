@@ -7,6 +7,7 @@ Compilation is necessary but does not satisfy device acceptance.
 ```bash
 make protocol
 make baseline-macos-build
+make baseline-macos-xctest-preflight
 make baseline-macos-test
 make baseline-macos-self-test
 
@@ -14,12 +15,45 @@ cd baseline/AndroidClient
 ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
 ```
 
+`baseline-macos-xctest-preflight` records the selected Apple developer
+directory, Swift toolchain, and `xcodebuild` availability under
+`.build/dev-macos-host/xctest-toolchain.txt`. If it reports Command Line Tools
+instead of full Xcode, keep MacHost XCTest-dependent evidence blocked until the
+machine is switched with:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+```
+
+## macOS Host signing preflight
+
+Before any Host-backed Android device gate, install and verify the current-source
+Host with a stable signing identity:
+
+```bash
+make baseline-macos-dev-install
+make baseline-macos-host-preflight
+```
+
+If the configured identity is missing, the preflight blocks with
+`codesign identity 'Vibe Screen Dev' not found in the keychain`. Create a
+self-signed Code Signing certificate named `Vibe Screen Dev` in Keychain Access,
+or set `VIBE_SCREEN_SIGN_IDENTITY` to an existing stable codesigning identity,
+then reinstall, grant Screen Recording and Accessibility, and rerun the
+preflight. Do not use ad-hoc signing for current-source device evidence because
+macOS TCC grants are bound to the signing identity.
+
 ## Real-device evidence
 
 For every device run, record:
 
 - ADB endpoint, hardware serial, manufacturer, model, Android version, SDK,
   build fingerprint, display size/density, battery, and boot state;
+- macOS Host bundle path, bundle identifier, signing identity, binary SHA-256,
+  and recorded source commit/tree/dirty state. Current-source gates require the
+  installed Host to match the clean repository HEAD; a historical fixed-binary
+  SHA check is evidence only for that retained binary;
 - APK version/signing identity and install timestamp;
 - ADB reverse mapping and host listener;
 - decoder name, first output frame, continuing frame counters, and drops;
@@ -156,6 +190,11 @@ P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
 
 - APK installs and cold-starts without fatal exception.
 - A real stream reaches a hardware decoder and produces output frames.
+- A Host start where `CGPreflightScreenCaptureAccess()` is granted but
+  `SCShareableContent` reports zero displays is blocked until either the
+  Current Main Display `CGDisplayStream` fallback starts and `54321` is actually
+  listening with rising frames, or ScreenCaptureKit display enumeration recovers.
+  Do not count the permission preflight alone as Host readiness.
 - Touch on two distinct device locations moves the Mac pointer accordingly.
 - Protocol v1 native pointer claims require a physical mouse or equivalent HID
   pointer attached to the Android device. Record hover/move, primary click,

@@ -12,6 +12,7 @@ import shutil
 import stat
 import subprocess
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
@@ -28,6 +29,17 @@ SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
+SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
+SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
+SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"
+PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class SourceIdentity:
+    commit: str
+    tree: str
+    dirty: bool
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(*command: str, cwd: Path | None = None) -> str:
+def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -68,8 +80,15 @@ def run(*command: str, cwd: Path | None = None) -> str:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        timeout=timeout,
     )
     return completed.stdout.strip()
+
+
+def command_text(command: tuple[str, ...] | list[str] | str) -> str:
+    if isinstance(command, str):
+        return command
+    return " ".join(command)
 
 
 def resolve_sign_identity(requested: str) -> str:
@@ -84,13 +103,23 @@ def resolve_sign_identity(requested: str) -> str:
     """
     if requested == "-":
         return requested
-    lookup = subprocess.run(
-        ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    lookup_command = ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning")
+    try:
+        lookup = subprocess.run(
+            lookup_command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"security find-identity -v -p codesigning timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s; refusing to assume "
+            f"codesign identity '{requested}' is available. Unlock or repair the "
+            "keychain, then rerun preflight."
+        ) from error
     quoted_identity = f'"{requested}"'
     matching_identities = [
         line.strip()
@@ -115,9 +144,57 @@ def resolve_sign_identity(requested: str) -> str:
     )
 
 
+def collect_source_identity(repository_root: Path = REPOSITORY_ROOT) -> SourceIdentity:
+    try:
+        commit = run(
+            "git",
+            "rev-parse",
+            "HEAD",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        tree = run(
+            "git",
+            "rev-parse",
+            "HEAD^{tree}",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        status = run(
+            "git",
+            "status",
+            "--porcelain",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.CalledProcessError as error:
+        output = (error.stdout or str(error)).strip()
+        raise SystemExit(f"could not resolve git source identity for macOS Host package: {output}") from error
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"git source identity lookup timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s while running "
+            f"{command_text(error.cmd)}; refusing to treat the installed Host as "
+            "current-source evidence."
+        ) from error
+    return SourceIdentity(commit=commit, tree=tree, dirty=bool(status.strip()))
+
+
 def read_source_plist() -> dict[str, object]:
     with SOURCE_INFO_PLIST.open("rb") as plist_file:
         return plistlib.load(plist_file)
+
+
+def bundled_plist(source_plist: dict[str, object], version: str, source_identity: SourceIdentity) -> dict[str, object]:
+    result = dict(source_plist)
+    result["CFBundleExecutable"] = EXECUTABLE_NAME
+    result["CFBundleIconFile"] = "AppIcon"
+    result["CFBundleVersion"] = version
+    result["CFBundleShortVersionString"] = version
+    result[SOURCE_COMMIT_PLIST_KEY] = source_identity.commit
+    result[SOURCE_TREE_PLIST_KEY] = source_identity.tree
+    result[SOURCE_DIRTY_PLIST_KEY] = source_identity.dirty
+    return result
 
 
 def safe_remove(path: Path, output_dir: Path) -> None:
@@ -182,6 +259,7 @@ def main() -> int:
     args = parse_args()
     sign_identity = resolve_sign_identity(args.sign_identity)
     validate_notice_bundle(REPOSITORY_ROOT)
+    source_identity = collect_source_identity(REPOSITORY_ROOT)
     source_plist = read_source_plist()
     version = args.version or str(source_plist["CFBundleShortVersionString"])
     if not version or any(character.isspace() for character in version):
@@ -246,13 +324,9 @@ def main() -> int:
     if not packaged_notice.is_file():
         raise FileNotFoundError(f"Swift resource bundle omitted required notice: {packaged_notice}")
 
-    bundled_plist = dict(source_plist)
-    bundled_plist["CFBundleExecutable"] = EXECUTABLE_NAME
-    bundled_plist["CFBundleIconFile"] = "AppIcon"
-    bundled_plist["CFBundleVersion"] = version
-    bundled_plist["CFBundleShortVersionString"] = version
+    bundled_info = bundled_plist(source_plist, version, source_identity)
     with (contents / "Info.plist").open("wb") as plist_file:
-        plistlib.dump(bundled_plist, plist_file, sort_keys=True)
+        plistlib.dump(bundled_info, plist_file, sort_keys=True)
 
     run(
         "codesign",

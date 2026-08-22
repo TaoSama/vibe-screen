@@ -610,6 +610,73 @@ final class Phase1HostCapabilityTests: XCTestCase {
         ), .terminalFailure)
     }
 
+    func testInitialCurrentMainSetupFailureDefersToFallback() {
+        XCTAssertTrue(InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertTrue(InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: true
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 0,
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 0,
+            followsMainDisplay: false,
+            prefersCGDisplayStream: true
+        ))
+        XCTAssertTrue(InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 1,
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertTrue(InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 0,
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: true
+        ))
+        XCTAssertTrue(InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: false,
+            hasReceivedFirstFrame: false,
+            elapsedSeconds: 6.0
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: true,
+            hasReceivedFirstFrame: false,
+            elapsedSeconds: 5.0
+        ))
+        XCTAssertFalse(InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: true,
+            hasReceivedFirstFrame: true,
+            elapsedSeconds: 6.0
+        ))
+        XCTAssertTrue(InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: true,
+            hasReceivedFirstFrame: false,
+            elapsedSeconds: 6.0
+        ))
+    }
+
     func testVirtualDisplayCapabilityRejectsMissingClassAndSelector() {
         let complete = FakeRuntimeInspector.complete()
         XCTAssertTrue(VirtualDisplayPrivateAPICapability.evaluate(

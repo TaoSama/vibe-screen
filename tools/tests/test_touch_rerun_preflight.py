@@ -10,6 +10,7 @@ from unittest.mock import patch
 from vibescreen_evidence.touch_rerun_preflight import (
     ACCESSIBILITY_SERVICE,
     SCREEN_CAPTURE_SERVICE,
+    build_document,
     collect_tcc,
     write_json,
     _blockers,
@@ -98,6 +99,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
             },
             android=None,
             expected_host_sha256="new",
+            current_source=None,
+            require_current_source=False,
         )
 
         self.assertIn(
@@ -112,16 +115,143 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
     def test_no_blockers_when_preconditions_are_present(self) -> None:
         blockers = _blockers(
-            host={"binary_sha256": "abc"},
+            host={
+                "binary_sha256": "abc",
+                "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
+            },
             tcc={
                 "screen_recording": {"authorized": True},
                 "accessibility": {"authorized": True},
             },
             android={"model": "P0110"},
             expected_host_sha256="abc",
+            current_source={"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+            require_current_source=True,
         )
 
         self.assertEqual(blockers, [])
+
+    def test_current_source_requirement_blocks_legacy_or_stale_host(self) -> None:
+        base = {
+            "tcc": {
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            "android": {"model": "P0110"},
+            "expected_host_sha256": None,
+            "current_source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+            "require_current_source": True,
+        }
+
+        legacy = _blockers(host={"binary_sha256": "abc", "source": {}}, **base)
+        self.assertIn("installed Host bundle does not record its source commit/tree identity", legacy)
+
+        stale = _blockers(
+            host={
+                "binary_sha256": "abc",
+                "source": {"commit": "c" * 40, "tree": "d" * 40, "dirty": False},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
+            },
+            **base,
+        )
+        self.assertIn("installed Host bundle source commit does not match current HEAD", stale)
+        self.assertIn("installed Host bundle source tree does not match current tree", stale)
+
+    def test_current_source_requirement_blocks_dirty_repository_or_packaged_host(self) -> None:
+        blockers = _blockers(
+            host={
+                "binary_sha256": "abc",
+                "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": True},
+                "codesign": {"authorities": ["Vibe Screen Dev"]},
+            },
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256=None,
+            current_source={"commit": "a" * 40, "tree": "b" * 40, "dirty": True},
+            require_current_source=True,
+        )
+
+        self.assertIn("repository source root is dirty", "\n".join(blockers))
+
+    def test_current_source_requirement_blocks_ad_hoc_host(self) -> None:
+        blockers = _blockers(
+            host={
+                "binary_sha256": "abc",
+                "source": {"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+                "codesign": {"authorities": []},
+            },
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256=None,
+            current_source={"commit": "a" * 40, "tree": "b" * 40, "dirty": False},
+            require_current_source=True,
+        )
+
+        self.assertIn("Host is ad-hoc signed", "\n".join(blockers))
+
+    def test_current_source_is_not_required_for_historical_fixed_binary_preflight(self) -> None:
+        blockers = _blockers(
+            host={"binary_sha256": "abc", "source": {}},
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256="abc",
+            current_source=None,
+            require_current_source=False,
+        )
+
+        self.assertEqual(blockers, [])
+
+    def test_build_document_records_current_source_requirement(self) -> None:
+        with (
+            patch(
+                "vibescreen_evidence.touch_rerun_preflight.collect_host_bundle",
+                return_value={
+                    "identifier": "dev.telemachus.display",
+                    "binary_sha256": "abc",
+                    "source": {"commit": "old", "tree": "old-tree", "dirty": False},
+                },
+            ),
+            patch(
+                "vibescreen_evidence.touch_rerun_preflight.collect_tcc",
+                return_value={
+                    "screen_recording": {"authorized": True},
+                    "accessibility": {"authorized": True},
+                },
+            ),
+            patch(
+                "vibescreen_evidence.touch_rerun_preflight.collect_android",
+                return_value={"model": "P0110"},
+            ),
+            patch(
+                "vibescreen_evidence.touch_rerun_preflight.collect_current_source",
+                return_value={"commit": "new", "tree": "new-tree", "dirty": False},
+            ),
+        ):
+            document = build_document(
+                bundle_path=Path("/Applications/Vibe Screen.app"),
+                tcc_dbs=[Path("TCC.db")],
+                serial="EP0110PZ0B9110300B",
+                adb_path="adb",
+                adb_timeout=1.0,
+                expected_host_sha256=None,
+                source_root=Path("."),
+                require_current_source=True,
+            )
+
+        self.assertEqual(document["result"], "blocked")
+        self.assertTrue(document["current_source_required"])
+        self.assertEqual(document["current_source"]["commit"], "new")
+        self.assertIn("installed Host bundle source commit does not match current HEAD", document["blockers"])
 
     def test_atomic_json_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
