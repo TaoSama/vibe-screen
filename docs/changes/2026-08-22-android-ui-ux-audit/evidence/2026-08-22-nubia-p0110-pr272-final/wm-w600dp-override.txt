@@ -1,0 +1,4 @@
+Physical size: 1264x2800
+Override size: 2520x2800
+Physical density: 560
+Override density: 420

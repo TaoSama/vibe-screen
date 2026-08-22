@@ -1,0 +1,1 @@
+/sdcard/pr272-final-disconnected-w600dp.xml: 1 file pulled, 0 skipped. 1.0 MB/s (2626 bytes in 0.003s)

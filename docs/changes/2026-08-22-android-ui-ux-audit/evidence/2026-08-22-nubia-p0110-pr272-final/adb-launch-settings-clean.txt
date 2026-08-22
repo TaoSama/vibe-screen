@@ -1,0 +1,15 @@
+  bash arg: -p
+  bash arg: dev.telemachus.display
+  bash arg: -c
+  bash arg: android.intent.category.LAUNCHER
+  bash arg: 1
+args: [-p, dev.telemachus.display, -c, android.intent.category.LAUNCHER, 1]
+ arg: "-p"
+ arg: "dev.telemachus.display"
+ arg: "-c"
+ arg: "android.intent.category.LAUNCHER"
+ arg: "1"
+data="dev.telemachus.display"
+data="android.intent.category.LAUNCHER"
+Events injected: 1
+## Network stats: elapsed time=22ms (0ms mobile, 0ms wifi, 22ms not connected)
