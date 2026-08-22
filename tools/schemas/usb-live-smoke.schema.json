@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/usb-live-smoke.schema.json",
+  "title": "Vibe Screen Android USB live-stream smoke v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "collected_at",
+    "verdict",
+    "configuration",
+    "safety",
+    "device",
+    "adb",
+    "app",
+    "logs",
+    "claims"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "vibescreen.evidence/v1"
+    },
+    "kind": {
+      "const": "android_usb_live_smoke"
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "insufficient",
+        "blocked"
+      ]
+    },
+    "blocking_reasons": {
+      "type": "array"
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serial",
+        "package",
+        "port",
+        "logcat_tags",
+        "logcat_lines",
+        "max_log_bytes"
+      ],
+      "properties": {
+        "serial": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "logcat_tags": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "logcat_lines": {"type": "integer", "minimum": 1},
+        "max_log_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "read_only",
+        "ran_adb",
+        "checked_device_locks",
+        "existing_locks",
+        "starts_host",
+        "starts_android_app",
+        "installs_apk",
+        "changes_adb_reverse",
+        "clears_logcat",
+        "injects_input"
+      ],
+      "properties": {
+        "read_only": {"const": true},
+        "ran_adb": {"type": "boolean"},
+        "checked_device_locks": {"const": true},
+        "existing_locks": {"type": "array"},
+        "starts_host": {"const": false},
+        "starts_android_app": {"const": false},
+        "installs_apk": {"const": false},
+        "changes_adb_reverse": {"const": false},
+        "clears_logcat": {"const": false},
+        "injects_input": {"const": false}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["state", "identity", "label_guard"],
+      "properties": {
+        "state": {"type": ["string", "null"]},
+        "identity": {"type": ["object", "null"]},
+        "label_guard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recorded_as_fuxi",
+            "device_is_fuxi",
+            "device_is_nubia_p0110_pacific",
+            "evidence_scope",
+            "do_not_relabel_as"
+          ],
+          "properties": {
+            "recorded_as_fuxi": {"const": false},
+            "device_is_fuxi": {"type": "boolean"},
+            "device_is_nubia_p0110_pacific": {"type": "boolean"},
+            "evidence_scope": {"type": "string", "minLength": 1},
+            "do_not_relabel_as": {
+              "type": "array",
+              "items": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "adb": {
+      "type": "object"
+    },
+    "app": {
+      "type": "object"
+    },
+    "logs": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["sources", "live_evidence", "telemetry", "decoder"],
+      "properties": {
+        "live_evidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["source", "current_pids", "matched_line_count"],
+          "properties": {
+            "source": {"const": "logcat_current_pid"},
+            "current_pids": {"type": "array", "items": {"type": "integer"}},
+            "matched_line_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "diagnostic": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "source": {"const": "app_private_diag_log_context_only"}
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "live_usb_stream_observed",
+        "readme_gate_closure",
+        "can_close_two_hour_soak_gate",
+        "can_close_host_rss_no_growth_gate",
+        "can_close_latency_gate",
+        "can_close_native_pointer_hid_gate",
+        "can_close_stylus_gate",
+        "can_close_controller_gate",
+        "device_is_fuxi"
+      ],
+      "properties": {
+        "live_usb_stream_observed": {"type": "boolean"},
+        "readme_gate_closure": {"const": false},
+        "can_close_two_hour_soak_gate": {"const": false},
+        "can_close_host_rss_no_growth_gate": {"const": false},
+        "can_close_latency_gate": {"const": false},
+        "can_close_native_pointer_hid_gate": {"const": false},
+        "can_close_stylus_gate": {"const": false},
+        "can_close_controller_gate": {"const": false},
+        "device_is_fuxi": {"type": "boolean"}
+      }
+    },
+    "errors": {
+      "type": "array"
+    }
+  }
+}

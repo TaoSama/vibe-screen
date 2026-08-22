@@ -81,6 +81,33 @@ class ADBClientTest(unittest.TestCase):
         self.assertEqual(result, "already connected to 8a023e3a")
         self.assertEqual(commands, [["adb", "-s", "8a023e3a", "get-state"]])
 
+    def test_command_and_exec_out_are_scoped_to_explicit_serial(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+        client = ADBClient("EP0110PZ0B9110300B", command_runner=run)
+
+        self.assertEqual(client.command("reverse", "--list"), "ok")
+        self.assertEqual(client.exec_out("run-as", "dev.telemachus.display", "id"), "ok")
+        self.assertEqual(
+            commands,
+            [
+                ["adb", "-s", "EP0110PZ0B9110300B", "reverse", "--list"],
+                [
+                    "adb",
+                    "-s",
+                    "EP0110PZ0B9110300B",
+                    "exec-out",
+                    "run-as",
+                    "dev.telemachus.display",
+                    "id",
+                ],
+            ],
+        )
+
 
 class ADBPowerCollectionTest(unittest.TestCase):
     @staticmethod

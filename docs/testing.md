@@ -90,6 +90,37 @@ produced them. Later Xiaomi 13 streaming, display-switch, input, and
 two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
+### Read-only USB live-stream smoke
+
+When a Host and Android client are already streaming over USB, capture a
+repeatable summary without changing the device or session:
+
+```bash
+test ! -e /tmp/vibe-screen-device-android.lock
+test ! -e /tmp/vibe-screen-device-soak.lock
+make evidence-usb-live-smoke \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=.build/evidence/usb-live-smoke
+```
+
+The helper uses only explicit `adb -s <serial>` read commands. It reads the
+device identity, `adb reverse --list`, package metadata, foreground Activity,
+PID, focused `logcat` lines, and the app private diagnostic log. It does not
+install or start the app, clear logcat, create or remove reverse mappings,
+probe the Host socket, or inject input. If another run owns the Android device
+lock, rerun the module with `--write-blocked-on-lock` to write a structured
+`blocked` summary and exit non-zero without touching ADB.
+
+The JSON result can be used to show that an already-running USB stream exposed
+current-process positive `stream_stats` and active MediaCodec decoder output. A
+fresh session may include decoder setup and first-output lines; a long-running
+session may instead prove decoder activity from current-process retained frame
+counters. The private diagnostic log is context only and cannot independently
+support a `pass`. The summary cannot close soak, Host RSS, latency,
+native-pointer, stylus, or controller gates. Nubia P0110/pacific output includes
+a label guard that keeps `recorded_as_fuxi=false` and scopes the result to a
+general Android substitute.
+
 ### Native pointer HID mouse gate
 
 Native pointer move/click is a hardware-gated acceptance item. Use a real USB or
