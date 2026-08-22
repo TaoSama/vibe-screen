@@ -347,3 +347,23 @@ any claim that the synthetic-media run proved ScreenCaptureKit, Android
 MediaCodec, public Internet, handoff, latency, or soak. It also compares the
 direct and relay route-level `adb_gate` lease identity fields, so the top-level
 `same_device_lease_holder` boolean alone is never sufficient.
+
+## Production E2E enforcement gate
+
+Use production_e2e_enforcement.py only after a production-shaped run has a
+reviewed manifest. It is the aggregate release-gate verifier for the Authority,
+signaling, coturn, and data-plane enforcement chain, not a service deployer:
+
+    python3 scripts/phase3/production_e2e_enforcement.py \
+      --manifest /protected/evidence/production-e2e-enforcement.json \
+      --output /protected/evidence/production-e2e-enforcement-result.json
+
+The manifest must name owners for release decision, Authority, signaling, coturn
+data plane, and evidence review; bind clean source and artifact hashes; include
+real deployed secret-manager configuration for Authority, signaling, and coturn;
+prove matching authority/signaling/coturn policy values; and include public
+route, remote TURN, real ScreenCaptureKit capture, Android MediaCodec decode,
+application AEAD, coturn allocation/disconnect, Authority admission, signaling
+authorization, and at least a 120-minute mixed-route soak. Missing deployment
+inputs return blocked. Policy drift or a local/synthetic run relabeled as public
+production E2E returns failed.

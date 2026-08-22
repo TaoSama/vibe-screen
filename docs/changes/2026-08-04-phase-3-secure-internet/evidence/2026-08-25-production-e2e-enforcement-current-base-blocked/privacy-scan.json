@@ -1,0 +1,126 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3003,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "57ad934fe3a22656a7959b47fe6db35408d2ac0c8cd33e6947b58dcd231d6fc4"
+    },
+    {
+      "bytes": 522,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "coturn-disconnect-observation.json",
+      "result": "pass",
+      "sha256": "0892780cf723291f940cf9da168329a7fa79824f888db41f98d20dccca5d11aa"
+    },
+    {
+      "bytes": 691,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "data-plane-observation.json",
+      "result": "pass",
+      "sha256": "b42db5b15247c8db3d0cd44c8ccfe3002ec0bdf8ca5593aa50508b5fdd4a30d0"
+    },
+    {
+      "bytes": 1910,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "deployed-config-observation.json",
+      "result": "pass",
+      "sha256": "336c97cb58b2244770dadb4ed68b2511f0da5ded1f0b966af2133868be1b26bb"
+    },
+    {
+      "bytes": 567,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "mixed-route-soak-observation.json",
+      "result": "pass",
+      "sha256": "3b7eb6a8a32490dafc6e4498c1b6d4ce2f0d708a1e62ae5df19c727cf4cbae82"
+    },
+    {
+      "bytes": 5118,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "production-e2e-enforcement-result.json",
+      "result": "pass",
+      "sha256": "93503931cbf1d85e7cdf9b4d17aa79a987662cf1cbf4e66a822595b1a759e468"
+    },
+    {
+      "bytes": 4174,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "production-e2e-enforcement.json",
+      "result": "pass",
+      "sha256": "89c1f6138208eb9393fc297e2b9f723689f72a66c2cedf090a2020acd477d96e"
+    },
+    {
+      "bytes": 581,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "public-network-observation.json",
+      "result": "pass",
+      "sha256": "969be131a3470410332d9af59a4ef78c33987e7025288d353783f0d6a98dc196"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

@@ -1,0 +1,132 @@
+{
+  "data_plane": {
+    "android_mediacodec_decode": false,
+    "application_aead_verified": false,
+    "authority_admission_observed": false,
+    "coturn_allocation_observed": false,
+    "coturn_disconnect_observed": false,
+    "mixed_route_soak_minutes": 1,
+    "real_screencapturekit_capture": false,
+    "signaling_authorization_observed": false
+  },
+  "evidence": {
+    "artifacts": [
+      {
+        "path": "deployed-config-observation.json",
+        "sha256": "336c97cb58b2244770dadb4ed68b2511f0da5ded1f0b966af2133868be1b26bb",
+        "type": "deployed_config"
+      },
+      {
+        "path": "public-network-observation.json",
+        "sha256": "969be131a3470410332d9af59a4ef78c33987e7025288d353783f0d6a98dc196",
+        "type": "public_network_observation"
+      },
+      {
+        "path": "data-plane-observation.json",
+        "sha256": "b42db5b15247c8db3d0cd44c8ccfe3002ec0bdf8ca5593aa50508b5fdd4a30d0",
+        "type": "data_plane_observation"
+      },
+      {
+        "path": "coturn-disconnect-observation.json",
+        "sha256": "0892780cf723291f940cf9da168329a7fa79824f888db41f98d20dccca5d11aa",
+        "type": "coturn_disconnect_observation"
+      },
+      {
+        "path": "mixed-route-soak-observation.json",
+        "sha256": "3b7eb6a8a32490dafc6e4498c1b6d4ce2f0d708a1e62ae5df19c727cf4cbae82",
+        "type": "mixed_route_soak"
+      }
+    ],
+    "rerun_commands": [
+      "make phase3-production-e2e-enforcement EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-production-e2e-enforcement-current-base-blocked"
+    ]
+  },
+  "owners": {
+    "authority": {
+      "contact": "authority-oncall",
+      "team": "vibe-screen-authority"
+    },
+    "coturn_data_plane": {
+      "contact": "relay-oncall",
+      "team": "vibe-screen-relay"
+    },
+    "evidence_review": {
+      "contact": "qa-oncall",
+      "team": "vibe-screen-qa"
+    },
+    "release_decision": {
+      "contact": "release-oncall",
+      "team": "vibe-screen-release"
+    },
+    "signaling": {
+      "contact": "signaling-oncall",
+      "team": "vibe-screen-signaling"
+    }
+  },
+  "policy": {
+    "authority": {
+      "authority_source_id": "turn-prod-1",
+      "daily_bytes_per_device": 21474836480,
+      "maximum_allocations_per_device": 2,
+      "maximum_database_clock_skew_seconds": 5,
+      "maximum_session_ttl_seconds": 900,
+      "turn_credential_ttl_seconds": 600,
+      "turn_realm": "relay.example.com"
+    },
+    "coturn": {
+      "authority_source_id": "turn-prod-1",
+      "daily_bytes_per_device": 21474836480,
+      "maximum_allocations_per_device": 2,
+      "maximum_database_clock_skew_seconds": 5,
+      "maximum_session_ttl_seconds": 900,
+      "turn_credential_ttl_seconds": 600,
+      "turn_realm": "relay.example.com"
+    },
+    "signaling": {
+      "authority_source_id": "turn-prod-1",
+      "daily_bytes_per_device": 21474836480,
+      "maximum_allocations_per_device": 2,
+      "maximum_database_clock_skew_seconds": 5,
+      "maximum_session_ttl_seconds": 900,
+      "turn_credential_ttl_seconds": 600,
+      "turn_realm": "relay.example.com"
+    }
+  },
+  "production_config": {
+    "authority": {
+      "http_public_ingress": false,
+      "present": false,
+      "source": "not_available",
+      "tls_verify_full": false
+    },
+    "coturn": {
+      "disconnect_executor": "not_deployed",
+      "exporter": "not_deployed",
+      "present": false,
+      "source": "not_available",
+      "tls_verify_full": false
+    },
+    "signaling": {
+      "mode": "production_authority",
+      "present": false,
+      "source": "not_available",
+      "storage_backend": "postgres",
+      "tls_verify_full": false
+    }
+  },
+  "recorded_at_utc": "2026-08-25T00:00:00Z",
+  "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
+  "schema": "dev.vibescreen.phase3-production-e2e-enforcement/v1",
+  "source": {
+    "commit": "f46163524fe757e7021a4333b3370af00ec651f1",
+    "dirty": false
+  },
+  "topology": {
+    "classification": "public_internet",
+    "local_loopback": false,
+    "public_endpoint_hosts": [],
+    "public_route_observed": false,
+    "remote_turn_observed": false,
+    "synthetic_peer": false
+  }
+}

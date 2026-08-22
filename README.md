@@ -785,6 +785,13 @@ for Authority audit visibility, signaling long-poll rejection, future and
 post-revocation same-allocation relay credential rejection, active allocation disconnect, stale
 credential rejection, and post-revocation traffic denial; the current blocked
 evidence still lacks the live coturn/data-plane deployment observations.
+The script scripts/phase3/production_e2e_enforcement.py is the explicit owner
+and evidence contract for closing that final production enforcement gate. It
+fails closed when real deployed configuration is absent, when
+authority/signaling/coturn policy values diverge, or when local loopback and
+synthetic-peer evidence is presented as public production E2E. The current
+blocked record is retained under
+[2026-08-25-production-e2e-enforcement-current-base-blocked](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-production-e2e-enforcement-current-base-blocked/README.md).
 
 The formal Internet latency gate is `internet-glass-to-glass-sub150` for direct
 and relay public-Internet routes. It requires external-camera raw samples plus

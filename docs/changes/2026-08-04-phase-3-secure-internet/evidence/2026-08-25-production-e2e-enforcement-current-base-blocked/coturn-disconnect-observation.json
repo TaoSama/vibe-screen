@@ -1,0 +1,17 @@
+{
+  "active_allocation_removed": false,
+  "coturn_disconnect_observed": false,
+  "local_coturn": false,
+  "missing": [
+    "deployed coturn allocation",
+    "active allocation disconnect executor trace"
+  ],
+  "observed": false,
+  "remote_turn_observed": false,
+  "result": "not_run",
+  "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
+  "schema": "dev.vibescreen.phase3-production-coturn-disconnect-observation/v1",
+  "source": {
+    "commit": "f46163524fe757e7021a4333b3370af00ec651f1"
+  }
+}

@@ -107,6 +107,19 @@ backup automation, Mac/Android automatic profile issuance, production coturn
 exporter/disconnect wiring, or
 active disconnection after revocation.
 
+Production enforcement cannot be closed from any single service log. The release
+owner must run scripts/phase3/production_e2e_enforcement.py against a reviewed
+manifest that names owners for release decision, Authority, signaling, coturn
+data plane, and evidence review. That manifest must bind all three policy views
+to the same authority source, TURN realm, TTL, allocation, byte-budget, and clock
+skew limits; a mismatch is a failed deployment, not a blocked environment. The
+same manifest must prove public route and remote TURN observations with real
+ScreenCaptureKit capture, Android MediaCodec decode, Authority admission,
+signaling authorization, coturn allocation plus disconnect, and a 120-minute
+mixed-route production soak. The current repository record is blocked in
+evidence/2026-08-25-production-e2e-enforcement-current-base-blocked/ because those deployed
+dependencies are unavailable here.
+
 The signaling service accepts one offer/answer per session and exposes an
 issuer-only idempotent invalidation operation. In `production_authority` mode
 session creation, per-request role authorization, and invalidation are delegated
