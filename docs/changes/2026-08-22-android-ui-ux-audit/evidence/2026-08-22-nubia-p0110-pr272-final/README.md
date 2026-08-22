@@ -108,4 +108,4 @@ This evidence does not claim latency, soak, LAN, native-pointer, stylus, control
 
 ## PR Readiness Recommendation
 
-For the narrow PR #272 code change, the current branch now has stronger Nubia P0110 device evidence for the core UI/accessibility surfaces and the local focused Android gates pass. Keep the PR as draft until the branch is pushed with this evidence, CI for the new head completes, and reviewers accept the scoped evidence boundary above.
+For the narrow PR #272 code change, the branch has stronger Nubia P0110 device evidence for the core UI/accessibility surfaces and the local focused Android gates pass. After the follow-up convergence pass, PR #272 is the recommended merge vehicle and the overlapping pending-state PR should be closed as superseded once this branch is accepted. This recommendation remains scoped to the evidence boundary above and does not close any README acceptance gate.

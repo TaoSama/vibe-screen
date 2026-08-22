@@ -33,10 +33,27 @@ class DisplayCapsulePolicyTest {
     }
 
     @Test
+    fun `capsule disables while a display switch is pending`() {
+        val displays = listOf(option("a"), option("b"))
+
+        assertTrue(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = null))
+        assertFalse(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = "b"))
+    }
+
+    @Test
     fun `active option resolves by selected id`() {
         val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
         assertEquals("Sidecar", DisplayCapsulePolicy.activeOption(displays, "b")?.name)
         assertNull(DisplayCapsulePolicy.activeOption(displays, "missing"))
+    }
+
+    @Test
+    fun `pending option resolves only known requested display`() {
+        val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
+
+        assertEquals("Sidecar", DisplayCapsulePolicy.pendingOption(displays, "b")?.name)
+        assertNull(DisplayCapsulePolicy.pendingOption(displays, null))
+        assertNull(DisplayCapsulePolicy.pendingOption(displays, "missing"))
     }
 
     @Test

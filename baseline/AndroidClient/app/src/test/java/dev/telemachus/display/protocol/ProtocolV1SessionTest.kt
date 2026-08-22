@@ -1083,20 +1083,144 @@ class ProtocolV1SessionTest {
     fun runtimeDisplaySelectionEmitsStartDisplayForKnownDisplayOnly() {
         val session = multiDisplayStreamingSession()
 
-        assertNull(session.selectDisplay("display-main"))
-        assertNull(session.selectDisplay("unknown-display"))
+        assertTrue(session.selectDisplay("display-main").isEmpty())
+        assertTrue(session.selectDisplay("unknown-display").isEmpty())
 
-        val request = session.selectDisplay("display-2")!!
+        val actions = session.selectDisplay("display-2")
+        val pending = actions[0] as ProtocolV1Session.Action.DisplaySelectionPending
+        val request = actions[1] as ProtocolV1Session.Action.Send
+        assertEquals("display-main", pending.selectedId)
+        assertEquals("display-2", pending.pendingId)
         assertEquals(
             Envelope.PayloadCase.START_DISPLAY_REQUEST,
-            request.payloadCase,
+            request.envelope.payloadCase,
         )
-        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
-        assertEquals("display-2", session.selectedDisplayId)
+        assertEquals("display-2", request.envelope.startDisplayRequest.sourceDisplayId)
+        assertEquals("display-main", session.selectedDisplayId)
+        assertEquals("display-2", session.pendingDisplaySelectionId)
     }
 
     @Test
     fun runtimeDisplaySelectionPublishesActiveDisplayOnlyAfterConfigurationCommit() {
+        val session = multiDisplayStreamingSession()
+
+        session.selectDisplay("display-2")
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(true)
+                    .setStreamId(43)
+                    .setDisplay(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                ),
+            ).build(),
+        )
+        val oldStreamMedia =
+            MediaPacketHeader
+                .newBuilder()
+                .setSessionEpoch(7)
+                .setStreamId(42)
+                .setConfigEpoch(3)
+                .setCodec(Codec.CODEC_HEVC)
+                .setFrameId(1)
+                .setFragmentIndex(0)
+                .setFragmentCount(1)
+                .setPayloadLength(1)
+                .build()
+        assertEquals(ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION, session.validateMedia(oldStreamMedia))
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4, streamId = 43)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        val confirmed = committed.filterIsInstance<ProtocolV1Session.Action.DisplaySelectionConfirmed>().single()
+        assertEquals("display-2", confirmed.selectedId)
+        val available = committed.filterIsInstance<ProtocolV1Session.Action.DisplaysAvailable>().single()
+        assertEquals(listOf("display-main", "display-2"), available.displays.map { it.id })
+        assertEquals("display-2", available.selectedId)
+        assertEquals("display-2", session.selectedDisplayId)
+        assertNull(session.pendingDisplaySelectionId)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionRejectsWithoutChangingActiveDisplayWhenHostDeclines() {
+        val session = multiDisplayStreamingSession()
+
+        session.selectDisplay("display-2")
+        val rejected =
+            session.receive(
+                base(20).setStartDisplayResponse(
+                    StartDisplayResponse
+                        .newBuilder()
+                        .setAccepted(false)
+                        .setRejectionReason("display_unavailable"),
+                ).build(),
+            ).filterIsInstance<ProtocolV1Session.Action.DisplaySelectionRejected>().single()
+
+        assertEquals("display-main", rejected.selectedId)
+        assertEquals("display-2", rejected.rejectedId)
+        assertEquals("display_unavailable", rejected.reason)
+        assertEquals("display-main", session.selectedDisplayId)
+        assertNull(session.pendingDisplaySelectionId)
+        assertTrue(session.isStreaming)
+        val touch = session.touch(100, 1, InputPhase.INPUT_PHASE_BEGAN, 0.25, 0.75)
+        assertEquals("display-main", touch.touchEvent.target.displayId)
+        assertEquals(42L, touch.touchEvent.target.streamId)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionRejectsWithoutChangingActiveDisplayWhenDecoderRejects() {
+        val session = multiDisplayStreamingSession()
+
+        session.selectDisplay("display-2")
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(true)
+                    .setStreamId(43)
+                    .setDisplay(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                    ),
+            ).build(),
+        )
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4, streamId = 43)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val rejected =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = false,
+                rejectionReason = "decoder_configuration_failure",
+            ).filterIsInstance<ProtocolV1Session.Action.DisplaySelectionRejected>().single()
+
+        assertEquals("display-main", rejected.selectedId)
+        assertEquals("display-2", rejected.rejectedId)
+        assertEquals("decoder_configuration_failure", rejected.reason)
+        assertEquals("display-main", session.selectedDisplayId)
+        assertNull(session.pendingDisplaySelectionId)
+        assertTrue(session.isStreaming)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionRejectsWithoutChangingActiveDisplayWhenVideoConfigIsUnsupported() {
         val session = multiDisplayStreamingSession()
 
         session.selectDisplay("display-2")
@@ -1115,20 +1239,25 @@ class ProtocolV1SessionTest {
                     ),
             ).build(),
         )
-        val requested =
-            session.receive(videoConfig(21, configEpoch = 4)).single()
-                as ProtocolV1Session.Action.VideoConfigurationRequested
 
-        val committed =
-            session.completeVideoConfiguration(
-                completedConfigEpoch = 4,
-                configurationToken = requested.configurationToken,
-                accepted = true,
-                rejectionReason = "",
+        val actions =
+            session.receive(
+                videoConfig(21, configEpoch = 4)
+                    .toBuilder()
+                    .setVideoConfig(videoConfig(21, configEpoch = 4, streamId = 99).videoConfig)
+                    .build(),
             )
-        val available = committed.filterIsInstance<ProtocolV1Session.Action.DisplaysAvailable>().single()
-        assertEquals(listOf("display-main", "display-2"), available.displays.map { it.id })
-        assertEquals("display-2", available.selectedId)
+        val rejected = actions.filterIsInstance<ProtocolV1Session.Action.DisplaySelectionRejected>().single()
+
+        assertEquals("display-main", rejected.selectedId)
+        assertEquals("display-2", rejected.rejectedId)
+        assertEquals("unsupported_video_config", rejected.reason)
+        assertEquals("display-main", session.selectedDisplayId)
+        assertNull(session.pendingDisplaySelectionId)
+        assertTrue(session.isStreaming)
+        val touch = session.touch(100, 1, InputPhase.INPUT_PHASE_BEGAN, 0.25, 0.75)
+        assertEquals("display-main", touch.touchEvent.target.displayId)
+        assertEquals(42L, touch.touchEvent.target.streamId)
     }
 
     @Test
@@ -1491,7 +1620,7 @@ class ProtocolV1SessionTest {
     fun canSendControllerIsFalseDuringRuntimeDisplaySelection() {
         val session = controllerMultiDisplayStreamingSession()
 
-        assertNotNull(session.selectDisplay("display-2"))
+        assertTrue(session.selectDisplay("display-2").isNotEmpty())
         assertFalse(session.canSendController)
     }
 
@@ -1707,7 +1836,7 @@ class ProtocolV1SessionTest {
     @Test
     fun inputAckDuringRuntimeDisplaySelectionIsDecodedWhenControllerCapabilityNegotiated() {
         val session = controllerMultiDisplayStreamingSession()
-        assertNotNull(session.selectDisplay("display-2"))
+        assertTrue(session.selectDisplay("display-2").isNotEmpty())
         val ack =
             base(7)
                 .setInputAck(InputAck.newBuilder().setInputId(9).setAccepted(true))
@@ -2308,6 +2437,7 @@ class ProtocolV1SessionTest {
         configEpoch: Long = 3,
         colorDescription: ColorDescription? = null,
         framesPerSecond: Int = 60,
+        streamId: Long = 42,
     ): Envelope =
         base(id)
             .setVideoConfig(
@@ -2318,7 +2448,7 @@ class ProtocolV1SessionTest {
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                     .setFramesPerSecond(framesPerSecond)
                     .setBitrateKbps(12_000)
-                    .setStreamId(42)
+                    .setStreamId(streamId)
                     .setRotationDegrees(90)
                     .also { builder ->
                         if (colorDescription != null) {

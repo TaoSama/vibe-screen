@@ -92,6 +92,21 @@ internal class ProtocolV1Session(
             val selectedId: String,
         ) : Action()
 
+        data class DisplaySelectionPending(
+            val selectedId: String,
+            val pendingId: String,
+        ) : Action()
+
+        data class DisplaySelectionConfirmed(
+            val selectedId: String,
+        ) : Action()
+
+        data class DisplaySelectionRejected(
+            val selectedId: String,
+            val rejectedId: String,
+            val reason: String,
+        ) : Action()
+
         data class VideoConfigurationRequested(
             val width: Int,
             val height: Int,
@@ -402,7 +417,11 @@ internal class ProtocolV1Session(
     private var displayHeight = 0
     private var displayGeometryPublished = false
     private var availableDisplays = emptyList<DisplayOption>()
-    private var displaySelectionConfirmationPending = false
+    private var pendingDisplaySelectionIdValue: String? = null
+    private var pendingDisplaySelectionCommitId: String? = null
+    private var pendingDisplaySelectionStreamId: Long = 0L
+    private var pendingDisplaySelectionWidth: Int = 0
+    private var pendingDisplaySelectionHeight: Int = 0
     private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
@@ -473,6 +492,11 @@ internal class ProtocolV1Session(
     val selectedDisplayId: String
         @Synchronized
         get() = displayId
+
+    /** Display id requested by the client and awaiting host/decoder acceptance, if any. */
+    val pendingDisplaySelectionId: String?
+        @Synchronized
+        get() = pendingDisplaySelectionIdValue
 
     val isStreaming: Boolean
         @Synchronized
@@ -628,6 +652,11 @@ internal class ProtocolV1Session(
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
                 videoPreferencesRequestInFlight = false
+                pendingDisplaySelectionIdValue = null
+                pendingDisplaySelectionCommitId = null
+                pendingDisplaySelectionStreamId = 0L
+                pendingDisplaySelectionWidth = 0
+                pendingDisplaySelectionHeight = 0
                 availableHostActions = emptyList()
                 pendingHostActionInvocations.clear()
                 pendingWakeHostRequests.clear()
@@ -646,6 +675,11 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.CLIPBOARD_REQUEST -> onClipboardRequest(envelope)
             Envelope.PayloadCase.CLIPBOARD_CONTENT -> onClipboardContent(envelope)
             Envelope.PayloadCase.PROTOCOL_ERROR -> {
+                pendingDisplaySelectionIdValue = null
+                pendingDisplaySelectionCommitId = null
+                pendingDisplaySelectionStreamId = 0L
+                pendingDisplaySelectionWidth = 0
+                pendingDisplaySelectionHeight = 0
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
@@ -698,28 +732,28 @@ internal class ProtocolV1Session(
     /**
      * Ask the host to switch the captured display at runtime. Valid only while
      * streaming, when display selection was negotiated, and for a known display
-     * other than the current one. Returns the StartDisplay request to send, or
-     * null when the request is not applicable.
+     * other than the current one. Returns state/update actions to publish, or
+     * an empty list when the request is not applicable.
      */
     @Synchronized
-    fun selectDisplay(targetDisplayId: String): Envelope? {
-        if (state != State.STREAMING) return null
-        if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return null
-        if (targetDisplayId.isBlank() || targetDisplayId == displayId) return null
-        if (availableDisplays.none { it.id == targetDisplayId }) return null
+    fun selectDisplay(targetDisplayId: String): List<Action> {
+        if (state != State.STREAMING) return emptyList()
+        if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return emptyList()
+        if (targetDisplayId.isBlank() || targetDisplayId == displayId) return emptyList()
+        if (availableDisplays.none { it.id == targetDisplayId }) return emptyList()
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
-        displaySelectionConfirmationPending = true
-        // Adopt the requested id up front so the StartDisplayResponse and later
-        // DisplayChanged for the new display validate against the selection.
-        displayId = targetDisplayId
+        pendingDisplaySelectionIdValue = targetDisplayId
         val request =
             StartDisplayRequest
                 .newBuilder()
                 .setMode(dev.vibescreen.protocol.v1.DisplayMode.DISPLAY_MODE_EXISTING)
                 .setSourceDisplayId(targetDisplayId)
                 .build()
-        return envelope().setStartDisplayRequest(request).build()
+        return listOf(
+            Action.DisplaySelectionPending(selectedId = displayId, pendingId = targetDisplayId),
+            Action.Send(envelope().setStartDisplayRequest(request).build()),
+        )
     }
 
     /**
@@ -1086,7 +1120,9 @@ internal class ProtocolV1Session(
 
     @Synchronized
     fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader): MediaDisposition {
-        if (header.sessionEpoch != sessionEpoch || header.streamId != streamId) {
+        val pendingStreamId = pendingDisplaySelectionStreamId
+        val expectedPendingStream = pendingStreamId > 0L && header.streamId == pendingStreamId
+        if (header.sessionEpoch != sessionEpoch || (header.streamId != streamId && !expectedPendingStream)) {
             throw mediaFailure("Stale or cross-stream media header")
         }
         if (header.fragmentCount != 1 || header.fragmentIndex != 0) {
@@ -1251,11 +1287,59 @@ internal class ProtocolV1Session(
             throw protocolFailure("StartDisplayResponse in state $state")
         }
         val response = envelope.startDisplayResponse
-        if (!response.accepted || response.streamId <= 0) {
+        val runtimeDisplaySelection = state == State.REDISPLAY_REQUESTED && pendingDisplaySelectionIdValue != null
+        val expectedDisplayId = pendingDisplaySelectionIdValue ?: displayId
+        if (!response.accepted) {
+            pendingDisplaySelectionIdValue = null
+            pendingDisplaySelectionCommitId = null
+            pendingDisplaySelectionStreamId = 0L
+            pendingDisplaySelectionWidth = 0
+            pendingDisplaySelectionHeight = 0
+            if (runtimeDisplaySelection && streamId > 0L && configEpoch > 0L) {
+                state = State.STREAMING
+                displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+                return listOf(
+                    Action.DisplaySelectionRejected(
+                        selectedId = displayId,
+                        rejectedId = expectedDisplayId,
+                        reason = response.rejectionReason.ifBlank { "display_selection_rejected" },
+                    ),
+                )
+            }
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
         }
-        streamId = response.streamId
-        if (response.hasDisplay()) updateDisplayDescriptor(response.display, expectedDisplayId = displayId)
+        if (response.streamId <= 0) {
+            pendingDisplaySelectionIdValue = null
+            pendingDisplaySelectionCommitId = null
+            pendingDisplaySelectionStreamId = 0L
+            pendingDisplaySelectionWidth = 0
+            pendingDisplaySelectionHeight = 0
+            throw protocolFailure("Display start rejected: ${response.rejectionReason}")
+        }
+        if (runtimeDisplaySelection) {
+            pendingDisplaySelectionStreamId = response.streamId
+        } else {
+            streamId = response.streamId
+        }
+        if (response.hasDisplay()) {
+            try {
+                updateDisplayDescriptor(
+                    display = response.display,
+                    expectedDisplayId = expectedDisplayId,
+                    commitDisplayId = !runtimeDisplaySelection,
+                )
+            } catch (failure: ProtocolV1Failure) {
+                pendingDisplaySelectionIdValue = null
+                pendingDisplaySelectionCommitId = null
+                pendingDisplaySelectionStreamId = 0L
+                pendingDisplaySelectionWidth = 0
+                pendingDisplaySelectionHeight = 0
+                throw failure
+            }
+        }
+        if (runtimeDisplaySelection) {
+            pendingDisplaySelectionCommitId = expectedDisplayId
+        }
         return emptyList()
     }
 
@@ -1268,6 +1352,7 @@ internal class ProtocolV1Session(
         }
         val config = envelope.videoConfig
         if (pendingVideoConfiguration != null) {
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             return listOf(
                 Action.Send(
                     videoConfigResult(
@@ -1278,10 +1363,12 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, "video_configuration_pending")
         }
+        val expectedConfigStreamId =
+            pendingDisplaySelectionStreamId.takeIf { state == State.REDISPLAY_REQUESTED && it > 0L } ?: streamId
         val protocolAccepted =
-            config.streamId == streamId &&
+            config.streamId == expectedConfigStreamId &&
                 config.configEpoch > configEpoch &&
                 config.encodedSize.width in 16..8192 &&
                 config.encodedSize.height in 16..8192 &&
@@ -1292,6 +1379,7 @@ internal class ProtocolV1Session(
                 config.codec in hostCodecs
         if (!protocolAccepted) {
             videoPreferencesRequestInFlight = false
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             return listOf(
                 Action.Send(
                     videoConfigResult(
@@ -1302,7 +1390,7 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, "unsupported_video_config")
         }
         val colorDecision =
             VideoColorNegotiation.evaluate(
@@ -1316,6 +1404,7 @@ internal class ProtocolV1Session(
             )
         if (colorDecision is VideoColorDecision.Fallback || colorDecision is VideoColorDecision.Rejected) {
             videoPreferencesRequestInFlight = false
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             val selectedColor = (colorDecision as? VideoColorDecision.Fallback)?.selectedColor
             val reason =
                 when (colorDecision) {
@@ -1334,7 +1423,7 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, reason)
         }
         val configurationToken = nextVideoConfigurationToken++
         pendingVideoConfiguration =
@@ -1390,19 +1479,51 @@ internal class ProtocolV1Session(
                     rejectionReason = if (accepted) "" else rejectionReason.ifBlank { "decoder_configuration_failure" },
                     correlationId = pending.correlationId,
                 ),
-            )
+        )
         if (!accepted) {
             videoPreferencesRequestInFlight = false
-            displaySelectionConfirmationPending = false
-            return listOf(
-                result,
-                Action.VideoConfigurationRejected(
-                    configEpoch = pending.configEpoch,
-                    reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
-                ),
-            )
+            val failedDisplaySelectionId = pendingDisplaySelectionCommitId
+            pendingDisplaySelectionIdValue = null
+            pendingDisplaySelectionCommitId = null
+            pendingDisplaySelectionStreamId = 0L
+            pendingDisplaySelectionWidth = 0
+            pendingDisplaySelectionHeight = 0
+            if (failedDisplaySelectionId != null) {
+                state = State.STREAMING
+                displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+            }
+            return buildList {
+                add(result)
+                if (failedDisplaySelectionId != null) {
+                    add(
+                        Action.DisplaySelectionRejected(
+                            selectedId = displayId,
+                            rejectedId = failedDisplaySelectionId,
+                            reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
+                        ),
+                    )
+                }
+                add(
+                    Action.VideoConfigurationRejected(
+                        configEpoch = pending.configEpoch,
+                        reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
+                    ),
+                )
+            }
         }
 
+        val committedDisplaySelectionId = pendingDisplaySelectionCommitId
+        if (committedDisplaySelectionId != null) {
+            displayId = committedDisplaySelectionId
+            streamId = pendingDisplaySelectionStreamId
+            displayWidth = pendingDisplaySelectionWidth
+            displayHeight = pendingDisplaySelectionHeight
+        }
+        pendingDisplaySelectionIdValue = null
+        pendingDisplaySelectionCommitId = null
+        pendingDisplaySelectionStreamId = 0L
+        pendingDisplaySelectionWidth = 0
+        pendingDisplaySelectionHeight = 0
         retiredConfigEpoch = configEpoch
         configEpoch = pending.configEpoch
         configuredCodec = pending.codec
@@ -1410,17 +1531,18 @@ internal class ProtocolV1Session(
         awaitingConfigurationKeyframe = true
         state = State.STREAMING
         val appliesClientVideoPreferences = videoPreferencesRequestInFlight
-        val confirmsDisplaySelection = displaySelectionConfirmationPending
         videoPreferencesRequestInFlight = false
-        displaySelectionConfirmationPending = false
         val actions =
             mutableListOf<Action>(
                 result,
                 Action.Send(requestKeyframe("decoder_configuration_committed")),
                 Action.VideoConfigurationCommitted(configEpoch, appliesClientVideoPreferences),
             )
-        if (confirmsDisplaySelection && availableDisplays.any { it.id == displayId }) {
-            actions += Action.DisplaysAvailable(availableDisplays, displayId)
+        if (committedDisplaySelectionId != null) {
+            actions += Action.DisplaySelectionConfirmed(committedDisplaySelectionId)
+            if (availableDisplays.any { it.id == committedDisplaySelectionId }) {
+                actions += Action.DisplaysAvailable(availableDisplays, committedDisplaySelectionId)
+            }
         }
         if (!displayGeometryPublished) {
             actions +=
@@ -1468,6 +1590,7 @@ internal class ProtocolV1Session(
     private fun updateDisplayDescriptor(
         display: dev.vibescreen.protocol.v1.DisplayDescriptor,
         expectedDisplayId: String?,
+        commitDisplayId: Boolean = true,
     ) {
         if (display.displayId.isBlank() ||
             (expectedDisplayId != null && display.displayId != expectedDisplayId) ||
@@ -1477,10 +1600,44 @@ internal class ProtocolV1Session(
         ) {
             throw protocolFailure("Invalid display descriptor")
         }
-        displayId = display.displayId
-        displayWidth = display.logicalSize.width
-        displayHeight = display.logicalSize.height
+        if (commitDisplayId) {
+            displayId = display.displayId
+            displayWidth = display.logicalSize.width
+            displayHeight = display.logicalSize.height
+        } else {
+            pendingDisplaySelectionWidth = display.logicalSize.width
+            pendingDisplaySelectionHeight = display.logicalSize.height
+        }
     }
+
+    private fun clearPendingDisplaySelection(): String? {
+        val rejectedDisplaySelectionId = pendingDisplaySelectionCommitId ?: pendingDisplaySelectionIdValue
+        pendingDisplaySelectionIdValue = null
+        pendingDisplaySelectionCommitId = null
+        pendingDisplaySelectionStreamId = 0L
+        pendingDisplaySelectionWidth = 0
+        pendingDisplaySelectionHeight = 0
+        if (rejectedDisplaySelectionId != null) {
+            state = State.STREAMING
+            displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+        }
+        return rejectedDisplaySelectionId
+    }
+
+    private fun List<Action>.withDisplaySelectionRejected(
+        rejectedDisplaySelectionId: String?,
+        reason: String,
+    ): List<Action> =
+        if (rejectedDisplaySelectionId == null) {
+            this
+        } else {
+            this +
+                Action.DisplaySelectionRejected(
+                    selectedId = displayId,
+                    rejectedId = rejectedDisplaySelectionId,
+                    reason = reason,
+                )
+        }
     private fun onHostActionCatalog(envelope: Envelope): List<Action> {
         // The host advertises actions after SessionAccepted, before StartDisplay,
         // so the catalog arrives while the session is negotiated but not yet
