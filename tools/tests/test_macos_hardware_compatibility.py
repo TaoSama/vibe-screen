@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,42 +21,66 @@ SCHEMA_PATH = (
 )
 
 
+def complete_record() -> dict[str, object]:
+    record: dict[str, object] = {field: True for field in BOOLEAN_FIELDS}
+    record.update({field: False for field in INVALID_BOOLEAN_FIELDS})
+    record.update({
+        "run_id": "compat-apple-silicon-built-in",
+        "owner": "Vibe Screen macOS Host compatibility owner",
+        "implementation_path": "docs/runbook/macos-host-compatibility.md",
+        "repository_commit": "0123456789abcdef0123456789abcdef01234567",
+        "repository_dirty_state": "clean",
+        "cpu_architecture": "apple_silicon",
+        "host_model_identifier": "Mac14,10",
+        "host_cpu_name": "Apple M2 Pro",
+        "macos_version": "26.4.1",
+        "macos_build": "25E253",
+        "xcode_version": "Xcode 16.4",
+        "swift_version": "Swift 6.1",
+        "host_build_identity": "Vibe Screen Dev, sha256 example",
+        "display_topology": "built_in",
+        "capture_backend": "screencapturekit",
+        "screen_capturekit_result": "selected_display_first_frame",
+        "cgdisplaystream_result": "not_used",
+        "videotoolbox_result": "h264_hevc_available",
+        "virtual_display_result": "created_online_captured",
+        "mirror_result": "current_main_fallback",
+        "stream_transport": "usb",
+        "android_counterpart": "nubia P0110 / pacific / Android 16 / SDK 36",
+        "compatibility_scope": (
+            "Apple silicon Mac14,10 on macOS 26.4.1 built-in display over USB only"
+        ),
+        "artifact_paths": ["README.md", "host.log"],
+        "blocking_notes": [],
+        "notes": "one exact matrix row",
+    })
+    return record
+
+
 class MacOSHardwareCompatibilityTest(unittest.TestCase):
     def complete_record(self) -> dict[str, object]:
-        record: dict[str, object] = {field: True for field in BOOLEAN_FIELDS}
-        record.update({field: False for field in INVALID_BOOLEAN_FIELDS})
-        record.update({
-            "run_id": "compat-apple-silicon-built-in",
-            "owner": "Vibe Screen macOS Host compatibility owner",
-            "implementation_path": "docs/runbook/macos-host-compatibility.md",
-            "cpu_architecture": "apple_silicon",
-            "host_model_identifier": "Mac14,10",
-            "host_cpu_name": "Apple M2 Pro",
-            "macos_version": "26.4.1",
-            "macos_build": "25E253",
-            "xcode_version": "Xcode 16.4",
-            "swift_version": "Swift 6.1",
-            "host_build_identity": "Vibe Screen Dev, sha256 example",
-            "display_topology": "built_in",
-            "capture_backend": "ScreenCaptureKit",
-            "stream_transport": "usb",
-            "android_counterpart": "Xiaomi 13 / fuxi / Android 16",
-            "compatibility_scope": "Apple silicon Mac14,10 on macOS 26.4.1 built-in display over USB only",
-            "artifact_paths": ["README.md", "host.log"],
-            "blocking_notes": [],
-            "notes": "one exact matrix row",
-        })
-        return record
+        return complete_record()
+
+    def summarize_with_artifacts(self, record: dict[str, object]) -> dict[str, object]:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "host.log").write_text("capture started\n", encoding="utf-8")
+            (directory / "README.md").write_text("evidence note\n", encoding="utf-8")
+            return summarize(record, evidence_dir=directory)
 
     def test_pass_requires_every_observation_and_scopes_to_exact_row(self) -> None:
-        summary = summarize(self.complete_record())
+        summary = self.summarize_with_artifacts(self.complete_record())
 
         self.assertEqual(summary["verdict"], "pass")
         self.assertTrue(summary["can_close_macos_host_compatibility_row"])
         self.assertEqual(summary["row_scope"]["cpu_architecture"], "apple_silicon")
         self.assertEqual(summary["row_scope"]["display_topology"], "built_in")
+        self.assertEqual(summary["row_scope"]["repository_dirty_state"], "clean")
+        self.assertEqual(summary["row_scope"]["capture_backend"], "screencapturekit")
+        self.assertEqual(summary["row_scope"]["virtual_display_result"], "created_online_captured")
         self.assertEqual(summary["missing_requirements"], [])
         self.assertEqual(summary["invalid_claims"], [])
+        self.assertTrue(summary["artifact_file_check"]["enabled"])
 
     def test_blocks_when_intel_or_other_required_row_evidence_is_missing(self) -> None:
         record = self.complete_record()
@@ -63,7 +88,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record["host_model_recorded"] = False
         record["packaged_host_launch_observed"] = False
 
-        summary = summarize(record)
+        summary = self.summarize_with_artifacts(record)
 
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
@@ -81,7 +106,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record["video_encoder_path_recorded"] = False
         record["input_smoke_observed"] = False
 
-        summary = summarize(record)
+        summary = self.summarize_with_artifacts(record)
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertEqual(summary["blocking_reasons"], [])
@@ -91,21 +116,55 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record = self.complete_record()
         record["macos_build"] = ""
         record["host_model_identifier"] = ""
+        record["repository_commit"] = ""
 
-        summary = summarize(record)
+        summary = self.summarize_with_artifacts(record)
 
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
         self.assertEqual(
             {item["field"] for item in summary["blocking_reasons"]},
-            {"macos_version_build_recorded", "host_model_recorded"},
+            {
+                "macos_version_build_recorded",
+                "host_model_recorded",
+                "repository_commit_recorded",
+            },
+        )
+
+    def test_repository_commit_must_be_clean_full_sha(self) -> None:
+        record = self.complete_record()
+        record["repository_commit"] = "deadbeef"
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "repository_commit_recorded",
+                "requirement": "record repository_commit as a 40-character hexadecimal git commit",
+            },
+            summary["blocking_reasons"],
+        )
+
+        record = self.complete_record()
+        record["repository_dirty_state"] = "dirty"
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "repository_commit_recorded",
+                "requirement": "rerun the compatibility row from a clean repository state before closing it",
+            },
+            summary["blocking_reasons"],
         )
 
     def test_artifact_paths_are_required_to_close_row(self) -> None:
         record = self.complete_record()
         record["artifact_paths"] = []
 
-        summary = summarize(record)
+        summary = summarize(record, evidence_dir=Path("."))
 
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
@@ -123,8 +182,9 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record["ci_runner_only"] = True
         record["claims_intel_from_apple_silicon"] = True
         record["claims_os_range_from_single_build"] = True
+        record["claims_virtual_display_from_symbol_probe"] = True
 
-        summary = summarize(record)
+        summary = self.summarize_with_artifacts(record)
 
         self.assertEqual(summary["verdict"], "failed")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
@@ -134,7 +194,54 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
                 "ci_runner_only",
                 "claims_intel_from_apple_silicon",
                 "claims_os_range_from_single_build",
+                "claims_virtual_display_from_symbol_probe",
             },
+        )
+
+    def test_fails_inconsistent_capture_backend_results(self) -> None:
+        record = self.complete_record()
+        record["capture_backend"] = "screencapturekit"
+        record["screen_capturekit_result"] = "unavailable_terminal"
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "failed")
+        self.assertIn(
+            {
+                "field": "capture_backend_consistency",
+                "reason": "ScreenCaptureKit backend requires selected-display first-frame evidence",
+            },
+            summary["invalid_claims"],
+        )
+
+        record = self.complete_record()
+        record["capture_backend"] = "cgdisplaystream_fallback"
+        record["screen_capturekit_result"] = "selected_display_first_frame"
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "failed")
+        self.assertIn(
+            {
+                "field": "capture_backend_consistency",
+                "reason": "CGDisplayStream fallback requires ScreenCaptureKit fallback evidence",
+            },
+            summary["invalid_claims"],
+        )
+
+        record = self.complete_record()
+        record["capture_backend"] = "unavailable"
+        record["screen_capturekit_result"] = "selected_display_first_frame"
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "failed")
+        self.assertIn(
+            {
+                "field": "capture_backend_consistency",
+                "reason": "unavailable capture backend cannot report a ScreenCaptureKit first frame",
+            },
+            summary["invalid_claims"],
         )
 
     def test_rejects_unknown_cpu_architecture_or_display_topology(self) -> None:
@@ -150,8 +257,14 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         with self.assertRaisesRegex(MacOSHardwareCompatibilityError, "display_topology"):
             summarize(record)
 
+        record = self.complete_record()
+        record["capture_backend"] = "manual-screen-photo"
+
+        with self.assertRaisesRegex(MacOSHardwareCompatibilityError, "capture_backend"):
+            summarize(record)
+
     def test_summary_matches_schema_required_fields(self) -> None:
-        summary = summarize(self.complete_record())
+        summary = self.summarize_with_artifacts(self.complete_record())
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
         self.assertEqual(set(summary), set(schema["properties"]))
@@ -173,6 +286,25 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         with self.assertRaisesRegex(MacOSHardwareCompatibilityError, "must be true or false"):
             summarize(record)
 
+    def test_check_artifacts_requires_relative_existing_non_empty_paths(self) -> None:
+        record = self.complete_record()
+        record["artifact_paths"] = [
+            "host.log",
+            "empty.txt",
+            "missing.txt",
+            "../escape.txt",
+        ]
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "host.log").write_text("capture started\n", encoding="utf-8")
+            (directory / "empty.txt").write_text("", encoding="utf-8")
+            summary = summarize(record, evidence_dir=directory)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertEqual(summary["artifact_file_check"]["missing_paths"], ["missing.txt"])
+        self.assertEqual(summary["artifact_file_check"]["invalid_paths"], ["../escape.txt"])
+        self.assertEqual(summary["artifact_file_check"]["empty_paths"], ["empty.txt"])
+
 
 class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
     def test_cli_outputs_blocked_summary(self) -> None:
@@ -184,11 +316,65 @@ class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["run_id"], "run-cli")
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+
+    def test_cli_stdin_without_evidence_dir_cannot_pass_with_artifacts(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-"],
+            input=json.dumps(complete_record()),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "artifacts_retained",
+                "requirement": "provide --evidence-dir or a file input so retained artifacts can be verified",
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_cli_pass_exits_zero_and_checks_input_relative_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "host.log").write_text("capture started\n", encoding="utf-8")
+            (directory / "README.md").write_text("evidence note\n", encoding="utf-8")
+            evidence = directory / "macos-hardware-compatibility.json"
+            evidence.write_text(json.dumps(complete_record()), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-m", MODULE, str(evidence)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertTrue(summary["artifact_file_check"]["enabled"])
+        self.assertEqual(summary["artifact_file_check"]["missing_paths"], [])
+
+    def test_cli_failed_invalid_claim_exits_two(self) -> None:
+        record = complete_record()
+        record["claims_dummy_headless_from_attached_monitor"] = True
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-"],
+            input=json.dumps(record),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["verdict"], "failed")
 
     def test_cli_rejects_empty_run_id(self) -> None:
         result = subprocess.run(
