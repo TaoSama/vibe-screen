@@ -1,5 +1,5 @@
 # Nubia P0110 PR272 convergence instrumentation
-timestamp_utc=2026-08-22T15:01:56Z
+timestamp_utc=2026-08-22T15:09:57Z
 serial=EP0110PZ0B9110300B
 device_state=device
 manufacturer=nubia
@@ -177,7 +177,7 @@ INSTRUMENTATION_STATUS: test=productionBinderClearsStaleDisplayStateWhenSelectio
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 47.235
+Time: 47.296
 
 OK (11 tests)
 
