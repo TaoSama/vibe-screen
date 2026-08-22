@@ -1,0 +1,2 @@
+Error: unable to open database "/Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db": authorization denied
+exit=1

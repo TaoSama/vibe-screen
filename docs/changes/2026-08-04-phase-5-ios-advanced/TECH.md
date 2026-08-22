@@ -165,10 +165,13 @@ handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
 an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
-channels. Shared fixed vectors prove offline record interoperability only.
-Audio/bulk WebRTC DataChannels, admission/backlog limits, and public-network
-E2E remain open, and the client's plaintext trusted-LAN implementation is not
-evidence of this security work or of the macOS/Android secure-record LAN path.
+channels. Shared fixed vectors prove offline record interoperability only. The
+macOS and Android Internet product sessions now expose raw audio/bulk
+DataChannel record hooks with owner-scoped admission and bounded backlog
+behavior. Audio capture/playback, clipboard/file-transfer product flows over
+these channels, public-network E2E, and the client's plaintext trusted-LAN
+implementation remain separate gates and are not evidence of the
+macOS/Android secure-record LAN path.
 
 ## Rendering and color
 
