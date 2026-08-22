@@ -232,6 +232,18 @@ Nubia P0110 local direct/forced-coturn product-session record is listed below;
 it does not close the target Xiaomi, public-Internet, real-capture, handoff,
 latency, or soak criteria.
 
+A current-base aggregate verifier is now available as a read-only evidence
+check: `make phase3-production-e2e-gate EVIDENCE_DIR=.build/evidence/phase3-production-e2e`.
+A newly generated manifest starts blocked and cannot close the release gate. To
+pass, the manifest must point at existing artifacts for every production E2E
+gate: public Internet path, remote TURN, production Authority/PostgreSQL/TLS/NTP
+operation, real ScreenCaptureKit or CGDisplayStream capture, Android MediaCodec
+decode on a physical device, input, network handoff, cross-service revocation,
+two-hour mixed-route soak, latency, and privacy scan. The verifier treats local
+loopback, forced local coturn, emulator/simulator, historical-source evidence,
+legacy plaintext fallback, and synthetic Protocol v1 harness records as
+readiness only or failure, never as a production release pass.
+
 Local verification on 2026-08-04 and 2026-08-05 proved the following layers in
 recorded shared-tree snapshots. A result applies only to the layer and tree state
 named by that run:

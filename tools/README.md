@@ -63,6 +63,30 @@ make ios-device-acceptance-gate \
   IOS_ACCEPTANCE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/acceptance.json
 ```
 
+## Phase 3 production E2E gate
+
+Use the Phase 3 current-base aggregate gate to prevent local readiness results
+or older device records from being promoted into a production Internet release
+claim:
+
+```sh
+make phase3-production-e2e-gate EVIDENCE_DIR=.build/evidence/phase3-production-e2e
+```
+
+The target creates `phase3-production-e2e-manifest.json` if one is missing and
+then evaluates it into `phase3-production-e2e-gate.json`. A fresh generated
+manifest exits nonzero with `verdict=blocked`, which is the expected result when
+no production run has been performed. To pass, a retained evidence package must
+mark every production gate as `pass` with existing artifact paths, must bind a
+clean current source tree, and must show real public Internet routing, a remote
+TURN allocation, production Authority/PostgreSQL/TLS/NTP evidence, real
+ScreenCaptureKit or CGDisplayStream capture decoded by Android MediaCodec on a
+physical device, input, handoff, revocation propagation, latency, privacy scan,
+and a two-hour mixed-route soak. Local loopback, adb reverse, forced local
+coturn, emulator/simulator, historical-source, legacy plaintext fallback, and
+synthetic Protocol v1 harness evidence are rejected as release proof and remain
+readiness only.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

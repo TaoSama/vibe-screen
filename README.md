@@ -575,6 +575,16 @@ disconnect executor, but the coturn exporter, production reconciliation loop,
 active-allocation disconnect executor, and production end-to-end enforcement
 remain release gates.
 
+`make phase3-production-e2e-gate` now provides a current-base aggregate evidence
+check for that last production end-to-end boundary. It is read-only and fails
+closed unless a manifest binds existing artifacts for real public Internet,
+remote TURN, production Authority/PostgreSQL/TLS/NTP, real
+ScreenCaptureKit/CGDisplayStream to Android MediaCodec continuity, input,
+network handoff, cross-service revocation, latency, privacy scan, and a two-hour
+mixed-route soak. Local loopback, forced local coturn, historical-source,
+emulator/simulator, legacy plaintext fallback, and synthetic Protocol v1 harness
+records remain readiness only.
+
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.
 

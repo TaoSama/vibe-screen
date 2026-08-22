@@ -23,6 +23,10 @@ PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+PHASE3_PRODUCTION_E2E_MANIFEST ?= $(EVIDENCE_DIR)/phase3-production-e2e-manifest.json
+PHASE3_PRODUCTION_E2E_GATE_JSON ?= $(dir $(PHASE3_PRODUCTION_E2E_MANIFEST))phase3-production-e2e-gate.json
+PHASE3_PRODUCTION_E2E_OWNER_PR ?=
+PHASE3_PRODUCTION_E2E_SCOPE_PRS ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -36,7 +40,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-production-e2e-manifest phase3-production-e2e-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -82,6 +86,20 @@ phase3-local-synthetic-public-artifacts-check:
 phase3-local-product-e2e:
 	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness with real VideoToolbox HEVC payloads only; no Android device, ScreenCaptureKit capture, or MediaCodec decode).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
+
+phase3-production-e2e-manifest:
+	mkdir -p "$(dir $(PHASE3_PRODUCTION_E2E_MANIFEST))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_production_e2e_manifest \
+		--output "$(PHASE3_PRODUCTION_E2E_MANIFEST)" \
+		$(if $(strip $(PHASE3_PRODUCTION_E2E_OWNER_PR)),--aggregate-owner-pr "$(PHASE3_PRODUCTION_E2E_OWNER_PR)",) \
+		$(if $(strip $(PHASE3_PRODUCTION_E2E_SCOPE_PRS)),--scope-prs "$(PHASE3_PRODUCTION_E2E_SCOPE_PRS)",) \
+		-- make phase3-production-e2e-gate PHASE3_PRODUCTION_E2E_MANIFEST=$(PHASE3_PRODUCTION_E2E_MANIFEST)
+
+phase3-production-e2e-gate:
+	@test -f "$(PHASE3_PRODUCTION_E2E_MANIFEST)" || $(MAKE) phase3-production-e2e-manifest PHASE3_PRODUCTION_E2E_MANIFEST="$(PHASE3_PRODUCTION_E2E_MANIFEST)" PHASE3_PRODUCTION_E2E_OWNER_PR="$(PHASE3_PRODUCTION_E2E_OWNER_PR)" PHASE3_PRODUCTION_E2E_SCOPE_PRS="$(PHASE3_PRODUCTION_E2E_SCOPE_PRS)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_production_e2e_gate \
+		--manifest "$(PHASE3_PRODUCTION_E2E_MANIFEST)" \
+		--output "$(PHASE3_PRODUCTION_E2E_GATE_JSON)"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
