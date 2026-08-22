@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.phase3.android_product_session_interop_acceptance import (
     DEVICE_MARKER_PREFIX,
+    EVIDENCE_BOUNDARIES,
     HOST_MARKER_PREFIX,
     UI_MARKER_FLAGS,
     UI_MARKER_PREFIX,
@@ -46,6 +47,14 @@ from scripts.phase3.android_product_session_interop_acceptance import (
 
 
 class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
+    def test_evidence_boundaries_do_not_claim_public_or_real_media_gates(self) -> None:
+        self.assertEqual(EVIDENCE_BOUNDARIES["network_scope"], "local_direct_and_forced_local_coturn_only")
+        self.assertEqual(EVIDENCE_BOUNDARIES["public_internet"], "not_claimed")
+        self.assertEqual(EVIDENCE_BOUNDARIES["real_remote_turn"], "not_claimed")
+        self.assertEqual(EVIDENCE_BOUNDARIES["screen_capture_kit"], "not_claimed")
+        self.assertEqual(EVIDENCE_BOUNDARIES["android_mediacodec_decode"], "not_claimed")
+        self.assertEqual(EVIDENCE_BOUNDARIES["visible_mac_input_effects"], "not_claimed")
+
     def test_cli_requires_explicit_route_endpoint_bind_turn_and_artifacts(self) -> None:
         required = {
             action.dest

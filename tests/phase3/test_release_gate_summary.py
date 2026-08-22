@@ -1,0 +1,297 @@
+from __future__ import annotations
+
+import json
+from contextlib import redirect_stderr
+import io
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from scripts.phase3.release_gate_summary import (  # noqa: E402
+    HISTORICAL_ANDROID_BOUNDARY_DEFAULTS,
+    SCHEMA,
+    build_summary,
+    main,
+)
+from scripts.phase3_webrtc.model import EVIDENCE_SCHEMA  # noqa: E402
+from scripts.phase3_webrtc.public_evidence import (  # noqa: E402
+    PRODUCT_MEDIA_PROOF,
+    PRODUCT_MEDIA_SOURCE,
+    build_public_artifact_tree,
+)
+from scripts.phase3_webrtc.privacy import write_private_text, write_public_diagnostic  # noqa: E402
+
+
+def private_product_evidence(mode: str, commit: str) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "schema": EVIDENCE_SCHEMA,
+        "mode": mode,
+        "slice": "product",
+        "result": "pass",
+        "signaling": {
+            "real_process": True,
+            "health": "pass",
+            "ready": "pass",
+            "authenticated_session": "pass",
+            "accepted_messages": 12,
+            "secret_log_scan": "pass",
+        },
+        "webrtc": {
+            "implementation": "stasel/WebRTC 150.0.0 production adapter",
+            "real_peer_connections": 2,
+            "offer_answer_via_http_signaling": "pass",
+            "ice_candidate_exchange": "pass",
+            "application_e2ee": "AES-256-GCM Protocol v1 record layer pass",
+            "data_channels": {
+                "control": "ordered/reliable; bidirectional payload pass",
+                "media": "unordered/maxRetransmits=0; bidirectional payload pass",
+            },
+            "selected_candidate_pair": (
+                f"{mode}(local={'relay' if mode == 'relay' else 'host'},"
+                f"remote={'relay' if mode == 'relay' else 'host'},protocol=udp)"
+            ),
+            "selected_route": mode,
+        },
+        "artifacts": {
+            "signaling_sha256": "a" * 64,
+            "mac_host_sha256": "b" * 64,
+            "webrtc_framework_sha256": "c" * 64,
+            "turnserver_sha256": "d" * 64 if mode == "relay" else "not_used",
+        },
+        "environment": {
+            "repository_commit": commit,
+            "repository_source": {
+                "repository_commit": commit,
+                "dirty": False,
+                "source_fingerprint": "e" * 64,
+            },
+        },
+        "product_session": {
+            "host": "InternetProductSession",
+            "device": "synthetic Protocol v1 harness",
+            "client_hello": "pass",
+            "session_accepted_epoch": 1,
+            "initial_video_config_ack_epoch": 1,
+            "runtime_video_config_ack_epoch": 2,
+            "runtime_rotation_degrees": 90,
+            "media": PRODUCT_MEDIA_PROOF,
+            "media_source": PRODUCT_MEDIA_SOURCE,
+            "touch_input": "pass",
+            "seeded_plaintext_log_scan": "pass",
+            "capture_or_stream_server_started": False,
+        },
+    }
+    if mode == "relay":
+        evidence["coturn"] = {
+            "real_process": True,
+            "version": "4.16.0",
+            "forced_libwebrtc_relay": "pass",
+            "executable_sha256": "d" * 64,
+        }
+    return evidence
+
+
+class Phase3ReleaseGateSummaryTests(unittest.TestCase):
+    def test_summary_keeps_release_gates_open_for_current_local_public_artifacts(self) -> None:
+        commit = "1" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            private = root / "private"
+            private.mkdir(mode=0o700)
+            for mode in ("direct", "relay"):
+                write_private_text(
+                    private / f"{mode}.json",
+                    json.dumps(private_product_evidence(mode, commit)),
+                )
+            for relative_path in (
+                "direct-logs/peer.log",
+                "direct-logs/signaling.log",
+                "relay-logs/peer.log",
+                "relay-logs/signaling.log",
+            ):
+                write_public_diagnostic(private / relative_path, "PASS")
+            write_public_diagnostic(
+                private / "relay-logs/turnserver.log",
+                "PASS",
+                metadata={"version": "4.16.0"},
+            )
+            public = private / "public"
+            build_public_artifact_tree(private, public)
+
+            summary = build_summary(
+                root,
+                local_public_dir=public,
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit=commit,
+            )
+
+        self.assertEqual(summary["schema"], SCHEMA)
+        self.assertEqual(summary["result"], "open")
+        local = summary["readiness_observations"][0]
+        self.assertEqual(local["status"], "pass")
+        self.assertTrue(local["current_base"])
+        self.assertEqual(local["path"], "private/public")
+        self.assertEqual(local["release_gate_impact"], "readiness_only")
+        self.assertIn("no_public_internet_path", local["limitations"])
+        self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+        self.assertIn(
+            "screencapturekit_to_android_mediacodec",
+            {gate["gate"] for gate in summary["release_gates"]},
+        )
+
+    def test_historical_android_interop_is_not_current_base(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            acceptance = root / "acceptance.json"
+            acceptance.write_text(
+                json.dumps(
+                    {
+                        "result": "pass",
+                        "device": {"product": "Nubia P0110", "codename": "pacific"},
+                        "routes": ["direct", "relay"],
+                        "evidence_boundaries": {"screen_capture_kit": "not_claimed"},
+                        "source": {"commit": "2" * 40},
+                        "runs": [{"adb_gate": {"commit": "2" * 40}}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=acceptance,
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit="3" * 40,
+            )
+
+        android = summary["readiness_observations"][1]
+        self.assertEqual(android["kind"], "historical_android_local_interop")
+        self.assertEqual(android["path"], "acceptance.json")
+        self.assertFalse(android["current_base"])
+        self.assertTrue(android["run_commits_match_source"])
+        self.assertEqual(android["relay_kind"], "forced_local_coturn")
+        for key, value in HISTORICAL_ANDROID_BOUNDARY_DEFAULTS.items():
+            self.assertEqual(android["evidence_boundaries"][key], value)
+        self.assertEqual(android["release_gate_impact"], "readiness_only")
+        self.assertEqual(summary["result"], "open")
+
+    def test_historical_android_interop_requires_consistent_run_commits_for_current_base(self) -> None:
+        commit = "4" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            acceptance = root / "acceptance.json"
+            acceptance.write_text(
+                json.dumps(
+                    {
+                        "result": "pass",
+                        "source": {"commit": commit},
+                        "runs": [
+                            {"adb_gate": {"commit": commit}},
+                            {"adb_gate": {"commit": "5" * 40}},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=acceptance,
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_commit=commit,
+            )
+
+        android = summary["readiness_observations"][1]
+        self.assertFalse(android["current_base"])
+        self.assertFalse(android["run_commits_match_source"])
+
+    def test_blocked_real_media_observation_preserves_blocker_and_false_claims(self) -> None:
+        commit = "6" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blocked = root / "blocked.json"
+            blocked.write_text(
+                json.dumps(
+                    {
+                        "result": "blocked",
+                        "source_commit": commit,
+                        "device": {"product": "P0110", "codename": "pacific"},
+                        "blocker": {"component": "macOS Screen Recording permission"},
+                        "claims": {
+                            "real_capture": False,
+                            "real_media_delivery": False,
+                            "hardware_decode": False,
+                            "internet_or_turn": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=blocked,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][2]
+        self.assertEqual(observation["kind"], "current_main_real_media_attempt")
+        self.assertTrue(observation["current_base"])
+        self.assertEqual(observation["status"], "blocked")
+        self.assertEqual(observation["release_gate_impact"], "blocked_readiness_only")
+        self.assertTrue(all(claim is False for claim in observation["claims"].values()))
+        self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_summary_observations_never_have_release_gate_pass_impact(self) -> None:
+        summary = build_summary(
+            ROOT,
+            local_public_dir=ROOT / "missing-public",
+            android_interop_acceptance=ROOT / "missing-android.json",
+            blocked_real_media_acceptance=ROOT / "missing-blocked.json",
+            current_commit="7" * 40,
+        )
+
+        self.assertEqual(
+            {observation["release_gate_impact"] for observation in summary["readiness_observations"]},
+            {"none"},
+        )
+
+    def test_require_release_pass_exits_nonzero_without_claiming_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "summary.json"
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--repo",
+                        str(ROOT),
+                        "--local-public-dir",
+                        str(Path(directory) / "missing-public"),
+                        "--android-interop-acceptance",
+                        str(Path(directory) / "missing-android.json"),
+                        "--blocked-real-media-acceptance",
+                        str(Path(directory) / "missing-blocked.json"),
+                        "--output",
+                        str(output),
+                        "--require-release-pass",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("release gate remains open", stderr.getvalue())
+            summary = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(summary["result"], "open")
+            self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+
+if __name__ == "__main__":
+    unittest.main()
