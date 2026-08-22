@@ -1,0 +1,26 @@
+--prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.
+--validated:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.
+/Applications/Vibe Screen.app: valid on disk
+/Applications/Vibe Screen.app: satisfies its Designated Requirement
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier=dev.telemachus.display
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=22575 flags=0x0(none) hashes=695+7 location=embedded
+Hash type=sha256 size=32
+CandidateCDHash sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2
+CandidateCDHashFull sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+Hash choices=sha256
+CMSDigest=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+CMSDigestType=2
+CDHash=2fe65fd5cd69c80249140da3f139cfa68037c5c2
+Signature size=3186
+Authority=Vibe Screen Dev
+Authority=Vibe Screen Dev Root
+Signed Time=Aug 15, 2026 at 22:57:00
+Info.plist entries=14
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10
+Internal requirements count=1 size=100
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+designated => identifier "dev.telemachus.display" and certificate leaf = H"9aae572bf6d764e3436a6109197d345b5a87998c"
+exit=0

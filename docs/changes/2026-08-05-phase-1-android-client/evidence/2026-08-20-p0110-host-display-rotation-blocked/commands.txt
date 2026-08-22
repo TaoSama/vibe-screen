@@ -82,3 +82,19 @@ Observed result:
     runs: must be a non-empty array
     runs: missing rotated physical host-display evidence
     runs: missing rotated virtual host-display evidence
+
+2026-08-20T23:43:45Z stricter offline gate regeneration
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
+    docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-20-p0110-host-display-rotation-blocked/host-display-rotation.json \
+    --check-artifacts \
+    --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-20-p0110-host-display-rotation-blocked/host-display-rotation-gate.json
+
+Observed result:
+
+  exit=1
+  errors:
+    evidence.runs: must contain at least 1 item(s)
+    runs: must be a non-empty array
+    runs: missing rotated physical host-display evidence
+    runs: missing rotated virtual host-display evidence
