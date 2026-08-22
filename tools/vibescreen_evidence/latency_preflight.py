@@ -24,6 +24,9 @@ from .latency_evidence import LatencyEvidenceError, build_latency_evidence_repor
 STATUS_READY = "ready"
 STATUS_BLOCKED = "blocked"
 STATUS_FAILED = "failed"
+SCHEMA_DIRECTORY = Path(__file__).resolve().parents[1] / "schemas"
+INPUT_SCHEMA_PATH = SCHEMA_DIRECTORY / "latency-preflight-input.schema.json"
+OUTPUT_SCHEMA_PATH = SCHEMA_DIRECTORY / "latency-preflight.schema.json"
 DEFAULT_PROFILES = (
     GATE_USB_GLASS_TO_GLASS_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
@@ -156,6 +159,121 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
     return document
 
 
+def _json_type_matches(value: Any, expected_type: str | list[Any]) -> bool:
+    if isinstance(expected_type, list):
+        return any(_json_type_matches(value, item) for item in expected_type)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "null":
+        return value is None
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "string":
+        return isinstance(value, str)
+    return True
+
+
+def _describe_json_type(expected_type: str | list[Any]) -> str:
+    if isinstance(expected_type, list):
+        return " or ".join(_describe_json_type(item) for item in expected_type)
+    if expected_type == "array":
+        return "an array"
+    if expected_type == "boolean":
+        return "a boolean"
+    if expected_type == "integer":
+        return "an integer"
+    if expected_type == "null":
+        return "null"
+    if expected_type == "object":
+        return "an object"
+    if expected_type == "string":
+        return "a string"
+    return str(expected_type)
+
+
+def _resolve_schema_ref(schema: dict[str, Any], ref: str) -> dict[str, Any]:
+    prefix = "#/$defs/"
+    if not ref.startswith(prefix):
+        raise LatencyPreflightError(f"unsupported schema reference: {ref}")
+    defs = schema.get("$defs")
+    if not isinstance(defs, dict):
+        raise LatencyPreflightError("schema is missing $defs")
+    target = defs.get(ref[len(prefix) :])
+    if not isinstance(target, dict):
+        raise LatencyPreflightError(f"schema reference not found: {ref}")
+    return target
+
+
+def _validate_schema_node(
+    value: Any, node: dict[str, Any], path: str, root_schema: dict[str, Any]
+) -> list[str]:
+    ref = node.get("$ref")
+    if isinstance(ref, str):
+        return _validate_schema_node(value, _resolve_schema_ref(root_schema, ref), path, root_schema)
+
+    errors: list[str] = []
+    for child in node.get("allOf", []):
+        if isinstance(child, dict):
+            errors.extend(_validate_schema_node(value, child, path, root_schema))
+
+    condition = node.get("if")
+    then_schema = node.get("then")
+    if (
+        isinstance(condition, dict)
+        and isinstance(then_schema, dict)
+        and not _validate_schema_node(value, condition, path, root_schema)
+    ):
+        errors.extend(_validate_schema_node(value, then_schema, path, root_schema))
+
+    if "const" in node and value != node["const"]:
+        errors.append(f"{path} must be {node['const']}")
+    if "enum" in node and value not in node["enum"]:
+        allowed = ", ".join(str(item) for item in node["enum"])
+        errors.append(f"{path} must be one of: {allowed}")
+
+    expected_type = node.get("type")
+    if expected_type is not None and not _json_type_matches(value, expected_type):
+        errors.append(f"{path} must be {_describe_json_type(expected_type)}")
+        return errors
+
+    if isinstance(value, dict):
+        properties = node.get("properties") if isinstance(node.get("properties"), dict) else {}
+        required = node.get("required") if isinstance(node.get("required"), list) else []
+        for field in required:
+            if isinstance(field, str) and field not in value:
+                errors.append(f"{path}.{field} is required")
+        if node.get("additionalProperties") is False:
+            for field in sorted(set(value) - set(properties)):
+                errors.append(f"{path}.{field} is not allowed by schema")
+        for field, child in properties.items():
+            if field in value and isinstance(child, dict):
+                errors.extend(_validate_schema_node(value[field], child, f"{path}.{field}", root_schema))
+    elif isinstance(value, list):
+        min_items = node.get("minItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            errors.append(f"{path} must contain at least {min_items} item(s)")
+        item_schema = node.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value, start=1):
+                errors.extend(_validate_schema_node(item, item_schema, f"{path}[{index}]", root_schema))
+    elif isinstance(value, str):
+        min_length = node.get("minLength")
+        if isinstance(min_length, int) and len(value) < min_length:
+            errors.append(f"{path} must not be empty")
+    return errors
+
+
+def _validate_document_schema(document: dict[str, Any], schema_path: Path, label: str) -> None:
+    schema = _load_json(schema_path, f"{label} schema")
+    errors = _validate_schema_node(document, schema, label, schema)
+    if errors:
+        raise LatencyPreflightError("; ".join(errors))
+
+
 def _repository_revision(repo: Path) -> str:
     try:
         result = subprocess.run(
@@ -190,9 +308,12 @@ def _bool_checks(raw_checks: Any, profile: str) -> dict[str, bool]:
     if not isinstance(raw_checks, dict):
         raise LatencyPreflightError(f"gate profile {profile}: checks must be an object")
     checks: dict[str, bool] = {}
+    allowed_fields = {field for field, _requirement in PROFILE_REQUIREMENTS[profile]}
     for key, value in raw_checks.items():
         if not isinstance(key, str):
             raise LatencyPreflightError(f"gate profile {profile}: check names must be strings")
+        if key not in allowed_fields:
+            raise LatencyPreflightError(f"gate profile {profile}: unsupported check {key}")
         if not isinstance(value, bool):
             raise LatencyPreflightError(f"gate profile {profile}: checks.{key} must be true or false")
         checks[key] = value
@@ -332,6 +453,8 @@ def build_latency_preflight_report(
     base_dir: Path | None = None,
 ) -> dict[str, Any]:
     document = input_document or {}
+    if input_document is not None:
+        _validate_document_schema(document, INPUT_SCHEMA_PATH, "latency preflight input")
     base = base_dir or Path.cwd()
     profiles: list[dict[str, Any]] = []
     statuses: list[str] = []
@@ -353,7 +476,7 @@ def build_latency_preflight_report(
     if not isinstance(notes, list) or not all(isinstance(note, str) for note in notes):
         raise LatencyPreflightError("notes must be a list of strings")
 
-    return {
+    report = {
         "schema_version": SCHEMA_VERSION,
         "kind": "latency_gate_preflight",
         "run_id": str(document.get("run_id") or f"latency-preflight-{uuid.uuid4()}"),
@@ -369,6 +492,8 @@ def build_latency_preflight_report(
         "gate_profiles": profiles,
         "notes": notes,
     }
+    _validate_document_schema(report, OUTPUT_SCHEMA_PATH, "latency preflight report")
+    return report
 
 
 def _write_json(path: Path, document: dict[str, Any]) -> None:

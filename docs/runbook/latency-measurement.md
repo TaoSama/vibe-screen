@@ -138,8 +138,10 @@ frames before comparing P95 against the gate threshold.
 The `gate_artifacts` object is profile-specific. Use `usb_connection` for
 `usb-glass-to-glass-sub50`, `lan_network_preflight` for
 `lan-glass-to-glass-sub80`, and `input_actuation_record` for
-`input-p95-sub50`. Each entry must point to a retained package-relative file
-with a matching SHA-256 digest.
+`input-p95-sub50`. Synchronized-clock input packages must also include a
+`synchronization_record` artifact containing the clock-alignment transcript,
+skew checks, drift check, and error-budget derivation. Each entry must point to
+a retained package-relative file with a matching SHA-256 digest.
 
 After collecting raw-camera.mov, samples.csv, and device-info.json, create the
 manifest with the dedicated helper instead of adapting the generic evidence
@@ -193,15 +195,79 @@ Then validate the formal evidence package:
       --gate-profile usb-glass-to-glass-sub50 \
       --output latency-run/latency-evidence-report.json
 
-For LAN glass-to-glass, use `--transport lan` with `lan-glass-to-glass-sub80`.
-For input latency, use `--kind input` with `input-p95-sub50`. The checker exits
-0 only when the profile verdict is pass and the required external-camera or
-synchronized-clock provenance is complete. Missing raw video, mismatched
-manifest fields, changed sample annotations, frame-rate mismatches, annotation
-uncertainty or clock error budget that crosses the threshold, too few samples,
-wrong transport, missing profile artifact, or a threshold miss all return
-nonzero with a JSON report whose verdict is insufficient or fail. Referenced
-files must use package-relative paths and stay inside the evidence directory.
+For LAN glass-to-glass, use the same package shape with the LAN transport proof:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --latency-kind glass-to-glass \
+  --transport lan \
+  --gate-profile lan-glass-to-glass-sub80 \
+  --raw-video "$EVIDENCE_DIR/raw-camera.mov" \
+  --samples "$EVIDENCE_DIR/samples.csv" \
+  --samples-format csv \
+  --annotation-method manual-frame-count \
+  --camera-manufacturer "camera vendor" \
+  --camera-model "camera model" \
+  --camera-mode 1080p240 \
+  --camera-frame-rate-fps 240 \
+  --camera-shutter-mode fixed \
+  --operator "operator name" \
+  --annotator "annotator name" \
+  --device-info "$EVIDENCE_DIR/device-info.json" \
+  --host-artifact "host binary identity or hash" \
+  --client-artifact "APK identity or hash" \
+  --stimulus "visible Mac-side stimulus" \
+  --start-event-definition "first camera frame where the stimulus is visible" \
+  --end-event-definition "first camera frame where the Android result is visible" \
+  --lighting "lighting conditions" \
+  --mounting "camera and device mounting" \
+  --max-frame-annotation-uncertainty-ms 4.2 \
+  --gate-artifact "$EVIDENCE_DIR/lan-network-preflight.txt" \
+  --gate-artifact-description "LAN network preflight and active trusted-LAN stream proof" \
+  --notes "run-specific notes"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \
+  --kind glass-to-glass \
+  --transport lan \
+  --measurement-method external-camera \
+  --gate-profile lan-glass-to-glass-sub80 \
+  --run-id "$RUN_ID" \
+  --output "$EVIDENCE_DIR/summary.json"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile lan-glass-to-glass-sub80 \
+  --output "$EVIDENCE_DIR/latency-evidence-report.json"
+```
+
+For external-camera input latency, use `--kind input` with
+`input-p95-sub50` and make `--gate-artifact` point at the physical input
+actuation proof:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \
+  --kind input \
+  --transport usb \
+  --measurement-method external-camera \
+  --gate-profile input-p95-sub50 \
+  --run-id "$RUN_ID" \
+  --output "$EVIDENCE_DIR/summary.json"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile input-p95-sub50 \
+  --output "$EVIDENCE_DIR/latency-evidence-report.json"
+```
+
+The checker exits 0 only when the profile verdict is pass and the required
+external-camera or synchronized-clock provenance is complete. Missing raw
+video, mismatched manifest fields, changed sample annotations, frame-rate
+mismatches, annotation uncertainty or clock error budget that crosses the
+threshold, too few samples, wrong transport, missing profile artifact, or a
+threshold miss all return nonzero with a JSON report whose verdict is
+insufficient or fail. Referenced files must use package-relative paths and stay
+inside the evidence directory.
 
 ## Fail-closed readiness preflight
 
@@ -214,10 +280,12 @@ true and leave missing checks false, then run:
 make evidence-latency-preflight \
   EVIDENCE_DIR="$EVIDENCE_DIR" \
   LATENCY_DEVICE_INFO="$EVIDENCE_DIR/device-info.json" \
-  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json"
+  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json" \
+  LATENCY_REPOSITORY_REVISION="$(git rev-parse origin/main)"
 ```
 
-The target writes `latency-preflight.json` and
+A reusable input template is available at
+`tools/fixtures/latency/preflight-input.template.json`. The target writes `latency-preflight.json` and
 `latency-preflight-exit.txt`. Exit `0` means the declared artifacts are ready
 for a formal checker attempt, exit `2` means the run is blocked before formal
 gate closure, and exit `1` means the preflight input itself failed validation.
@@ -301,6 +369,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --result-timestamp-method "visible result timestamp method" \
   --gate-artifact "$EVIDENCE_DIR/input-actuation.txt" \
   --gate-artifact-description "physical input actuation and visible Mac result proof" \
+  --synchronization-artifact "$EVIDENCE_DIR/synchronization-record.txt" \
+  --synchronization-artifact-description "clock sync transcript, skew checks, drift check, and error-budget derivation" \
   --notes "run-specific notes"
 ```
 

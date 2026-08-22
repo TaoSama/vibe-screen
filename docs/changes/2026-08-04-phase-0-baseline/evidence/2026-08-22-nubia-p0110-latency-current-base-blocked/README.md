@@ -1,7 +1,7 @@
 # 2026-08-22 Nubia P0110 latency current-base preflight: blocked
 
 This record refreshes the README external latency gates on origin/main commit
-`47207c5bc82f9931eb82ec886d2d55e96c3f3e5b`. It uses the connected Android
+`660dae5231fb1ac4decf5088f911f22a9285abf8`. It uses the connected Android
 acceptance substitute recorded as `nubia-p0110-pacific-device-1`.
 
 ## Verdict
@@ -25,8 +25,9 @@ readiness rather than a failed latency measurement.
 - PR #167 is already merged into this current base. It supplies the formal
   synchronized-clock manifest/checker path for `input-p95-sub50`, but it is
   tooling only and contains no physical-input synchronized-clock proof.
-- PR #192 is stale, draft, conflicting, and not merged. It is not treated as a
-  current-base closure owner.
+- PR #192 is stale, draft, conflicting, and not merged. PR #264 carried the
+  first fail-closed preflight shape but was based on an older main commit; this
+  successor record rebases that ownership onto current `origin/main`.
 - This record owns the current-base blocked/preflight state for the three README
   latency profiles. Actual closure still requires a passing formal latency
   evidence report with retained real measurement artifacts.

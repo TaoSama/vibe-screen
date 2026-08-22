@@ -29,6 +29,7 @@ class LatencyPreflightReportTest(unittest.TestCase):
 
     def test_ready_preflight_without_manifest_still_cannot_close_gate(self) -> None:
         input_document = {
+            "schema_version": "vibescreen.evidence/v1",
             "gate_profiles": [
                 {
                     "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
@@ -56,6 +57,7 @@ class LatencyPreflightReportTest(unittest.TestCase):
 
     def test_passing_formal_report_can_close_selected_profile(self) -> None:
         input_document = {
+            "schema_version": "vibescreen.evidence/v1",
             "gate_profiles": [
                 {
                     "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
@@ -87,6 +89,7 @@ class LatencyPreflightReportTest(unittest.TestCase):
 
     def test_invalid_formal_manifest_keeps_profile_blocked(self) -> None:
         input_document = {
+            "schema_version": "vibescreen.evidence/v1",
             "gate_profiles": [
                 {
                     "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
@@ -113,6 +116,24 @@ class LatencyPreflightReportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["gate_profiles"][0]["formal_report"]["verdict"], "insufficient")
+
+    def test_unknown_check_name_is_rejected(self) -> None:
+        input_document = {
+            "schema_version": "vibescreen.evidence/v1",
+            "gate_profiles": [
+                {
+                    "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
+                    "checks": {"not_a_real_readiness_check": True},
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(ValueError, "not_a_real_readiness_check"):
+            build_latency_preflight_report(
+                input_document=input_document,
+                repository_revision="fixture-revision",
+                base_dir=REPOSITORY_ROOT,
+            )
 
 
 class LatencyPreflightCliTest(unittest.TestCase):

@@ -1,0 +1,1 @@
+fixture synchronized-clock proof

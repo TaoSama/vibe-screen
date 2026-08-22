@@ -52,6 +52,11 @@
       "file": "input-actuation.txt",
       "sha256": "d56a69969077d7fb6be3f9552a97e6e9ecfd7bdce00c80429543ef03a007c230",
       "description": "Synthetic physical-input proof for checker tests only."
+    },
+    "synchronization_record": {
+      "file": "synchronization-record.txt",
+      "sha256": "03965cf7ffe46a7dd9fe18422883cf68a66f9861c06bc317e9f50a21b3db80eb",
+      "description": "Synthetic clock synchronization proof for checker tests only."
     }
   }
 }
