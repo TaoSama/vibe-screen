@@ -104,7 +104,7 @@ def passing_manifest() -> dict[str, object]:
                 "session_epoch_advanced": True,
                 "stale_epoch_rejected": True,
                 "recovered_streaming": True,
-                "recovery_seconds": 4.5,
+                "recovery_seconds": 4.2,
                 "approved_limit_seconds": 5,
             },
             "cross_service_revocation": gate_defaults
@@ -305,6 +305,43 @@ class ReleaseGateManifestTests(unittest.TestCase):
             "gates.network_handoff_recovery.impairment_tool: deterministic simulator cannot close a release gate",
             validate_manifest(manifest),
         )
+
+        gate["impairment_tool"] = "deterministic_contract_simulation_only"
+        self.assertIn(
+            "gates.network_handoff_recovery.impairment_tool: deterministic simulator cannot close a release gate",
+            validate_manifest(manifest),
+        )
+
+    def test_impairment_loss_percent_must_be_bounded(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["network_handoff_recovery"]  # type: ignore[index]
+        gate["impairment_profile"]["loss_percent"] = 150  # type: ignore[index]
+
+        self.assertIn(
+            "gates.network_handoff_recovery.impairment_profile.loss_percent: expected <= 100",
+            validate_manifest(manifest),
+        )
+
+    def test_handoff_recovery_seconds_must_match_monotonic_interval(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["network_handoff_recovery"]  # type: ignore[index]
+        gate["recovery_seconds"] = 1
+
+        self.assertIn(
+            "gates.network_handoff_recovery.recovery_seconds: expected to match monotonic recovery interval",
+            validate_manifest(manifest),
+        )
+
+    def test_unknown_gate_fails_closed(self) -> None:
+        manifest = passing_manifest()
+        manifest["gates"]["unexpected_gate"] = {  # type: ignore[index]
+            "status": "pass",
+            "synthetic_media": False,
+            "local_loopback_only": False,
+            "evidence_files": ["logs/direct-session.jsonl"],
+        }
+
+        self.assertIn("gates.unexpected_gate: unknown release gate", validate_manifest(manifest))
 
     def test_soak_gate_requires_controlled_network_conditions(self) -> None:
         manifest = passing_manifest()

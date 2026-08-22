@@ -27,6 +27,7 @@ CANDIDATE_PAIR_PATTERN = re.compile(
 )
 SUPPORTED_CANDIDATE_TYPES = {"host", "srflx", "prflx", "relay"}
 SUPPORTED_CANDIDATE_PROTOCOLS = {"udp", "tcp", "tls"}
+DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS = ("network_profile", "deterministic", "simulation")
 
 
 class ManifestError(ValueError):
@@ -113,6 +114,13 @@ def _require_nonnegative_number(value: Any, path: str, errors: list[str]) -> flo
     return float(value)
 
 
+def _require_percentage(value: Any, path: str, errors: list[str]) -> float | None:
+    observed = _require_nonnegative_number(value, path, errors)
+    if observed is not None and observed > 100:
+        errors.append(f"{path}: expected <= 100")
+    return observed
+
+
 def _require_integer_at_least(value: Any, path: str, minimum: int, errors: list[str]) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         errors.append(f"{path}: expected integer >= {minimum}")
@@ -130,12 +138,14 @@ def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str
 def _validate_network_conditions(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
     _require_bool(gate.get("controlled_impairment"), f"{path}.controlled_impairment", True, errors)
     tool = _require_nonempty_string(gate.get("impairment_tool"), f"{path}.impairment_tool", errors)
-    if tool and tool in {"scripts/phase3/network_profile.py", "deterministic_contract_simulation"}:
+    tool_normalized = tool.lower().replace("-", "_")
+    if tool and any(marker in tool_normalized for marker in DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS):
         errors.append(f"{path}.impairment_tool: deterministic simulator cannot close a release gate")
     profile = _as_mapping(gate.get("impairment_profile"), f"{path}.impairment_profile", errors)
     if profile:
-        for field in ("latency_ms", "jitter_ms", "loss_percent"):
+        for field in ("latency_ms", "jitter_ms"):
             _require_nonnegative_number(profile.get(field), f"{path}.impairment_profile.{field}", errors)
+        _require_percentage(profile.get("loss_percent"), f"{path}.impairment_profile.loss_percent", errors)
         _require_positive_number(profile.get("bandwidth_kbps"), f"{path}.impairment_profile.bandwidth_kbps", errors)
     route_before = _require_nonempty_string(gate.get("route_before"), f"{path}.route_before", errors)
     route_after = _require_nonempty_string(gate.get("route_after"), f"{path}.route_after", errors)
@@ -245,6 +255,19 @@ def _validate_handoff(gate: Mapping[str, Any], path: str) -> list[str]:
     _require_bool(gate.get("stale_epoch_rejected"), f"{path}.stale_epoch_rejected", True, errors)
     _require_bool(gate.get("recovered_streaming"), f"{path}.recovered_streaming", True, errors)
     recovery = _require_positive_number(gate.get("recovery_seconds"), f"{path}.recovery_seconds", errors)
+    started = gate.get("recovery_started_at_monotonic_ms")
+    completed = gate.get("recovery_completed_at_monotonic_ms")
+    if (
+        recovery
+        and isinstance(started, (int, float))
+        and not isinstance(started, bool)
+        and isinstance(completed, (int, float))
+        and not isinstance(completed, bool)
+        and completed > started
+    ):
+        observed_recovery = (float(completed) - float(started)) / 1000
+        if abs(observed_recovery - recovery) > 0.001:
+            errors.append(f"{path}.recovery_seconds: expected to match monotonic recovery interval")
     limit = gate.get("approved_limit_seconds", 5)
     if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
         errors.append(f"{path}.approved_limit_seconds: expected positive number")
@@ -482,6 +505,10 @@ def validate_manifest(document: Mapping[str, Any], *, evidence_root: Path | None
     _validate_claims(document, errors)
 
     gates = _as_mapping(document.get("gates"), "gates", errors)
+    allowed_gates = {rule.name for rule in GATE_RULES}
+    for gate_name in gates:
+        if gate_name not in allowed_gates:
+            errors.append(f"gates.{gate_name}: unknown release gate")
     for rule in GATE_RULES:
         gate_path = f"gates.{rule.name}"
         gate = _as_mapping(gates.get(rule.name), gate_path, errors)
