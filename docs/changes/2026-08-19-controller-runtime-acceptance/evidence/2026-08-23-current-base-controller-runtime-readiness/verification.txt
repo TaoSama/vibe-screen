@@ -1,0 +1,80 @@
+Date: 2026-08-23
+Worktree: /Users/luwentao/.codex/worktrees/a85b/vibe-screen
+Branch: codex/controller-virtual-gamepad-gate
+Base: origin/main 781992d7dc6e99d62ddd5326853f689c30c53d67
+
+Controller runtime readiness
+----------------------------
+Command:
+python3 scripts/controller_runtime_readiness.py --serial EP0110PZ0B9110300B --allow-existing-device-lock --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" --host-app "/Applications/Vibe Screen.app" --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness --run-id 2026-08-23-current-base-controller-runtime-readiness
+
+Result: exit 2. Summary verdict is blocked. can_close_runtime_gate=false.
+Blocking reasons: no physical Android controller, no Apple identity-signed Host,
+no approved virtual HID entitlement in the running app, and no Host
+virtual-gamepad runtime availability. Device identity was recorded as nubia
+P0110 / pacific / Android 16 / SDK 36 with serial EP0110PZ0B9110300B. APK
+identity was not recorded because dumpsys package reported that
+dev.telemachus.display was not installed.
+
+Evidence-tool tests
+-------------------
+Command:
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_release_tools.MacOSSigningIdentityTests
+
+Result: PASS. Ran 23 tests in 0.927s.
+
+MacHost build
+-------------
+Command:
+cd baseline/MacHost && swift build
+
+Result: PASS. Build complete.
+
+MacHost release build
+---------------------
+Command:
+cd baseline/MacHost && swift build -c release
+
+Result: PASS. Build complete.
+
+MacHost focused XCTest
+----------------------
+Command:
+cd baseline/MacHost && swift test --filter GameController --filter IOKitVirtualGamepadDevice --filter ProtocolV1SessionTests
+
+Result: BLOCKED by the local SwiftPM/Xcode toolchain before tests ran. The
+compiler reported `no such module XCTest`; xcode-select points to
+/Library/Developer/CommandLineTools and swift reports Apple Swift 6.3.3 for
+arm64-apple-macosx26.0.
+
+Android focused controller tests
+--------------------------------
+Command:
+cd baseline/AndroidClient && ./gradlew --no-daemon --quiet testDebugUnitTest --tests dev.telemachus.display.ControllerInputMapperTest --tests dev.telemachus.display.ControllerSessionFeedbackTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+
+Result: PASS. Exit code 0.
+
+Summary regeneration
+--------------------
+Command:
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-observations.json --run-id 2026-08-23-current-base-controller-runtime-readiness > /tmp/controller-runtime-summary-check.json
+cmp -s /tmp/controller-runtime-summary-check.json docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-summary.json
+
+Result: module exit 2, cmp exit 0. The regenerated blocked summary matches the
+checked-in summary exactly.
+
+Repository hygiene
+------------------
+Command:
+git diff --check
+
+Result: PASS. No whitespace errors.
+
+Gate status
+-----------
+This evidence is blocked readiness only. It does not close controller runtime
+acceptance. Closing the gate still requires a physical Android controller,
+Protocol v1 controller negotiation, production Android forwarding logs, an
+identity-signed Host with the approved virtual HID entitlement active at
+runtime, Host virtual-gamepad availability, Mac-side controller response, and
+neutral release on disconnect.

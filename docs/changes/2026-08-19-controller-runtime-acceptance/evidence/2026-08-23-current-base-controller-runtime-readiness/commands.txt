@@ -1,0 +1,42 @@
+git fetch origin --prune
+git checkout -B codex/controller-virtual-gamepad-gate origin/main
+python3 - <<'PY'
+from pathlib import Path
+import datetime
+import subprocess
+import sys
+lock = Path("/tmp/vibe-screen-device-android.lock")
+if lock.exists():
+    print(f"lock exists: {lock}", file=sys.stderr)
+    sys.exit(2)
+lock.write_text(
+    "owner=codex-controller-virtual-gamepad-gate\n"
+    f"repo={Path.cwd()}\n"
+    f"created_at={datetime.datetime.now(datetime.timezone.utc).isoformat()}\n",
+    encoding="utf-8",
+)
+try:
+    sys.exit(subprocess.run([
+        "python3", "scripts/controller_runtime_readiness.py",
+        "--serial", "EP0110PZ0B9110300B",
+        "--allow-existing-device-lock",
+        "--host-log", str(Path.home() / "Library/Logs/Telemachus/telemachus.log"),
+        "--host-app", "/Applications/Vibe Screen.app",
+        "--evidence-dir",
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness",
+        "--run-id", "2026-08-23-current-base-controller-runtime-readiness",
+    ], check=False).returncode)
+finally:
+    try:
+        lock.unlink()
+    except FileNotFoundError:
+        pass
+PY
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_release_tools.MacOSSigningIdentityTests
+cd baseline/MacHost && swift build
+cd baseline/MacHost && swift build -c release
+cd baseline/MacHost && swift test --filter GameController --filter IOKitVirtualGamepadDevice --filter ProtocolV1SessionTests
+cd baseline/AndroidClient && ./gradlew --no-daemon --quiet testDebugUnitTest --tests dev.telemachus.display.ControllerInputMapperTest --tests dev.telemachus.display.ControllerSessionFeedbackTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-observations.json --run-id 2026-08-23-current-base-controller-runtime-readiness > /tmp/controller-runtime-summary-check.json
+cmp -s /tmp/controller-runtime-summary-check.json docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-summary.json
+git diff --check
