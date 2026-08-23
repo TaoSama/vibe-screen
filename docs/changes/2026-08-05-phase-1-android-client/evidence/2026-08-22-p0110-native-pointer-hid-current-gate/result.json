@@ -1,0 +1,37 @@
+{
+  "status": "blocked",
+  "reason": "No external Android input device with MOUSE, MOUSE_RELATIVE, TOUCHPAD, or TRACKBALL source is currently attached.",
+  "created_at": "2026-08-22T06:07:07Z",
+  "observation_seconds": 0.0,
+  "device": {
+    "serial": "redacted-pacific-serial",
+    "endpoint": "redacted adb endpoint product:pacific model:P0110 device:pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "fingerprint_sha256": "redacted-build-fingerprint-sha256",
+    "display_size": "Physical size: 1264x2800",
+    "display_density": "Physical density: 560",
+    "battery_summary": "Current Battery Service state:; AC powered: true; USB powered: false; Wireless powered: false; Dock powered: false; Max charging current: 3000000; Time when the latest updated value of the Max charging current was sent via battery changed broadcast: +16d20h55m10s245ms; Max charging voltage: 5000000; Charge counter: 6250000; status: 5; health: 2; present: true",
+    "boot_completed": "1"
+  },
+  "external_mouse_devices": [],
+  "host_log": "host-log-appended.txt",
+  "host_log_appended_bytes": 0,
+  "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "android_logcat_bytes": 0,
+  "android_logcat_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "required_pointer_events": [
+    "move",
+    "press",
+    "release"
+  ],
+  "observed_host_pointer_events": [],
+  "observed_android_pointer_events": [],
+  "visible_mac_result": "",
+  "existing_locks": [],
+  "adb_was_run": true,
+  "requested_serial": "redacted-requested-serial"
+}

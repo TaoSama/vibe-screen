@@ -192,11 +192,11 @@ foregrounded on the streaming view. Replace `<target app>` with the observed
 Mac application name before running the command:
 
 ```bash
-python3 scripts/native_pointer_hid_acceptance.py \
-  --serial "$ADB_SERIAL" \
-  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
-  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
-  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
+make native-pointer-hid-acceptance \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
+  NATIVE_POINTER_HOST_LOG="$HOME/Library/Logs/Telemachus/telemachus.log" \
+  NATIVE_POINTER_VISIBLE_RESULT_NOTE="Mac cursor moved and the primary click focused <target app>" \
+  EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-native-pointer-hid
 ```
 
 While the script waits, move the physical mouse over the Android stream, then
@@ -209,6 +209,17 @@ device with a mouse, relative mouse, touchpad, or trackball source is present,
 the script exits with code `2` and writes a `blocked` evidence bundle instead of
 fabricating a device result. Evidence from a Nubia P0110 must remain labeled
 P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
+
+The collection step writes `native-pointer-hid-summary.json` by running the
+independent `vibescreen_evidence.native_pointer_hid` gate. The README gate can
+close only when that summary reports `verdict=pass` and
+`can_close_native_pointer_hid_gate=true`. Re-check an existing evidence bundle
+with:
+
+```bash
+make native-pointer-hid-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<run-dir>
+```
 
 ## Pass criteria
 

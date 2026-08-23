@@ -470,6 +470,62 @@ Evidence:
 
 - [`evidence/2026-08-21-p0110-native-pointer-hid-readiness/`](evidence/2026-08-21-p0110-native-pointer-hid-readiness/)
 
+## P0110 native pointer HID current-base gate summary
+
+On 2026-08-22, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked from current `origin/main` plus the native pointer HID gate-summary
+tooling. The `make native-pointer-hid-acceptance` target invoked
+`scripts/native_pointer_hid_acceptance.py`, recorded the real P0110 identity and
+`dumpsys input`, and then ran the independent
+`vibescreen_evidence.native_pointer_hid` summary over the generated
+`result.json`.
+
+No external Android input device with a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`,
+or `TRACKBALL` source was attached. The target therefore returned `blocked`
+(`exit_code=2`), and `native-pointer-hid-summary.json` reports
+`verdict=blocked` with `can_close_native_pointer_hid_gate=false`. This does not
+close the native pointer move/click gate, and it remains P0110/pacific evidence,
+not Xiaomi 13/fuxi evidence.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-current-gate/`](evidence/2026-08-22-p0110-native-pointer-hid-current-gate/)
+
+After rebasing the PR branch onto `origin/main` commit
+`4dc84505b0edcd76a820cb2ba219461312ba8b81`, the same target was run again
+against the requested P0110 serial. A shared Android coordination lock was held
+by another P0110 task, so the collector exited before running ADB, wrote
+`blocked_device_coordination_lock`, and kept
+`can_close_native_pointer_hid_gate=false`. This current-main rerun records only
+readiness/blocking state; it does not replace the earlier P0110 identity
+record and does not close the physical HID mouse gate.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/`](evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/)
+
+After the Android UI task reported releasing the shared P0110 lock, a short
+manual preflight used the required `adb -s EP0110PZ0B9110300B` endpoint to
+read the device as Nubia P0110 / `pacific` / Android 16 / SDK 36 and inspect
+`dumpsys input`. That input inventory still exposed no `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. When the formal collector
+started immediately afterward, a new shared Android coordination lock had been
+created by `trusted-lan-p0110-pr261`, so the collector exited before running
+ADB, wrote `blocked_device_coordination_lock`, and kept
+`can_close_native_pointer_hid_gate=false`. The gate therefore remains open; no
+synthetic ADB pointer input was used or counted as HID confirmation.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/`](evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/)
+
+A later 2026-08-22 refresh found no shared Android device lock, reached the
+P0110 with `adb -s EP0110PZ0B9110300B`, and recorded the device identity as
+Nubia P0110 / `pacific` / Android 16 / SDK 36. The retained `dumpsys input`
+inventory still had no external `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or
+`TRACKBALL` source, so the collector wrote a `blocked` bundle with
+`adb_was_run=true`, zero external mouse devices, and
+`can_close_native_pointer_hid_gate=false`. This is the current no-HID-source
+gate state and does not close native pointer move/click confirmation.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-no-source-refresh/`](evidence/2026-08-22-p0110-native-pointer-hid-no-source-refresh/)
+
 ## P0110 rotated host-display readiness follow-up
 
 On 2026-08-20, the connected Nubia P0110 (pacific, Android 16 / SDK 36)
@@ -611,3 +667,24 @@ product-code change and does not close any README acceptance gate.
 Evidence:
 
 - [`evidence/2026-08-23-p0110-launcher-idle-state/`](evidence/2026-08-23-p0110-launcher-idle-state/)
+
+## P0110 native pointer HID current-base blocked evidence
+
+On 2026-08-23, the native pointer HID gate owner was refreshed on
+`origin/main` commit `3d23de133adc4414b4c70430c619fadbe7d90207` using the
+connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B). The Android coordination lock was absent, so the collector
+was allowed to run serial-scoped ADB reads against that device.
+
+The run did not find any external Android input device with `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore wrote
+`status=blocked`; the independent summary reports `verdict=blocked` and
+`can_close_native_pointer_hid_gate=false`. No Android native pointer
+MOVE/BUTTON_PRESS/BUTTON_RELEASE forwarding lines, Host pointer changed/began/
+ended injection lines, or visible Mac pointer/click result were captured. This
+keeps the README native mouse pointer move/click gate open and does not treat
+synthetic ADB pointer input as physical HID mouse evidence.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-native-pointer-hid-current-base-blocked/`](evidence/2026-08-23-p0110-native-pointer-hid-current-base-blocked/)
