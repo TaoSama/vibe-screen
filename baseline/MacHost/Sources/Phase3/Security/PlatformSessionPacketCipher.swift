@@ -177,16 +177,16 @@ final class PlatformSessionPacketCipher {
             let replacement = try rotateKeys(current, updateNonce)
             keys = replacement
             replay.removeAll()
-            current.close()
+            current.zeroize()
         }
     }
 
     func close() {
         lock.withPacketCipherLock {
-            keys?.close()
+            keys?.zeroize()
             keys = nil
             replay.removeAll()
-            sessionHash.resetBytes(in: 0..<sessionHash.count)
+            sessionHash.zeroize()
         }
     }
 

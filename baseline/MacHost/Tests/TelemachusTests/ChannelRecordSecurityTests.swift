@@ -192,6 +192,25 @@ final class ChannelRecordSecurityTests: XCTestCase {
         }
     }
 
+    func testSessionKeysZeroizeOverwritesAllOwnedKeyMaterial() throws {
+        let keys = try TrafficKeyDerivation.initial(
+            sharedSecret: Data(repeating: 0x13, count: 32),
+            bootstrapSecret: Data(repeating: 0x24, count: 32),
+            context: Data(repeating: 0x35, count: 32)
+        )
+        XCTAssertFalse(keys.isClearedForTest)
+        XCTAssertTrue(keys.keyBuffers.allSatisfy { $0.contains { $0 != 0 } })
+
+        keys.zeroize()
+
+        XCTAssertTrue(keys.isClearedForTest)
+        XCTAssertTrue(keys.keyBuffers.allSatisfy { buffer in
+            buffer.count == 32 && buffer.allSatisfy { $0 == 0 }
+        })
+        keys.zeroize()
+        XCTAssertTrue(keys.isClearedForTest)
+    }
+
     func testRotationCloseAndDeinitClearOwnedKeyBuffers() throws {
         let initial = try TrafficKeyDerivation.initial(
             sharedSecret: Data(repeating: 3, count: 32),
@@ -215,6 +234,8 @@ final class ChannelRecordSecurityTests: XCTestCase {
         )
         try cipher?.rotate(updateNonce: Data((0..<16).map(UInt8.init)))
         XCTAssertTrue(initial.isClearedForTest)
+        let postRotateRecord = try cipher?.sealAdvanced(Data([7]), channel: .bulk)
+        XCTAssertNotNil(postRotateRecord)
         cipher?.close()
         XCTAssertThrowsError(try cipher?.sealAdvanced(Data([1]), channel: .audio))
         XCTAssertThrowsError(try cipher?.rotate(updateNonce: Data(repeating: 1, count: 16)))

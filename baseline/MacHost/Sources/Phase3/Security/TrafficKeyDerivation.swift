@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 final class PlatformSessionKeys: Equatable {
@@ -65,17 +66,21 @@ final class PlatformSessionKeys: Equatable {
         )
     }
 
-    func close() {
+    func zeroize() {
         guard !closed else { return }
-        hostControl.resetBytes(in: hostControl.indices)
-        deviceControl.resetBytes(in: deviceControl.indices)
-        hostMedia.resetBytes(in: hostMedia.indices)
-        deviceMedia.resetBytes(in: deviceMedia.indices)
-        hostAudio.resetBytes(in: hostAudio.indices)
-        deviceAudio.resetBytes(in: deviceAudio.indices)
-        hostBulk.resetBytes(in: hostBulk.indices)
-        deviceBulk.resetBytes(in: deviceBulk.indices)
+        hostControl.zeroize()
+        deviceControl.zeroize()
+        hostMedia.zeroize()
+        deviceMedia.zeroize()
+        hostAudio.zeroize()
+        deviceAudio.zeroize()
+        hostBulk.zeroize()
+        deviceBulk.zeroize()
         closed = true
+    }
+
+    func close() {
+        zeroize()
     }
 
     var isClearedForTest: Bool {
@@ -85,7 +90,7 @@ final class PlatformSessionKeys: Equatable {
         ].allSatisfy { $0.allSatisfy { $0 == 0 } }
     }
 
-    deinit { close() }
+    deinit { zeroize() }
 }
 
 enum PlatformSecurityChannel: UInt32 {
@@ -121,6 +126,7 @@ enum TrafficPacketCryptography {
         var combined = Data(capacity: nonce.count + ciphertextAndTag.count)
         combined.append(nonce)
         combined.append(ciphertextAndTag)
+        defer { combined.zeroize() }
         let box = try AES.GCM.SealedBox(combined: combined)
         return try AES.GCM.open(box, using: SymmetricKey(data: key), authenticating: authenticatedHeader)
     }
@@ -150,7 +156,7 @@ enum TrafficKeyDerivation {
             throw PlatformSecurityError.invalidInput("Initial key derivation requires a shared secret, 32-byte bootstrap secret, and 32-byte transcript context.")
         }
         var material = hkdf(input: sharedSecret, salt: bootstrapSecret, info: context)
-        defer { material.resetBytes(in: material.indices) }
+        defer { material.zeroize() }
         return split(material: material, context: context, epoch: 1)
     }
 
@@ -169,12 +175,12 @@ enum TrafficKeyDerivation {
                 updateNonce
             ]
         )
-        defer { context.resetBytes(in: context.indices) }
+        defer { context.zeroize() }
         // Preserve rotation compatibility with peers that negotiated only control/media.
         var legacyInput = current.legacyCombined
-        defer { legacyInput.resetBytes(in: legacyInput.indices) }
+        defer { legacyInput.zeroize() }
         var material = hkdf(input: legacyInput, salt: updateNonce, info: context)
-        defer { material.resetBytes(in: material.indices) }
+        defer { material.zeroize() }
         return split(material: material, context: context, epoch: nextEpoch)
     }
 
@@ -195,27 +201,35 @@ enum TrafficKeyDerivation {
         // Keep the v1 key ID stable for control/media-only peers.
         keyIDHasher.update(data: material.prefix(legacyMaterialLength))
         var firstDigest = Data(keyIDHasher.finalize())
-        defer { firstDigest.resetBytes(in: firstDigest.indices) }
+        defer { firstDigest.zeroize() }
         var keyIDDigest = Data(SHA256.hash(data: firstDigest))
-        defer { keyIDDigest.resetBytes(in: keyIDDigest.indices) }
+        defer { keyIDDigest.zeroize() }
         let keyID = keyIDDigest.map { String(format: "%02x", $0) }.joined()
         return PlatformSessionKeys(
             keyID: keyID,
             keyEpoch: epoch,
-            hostControl: material.subdata(in: 0..<32),
-            deviceControl: material.subdata(in: 32..<64),
-            hostMedia: material.subdata(in: 64..<96),
-            deviceMedia: material.subdata(in: 96..<128),
-            hostAudio: material.subdata(in: 128..<160),
-            deviceAudio: material.subdata(in: 160..<192),
-            hostBulk: material.subdata(in: 192..<224),
-            deviceBulk: material.subdata(in: 224..<256)
+            hostControl: material.subdata(in: 0..<32).ownedCopy,
+            deviceControl: material.subdata(in: 32..<64).ownedCopy,
+            hostMedia: material.subdata(in: 64..<96).ownedCopy,
+            deviceMedia: material.subdata(in: 96..<128).ownedCopy,
+            hostAudio: material.subdata(in: 128..<160).ownedCopy,
+            deviceAudio: material.subdata(in: 160..<192).ownedCopy,
+            hostBulk: material.subdata(in: 192..<224).ownedCopy,
+            deviceBulk: material.subdata(in: 224..<256).ownedCopy
         )
     }
 
 }
 
-private extension Data {
+extension Data {
+    mutating func zeroize() {
+        guard !isEmpty else { return }
+        withUnsafeMutableBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else { return }
+            _ = memset_s(baseAddress, bytes.count, 0, bytes.count)
+        }
+    }
+
     var ownedCopy: Data { withUnsafeBytes { Data($0) } }
 }
 
@@ -225,6 +239,7 @@ enum SecurityTranscript {
         appendLengthPrefixed(Data("vibescreen/identity/v1".utf8), to: &encoded)
         appendLengthPrefixed(Data(domain.utf8), to: &encoded)
         parts.forEach { appendLengthPrefixed($0, to: &encoded) }
+        defer { encoded.zeroize() }
         return Data(SHA256.hash(data: encoded))
     }
 
