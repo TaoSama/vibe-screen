@@ -485,6 +485,21 @@ class VideoEncoder {
         stateLock.withLock { $0.pendingForceKeyframe = true }
     }
 
+    @discardableResult
+    func completeFrames(untilPresentationTimeStamp timestamp: CMTime = .invalid) -> OSStatus {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        guard let session = compressionSession else { return kVTInvalidSessionErr }
+        let status = VTCompressionSessionCompleteFrames(
+            session,
+            untilPresentationTimeStamp: timestamp
+        )
+        if status != noErr {
+            debugLog("VideoToolbox frame completion failed: \(status)")
+        }
+        return status
+    }
+
     func encode(
         pixelBuffer: CVPixelBuffer,
         presentationTimeStamp: CMTime,
@@ -545,10 +560,7 @@ class VideoEncoder {
         sessionLock.lock()
         callbackOwner.deactivate()
         if let session = compressionSession {
-            let completeStatus = VTCompressionSessionCompleteFrames(
-                session,
-                untilPresentationTimeStamp: .invalid
-            )
+            let completeStatus = VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             if completeStatus != noErr {
                 debugLog("VideoToolbox frame completion failed: \(completeStatus)")
             }
