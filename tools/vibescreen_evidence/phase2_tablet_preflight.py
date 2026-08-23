@@ -40,7 +40,9 @@ DEFAULT_STYLUS_EVIDENCE = (
     "stylus/stylus-evidence.json",
 )
 DEFAULT_KEYBOARD_EVIDENCE = (
+    "hardware-keyboard-summary.json",
     "hardware-keyboard-evidence.json",
+    "keyboard/hardware-keyboard-summary.json",
     "keyboard/hardware-keyboard-evidence.json",
     "keyboard-evidence.json",
 )
@@ -91,6 +93,21 @@ REQUIRED_RECOVERY_SCENARIOS = (
     "foreground_background",
     "transport_reconnect",
     "login_startup_or_headless",
+)
+
+KEYBOARD_SUMMARY_PASS_FIELDS = (
+    "physical_keyboard_attached",
+    "android_keyboard_source_observed",
+    "protocol_keyboard_capability_negotiated",
+    "protocol_usb_hid_modifier_capability_negotiated",
+    "android_production_forwarding_observed",
+    "host_key_injection_observed",
+    "key_press_release_observed",
+    "shortcut_combo_observed",
+    "modifier_release_no_leak_observed",
+    "visible_mac_result_observed",
+    "host_logs_retained",
+    "android_logs_retained",
 )
 
 
@@ -348,15 +365,25 @@ def _keyboard_gate(root: Path, explicit_path: Path | None) -> dict[str, Any]:
     if error is not None:
         return _gate("hardware_keyboard", MISSING, evidence=[item for item in evidence if item], reasons=[error])
     status = _status_from_json(document or {})
-    observed = bool((document or {}).get("observed_physical_keyboard"))
-    host_confirmed = (document or {}).get("host_input_observed") is True
+    observations = (document or {}).get("observations")
+    if not isinstance(observations, dict):
+        observations = {}
+    is_hardware_keyboard_summary = (document or {}).get("kind") == "phase2_hardware_keyboard_workflow"
+    if is_hardware_keyboard_summary:
+        observed = all(observations.get(field) is True for field in KEYBOARD_SUMMARY_PASS_FIELDS)
+        host_confirmed = (document or {}).get("can_close_hardware_keyboard_gate") is True
+    else:
+        observed = bool((document or {}).get("observed_physical_keyboard"))
+        host_confirmed = (document or {}).get("host_input_observed") is True
     if status == PASS and observed and host_confirmed:
         return _gate("hardware_keyboard", PASS, evidence=[item for item in evidence if item])
     return _gate(
         "hardware_keyboard",
         BLOCKED if status and status.startswith("blocked") else INSUFFICIENT,
         evidence=[item for item in evidence if item],
-        reasons=["hardware keyboard evidence must report pass with observed_physical_keyboard=true and host_input_observed=true"],
+        reasons=[
+            "hardware keyboard evidence must report pass with physical keyboard and Host key-injection evidence"
+        ],
     )
 
 

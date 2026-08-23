@@ -128,6 +128,7 @@ Evidence is under
 Validation performed for this tooling and evidence update:
 
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_hardware_keyboard tools.tests.test_schemas -v`
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_hardware_keyboard_readiness -v`
 - `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked`
 
 The generated `hardware-keyboard-summary.json` records `verdict=blocked` and
@@ -136,6 +137,50 @@ gate remains open until a physical keyboard attached to the recorded Android
 device drives production Protocol v1 keyboard forwarding into a stable
 signed/TCC-ready Host with retained Host `Key injected:` logs and a visible Mac
 result.
+
+The preferred current-base readiness command is now:
+
+```bash
+make hardware-keyboard-readiness \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/YYYY-MM-DD-nubia-p0110-pacific-hardware-keyboard-readiness
+```
+
+It acquires the shared Android lock, records the P0110 identity and input-device
+snapshot when the lock allows ADB, collects Host listener/signing/TCC preflight
+artifacts, and writes `hardware-keyboard-readiness.json`,
+`hardware-keyboard-observations.json`, and `hardware-keyboard-summary.json`. A
+nonzero blocked or insufficient exit is expected when the physical keyboard,
+stable signed/TCC Host, or live production keyboard evidence is missing; that
+output is readiness evidence only and does not close the Phase 2 gate.
+
+## 2026-08-23 hardware-keyboard current-base readiness
+
+Evidence is under
+[`evidence/2026-08-23-nubia-p0110-pacific-hardware-keyboard-readiness`](evidence/2026-08-23-nubia-p0110-pacific-hardware-keyboard-readiness/README.md).
+The collector ran against `EP0110PZ0B9110300B` and recorded the device as
+nubia P0110 / pacific / Android 16 / SDK 36. It exited `2` with
+`verdict=blocked` and `can_close_hardware_keyboard_gate=false` because no
+external Android-attached hardware keyboard was visible in `dumpsys input`, no
+Host listener was present on TCP `54321`, and the Host preflight could not find
+the stable `Vibe Screen Dev` signing identity. The package snapshot records the
+installed APK as `dev.telemachus.display` version `0.0.0` (`100000`), so APK
+identity is present but does not close the gate without the missing physical
+keyboard and Host-path evidence.
+
+Additional current-base validation performed for this update:
+
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/hardware_keyboard_readiness.py`
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_hardware_keyboard_readiness -v`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_hardware_keyboard tools.tests.test_phase2_tablet_preflight tools.tests.test_controller_runtime tools.tests.test_schemas -v`
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked`
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-23-nubia-p0110-pacific-hardware-keyboard-readiness`
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.AndroidKeyInputMapperTest --tests dev.telemachus.display.ClientInputDispatchTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.ControllerInputMapperTest`
+- `cd baseline/MacHost && swift build`
+
+`cd baseline/MacHost && swift test --filter ProtocolV1SessionTests` was attempted
+but the local SwiftPM test environment failed before executing tests with
+`no such module XCTest`.
 
 ## 2026-08-21 Phase 2 evidence manifest readiness
 

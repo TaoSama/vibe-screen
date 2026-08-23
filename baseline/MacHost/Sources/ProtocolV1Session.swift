@@ -1083,6 +1083,7 @@ final class ProtocolV1SessionCoordinator {
             }
             let standardByteNegotiated = negotiatedCapabilities.contains(.usbHidModifierByte)
             guard acceptsKeyEvent(pressed: key.pressed),
+                  inputTargetMatchesActiveStream(key.hasTarget ? key.target : nil),
                   StreamInputWire.validatesModifierMask(
                     key.modifierMask,
                     standardByteNegotiated: standardByteNegotiated

@@ -263,19 +263,31 @@ observed identity as Nubia P0110 / pacific / Android 16 when using
 `EP0110PZ0B9110300B`; do not relabel this device as Xiaomi 13/fuxi or as tablet
 hardware.
 
-Collect these artifacts in `evidence/YYYY-MM-DD-<device>-hardware-keyboard/`:
+Collect a fail-closed readiness bundle in
+`evidence/YYYY-MM-DD-<device>-hardware-keyboard/` before starting the interactive
+keyboard run:
+
+```bash
+make hardware-keyboard-readiness \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
+  EVIDENCE_DIR="$RUN_DIR"
+```
+
+The collector acquires the Android device lock, records `device-info.json`,
+`dumpsys-input.txt`, `dumpsys-package.txt`, Host listener/signing/TCC preflight
+artifacts, `hardware-keyboard-observations.json`, and
+`hardware-keyboard-summary.json`. It exits nonzero for blocked or insufficient
+readiness. That nonzero result is expected when a physical keyboard, Host
+listener, or stable signed/TCC-ready Host is missing, and it must not be
+converted into a pass.
+
+If collecting the artifacts manually, the equivalent commands are:
 
 ```bash
 make evidence-device-info EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR="$RUN_DIR"
 adb -s "$ADB_SERIAL" shell dumpsys input > "$RUN_DIR/dumpsys-input.txt"
 adb -s "$ADB_SERIAL" logcat -c
 adb -s "$ADB_SERIAL" reverse tcp:54321 tcp:54321
-```
-
-Also retain a Host preflight record with the listener, signing identity, and
-permission state before starting the run:
-
-```bash
 lsof -nP -iTCP:54321 -sTCP:LISTEN > "$RUN_DIR/host-listener.txt"
 security find-identity -v -p codesigning > "$RUN_DIR/codesign-identities.txt"
 python3 scripts/macos_dev_host.py preflight --report "$RUN_DIR/host-signing-and-permissions.txt"
@@ -367,11 +379,12 @@ Each run directory should include at minimum:
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states;
-- for hardware-keyboard passes, `hardware-keyboard-observations.json`,
-  `hardware-keyboard-summary.json`, `dumpsys-input.txt`, `android-keyboard.log`,
-  `host-keyboard.log`, `host-listener.txt`, `host-signing-and-permissions.txt`,
-  `codesign-identities.txt`, and a screenshot or recording of the visible Mac
-  result;
+- for hardware-keyboard passes or blocked readiness, `hardware-keyboard-readiness.json`,
+  `hardware-keyboard-observations.json`, `hardware-keyboard-summary.json`,
+  `dumpsys-input.txt`, `dumpsys-package.txt`, `android-keyboard.log` when an
+  interactive run starts, `host-keyboard.log`, `host-listener.txt`,
+  `host-signing-and-permissions.txt`, `codesign-identities.txt`, and a
+  screenshot or recording of the visible Mac result for passing runs;
 - `stylus-evidence.json`, `hardware-keyboard-evidence.json`,
   `recovery-evidence.json`, `soak-8h/phase2-tablet-gate.json`, and
   `phase2-tablet-preflight.json`.

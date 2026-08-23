@@ -289,3 +289,18 @@ Without `--allow-existing-device-lock`, the collector refuses to run ADB when a
 shared Android device lock is present. With `--write-blocked-on-lock`, that
 preflight writes a blocked bundle that records the lock state instead of using
 the device.
+
+For the Phase 2 hardware-keyboard workflow, use the corresponding readiness
+collector before attempting physical key presses:
+
+```bash
+make hardware-keyboard-readiness \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/$(date -u +%F)-p0110-hardware-keyboard-readiness
+```
+
+The command records P0110/pacific identity, Android input devices, package
+metadata, Host listener state, and stable signed/TCC Host preflight. It exits
+nonzero for blocked or insufficient readiness; a pass still requires physical
+keyboard input through the production Protocol v1 path, Host `Key injected:`
+logs, modifier cleanup evidence, and a visible Mac-side result.
