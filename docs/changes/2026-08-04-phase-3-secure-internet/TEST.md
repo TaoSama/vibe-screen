@@ -161,6 +161,7 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     soak-summary.json
     logcat-redacted.txt
     host-log-redacted.txt
+    real-media-continuity.json
     packet-capture-notes.md
     latency-method.md          # copy or link docs/runbook/latency-measurement.md
 ```
@@ -196,6 +197,22 @@ The run log must state, with timestamps and route evidence:
 8. two-hour mixed-route soak with RSS, queue, loss, RTT, FPS, bitrate, relay bytes,
    ICE restarts, drops, thermal/battery, and latency series;
 9. redaction/secret scan result for every archived artifact.
+
+For the real capture -> Android decoder continuity slice, generate
+`real-media-continuity.json` from retained Host and Android logs with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_continuity` or
+`make phase3-real-media-continuity`. The result must record `media_source`
+through observed real-capture markers, Protocol v1 `session_epoch` or media
+epoch, selected `network_path`, Host signing state, Screen Recording state,
+MediaCodec first input/output markers, continuous output-frame count, drops, and
+decoder errors. The evaluator is fail-closed: synthetic-media markers, missing
+public-Internet route evidence, missing identity-signed Host evidence, missing
+Screen Recording permission, missing capture/VideoToolbox output, or missing
+MediaCodec output produce `blocked`. Decoder/runtime errors or excess drops
+produce `fail` only after the required runtime stages are otherwise present. The
+file is a narrow continuity preflight and always records
+`gate_can_close_phase3_release=false`; it cannot by itself close the broader
+Phase 3 release gate.
 
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not
@@ -438,6 +455,16 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.
+
+- A 2026-08-21 continuity-preflight application to retained blocked Nubia P0110
+  evidence is archived under
+  [`evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/`](evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/README.md).
+  It adds a structured fail-closed `real-media-continuity.json` result for the
+  ScreenCaptureKit/CGDisplayStream -> Android MediaCodec slice. The source logs
+  are the 2026-08-18 blocked Host and Android windows, so the result remains
+  blocked by missing Screen Recording permission, missing public-Internet route
+  evidence, and absent capture/encoder/decoder output. No ADB command was run
+  for this derived preflight, and no Phase 3 release gate changes state.
 
 ### Main CI follow-up snapshot (2026-08-06)
 

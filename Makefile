@@ -43,8 +43,16 @@ HARMONY_SHA256SUMS ?=
 HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
+PHASE3_HOST_LOG ?=
+PHASE3_ANDROID_LOG ?=
+PHASE3_DEVICE_INFO ?=
+PHASE3_NETWORK_PATH ?= unknown
+PHASE3_HOST_SIGNING ?= unknown
+PHASE3_SCREEN_RECORDING ?= unknown
+PHASE3_MINIMUM_OUTPUT_FRAMES ?= 120
+PHASE3_MAXIMUM_DROPPED_FRAMES ?= 0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -91,6 +99,28 @@ phase3-local-synthetic-public-artifacts-check:
 phase3-local-product-e2e:
 	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness with real VideoToolbox HEVC payloads only; no Android device, ScreenCaptureKit capture, or MediaCodec decode).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
+
+phase3-real-media-continuity:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_HOST_LOG))" || (echo "error: set PHASE3_HOST_LOG to retained Host log evidence" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_ANDROID_LOG))" || (echo "error: set PHASE3_ANDROID_LOG to retained Android log evidence" >&2; exit 2)
+	@test -f "$(PHASE3_HOST_LOG)" && test -r "$(PHASE3_HOST_LOG)" || (echo "error: PHASE3_HOST_LOG is not a readable file" >&2; exit 2)
+	@test -f "$(PHASE3_ANDROID_LOG)" && test -r "$(PHASE3_ANDROID_LOG)" || (echo "error: PHASE3_ANDROID_LOG is not a readable file" >&2; exit 2)
+	@if test -n "$(strip $(PHASE3_DEVICE_INFO))"; then \
+		test -f "$(PHASE3_DEVICE_INFO)" && test -r "$(PHASE3_DEVICE_INFO)" || (echo "error: PHASE3_DEVICE_INFO is not a readable file" >&2; exit 2); \
+	fi
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_real_media_continuity \
+		--host-log "$(PHASE3_HOST_LOG)" \
+		--android-log "$(PHASE3_ANDROID_LOG)" \
+		--network-path "$(PHASE3_NETWORK_PATH)" \
+		--host-signing "$(PHASE3_HOST_SIGNING)" \
+		--screen-recording "$(PHASE3_SCREEN_RECORDING)" \
+		--minimum-output-frames "$(PHASE3_MINIMUM_OUTPUT_FRAMES)" \
+		--maximum-dropped-frames "$(PHASE3_MAXIMUM_DROPPED_FRAMES)" \
+		$(if $(strip $(PHASE3_DEVICE_INFO)),--device-info "$(PHASE3_DEVICE_INFO)",) \
+		--output "$(EVIDENCE_DIR)/real-media-continuity.json"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
