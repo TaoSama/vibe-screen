@@ -19,7 +19,7 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main 8139e4b97979dbc314cd5259830b55522ad0299b"
+CURRENT_BASE = "origin/main c4b8121d9346557ba5d0db7b5c3e63400c8569d2"
 
 
 @dataclass(frozen=True)
