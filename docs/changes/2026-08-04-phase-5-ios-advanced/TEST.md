@@ -197,8 +197,8 @@ The current-base aggregate owner is #290. Merged #182 remains the historical
 sanitized iOS device-acceptance baseline, while #290 owns the aggregate iOS
 acceptance tracking entry point for the current base. The narrower readiness
 work remains scoped to the related PR/task owners: #196 gesture/action mapping,
-#207 managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM,
-#238 reconnect, #251 VideoToolbox, #253 host advanced adapters, #257 native
+PR #207 managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM,
+PR #238 reconnect, #251 VideoToolbox, #253 host advanced adapters, #257 native
 input, #279 key-release/native-input modifier behavior, and #282 Phase 5 host
 gate ownership. The aggregate must not pass by owner declaration alone; it
 passes only when the machine-readable gate can prove every required iOS hardware

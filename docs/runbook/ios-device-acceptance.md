@@ -13,8 +13,8 @@ Android application data. The machine gate validates retained summaries after a
 run; it does not start Xcode, the Host, LAN traffic, ADB, or device automation.
 
 The current-base aggregate owner is #290 (`current-base-ios-acceptance`). Merged
-#182 is the historical sanitized device-acceptance baseline; do not use it as
-the current aggregate owner. Before reporting readiness or a blocked run,
+PR `#182` is the historical sanitized device-acceptance baseline; do not use it
+as the current aggregate owner. Before reporting readiness or a blocked run,
 produce the aggregate summary from the current base:
 
 ```bash
@@ -31,9 +31,11 @@ toolchain prerequisites. If any of these fail, stop at blocked readiness and do
 not begin the device run:
 
 ```bash
+set -euo pipefail
 xcodebuild -version
-xcodebuild -showsdks | grep iphoneos
-security find-identity -p codesigning -v
+xcodebuild -showsdks | grep -qi 'iphoneos'
+identity_output="$(security find-identity -p codesigning -v)"
+printf '%s\n' "$identity_output" | grep -Eq '^[[:space:]]*[1-9][0-9]* valid identities found[[:space:]]*$'
 ```
 
 ## Open gates
