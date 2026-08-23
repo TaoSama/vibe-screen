@@ -31,7 +31,7 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./host-stderr.
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./host-stdout.log
 d2907641c8dc3a9c80e44e8ff5d8b8046464d6a65671261db7814f35e0819146  ./installed-host-log-tail-before-android.txt
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./open-current-app.txt
-ae356fbc5a5c581a71c2e5ba820ba90caee7b502feaf3fea97288b0fad06044b  ./README.md
+6a6aef6eca62e2cdf9cb250ca1d52cda1d2fbc6d720d15db0c869882e1709c1f  ./README.md
 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  ./test-usb-live-smoke.exit
 e95b29948ace27927caf4d71b5554a698d3ba6deb13373356d9fd4bbb3ed5328  ./test-usb-live-smoke.txt
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./usb-live-smoke-final-command.txt
