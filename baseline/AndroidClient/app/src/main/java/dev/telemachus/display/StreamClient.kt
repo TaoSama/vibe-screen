@@ -636,7 +636,7 @@ class StreamClient(
                 diagLog("Protocol v1 upgrade accepted")
                 emitTelemetry(
                     "protocol_v1_accepted",
-                    mapOf("session_epoch" to connectionEpoch, "transport" to transport.name),
+                    mapOf("session_epoch" to localSessionState.connectionEpoch, "transport" to transport.name),
                 )
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
@@ -1143,6 +1143,8 @@ class StreamClient(
                 mediaFrameRouter.receiveProtocolFrame(
                     payload = frame.payload,
                     connectionEpoch = localSessionState.connectionEpoch,
+                    acceptsEpoch = localSessionState::acceptsEpoch,
+                    currentEpoch = localSessionState::currentEpoch,
                     validateMedia = session::validateMedia,
                 )
             }

@@ -125,6 +125,111 @@ class StreamMediaFrameRouterTest {
     }
 
     @Test
+    fun firstFrameTelemetryIsEmittedOncePerSessionEpoch() {
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val delivered = mutableListOf<StreamMediaFrame>()
+        val router = router(
+            frameSink = { frame ->
+                delivered += frame
+                true
+            },
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+        )
+
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = true),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = false),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 8, keyframe = true),
+            connectionEpoch = 7,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+
+        val firstFrameEvents = telemetry.filter { it.first == "first_frame_received" }
+        assertEquals(3, delivered.size)
+        assertEquals(2, firstFrameEvents.size)
+        assertEquals(listOf(6L, 7L), firstFrameEvents.map { it.second["session_epoch"] })
+        assertEquals(listOf(7L, 8L), firstFrameEvents.map { it.second["config_epoch"] })
+        assertTrue(firstFrameEvents.all { it.second["metadata"] == true })
+    }
+
+    @Test
+    fun legacyFrameDoesNotEmitFirstFrameTelemetry() {
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val delivered = mutableListOf<StreamMediaFrame>()
+        val router = router(
+            frameSink = { frame ->
+                delivered += frame
+                true
+            },
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+        )
+
+        router.receiveLegacyFrame(
+            input = DataInputStream(ByteArrayInputStream(legacyPayload(byteArrayOf(0, 0, 0, 1, 0x26)))),
+            hasMetadata = false,
+            streamCodecIsHevc = true,
+            connectionEpoch = 3,
+            acceptsEpoch = { it == 3L },
+            currentEpoch = { 3L },
+        )
+
+        assertEquals(1, delivered.size)
+        assertTrue(telemetry.none { it.first == "first_frame_received" })
+    }
+
+    @Test
+    fun droppedProtocolFrameDoesNotEmitFirstFrameTelemetry() {
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val router = router(
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+        )
+
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 9, keyframe = true),
+            connectionEpoch = 4,
+            validateMedia = { ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION },
+        )
+
+        assertTrue(telemetry.none { it.first == "first_frame_received" })
+        assertEquals("frame_dropped", telemetry.single().first)
+    }
+
+    @Test
+    fun protocolFrameDropsStaleLocalEpochBeforeValidation() {
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        var validateMediaCalled = false
+        val router = router(
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+        )
+
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 9, keyframe = true),
+            connectionEpoch = 4,
+            acceptsEpoch = { false },
+            currentEpoch = { 5L },
+            validateMedia = {
+                validateMediaCalled = true
+                ProtocolV1Session.MediaDisposition.ACCEPT
+            },
+        )
+
+        assertFalse(validateMediaCalled)
+        assertTrue(telemetry.none { it.first == "first_frame_received" })
+        assertEquals("frame_dropped", telemetry.single().first)
+        assertEquals("stale_session_epoch", telemetry.single().second["reason"])
+        assertEquals(4L, telemetry.single().second["frame_epoch"])
+        assertEquals(5L, telemetry.single().second["current_epoch"])
+    }
+
+    @Test
     fun protocolInvalidPayloadFailsClosedAsMediaPayloadFailure() {
         val router = router()
 
