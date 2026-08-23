@@ -1,9 +1,9 @@
-# Audio USB/LAN real-device evidence blocked - 2026-08-21
+# Audio USB/LAN real-device evidence blocked - 2026-08-23
 
 Status: blocked before real-device audio acceptance
-Source branch: `codex/audio-usb-lan-end-to-end`
-Base commit: `22da26816465257b4a09f95de47be8567e448b74` (`origin/main` at
-branch creation)
+Source branch: `codex/audio-usb-lan-e2e-gate`
+Base commit: `781992d7dc6e99d62ddd5326853f689c30c53d67` (`origin/main` at
+rebase)
 
 ## Goal
 
@@ -24,6 +24,11 @@ in this worktree session. Trusted-LAN audio additionally requires a reachable
 Android Wi-Fi route and secure-record admission evidence; the most recent LAN
 records for the Nubia P0110 remained blocked before LAN stream setup.
 
+The target Android device for the next run must be recorded as `nubia P0110 /
+pacific / Android 16 / SDK 36` with serial `EP0110PZ0B9110300B`; Android
+commands must use `adb -s EP0110PZ0B9110300B ...`. This record does not relabel
+that device as Xiaomi 13/fuxi evidence.
+
 No real USB audio playback, trusted-LAN audio playback, audible output, or
 Android device `AudioTrack` runtime write evidence was collected. This blocked
 record does not close any real-device USB/LAN audio gate.
@@ -31,7 +36,9 @@ record does not close any real-device USB/LAN audio gate.
 ## Offline evidence collected instead
 
 - Protocol contract gate: `make protocol` passed.
-- Mac source gate: `cd baseline/MacHost && swift build` passed; Swift test
+- Mac source and self-test gates passed: `cd baseline/MacHost && swift build`
+  plus `.build/debug/"Vibe Screen" --transport-self-test` and
+  `.build/debug/"Vibe Screen" --audio-capture-self-test`. Swift XCTest
   execution is blocked locally by missing `XCTest` in the selected Command Line
   Tools environment.
 - Android focused gate passed for Protocol v1 session/framing, PCM playback unit

@@ -27,8 +27,10 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .denied, .restricted:
             return false
-        case .authorized, .notDetermined:
+        case .authorized:
             return true
+        case .notDetermined:
+            return false
         @unknown default:
             return false
         }
