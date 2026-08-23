@@ -55,6 +55,7 @@ phase3-test: phase3-go-test
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3_webrtc -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-05-nubia-p0110-internet --check
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/release_gate_summary.py --output .build/phase3-release-gate-summary.json
 
 phase3-go-test:
 	cd packages/security && test -z "$$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./...

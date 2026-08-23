@@ -77,6 +77,20 @@ UI_MARKER_FLAGS = (
     "repair=true",
     "secure_dialogs=true",
 )
+EVIDENCE_BOUNDARIES = {
+    "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case",
+    "network_scope": "local_direct_and_forced_local_coturn_only",
+    "public_internet": "not_claimed",
+    "real_remote_turn": "not_claimed",
+    "screen_capture_kit": "not_claimed",
+    "real_display_content": "not_claimed",
+    "android_mediacodec_decode": "not_claimed",
+    "visible_mac_input_effects": "not_claimed",
+    "rotation": "open_harness_has_no_rotation_assertion",
+    "disconnect_reconnect": "not_claimed",
+    "revocation_repair": "local_android_keystore_and_profile_store_only",
+    "soak": "not_claimed",
+}
 
 
 class InteropError(RuntimeError):
@@ -1125,15 +1139,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 hashlib.sha256,
             ).hexdigest(),
         },
-        "evidence_boundaries": {
-            "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case",
-            "screen_capture_kit": "not_claimed",
-            "real_display_content": "not_claimed",
-            "rotation": "open_harness_has_no_rotation_assertion",
-            "disconnect_reconnect": "not_claimed",
-            "revocation_repair": "local_android_keystore_and_profile_store_only",
-            "soak": "not_claimed",
-        },
+        "evidence_boundaries": EVIDENCE_BOUNDARIES,
     }
     return report
 
