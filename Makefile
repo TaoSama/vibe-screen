@@ -27,6 +27,10 @@ IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 HOST_PID ?=
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B
+RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
+RECONNECT_TIMING_ARTIFACT_ARGS ?=
+RECONNECT_TIMING_NOTES_ARG ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -40,7 +44,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -163,6 +167,17 @@ evidence-trusted-lan-preflight: require-evidence-serial
 		$(if $(strip $(TRUSTED_LAN_HOST_IPV4)),--mac-host-ipv4 $(TRUSTED_LAN_HOST_IPV4),) \
 		$(if $(strip $(TRUSTED_LAN_REQUIRE_HOST_LISTENER)),--require-host-listener,) \
 		--output $(EVIDENCE_DIR)/trusted-lan-preflight.json
+
+evidence-reconnect-timing-blocked:
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.reconnect_timing \
+		--blocked \
+		--target-device "$(RECONNECT_TIMING_TARGET_DEVICE)" \
+		$(RECONNECT_TIMING_BLOCKER_ARGS) \
+		$(RECONNECT_TIMING_ARTIFACT_ARGS) \
+		$(RECONNECT_TIMING_NOTES_ARG) \
+		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json || test $$? -eq 3
 
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)

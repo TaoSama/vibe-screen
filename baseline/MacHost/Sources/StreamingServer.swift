@@ -418,6 +418,7 @@ class StreamingServer: EncodedFrameSink {
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
     private var droppedFrames: UInt64 = 0
+    private var firstFrameSentTelemetryEpoch: UInt64?
     private var lastStatsTime = DispatchTime.now()
     private var displayWidth = 1920
     private var displayHeight = 1080
@@ -741,6 +742,7 @@ class StreamingServer: EncodedFrameSink {
             guard let self else { return }
             self.framePipelineGeneration &+= 1
             self.sendInFlight = false
+            self.firstFrameSentTelemetryEpoch = nil
             _ = self.pendingFrames.reset(requiresKeyframe: true)
         }
         recordTelemetry(
@@ -3029,6 +3031,19 @@ class StreamingServer: EncodedFrameSink {
                 }
 
                 let sendAge = DispatchTime.now().uptimeNanoseconds - frame.timestamp
+                if self.firstFrameSentTelemetryEpoch != frame.sessionEpoch {
+                    self.firstFrameSentTelemetryEpoch = frame.sessionEpoch
+                    self.recordTelemetry(
+                        "first_frame_sent",
+                        epoch: frame.sessionEpoch,
+                        attributes: [
+                            "bytes": .integer(Int64(frame.data.count)),
+                            "keyframe": .boolean(frame.isKeyframe),
+                            "packet_channel": .string(frame.packetChannel.telemetryLabel),
+                            "client_generation": .unsigned(frame.clientGeneration)
+                        ]
+                    )
+                }
                 self.updateStats(
                     bytes: frame.data.count,
                     frameAgeNs: sendAge,
@@ -3353,3 +3368,14 @@ class StreamingServer: EncodedFrameSink {
 
 extension StreamingServer: ClipboardServer {}
 extension StreamingServer: FileTransferServer {}
+
+private extension InternetTransportChannel {
+    var telemetryLabel: String {
+        switch self {
+        case .control: return "control"
+        case .media: return "media"
+        case .audio: return "audio"
+        case .bulk: return "bulk"
+        }
+    }
+}

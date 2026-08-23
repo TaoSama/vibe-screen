@@ -634,6 +634,10 @@ class StreamClient(
                 controllerConnectionAcks.reset()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
+                emitTelemetry(
+                    "protocol_v1_accepted",
+                    mapOf("session_epoch" to localSessionState.connectionEpoch, "transport" to transport.name),
+                )
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
                 configureLegacyMode(decision.firstByte)
@@ -1139,6 +1143,8 @@ class StreamClient(
                 mediaFrameRouter.receiveProtocolFrame(
                     payload = frame.payload,
                     connectionEpoch = localSessionState.connectionEpoch,
+                    acceptsEpoch = localSessionState::acceptsEpoch,
+                    currentEpoch = localSessionState::currentEpoch,
                     validateMedia = session::validateMedia,
                 )
             }

@@ -27,6 +27,7 @@ internal class StreamMediaFrameRouter(
     private var bytesReceived = 0L
     private var framesReceived = 0L
     private var diagFrameCount = 0L
+    private var firstFrameTelemetryEpoch = 0L
     private var lastStatsTime = nowMs()
     private var lastKeyframeReceivedNs = 0L
     private val bufferPool = ArrayDeque<ByteArray>(MAX_POOLED_BUFFERS)
@@ -44,6 +45,7 @@ internal class StreamMediaFrameRouter(
         bytesReceived = 0L
         framesReceived = 0L
         diagFrameCount = 0L
+        firstFrameTelemetryEpoch = 0L
         lastStatsTime = nowMs()
         lastKeyframeReceivedNs = 0L
     }
@@ -112,6 +114,8 @@ internal class StreamMediaFrameRouter(
     fun receiveProtocolFrame(
         payload: ByteArray,
         connectionEpoch: Long,
+        acceptsEpoch: (Long) -> Boolean = { true },
+        currentEpoch: () -> Long = { connectionEpoch },
         validateMedia: (dev.vibescreen.protocol.v1.MediaPacketHeader) -> ProtocolV1Session.MediaDisposition,
     ) {
         val decoded =
@@ -126,6 +130,18 @@ internal class StreamMediaFrameRouter(
                     cause = failure,
                 )
             }
+        if (!acceptsEpoch(connectionEpoch)) {
+            releaseBuffer(decoded.annexB)
+            emitTelemetry(
+                "frame_dropped",
+                mapOf(
+                    "reason" to "stale_session_epoch",
+                    "frame_epoch" to connectionEpoch,
+                    "current_epoch" to currentEpoch(),
+                ),
+            )
+            return
+        }
         val mediaDisposition = validateMedia(decoded.header)
         if (mediaDisposition != ProtocolV1Session.MediaDisposition.ACCEPT) {
             releaseBuffer(decoded.annexB)
@@ -159,6 +175,7 @@ internal class StreamMediaFrameRouter(
         metadata: Boolean,
     ) {
         checkKeyframeFreshness(frame.receiveTimestampNs, frame.keyframe)
+        recordFirstReceivedFrame(frame, metadata)
         if (emitDiagnostics) {
             diagFrameCount++
             if (diagFrameCount == 1L) {
@@ -175,6 +192,30 @@ internal class StreamMediaFrameRouter(
             releaseBuffer(frame.buffer)
         }
         updateStats(frame.size, frame.connectionEpoch)
+    }
+
+    private fun recordFirstReceivedFrame(
+        frame: StreamMediaFrame,
+        metadata: Boolean,
+    ) {
+        if (frame.configEpoch <= LEGACY_CONFIG_EPOCH) return
+        if (firstFrameTelemetryEpoch == frame.connectionEpoch) return
+        firstFrameTelemetryEpoch = frame.connectionEpoch
+        diagLog(
+            "First frame: size=${frame.size}, keyframe=${frame.keyframe}, " +
+                "metadata=$metadata, session_epoch=${frame.connectionEpoch}, config_epoch=${frame.configEpoch}, " +
+                "callback=${hasFrameSink()}",
+        )
+        emitTelemetry(
+            "first_frame_received",
+            mapOf(
+                "session_epoch" to frame.connectionEpoch,
+                "config_epoch" to frame.configEpoch,
+                "size" to frame.size,
+                "keyframe" to frame.keyframe,
+                "metadata" to metadata,
+            ),
+        )
     }
 
     private fun acquireBuffer(minSize: Int): ByteArray {

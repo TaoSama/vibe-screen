@@ -109,6 +109,52 @@ Open the in-stream settings button:
 Connected windows use `FLAG_SECURE`, so ADB screenshots of the stream may be
 black. Use diagnostic logs plus direct observation or an external camera.
 
+## Reconnect timing gate
+
+Use this gate only for a Protocol v1 USB or trusted-LAN session. It is stricter
+than the reconnect smoke checks: the timing window starts at the operator
+recorded disruption timestamp and ends only when Android records the decoder's
+first output frame after recovery. A Host accept, Android retry line, Activity
+callback, or first encoded frame is diagnostic only.
+
+Before starting, acquire the Android device lease and record device identity,
+Host PID, Host build/signing identity, ADB reverse state, and the private
+Android diag log path. Every ADB command for the current shared phone must use
+the explicit serial `adb -s EP0110PZ0B9110300B ...`, and evidence from that
+phone must remain labeled Nubia P0110/pacific/Android 16.
+
+Collect one `reconnect-timing-observations.json` with separate attempts for all
+three disruption kinds:
+
+- `client-kill`: force-stop or kill only the Android app process, then wait for
+  Protocol v1 recovery and first decoder output frame with the same Host PID.
+- `adb-reverse-disconnect`: remove `tcp:54321`, restore it, then prove the
+  restored mapping and first decoder output frame in the recovered session.
+- `lan-network-interrupt`: interrupt the trusted-LAN path, then prove AES-GCM
+  record negotiation, no legacy plaintext fallback, Protocol v1 recovery, and
+  first decoder output frame.
+
+Evaluate the record with the fail-closed summary tool:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.reconnect_timing \
+  "$EVIDENCE_DIR/reconnect-timing-observations.json" \
+  --output "$EVIDENCE_DIR/reconnect-timing-summary.json"
+```
+
+Use `--require-disruption` only for an incremental single-scenario readiness
+run. If Host signing, TCC, port `54321`, ADB, or LAN conditions block the run,
+write a blocked summary instead of reclassifying ordinary reconnect logs:
+
+```bash
+make evidence-reconnect-timing-blocked \
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" --blocker "Host is not listening on 127.0.0.1:54321 in this worktree"' \
+  RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
+  RECONNECT_TIMING_NOTES_ARG='--notes "Blocked readiness record only; no real Protocol v1 reconnect timing attempt was run."'
+```
+
 ### Rotated host-display acceptance
 
 Client-local rotation is the Android Surface/input transform selected in the
