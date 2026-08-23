@@ -2255,8 +2255,15 @@ final class InternetProductSessionTests: XCTestCase {
         let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
         let replacementInstalled = expectation(description: "replacement session installed")
         let replacementAuthenticating = expectation(description: "replacement authenticating")
+        var didInstallReplacement = false
+        var didObserveReplacementAuthenticating = false
+        defer {
+            harness.session.onStateChanged = nil
+            harness.session.close()
+        }
         harness.session.onStateChanged = { state in
-            if state == .recovering(attempt: 1) {
+            if state == .recovering(attempt: 1), !didInstallReplacement {
+                didInstallReplacement = true
                 do {
                     try harness.session.provideFreshSession(
                         configuration: replacementConfiguration
@@ -2265,7 +2272,9 @@ final class InternetProductSessionTests: XCTestCase {
                 } catch {
                     XCTFail("Installing the replacement session failed: \(error)")
                 }
-            } else if state == .authenticating, replacement.didStart {
+            } else if state == .authenticating, replacement.didStart,
+                      !didObserveReplacementAuthenticating {
+                didObserveReplacementAuthenticating = true
                 replacementAuthenticating.fulfill()
             }
         }
