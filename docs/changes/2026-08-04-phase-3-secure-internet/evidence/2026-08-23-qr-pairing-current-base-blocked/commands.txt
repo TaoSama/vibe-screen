@@ -19,10 +19,11 @@ landed it was rebased to 44feacfc296a5e0411a43b74e3c657a0ddf95e2d, and after
 PR #172 landed it was rebased to
 1230caf597f52e285d6e9e6b985aad185cb07fc8. After PR #296 landed it was rebased
 to a8720948a0e448afa0ff390f2f10c53583948f12. After PR #268 landed it was
-rebased to edd34e1d8d907c2ef4d8eb93c3663c7632b06fa7.
+rebased to edd34e1d8d907c2ef4d8eb93c3663c7632b06fa7. After PR #158 landed it
+was rebased to 4d7e90dcce5b033ec366591816cec571382e3249.
 
 Focused local verification was run at PR commit
-cdbb67d4c91e44205b3ee042d5452d7d12d54524 after the latest rebase and
+a8ad54284578ec5f536908c1b413b79543f17dd2 after the latest rebase and
 canonical-query review fix. Later
 evidence-only metadata commits do not change executable sources.
 
@@ -34,7 +35,7 @@ Command:
 uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
 ```
 
-Result: passed, 4 passed in 0.12s.
+Result: passed, 4 passed in 0.09s.
 
 ## Android QR pairing and profile tests
 
@@ -90,15 +91,15 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
 
 Result: passed, Ran 28 tests, OK.
 
-After rebasing to edd34e1d8d907c2ef4d8eb93c3663c7632b06fa7, the broader
+After rebasing to 4d7e90dcce5b033ec366591816cec571382e3249, the broader
 current-base Phase 3 verification also passed as part of the PR refresh:
 
 ```bash
 make phase3-test
 ```
 
-Result: passed. `tests/phase3` ran 195 tests in 63.656s,
-`tests/phase3_webrtc` ran 55 tests in 64.033s, and
+Result: passed. `tests/phase3` ran 195 tests in 15.321s,
+`tests/phase3_webrtc` ran 55 tests in 28.052s, and
 `release_gate_summary.py` printed `Phase 3 release gate summary: OPEN`.
 
 ## macOS Swift build and lease self-test

@@ -24,10 +24,10 @@
       ],
       "path": "acceptance.json",
       "result": "pass",
-      "sha256": "d8445798b9f7fb7cec2d2fbe8d56d02322d444d584db32d4f4a04e4e427dd369"
+      "sha256": "c5a8b81d44fdf036d81de7d5a879d14717d06cf82fad00d665d3ad58e6dc04fa"
     },
     {
-      "bytes": 5500,
+      "bytes": 5581,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,7 +37,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "75bf9174f989c9207c079169b3ad628431e3561a2d3ac0840ae7fec35b1f77c2"
+      "sha256": "d256a8125b0d79b31f772591c0800aec50afe1073a9e615ddd3b3964dc183c39"
     }
   ],
   "categories": [
