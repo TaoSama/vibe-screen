@@ -452,6 +452,7 @@ class StreamingServer: EncodedFrameSink {
     private let protocolV1FileTransferPolicy = ProtocolV1FileTransferPolicy.default
     private var inputBuffer = Data()
     private var expectedAuthToken: Data?
+    private var pendingAcceptedConnections: [ObjectIdentifier: NWConnection] = [:]
     private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
     private var pendingWirelessConnections: [ObjectIdentifier: NWConnection] = [:]
     private let sessionEpochGate = SessionEpochGate()
@@ -464,6 +465,7 @@ class StreamingServer: EncodedFrameSink {
     private let telemetry: TelemetryRecording?
     private let wakeHostAuthorizer: any WakeHostAuthorizing
     private let wakeHostPacketSender: any WakeHostPacketSending
+    private var acceptedConnectionObserverForSelfTest: ((NWConnection) -> Void)?
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
 
@@ -619,7 +621,9 @@ class StreamingServer: EncodedFrameSink {
 
     private func handleConnection(_ newConnection: NWConnection) {
         debugLog("New connection incoming...")
-        newConnection.stateUpdateHandler = { [weak self] state in
+        pendingAcceptedConnections[ObjectIdentifier(newConnection)] = newConnection
+        newConnection.stateUpdateHandler = { [weak self, weak newConnection] state in
+            guard let newConnection else { return }
             debugLog("Connection state: \(state)")
             switch state {
             case .ready:
@@ -639,6 +643,7 @@ class StreamingServer: EncodedFrameSink {
     }
 
     private func onConnectionReady(_ conn: NWConnection) {
+        pendingAcceptedConnections.removeValue(forKey: ObjectIdentifier(conn))
         switch mode {
         case .usb:
             guard conn.endpoint.isLoopback else {
@@ -695,6 +700,7 @@ class StreamingServer: EncodedFrameSink {
         let generation = activeConnectionGeneration
         clientCallbackGeneration.advance(to: generation)
         connection = conn
+        acceptedConnectionObserverForSelfTest?(conn)
         activeConnectionIsWireless = isWireless
         self.lanSecureRecordSession?.close()
         self.lanSecureRecordSession = lanRecordSession
@@ -746,6 +752,7 @@ class StreamingServer: EncodedFrameSink {
         // Promote the authenticated candidate before cancelling the previous
         // session. Its stale cancellation callback then cannot mutate this one.
         if let oldConnection, oldConnection !== conn {
+            oldConnection.stateUpdateHandler = nil
             oldConnection.cancel()
         }
 
@@ -772,8 +779,11 @@ class StreamingServer: EncodedFrameSink {
     }
 
     private func connectionEnded(_ conn: NWConnection) {
+        pendingAcceptedConnections.removeValue(forKey: ObjectIdentifier(conn))
         cancelHandshakeTimeout(for: conn)
         pendingWirelessConnections.removeValue(forKey: ObjectIdentifier(conn))
+        conn.stateUpdateHandler = nil
+        conn.cancel()
         guard connection === conn else { return }
         connection = nil
         connectionReady = false
@@ -1131,10 +1141,10 @@ class StreamingServer: EncodedFrameSink {
         completion: (() -> Void)? = nil
     ) {
         let bytes = HandshakeCodec.encodeResponse(status: status)
-        conn.send(content: bytes, completion: .contentProcessed { _ in
+        conn.send(content: bytes, completion: .contentProcessed { [weak conn] _ in
             if thenClose {
                 debugLog("Auth rejected (\(status)), closing connection")
-                conn.cancel()
+                conn?.cancel()
             } else {
                 completion?()
             }
@@ -1723,6 +1733,14 @@ class StreamingServer: EncodedFrameSink {
         return snapshot
     }
 
+    func observeAcceptedConnectionsForSelfTest(
+        _ observer: ((NWConnection) -> Void)?
+    ) {
+        performOnNetworkQueue {
+            self.acceptedConnectionObserverForSelfTest = observer
+        }
+    }
+
     func sendDisplaySize() {
         guard connectionProtocolMode == .legacy,
               let connection = connection else { return }
@@ -1741,7 +1759,8 @@ class StreamingServer: EncodedFrameSink {
         isReceiving = true
         debugLog("Starting input receive loop... (touch=\(touchEnabled ? "on" : "off"))")
 
-        receiveQueue.async { [weak self] in
+        receiveQueue.async { [weak self, weak conn] in
+            guard let conn else { return }
             self?.touchReceiveLoop(on: conn, generation: generation)
         }
     }
@@ -1752,8 +1771,9 @@ class StreamingServer: EncodedFrameSink {
               isReceiving,
               !isStopped else { return }
 
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self, weak conn] data, _, isComplete, error in
             guard let self,
+                  let conn,
                   self.connection === conn,
                   self.activeConnectionGeneration == generation,
                   self.isReceiving,
@@ -1787,7 +1807,8 @@ class StreamingServer: EncodedFrameSink {
                 }
             }
 
-            self.receiveQueue.async {
+            self.receiveQueue.async { [weak self, weak conn] in
+                guard let self, let conn else { return }
                 self.touchReceiveLoop(on: conn, generation: generation)
             }
         }
@@ -2160,8 +2181,8 @@ class StreamingServer: EncodedFrameSink {
             do {
                 let bytes = try ProtocolV1TransportFrame(channel: .control, payload: payload).encoded()
                 let closesAfterSend = shouldClose && index == controlPayloads.count - 1
-                sendSessionBytes(bytes, on: conn, completion: .contentProcessed { error in
-                    if closesAfterSend || error != nil { conn.cancel() }
+                sendSessionBytes(bytes, on: conn, completion: .contentProcessed { [weak conn] error in
+                    if closesAfterSend || error != nil { conn?.cancel() }
                 })
             } catch {
                 debugLog("Unable to encode Protocol v1 control frame: \(error)")
@@ -3156,7 +3177,13 @@ class StreamingServer: EncodedFrameSink {
                 timeout.cancel()
             }
             self.pendingHandshakeTimeouts.removeAll()
+            for (_, pendingConnection) in self.pendingAcceptedConnections {
+                pendingConnection.stateUpdateHandler = nil
+                pendingConnection.cancel()
+            }
+            self.pendingAcceptedConnections.removeAll()
             for (_, pendingConnection) in self.pendingWirelessConnections {
+                pendingConnection.stateUpdateHandler = nil
                 pendingConnection.cancel()
             }
             self.pendingWirelessConnections.removeAll()
@@ -3268,7 +3295,13 @@ class StreamingServer: EncodedFrameSink {
             timeout.cancel()
         }
         pendingHandshakeTimeouts.removeAll()
+        for (_, pendingConnection) in pendingAcceptedConnections {
+            pendingConnection.stateUpdateHandler = nil
+            pendingConnection.cancel()
+        }
+        pendingAcceptedConnections.removeAll()
         for (_, pendingConnection) in pendingWirelessConnections {
+            pendingConnection.stateUpdateHandler = nil
             pendingConnection.cancel()
         }
         pendingWirelessConnections.removeAll()
@@ -3290,6 +3323,7 @@ class StreamingServer: EncodedFrameSink {
         recoveryController.stop()
         receiveQueue.sync {}
 
+        stoppedConnection?.stateUpdateHandler = nil
         stoppedConnection?.cancel()
         listener?.cancel()
         if connection === stoppedConnection {
