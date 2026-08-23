@@ -25,10 +25,8 @@ No input-device snapshot was collected because ADB was not run.
 - stylus-evidence.json: structured summary and status.
 - commands.txt: repository setup, coordination preflight, observed lock, and the
   exact fail-closed evidence command.
-- device-preflight.txt: separate read-only device identity and stylus capability
-  notes collected after the script fail-closed; this is readiness context only,
-  not acceptance-pass evidence.
-- host-stylus.log: new Host log bytes from the passing observation window, required only for a passing physical drawing run.
+- No device preflight, Host stylus log, or drawing-app screenshot was produced
+  for this lock-blocked record because ADB and Host observation were not run.
 
 ## Gate rule
 

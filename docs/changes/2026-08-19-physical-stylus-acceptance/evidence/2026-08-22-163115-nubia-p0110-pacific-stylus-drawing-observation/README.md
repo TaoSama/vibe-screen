@@ -4,7 +4,8 @@
 
 - Status: blocked_physical_stylus_not_observed
 - Result: The gate remains open. A physical drawing observation window was
-  attempted, but no raw stylus events appeared on `/dev/input/event7`, the
+  attempted, but the retained raw input capture produced zero lines, no
+  same-run `getevent -lp` resolver output was retained for that capture, the
   Android app diagnostic log did not contain a same-window `Stylus forwarded:`
   contact sample, and no Host `Stylus injected:` excerpt was produced.
 
@@ -22,7 +23,8 @@ The Android coordination locks were absent before this run. A short lease was
 created for this task, ADB reverse was configured for `tcp:54321`, and
 `dev.telemachus.display/.MainActivity` was launched on the target device. The
 Host app was running at `/Applications/Vibe Screen.app/Contents/MacOS/Vibe
-Screen`, with logs at `/Users/luwentao/Library/Logs/Telemachus/telemachus.log`.
+Screen`; the Host log path was captured in `preflight.txt` and referenced in
+the command transcript as `$HOST_STYLUS_LOG`.
 
 During the 30 second observation window, the script required all pass evidence
 from the same window: physical stylus contact, Android `Stylus forwarded:`
@@ -33,13 +35,14 @@ tilt, and visible macOS drawing output. The pass criteria were not met.
 
 - `preflight.txt`: device identity, foreground app, ADB reverse state, Host
   process, and Host log path.
-- `android-getevent-stylus.log`: raw `/dev/input/event7` capture during the
-  observation window; this file contains zero lines.
+- `android-getevent-stylus.log`: raw diagnostic capture during the observation
+  window; this file contains zero lines. Because no same-run input-node resolver
+  output was retained, this capture cannot support a passing gate result.
 - `android-getevent-stylus.err`: stderr from the raw event capture.
 - `script-output.txt` and `script-stderr.txt`: acceptance script result.
 - `host-stylus-search.txt`: post-window search for Host stylus injection lines.
 - `android-screen-before.png` and `android-screen-after.png`: Android
-  screenshots bracketing the attempt.
+  screenshots bracketing the attempt, matching the retained command transcript.
 - `commands.txt`: exact commands and outcome summary.
 
 ## Gate rule

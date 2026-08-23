@@ -1,1 +1,7 @@
 Host stylus search after observation window:
+
+Query:
+  rg -n "Stylus injected:" "$HOST_STYLUS_LOG"
+
+Result:
+  exit=1; no "Stylus injected:" lines matched in the post-window Host log search.

@@ -4,7 +4,7 @@ Required evidence identity for any later device run: Nubia P0110 / pacific / And
 
 Repository setup:
   git fetch origin --prune
-  git worktree add /Users/luwentao/.codex/worktrees/vibe-screen-stylus-acceptance -b codex/physical-stylus-nubia-evidence origin/main
+  git worktree add "$WORKTREE_DIR/vibe-screen-stylus-acceptance" -b codex/physical-stylus-nubia-evidence origin/main
 
 Coordination preflight:
   test ! -e /tmp/vibe-screen-device-soak.lock

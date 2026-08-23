@@ -14,24 +14,32 @@ Device lease created for this task:
 Commands:
   adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
   adb -s EP0110PZ0B9110300B shell am start -W -n dev.telemachus.display/.MainActivity
-  adb -s EP0110PZ0B9110300B shell getevent -lt /dev/input/event7 > android-getevent-stylus.log
+  adb -s EP0110PZ0B9110300B exec-out screencap -p > android-screen-before.png
+  adb -s EP0110PZ0B9110300B shell getevent -lp > android-getevent-lp.txt
+  STYLUS_EVENT_NODE=<resolved-from-same-run-getevent-lp>
+  adb -s EP0110PZ0B9110300B shell getevent -lt "$STYLUS_EVENT_NODE" > android-getevent-stylus.log
+  HOST_STYLUS_LOG=<host-log-path-from-preflight>
   python3 scripts/android_stylus_acceptance.py \
     --serial EP0110PZ0B9110300B \
     --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-163115-nubia-p0110-pacific-stylus-drawing-observation \
     --allow-existing-device-lock \
     --observed-physical-drawing \
     --drawing-observation "Operator attempted a physical stylus stroke on Nubia P0110/pacific in the Vibe Screen stream while a macOS drawing surface was visible; acceptance remains subject to same-window Android and Host logs." \
-    --host-log /Users/luwentao/Library/Logs/Telemachus/telemachus.log \
+    --host-log "$HOST_STYLUS_LOG" \
     --observe-seconds 30
   adb -s EP0110PZ0B9110300B exec-out screencap -p > android-screen-after.png
 
 Result:
   script_exit=2
   error: Android diag log is missing a single stylus forwarding line with contact, non-zero pressure, and all required fields
+  android-getevent-lp.txt: not retained for this historical run
   android-getevent-stylus.log line count: 0
+  The raw capture is diagnostic-only and cannot support a pass because the
+  same-run event-node resolver output was not retained.
 
 Device lease cleanup:
-  /tmp/vibe-screen-device-android.lock was truncated to zero bytes after the attempt.
+  rm -f /tmp/vibe-screen-device-android.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
 
 Gate:
   Physical-stylus drawing-app confirmation remains open.
