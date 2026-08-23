@@ -73,3 +73,27 @@ The retained blocked evidence record is
   - Result: blocked in this local Command Line Tools environment before test
     execution with `no such module 'XCTest'`; the MacHost product target
     compiled successfully with `swift build`.
+
+## 2026-08-23 current-base refresh
+
+The current-base closure owner was replayed on `origin/main`
+`3d23de133adc4414b4c70430c619fadbe7d90207`. This refresh only keeps the AV1
+gate fail-closed and reviewable; it does not add Host/device AV1 streaming
+evidence.
+
+- `make protocol`
+  - Result: passed.
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 5 tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd baseline/MacHost && swift build`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `git diff --check`
+  - Result: passed.
+- `cd baseline/MacHost && swift test --filter CodecLimitsTests --filter ProtocolV1SessionTests --filter InternetProductProtocolCodecTests`
+  - Result: blocked in this local Command Line Tools environment before test
+    execution with `no such module 'XCTest'`; the MacHost product target
+    compiled successfully with `swift build`.
