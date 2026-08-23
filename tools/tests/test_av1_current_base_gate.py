@@ -16,6 +16,7 @@ AV1_BLOCKED_EVIDENCE_PATH = (
 )
 MAC_CODEC_LIMITS_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/CodecLimits.swift"
 MAC_VIDEO_ENCODER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/VideoEncoder.swift"
+MAC_STREAMING_SERVER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/StreamingServer.swift"
 ANDROID_CODEC_CAPABILITIES_PATH = (
     REPOSITORY_ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/CodecCapabilities.kt"
 )
@@ -29,6 +30,28 @@ IOS_VIDEO_CONFIG_VALIDATOR_PATH = (
     REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenCore/VideoConfigValidator.swift"
 )
 IOS_VIDEO_DECODER_PATH = REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenVideo/VideoDecoder.swift"
+MAC_CODEC_LIMITS_TESTS_PATH = (
+    REPOSITORY_ROOT / "baseline/MacHost/Tests/TelemachusTests/CodecLimitsTests.swift"
+)
+MAC_PROTOCOL_SESSION_TESTS_PATH = (
+    REPOSITORY_ROOT / "baseline/MacHost/Tests/TelemachusTests/ProtocolV1SessionTests.swift"
+)
+MAC_INTERNET_CODEC_TESTS_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/MacHost/Tests/TelemachusTests/InternetProductProtocolCodecTests.swift"
+)
+ANDROID_DECODER_SELECTION_TESTS_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt"
+)
+ANDROID_INTERNET_SESSION_TESTS_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt"
+)
+IOS_MEDIA_GATE_SELF_TEST_PATH = (
+    REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenCore/VideoMediaGateSelfTest.swift"
+)
+IOS_SELF_TEST_PATH = REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenIOSSelfTest/main.swift"
 
 
 class AV1CurrentBaseGateTests(unittest.TestCase):
@@ -53,6 +76,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
     def test_macos_source_keeps_av1_out_of_current_stream_admission(self) -> None:
         codec_limits = MAC_CODEC_LIMITS_PATH.read_text(encoding="utf-8")
         video_encoder = MAC_VIDEO_ENCODER_PATH.read_text(encoding="utf-8")
+        streaming_server = MAC_STREAMING_SERVER_PATH.read_text(encoding="utf-8")
 
         self.assertRegex(codec_limits, r"enum\s+StreamCodec\s*\{[^}]*case\s+hevc[^}]*case\s+h264")
         self.assertNotRegex(codec_limits, r"enum\s+StreamCodec\s*\{[^}]*case\s+av1")
@@ -61,6 +85,8 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("case .av1, .unspecified, .UNRECOGNIZED: return nil", codec_limits)
         self.assertNotIn("codecs.append(.av1)", codec_limits)
         self.assertNotIn("kCMVideoCodecType_AV1", video_encoder)
+        self.assertIn("supportedCodecs: [.hevc, .h264]", streaming_server)
+        self.assertNotIn("supportedCodecs: [.av1", streaming_server)
 
     def test_android_source_keeps_av1_diagnostic_only_and_rejected(self) -> None:
         codec_capabilities = ANDROID_CODEC_CAPABILITIES_PATH.read_text(encoding="utf-8")
@@ -85,6 +111,24 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("throw VideoConfigValidationError.unsupportedDecodeProfile", validator)
         self.assertNotIn("kCMVideoCodecType_AV1", decoder)
         self.assertIn("throw VideoDecoderError.unsupportedCodec(codec)", decoder)
+
+    def test_native_behavior_tests_cover_current_av1_admission_boundary(self) -> None:
+        codec_limits_tests = MAC_CODEC_LIMITS_TESTS_PATH.read_text(encoding="utf-8")
+        protocol_session_tests = MAC_PROTOCOL_SESSION_TESTS_PATH.read_text(encoding="utf-8")
+        internet_codec_tests = MAC_INTERNET_CODEC_TESTS_PATH.read_text(encoding="utf-8")
+        android_decoder_tests = ANDROID_DECODER_SELECTION_TESTS_PATH.read_text(encoding="utf-8")
+        android_internet_tests = ANDROID_INTERNET_SESSION_TESTS_PATH.read_text(encoding="utf-8")
+        ios_media_gate_self_test = IOS_MEDIA_GATE_SELF_TEST_PATH.read_text(encoding="utf-8")
+        ios_self_test = IOS_SELF_TEST_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("testAV1CapabilityProbeDoesNotAdvertiseUnsupportedStreamCodec", codec_limits_tests)
+        self.assertIn("testAV1OfferFallsBackToLocallyEncodableCodec", protocol_session_tests)
+        self.assertIn("testAV1OnlyOfferFailsClosedUntilHostEncoderExists", protocol_session_tests)
+        self.assertIn("testInternetProductVideoConfigurationRejectsAV1UntilEncoderExists", internet_codec_tests)
+        self.assertIn("av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled", android_decoder_tests)
+        self.assertIn("av1VideoConfigurationRejectionIsReportedBeforeMediaActivation", android_internet_tests)
+        self.assertIn("AV1 config was accepted without an AV1 decode capability", ios_media_gate_self_test)
+        self.assertIn("AV1 decoder configuration was accepted without an implementation", ios_self_test)
 
     def test_gate_document_names_current_base_owner_and_blocked_evidence(self) -> None:
         gate = AV1_GATE_PATH.read_text(encoding="utf-8")
