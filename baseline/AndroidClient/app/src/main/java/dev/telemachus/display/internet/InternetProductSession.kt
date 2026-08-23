@@ -1175,6 +1175,7 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         reason: String,
     ) {
+        var closeTransport = false
         withLifecycleGate {
             var stateChanged = false
             val reserved =
@@ -1184,6 +1185,7 @@ class InternetProductSession internal constructor(
                     } else {
                         stateChanged = state != InternetProductSessionState.RECOVERING
                         freshSessionRequested = true
+                        closeTransport = true
                         invalidateTransportOwnerLocked()
                         state = InternetProductSessionState.RECOVERING
                         true
@@ -1191,6 +1193,7 @@ class InternetProductSession internal constructor(
                 }
             if (!reserved) return
             if (stateChanged) callbacks.onStateChanged(InternetProductSessionState.RECOVERING)
+            if (closeTransport) transport.close()
             if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
                 callbacks.onFreshSessionRequired(reason)
             }

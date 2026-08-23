@@ -466,6 +466,26 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   evidence, and absent capture/encoder/decoder output. No ADB command was run
   for this derived preflight, and no Phase 3 release gate changes state.
 
+- A 2026-08-21 local implementation check on branch
+  `codex/phase3-network-handoff-recovery` covers the network-recovery code
+  slice only. Android focused unit tests passed for `WebRtcInternetTransportTest`
+  and `InternetProductSessionTest`, proving bounded ICE restart attempts,
+  unsupported-renegotiation fresh-session fallback, old-owner invalidation, and
+  late-callback rejection in the JVM test harness. The macOS `Vibe Screen`
+  product built and `--phase3-webrtc-loopback-self-test` passed, including the
+  local ICE restart loopback; `--phase3-product-signaling-self-test` failed
+  closed because `VIBE_SIGNALING_URL`, `VIBE_SIGNALING_SESSION_ID`,
+  `VIBE_SIGNALING_HOST_TOKEN`, and `VIBE_SIGNALING_DEVICE_TOKEN` were not
+  provided. The broader `--phase3-internet-self-test` passed locally, including
+  `sdkTransmissionEpochGate=true`, `recoveryExhaustionFailClosed=true`, and
+  `recoveryExhaustionFreshSession=true`; this is still an offline transport
+  self-test rather than product-device handoff evidence.
+  `swift test --filter InternetProductSessionTests` could not run in
+  the local Command Line Tools environment because `xctest`/`XCTest` were
+  unavailable. No Android device, real ScreenCaptureKit media, public Internet path, remote
+  TURN route, controlled network handoff, packet capture, latency, or soak run
+  was executed; all corresponding release gates remain open.
+
 - A 2026-08-23 current-base service slice adds an admin-only Authority session
   profile endpoint for already registered devices, makes Authority return the
   role authorization expiry, lets Signaling adopt Authority-issued sessions as

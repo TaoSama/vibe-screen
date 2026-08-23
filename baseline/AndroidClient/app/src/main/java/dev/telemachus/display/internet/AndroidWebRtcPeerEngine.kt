@@ -89,6 +89,15 @@ class AndroidWebRtcPeerEngine internal constructor(
     private var startClaimed = false
     private var closed = false
     private var endOfCandidatesSent = false
+    private var connectionFailureReported = false
+
+    private sealed class RestartPreparation {
+        data class Ready(val snapshot: PeerRestartSnapshot) : RestartPreparation()
+
+        data class RequiresFreshSession(val reason: String) : RestartPreparation()
+
+        data class Failed(val reason: String) : RestartPreparation()
+    }
 
     override fun start(
         configuration: PeerConfiguration,
@@ -283,50 +292,62 @@ class AndroidWebRtcPeerEngine internal constructor(
         )
     }
 
-    override fun restartIce() {
-        val restart =
+    override fun restartIce(): WebRtcIceRestartResult {
+        val preparation: RestartPreparation =
             try {
                 sendLinearizer.withGate {
-                    val snapshot =
-                        synchronized(lock) {
-                            val activeConfiguration = configuration.takeIf { !closed }
-                                ?: throw IllegalStateException("WebRTC engine is not running")
-                            check(activeConfiguration.signaling?.supportsInSessionRenegotiation == true) {
-                                "The configured signaling service requires a fresh session for ICE restart"
-                            }
-                            val activePeer = peerConnection.takeIf { !closed }
-                                ?: throw IllegalStateException("WebRTC engine is not running")
-                            routeGeneration++
-                            mediaBatches.clear()
-                            audioRecords.clear()
-                            endOfCandidatesSent = false
-                            remoteDescriptionSet = false
-                            pendingRemoteCandidates.clear()
-                            selectedRoute = null
-                            routeResolutionFailed = false
-                            connectedReported = false
-                            acceptCandidateRoutes = false
+                    val restartPreparation = synchronized(lock) {
+                        val activeConfiguration = configuration.takeIf { !closed }
+                            ?: return@withGate RestartPreparation.Failed("WebRTC engine is not running")
+                        val signaling = activeConfiguration.signaling
+                            ?: return@withGate RestartPreparation.RequiresFreshSession(
+                                "The configured signaling service requires a fresh session for ICE restart",
+                            )
+                        if (!signaling.supportsInSessionRenegotiation) {
+                            return@withGate RestartPreparation.RequiresFreshSession(
+                                "The configured signaling service requires a fresh session for ICE restart",
+                            )
+                        }
+                        val activePeer = peerConnection.takeIf { !closed }
+                            ?: return@withGate RestartPreparation.Failed("WebRTC engine is not running")
+                        routeGeneration++
+                        mediaBatches.clear()
+                        audioRecords.clear()
+                        endOfCandidatesSent = false
+                        remoteDescriptionSet = false
+                        pendingRemoteCandidates.clear()
+                        selectedRoute = null
+                        routeResolutionFailed = false
+                        connectedReported = false
+                        connectionFailureReported = false
+                        acceptCandidateRoutes = false
+                        RestartPreparation.Ready(
                             PeerRestartSnapshot(
                                 activePeer,
                                 routeGeneration,
-                                activeConfiguration.signaling?.role == PeerRole.HOST,
+                                signaling.role == PeerRole.HOST,
                                 channelObserverBindingsLocked(routeGeneration),
-                            )
-                        }
+                            ),
+                        )
+                    }
                     mediaRetryGate.cancel()
                     audioRetryGate.cancel()
-                    snapshot
+                    restartPreparation
                 }
             } catch (failure: Throwable) {
-                fail(failure)
-                throw failure
+                return WebRtcIceRestartResult.Failed(failure.message ?: "ICE restart failed")
+            }
+        val restart =
+            when (preparation) {
+                is RestartPreparation.Ready -> preparation.snapshot
+                is RestartPreparation.RequiresFreshSession -> return WebRtcIceRestartResult.RequiresFreshSession(preparation.reason)
+                is RestartPreparation.Failed -> return WebRtcIceRestartResult.Failed(preparation.reason)
             }
         routeResolutionTimeout.cancel()
         try {
             rebindChannelObservers(restart.observerBindings)
         } catch (failure: Throwable) {
-            fail(failure)
-            throw failure
+            return WebRtcIceRestartResult.Failed(failure.message ?: "ICE restart failed")
         }
         val shouldCreateOffer =
             try {
@@ -347,10 +368,10 @@ class AndroidWebRtcPeerEngine internal constructor(
                     }
                 }
             } catch (failure: Throwable) {
-                fail(failure)
-                throw failure
+                return WebRtcIceRestartResult.Failed(failure.message ?: "ICE restart failed")
             }
         if (shouldCreateOffer) createOffer()
+        return WebRtcIceRestartResult.Started
     }
 
     override fun applyVideoProfile(profile: VideoProfile) {
@@ -864,9 +885,15 @@ class AndroidWebRtcPeerEngine internal constructor(
     private inner class PeerObserver : PeerConnection.Observer {
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
             when (state) {
-                PeerConnection.PeerConnectionState.CONNECTING -> synchronized(lock) { acceptCandidateRoutes = true }
+                PeerConnection.PeerConnectionState.CONNECTING -> synchronized(lock) {
+                    connectionFailureReported = false
+                    acceptCandidateRoutes = true
+                }
                 PeerConnection.PeerConnectionState.CONNECTED -> {
-                    synchronized(lock) { acceptCandidateRoutes = true }
+                    synchronized(lock) {
+                        connectionFailureReported = false
+                        acceptCandidateRoutes = true
+                    }
                     maybeReportConnected()
                 }
                 PeerConnection.PeerConnectionState.DISCONNECTED,
@@ -900,9 +927,50 @@ class AndroidWebRtcPeerEngine internal constructor(
                     }
                     transition.target?.onDisconnected()
                 }
-                PeerConnection.PeerConnectionState.FAILED -> fail(IllegalStateException("WebRTC ICE/DTLS connection failed"))
+                PeerConnection.PeerConnectionState.FAILED -> {
+                    val transition = disconnectForFailureRecovery()
+                    transition.target?.onConnectionFailed("WebRTC ICE/DTLS connection failed")
+                }
                 else -> Unit
             }
+        }
+
+        private fun disconnectForRecovery(): PeerDisconnectSnapshot {
+            val transition =
+                sendLinearizer.withGate {
+                    val snapshot = synchronized(lock) {
+                        routeGeneration++
+                        connectedReported = false
+                        selectedRoute = null
+                        routeResolutionFailed = false
+                        acceptCandidateRoutes = false
+                        mediaBatches.clear()
+                        audioRecords.clear()
+                        PeerDisconnectSnapshot(
+                            observer.takeIf { !closed },
+                            channelObserverBindingsLocked(routeGeneration),
+                        )
+                    }
+                    mediaRetryGate.cancel()
+                    audioRetryGate.cancel()
+                    snapshot
+                }
+            routeResolutionTimeout.cancel()
+            try {
+                rebindChannelObservers(transition.observerBindings)
+            } catch (failure: Throwable) {
+                fail(failure)
+                return PeerDisconnectSnapshot(null, emptyList())
+            }
+            return transition
+        }
+
+        private fun disconnectForFailureRecovery(): PeerDisconnectSnapshot {
+            val shouldReport = synchronized(lock) {
+                (!connectionFailureReported).also { if (it) connectionFailureReported = true }
+            }
+            if (!shouldReport) return PeerDisconnectSnapshot(null, emptyList())
+            return disconnectForRecovery()
         }
 
         override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent) {
@@ -942,9 +1010,22 @@ class AndroidWebRtcPeerEngine internal constructor(
         }
 
         override fun onDataChannel(channel: DataChannel) = registerRemoteChannel(channel)
-        override fun onRenegotiationNeeded() = Unit
+        override fun onRenegotiationNeeded() {
+            val shouldCreateOffer =
+                synchronized(lock) {
+                    !closed &&
+                        configuration?.signaling?.role == PeerRole.HOST &&
+                        configuration?.signaling?.supportsInSessionRenegotiation == true
+                }
+            if (shouldCreateOffer) createOffer()
+        }
         override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
-        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Unit
+        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+            if (state == PeerConnection.IceConnectionState.FAILED) {
+                val transition = disconnectForFailureRecovery()
+                transition.target?.onConnectionFailed("WebRTC ICE connection failed")
+            }
+        }
         override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
         override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
         override fun onAddStream(stream: MediaStream) = Unit

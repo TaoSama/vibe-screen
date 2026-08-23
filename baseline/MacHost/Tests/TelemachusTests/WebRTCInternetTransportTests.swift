@@ -1648,7 +1648,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertTrue(media.isEmpty)
     }
 
-    func testRecoveryExhaustionClosesEngineAndRejectsReconnectAndLateInbound() throws {
+    func testRecoveryExhaustionWithoutFreshSessionCallbackClosesEngineAndRejectsReconnectAndLateInbound() throws {
         let engine = FakeWebRTCEngine()
         let transport = WebRTCInternetTransport(
             engine: engine,
@@ -1693,6 +1693,35 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertFailure(transport.sendControl(Data([3])), expected: .notConnected)
         XCTAssertFailure(transport.sendMedia(frame(3, isKeyframe: true)), expected: .notConnected)
         XCTAssertTrue(engine.sentPayloads.isEmpty)
+    }
+
+    func testRecoveryExhaustionRequestsFreshSessionWhenCallbackIsInstalled() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: engine.localCipher,
+            recoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2)
+        )
+        var recoveryAttempts: [Int] = []
+        transport.onFreshSessionRecoveryRequired = { recoveryAttempts.append($0) }
+        try transport.start(configuration: validConfiguration())
+        engine.emitConnection(.connected(path: .direct))
+
+        engine.emitConnection(.disconnected)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 1))
+        XCTAssertEqual(engine.restartICECount, 1)
+        engine.emitConnection(.connecting)
+        engine.emitConnection(.disconnected)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
+        XCTAssertEqual(engine.restartICECount, 2)
+        engine.emitConnection(.connecting)
+        engine.emitConnection(.disconnected)
+
+        XCTAssertEqual(recoveryAttempts, [2])
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
+        XCTAssertFalse(engine.didClose)
+        XCTAssertEqual(engine.restartICECount, 2)
+        XCTAssertFailure(transport.sendControl(Data([3])), expected: .notConnected)
     }
 
     func testPathChangesDuringRecoveryDoNotConsumeRecoveryBudget() throws {

@@ -120,6 +120,22 @@ class WebRtcInternetTransport(
         stateEvent?.let(eventSink)
     }
 
+    override fun onConnectionFailed(reason: String) {
+        val stateEvent =
+            synchronized(lock) {
+                if (closed) return
+                transitionLocked(
+                    if (activeNetwork == null) {
+                        InternetTransportState.SUSPENDED
+                    } else {
+                        InternetTransportState.RECOVERING
+                    },
+                )
+            }
+        stateEvent?.let(eventSink)
+        attemptIceRestart(reason)
+    }
+
     override fun onControlMessage(
         sessionEpoch: Long,
         payload: ByteArray,
@@ -167,7 +183,6 @@ class WebRtcInternetTransport(
     override fun onAvailable(network: NetworkSnapshot) {
         var stateEvent: InternetTransportEvent.StateChanged? = null
         var restartReason: String? = null
-        var forceRestart = false
         synchronized(lock) {
             if (closed) return
             if (!network.validated) {
@@ -185,15 +200,13 @@ class WebRtcInternetTransport(
             if (state == InternetTransportState.SUSPENDED) {
                 stateEvent = transitionLocked(InternetTransportState.RECOVERING)
                 restartReason = "validated network became available"
-                forceRestart = true
-                scheduleRecoveryLocked()
-            } else if (previousNetworkId != null && previousNetworkId != network.id) {
+            } else if (previousNetworkId != null && previousNetworkId != network.id && state.isConnected()) {
                 stateEvent = transitionLocked(InternetTransportState.RECOVERING)
                 restartReason = "network changed from $previousNetworkId to ${network.id}"
             }
         }
         stateEvent?.let(eventSink)
-        restartReason?.let { requestFreshSession(it, forceRestart) }
+        restartReason?.let { attemptIceRestart(it) }
     }
 
     override fun onLost(networkId: String) {
@@ -222,13 +235,11 @@ class WebRtcInternetTransport(
                 val recoveryAt = nextRecoveryAtMillis
                 if (recoveryAt != null && now >= recoveryAt) {
                     restartReason = "peer disconnected"
-                    reconnectAttempt++
                     nextRecoveryAtMillis = null
-                    scheduleRecoveryLocked()
                 }
             }
         }
-        restartReason?.let { requestFreshSession(it, force = true) }
+        restartReason?.let { attemptIceRestart(it) }
     }
 
     override fun close() {
@@ -268,6 +279,44 @@ class WebRtcInternetTransport(
             }
         if (shouldRequest) {
             eventSink(InternetTransportEvent.FreshSessionRequested(reason))
+        }
+    }
+
+    private fun attemptIceRestart(reason: String) {
+        val action =
+            synchronized(lock) {
+                if (closed || activeNetwork == null) return
+                if (reconnectAttempt >= MAX_ICE_RESTART_ATTEMPTS) {
+                    nextRecoveryAtMillis = null
+                    pendingFreshSessionReason = null
+                    RecoveryAction.RequestFreshSession(
+                        "ICE recovery exhausted after $reconnectAttempt attempts: $reason",
+                    )
+                } else {
+                    reconnectAttempt++
+                    nextRecoveryAtMillis = null
+                    scheduleRecoveryLocked()
+                    RecoveryAction.RestartIce(reconnectAttempt)
+                }
+            }
+        when (action) {
+            is RecoveryAction.RestartIce -> {
+                when (val result = peerEngine.restartIce()) {
+                    WebRtcIceRestartResult.Started -> Unit
+                    is WebRtcIceRestartResult.RequiresFreshSession -> {
+                        synchronized(lock) {
+                            nextRecoveryAtMillis = null
+                            pendingFreshSessionReason = null
+                        }
+                        requestFreshSession(result.reason, force = true)
+                    }
+                    is WebRtcIceRestartResult.Failed -> requestFreshSession(
+                        "ICE restart attempt ${action.attempt} failed: ${result.reason}",
+                        force = true,
+                    )
+                }
+            }
+            is RecoveryAction.RequestFreshSession -> requestFreshSession(action.reason, force = true)
         }
     }
 
@@ -315,10 +364,17 @@ class WebRtcInternetTransport(
         val route: InternetTransportEvent?,
     )
 
+    private sealed class RecoveryAction {
+        data class RestartIce(val attempt: Int) : RecoveryAction()
+
+        data class RequestFreshSession(val reason: String) : RecoveryAction()
+    }
+
     companion object {
         private const val RECOVERY_REQUEST_COOLDOWN_MS = 5_000L
         private const val INITIAL_RECOVERY_DELAY_MS = 500L
         private const val MAX_RECOVERY_DELAY_MS = 8_000L
         private const val MAX_BACKOFF_SHIFT = 4
+        private const val MAX_ICE_RESTART_ATTEMPTS = 5
     }
 }

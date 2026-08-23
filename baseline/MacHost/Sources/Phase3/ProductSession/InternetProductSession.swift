@@ -23,6 +23,7 @@ struct FreshSessionRecoveryBudget {
 final class InternetProductSession: EncodedFrameSink {
     private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
     private static let rawBulkAdmissionTransferID = Data("internet-bulk-v1".utf8)
+    private static let freshSessionRecoveryTimeoutMilliseconds: UInt32 = 120_000
 
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
@@ -138,6 +139,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var committedVideoConfiguration: InternetProductVideoConfiguration?
     private var pendingRuntimeVideoConfiguration: PendingRuntimeVideoConfiguration?
     private var deferredRotationDegrees: Int?
+    private var transportRecoveryResumeState: InternetProductSessionState?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
     private var advancedChannelGate: AdvancedChannelSecurityGate?
@@ -184,6 +186,7 @@ final class InternetProductSession: EncodedFrameSink {
             }
             try configuration.validate()
             try startFreshSession(configuration)
+            freshSessionRecoveryBudget.reset()
         }
     }
 
@@ -202,6 +205,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             configuration = nil
@@ -232,6 +236,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             let changed = state != .revoked
@@ -502,6 +507,7 @@ final class InternetProductSession: EncodedFrameSink {
         stopHeartbeat()
         stopNegotiationDeadline()
         terminalProtocolFailureGeneration = nil
+        let retiredTransport = transport
         guard advanceSessionGeneration() else {
             throw InternetProductSessionError.securityFailure(
                 "Internet product session generation was exhausted."
@@ -548,9 +554,10 @@ final class InternetProductSession: EncodedFrameSink {
         let transport = WebRTCInternetTransport(
             engine: engineFactory(),
             packetCipher: securitySession.packetCipher,
-            limits: configuration.limits,
-            recoveryStrategy: .freshSession
+            limits: configuration.limits
         )
+        self.transport = nil
+        retiredTransport?.close()
         installCallbacks(on: transport, generation: generation)
         self.configuration = configuration
         self.codec = codec
@@ -560,6 +567,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
@@ -669,20 +677,18 @@ final class InternetProductSession: EncodedFrameSink {
                 return
             }
             activePath = path
+            if case .recovering = state {
+                finishTransportRecovery(path: path)
+                return
+            }
             if isStreaming {
                 setState(.streaming(path))
                 onKeyframeRequired?()
             } else if state == .connecting {
                 setState(.authenticating)
             }
-        case .recovering:
-            // Fresh-session recovery is driven solely by
-            // onFreshSessionRecoveryRequired, which publishes the session's
-            // .recovering state through beginFreshSessionRecovery. Reacting to
-            // the transport's own .recovering here would publish the state
-            // twice and race the synchronous fresh-session install performed
-            // inside the recovering-state callback.
-            break
+        case .recovering(let attempt):
+            beginTransportRecovery(attempt: attempt, generation: generation)
         case .failed(let reason): fail(.securityFailure(reason))
         case .closed:
             if state != .revoked { setState(.closed) }
@@ -812,9 +818,13 @@ final class InternetProductSession: EncodedFrameSink {
                     codec: &codec
                 )
 
-            case .disconnectNotice:
+            case .disconnectNotice(let notice):
                 self.codec = codec
-                beginFreshSessionRecovery(attempt: 1, generation: generation)
+                if notice.mayResume {
+                    beginFreshSessionRecovery(attempt: 1, generation: generation)
+                } else {
+                    close()
+                }
 
             default:
                 let payloadName: String
@@ -1402,8 +1412,10 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        configuration = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -1411,7 +1423,37 @@ final class InternetProductSession: EncodedFrameSink {
         if stateChanged { onStateChanged?(recoveringState) }
         guard sessionGeneration == recoveryGeneration,
               state == recoveringState else { return }
+        scheduleFreshSessionRecoveryDeadline(generation: recoveryGeneration)
         onFreshSessionRecoveryRequired?(sessionAttempt)
+    }
+
+    private func beginTransportRecovery(attempt: Int, generation: UInt64) {
+        guard generation == sessionGeneration,
+              terminalProtocolFailureGeneration == nil,
+              attempt > 0 else { return }
+        stopHeartbeat()
+        stopNegotiationDeadline()
+        if transportRecoveryResumeState == nil {
+            transportRecoveryResumeState = state
+        }
+        setState(.recovering(attempt: attempt))
+    }
+
+    private func finishTransportRecovery(path: InternetPathKind) {
+        let resumeState = transportRecoveryResumeState
+        transportRecoveryResumeState = nil
+        switch resumeState {
+        case .streaming:
+            setState(.streaming(path))
+            startHeartbeat()
+            onKeyframeRequired?()
+        case .awaitingVideoConfiguration:
+            setState(.awaitingVideoConfiguration)
+        case .connecting, .authenticating, .recovering, nil:
+            setState(.authenticating)
+        case .idle, .failed, .revoked, .closed:
+            break
+        }
     }
 
     private func resetQueuedWork(
@@ -1623,6 +1665,23 @@ final class InternetProductSession: EncodedFrameSink {
         timer.resume()
     }
 
+    private func scheduleFreshSessionRecoveryDeadline(generation: UInt64) {
+        stopNegotiationDeadline()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(
+            Int(Self.freshSessionRecoveryTimeoutMilliseconds)
+        ))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.sessionGeneration == generation else { return }
+            guard case .recovering = self.state else { return }
+            self.fail(.securityFailure(
+                "fresh-session recovery timed out before replacement credentials were supplied"
+            ))
+        }
+        negotiationTimer = timer
+        timer.resume()
+    }
+
     private func stopNegotiationDeadline() {
         negotiationTimer?.cancel()
         negotiationTimer = nil
@@ -1644,6 +1703,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         // Close the retired transport before publishing the terminal state so

@@ -310,6 +310,8 @@ interface WebRtcPeerEngine : AutoCloseable {
 
         fun onDisconnected()
 
+        fun onConnectionFailed(reason: String) = onDisconnected()
+
         fun onControlMessage(
             sessionEpoch: Long,
             payload: ByteArray,
@@ -362,9 +364,17 @@ interface WebRtcPeerEngine : AutoCloseable {
     /** Raw bulk transport record only; this does not imply clipboard or file-transfer support. */
     fun sendBulkRecord(payload: ByteArray): Boolean = false
 
-    fun restartIce()
+    fun restartIce(): WebRtcIceRestartResult
 
     fun applyVideoProfile(profile: VideoProfile)
+}
+
+sealed class WebRtcIceRestartResult {
+    data object Started : WebRtcIceRestartResult()
+
+    data class RequiresFreshSession(val reason: String) : WebRtcIceRestartResult()
+
+    data class Failed(val reason: String) : WebRtcIceRestartResult()
 }
 
 data class NetworkSnapshot(
