@@ -47,8 +47,8 @@
       "required": ["aggregate", "aggregate_pr", "device_acceptance_pr", "repository"],
       "properties": {
         "aggregate": {"const": "current-base-ios-acceptance"},
-        "aggregate_pr": {"const": "#182"},
-        "device_acceptance_pr": {"const": "#182"},
+        "aggregate_pr": {"const": "#290"},
+        "device_acceptance_pr": {"const": "#290"},
         "repository": {"const": "TaoSama/vibe-screen"}
       }
     },

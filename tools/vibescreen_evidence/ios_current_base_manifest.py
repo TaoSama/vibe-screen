@@ -24,11 +24,23 @@ from .manifest import ManifestError, repository_state
 
 KIND = "ios_current_base_readiness_manifest"
 AGGREGATE_OWNER = "current-base-ios-acceptance"
-AGGREGATE_OWNER_PR = "#182"
-DEVICE_ACCEPTANCE_OWNER_PR = "#182"
+AGGREGATE_OWNER_PR = "#290"
+DEVICE_ACCEPTANCE_OWNER_PR = "#290"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 
-SCOPE_PRS = ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+SCOPE_PRS = [
+    "#182",
+    "#196",
+    "#207",
+    "#208",
+    "#209",
+    "#238",
+    "#251",
+    "#253",
+    "#257",
+    "#279",
+    "#282",
+]
 SOURCE_DOCS = [
     "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
@@ -98,7 +110,7 @@ def _normalize_pr(value: str) -> str:
     else:
         digits = candidate
     if not digits.isdigit():
-        raise ManifestError("--device-acceptance-owner-pr must be a PR number such as #182")
+        raise ManifestError("--device-acceptance-owner-pr must be a PR number such as #290")
     owner_pr = f"#{int(digits)}"
     if owner_pr != DEVICE_ACCEPTANCE_OWNER_PR:
         raise ManifestError(
@@ -242,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--device-acceptance-owner-pr",
         default=DEVICE_ACCEPTANCE_OWNER_PR,
-        help="PR owning sanitized iOS device acceptance evidence validation, default #182",
+        help="PR owning sanitized iOS current-base acceptance evidence validation, default #290",
     )
     parser.add_argument("--notes")
     parser.add_argument(

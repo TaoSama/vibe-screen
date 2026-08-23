@@ -37,11 +37,12 @@ evidence covers every supported state.
 
 ## iOS current-base readiness
 
-The current-base iOS aggregate owner is PR #182. Use the aggregate gate to keep
-that owner connected to the narrower signing, VideoToolbox, advanced-adapter,
-AVAudioEngine/PCM, HDR, native-input, reconnect, and trusted-LAN secure-record
-tasks without claiming a device pass before real iPhone and iPad evidence
-exists:
+The current-base iOS aggregate owner is PR #290. Merged PR #182 remains the
+historical sanitized device-acceptance baseline. Use the aggregate gate to keep
+the current owner connected to the narrower signing, VideoToolbox,
+advanced-adapter, AVAudioEngine/PCM, HDR, native-input, reconnect, and
+trusted-LAN secure-record tasks without claiming a device pass before real
+iPhone and iPad evidence exists:
 
 ```sh
 make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base

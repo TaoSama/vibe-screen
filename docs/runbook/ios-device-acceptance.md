@@ -12,9 +12,10 @@ soak by default, and it must not reset macOS or Android permissions or clear
 Android application data. The machine gate validates retained summaries after a
 run; it does not start Xcode, the Host, LAN traffic, ADB, or device automation.
 
-The current-base aggregate owner is #182 (`current-base-ios-acceptance`). Before
-reporting readiness or a blocked run, produce the aggregate summary from the
-current base:
+The current-base aggregate owner is #290 (`current-base-ios-acceptance`). Merged
+PR `#182` is the historical sanitized device-acceptance baseline; do not use it
+as the current aggregate owner. Before reporting readiness or a blocked run,
+produce the aggregate summary from the current base:
 
 ```bash
 make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
@@ -24,6 +25,18 @@ The expected no-device result is fail-closed `blocked`. A nonzero exit from this
 command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
 retained gate evidence are missing. Do not convert that readiness output into a
 device pass.
+
+Before starting any install or device session, record and check the local iOS
+toolchain prerequisites. If any of these fail, stop at blocked readiness and do
+not begin the device run:
+
+```bash
+set -euo pipefail
+xcodebuild -version
+xcodebuild -showsdks | grep -qi 'iphoneos'
+identity_output="$(security find-identity -p codesigning -v)"
+printf '%s\n' "$identity_output" | grep -Eq '^[[:space:]]*[1-9][0-9]* valid identities found[[:space:]]*$'
+```
 
 ## Open gates
 
@@ -146,8 +159,8 @@ gate.
   "status": "open",
   "aggregate_owner": {
     "aggregate": "current-base-ios-acceptance",
-    "aggregate_pr": "#182",
-    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257"]
+    "aggregate_pr": "#290",
+    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257", "#279", "#282"]
   },
   "readiness_status": "blocked",
   "blocked_reasons": [],
