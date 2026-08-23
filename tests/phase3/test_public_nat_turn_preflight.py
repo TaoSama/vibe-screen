@@ -65,6 +65,9 @@ def valid_coturn_config(extra: str = "") -> str:
             "use-auth-secret",
             "fingerprint",
             "no-multicast-peers",
+            "no-cli",
+            "no-tlsv1",
+            "no-tlsv1_1",
             "cert=/run/secrets/tls_certificate",
             "pkey=/run/secrets/tls_private_key",
             "min-port=49152",
@@ -161,15 +164,28 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
             "::FFFF:0A00:0005",
             "::0:ffff:0a00:0005",
             "0:0:0:0:0:ffff:0a00:0005",
+            "8.8.8.8/",
+            "8.8.8.8//10.0.0.5",
+            "8.8.8.8/10.0.0.5/1",
+            "8.8.8.8/999.999.999.999",
         ):
             with self.subTest(external_ip=external_ip):
                 with self.assertRaises(PreflightError):
                     validate_external_ip(external_ip)
 
     def test_external_ip_allows_global_ipv6_with_ffff_group_and_dotted_mapping(self) -> None:
-        for external_ip in ("2606:4700:ffff::1", "2001:4860:4860:ffff::1", "::ffff:8.8.8.8"):
+        for external_ip in ("2606:4700:ffff::1", "2001:4860:4860:ffff::1", "::ffff:8.8.8.8", "8.8.8.8/10.0.0.5"):
             with self.subTest(external_ip=external_ip):
                 self.assertRegex(validate_external_ip(external_ip), r"^[0-9a-f]{64}$")
+
+    def test_coturn_config_requires_production_hardening_controls(self) -> None:
+        for required_line in ("no-cli", "no-tlsv1", "no-tlsv1_1"):
+            with self.subTest(required_line=required_line):
+                config = valid_coturn_config().replace(f"{required_line}\n", "")
+                with tempfile.TemporaryDirectory() as directory_name:
+                    path = write(Path(directory_name) / "production.conf", config)
+                    with self.assertRaisesRegex(PreflightError, "required TLS/auth lines"):
+                        validate_coturn_config(path)
 
     def test_read_json_error_detail_omits_filesystem_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

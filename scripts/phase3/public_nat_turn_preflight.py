@@ -39,6 +39,9 @@ REQUIRED_COTURN_LINES = {
     "use-auth-secret",
     "fingerprint",
     "no-multicast-peers",
+    "no-cli",
+    "no-tlsv1",
+    "no-tlsv1_1",
     "tls-listening-port=5349",
     "cert=/run/secrets/tls_certificate",
     "pkey=/run/secrets/tls_private_key",
@@ -410,8 +413,16 @@ def validate_pem_file(path: Path | None, label: str, marker: str, *, require_pri
 def validate_external_ip(value: str | None) -> str:
     if value is None or not value.strip():
         raise PreflightError("COTURN_EXTERNAL_IP must be provided")
-    public_part = value.split("/", 1)[0].strip()
-    _reject_non_dotted_ipv4_mapped(public_part)
+    parts = [part.strip() for part in value.split("/")]
+    if len(parts) > 2 or any(not part for part in parts):
+        raise PreflightError("COTURN_EXTERNAL_IP must be an IP or public/private IP mapping")
+    for part in parts:
+        _reject_non_dotted_ipv4_mapped(part)
+        try:
+            ipaddress.ip_address(part)
+        except ValueError as error:
+            raise PreflightError("COTURN_EXTERNAL_IP must be an IP or public/private IP mapping") from error
+    public_part = parts[0]
     if not _is_global_address(public_part):
         raise PreflightError("COTURN_EXTERNAL_IP public side is not globally routable")
     return stable_hash(public_part)

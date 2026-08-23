@@ -326,6 +326,10 @@ class ProductionProfileStaticTests(unittest.TestCase):
 
             rejected_inputs = (
                 ("/10.0.0.5", "relay.production.example.net", "public side must be globally routable"),
+                ("8.8.8.8/", "relay.production.example.net", "private side must be an IP address"),
+                ("8.8.8.8//10.0.0.5", "relay.production.example.net", "single public or public/private IP mapping"),
+                ("8.8.8.8/10.0.0.5/1", "relay.production.example.net", "single public or public/private IP mapping"),
+                ("8.8.8.8/999.999.999.999", "relay.production.example.net", "private side must be an IP address"),
                 ("::", "relay.production.example.net", "public side must be globally routable"),
                 ("224.0.0.1", "relay.production.example.net", "public side must be globally routable"),
                 ("240.0.0.1", "relay.production.example.net", "public side must be globally routable"),
@@ -335,6 +339,10 @@ class ProductionProfileStaticTests(unittest.TestCase):
                 ("::ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
                 ("::0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
                 ("0:0:0:0:0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("8.8.8.8/::ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped private side must use dotted IPv4 notation"),
+                ("192.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("8.8.8.8", "relay.lan", "production public DNS hostname"),
+                ("8.8.8.8", "relay.home.arpa", "production public DNS hostname"),
             )
             for external_ip, realm, expected_error in rejected_inputs:
                 with self.subTest(external_ip=external_ip):
