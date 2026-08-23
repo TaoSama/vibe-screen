@@ -3,8 +3,8 @@
   "date": "2026-08-23",
   "branch": "codex/phase3-pairing-flow",
   "base_ref": "origin/main",
-  "base_commit": "c4b8121d9346557ba5d0db7b5c3e63400c8569d2",
-  "verified_source_commit": "f5218726948c31c0740a208de136df42724d0b83",
+  "base_commit": "1230caf597f52e285d6e9e6b985aad185cb07fc8",
+  "verified_source_commit": "d1bc2cfbd401abd7b3a9eed08e5de71db9ef2f50",
   "verified_source_note": "Focused local verification was run at this PR commit after rebasing onto base_commit; later evidence-only metadata commits do not change executable sources.",
   "scope": "offline QR/manual pairing verifier and local lease fail-closed checks",
   "result": "blocked",
@@ -42,7 +42,7 @@
     {
       "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_authority_production_gates tests.phase3.test_release_gate_summary tests.phase3.test_authority_session_profile_contract -v",
       "result": "pass",
-      "summary": "Ran 27 tests in 0.354s, OK"
+      "summary": "Ran 28 tests, OK"
     },
     {
       "command": "cd services/authority && go test -count=1 ./internal/authority",

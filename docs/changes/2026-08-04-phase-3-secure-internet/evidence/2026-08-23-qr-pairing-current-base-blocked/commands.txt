@@ -13,11 +13,14 @@ the prior draft source, but this record documents a current-base slice rather
 than a direct merge.
 
 After origin/main advanced again, this branch was rebased to
-5e269a7dea2fa5dc8c29334748fc3705edd555ba, and after PR #303 landed it was
-rebased again to c4b8121d9346557ba5d0db7b5c3e63400c8569d2.
+5e269a7dea2fa5dc8c29334748fc3705edd555ba, after PR #303 landed it was
+rebased again to c4b8121d9346557ba5d0db7b5c3e63400c8569d2, after PR #313
+landed it was rebased to 44feacfc296a5e0411a43b74e3c657a0ddf95e2d, and after
+PR #172 landed it was rebased to
+1230caf597f52e285d6e9e6b985aad185cb07fc8.
 
 Focused local verification was run at PR commit
-f5218726948c31c0740a208de136df42724d0b83 after the latest rebase. Later
+d1bc2cfbd401abd7b3a9eed08e5de71db9ef2f50 after the latest rebase. Later
 evidence-only metadata commits do not change executable sources.
 
 ## Pairing fixture tests
@@ -82,7 +85,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   -v
 ```
 
-Result: passed, Ran 27 tests in 0.354s, OK.
+Result: passed, Ran 28 tests, OK.
+
+After rebasing to 1230caf597f52e285d6e9e6b985aad185cb07fc8, the broader
+current-base Phase 3 verification also passed as part of the PR refresh:
+
+```bash
+make phase3-test
+```
+
+Result: passed. `tests/phase3` ran 195 tests in 63.656s,
+`tests/phase3_webrtc` ran 55 tests in 64.033s, and
+`release_gate_summary.py` printed `Phase 3 release gate summary: OPEN`.
 
 ## macOS Swift build and lease self-test
 
