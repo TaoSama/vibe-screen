@@ -349,7 +349,7 @@ available, so `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
 [evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/](evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
 On 2026-08-23, a worktree refreshed on origin/main commit
-`305205070adc8f9c3012b811223394bd63be90d4` added a fail-closed latency
+`d3c62b25d05b6c13bd93388031f7a2dd3832270c` added a fail-closed latency
 preflight target and formal `gate_artifacts` checks for each README latency
 profile: USB connection proof for `usb-glass-to-glass-sub50`, LAN network and
 stream proof for `lan-glass-to-glass-sub80`, and physical input actuation proof
