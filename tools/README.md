@@ -366,6 +366,23 @@ with `PHASE2_DEVICE_CLASS=android_substitute` to create blocked evidence for the
 Nubia P0110/pacific or another non-tablet Android device; that result is useful
 readiness evidence but cannot close Phase 2 tablet acceptance.
 
+Use the aggregate owner report after child owners produce summaries, or when a
+current-base audit needs to prove that the README Phase 2 gates remain open:
+
+```sh
+make phase2-aggregate-owner EVIDENCE_DIR=.build/evidence \
+  PHASE2_TABLET_GATE=.build/evidence/soak-8h/phase2-tablet-gate.json \
+  PHASE2_TABLET_MANIFEST=.build/evidence/phase2-tablet-manifest.json \
+  PHASE2_HARDWARE_KEYBOARD=.build/evidence/hardware-keyboard-summary.json \
+  PHASE2_DEVICE_MEMORY=.build/evidence/soak-8h/phase2-device-memory-gate.json
+```
+
+Optional inputs include `PHASE2_DEVICE_ENVIRONMENT`, `PHASE2_SOAK_READINESS`,
+`PHASE2_TABLET_UI`, `PHASE2_RECOVERY`, and `PHASE2_LOGIN_HEADLESS`. Missing
+inputs become blocked owner rows. The report can close README Phase 2 gates only
+when every child gate provides an explicit pass or close signal and the
+package-aware tablet gate passes with a physical 8-9 inch tablet manifest.
+
 ### Short Host memory regression gate
 
 Use the bounded short diagnostic as a 10-17 minute regression gate before

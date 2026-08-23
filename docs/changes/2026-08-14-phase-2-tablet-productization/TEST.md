@@ -304,3 +304,32 @@ Validation performed for this tooling/documentation update:
 No physical 8-9 inch tablet was attached for this follow-up. The Nubia P0110
 remains a general Android substitute only and must not be used to claim Phase 2
 tablet acceptance.
+
+## 2026-08-23 current-base aggregate owner readiness
+
+This follow-up added a schema-backed `phase2-aggregate-owner` report for the
+open Phase 2 physical-tablet, thermal/power, charging, recovery, and 8h
+workstreams. The aggregate does not replace child gates; it records the current
+owner matrix, stale/duplicate PR classifications, and final README-level
+`blocked` verdict while hardware evidence is missing.
+
+Current owner/stale decisions recorded by the aggregate report:
+
+1. #174 owns the current-base eight-hour soak runner child path.
+2. #285 owns the device-environment child path for stand charging, controlled
+   thermal load, and power stability.
+3. #234 and #240 remain active child slices for tablet UI and hardware keyboard.
+4. #189 and #213 are merged baseline inputs.
+5. #252 is stale/duplicate by #285, #255 is partially superseded by #285 plus
+   aggregate owner mapping, and the old #274 branch is superseded by this
+   current-base aggregate owner.
+
+Validation performed for this tooling/readiness update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-23-phase2-aggregate-owner-current-base PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-pacific-hardware-keyboard-blocked/hardware-keyboard-summary.json PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
+
+The generated `phase2-aggregate-owner.json` records `verdict=blocked` and
+`can_close_readme_phase2_gates=false`. It consumes existing P0110 substitute
+readiness inputs only as blocked evidence; P0110/pacific remains an Android
+phone substitute and cannot close the physical 8-9 inch tablet gate.
