@@ -170,6 +170,8 @@ class InternetPairingTest {
         val payload = encoded.substringAfter("&o=")
 
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("vibescreen://pair?o=$payload&v=1") }
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("$encoded&") }
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("&o=", "&&o=")) }
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("&o=", "&o=%")) }
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("&o=", "&o=+")) }
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("$encoded#fragment") }

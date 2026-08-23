@@ -286,19 +286,24 @@ class InternetPairingURL private constructor(
                 uri.scheme == "vibescreen" && uri.host == "pair" && uri.path.isEmpty() &&
                     uri.userInfo == null && uri.port == -1 && uri.rawFragment == null,
             ) { "Unsupported pairing URL" }
-            val parameters = parseQuery(uri.rawQuery ?: "")
+            val rawQuery = uri.rawQuery ?: ""
+            val parameters = parseQuery(rawQuery)
             require(parameters.keys == setOf("v", "o") && parameters.getValue("v").single() == "1") { "Unsupported pairing URL version" }
             require(parameters.values.all { it.size == 1 }) { "Pairing URL contains duplicate parameters" }
             val encodedOffer = parameters.getValue("o").single()
             require(isBase64Url(encodedOffer)) { "Invalid pairing URL payload" }
+            require(rawQuery == "v=1&o=$encodedOffer") { "Unsupported pairing URL" }
             val payload = decodeBase64Url(encodedOffer)
             val json = runCatching { JsonParser.parseString(String(payload, StandardCharsets.UTF_8)).asJsonObject }
                 .getOrElse { throw IllegalArgumentException("Pairing URL payload is invalid", it) }
             return InternetPairingURL(InternetPairingOffer.fromJson(json))
         }
 
-        private fun parseQuery(query: String): Map<String, List<String>> =
-            query.split('&').filter(String::isNotEmpty).groupBy({ it.substringBefore('=') }, { it.substringAfter('=', "") })
+        private fun parseQuery(query: String): Map<String, List<String>> {
+            val components = query.split('&')
+            require(components.none(String::isEmpty)) { "Pairing URL contains empty query parameters" }
+            return components.groupBy({ it.substringBefore('=') }, { it.substringAfter('=', "") })
+        }
 
         private fun isBase64Url(value: String): Boolean =
             value.isNotEmpty() &&
