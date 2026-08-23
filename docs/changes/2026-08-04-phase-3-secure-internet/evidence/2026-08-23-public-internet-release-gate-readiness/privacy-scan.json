@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 3013,
+      "bytes": 3291,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,10 +11,10 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "0ae4aec5326245cc058e8fbd1896b883959fb8794b6c65fd16758382d0a3f6d1"
+      "sha256": "89f0450babbd23c270fb149fa761c71afa3798688da66984d6add8ffc87c5067"
     },
     {
-      "bytes": 1663,
+      "bytes": 2314,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,7 +24,20 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "f07ef3211f13308e1a76d254bc1ffdafa3f7285fea356d253372b5c55e5bb64d"
+      "sha256": "1f096d060cecc39cc1a95be1ede449dca67c396e9f009d0a39edbf64895d1915"
+    },
+    {
+      "bytes": 10070,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "phase3-internet-release-gate.json",
+      "result": "pass",
+      "sha256": "caf09c2725c8612062547c594d578330842c2dfb12aa17cc10dbcf0093278975"
     },
     {
       "bytes": 5063,
@@ -48,7 +61,7 @@
     "user_absolute_path"
   ],
   "result": "pass",
-  "rule_version": "2026-08-06.4",
+  "rule_version": "2026-08-23.1",
   "schema": "dev.vibescreen.evidence-privacy-scan/v1",
   "scope": {
     "excluded_derived_files": [

@@ -12,3 +12,6 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools
 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness --check
 (cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness && shasum -a 256 -c SHA256SUMS)
 git diff --check
+make phase3-internet-release-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness/privacy-scan.json
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-public-internet-release-gate-readiness && find . -type f ! -name SHA256SUMS -print | sort | xargs shasum -a 256 > SHA256SUMS)

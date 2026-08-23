@@ -548,6 +548,14 @@ also requires that continuity result to match clean current `HEAD` and include a
 retained Android screenshot or recording with an operator note proving decoded
 Mac desktop content is visible in the Android UI; missing UI evidence keeps the
 gate blocked.
+The current-base package-level checker
+`vibescreen_evidence.phase3_internet_release_gate` now makes the Internet
+soak/latency boundary executable: it requires public-path and deployed remote
+TURN proof, external-camera direct and relay latency raw samples, a complete
+two-hour mixed-route soak, real capture-to-MediaCodec continuity, handoff,
+revocation, and packet-capture confidentiality. Missing hardware, signing, TCC,
+network, raw samples, or soak artifacts are reported as blocked or insufficient
+and do not close the release gate.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
@@ -678,8 +686,12 @@ same-allocation relay credential rejection, active allocation disconnect, stale
 credential rejection, and post-revocation traffic denial; the current blocked
 evidence still lacks the live coturn/data-plane deployment observations.
 
-The target is roughly 80–150 ms on healthy Internet paths; relay distance and
-network quality may increase it.
+The formal Internet latency gate is `internet-glass-to-glass-sub150` for direct
+and relay public-Internet routes. It requires external-camera raw samples plus
+public-route provenance; local loopback, forced local coturn, host/client
+telemetry, and missing raw samples cannot close it. The target is roughly
+80-150 ms on healthy Internet paths; relay distance and network quality may
+increase it.
 
 ### Phase 4 — HarmonyOS NEXT
 

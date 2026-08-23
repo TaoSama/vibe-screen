@@ -16,7 +16,7 @@
     "raw_video": "raw-camera-placeholder.mov",
     "recorded_at": "2026-08-19T00:00:00Z",
     "operator": "fixture",
-    "sha256": "6da41ddaf06005de793b1b17b11fb8c3e91d5b64f633d7098fa66860334368eb"
+    "sha256": "41a0faf0e6789117510a697515e1588e68c9f04ce48b5b10da9357fa7365542c"
   },
   "samples": {
     "file": "samples.csv",

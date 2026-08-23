@@ -6,7 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.vibescreen_evidence.latency import GATE_INPUT_P95_SUB50, GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+    GATE_INPUT_P95_SUB50,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
+)
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 
 
@@ -50,6 +54,44 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         assert isinstance(samples, dict)
         samples["sha256"] = hashlib.sha256(encoded).hexdigest()
 
+    def valid_internet_route(self) -> dict[str, object]:
+        return {
+            "route": "forced-public-turn",
+            "turn_deployment": {
+                "provider": "example provider",
+                "region": "us-west",
+                "public_hostname": "turn.example.net",
+                "tls": "turns",
+                "credential_source": "authority-issued short-lived credential",
+            },
+            "remote_peer": {
+                "operator": "fixture",
+                "network": "remote carrier",
+                "public_ip_asn": "AS64500",
+                "location": "remote lab",
+            },
+            "candidate_pair": {
+                "local_candidate_type": "relay",
+                "remote_candidate_type": "relay",
+                "relay_protocol": "turn-tls",
+            },
+            "network_topology": {
+                "host_network": "home ISP",
+                "device_network": "remote carrier",
+                "same_private_network": False,
+            },
+        }
+
+    def make_internet_manifest(self, root: Path) -> dict[str, object]:
+        manifest = self.copy_valid_package(root)
+        manifest["transport"] = "internet"
+        manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+        self.replace_samples(root, manifest, "latency_ms\n90\n100\n110\n120\n130\n")
+        samples = manifest["samples"]
+        assert isinstance(samples, dict)
+        samples["annotation_method"] = "direct-latency-ms"
+        return manifest
+
     def test_valid_external_camera_package_passes(self) -> None:
         report = build_latency_evidence_report(
             manifest_path=FIXTURE_DIR / "external-camera-valid" / "manifest.json",
@@ -60,6 +102,99 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertTrue(report["gate"]["can_close_performance_gate"])
         self.assertEqual(report["gate"]["sample_count"], 5)
         self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_requires_public_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertTrue(
+            any("internet_route is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_internet_latency_package_accepts_public_forced_turn_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            manifest["internet_route"] = self.valid_internet_route()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["transport"], "internet")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_rejects_loopback_or_lan_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            turn = internet_route["turn_deployment"]
+            topology = internet_route["network_topology"]
+            assert isinstance(turn, dict)
+            assert isinstance(topology, dict)
+            turn["public_hostname"] = "127.0.0.1"
+            topology["same_private_network"] = True
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("public Internet TURN hostname" in reason for reason in reasons))
+        self.assertTrue(any("same_private_network must be false" in reason for reason in reasons))
+
+    def test_internet_latency_package_rejects_missing_remote_peer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            del internet_route["remote_peer"]
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("manifest.internet_route.remote_peer is required" in reason for reason in reasons))
+        self.assertTrue(any("internet_route.remote_peer.operator is required" in reason for reason in reasons))
+
+    def test_non_internet_latency_package_rejects_internet_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["internet_route"] = self.valid_internet_route()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "internet_route is only allowed for the internet-glass-to-glass-sub150 profile",
+            report["gate"]["reasons"],
+        )
 
     def test_missing_raw_camera_artifact_is_insufficient(self) -> None:
         report = build_latency_evidence_report(
@@ -137,6 +272,28 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertFalse(report["gate"]["can_close_performance_gate"])
         self.assertIn(
             "recording.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
+        )
+
+    def test_text_mov_placeholder_is_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-placeholder.mov"
+            raw_video.write_text("synthetic camera placeholder\n", encoding="utf-8")
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container, not a text placeholder",
             report["gate"]["reasons"],
         )
 
