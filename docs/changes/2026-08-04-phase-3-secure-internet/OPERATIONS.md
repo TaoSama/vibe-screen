@@ -11,9 +11,9 @@ WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
 multi-instance operation is not proved, no authoritative usage exporter is
-bundled, automatic issuance is not wired to Authority, the current relay/coturn
-deployment does not call Authority relay admission or coturn usage APIs, and no
-integrated implementation has run on a public host in this environment.
+bundled, Mac/Android automatic invocation of Authority profile issuance is not
+wired, and no integrated implementation has run on a public host in this
+environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -83,7 +83,8 @@ the recovery point and ledger invariants are verified.
 
 The supplied production profile runs one Authority process. It does not prove
 multi-process Authority operation, public ingress, NTP monitoring, database
-backup automation, automatic account/session issuance, relay/coturn wiring, or
+backup automation, Mac/Android automatic profile issuance, production coturn
+exporter/disconnect wiring, or
 active disconnection after revocation.
 
 The signaling service accepts one offer/answer per session and exposes an
@@ -97,6 +98,9 @@ a wholly fresh session instead of attempting a second offer. Operators must not
 enable unattended network-handoff recovery until authority issuance can deliver
 both endpoints a new session ID, role tokens, optional TURN credential,
 PeerConnection, and larger common epoch and a Mac/Android test proves it.
+An Authority profile issued through the admin API can be used by signaling after
+successful role authorization, but that is still an operator-mediated control
+flow rather than automatic product issuance.
 
 ## Service inventory
 
@@ -140,15 +144,20 @@ swift build -c release
 ```
 
 The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
-`pinned_host_id`, `signaling_url`, `signaling_session_id`, `session_epoch`,
-`identity_epoch`, `transcript_context`, `protocol_session_id`,
+`pinned_host_id`, `pinned_device_id`, `lease_device_key_id`, `signaling_url`,
+`signaling_session_id`, `session_epoch`, `host_identity_epoch`,
+`device_identity_epoch`, `transcript_context`, `protocol_session_id`,
 `signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
 server contains exactly `urls`, `username`, and `credential`; nullable values
-must be JSON `null`. The issuer adds `lease_host_key_id` and the DER ECDSA
-`lease_signature` over the Android canonical transcript. `session_epoch` in the
-unsigned input is an untrusted compatibility field: the issuer ignores its value,
-atomically reserves the next epoch from pairing-scoped durable Keychain state,
-replaces the field, and only then signs. Input JSON cannot select or reset it.
+must be JSON `null`. The issuer adds `expires_at`, `lease_host_key_id`, and the
+DER ECDSA `lease_signature` over the Android canonical transcript. The issuer
+verifies local host and paired-device identity bindings, reserves the exact
+Authority-supplied `session_epoch` in pairing-scoped durable Keychain state, and
+rejects any value at or below the local high-water mark before signing.
+
+This manual issuer is an operator bridge for unsigned Authority leases. It does
+not close the Mac/Android automatic profile issuance gate or prove Android UI,
+public Internet, or real media transport.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line
@@ -309,16 +318,20 @@ session creation, offer/poll exchange, device revocation rejecting both role
 tokens, and log redaction). The following remain open and must not be treated as
 shipped:
 
-- Mac and Android automatic profile/account/session issuance is not wired to the
-  authority.
-- Automatic account and device registration is not wired.
+- Mac and Android automatic invocation of Authority session-profile issuance is
+  not wired; local flows still require an operator to request the profile, pass
+  the unsigned lease through the Mac signer, and import the signed lease.
+- Automatic account and device registration is not wired; accounts and devices
+  must be registered through the authority admin API before a profile or
+  signaling admission can be created.
 - Relay credential admission is wired to the authority; the structured reconcile
   helper is locally tested, but coturn exporter, scheduled reconciliation loop,
   and active-allocation disconnect are not production proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
-  epoch operate in different scopes and are not yet unified.
+  durable high-water mark are both enforced, but product-side reconciliation and
+  recovery for mismatched floors remain open.
 - PostgreSQL durable signaling routing is implemented, including cross-instance
   message delivery and connection-scoped long-poll waiter leases that can be
   reclaimed after a failed instance loses its database backend. Global

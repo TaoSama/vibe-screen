@@ -434,11 +434,18 @@ func (s *PostgresStore) Invalidate(ctx context.Context, sessionID string) (bool,
 
 func (s *PostgresStore) Authorize(ctx context.Context, sessionID, token string) (Role, error) {
 	if s.authority != nil {
-		authorityRole, err := s.authority.AuthorizeRole(ctx, sessionID, token)
+		authorization, err := s.authority.AuthorizeRole(ctx, sessionID, token)
 		if err != nil {
 			return "", err
 		}
-		return roleFromAuthority(authorityRole)
+		role, err := roleFromAuthority(authorization.Role)
+		if err != nil {
+			return "", err
+		}
+		if err := s.ensureAuthorityRoutingSession(ctx, sessionID, authorization.ExpiresAt); err != nil {
+			return "", err
+		}
+		return role, nil
 	}
 	current, err := s.loadSession(ctx, sessionID)
 	if err != nil {
@@ -451,6 +458,35 @@ func (s *PostgresStore) Authorize(ctx context.Context, sessionID, token string) 
 		return RoleDevice, nil
 	}
 	return "", ErrUnauthorized
+}
+
+func (s *PostgresStore) ensureAuthorityRoutingSession(ctx context.Context, sessionID string, expiresAt time.Time) error {
+	return s.transaction(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
+			return err
+		}
+		if err := s.cleanupTx(ctx, tx); err != nil {
+			return err
+		}
+		current, err := s.sessionByIDTx(ctx, tx, sessionID)
+		if err == nil {
+			if current.Invalidated {
+				return ErrNotFound
+			}
+		} else if !errors.Is(err, ErrNotFound) {
+			return err
+		} else if err := s.enforceCapacityTx(ctx, tx); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, "INSERT INTO signaling_sessions(session_id,request_id,ttl_seconds,expires_at,host_token,device_token,created_at) VALUES ($1,$2,0,$3,NULL,NULL,$4) ON CONFLICT (session_id) DO UPDATE SET expires_at=EXCLUDED.expires_at, host_token=NULL, device_token=NULL WHERE signaling_sessions.invalidated=false", sessionID, authoritySessionRequestID(sessionID), expiresAt, s.now().UTC())
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) AddMessageAuthorized(ctx context.Context, sessionID string, role Role, request MessageRequest) (Event, bool, error) {

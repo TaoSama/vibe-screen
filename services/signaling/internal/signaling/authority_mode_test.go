@@ -56,6 +56,13 @@ func memoryStoreForTest(t *testing.T, service *Server) *MemoryStore {
 	return store
 }
 
+func authorityRoleResponse(role string) map[string]any {
+	return map[string]any{
+		"role":       role,
+		"expires_at": time.Now().Add(time.Hour).UTC(),
+	}
+}
+
 func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	var createCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -512,7 +519,7 @@ func TestAuthorityModePostMessageAuthorizesViaAuthority(t *testing.T) {
 				role = "host"
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": role})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse(role))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -539,6 +546,59 @@ func TestAuthorityModePostMessageAuthorizesViaAuthority(t *testing.T) {
 	}
 }
 
+func TestAuthorityModePostMessageAdoptsAuthorityIssuedSession(t *testing.T) {
+	var authorizeCalls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost {
+			authorizeCalls.Add(1)
+			var request struct {
+				RoleToken string `json:"role_token"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			if request.RoleToken != "host-token-1" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+
+	msgBody := `{"message_id":"offer-1","type":"offer","sdp":"v=0\r\n"}`
+	msgResp := performRequest(t, handler, http.MethodPost, "/v1/sessions/profile-issued-session/messages", "host-token-1", msgBody)
+	if msgResp.Code != http.StatusCreated {
+		t.Fatalf("post authority-issued message status = %d: %s", msgResp.Code, msgResp.Body.String())
+	}
+	if authorizeCalls.Load() != 2 {
+		t.Errorf("expected pre-parse and pre-commit authority checks, got %d", authorizeCalls.Load())
+	}
+
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	adopted := store.sessions["profile-issued-session"]
+	mappedSession := store.requestSessions[authoritySessionRequestID("profile-issued-session")]
+	store.mu.Unlock()
+	if adopted == nil {
+		t.Fatal("authority-issued session was not adopted as local routing metadata")
+	}
+	if adopted.hostToken != "" || adopted.deviceToken != "" || adopted.response.HostToken != "" || adopted.response.DeviceToken != "" {
+		t.Fatal("authority-issued session retained role tokens in the local store")
+	}
+	if mappedSession != "profile-issued-session" {
+		t.Fatalf("authority-issued request mapping=%q, want profile-issued-session", mappedSession)
+	}
+	if len(adopted.events) != 1 || adopted.events[0].MessageID != "offer-1" {
+		t.Fatalf("authority-issued offer was not routed locally: %#v", adopted.events)
+	}
+}
+
 func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) {
 	var authorizeCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -556,7 +616,7 @@ func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) 
 		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
 			if authorizeCalls.Add(1) == 1 {
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]string{"role": "host"})
+				_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
 				return
 			}
 			w.WriteHeader(http.StatusForbidden)
@@ -610,7 +670,7 @@ func TestAuthorityModePollAuthorizesViaAuthority(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
 			authorizeCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": "host"})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -659,7 +719,7 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 			}
 			signalFirstAuthorization.Do(func() { close(firstAuthorization) })
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": "client"})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("client"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

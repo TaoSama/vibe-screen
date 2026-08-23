@@ -466,6 +466,23 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   evidence, and absent capture/encoder/decoder output. No ADB command was run
   for this derived preflight, and no Phase 3 release gate changes state.
 
+- A 2026-08-23 current-base service slice adds an admin-only Authority session
+  profile endpoint for already registered devices, makes Authority return the
+  role authorization expiry, lets Signaling adopt Authority-issued sessions as
+  local routing metadata only after successful remote authorization, and makes
+  the Mac lease issuer sign the exact Authority-supplied `session_epoch` while
+  rejecting stale values. Local verification for this slice passed:
+  `cd services/authority && go test -count=1 ./internal/authority`,
+  `cd services/authority && go test -count=1 ./...`,
+  `cd services/signaling && go test -count=1 ./...`, and
+  `python3 -m unittest tests.phase3.test_authority_session_profile_contract -v`.
+  This is unit/contract evidence only. It does not prove Mac/Android automatic
+  profile invocation, Android UI import, public Internet, real ScreenCaptureKit
+  capture, Android MediaCodec decode, active disconnect, handoff, latency, or
+  soak. A local `cd baseline/MacHost && swift test --filter
+  InternetSessionLeaseIssuerTests` attempt was blocked by this environment with
+  `no such module 'XCTest'`, so XCTest evidence remains external to this run.
+
 ### Main CI follow-up snapshot (2026-08-06)
 
 On 2026-08-06, main commit `4c2e908fe31af4c187684991301e163371444eab`

@@ -8,8 +8,10 @@ or application traffic keys.
 
 This service replaces process-local admission decisions. It does not replace the
 existing signaling message broker or coturn data plane. Signaling can call this
-internal API before returning a session, while relay/coturn integration remains
-open. Production callers must fail closed when the authority is unavailable.
+internal API before returning a session or when adopting an admin-issued session
+profile, and relay credential admission can call it before returning TURN
+credentials. Production callers must fail closed when the authority is
+unavailable.
 
 The signaling service (`vibe-signaling`) in `production_authority` mode
 delegates session creation, per-request role-token authorization, and session
@@ -111,8 +113,9 @@ Before a production rollout, require all of the following:
 Authority remains the durable source of truth for accepted per-device session
 epoch floors in production. Callers must never mint a local fallback epoch or
 credential when Authority is unavailable. This Compose profile does not add
-automatic account/session issuance, relay/coturn integration, active transport
-disconnect, public ingress, or horizontally shared signaling state.
+Mac/Android automatic profile issuance, a production coturn exporter or
+disconnect executor, active transport disconnect, public ingress, or
+horizontally shared signaling state.
 
 ## Internal API
 
@@ -143,10 +146,10 @@ derived from the session ID and a server secret, so an exact idempotency replay
 returns the same credentials without storing raw bearer tokens.
 
 `POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
-a role token against the session. It returns `{"role":"host"}` or
-`{"role":"client"}`. A revoked session, revoked device, suspended account, or
-expired admission returns `403`; signaling maps that to `404` so it does not
-disclose whether the session exists.
+a role token against the session. It returns `{"role":"host","expires_at":"..."}`
+or `{"role":"client","expires_at":"..."}`. A revoked session, revoked device,
+suspended account, or expired admission returns `403`; signaling maps that to
+`404` so it does not disclose whether the session exists.
 
 `DELETE /v1/signaling/sessions/{session_id}` (signaling or admin token) revokes
 the admission. Subsequent role authorizations fail. The authority API returns
@@ -179,6 +182,29 @@ raised to the admitted epoch. This prevents replay of an old session epoch after
 revocation. Note that this per-device floor is scoped to the authority's device
 identifiers, which is a different scope from the Mac pairing-scoped epoch; the
 two are not yet unified.
+
+### Session profile issuance
+
+`POST /v1/session-authority/profiles` (admin token) issues an operator-provided
+session profile for already registered account and device IDs. The request
+includes the pairing ID, host and client public identities, signaling URL,
+authority-selected `session_epoch`, TTL, transcript context, protocol session
+ID, and ICE server list. HTTP signaling URLs are accepted only when
+`allow_insecure_for_testing` is true and the host is loopback; production input
+must use HTTPS.
+
+On success the authority creates or replays the underlying signaling admission,
+returns the host signaling token, and returns an unsigned Android lease containing
+the client signaling token and routing material. The Mac host must verify its
+local pairing bindings, reserve that exact Authority-supplied `session_epoch`,
+and sign the lease before Android imports it. The authority ledger stores only a
+request digest and identifiers; it does not store role tokens, TURN credentials,
+or signed/unsigned lease JSON.
+
+This endpoint is an admin/operator control-plane primitive. It does not register
+accounts or devices automatically, does not make Mac or Android call the
+authority automatically, and does not prove Android UI import, public Internet,
+or real media transport.
 
 Reserve relay capacity before returning a TURN credential:
 
@@ -284,7 +310,8 @@ separate production requirement.
   credentials from a secret manager;
 - signaling and relay integration that fails closed on authority errors
   (signaling `production_authority` mode is implemented and covered by a
-  two-process PostgreSQL test; relay/coturn integration remains open);
+  two-process PostgreSQL test; relay credential admission is wired to Authority,
+  while the production coturn exporter and active disconnect path remain open);
 - ledger-side closure of relay allocations when an account is suspended, a
   device is revoked, or a signaling admission is invalidated is implemented;
   later coturn usage for revoked, suspended, expired, or closed allocations
@@ -298,8 +325,9 @@ separate production requirement.
 
 ### Remaining open items
 
-- Mac and Android automatic profile/account/session issuance is not wired to
-  the authority; local flows still require operator-supplied credentials.
+- Mac and Android automatic invocation of session-profile issuance is not wired;
+  local flows still require an operator to request the profile, pass the
+  unsigned lease through the Mac signer, and import the signed lease.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the admin API before a signaling admission can be
   created.

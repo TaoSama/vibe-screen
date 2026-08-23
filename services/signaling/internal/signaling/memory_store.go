@@ -255,16 +255,51 @@ func (s *MemoryStore) Invalidate(ctx context.Context, sessionID string) (bool, e
 // authority HTTP call.
 func (s *MemoryStore) Authorize(ctx context.Context, sessionID, token string) (Role, error) {
 	if s.authority != nil {
-		authorityRole, err := s.authority.AuthorizeRole(ctx, sessionID, token)
+		authorization, err := s.authority.AuthorizeRole(ctx, sessionID, token)
 		if err != nil {
 			return "", err
 		}
-		return roleFromAuthority(authorityRole)
+		role, err := roleFromAuthority(authorization.Role)
+		if err != nil {
+			return "", err
+		}
+		if err := s.ensureAuthorityRoutingSession(sessionID, authorization.ExpiresAt); err != nil {
+			return "", err
+		}
+		return role, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, role, err := s.authorizeLocked(sessionID, token)
 	return role, err
+}
+
+func (s *MemoryStore) ensureAuthorityRoutingSession(sessionID string, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked(s.now())
+	if current := s.sessions[sessionID]; current != nil {
+		if current.invalidated {
+			return ErrNotFound
+		}
+		current.response.ExpiresAt = expiresAt
+		notifySessionLocked(current)
+		return nil
+	}
+	if len(s.sessions) >= s.maxSessions {
+		return ErrCapacity
+	}
+	requestID := authoritySessionRequestID(sessionID)
+	s.sessions[sessionID] = &session{
+		requestID: requestID, ttlSeconds: 0,
+		response:       SessionResponse{SessionID: sessionID, ExpiresAt: expiresAt},
+		messages:       map[Role]map[string]MessageRequest{RoleHost: {}, RoleDevice: {}},
+		ended:          map[Role]bool{RoleHost: false, RoleDevice: false},
+		candidateCount: map[Role]int{RoleHost: 0, RoleDevice: 0},
+		rates:          map[Role]rateWindow{}, waiters: map[Role]int{}, notify: make(chan struct{}),
+	}
+	s.requestSessions[requestID] = sessionID
+	return nil
 }
 
 // AddMessageAuthorized adds a message to a session after the caller has

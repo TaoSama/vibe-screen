@@ -41,6 +41,18 @@ CREATE INDEX IF NOT EXISTS authority_signaling_active_idx
     ON authority_signaling_sessions (client_device_id, expires_at)
     WHERE revoked_at IS NULL;
 
+CREATE TABLE authority_session_profile_issuance (
+    request_id text PRIMARY KEY,
+    request_sha256 bytea NOT NULL,
+    account_id text NOT NULL REFERENCES authority_accounts(account_id),
+    host_device_id text NOT NULL REFERENCES authority_devices(device_id),
+    client_device_id text NOT NULL REFERENCES authority_devices(device_id),
+    signaling_session_id text NOT NULL REFERENCES authority_signaling_sessions(session_id),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS authority_session_profile_account_idx
+    ON authority_session_profile_issuance(account_id, created_at);
+
 CREATE TABLE authority_relay_daily_usage (
     device_id text NOT NULL REFERENCES authority_devices(device_id),
     usage_day date NOT NULL,
