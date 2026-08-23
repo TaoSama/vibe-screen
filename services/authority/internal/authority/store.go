@@ -398,10 +398,14 @@ func (s *PostgresStore) createSignalingTx(ctx context.Context, tx pgx.Tx, reques
 	var existingRequest SignalingRequest
 	var sessionID string
 	var expiresAt time.Time
-	err := tx.QueryRow(ctx, `SELECT session_id,account_id,host_device_id,client_device_id,session_epoch,extract(epoch from expires_at-created_at)::bigint,expires_at FROM authority_signaling_sessions WHERE request_id=$1`, request.RequestID).Scan(&sessionID, &existingRequest.AccountID, &existingRequest.HostDeviceID, &existingRequest.ClientDeviceID, &existingRequest.SessionEpoch, &existingRequest.TTLSeconds, &expiresAt)
+	var revokedAt *time.Time
+	err := tx.QueryRow(ctx, `SELECT session_id,account_id,host_device_id,client_device_id,session_epoch,extract(epoch from expires_at-created_at)::bigint,expires_at,revoked_at FROM authority_signaling_sessions WHERE request_id=$1 FOR UPDATE`, request.RequestID).Scan(&sessionID, &existingRequest.AccountID, &existingRequest.HostDeviceID, &existingRequest.ClientDeviceID, &existingRequest.SessionEpoch, &existingRequest.TTLSeconds, &expiresAt, &revokedAt)
 	if err == nil {
 		if existingRequest.AccountID != request.AccountID || existingRequest.HostDeviceID != request.HostDeviceID || existingRequest.ClientDeviceID != request.ClientDeviceID || existingRequest.SessionEpoch != request.SessionEpoch || existingRequest.TTLSeconds != request.TTLSeconds {
 			return SignalingAdmission{}, ErrConflict
+		}
+		if revokedAt != nil || !now.Before(expiresAt) {
+			return SignalingAdmission{}, ErrRevoked
 		}
 		return s.admission(sessionID, expiresAt, false), nil
 	}
@@ -488,12 +492,30 @@ func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID strin
 func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRequest, now time.Time) error {
 	return s.transaction(ctx, func(tx pgx.Tx) error {
 		var existingDeviceID, existingSessionID string
-		err := tx.QueryRow(ctx, `SELECT device_id,session_id FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, request.SourceID, request.AllocationID).Scan(&existingDeviceID, &existingSessionID)
+		var existingClosedAt *time.Time
+		err := tx.QueryRow(ctx, `SELECT device_id,session_id,closed_at FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, request.SourceID, request.AllocationID).Scan(&existingDeviceID, &existingSessionID, &existingClosedAt)
 		if err == nil {
-			if existingDeviceID == request.DeviceID && existingSessionID == request.SessionID {
-				return nil
+			if existingDeviceID != request.DeviceID || existingSessionID != request.SessionID {
+				return ErrConflict
 			}
-			return ErrConflict
+			if existingClosedAt != nil {
+				return ErrRevoked
+			}
+			if err := lockActiveDevice(ctx, tx, request.DeviceID); err != nil {
+				return err
+			}
+			var sessionRevokedAt *time.Time
+			var sessionExpiresAt time.Time
+			if err := tx.QueryRow(ctx, `SELECT revoked_at,expires_at FROM authority_signaling_sessions WHERE session_id=$1 AND (host_device_id=$2 OR client_device_id=$2) FOR UPDATE`, request.SessionID, request.DeviceID).Scan(&sessionRevokedAt, &sessionExpiresAt); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			if sessionRevokedAt != nil || !now.Before(sessionExpiresAt) {
+				return ErrRevoked
+			}
+			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
@@ -651,8 +673,9 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		usage.ObservedAt = request.ObservedAt
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) {
+			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevoked) {
 				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
 			if errors.Is(err, ErrStaleUsage) {
