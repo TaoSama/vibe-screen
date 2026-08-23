@@ -103,6 +103,12 @@ internal data class ControllerDispatch(
     }
 }
 
+internal data class ControllerDisconnectResult(
+    val controllerId: String,
+    val controllerEpoch: Long,
+    val dispatch: ControllerDispatch,
+)
+
 /** Atomic outcome of admitting one controller into the active session. */
 internal sealed interface ControllerConnectResult {
     /** The controller was admitted and its initial structural state must be sent. */
@@ -381,6 +387,32 @@ internal class ControllerSessionState {
             controller.releaseSamples() + fullStateSnapshots(),
             ControllerDelivery.STRUCTURAL,
         )
+    }
+
+    fun prepareDisconnect(controllerId: String): ControllerDisconnectResult? = synchronized(lock) {
+        val controller = active[controllerId] ?: return@synchronized null
+        ControllerDisconnectResult(
+            controllerId = controllerId,
+            controllerEpoch = controller.epoch,
+            dispatch = ControllerDispatch(
+                controller.releaseSamples() + active
+                    .filterKeys { activeId -> activeId != controllerId }
+                    .values
+                    .sortedBy { it.controllerId }
+                    .map(ActiveController::state),
+                ControllerDelivery.STRUCTURAL,
+            ),
+        )
+    }
+
+    fun completeDisconnect(
+        controllerId: String,
+        controllerEpoch: Long,
+    ): Boolean = synchronized(lock) {
+        val controller = active[controllerId] ?: return@synchronized false
+        if (controller.epoch != controllerEpoch) return@synchronized false
+        active.remove(controllerId)
+        true
     }
 
     /** Removes only a lifecycle rejected by the host; a newer epoch is untouched. */

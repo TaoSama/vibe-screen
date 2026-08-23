@@ -5,11 +5,13 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.hardware.input.InputManager
 import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
@@ -218,6 +220,22 @@ class MainActivity : AppCompatActivity() {
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
     private val internetControllerSessionState = ControllerSessionState()
+    private val controllerHotplugCoordinator = ControllerDeviceHotplugCoordinator()
+    private val controllerDeviceListener =
+        object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) {
+                synchronizeControllerDevices("device added $deviceId")
+            }
+
+            override fun onInputDeviceChanged(deviceId: Int) {
+                synchronizeControllerDevices("device changed $deviceId")
+            }
+
+            override fun onInputDeviceRemoved(deviceId: Int) {
+                synchronizeControllerDevices("device removed $deviceId")
+            }
+        }
+    private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private var nextNativePointerMoveDiagAtMs = 0L
@@ -379,6 +397,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isInForeground = true
+        inputManager.registerInputDeviceListener(controllerDeviceListener, inputHandler)
         deviceHealthMonitor.start()
         accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
@@ -392,6 +411,7 @@ class MainActivity : AppCompatActivity() {
             setStreamingWindowState(true)
             streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
             internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
+            synchronizeControllerDevices("foreground")
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingWirelessReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
@@ -401,6 +421,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        inputManager.unregisterInputDeviceListener(controllerDeviceListener)
         deviceHealthMonitor.stop()
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
@@ -504,6 +525,7 @@ class MainActivity : AppCompatActivity() {
         ControllerInputMapper.keyChange(event)?.let { change ->
             val active = canSendControllerInput()
             if (active) {
+                controllerHotplugCoordinator.rememberObservedController(event.deviceId, change.controllerId)
                 val state = activeControllerSessionState()
                 val dispatch = state.applyKey(change)
                 if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
@@ -1107,6 +1129,7 @@ class MainActivity : AppCompatActivity() {
             val session = internetSession ?: return false
             val active = canSendControllerInput(session)
             if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->
+                controllerHotplugCoordinator.rememberObservedController(event.deviceId, snapshot.controllerId)
                 val dispatch = internetControllerSessionState.applyMotion(snapshot)
                 if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
                 return ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)
@@ -1114,10 +1137,12 @@ class MainActivity : AppCompatActivity() {
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
-        ControllerInputMapper.snapshot(event)?.let { snapshot ->
+        val active = canSendControllerInput()
+        if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->
+            controllerHotplugCoordinator.rememberObservedController(event.deviceId, snapshot.controllerId)
             val dispatch = streamControllerSessionState.applyMotion(snapshot)
             if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
-            return ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)
+            return ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)
         }
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
@@ -1319,8 +1344,56 @@ class MainActivity : AppCompatActivity() {
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             targetSession?.canSendController() == true
         } else {
-            isConnected
+            isConnected && currentSessionBinding().capabilities.controller
         }
+
+    private fun hasNegotiatedControllerInput(targetSession: InternetProductSession? = internetSession): Boolean =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            targetSession?.hasNegotiatedControllerCapability() == true
+        } else {
+            currentSessionBinding().capabilities.controller
+        }
+
+    private fun synchronizeControllerDevices(reason: String) {
+        val snapshots = currentControllerDeviceSnapshots()
+        if (!isInForeground || !isConnected || !hasNegotiatedControllerInput()) {
+            controllerHotplugCoordinator.reset()
+            snapshots.forEach { snapshot ->
+                controllerHotplugCoordinator.rememberObservedController(snapshot.deviceId, snapshot.controllerId)
+            }
+            return
+        }
+        val state = activeControllerSessionState()
+        val result =
+            controllerHotplugCoordinator.synchronizeAvailableControllers(
+                availableDevices = snapshots,
+                sessionState = state,
+                submit = { dispatch -> sendStreamControllerDispatch(dispatch, "controller hotplug $reason") },
+            )
+        if (result.connected > 0 || result.disconnected > 0 || result.resynchronized) {
+            mainDiag(
+                "controller hotplug synchronized reason=$reason " +
+                    "connected=${result.connected} disconnected=${result.disconnected} " +
+                    "resynchronized=${result.resynchronized}",
+            )
+        }
+        if (result.limitReached > 0) {
+            mainDiag("controller hotplug ignored ${result.limitReached} device(s): active controller limit reached")
+        }
+    }
+
+    private fun currentControllerDeviceSnapshots(): List<ControllerDeviceSnapshot> =
+        buildList {
+            InputDevice.getDeviceIds().forEach { deviceId ->
+                val device = InputDevice.getDevice(deviceId) ?: return@forEach
+                if (!ControllerInputMapper.isControllerSource(device.sources)) return@forEach
+                add(ControllerDeviceSnapshot(deviceId, ControllerInputMapper.controllerId(device)))
+            }
+        }
+
+    private fun resetControllerHotplugTracking() {
+        controllerHotplugCoordinator.reset()
+    }
 
     private fun finishPendingRightClick() {
         val release = pendingRightClickRelease ?: return
@@ -3575,6 +3648,7 @@ class MainActivity : AppCompatActivity() {
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
+        resetControllerHotplugTracking()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -4235,6 +4309,7 @@ class MainActivity : AppCompatActivity() {
                             "controller=$controller hostActions=$hostActions " +
                             "clipboard=$clipboard fileTransfer=$fileTransfer",
                     )
+                    if (controller) synchronizeControllerDevices("capability negotiation")
                 }
                 populateDisplayCapsule(options, selectedId)
             }
@@ -5638,6 +5713,7 @@ class MainActivity : AppCompatActivity() {
         internetStylusGestureRouter.reset()
         internetStylusContactRouter.reset()
         internetControllerSessionState.resetForNewSession()
+        resetControllerHotplugTracking()
         internetInputIds.resetForNewSession()
     }
 
