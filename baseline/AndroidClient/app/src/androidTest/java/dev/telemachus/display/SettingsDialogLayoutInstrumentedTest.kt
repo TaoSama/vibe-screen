@@ -29,25 +29,29 @@ import kotlin.math.roundToInt
 @RunWith(AndroidJUnit4::class)
 class SettingsDialogLayoutInstrumentedTest {
     @Test
-    fun narrowPhoneWindowsStackFourOptionGroupsWithoutClipping() {
+    fun narrowPhoneWindowsStackOptionGroupsWithoutClipping() {
         listOf(320, 360).forEach { screenWidthDp ->
             withLayout(screenWidthDp = screenWidthDp) { layout ->
                 assertStackedAndReadable(layout, R.id.rotationGroup)
                 assertStackedAndReadable(layout, R.id.videoQualityGroup)
                 assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
+                assertStackedAndReadable(layout, R.id.gestureSwipeUpGroup)
+                assertStackedAndReadable(layout, R.id.gestureSwipeDownGroup)
                 assertReadable(layout, R.id.settingsResetActions)
             }
         }
     }
 
     @Test
-    fun largeTextStacksFourOptionGroupsWithoutClipping() {
+    fun largeTextStacksOptionGroupsWithoutClipping() {
         listOf(320, 360).forEach { screenWidthDp ->
             listOf(1.5f, 2f).forEach { fontScale ->
                 withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
                     assertStackedAndReadable(layout, R.id.rotationGroup)
                     assertStackedAndReadable(layout, R.id.videoQualityGroup)
                     assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
+                    assertStackedAndReadable(layout, R.id.gestureSwipeUpGroup)
+                    assertStackedAndReadable(layout, R.id.gestureSwipeDownGroup)
                     assertStackedAndReadable(layout, R.id.settingsResetActions)
                     assertAllTextButtonsReadable(layout)
                 }
@@ -56,12 +60,14 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
-    fun wideWindowKeepsFourOptionGroupsHorizontal() {
+    fun wideWindowKeepsOptionGroupsHorizontal() {
         withLayout(screenWidthDp = 600) { layout ->
             listOf(
                 R.id.rotationGroup,
                 R.id.videoQualityGroup,
                 R.id.videoFrameRateGroup,
+                R.id.gestureSwipeUpGroup,
+                R.id.gestureSwipeDownGroup,
                 R.id.settingsResetActions,
             ).forEach { groupId ->
                 val group = layout.root.findViewById<LinearLayout>(groupId)

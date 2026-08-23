@@ -17,6 +17,7 @@ import dev.telemachus.display.protocol.ProtocolV1Framing
 import dev.telemachus.display.protocol.ProtocolV1Failure
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.telemachus.display.protocol.RemoteManagedPolicy
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.UpgradeFallbackDecision
 import dev.telemachus.display.protocol.UpgradeProbeOutcome
@@ -165,6 +166,7 @@ class StreamClient(
     internal var onDisplaySelectionRejected: ((selectedId: String, rejectedId: String, reason: String) -> Unit)? = null
     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
+    internal var onManagedPolicyReceived: ((ManagedPolicyStatus) -> Unit)? = null
     /** A peer clipboard offer has arrived; the UI may request the content by changeId. */
     internal var onClipboardOffered: ((offer: ClipboardOfferData) -> Unit)? = null
     /** Peer clipboard content has arrived. pending=true means no offer/request handshake preceded it. */
@@ -1265,6 +1267,10 @@ class StreamClient(
     internal fun negotiatedCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
         if (wireMode == WireMode.V1) protocolSession?.negotiated ?: emptySet() else emptySet()
 
+    /** True when host actions can be invoked on the active Protocol v1 session. */
+    internal val canInvokeHostActions: Boolean
+        get() = localSessionState.isConnected && wireMode == WireMode.V1 && protocolSession?.canInvokeHostActions == true
+
     internal fun sendController(dispatch: ControllerDispatch): Boolean {
         return inputDispatcher.sendController(dispatch)
     }
@@ -1945,8 +1951,9 @@ class StreamClient(
             )
         }
 
-        override fun onManagedPolicyReceived(status: dev.vibescreen.protocol.v1.ManagedPolicyStatus) {
+        override fun onManagedPolicyReceived(status: ManagedPolicyStatus) {
             remoteManagedPolicy = RemoteManagedPolicy(status)
+            onManagedPolicyReceived?.invoke(status)
             if (!remoteManagedPolicy.fileTransferAllowed) {
                 cancelActiveFileTransfers()
             }

@@ -131,3 +131,74 @@ and the explicit Android device identity is recorded. If any precondition is
 missing, keep the result as blocked evidence. A Nubia P0110/pacific may be used
 as a general Android substitute, but the evidence title, device table, and
 claims must name Nubia P0110/pacific rather than Xiaomi 13/fuxi.
+
+## Gesture-to-action mapping current-base offline slice
+
+Date: 2026-08-23
+Source base: `origin/main` commit `d75758fbb3e21d0ac91af82692d5e5233699e900`
+
+This slice wires Android-side three-finger vertical swipe shortcuts to the
+existing Protocol v1 HostAction path without changing the MacHost action
+catalog. The Android settings dialog persists independent three-finger swipe-up
+and swipe-down choices, defaults both choices to the existing touch behavior,
+and exposes only the current known Host actions: `move-window` and
+`return-windows`. Unknown HostAction catalog entries are filtered out of the
+menu and denied by the gesture policy even if a malformed profile advertises
+them.
+
+The production touch path remains fail-closed. A default profile does not
+intercept three-finger input. Once a non-default shortcut is selected, the
+Android client treats the sequence as a shortcut candidate, caches touch samples
+until the swipe direction is known, resolves the gesture against negotiated
+HostAction capability, the latest managed policy, and the filtered catalog, and
+only cancels the original touch stream when the resolved decision denies or
+invokes a HostAction. If the resolved direction is still default, the cached
+touch samples are replayed and the rest of the sequence follows the ordinary
+touch path. Internet sessions are deliberately excluded from this shortcut path
+for the current USB/LAN slice.
+
+Offline verification for this slice:
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests 'dev.telemachus.display.GestureHostActionPolicyTest' \
+  --tests 'dev.telemachus.display.HostActionMenuPolicyTest' \
+  --tests 'dev.telemachus.display.SessionStateTest' \
+  --tests 'dev.telemachus.display.ClientInputDispatchTest' \
+  --tests 'dev.telemachus.display.MainActivityControllerForwardingContractTest'
+```
+
+Result: `BUILD SUCCESSFUL` on 2026-08-23. The focused tests cover default
+non-interception, saved choice to HostAction ID mapping, unknown-action
+fail-closed behavior, filtered HostAction availability, managed-policy update
+plumbing, and source-level ordering that resolves custom gestures before
+ordinary touch forwarding.
+
+Android device-side settings verification also ran on nubia P0110 / `pacific`
+/ Android 16 / SDK 36 / serial `EP0110PZ0B9110300B` with an emulator also
+connected, so installation and execution used the explicit P0110 serial:
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon assembleDebugAndroidTest
+adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+  -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Result: `OK (8 tests)` on 2026-08-23. This validates the settings dialog
+responsive layout and SharedPreferences round trip for the new shortcut choices
+on the named Android device only; it is not Host-action execution evidence.
+
+This does not close the real-device gesture-to-action gate. No 2026-08-23 run
+captured a physical or opt-in instrumentation three-finger swipe on nubia P0110
+/ `pacific` / Android 16 / SDK 36 invoking a visible Mac window action through
+the Host. A future evidence package must record the real Android device
+identity, installed Android and Host build hashes, Host Screen Recording and
+Accessibility state, Protocol v1 HostAction catalog and managed-policy state,
+the explicit shortcut settings used, HostActionResult acceptance, and visible
+Mac-side `move-window` or `return-windows` output before this gate can be
+reported as passed.
