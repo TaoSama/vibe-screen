@@ -4359,7 +4359,9 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
                 val fileTransfer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_FILE_TRANSFER in negotiated
-                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || fileTransfer) {
+                val peripheralInputFramework =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiated
+                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || fileTransfer || peripheralInputFramework) {
                     val managedHostActions = hostActions && managedHostActionsAllowed
                     val customGestures = managedHostActions && managedCustomGesturesAllowed
                     val capabilities =
@@ -4372,9 +4374,10 @@ class MainActivity : AppCompatActivity() {
                             hostActions = managedHostActions,
                             clipboard = clipboard,
                             fileTransfer = fileTransfer,
+                            peripheralInputFramework = peripheralInputFramework,
                         )
                     val sink =
-                        if (keyboard || nativePointer || controller) {
+                        if (keyboard || nativePointer || controller || peripheralInputFramework) {
                             StreamClientInputSink(callbackClient, callbackGeneration)
                         } else {
                             null
@@ -4394,7 +4397,8 @@ class MainActivity : AppCompatActivity() {
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
                             "controller=$controller customGestures=$customGestures hostActions=$managedHostActions " +
-                            "clipboard=$clipboard fileTransfer=$fileTransfer",
+                            "clipboard=$clipboard fileTransfer=$fileTransfer " +
+                            "peripheralInputFramework=$peripheralInputFramework",
                     )
                     if (controller) synchronizeControllerDevices("capability negotiation")
                 }
@@ -5990,6 +5994,11 @@ class MainActivity : AppCompatActivity() {
         override fun sendController(input: ClientControllerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
             return client.sendController(input.dispatch)
+        }
+
+        override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendPeripheral(input.peripheralKind, input.payload)
         }
     }
 

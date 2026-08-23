@@ -31,7 +31,7 @@ platform scaffolding under active development.
 | Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture, and current-source real USB/LAN device playback evidence remains open pending Microphone/TCC, signing, and device-run validation |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-20 Nubia P0110 preflight was blocked by device Wi-Fi and Host signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
@@ -165,13 +165,16 @@ boundaries:
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity
-  state, and Host-side controller event handling. The Android client now routes
-  gamepad/joystick key and motion events through the production Protocol v1
-  session when controller capability is negotiated, with mapper, session, and
-  protocol behavior covered offline. Host controller events feed a virtual
-  gamepad through `IOHIDUserDevice` when an identity-signed build has the
-  approved virtual HID entitlement. Physical HID mouse, stylus, and controller
-  runtime behavior still require their respective device confirmations.
+  state, and Host-side controller event handling. The Protocol v1 contract also
+  reserves a generic peripheral-input admission framework that is disabled by
+  default and rejects unsupported kinds without reaching native injection. The
+  Android client now routes gamepad/joystick key and motion events through the
+  production Protocol v1 session when controller capability is negotiated,
+  with mapper, session, and protocol behavior covered offline. Host controller
+  events feed a virtual gamepad through `IOHIDUserDevice` when an
+  identity-signed build has the approved virtual HID entitlement. Physical HID
+  mouse, stylus, and controller runtime behavior still require their respective
+  device confirmations.
 - Window management moves the current window or application between physical
   and virtual displays and supports headless startup.
 
@@ -392,6 +395,14 @@ mouse pointer move and click share the same forwarding path and source check as
 the verified scroll but still want one confirmation with a physical HID mouse
 attached to the phone, since synthetic adb pointer motion does not deliver as a
 hover event.
+
+The generic peripheral-input framework is now defined as a Protocol v1
+capability and additive `PeripheralEvent` payload, with Android dispatch and
+Host admission boundaries covered by offline tests. Production peers do not
+advertise it by default, and the Host returns `InputAck(accepted=false,
+rejection_reason="unsupported_peripheral_kind")` for every kind until a
+concrete hardware path is implemented and accepted. This does not close any
+physical peripheral gate.
 
 An opt-in Xiaomi 13 instrumentation pass also drove the production touch path
 for tap, long-press right-click, long-press drag, two-finger scroll, and pinch.

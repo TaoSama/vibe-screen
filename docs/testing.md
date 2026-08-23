@@ -228,6 +228,18 @@ P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
   controller input in a Mac-side test target, and neutral release on
   disconnect. Offline HID report, Android mapper, session, and protocol tests
   do not prove the OS accepted a virtual gamepad.
+- Generic peripheral-input framework claims are offline-only unless tied to a
+  named physical peripheral and a concrete implementation. Treat
+  [the peripheral-input framework runbook](runbook/peripheral-input-framework.md)
+  as the normative checklist. Capability `peripheral-input-framework` /
+  `CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK` only admits bounded `PeripheralEvent`
+  messages; the current Host placeholder must fail closed with
+  `unsupported_peripheral_kind` and cannot close any physical peripheral gate. A
+  future gate needs the exact peripheral name, physical-device identity, Android
+  input source, bounded-event evidence, negotiated capability, Host native
+  handling logs, visible Mac result, and teardown or session-replacement
+  neutralization evidence proving buttons, axes, pointers, and contacts return
+  to neutral for that hardware path.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
 - macOS Host compatibility claims require a passing

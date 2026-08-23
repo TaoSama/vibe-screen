@@ -60,6 +60,7 @@ message Envelope {
     InputAck input_ack = 64;
     StylusEvent stylus_event = 65;
     ControllerEvent controller_event = 66;
+    PeripheralEvent peripheral_event = 67;
     StreamStats stream_stats = 70;
     TransportStats transport_stats = 71;
     ErrorReport error_report = 72;

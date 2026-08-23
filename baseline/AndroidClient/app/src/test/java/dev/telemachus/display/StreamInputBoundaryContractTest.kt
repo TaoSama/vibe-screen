@@ -20,6 +20,7 @@ class StreamInputBoundaryContractTest {
         assertTrue(streamClient.contains("inputDispatcher.sendKey("))
         assertTrue(streamClient.contains("inputDispatcher.sendNativeInputRelease("))
         assertTrue(streamClient.contains("inputDispatcher.sendController("))
+        assertTrue(streamClient.contains("inputDispatcher.sendPeripheral("))
 
         INPUT_ENVELOPE_BUILDERS.forEach { builder ->
             assertFalse("StreamClient must not build input envelope `$builder` directly", streamClient.contains(builder))
@@ -138,6 +139,7 @@ class StreamInputBoundaryContractTest {
                 "activeSession.scroll(",
                 "activeSession.key(",
                 "activeSession.controller(",
+                "activeSession.peripheral(",
             )
 
         val FORBIDDEN_INPUT_DISPATCHER_REFERENCES =

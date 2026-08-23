@@ -21,12 +21,19 @@ internal data class ClientControllerInput(
     val dispatch: ControllerDispatch,
 )
 
+internal data class ClientPeripheralInput(
+    val peripheralKind: String,
+    val payload: ByteArray,
+)
+
 internal interface ClientSessionInputSink {
     fun sendKey(input: ClientKeyInput): Boolean
 
     fun sendPointer(input: ClientPointerInput): Boolean
 
     fun sendController(input: ClientControllerInput): Boolean
+
+    fun sendPeripheral(input: ClientPeripheralInput): Boolean
 }
 
 internal data class ClientSessionBinding(
@@ -42,6 +49,9 @@ internal data class ClientSessionBinding(
         }
         require(!capabilities.controller || inputSink != null) {
             "Controller capability requires a session input sink"
+        }
+        require(!capabilities.peripheralInputFramework || inputSink != null) {
+            "Peripheral input framework capability requires a session input sink"
         }
     }
 
@@ -72,6 +82,11 @@ internal class ClientInputDispatch(
     fun sendController(input: ClientControllerInput): ClientInputDispatchResult {
         if (!binding.capabilities.controller) return ClientInputDispatchResult.UNSUPPORTED
         return binding.inputSink.send { sendController(input) }
+    }
+
+    fun sendPeripheral(input: ClientPeripheralInput): ClientInputDispatchResult {
+        if (!binding.capabilities.peripheralInputFramework) return ClientInputDispatchResult.UNSUPPORTED
+        return binding.inputSink.send { sendPeripheral(input) }
     }
 
     private fun ClientSessionInputSink?.send(block: ClientSessionInputSink.() -> Boolean): ClientInputDispatchResult =

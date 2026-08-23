@@ -107,6 +107,7 @@ func testSessionAndProtobuf() throws {
 
 func testUSBHIDModifierCompatibility() throws {
     try require(VSCapability.usbHidModifierByte.rawValue == 27, "modifier capability allocation")
+    try require(VSCapability.peripheralInputFramework.rawValue == 30, "peripheral framework capability allocation")
     try require(
         USBHIDModifierWire.encode(standardMask: 0x01, standardByteNegotiated: true) == 0x01,
         "new-new Control layout"

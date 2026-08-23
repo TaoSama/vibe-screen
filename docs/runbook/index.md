@@ -4,6 +4,7 @@
 - [macOS Host compatibility matrix gate](macos-host-compatibility.md)
 - [Android client operation and acceptance](android-client.md)
 - [Controller runtime acceptance](controller-runtime-acceptance.md)
+- [Peripheral input framework readiness](peripheral-input-framework.md)
 - [External-camera latency measurement](latency-measurement.md)
 - [Phase 0 verification and device gates](../changes/2026-08-04-phase-0-baseline/TEST.md)
 - [HarmonyOS NEXT / MatePad Mini device acceptance](harmony-matepad-mini.md)

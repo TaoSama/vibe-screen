@@ -58,17 +58,18 @@ class SessionStateTest {
         val negotiated =
             ClientSessionBinding(
                 capabilities =
-                   ClientSessionCapabilities(
-                       touch = true,
-                       displaySelection = true,
-                       keyboard = true,
-                       nativePointer = true,
+                    ClientSessionCapabilities(
+                        touch = true,
+                        displaySelection = true,
+                        keyboard = true,
+                        nativePointer = true,
                         controller = true,
                         customGestures = false,
                         hostActions = false,
                         clipboard = false,
                         fileTransfer = false,
-                   ),
+                        peripheralInputFramework = false,
+                    ),
                 inputSink = AcceptingInputSink,
             )
 
@@ -106,5 +107,7 @@ class SessionStateTest {
         override fun sendPointer(input: ClientPointerInput) = true
 
         override fun sendController(input: ClientControllerInput) = true
+
+        override fun sendPeripheral(input: ClientPeripheralInput) = true
     }
 }

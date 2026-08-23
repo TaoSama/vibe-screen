@@ -1794,6 +1794,26 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun advertisePeripheralInputFrameworkIsExplicitAndDoesNotDropExistingCapabilities() {
+        val defaultCapabilities = session().clientHello().clientHello.capabilitiesList.toSet()
+        val session =
+            ProtocolV1Session(
+                deviceId = "android-test",
+                deviceName = "Test Android",
+                transport = TransportKind.TRANSPORT_KIND_USB,
+                codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+                advertisePeripheralInputFramework = true,
+                nowNs = { 1_000L },
+            )
+        val hello = session.clientHello()
+        assertFalse(defaultCapabilities.contains(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK))
+        assertEquals(
+            defaultCapabilities + Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK,
+            hello.clientHello.capabilitiesList.toSet(),
+        )
+    }
+
+    @Test
     fun canSendControllerRequiresNegotiatedControllerCapability() {
         val session = controllerStreamingSession()
         assertTrue(session.canSendController)
@@ -1817,6 +1837,13 @@ class ProtocolV1SessionTest {
     fun canSendControllerFalseWithoutNegotiation() {
         val session = streamingSession()
         assertFalse(session.canSendController)
+    }
+
+    @Test
+    fun canSendPeripheralRequiresStreamingNegotiatedFrameworkCapability() {
+        assertTrue(peripheralStreamingSession().canSendPeripheral)
+        assertFalse(peripheralSessionThroughDisplayStart().canSendPeripheral)
+        assertFalse(streamingSession().canSendPeripheral)
     }
 
     @Test
@@ -1907,6 +1934,54 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun peripheralEncodesBoundedAdmissionEnvelope() {
+        val session = peripheralStreamingSession()
+
+        val envelope = session.peripheral(
+            inputId = 9,
+            peripheralKind = "vendor-device",
+            payload = byteArrayOf(0x01, 0x02),
+        )
+
+        assertEquals(Envelope.PayloadCase.PERIPHERAL_EVENT, envelope.payloadCase)
+        assertEquals(9L, envelope.peripheralEvent.inputId)
+        assertEquals("vendor-device", envelope.peripheralEvent.peripheralKind)
+        assertEquals(listOf(0x01.toByte(), 0x02.toByte()), envelope.peripheralEvent.payload.toByteArray().toList())
+        assertEquals("display-main", envelope.peripheralEvent.target.displayId)
+        assertEquals(42L, envelope.peripheralEvent.target.streamId)
+    }
+
+    @Test
+    fun peripheralRejectsInvalidLocalEnvelopeFields() {
+        val session = peripheralStreamingSession()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            session.peripheral(inputId = 0, peripheralKind = "vendor-device", payload = byteArrayOf())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            session.peripheral(inputId = 1, peripheralKind = "", payload = byteArrayOf())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            session.peripheral(inputId = 1, peripheralKind = "a".repeat(129), payload = byteArrayOf())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            session.peripheral(
+                inputId = 1,
+                peripheralKind = "vendor-device",
+                payload = ByteArray(ProtocolV1Session.MAX_PERIPHERAL_PAYLOAD_BYTES + 1),
+            )
+        }
+    }
+
+    @Test
+    fun peripheralWithoutNegotiatedCapabilityFails() {
+        val session = streamingSession()
+        assertThrows(IllegalStateException::class.java) {
+            session.peripheral(inputId = 1, peripheralKind = "vendor-device", payload = byteArrayOf())
+        }
+    }
+
+    @Test
     fun inputAckAcceptedIsDecoded() {
         val session = controllerStreamingSession()
         val ack =
@@ -1981,6 +2056,24 @@ class ProtocolV1SessionTest {
                         .setAccepted(true),
                 ).build()
         assertInvalidPeerMessage { session.receive(ack) }
+    }
+
+    @Test
+    fun inputAckCanArriveForNegotiatedPeripheralFramework() {
+        val session = peripheralStreamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(false)
+                        .setRejectionReason("unsupported_peripheral_kind"),
+                ).build()
+        val action = session.receive(ack).single() as ProtocolV1Session.Action.ControllerInputAck
+        assertEquals(9L, action.inputId)
+        assertFalse(action.accepted)
+        assertEquals("unsupported_peripheral_kind", action.rejectionReason)
     }
 
     @Test
@@ -2186,6 +2279,9 @@ class ProtocolV1SessionTest {
     private val controllerCaps =
         listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER)
 
+    private val peripheralCaps =
+        listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK)
+
     private fun controllerSessionThroughDisplayStart(): ProtocolV1Session =
         ProtocolV1Session(
             deviceId = "android-test",
@@ -2204,6 +2300,35 @@ class ProtocolV1SessionTest {
 
     private fun controllerStreamingSession(): ProtocolV1Session =
         controllerSessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+
+    private fun peripheralSessionThroughDisplayStart(): ProtocolV1Session =
+        ProtocolV1Session(
+            deviceId = "android-test",
+            deviceName = "Test Android",
+            transport = TransportKind.TRANSPORT_KIND_USB,
+            codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+            advertisePeripheralInputFramework = true,
+            nowNs = { 1_000L },
+        ).also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = peripheralCaps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = peripheralCaps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+        }
+
+    private fun peripheralStreamingSession(): ProtocolV1Session =
+        peripheralSessionThroughDisplayStart().also {
             val requested =
                 it.receive(videoConfig(6)).single()
                     as ProtocolV1Session.Action.VideoConfigurationRequested

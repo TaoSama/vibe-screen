@@ -225,6 +225,11 @@ test('USB HID modifier capability 27 preserves standard and legacy layouts', () 
     [Capability.TOUCH, Capability.USB_HID_MODIFIER_BYTE]), /invalid negotiated capability set/);
 });
 
+test('peripheral input framework capability is known but not advertised', () => {
+  assert.equal(Capability.PERIPHERAL_INPUT_FRAMEWORK, 30);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.PERIPHERAL_INPUT_FRAMEWORK), false);
+});
+
 test('product session suppresses unnegotiated pointer and keyboard input', () => {
   const session = touchOnlyStreamingSession();
   const input = { inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
