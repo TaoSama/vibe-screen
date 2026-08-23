@@ -15,6 +15,26 @@ Producers should write a manifest beside raw JSONL/CSV and derived summaries so
 the exact command, repository state, host, device, and measurement method remain
 auditable.
 
+## Phase 1 actionable-error state matrix
+
+The Phase 1 actionable-error owner matrix is an offline contract for the
+Android and macOS Host states that should give the user a concrete recovery
+action. It validates coverage only; it does not launch the Host, run ADB,
+exercise Android UI rendering, or close the README Phase 1 gate.
+
+```sh
+make actionable-error-states-gate
+```
+
+The gate consumes
+`docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json`,
+checks that open PRs #242, #243, and #272 were reviewed as adjacent work, and
+parses Android `SessionFailureKind` from source so new terminal failure kinds
+cannot be added without a documented recovery owner. The generated report is
+`.build/evidence/actionable-error-states-gate.json`, and it always records
+`can_close_readme_phase1_actionable_errors_gate=false` until retained device
+evidence covers every supported state.
+
 ## iOS current-base readiness
 
 The current-base iOS aggregate owner is PR #182. Use the aggregate gate to keep

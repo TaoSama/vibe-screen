@@ -52,7 +52,7 @@ PHASE3_SCREEN_RECORDING ?= unknown
 PHASE3_MINIMUM_OUTPUT_FRAMES ?= 120
 PHASE3_MAXIMUM_DROPPED_FRAMES ?= 0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -208,6 +208,14 @@ evidence-reconnect-timing-blocked:
 		$(RECONNECT_TIMING_ARTIFACT_ARGS) \
 		$(RECONNECT_TIMING_NOTES_ARG) \
 		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json || test $$? -eq 3
+
+actionable-error-states-gate:
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.actionable_error_states \
+		docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json \
+		--android-session-failure-source baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionFailure.kt \
+		--repository-root . \
+		--output $(EVIDENCE_DIR)/actionable-error-states-gate.json
 
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)

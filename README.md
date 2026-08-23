@@ -404,6 +404,10 @@ Xiaomi 13/fuxi evidence. See the
 - Complete touch, keyboard, mouse, and peripheral input.
 - Harden window migration/return, disconnect recovery, automatic reconnect,
   permission onboarding, and actionable errors across supported system states.
+  The current actionable-error owner matrix is now covered by an offline
+  drift gate for Android SessionFailureKind coverage plus macOS Host
+  permission/startup/capture states; this is not a replacement for retained
+  device evidence across the full state matrix.
 - Validate sustained operation on the active Android acceptance device. Xiaomi
   13/fuxi remains a named evidence source, while Nubia P0110/pacific and other
   qualifying Android devices may substitute for general Android

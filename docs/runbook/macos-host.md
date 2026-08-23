@@ -238,6 +238,12 @@ at the same path.
 
 ## Troubleshooting
 
+The Phase 1 actionable-error owner matrix is tracked in
+docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json.
+Run make actionable-error-states-gate before changing Host permission, ADB,
+listener, capture, virtual-display, LAN, or Internet recovery copy. The gate is
+offline only and does not prove Host alert rendering or device acceptance.
+
 ### ADB is missing or reverse forwarding disappeared
 
 ```bash

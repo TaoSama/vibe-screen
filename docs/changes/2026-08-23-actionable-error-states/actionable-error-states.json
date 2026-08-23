@@ -1,0 +1,401 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase1_actionable_error_state_matrix",
+  "owner": "docs/changes/2026-08-23-actionable-error-states",
+  "readme_gate_closure": false,
+  "reviewed_open_prs": [242, 243, 272],
+  "evidence_boundary": "Offline matrix and contract coverage only. This file does not prove runtime Android or macOS acceptance and cannot close the README Phase 1 actionable-errors gate without retained device evidence for every supported state.",
+  "states": [
+    {
+      "id": "android-usb-host-not-running",
+      "platform": "android",
+      "system_state": "USB client cannot reach the Mac app before display configuration or after ECONNREFUSED.",
+      "failed_layer": "USB transport / Mac listener",
+      "source_classifier": "ConnectionGuidanceFactory.hostNotRunning from ConnectException or pre-display rejection",
+      "android_session_failure_kinds": ["TRANSPORT_CLOSED", "HEARTBEAT_TIMEOUT", "WRITE_FAILED"],
+      "ui_surface": "USB inline connection guidance panel",
+      "user_visible_copy": "connection_guidance_mac_unavailable_title plus connection_guidance_usb_open_mac_prefix and the active ADB recovery resource",
+      "user_action": "Open Vibe Screen on the Mac, keep the chosen ADB transport authorized, run adb reverse tcp:54321 tcp:54321, then retry.",
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/runbook/android-client.md#actionable-failure-checks"
+      ],
+      "device_evidence_status": "device-covered",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-usb-adb-route-missing",
+      "platform": "android",
+      "system_state": "USB mode has no usable Android-to-Mac route or ADB reverse mapping.",
+      "failed_layer": "ADB reverse route",
+      "source_classifier": "ConnectionGuidanceFactory.networkUnreachable with USB context",
+      "android_session_failure_kinds": [],
+      "ui_surface": "USB inline connection guidance panel",
+      "user_visible_copy": "connection_guidance_adb_route_unavailable_title plus connection_guidance_usb_route_unavailable_prefix and the active ADB recovery resource",
+      "user_action": "Reconnect or authorize the Android device and recreate adb reverse tcp:54321 tcp:54321 before retrying.",
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/runbook/macos-host.md#adb-is-missing-or-reverse-forwarding-disappeared"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-lan-route-unreachable",
+      "platform": "android",
+      "system_state": "Trusted LAN cannot route to the saved Mac address or DNS name.",
+      "failed_layer": "LAN network route",
+      "source_classifier": "ConnectionGuidanceFactory.networkUnreachable with LAN context",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Wireless repair surface",
+      "user_visible_copy": "connection_guidance_network_unavailable_title plus connection_guidance_lan_network_unavailable_message",
+      "user_action": "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest isolation, verify the saved Mac address and port, then reconnect.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/changes/2026-08-20-trusted-lan-smoke/TEST.md"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-connect-timeout",
+      "platform": "android",
+      "system_state": "USB, LAN, or Internet connect attempt times out.",
+      "failed_layer": "transport timeout",
+      "source_classifier": "ConnectionGuidanceFactory.timeout from SocketTimeoutException or timeout detail",
+      "android_session_failure_kinds": ["HEARTBEAT_TIMEOUT"],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_timeout_title with USB, LAN, or Internet timeout recovery resource",
+      "user_action": "Confirm the Host is listening on the selected route, check the network or ADB tunnel, and retry with a fresh profile when required.",
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/SessionAutomaticRetryCoordinatorTest.kt"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-camera-denied",
+      "platform": "android",
+      "system_state": "LAN or Internet QR scan cannot continue because Camera permission is denied or permanently denied.",
+      "failed_layer": "Android permission",
+      "source_classifier": "Camera permission request and Settings-return state machine",
+      "android_session_failure_kinds": [],
+      "ui_surface": "QR scanner permission panel with Open Settings action",
+      "user_visible_copy": "camera_permission_required, camera_permission_settings_instructions, and internet_camera_permission_blocked",
+      "user_action": "Open Android Settings, allow Camera for Vibe Screen, return to the app, and retry the QR scan.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/CameraPermissionResumePolicyTest.kt",
+        "docs/runbook/android-client.md#permissions-and-lifecycle"
+      ],
+      "device_evidence_status": "device-covered",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-incompatible-protocol-or-display",
+      "platform": "android",
+      "system_state": "Peer sends incompatible protocol, unknown message, rejected session, invalid display, invalid envelope, invalid frame, invalid media header, or invalid media payload.",
+      "failed_layer": "Protocol v1 contract",
+      "source_classifier": "ConnectionGuidanceFactory maps terminal protocol SessionFailureKind values to INCOMPATIBLE_SESSION",
+      "android_session_failure_kinds": [
+        "INVALID_DISPLAY",
+        "INVALID_FRAME",
+        "INVALID_ENVELOPE",
+        "INVALID_MEDIA_PAYLOAD",
+        "INVALID_MEDIA_HEADER",
+        "INVALID_PEER_MESSAGE",
+        "SESSION_REJECTED",
+        "HOST_PROTOCOL_ERROR",
+        "UNKNOWN_MESSAGE"
+      ],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_mac_incompatible_title and connection_guidance_mac_incompatible_message",
+      "user_action": "Update Vibe Screen on both devices, then reconnect. The raw peer detail is intentionally not shown in user copy.",
+      "retry_behavior": "terminal_no_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "contracts/tests"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-input-overloaded",
+      "platform": "android",
+      "system_state": "Outbound input writer reaches true capacity saturation or rejects a non-retryable input failure.",
+      "failed_layer": "Android outbound input queue",
+      "source_classifier": "SessionFailureKind.OUTBOUND_BACKPRESSURE",
+      "android_session_failure_kinds": ["OUTBOUND_BACKPRESSURE"],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_input_overloaded_title and connection_guidance_input_overloaded_message",
+      "user_action": "Reconnect, then reduce simultaneous touch or peripheral input.",
+      "retry_behavior": "terminal_no_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/SessionFailureTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-decoder-configuration-failure",
+      "platform": "android",
+      "system_state": "MediaCodec decoder cannot apply the advertised video configuration or recover a compatible stream.",
+      "failed_layer": "Android decoder",
+      "source_classifier": "SessionFailureKind.CODEC_CONFIGURATION",
+      "android_session_failure_kinds": ["CODEC_CONFIGURATION"],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_video_decoder_recovery_title and connection_guidance_video_decoder_recovery_message",
+      "user_action": "Keep the Mac app open while the client retries with a compatible codec; if it repeats, gather logs and switch to a known supported codec path before claiming acceptance.",
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/runbook/android-client.md#actionable-failure-checks"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-mac-ended-session",
+      "platform": "android",
+      "system_state": "Mac Host intentionally ends the current session.",
+      "failed_layer": "session lifecycle",
+      "source_classifier": "SessionFailureKind.SERVER_SHUTDOWN",
+      "android_session_failure_kinds": ["SERVER_SHUTDOWN"],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_session_ended_title and connection_guidance_mac_ended_session_message",
+      "user_action": "Leave the app disconnected or start a new session from the Mac and reconnect.",
+      "retry_behavior": "terminal_no_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-user-disconnected",
+      "platform": "android",
+      "system_state": "Android user taps Disconnect or otherwise intentionally ends the session.",
+      "failed_layer": "session lifecycle",
+      "source_classifier": "SessionFailureKind.USER_REQUESTED",
+      "android_session_failure_kinds": ["USER_REQUESTED"],
+      "ui_surface": "Disconnected state guidance",
+      "user_visible_copy": "connection_guidance_session_ended_title and connection_guidance_user_disconnected_message",
+      "user_action": "Use Try Again or the relevant pairing flow when the user wants to reconnect.",
+      "retry_behavior": "not_applicable",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTerminalGuidanceContractTest.kt"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-screen-recording-missing",
+      "platform": "macos_host",
+      "system_state": "Host cannot capture because Screen Recording permission is missing or stale after a rebuild.",
+      "failed_layer": "macOS privacy permission",
+      "source_classifier": "DisplaySettings.hasScreenRecordingPermission and capture startup guard",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host onboarding view and startup alert",
+      "user_visible_copy": "Allow Screen & System Audio Recording / Screen Recording and relaunch Vibe Screen",
+      "user_action": "Grant the installed Vibe Screen app Screen Recording in System Settings, quit, reopen, and rerun the Host preflight.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/PermissionOnboardingView.swift",
+        "docs/runbook/macos-host.md#first-run-permissions"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-accessibility-missing",
+      "platform": "macos_host",
+      "system_state": "Touch, keyboard, native pointer, or window migration is requested without Accessibility permission.",
+      "failed_layer": "macOS privacy permission",
+      "source_classifier": "AXIsProcessTrusted guard and WindowRecoveryError.accessibilityPermissionRequired",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host onboarding/settings copy and runtime logs",
+      "user_visible_copy": "Enable input and window control; Accessibility lets tablet gestures control the Mac and lets Vibe Screen move and restore windows.",
+      "user_action": "Grant Accessibility to the stable signed installed app, quit and reopen Vibe Screen, then retry input or window movement.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/PermissionOnboardingView.swift",
+        "baseline/MacHost/Sources/WindowRecoveryManager.swift",
+        "docs/runbook/macos-host.md#first-run-permissions"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-adb-missing-or-device-unavailable",
+      "platform": "macos_host",
+      "system_state": "USB setup cannot find adb, finds no authorized Android device, or finds multiple devices without a selected target.",
+      "failed_layer": "ADB setup",
+      "source_classifier": "Host ADB setup and device selection diagnostics",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host status/settings diagnostics and Android USB guidance",
+      "user_visible_copy": "Install Android Platform Tools, connect and authorize exactly one device, or select the intended endpoint before recreating adb reverse.",
+      "user_action": "Run adb devices -l, authorize the phone, select the intended serial, and recreate adb reverse tcp:54321 tcp:54321.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "docs/runbook/android-client.md#install-after-acquiring-the-device",
+        "docs/runbook/macos-host.md#usb-quick-start"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-port-in-use",
+      "platform": "macos_host",
+      "system_state": "TCP port 54321 is already bound by another process or a previous Host instance.",
+      "failed_layer": "Host listener startup",
+      "source_classifier": "NWListener .failed state for an occupied port / SingleInstanceProcessLockError.alreadyRunning",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host startup alert and troubleshooting runbook",
+      "user_visible_copy": "Quit the conflicting process or choose another port in both Host and client.",
+      "user_action": "Run lsof -nP -iTCP:54321 -sTCP:LISTEN, stop the conflicting listener, then restart Vibe Screen.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/StreamingServer.swift",
+        "baseline/MacHost/Sources/SingleInstanceProcessLock.swift",
+        "docs/runbook/macos-host.md#port-54321-is-already-in-use"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-capture-unavailable-or-headless",
+      "platform": "macos_host",
+      "system_state": "ScreenCaptureKit exposes no capturable display, capture stops, or the Mac is headless without a usable physical, dummy, or Screen Sharing display.",
+      "failed_layer": "macOS display capture",
+      "source_classifier": "ScreenCapture setup and terminal capture failure handling",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host capture failure alert and runbook",
+      "user_visible_copy": "Unlock the Mac, attach a physical or dummy display, or switch to Current Main Display after granting Screen Recording.",
+      "user_action": "Recheck Screen Recording, attach or select a usable display, relaunch after permission changes, and retry streaming.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/ScreenCapture.swift",
+        "docs/runbook/macos-host.md#capture-is-black-frozen-or-unavailable"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-private-virtual-display-unavailable",
+      "platform": "macos_host",
+      "system_state": "Private CGVirtualDisplay APIs are absent, denied, or no longer behave after a macOS update.",
+      "failed_layer": "virtual display private API",
+      "source_classifier": "VirtualDisplayManager availability and creation errors",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host display-source fallback guidance",
+      "user_visible_copy": "Use Current Mac Display or attach a physical/dummy display when the private virtual-display path is unavailable.",
+      "user_action": "Switch display source to Current Main Display, attach a dummy/physical display if needed, then rerun the relevant display acceptance gate.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/VirtualDisplayManager.swift",
+        "docs/runbook/macos-host.md#capture-is-black-frozen-or-unavailable"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-selected-display-offline",
+      "platform": "macos_host",
+      "system_state": "A client-selected physical or virtual display is unavailable by the time the Host applies the request.",
+      "failed_layer": "display selection",
+      "source_classifier": "DisplayCatalog.resolve and handleClientDisplaySelection",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host logs and Android display-selection pending/rejected UI in PR #272",
+      "user_visible_copy": "Keep the current stream active, reject the stale display selection, and keep the user on the last confirmed display.",
+      "user_action": "Refresh the display list, select an online display, or switch the Host to Current Main Display.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/AppDelegate.swift",
+        "https://github.com/TaoSama/vibe-screen/pull/272"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-lan-untrusted-or-no-address",
+      "platform": "macos_host",
+      "system_state": "LAN mode has no usable trusted-network address, firewall allowance, or current QR pairing route.",
+      "failed_layer": "trusted LAN admission",
+      "source_classifier": "WirelessAuth token/admission diagnostics and trusted-LAN runbook",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host LAN settings and Android wireless repair surface",
+      "user_visible_copy": "Use a trusted private Wi-Fi, verify the Mac address and port, allow Vibe Screen through the firewall, and scan a fresh QR if the token changed.",
+      "user_action": "Reconnect both devices to the same trusted Wi-Fi, confirm firewall and address, then pair or reconnect again.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/WirelessAuth.swift",
+        "docs/changes/2026-08-20-trusted-lan-smoke/TEST.md"
+      ],
+      "device_evidence_status": "blocked",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-login-item-approval-required",
+      "platform": "macos_host",
+      "system_state": "Login startup is requested but the macOS login item or onboarding preconditions are not approved.",
+      "failed_layer": "macOS launch policy",
+      "source_classifier": "HostStartupPolicy and AutomaticLaunchCoordinator",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host settings and login/headless runbook",
+      "user_visible_copy": "Approve the login item only after onboarding is complete and permissions are stable.",
+      "user_action": "Complete onboarding with a monitor attached, approve the Login Item, log out and back in, then verify the Host listener and Android reconnect evidence.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/HostStartupPolicy.swift",
+        "docs/runbook/macos-host.md#login-startup-and-headless-mac-mini"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "macos-internet-revoked-or-failed",
+      "platform": "macos_host",
+      "system_state": "Internet profile is revoked, expired, rejected, or cannot recover its route.",
+      "failed_layer": "Internet pairing/session recovery",
+      "source_classifier": "InternetConnectionStatus.revoked/failed and Phase 3 product-session callbacks",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Host Internet settings and Android Internet error surface",
+      "user_visible_copy": "Revoke stale credentials, create or import a fresh session profile, and retry the selected Direct or TURN route.",
+      "user_action": "Use a fresh Host-issued profile and keep failed/revoked Internet states below release status until public-network evidence exists.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Sources/ConnectionMode.swift",
+        "docs/changes/2026-08-04-phase-3-secure-internet/TEST.md"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "open",
+      "readme_gate_closure": false
+    }
+  ]
+}
