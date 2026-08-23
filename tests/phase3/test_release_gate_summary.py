@@ -129,7 +129,7 @@ def current_base_real_media_gate(
         },
         "owner": {
             "role": "phase3_real_media_current_base_owner",
-            "pull_request": "pending-draft-pr",
+            "pull_request": "#303",
             "head_ref": "codex/phase3-real-media-evidence-gate",
             "repository": "TaoSama/vibe-screen",
             "scope": "fixture current-base real-media child gate",

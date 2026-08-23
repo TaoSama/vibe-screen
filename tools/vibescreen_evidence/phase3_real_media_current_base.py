@@ -34,7 +34,7 @@ from .phase3_real_media_continuity import (
 KIND = "phase3_real_media_current_base_gate"
 OWNER_ROLE = "phase3_real_media_current_base_owner"
 OWNER_BRANCH = "codex/phase3-real-media-evidence-gate"
-OWNER_PR = "pending-draft-pr"
+OWNER_PR = "#303"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 ACCEPTED_UI_EVIDENCE_KINDS = frozenset(
     ("device_screenshot", "device_screen_recording", "external_camera_recording")
