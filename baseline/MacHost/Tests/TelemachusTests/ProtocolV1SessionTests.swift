@@ -1062,6 +1062,36 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(rejectedScroll.containsClose)
     }
 
+    func testKeyTargetAcceptsActiveOrEmptyAndRejectsWrongTarget() throws {
+        let emptyTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        var key = keyEvent(inputID: 4)
+        key.target = VSInputTarget()
+        XCTAssertTrue(emptyTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        ).containsKey)
+
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        let activeTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        key = keyEvent(inputID: 4)
+        key.target = activeTarget
+        XCTAssertTrue(activeTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        ).containsKey)
+
+        var wrongTarget = activeTarget
+        wrongTarget.streamID = 2
+        let wrongTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        key = keyEvent(inputID: 4)
+        key.target = wrongTarget
+        let rejected = wrongTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
+        XCTAssertTrue(rejected.containsClose)
+    }
+
     func testPointerRejectsUnsupportedButtonMaskBits() throws {
         let session = try readyPointerSession()
         var pointer = pointerEvent()
@@ -2463,6 +2493,15 @@ final class ProtocolV1SessionTests: XCTestCase {
         return scroll
     }
 
+    private func keyEvent(inputID: UInt64) -> VSKeyEvent {
+        var key = VSKeyEvent()
+        key.inputID = inputID
+        key.usbHidUsage = 0x04
+        key.pressed = true
+        key.modifierMask = 0
+        return key
+    }
+
     private func stylusEvent() -> VSStylusEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
@@ -2792,6 +2831,7 @@ final class ProtocolV1SessionTests: XCTestCase {
 private extension Array where Element == ProtocolV1SessionAction {
     var containsConnectionReady: Bool { contains { if case .connectionReady = $0 { true } else { false } } }
     var containsTouch: Bool { contains { if case .touch = $0 { true } else { false } } }
+    var containsKey: Bool { contains { if case .key = $0 { true } else { false } } }
     var containsPointer: Bool { contains { if case .pointer = $0 { true } else { false } } }
     var containsScroll: Bool { contains { if case .scroll = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }

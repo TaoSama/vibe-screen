@@ -66,6 +66,38 @@ def soak_gate(verdict: str = "pass") -> dict:
     }
 
 
+def hardware_keyboard_summary(verdict: str = "pass") -> dict:
+    observed = verdict == "pass"
+    observations = {
+        "android_device_lock_acquired": True,
+        "device_identity_recorded": True,
+        "device_identity_matches_claim": True,
+        "apk_identity_recorded": True,
+        "physical_keyboard_attached": observed,
+        "android_keyboard_source_observed": observed,
+        "protocol_keyboard_capability_negotiated": observed,
+        "protocol_usb_hid_modifier_capability_negotiated": observed,
+        "android_production_forwarding_observed": observed,
+        "host_listener_observed": True,
+        "host_stable_signed_tcc_ready": True,
+        "host_key_injection_observed": observed,
+        "key_press_release_observed": observed,
+        "shortcut_combo_observed": observed,
+        "modifier_release_no_leak_observed": observed,
+        "visible_mac_result_observed": observed,
+        "host_logs_retained": observed,
+        "android_logs_retained": observed,
+    }
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_hardware_keyboard_workflow",
+        "profile": "phase2-hardware-keyboard-workflow",
+        "verdict": verdict,
+        "can_close_hardware_keyboard_gate": observed,
+        "observations": observations,
+    }
+
+
 def populate_complete_bundle(root: Path, *, device_class: str = "physical_8_9_inch_tablet", soak_verdict: str = "pass") -> None:
     write_json(root / "phase2-tablet-manifest.json", manifest(device_class=device_class))
     write_json(root / "device-info.json", device_info())
@@ -154,6 +186,49 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "insufficient")
         self.assertTrue(any("portrait" in reason for reason in result["reasons"]))
         self.assertTrue(any("hardware keyboard" in reason for reason in result["reasons"]))
+
+    def test_hardware_keyboard_gate_accepts_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "hardware-keyboard-evidence.json").unlink()
+            write_json(root / "hardware-keyboard-summary.json", hardware_keyboard_summary())
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "pass")
+        keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
+        self.assertEqual(keyboard["status"], "pass")
+        self.assertIn("hardware-keyboard-summary.json", keyboard["evidence"])
+
+    def test_hardware_keyboard_gate_preserves_blocked_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "hardware-keyboard-evidence.json").unlink()
+            write_json(root / "hardware-keyboard-summary.json", hardware_keyboard_summary("blocked"))
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
+        self.assertEqual(keyboard["status"], "blocked")
+
+    def test_hardware_keyboard_gate_rejects_contradictory_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "hardware-keyboard-evidence.json").unlink()
+            summary = hardware_keyboard_summary()
+            summary["can_close_hardware_keyboard_gate"] = False
+            summary["observations"]["android_production_forwarding_observed"] = False
+            write_json(root / "hardware-keyboard-summary.json", summary)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
+        self.assertEqual(keyboard["status"], "insufficient")
 
     def test_soak_failure_fails_whole_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

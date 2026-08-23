@@ -384,6 +384,23 @@ inputs become blocked owner rows. The report can close README Phase 2 gates only
 when every child gate provides an explicit pass or close signal and the
 package-aware tablet gate passes with a physical 8-9 inch tablet manifest.
 
+For the focused hardware-keyboard workflow, collect current-base readiness with
+the exact Android serial before attempting physical input:
+
+```sh
+make hardware-keyboard-readiness \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=.build/evidence/hardware-keyboard-readiness
+```
+
+The collector acquires the shared Android lock, records device/package/input
+snapshots and Host listener/signing/TCC preflight artifacts, then writes
+`hardware-keyboard-readiness.json`, `hardware-keyboard-observations.json`, and
+`hardware-keyboard-summary.json`. It exits nonzero for blocked or insufficient
+readiness; that is expected when the physical Android-attached keyboard, stable
+signed/TCC-ready Host, production Protocol v1 forwarding logs, Host `Key
+injected:` lines, or visible Mac-side result are missing.
+
 ### Short Host memory regression gate
 
 Use the bounded short diagnostic as a 10-17 minute regression gate before

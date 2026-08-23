@@ -482,8 +482,12 @@ and report missing evidence as blocked or insufficient. A current-base aggregate
 owner report now records one owner per open Phase 2 workstream and marks stale
 or duplicate PRs without closing any child gate. Stand-mounted charging
 stability, controlled thermal-load behavior, power stability, login startup,
-headless Mac mini acceptance, hardware-keyboard acceptance, and the physical
-8-9 inch tablet run all remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+headless Mac mini acceptance, hardware-keyboard workflow acceptance, and the
+physical 8-9 inch tablet run all remain open. The latest P0110/pacific
+hardware-keyboard current-base readiness record captures the real device
+identity and fails closed because no external Android-attached keyboard, Host
+listener, or stable signed/TCC-ready Host was available; it is not a gate pass.
+See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access
