@@ -23,6 +23,7 @@ class MainActivityControllerForwardingContractTest {
         val source = mainActivitySource()
         val onStop = extractMethod(source, "override fun onStop")
 
+        assertContains(onStop, "inputManager.unregisterInputDeviceListener(controllerDeviceListener)")
         assertContains(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)")
         assertContains(onStop, "isInForeground = false")
         assertContains(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)")
@@ -30,6 +31,23 @@ class MainActivityControllerForwardingContractTest {
         assertContains(onStop, "wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)")
         assertBefore(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)", "isInForeground = false")
         assertBefore(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)", "super.onStop()")
+    }
+
+    @Test
+    fun foregroundLifecycleRegistersControllerHotplugListenerAndResynchronizesActiveSession() {
+        val source = mainActivitySource()
+        val onStart = extractMethod(source, "override fun onStart")
+
+        assertContains(source, "object : InputManager.InputDeviceListener")
+        assertContains(source, "override fun onInputDeviceAdded(deviceId: Int)")
+        assertContains(source, "synchronizeControllerDevices(\"device added \$deviceId\")")
+        assertContains(source, "override fun onInputDeviceChanged(deviceId: Int)")
+        assertContains(source, "synchronizeControllerDevices(\"device changed \$deviceId\")")
+        assertContains(source, "override fun onInputDeviceRemoved(deviceId: Int)")
+        assertContains(source, "synchronizeControllerDevices(\"device removed \$deviceId\")")
+        assertContains(onStart, "inputManager.registerInputDeviceListener(controllerDeviceListener, inputHandler)")
+        assertContains(onStart, "synchronizeControllerDevices(\"foreground\")")
+        assertBefore(onStart, "inputManager.registerInputDeviceListener", "deviceHealthMonitor.start()")
     }
 
     @Test
@@ -41,6 +59,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)?.let { change ->")
         assertContains(dispatchKeyEvent, "val active = canSendControllerInput()")
         assertContains(dispatchKeyEvent, "activeControllerSessionState()")
+        assertContains(dispatchKeyEvent, "controllerHotplugCoordinator.rememberObservedController(event.deviceId, change.controllerId)")
         assertContains(dispatchKeyEvent, "state.applyKey(change)")
         assertContains(dispatchKeyEvent, "sendStreamControllerDispatch(dispatch,")
         assertContains(dispatchKeyEvent, "controller key")
@@ -59,12 +78,14 @@ class MainActivityControllerForwardingContractTest {
         assertContains(source, "handleGenericMotion(view, event)")
         assertContains(genericMotion, "if (!isInForeground) return false")
         assertContains(genericMotion, "if (!isConnected) return false")
+        assertContains(genericMotion, "val active = canSendControllerInput()")
         assertContains(genericMotion, "val active = canSendControllerInput(session)")
         assertContains(genericMotion, "if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->")
+        assertContains(genericMotion, "controllerHotplugCoordinator.rememberObservedController(event.deviceId, snapshot.controllerId)")
         assertContains(genericMotion, "streamControllerSessionState.applyMotion(snapshot)")
         assertContains(genericMotion, "sendStreamControllerDispatch(dispatch,")
         assertContains(genericMotion, "controller motion")
-        assertContains(genericMotion, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
+        assertContains(genericMotion, "ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)")
         assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "StylusInputMapper.snapshot(event)")
         assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "ClientPointerInput(")
     }
@@ -137,6 +158,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "controller = controller")
         assertContains(displaysCallback, "if (keyboard || nativePointer || controller)")
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
+        assertContains(displaysCallback, "if (controller) synchronizeControllerDevices(\"capability negotiation\")")
         assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
         assertContains(wirelessConnect, "advertiseController = true")
         assertContains(wirelessConnect, "wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf())")
@@ -153,6 +175,27 @@ class MainActivityControllerForwardingContractTest {
         assertContains(releaseBoundary, "controller release")
         assertContains(releaseBoundary, "nativeInputReleaseCoordinator.completeBoundary(")
         assertBefore(releaseBoundary, "streamControllerSessionState.takeRelease()", "nativeInputReleaseCoordinator.completeBoundary(")
+    }
+
+    @Test
+    fun controllerHotplugSynchronizationUsesNegotiatedSessionAndCurrentDeviceSnapshot() {
+        val source = mainActivitySource()
+        val synchronize = extractMethod(source, "private fun synchronizeControllerDevices")
+        val snapshots = extractMethod(source, "private fun currentControllerDeviceSnapshots")
+        val resetInternet = extractMethod(source, "private fun resetInternetInputStateForNewSession")
+
+        assertContains(synchronize, "val snapshots = currentControllerDeviceSnapshots()")
+        assertContains(synchronize, "!isInForeground || !isConnected || !hasNegotiatedControllerInput()")
+        assertContains(synchronize, "controllerHotplugCoordinator.synchronizeAvailableControllers")
+        assertContains(synchronize, "sessionState = state")
+        assertContains(synchronize, "sendStreamControllerDispatch(dispatch, \"controller hotplug \$reason\")")
+        assertContains(source, "isConnected && currentSessionBinding().capabilities.controller")
+        assertContains(snapshots, "InputDevice.getDeviceIds().forEach")
+        assertContains(snapshots, "ControllerInputMapper.isControllerSource(device.sources)")
+        assertContains(snapshots, "ControllerDeviceSnapshot(deviceId, ControllerInputMapper.controllerId(device))")
+        assertContains(resetInternet, "resetControllerHotplugTracking()")
+        assertContains(source, "streamControllerSessionState.resetForNewSession()")
+        assertContains(source, "resetControllerHotplugTracking()")
     }
 
     private fun assertContains(
