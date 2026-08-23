@@ -129,12 +129,14 @@ instead of a partial latency claim:
 make evidence-latency-preflight \
   EVIDENCE_DIR="$EVIDENCE_DIR" \
   LATENCY_DEVICE_INFO="$EVIDENCE_DIR/device-info.json" \
-  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json"
+  LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json" \
+  LATENCY_REPOSITORY_REVISION="$(git rev-parse origin/main)"
 ```
 
-That target exits `2` for blocked readiness and writes
-`latency-preflight.json` plus `latency-preflight-exit.txt`; it cannot close a
-latency gate.
+That target exits `0` when every declared prerequisite is ready, `2` for
+blocked readiness, and `1` for malformed input or evaluation failures. It
+writes `latency-preflight.json` plus `latency-preflight-exit.txt`; it cannot
+close a latency gate.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
