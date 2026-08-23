@@ -17,10 +17,11 @@ After origin/main advanced again, this branch was rebased to
 rebased again to c4b8121d9346557ba5d0db7b5c3e63400c8569d2, after PR #313
 landed it was rebased to 44feacfc296a5e0411a43b74e3c657a0ddf95e2d, and after
 PR #172 landed it was rebased to
-1230caf597f52e285d6e9e6b985aad185cb07fc8.
+1230caf597f52e285d6e9e6b985aad185cb07fc8. After PR #296 landed it was rebased
+to a8720948a0e448afa0ff390f2f10c53583948f12.
 
 Focused local verification was run at PR commit
-dd3d92b6534f384af78032365aee886356fb7801 after the latest rebase and
+1b231f4339a3a0a7f78681359df373ee35d883a1 after the latest rebase and
 canonical-query review fix. Later
 evidence-only metadata commits do not change executable sources.
 
@@ -88,7 +89,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
 
 Result: passed, Ran 28 tests, OK.
 
-After rebasing to 1230caf597f52e285d6e9e6b985aad185cb07fc8, the broader
+After rebasing to a8720948a0e448afa0ff390f2f10c53583948f12, the broader
 current-base Phase 3 verification also passed as part of the PR refresh:
 
 ```bash
