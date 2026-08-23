@@ -4,7 +4,7 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
-EVIDENCE_HOST_PID ?=
+EVIDENCE_HOST_PID ?= $(HOST_PID)
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
@@ -201,7 +201,7 @@ require-evidence-serial:
 	@test -n "$(strip $(EVIDENCE_SERIAL))" || (echo "error: set EVIDENCE_SERIAL explicitly" >&2; exit 2)
 
 require-host-pid:
-	@test -n "$(strip $(HOST_PID))" || (echo "error: set HOST_PID to the running Vibe Screen Host process id" >&2; exit 2)
+	@test -n "$(strip $(EVIDENCE_HOST_PID))" || (echo "error: set HOST_PID or EVIDENCE_HOST_PID to the running Vibe Screen Host process id" >&2; exit 2)
 
 evidence-device-info: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
@@ -312,7 +312,7 @@ host-rss-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json
 
 soak-2h-host-rss-gate: require-evidence-serial require-host-pid
-	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)"
+	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)" EVIDENCE_HOST_PID="$(EVIDENCE_HOST_PID)"
 	$(MAKE) host-rss-gate EVIDENCE_DIR="$(EVIDENCE_DIR)"
 
 phase2-tablet-manifest: require-evidence-serial
