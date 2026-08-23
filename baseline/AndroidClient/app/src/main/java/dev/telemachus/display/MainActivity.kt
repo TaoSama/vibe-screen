@@ -54,6 +54,7 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.databinding.ActivityMainBinding
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
+import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.internet.AndroidNetworkMonitor
@@ -300,6 +301,13 @@ class MainActivity : AppCompatActivity() {
     private var selectedDisplayId = ""
     private var pendingDisplaySelectionId: String? = null
     private var availableHostActions = emptyList<HostActionOption>()
+    private val threeFingerGestureClassifier = ThreeFingerGestureClassifier()
+    private var customGestureTouchSequenceActive = false
+    private var customGestureActionCommitted = false
+    private var customGestureBypassUntilSequenceEnd = false
+    private val customGesturePendingTouchEvents = mutableListOf<TouchForwardingPayload>()
+    private var managedCustomGesturesAllowed = true
+    private var managedHostActionsAllowed = true
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var pendingOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
@@ -425,6 +433,7 @@ class MainActivity : AppCompatActivity() {
         deviceHealthMonitor.stop()
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
+        resetCustomGestureTouchState()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
         applyStreamingWindowState(connected = isConnected, foreground = false)
@@ -2189,11 +2198,11 @@ class MainActivity : AppCompatActivity() {
      * menu is built lazily in showHostActionsMenu() from the stored list.
      */
     private fun populateHostActions(actions: List<HostActionOption>) {
-        availableHostActions = actions
+        availableHostActions = HostActionMenuPolicy.supportedActions(actions)
         val available =
             HostActionMenuPolicy.isAvailable(
                 currentSessionBinding().capabilities.hostActions,
-                actions,
+                availableHostActions,
             )
         binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
         binding.controlHostActionsButton.isEnabled = available
@@ -2923,11 +2932,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun invokeHostActionIfAvailable(actionId: String, label: String) {
+        val supportedActions = availableHostActions
         val actionIsCurrent =
             HostActionMenuPolicy.isAvailable(
                 currentSessionBinding().capabilities.hostActions,
-                availableHostActions,
-            ) && availableHostActions.any { it.id == actionId }
+                supportedActions,
+            ) && supportedActions.any { it.id == actionId }
         val client = streamClient
         if (!actionIsCurrent || client == null) return
         mainDiag("capsule invokeHostAction id=$actionId")
@@ -3196,6 +3206,60 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun setupGestureShortcutControls(
+        unavailableNote: TextView,
+        swipeUpGroup: MaterialButtonToggleGroup,
+        swipeUpButtons: Map<GestureHostActionChoice, MaterialButton>,
+        swipeDownGroup: MaterialButtonToggleGroup,
+        swipeDownButtons: Map<GestureHostActionChoice, MaterialButton>,
+    ) {
+        val available = gestureShortcutsAvailable()
+
+        fun applyChoice(
+            group: MaterialButtonToggleGroup,
+            buttons: Map<GestureHostActionChoice, MaterialButton>,
+            choice: GestureHostActionChoice,
+        ) {
+            buttons[choice]?.let { group.check(it.id) }
+                ?: buttons[GestureHostActionChoice.DEFAULT]?.let { group.check(it.id) }
+        }
+
+        fun choiceFor(
+            checkedId: Int,
+            buttons: Map<GestureHostActionChoice, MaterialButton>,
+        ): GestureHostActionChoice? = buttons.entries.firstOrNull { it.value.id == checkedId }?.key
+
+        fun supportsChoice(choice: GestureHostActionChoice): Boolean = choice.isSupportedByHostActions(availableHostActions)
+
+        applyChoice(swipeUpGroup, swipeUpButtons, prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions))
+        applyChoice(swipeDownGroup, swipeDownButtons, prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions))
+        unavailableNote.visibility = if (available) View.GONE else View.VISIBLE
+        listOf(swipeUpGroup, swipeDownGroup).forEach { group -> group.isEnabled = available }
+        listOf(swipeUpButtons, swipeDownButtons).forEach { buttons ->
+            buttons.forEach { (choice, button) ->
+                button.isEnabled = available && supportsChoice(choice)
+            }
+        }
+
+        if (!available) return
+
+        swipeUpGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.gestureSwipeUpAction = choiceFor(checkedId, swipeUpButtons) ?: return@addOnButtonCheckedListener
+        }
+        swipeDownGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.gestureSwipeDownAction = choiceFor(checkedId, swipeDownButtons) ?: return@addOnButtonCheckedListener
+        }
+    }
+
+    private fun gestureShortcutsAvailable(): Boolean {
+        val capabilities = currentSessionBinding().capabilities
+        return capabilities.customGestures &&
+            HostActionMenuPolicy.isAvailable(capabilities.hostActions, availableHostActions) &&
+            streamClient?.canInvokeHostActions == true
+    }
+
     private fun showSettingsDialog() {
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -3235,6 +3299,21 @@ class MainActivity : AppCompatActivity() {
         val videoFps120 = view.findViewById<MaterialButton>(R.id.videoFps120)
         val videoBitrateSlider = view.findViewById<Slider>(R.id.videoBitrateSlider)
         val videoBitrateValue = view.findViewById<TextView>(R.id.videoBitrateValue)
+        val gestureShortcutUnavailable = view.findViewById<TextView>(R.id.gestureShortcutUnavailable)
+        val gestureSwipeUpGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeUpGroup)
+        val gestureSwipeDownGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeDownGroup)
+        val gestureSwipeUpButtons =
+            mapOf(
+                GestureHostActionChoice.DEFAULT to view.findViewById<MaterialButton>(R.id.gestureSwipeUpDefault),
+                GestureHostActionChoice.MOVE_WINDOW to view.findViewById<MaterialButton>(R.id.gestureSwipeUpMoveWindow),
+                GestureHostActionChoice.RETURN_WINDOWS to view.findViewById<MaterialButton>(R.id.gestureSwipeUpReturnWindows),
+            )
+        val gestureSwipeDownButtons =
+            mapOf(
+                GestureHostActionChoice.DEFAULT to view.findViewById<MaterialButton>(R.id.gestureSwipeDownDefault),
+                GestureHostActionChoice.MOVE_WINDOW to view.findViewById<MaterialButton>(R.id.gestureSwipeDownMoveWindow),
+                GestureHostActionChoice.RETURN_WINDOWS to view.findViewById<MaterialButton>(R.id.gestureSwipeDownReturnWindows),
+            )
 
         renderDeviceHealth(dialog)
 
@@ -3285,6 +3364,13 @@ class MainActivity : AppCompatActivity() {
             rotationButtons[prefs.clientRotation]?.let { rotationGroup.check(it.id) }
         }
         updateViewportButtons()
+        setupGestureShortcutControls(
+            unavailableNote = gestureShortcutUnavailable,
+            swipeUpGroup = gestureSwipeUpGroup,
+            swipeUpButtons = gestureSwipeUpButtons,
+            swipeDownGroup = gestureSwipeDownGroup,
+            swipeDownButtons = gestureSwipeDownButtons,
+        )
 
         // Highlight current position selection (8 positions)
         // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
@@ -3644,6 +3730,9 @@ class MainActivity : AppCompatActivity() {
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
         resetControllerHotplugTracking()
+        managedCustomGesturesAllowed = true
+        managedHostActionsAllowed = true
+        resetCustomGestureTouchState()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -4271,13 +4360,16 @@ class MainActivity : AppCompatActivity() {
                 val fileTransfer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_FILE_TRANSFER in negotiated
                 if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || fileTransfer) {
+                    val managedHostActions = hostActions && managedHostActionsAllowed
+                    val customGestures = managedHostActions && managedCustomGesturesAllowed
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
                             keyboard = keyboard,
                             nativePointer = nativePointer,
                             controller = controller,
-                            hostActions = hostActions,
+                            customGestures = customGestures,
+                            hostActions = managedHostActions,
                             clipboard = clipboard,
                             fileTransfer = fileTransfer,
                         )
@@ -4301,7 +4393,7 @@ class MainActivity : AppCompatActivity() {
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
-                            "controller=$controller hostActions=$hostActions " +
+                            "controller=$controller customGestures=$customGestures hostActions=$managedHostActions " +
                             "clipboard=$clipboard fileTransfer=$fileTransfer",
                     )
                     if (controller) synchronizeControllerDevices("capability negotiation")
@@ -4342,6 +4434,34 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionsAvailable: ${actions.joinToString { it.id }}")
                 populateHostActions(actions)
+            }
+        }
+        callbackClient.onManagedPolicyReceived = managedPolicy@{ status ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@managedPolicy
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed
+                managedHostActionsAllowed = !status.managed || status.hostActionsAllowed
+                val binding = currentSessionBinding()
+                val hostActionsNegotiated =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()
+                val hostActions = hostActionsNegotiated && managedHostActionsAllowed
+                val customGestures = hostActions && managedCustomGesturesAllowed
+                val capabilities =
+                    binding.capabilities.copy(
+                        customGestures = customGestures,
+                        hostActions = hostActions,
+                    )
+                applyNegotiatedSession(
+                    callbackClient,
+                    callbackGeneration,
+                    ClientSessionBinding(capabilities, binding.inputSink),
+                )
+                populateHostActions(availableHostActions)
+                mainDiag(
+                    "managed policy updated: customGestures=" + customGestures +
+                        " hostActions=" + capabilities.hostActions,
+                )
             }
         }
         callbackClient.onControllerInputAck = controllerAck@{ connection, accepted, rejectionReason ->
@@ -5443,6 +5563,9 @@ class MainActivity : AppCompatActivity() {
     private fun applyDisconnectedSessionUi() {
         isConnected = false
         revealOnlyTouchGestureActive = false
+        resetCustomGestureTouchState()
+        managedCustomGesturesAllowed = true
+        managedHostActionsAllowed = true
         streamStylusGestureRouter.reset()
         streamStylusContactRouter.reset()
         streamStylusInputIds.clear()
@@ -5549,13 +5672,21 @@ class MainActivity : AppCompatActivity() {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
             return
         }
+        if (consumeCustomGestureHostAction(view, event)) return
+        forwardMotionTouch(view, event)
+    }
+
+    private fun buildTouchForwardingPayload(
+        view: View,
+        event: MotionEvent,
+    ): TouchForwardingPayload? {
         val pointerCount = event.pointerCount.coerceAtMost(MAX_FORWARDED_POINTERS)
         val mappedPointers =
             (0 until pointerCount).map { index ->
                 val mapped = mapInputPoint(view, event.getX(index), event.getY(index))
                 MotionPointer(event.getPointerId(index), mapped.x.toDouble(), mapped.y.toDouble())
             }.toMutableList()
-        val first = mappedPointers.firstOrNull() ?: return
+        val first = mappedPointers.firstOrNull() ?: return null
         val x = first.x
         val y = first.y
         when (event.actionMasked) {
@@ -5604,12 +5735,201 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> LEGACY_TOUCH_MOVE
                 else -> LEGACY_TOUCH_UP
             }
+        return TouchForwardingPayload(v1Samples, legacyAction, mappedPointers)
+    }
+
+    private fun forwardMotionTouch(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val payload = buildTouchForwardingPayload(view, event) ?: return
+        sendTouchForwardingPayload(payload)
+    }
+
+    private fun sendTouchForwardingPayload(payload: TouchForwardingPayload) {
         streamClient?.sendMotionTouch(
-            v1Samples = v1Samples,
-            legacyAction = legacyAction,
-            legacyPointers = mappedPointers,
+            v1Samples = payload.v1Samples,
+            legacyAction = payload.legacyAction,
+            legacyPointers = payload.legacyPointers,
         )
     }
+
+    private fun currentGestureHostActionProfile(): GestureHostActionProfile =
+        GestureHostActionProfile.fromChoices(
+            swipeUp = prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions),
+            swipeDown = prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions),
+        )
+
+    private fun consumeCustomGestureHostAction(
+        view: View,
+        event: MotionEvent,
+    ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) return false
+        if (customGestureBypassUntilSequenceEnd) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                resetCustomGestureTouchState()
+            }
+            return false
+        }
+        val profile = currentGestureHostActionProfile()
+        if (!GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile)) {
+            resetCustomGestureTouchState()
+            return false
+        }
+        if (!customGestureTouchSequenceActive && !gestureShortcutsAvailable()) {
+            resetCustomGestureTouchState()
+            return false
+        }
+        val action = event.actionMasked
+        if (!customGestureTouchSequenceActive && event.pointerCount < CUSTOM_GESTURE_POINTER_COUNT) {
+            if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_UP) resetCustomGestureTouchState()
+            return false
+        }
+        if (!customGestureTouchSequenceActive && event.pointerCount >= CUSTOM_GESTURE_POINTER_COUNT) {
+            inputPredictor.reset()
+            customGestureTouchSequenceActive = true
+            customGestureActionCommitted = false
+            customGesturePendingTouchEvents.clear()
+            revealControlBar()
+        }
+        if (!customGestureTouchSequenceActive) return false
+        if (!customGestureActionCommitted) {
+            buildTouchForwardingPayload(view, event)?.let(customGesturePendingTouchEvents::add)
+        }
+
+        val trigger =
+            threeFingerGestureClassifier.consume(
+                ThreeFingerGestureSample(
+                    pointerCount = event.pointerCount,
+                    phase = event.toThreeFingerGesturePhase(),
+                    centroidY = event.centroidY(),
+                    viewportHeight = view.height,
+                ),
+            )
+        if (trigger != null) handleGestureHostActionDecision(view, event, trigger, profile)
+        if (!customGestureActionCommitted && shouldReleasePendingCustomGesture(event)) {
+            replayPendingCustomGestureTouchEvents()
+            resetCustomGestureTouchState()
+            return true
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            resetCustomGestureTouchState()
+        }
+        return true
+    }
+
+    private fun sendCustomGestureTouchCancellation(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val cancelledPointers =
+            (0 until minOf(MAX_FORWARDED_POINTERS, event.pointerCount)).map { index ->
+                val mapped = mapInputPoint(view, event.getX(index), event.getY(index))
+                MotionPointer(event.getPointerId(index), mapped.x.toDouble(), mapped.y.toDouble())
+            }
+        streamClient?.sendMotionTouch(
+            v1Samples =
+                cancelledPointers.map { pointer ->
+                    TouchSample(pointer.pointerId, InputPhase.INPUT_PHASE_CANCELLED, pointer.x, pointer.y)
+                },
+            legacyAction = LEGACY_TOUCH_UP,
+            legacyPointers = cancelledPointers,
+        )
+    }
+
+    private fun handleGestureHostActionDecision(
+        view: View,
+        event: MotionEvent,
+        trigger: GestureHostActionTrigger,
+        profile: GestureHostActionProfile,
+    ) {
+        if (customGestureActionCommitted) return
+        val capabilities = currentSessionBinding().capabilities
+        val supportedActions = availableHostActions
+        val decision =
+            GestureHostActionPolicy.resolve(
+                trigger = trigger,
+                profile = profile,
+                context =
+                    GestureHostActionPolicyContext(
+                        customGesturesAllowed = capabilities.customGestures,
+                        hostActionsAllowed = capabilities.hostActions,
+                        hostActionsNegotiated = streamClient?.canInvokeHostActions == true,
+                        availableHostActionIds = supportedActions.map { it.id }.toSet(),
+                    ),
+            )
+        when (decision) {
+            GestureHostActionDecision.Default -> {
+                replayPendingCustomGestureTouchEvents()
+                customGestureBypassUntilSequenceEnd = true
+                releaseCustomGestureCandidate()
+            }
+            GestureHostActionDecision.Denied -> {
+                sendCustomGestureTouchCancellation(view, event)
+                customGestureActionCommitted = true
+                mainDiag("gesture host action denied trigger=$trigger")
+            }
+            is GestureHostActionDecision.InvokeHostAction -> {
+                val option = supportedActions.firstOrNull { it.id == decision.actionId } ?: return
+                val label =
+                    HostActionMenuPolicy.menuLabel(
+                        option,
+                        moveDefault = getString(R.string.host_action_move_window),
+                        returnDefault = getString(R.string.host_action_return_windows),
+                    )
+                sendCustomGestureTouchCancellation(view, event)
+                customGestureActionCommitted = true
+                invokeHostActionIfAvailable(decision.actionId, label)
+            }
+        }
+    }
+
+    private fun shouldReleasePendingCustomGesture(event: MotionEvent): Boolean =
+        event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_CANCEL ||
+            event.actionMasked == MotionEvent.ACTION_POINTER_UP
+
+    private fun replayPendingCustomGestureTouchEvents() {
+        customGesturePendingTouchEvents.forEach(::sendTouchForwardingPayload)
+    }
+
+    private fun releaseCustomGestureCandidate() {
+        customGestureTouchSequenceActive = false
+        customGestureActionCommitted = false
+        customGesturePendingTouchEvents.clear()
+        threeFingerGestureClassifier.reset()
+    }
+
+    private fun resetCustomGestureTouchState() {
+        releaseCustomGestureCandidate()
+        customGestureBypassUntilSequenceEnd = false
+    }
+
+    private fun MotionEvent.toThreeFingerGesturePhase(): ThreeFingerGesturePhase =
+        when (actionMasked) {
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN,
+            -> ThreeFingerGesturePhase.BEGIN
+            MotionEvent.ACTION_MOVE -> ThreeFingerGesturePhase.MOVE
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_POINTER_UP,
+            -> ThreeFingerGesturePhase.END
+            MotionEvent.ACTION_CANCEL -> ThreeFingerGesturePhase.CANCEL
+            else -> ThreeFingerGesturePhase.OTHER
+        }
+
+    private fun MotionEvent.centroidY(): Float {
+        if (pointerCount == 0) return 0f
+        var total = 0f
+        for (index in 0 until pointerCount) total += getY(index)
+        return total / pointerCount
+    }
+
+    private data class TouchForwardingPayload(
+        val v1Samples: List<TouchSample>,
+        val legacyAction: Int,
+        val legacyPointers: List<MotionPointer>,
+    )
 
     /**
      * Bridges negotiated native input into the active Protocol v1 session.
@@ -6098,6 +6418,7 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_TOUCH_UP = 2
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
         private const val MAX_FORWARDED_POINTERS = 2
+        private const val CUSTOM_GESTURE_POINTER_COUNT = 3
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS = 250L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L

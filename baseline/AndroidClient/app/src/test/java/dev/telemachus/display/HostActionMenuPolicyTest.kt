@@ -21,6 +21,32 @@ class HostActionMenuPolicyTest {
     }
 
     @Test
+    fun unknownOnlyCatalogIsUnavailable() {
+        assertFalse(
+            HostActionMenuPolicy.isAvailable(
+                hostActions = true,
+                actions = listOf(option("custom-action")),
+            ),
+        )
+    }
+
+    @Test
+    fun supportedActionsAreKnownIdsInFirstSeenOrder() {
+        val supported =
+            HostActionMenuPolicy.supportedActions(
+                listOf(
+                    option("custom-action"),
+                    option("move-window", name = "Move first"),
+                    option("move-window", name = "Move duplicate"),
+                    option("return-windows", name = "Return"),
+                ),
+            )
+
+        assertEquals(listOf("move-window", "return-windows"), supported.map { it.id })
+        assertEquals("Move first", supported.first().name)
+    }
+
+    @Test
     fun `menu label prefers the host localized name`() {
         val label =
             HostActionMenuPolicy.menuLabel(
@@ -78,11 +104,18 @@ class HostActionMenuPolicyTest {
     @Test
     fun `availability check gates on the negotiated host-actions capability`() {
         val capabilities =
-            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(hostActions = true)
+            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(hostActions = true, customGestures = true)
         assertTrue(ClientControlAvailability.isSupported(ClientControl.HOST_ACTIONS, capabilities))
+        assertTrue(ClientControlAvailability.isSupported(ClientControl.CUSTOM_GESTURES, capabilities))
         assertFalse(
             ClientControlAvailability.isSupported(
                 ClientControl.HOST_ACTIONS,
+                ClientSessionCapabilities.LEGACY_TOUCH_ONLY,
+            ),
+        )
+        assertFalse(
+            ClientControlAvailability.isSupported(
+                ClientControl.CUSTOM_GESTURES,
                 ClientSessionCapabilities.LEGACY_TOUCH_ONLY,
             ),
         )

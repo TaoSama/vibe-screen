@@ -20,6 +20,17 @@ class GestureHostActionPolicyTest {
     }
 
     @Test
+    fun defaultChoicesDoNotInterceptThreeFingerGestures() {
+        val profile =
+            GestureHostActionProfile.fromChoices(
+                swipeUp = GestureHostActionChoice.DEFAULT,
+                swipeDown = GestureHostActionChoice.DEFAULT,
+            )
+
+        assertFalse(GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile))
+    }
+
+    @Test
     fun `explicit three finger host action mapping invokes only available action`() {
         val profile =
             GestureHostActionProfile(
@@ -47,6 +58,79 @@ class GestureHostActionPolicyTest {
                 trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN,
                 profile = profile,
                 context = allowedContext(HostActionMenuPolicy.ACTION_MOVE_WINDOW),
+            ),
+        )
+    }
+
+    @Test
+    fun choiceProfileMapsSavedSettingsToFixedHostActionIds() {
+        val profile =
+            GestureHostActionProfile.fromChoices(
+                swipeUp = GestureHostActionChoice.MOVE_WINDOW,
+                swipeDown = GestureHostActionChoice.RETURN_WINDOWS,
+            )
+
+        assertTrue(GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile))
+        assertEquals(
+            GestureHostActionDecision.InvokeHostAction(HostActionMenuPolicy.ACTION_MOVE_WINDOW),
+            GestureHostActionPolicy.resolve(
+                trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+                profile = profile,
+                context = allowedContext(
+                    HostActionMenuPolicy.ACTION_MOVE_WINDOW,
+                    HostActionMenuPolicy.ACTION_RETURN_WINDOWS,
+                ),
+            ),
+        )
+        assertEquals(
+            GestureHostActionDecision.InvokeHostAction(HostActionMenuPolicy.ACTION_RETURN_WINDOWS),
+            GestureHostActionPolicy.resolve(
+                trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN,
+                profile = profile,
+                context = allowedContext(
+                    HostActionMenuPolicy.ACTION_MOVE_WINDOW,
+                    HostActionMenuPolicy.ACTION_RETURN_WINDOWS,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun savedChoiceFallsBackToDefaultWhenCurrentHostDoesNotAdvertiseTheAction() {
+        val returnOnlyHost = listOf(hostAction(HostActionMenuPolicy.ACTION_RETURN_WINDOWS))
+
+        assertEquals(
+            GestureHostActionChoice.DEFAULT,
+            GestureHostActionChoice.MOVE_WINDOW.effectiveForHostActions(returnOnlyHost),
+        )
+        assertEquals(
+            GestureHostActionChoice.RETURN_WINDOWS,
+            GestureHostActionChoice.RETURN_WINDOWS.effectiveForHostActions(returnOnlyHost),
+        )
+        assertTrue(GestureHostActionChoice.DEFAULT.isSupportedByHostActions(returnOnlyHost))
+        assertFalse(GestureHostActionChoice.MOVE_WINDOW.isSupportedByHostActions(returnOnlyHost))
+        assertTrue(GestureHostActionChoice.RETURN_WINDOWS.isSupportedByHostActions(returnOnlyHost))
+    }
+
+    @Test
+    fun unknownHostActionIdFailsClosedEvenWhenAdvertised() {
+        val profile =
+            GestureHostActionProfile(
+                mappings =
+                    listOf(
+                        GestureHostActionMapping(
+                            trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+                            action = GestureHostActionMappingAction.InvokeHostAction("custom-action"),
+                        ),
+                    ),
+            )
+
+        assertEquals(
+            GestureHostActionDecision.Denied,
+            GestureHostActionPolicy.resolve(
+                trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+                profile = profile,
+                context = allowedContext("custom-action"),
             ),
         )
     }
@@ -163,21 +247,33 @@ class GestureHostActionPolicyTest {
     }
 
     @Test
-    fun `three finger classifier emits vertical swipes after the gesture ends`() {
+    fun `three finger classifier emits vertical swipes once direction is clear`() {
         val classifier = ThreeFingerGestureClassifier(minimumSwipeFraction = 0.1f)
 
         assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.BEGIN, centroidY = 700f)))
-        assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.MOVE, centroidY = 500f)))
         assertEquals(
             GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
-            classifier.consume(sample(phase = ThreeFingerGesturePhase.END, centroidY = 450f)),
+            classifier.consume(sample(phase = ThreeFingerGesturePhase.MOVE, centroidY = 500f)),
         )
+        assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.END, centroidY = 450f)))
 
         assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.BEGIN, centroidY = 300f)))
         assertEquals(
             GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN,
-            classifier.consume(sample(phase = ThreeFingerGesturePhase.END, centroidY = 470f)),
+            classifier.consume(sample(phase = ThreeFingerGesturePhase.MOVE, centroidY = 470f)),
         )
+    }
+
+    @Test
+    fun `three finger classifier emits once when motion crosses swipe threshold`() {
+        val classifier = ThreeFingerGestureClassifier(minimumSwipeFraction = 0.1f)
+
+        assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.BEGIN, centroidY = 700f)))
+        assertEquals(
+            GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+            classifier.consume(sample(phase = ThreeFingerGesturePhase.MOVE, centroidY = 500f)),
+        )
+        assertEquals(null, classifier.consume(sample(phase = ThreeFingerGesturePhase.MOVE, centroidY = 450f)))
     }
 
     @Test
@@ -201,13 +297,16 @@ class GestureHostActionPolicyTest {
         )
     }
 
-    private fun allowedContext(actionId: String) =
+    private fun allowedContext(vararg actionIds: String) =
         GestureHostActionPolicyContext(
             customGesturesAllowed = true,
             hostActionsAllowed = true,
             hostActionsNegotiated = true,
-            availableHostActionIds = setOf(actionId),
+            availableHostActionIds = actionIds.toSet(),
         )
+
+    private fun hostAction(actionId: String): HostActionOption =
+        HostActionOption(id = actionId, name = actionId, requiresConfirmation = false)
 
     private fun sample(
         pointerCount: Int = 3,

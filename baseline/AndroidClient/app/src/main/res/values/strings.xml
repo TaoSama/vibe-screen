@@ -65,6 +65,14 @@
     <string name="video_bitrate_label">Bitrate</string>
     <string name="video_bitrate_value">%1$d Mbps</string>
     <string name="video_control_unavailable">Connect to a compatible Mac session to tune video quality.</string>
+    <string name="gesture_shortcuts_title">Gesture shortcuts</string>
+    <string name="gesture_shortcuts_description">Map three-finger vertical swipes to Mac window actions.</string>
+    <string name="gesture_swipe_up_label">Three-finger swipe up</string>
+    <string name="gesture_swipe_down_label">Three-finger swipe down</string>
+    <string name="gesture_action_default">Default</string>
+    <string name="gesture_action_move_window">Move here</string>
+    <string name="gesture_action_return_windows">Return</string>
+    <string name="gesture_shortcuts_unavailable">Connect to a compatible Mac session with window actions to use shortcuts.</string>
     <string name="video_quality_request_sent">Quality request sent to Mac</string>
     <string name="video_frame_rate_request_sent">Frame-rate request sent to Mac</string>
     <string name="video_bitrate_request_sent">Bitrate request sent to Mac</string>

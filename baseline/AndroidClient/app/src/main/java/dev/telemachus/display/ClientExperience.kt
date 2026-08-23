@@ -401,6 +401,7 @@ data class ClientSessionCapabilities(
     val keyboard: Boolean,
     val nativePointer: Boolean,
     val controller: Boolean,
+    val customGestures: Boolean,
     val hostActions: Boolean,
     val clipboard: Boolean,
     val fileTransfer: Boolean,
@@ -413,6 +414,7 @@ data class ClientSessionCapabilities(
                 keyboard = false,
                 nativePointer = false,
                 controller = false,
+                customGestures = false,
                 hostActions = false,
                 clipboard = false,
                 fileTransfer = false,
@@ -425,6 +427,7 @@ internal enum class ClientControl {
     KEYBOARD,
     NATIVE_POINTER,
     HOST_ACTIONS,
+    CUSTOM_GESTURES,
     CLIPBOARD,
     FILE_TRANSFER,
 }
@@ -640,6 +643,7 @@ internal object ClientControlAvailability {
             ClientControl.KEYBOARD -> capabilities.keyboard
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
             ClientControl.HOST_ACTIONS -> capabilities.hostActions
+            ClientControl.CUSTOM_GESTURES -> capabilities.customGestures
             ClientControl.CLIPBOARD -> capabilities.clipboard
             ClientControl.FILE_TRANSFER -> capabilities.fileTransfer
         }
@@ -671,6 +675,34 @@ internal sealed class GestureHostActionMappingAction {
     data class InvokeHostAction(val actionId: String) : GestureHostActionMappingAction()
 }
 
+enum class GestureHostActionChoice {
+    DEFAULT,
+    MOVE_WINDOW,
+    RETURN_WINDOWS,
+    ;
+
+    internal fun toMappingAction(): GestureHostActionMappingAction =
+        when (this) {
+            DEFAULT -> GestureHostActionMappingAction.Default
+            MOVE_WINDOW -> GestureHostActionMappingAction.InvokeHostAction(HostActionMenuPolicy.ACTION_MOVE_WINDOW)
+            RETURN_WINDOWS -> GestureHostActionMappingAction.InvokeHostAction(HostActionMenuPolicy.ACTION_RETURN_WINDOWS)
+        }
+
+    companion object {
+        fun fromName(value: String?): GestureHostActionChoice = entries.firstOrNull { it.name == value } ?: DEFAULT
+    }
+}
+
+internal fun GestureHostActionChoice.isSupportedByHostActions(availableHostActions: Iterable<HostActionOption>): Boolean =
+    when (val action = toMappingAction()) {
+        GestureHostActionMappingAction.Default -> true
+        GestureHostActionMappingAction.Deny -> false
+        is GestureHostActionMappingAction.InvokeHostAction -> availableHostActions.any { it.id == action.actionId }
+    }
+
+internal fun GestureHostActionChoice.effectiveForHostActions(availableHostActions: Iterable<HostActionOption>): GestureHostActionChoice =
+    if (isSupportedByHostActions(availableHostActions)) this else GestureHostActionChoice.DEFAULT
+
 internal data class GestureHostActionMapping(
     val trigger: GestureHostActionTrigger,
     val action: GestureHostActionMappingAction,
@@ -681,6 +713,24 @@ internal data class GestureHostActionProfile(
 ) {
     companion object {
         val DEFAULT = GestureHostActionProfile()
+
+        fun fromChoices(
+            swipeUp: GestureHostActionChoice,
+            swipeDown: GestureHostActionChoice,
+        ): GestureHostActionProfile =
+            GestureHostActionProfile(
+                mappings =
+                    listOf(
+                        GestureHostActionMapping(
+                            trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+                            action = swipeUp.toMappingAction(),
+                        ),
+                        GestureHostActionMapping(
+                            trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN,
+                            action = swipeDown.toMappingAction(),
+                        ),
+                    ),
+            )
     }
 }
 
@@ -698,6 +748,8 @@ internal sealed class GestureHostActionDecision {
 }
 
 internal object GestureHostActionPolicy {
+    fun knownActionIds(): Set<String> = HostActionMenuPolicy.KNOWN_ACTION_IDS
+
     fun shouldInterceptThreeFingerGestures(profile: GestureHostActionProfile): Boolean =
         profile.mappings.any { mapping ->
             when (mapping.action) {
@@ -723,6 +775,7 @@ internal object GestureHostActionPolicy {
                 if (context.customGesturesAllowed &&
                     context.hostActionsAllowed &&
                     context.hostActionsNegotiated &&
+                    action.actionId in knownActionIds() &&
                     action.actionId in context.availableHostActionIds
                 ) {
                     GestureHostActionDecision.InvokeHostAction(action.actionId)
@@ -770,19 +823,18 @@ internal class ThreeFingerGestureClassifier(
                 null
             }
             ThreeFingerGesturePhase.MOVE -> {
-                if (startCentroidY == null) startCentroidY = sample.centroidY
-                null
+                val startY = startCentroidY
+                if (startY == null) {
+                    startCentroidY = sample.centroidY
+                    null
+                } else {
+                    resolveCompletedSwipe(sample, startY, resetAfterMatch = true)
+                }
             }
             ThreeFingerGesturePhase.END -> {
                 val startY = startCentroidY ?: sample.centroidY
-                val deltaY = sample.centroidY - startY
                 reset()
-                val threshold = sample.viewportHeight * minimumSwipeFraction
-                when {
-                    deltaY <= -threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_UP
-                    deltaY >= threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN
-                    else -> null
-                }
+                resolveCompletedSwipe(sample, startY, resetAfterMatch = false)
             }
             ThreeFingerGesturePhase.CANCEL,
             ThreeFingerGesturePhase.OTHER,
@@ -795,6 +847,23 @@ internal class ThreeFingerGestureClassifier(
 
     fun reset() {
         startCentroidY = null
+    }
+
+    private fun resolveCompletedSwipe(
+        sample: ThreeFingerGestureSample,
+        startY: Float,
+        resetAfterMatch: Boolean,
+    ): GestureHostActionTrigger? {
+        val deltaY = sample.centroidY - startY
+        val threshold = sample.viewportHeight * minimumSwipeFraction
+        val trigger =
+            when {
+                deltaY <= -threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_UP
+                deltaY >= threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN
+                else -> null
+            }
+        if (trigger != null && resetAfterMatch) reset()
+        return trigger
     }
 
     private companion object {
@@ -811,10 +880,17 @@ internal class ThreeFingerGestureClassifier(
  * it never adds a dead tap target to the compact capsule.
  */
 internal object HostActionMenuPolicy {
+    fun supportedActions(actions: List<HostActionOption>): List<HostActionOption> {
+        val seen = mutableSetOf<String>()
+        return actions.filter { option ->
+            option.id in KNOWN_ACTION_IDS && seen.add(option.id)
+        }
+    }
+
     fun isAvailable(
         hostActions: Boolean,
         actions: List<HostActionOption>,
-    ): Boolean = hostActions && actions.isNotEmpty()
+    ): Boolean = hostActions && supportedActions(actions).isNotEmpty()
 
     fun selectionMode(option: HostActionOption): HostActionSelectionMode =
         if (option.requiresConfirmation) HostActionSelectionMode.CONFIRM else HostActionSelectionMode.INVOKE
@@ -840,6 +916,7 @@ internal object HostActionMenuPolicy {
 
     const val ACTION_MOVE_WINDOW = "move-window"
     const val ACTION_RETURN_WINDOWS = "return-windows"
+    internal val KNOWN_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
 }
 
 /**

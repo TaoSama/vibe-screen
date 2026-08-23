@@ -76,6 +76,7 @@ class ClientInputDispatchTest {
                keyboard = true,
                nativePointer = true,
                 controller = true,
+                customGestures = false,
                 hostActions = false,
                 clipboard = false,
                 fileTransfer = false,

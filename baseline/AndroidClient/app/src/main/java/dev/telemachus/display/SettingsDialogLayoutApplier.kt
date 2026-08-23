@@ -56,6 +56,8 @@ internal object SettingsDialogLayoutApplier {
             R.id.rotationGroup,
             R.id.videoQualityGroup,
             R.id.videoFrameRateGroup,
+            R.id.gestureSwipeUpGroup,
+            R.id.gestureSwipeDownGroup,
             R.id.settingsResetActions,
         ).associateWith { groupId ->
             apply(root.findViewById(groupId), groupId == R.id.settingsResetActions)

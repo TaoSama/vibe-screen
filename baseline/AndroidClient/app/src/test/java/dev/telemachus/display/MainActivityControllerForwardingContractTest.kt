@@ -98,7 +98,65 @@ class MainActivityControllerForwardingContractTest {
         assertContains(touchHandler, "if (!isInForeground) return")
         assertBefore(touchHandler, "if (!isInForeground) return", "consumeHiddenControlRevealGesture(event)")
         assertBefore(touchHandler, "if (!isInForeground) return", "prefs.connectionMode == ConnectionMode.INTERNET")
-        assertBefore(touchHandler, "if (!isInForeground) return", "streamClient?.sendMotionTouch(")
+        assertBefore(touchHandler, "if (!isInForeground) return", "forwardMotionTouch(view, event)")
+    }
+
+    @Test
+    fun customGestureHostActionsAreResolvedBeforeForwardingTouch() {
+        val source = mainActivitySource()
+        val touchHandler = extractMethod(source, "private fun handleTouch")
+        val gestureConsumer = extractMethod(source, "private fun consumeCustomGestureHostAction")
+        val gestureDecision = extractMethod(source, "private fun handleGestureHostActionDecision")
+        val gestureAvailability = extractMethod(source, "private fun gestureShortcutsAvailable")
+
+        assertContains(touchHandler, "if (consumeCustomGestureHostAction(view, event)) return")
+        assertBefore(touchHandler, "if (consumeCustomGestureHostAction(view, event)) return", "forwardMotionTouch(view, event)")
+        assertContains(gestureConsumer, "GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile)")
+        assertContains(gestureConsumer, "!customGestureTouchSequenceActive && !gestureShortcutsAvailable()")
+        assertContains(gestureConsumer, "event.pointerCount < CUSTOM_GESTURE_POINTER_COUNT")
+        assertContains(gestureConsumer, "buildTouchForwardingPayload(view, event)?.let(customGesturePendingTouchEvents::add)")
+        assertContains(gestureConsumer, "!customGestureActionCommitted && shouldReleasePendingCustomGesture(event)")
+        assertContains(gestureConsumer, "replayPendingCustomGestureTouchEvents()")
+        assertContains(gestureConsumer, "handleGestureHostActionDecision(view, event, trigger, profile)")
+        assertContains(gestureDecision, "GestureHostActionPolicy.resolve(")
+        assertContains(gestureAvailability, "streamClient?.canInvokeHostActions == true")
+        assertContains(source, "prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions)")
+        assertContains(source, "prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions)")
+        assertContains(gestureDecision, "GestureHostActionDecision.Default -> {")
+        assertContains(gestureDecision, "customGestureBypassUntilSequenceEnd = true")
+        assertContains(gestureDecision, "releaseCustomGestureCandidate()")
+        assertContains(gestureDecision, "sendCustomGestureTouchCancellation(view, event)")
+        assertContains(gestureDecision, "invokeHostActionIfAvailable(decision.actionId, label)")
+    }
+
+    @Test
+    fun gestureShortcutSettingsNormalizeUnsupportedSavedChoicesWithoutOverwritingPreferences() {
+        val source = mainActivitySource()
+        val setupControls = extractMethod(source, "private fun setupGestureShortcutControls")
+        val profile = extractMethod(source, "private fun currentGestureHostActionProfile")
+
+        assertContains(setupControls, "fun supportsChoice(choice: GestureHostActionChoice): Boolean = choice.isSupportedByHostActions(availableHostActions)")
+        assertContains(setupControls, "prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions)")
+        assertContains(setupControls, "prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions)")
+        assertContains(setupControls, "button.isEnabled = available && supportsChoice(choice)")
+        assertContains(setupControls, "prefs.gestureSwipeUpAction = choiceFor(checkedId, swipeUpButtons) ?: return@addOnButtonCheckedListener")
+        assertContains(setupControls, "prefs.gestureSwipeDownAction = choiceFor(checkedId, swipeDownButtons) ?: return@addOnButtonCheckedListener")
+        assertContains(profile, "swipeUp = prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions)")
+        assertContains(profile, "swipeDown = prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions)")
+    }
+
+    @Test
+    fun managedPolicyUpdatesCustomGestureAndHostActionAvailability() {
+        val source = mainActivitySource()
+        val displaysCallback = extractCallback(source, "callbackClient.onDisplaysAvailable = displays@")
+        val managedPolicyCallback = extractCallback(source, "callbackClient.onManagedPolicyReceived = managedPolicy@")
+
+        assertContains(displaysCallback, "customGestures = customGestures")
+        assertContains(displaysCallback, "hostActions = managedHostActions")
+        assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed")
+        assertContains(managedPolicyCallback, "managedHostActionsAllowed = !status.managed || status.hostActionsAllowed")
+        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()")
+        assertContains(managedPolicyCallback, "populateHostActions(availableHostActions)")
     }
 
     @Test
