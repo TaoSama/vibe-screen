@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/macos-hardware-compatibility.schema.json",
+  "title": "Vibe Screen macOS Host hardware compatibility matrix row summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_macos_host_compatibility_row",
+    "row_scope",
+    "observations",
+    "invalid_claims",
+    "invalid_claim_observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "artifact_file_check",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "macos_host_compatibility_matrix_row"},
+    "profile": {"const": "macos-host-compatibility-row"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "failed"]},
+    "can_close_macos_host_compatibility_row": {"type": "boolean"},
+    "row_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "implementation_path",
+        "repository_commit",
+        "repository_dirty_state",
+        "cpu_architecture",
+        "host_model_identifier",
+        "host_cpu_name",
+        "macos_version",
+        "macos_build",
+        "display_topology",
+        "capture_backend",
+        "stream_transport",
+        "android_counterpart",
+        "compatibility_scope",
+        "xcode_version",
+        "swift_version",
+        "host_build_identity",
+        "screen_capturekit_result",
+        "cgdisplaystream_result",
+        "videotoolbox_result",
+        "virtual_display_result",
+        "mirror_result"
+      ],
+      "properties": {
+        "owner": {"type": "string"},
+        "implementation_path": {"type": "string"},
+        "repository_commit": {"type": "string"},
+        "repository_dirty_state": {"enum": ["", "clean", "dirty"]},
+        "cpu_architecture": {"enum": ["", "apple_silicon", "intel"]},
+        "host_model_identifier": {"type": "string"},
+        "host_cpu_name": {"type": "string"},
+        "macos_version": {"type": "string"},
+        "macos_build": {"type": "string"},
+        "display_topology": {"enum": ["", "built_in", "single_external", "multi_display", "dummy_or_headless", "screen_sharing"]},
+        "capture_backend": {"enum": ["", "screencapturekit", "cgdisplaystream_fallback", "current_main_fallback", "unavailable"]},
+        "stream_transport": {"enum": ["", "usb", "lan"]},
+        "android_counterpart": {"type": "string"},
+        "compatibility_scope": {"type": "string"},
+        "xcode_version": {"type": "string"},
+        "swift_version": {"type": "string"},
+        "host_build_identity": {"type": "string"},
+        "screen_capturekit_result": {"enum": ["", "selected_display_first_frame", "unavailable_fallback_used", "unavailable_terminal"]},
+        "cgdisplaystream_result": {"enum": ["", "fallback_first_frame", "not_used", "unavailable_terminal"]},
+        "videotoolbox_result": {"enum": ["", "h264_hevc_available", "h264_only", "hevc_only", "unavailable"]},
+        "virtual_display_result": {"enum": ["", "created_online_captured", "fallback_current_main", "unavailable", "not_applicable"]},
+        "mirror_result": {"enum": ["", "hardware_mirror", "current_main_fallback", "unavailable", "not_applicable"]}
+      }
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_recorded",
+        "implementation_path_recorded",
+        "repository_commit_recorded",
+        "host_model_recorded",
+        "cpu_architecture_recorded",
+        "macos_version_build_recorded",
+        "xcode_swift_recorded",
+        "host_build_identity_recorded",
+        "signing_and_tcc_state_recorded",
+        "display_topology_recorded",
+        "capture_backend_recorded",
+        "video_encoder_path_recorded",
+        "automated_macos_checks_passed",
+        "packaged_host_launch_observed",
+        "protocol_v1_stream_observed",
+        "display_selection_observed",
+        "physical_display_capture_observed",
+        "virtual_display_or_fallback_recorded",
+        "mirror_or_fallback_recorded",
+        "input_smoke_observed",
+        "reconnect_observed",
+        "artifacts_retained",
+        "claim_scoped_to_exact_row"
+      ],
+      "properties": {
+        "owner_recorded": {"type": "boolean"},
+        "implementation_path_recorded": {"type": "boolean"},
+        "repository_commit_recorded": {"type": "boolean"},
+        "host_model_recorded": {"type": "boolean"},
+        "cpu_architecture_recorded": {"type": "boolean"},
+        "macos_version_build_recorded": {"type": "boolean"},
+        "xcode_swift_recorded": {"type": "boolean"},
+        "host_build_identity_recorded": {"type": "boolean"},
+        "signing_and_tcc_state_recorded": {"type": "boolean"},
+        "display_topology_recorded": {"type": "boolean"},
+        "capture_backend_recorded": {"type": "boolean"},
+        "video_encoder_path_recorded": {"type": "boolean"},
+        "automated_macos_checks_passed": {"type": "boolean"},
+        "packaged_host_launch_observed": {"type": "boolean"},
+        "protocol_v1_stream_observed": {"type": "boolean"},
+        "display_selection_observed": {"type": "boolean"},
+        "physical_display_capture_observed": {"type": "boolean"},
+        "virtual_display_or_fallback_recorded": {"type": "boolean"},
+        "mirror_or_fallback_recorded": {"type": "boolean"},
+        "input_smoke_observed": {"type": "boolean"},
+        "reconnect_observed": {"type": "boolean"},
+        "artifacts_retained": {"type": "boolean"},
+        "claim_scoped_to_exact_row": {"type": "boolean"}
+      }
+    },
+    "invalid_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reason"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "invalid_claim_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ci_runner_only",
+        "claims_intel_from_apple_silicon",
+        "claims_os_range_from_single_build",
+        "claims_display_topology_from_different_setup",
+        "claims_screencapturekit_from_cgdisplaystream",
+        "claims_virtual_display_without_result",
+        "claims_virtual_display_from_symbol_probe",
+        "claims_virtual_display_from_current_main_fallback",
+        "claims_dummy_headless_from_attached_monitor"
+      ],
+      "properties": {
+        "ci_runner_only": {"type": "boolean"},
+        "claims_intel_from_apple_silicon": {"type": "boolean"},
+        "claims_os_range_from_single_build": {"type": "boolean"},
+        "claims_display_topology_from_different_setup": {"type": "boolean"},
+        "claims_screencapturekit_from_cgdisplaystream": {"type": "boolean"},
+        "claims_virtual_display_without_result": {"type": "boolean"},
+        "claims_virtual_display_from_symbol_probe": {"type": "boolean"},
+        "claims_virtual_display_from_current_main_fallback": {"type": "boolean"},
+        "claims_dummy_headless_from_attached_monitor": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_file_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "evidence_dir", "missing_paths", "invalid_paths", "empty_paths"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "evidence_dir": {"type": "string"},
+        "missing_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "invalid_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "empty_paths": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}
