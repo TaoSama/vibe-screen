@@ -4,11 +4,16 @@ from contextlib import redirect_stdout
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
 
-from vibescreen_evidence.phase3_internet_release_gate import derive_gate, main
+from vibescreen_evidence.phase3_internet_release_gate import REQUIRED_RAW_ARTIFACTS, derive_gate, main
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+VALID_CAMERA_FIXTURE = REPOSITORY_ROOT / "tools" / "fixtures" / "latency" / "external-camera-valid" / "raw-camera-fixture.mov"
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -23,7 +28,7 @@ def touch(path: Path, value: str = "evidence\n") -> None:
 
 def write_minimal_mov(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"\x00\x00\x00\x18ftypqt  \x00\x00\x00\x00qt  mp42" + (b"\x00" * 32))
+    path.write_bytes(VALID_CAMERA_FIXTURE.read_bytes())
 
 
 def write_jsonl(path: Path, records: list[dict]) -> None:
@@ -109,6 +114,13 @@ def latency_manifest(route: str) -> dict:
             "annotation_method": "direct-latency-ms",
             "annotator": "fixture",
         },
+        "gate_artifacts": {
+            "internet_public_route_record": {
+                "file": "internet-public-route-record.txt",
+                "sha256": "",
+                "description": "Synthetic public Internet route proof.",
+            }
+        },
         "device": {
             "manufacturer": "nubia",
             "model": "P0110",
@@ -136,7 +148,8 @@ def latency_manifest(route: str) -> dict:
             "turn_deployment": {
                 "provider": "fixture provider",
                 "region": "remote-region-1",
-                "public_hostname": "turn.example.net",
+                "public_hostname": "1.1.1.1",
+                "resolved_ip": "1.1.1.1",
                 "tls": "turns",
                 "credential_source": "authority-issued short-lived credential",
             },
@@ -263,11 +276,16 @@ def status_pass(name: str) -> dict:
 def write_latency_package(root: Path, route: str) -> None:
     raw_video = root / f"latency/{route}/raw-camera.mov"
     samples = root / f"latency/{route}/samples.csv"
+    route_record = root / f"latency/{route}/internet-public-route-record.txt"
     write_minimal_mov(raw_video)
     touch(samples, "latency_ms\n90\n100\n110\n120\n130\n")
+    touch(route_record, "public Internet route proof\n")
     manifest = latency_manifest(route)
     manifest["recording"]["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
     manifest["samples"]["sha256"] = hashlib.sha256(samples.read_bytes()).hexdigest()
+    manifest["gate_artifacts"]["internet_public_route_record"]["sha256"] = hashlib.sha256(
+        route_record.read_bytes()
+    ).hexdigest()
     write_json(root / f"latency/{route}/manifest.json", manifest)
     write_json(root / f"latency/{route}/latency-evidence.json", latency_report())
 
@@ -350,7 +368,8 @@ def populate_bundle(root: Path) -> None:
                     "selected_candidate_pair": {
                         "local_candidate_type": local_type,
                         "remote_candidate_type": remote_type,
-                        "turn_public_hostname": "turn.example.net",
+                        "turn_public_hostname": "1.1.1.1",
+                        "turn_resolved_ip": "1.1.1.1",
                     },
                 }
             ],
@@ -403,6 +422,21 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
         self.assertEqual(manifest_gate["status"], "blocked")
         self.assertTrue(any("public_internet" in reason for reason in manifest_gate["reasons"]))
         self.assertTrue(any("deployed_remote_turn" in reason for reason in manifest_gate["reasons"]))
+
+    def test_manifest_routes_must_be_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            manifest = release_manifest()
+            manifest["session"]["routes"] = [{"route": "direct"}, ["relay"]]
+            write_json(root / "phase3-internet-manifest.json", manifest)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        manifest_gate = next(gate for gate in result["gates"] if gate["name"] == "public_internet_session_manifest")
+        self.assertEqual(manifest_gate["status"], "blocked")
+        self.assertIn("session.routes must contain exactly direct and relay", manifest_gate["reasons"])
 
     def test_nubia_p0110_must_keep_pacific_codename(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -572,6 +606,102 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
             latency_gate["reasons"],
         )
 
+    def test_session_jsonl_must_match_retained_turn_resolved_ip(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            write_jsonl(
+                root / "relay-session.jsonl",
+                [
+                    {
+                        "route": "relay",
+                        "public_internet_path": True,
+                        "same_private_network": False,
+                        "no_plaintext_fallback": True,
+                        "no_synthetic_media": True,
+                        "selected_candidate_pair": {
+                            "local_candidate_type": "relay",
+                            "remote_candidate_type": "relay",
+                            "turn_public_hostname": "turn.example.net",
+                            "turn_resolved_ip": "8.8.8.8",
+                        },
+                    }
+                ],
+            )
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        latency_gate = next(gate for gate in result["gates"] if gate["name"] == "relay_external_camera_latency")
+        self.assertIn(
+            "relay session JSONL must match latency manifest public route metadata",
+            latency_gate["reasons"],
+        )
+
+    def test_explicit_status_paths_resolve_relative_to_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            cwd = Path(raw_directory)
+            root = cwd / "evidence" / "run"
+            populate_bundle(root)
+            output = cwd / "gate.json"
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(cwd)
+                exit_code = main([
+                    "--evidence-dir",
+                    "evidence/run",
+                    "--output",
+                    str(output),
+                    "--handoff-evidence",
+                    "evidence/run/network-handoff.json",
+                    "--revocation-evidence",
+                    "evidence/run/revocation-evidence.json",
+                    "--packet-capture-evidence",
+                    "evidence/run/packet-capture-confidentiality.json",
+                ])
+            finally:
+                os.chdir(old_cwd)
+            report = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        for name in ("network_handoff", "cross_service_revocation", "packet_capture_confidentiality"):
+            gate = next(item for item in report["gates"] if item["name"] == name)
+            self.assertEqual(gate["status"], "pass")
+
+    def test_explicit_status_paths_prefer_cwd_over_evidence_dir_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            cwd = Path(raw_directory)
+            root = cwd / "evidence" / "run"
+            populate_bundle(root)
+            write_json(root / "network-handoff.json", {
+                "schema_version": "vibescreen.evidence/v1",
+                "kind": "phase3_network_handoff_evidence",
+                "verdict": "blocked",
+                "observations": {},
+                "raw_sources": ["fixture"],
+            })
+            write_json(cwd / "network-handoff.json", status_pass("network_handoff"))
+            output = cwd / "gate.json"
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(cwd)
+                exit_code = main([
+                    "--evidence-dir",
+                    "evidence/run",
+                    "--output",
+                    str(output),
+                    "--handoff-evidence",
+                    "network-handoff.json",
+                ])
+            finally:
+                os.chdir(old_cwd)
+            report = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        gate = next(item for item in report["gates"] if item["name"] == "network_handoff")
+        self.assertEqual(gate["status"], "pass")
+        self.assertEqual(gate["evidence"], ["network-handoff.json"])
+
     def test_build_and_host_markers_are_required(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             root = Path(raw_directory)
@@ -668,6 +798,18 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(report["verdict"], "blocked")
+
+    def test_android_evidence_template_names_match_required_raw_artifacts(self) -> None:
+        template = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "changes"
+            / "2026-08-04-phase-3-secure-internet"
+            / "TEST.md"
+        ).read_text(encoding="utf-8")
+
+        for relative in REQUIRED_RAW_ARTIFACTS:
+            self.assertIn(relative, template)
 
 
 if __name__ == "__main__":

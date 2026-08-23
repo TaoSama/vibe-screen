@@ -705,14 +705,70 @@ create the manifest with the dedicated helper:
       --gate-artifact-description "ADB reverse/USB setup and active USB stream proof" \
       --notes "run-specific notes"
 
+For an Internet manifest, use the same camera and build fields, switch to
+`--transport internet --gate-profile internet-glass-to-glass-sub150`, and add
+the public-route fields. Use `--different-private-network` only after recording
+that the macOS Host and Android peer were not on the same private network.
+`--turn-resolved-ip` must be the retained global IP from resolving the selected
+TURN hostname during the run. Use `--same-private-network` for LAN/loopback
+diagnostics, which will remain insufficient for the Internet gate:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+  --evidence-dir latency-run \
+  --latency-kind glass-to-glass \
+  --transport internet \
+  --gate-profile internet-glass-to-glass-sub150 \
+  --raw-video latency-run/raw-camera.mov \
+  --samples latency-run/samples.csv \
+  --samples-format csv \
+  --annotation-method manual-frame-count \
+  --camera-manufacturer "camera vendor" \
+  --camera-model "camera model" \
+  --camera-mode 1080p240 \
+  --camera-frame-rate-fps 240 \
+  --camera-shutter-mode fixed \
+  --operator "operator name" \
+  --annotator "annotator name" \
+  --device-info latency-run/device-info.json \
+  --host-artifact "host binary identity or hash" \
+  --client-artifact "APK identity or hash" \
+  --stimulus "visible Mac-side stimulus" \
+  --start-event-definition "first camera frame where the stimulus is visible" \
+  --end-event-definition "first camera frame where the result is visible" \
+  --lighting "lighting conditions" \
+  --mounting "camera and device mounting" \
+  --max-frame-annotation-uncertainty-ms 4.2 \
+  --gate-artifact latency-run/internet-public-route-record.txt \
+  --gate-artifact-description "public TURN route, remote peer, ICE pair, and non-LAN topology proof" \
+  --internet-route forced-public-turn \
+  --turn-provider "provider" \
+  --turn-region "region" \
+  --turn-public-hostname "turn.example.net" \
+  --turn-resolved-ip "$TURN_RESOLVED_IP" \
+  --turn-tls turns \
+  --turn-credential-source "authority-issued short-lived credential" \
+  --remote-peer-operator "remote tester" \
+  --remote-peer-network "remote carrier or ISP" \
+  --remote-peer-public-ip-asn "AS number" \
+  --remote-peer-location "city, country" \
+  --local-candidate-type relay \
+  --remote-candidate-type relay \
+  --relay-protocol turn-tls \
+  --host-network "host ISP" \
+  --device-network "remote carrier or ISP" \
+  --different-private-network \
+  --notes "run-specific notes"
+```
+
 For a formal gate claim, validate the whole evidence directory with the stricter
 latency provenance checker:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   latency-run/manifest.json \
-  --gate-profile usb-glass-to-glass-sub50 \
-  --output latency-run/latency-evidence-report.json
+  --gate-profile internet-glass-to-glass-sub150 \
+  --output latency-run/latency-evidence.json
 ```
 
 For committed evidence directories, prefer the matching Make target so every
@@ -728,7 +784,8 @@ The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
 the run ID, transport, profile, sample file, device identity, build identity,
 annotation method, and the profile-specific retained artifact: USB connection
 proof for `usb-glass-to-glass-sub50`, LAN network/stream preflight proof for
-`lan-glass-to-glass-sub80`, or physical input actuation proof for
+`lan-glass-to-glass-sub80`, public Internet route proof for
+`internet-glass-to-glass-sub150`, or physical input actuation proof for
 `input-p95-sub50`. External-camera packages also bind the raw camera recording
 and camera mode; synchronized-clock input packages bind the clock sources,
 skew, drift, timestamp methods, sub-5 ms total error budget, and a retained

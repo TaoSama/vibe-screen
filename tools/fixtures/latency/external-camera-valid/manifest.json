@@ -13,10 +13,10 @@
     "shutter_mode": "fixed"
   },
   "recording": {
-    "raw_video": "raw-camera-placeholder.mov",
+    "raw_video": "raw-camera-fixture.mov",
     "recorded_at": "2026-08-19T00:00:00Z",
     "operator": "fixture",
-    "sha256": "41a0faf0e6789117510a697515e1588e68c9f04ce48b5b10da9357fa7365542c"
+    "sha256": "32a49335961fadf449576f257d6d7b912a8c09ca5cb58e1450828e562592d967"
   },
   "samples": {
     "file": "samples.csv",

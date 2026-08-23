@@ -233,11 +233,20 @@ def _relative(root: Path, path: Path | None) -> str | None:
         return str(path)
 
 
-def _existing_path(root: Path, candidates: Sequence[str]) -> Path | None:
+def _existing_path(
+    root: Path,
+    candidates: Sequence[str],
+    *,
+    allow_cwd_relative: bool = False,
+) -> Path | None:
     for relative in candidates:
-        path = root / relative
-        if path.exists():
-            return path
+        candidate = Path(relative)
+        options = (candidate,)
+        if not candidate.is_absolute():
+            options = (candidate, root / candidate) if allow_cwd_relative else (root / candidate,)
+        for path in options:
+            if path.exists():
+                return path
     return None
 
 
@@ -366,7 +375,11 @@ def _session_manifest_gate(manifest: dict[str, Any] | None) -> dict[str, Any]:
     if session.get("turn_scope") != "deployed_remote_turn":
         reasons.append("session.turn_scope must be deployed_remote_turn")
     routes = session.get("routes")
-    if not isinstance(routes, list) or set(routes) != {"direct", "relay"}:
+    if (
+        not isinstance(routes, list)
+        or not all(isinstance(route, str) for route in routes)
+        or set(routes) != {"direct", "relay"}
+    ):
         reasons.append("session.routes must contain exactly direct and relay")
     device = manifest.get("device") if isinstance(manifest.get("device"), dict) else {}
     if not all(device.get(field) for field in ("manufacturer", "model", "codename", "android_release", "adb_serial")):
@@ -540,6 +553,7 @@ def _latency_gate(root: Path, route: str, path: Path | None) -> dict[str, Any]:
         session_records = _jsonl_records(session_path)
         candidate_pair = _get(manifest or {}, "internet_route", "candidate_pair")
         turn_hostname = _string_or_none(_get(manifest or {}, "internet_route", "turn_deployment", "public_hostname"))
+        turn_resolved_ip = _string_or_none(_get(manifest or {}, "internet_route", "turn_deployment", "resolved_ip"))
         same_private_network = _get(manifest or {}, "internet_route", "network_topology", "same_private_network")
         if isinstance(candidate_pair, dict):
             expected_local_type = candidate_pair.get("local_candidate_type")
@@ -559,6 +573,7 @@ def _latency_gate(root: Path, route: str, path: Path | None) -> dict[str, Any]:
                 and selected.get("local_candidate_type") == expected_local_type
                 and selected.get("remote_candidate_type") == expected_remote_type
                 and (selected.get("turn_public_hostname") == turn_hostname or record.get("turn_public_hostname") == turn_hostname)
+                and (selected.get("turn_resolved_ip") == turn_resolved_ip or record.get("turn_resolved_ip") == turn_resolved_ip)
                 and same_private_network is False
             ):
                 session_match = True
@@ -651,8 +666,15 @@ def _real_media_gate(root: Path, path: Path | None) -> dict[str, Any]:
     )
 
 
-def _status_file_gate(root: Path, name: str, candidates: Sequence[str], reason: str) -> dict[str, Any]:
-    path = _existing_path(root, candidates)
+def _status_file_gate(
+    root: Path,
+    name: str,
+    candidates: Sequence[str],
+    reason: str,
+    *,
+    allow_cwd_relative: bool = False,
+) -> dict[str, Any]:
+    path = _existing_path(root, candidates, allow_cwd_relative=allow_cwd_relative)
     document, error = _read_optional_json(path, name.replace("_", " "))
     evidence = [_relative(root, path)] if path is not None else []
     if error is not None:
@@ -793,18 +815,21 @@ def derive_gate(
             "network_handoff",
             (str(handoff_evidence),) if handoff_evidence is not None else ("network-handoff.json",),
             "network handoff evidence must report pass",
+            allow_cwd_relative=handoff_evidence is not None,
         ),
         _status_file_gate(
             root,
             "cross_service_revocation",
             (str(revocation_evidence),) if revocation_evidence is not None else ("revocation-evidence.json",),
             "cross-service revocation evidence must report pass",
+            allow_cwd_relative=revocation_evidence is not None,
         ),
         _status_file_gate(
             root,
             "packet_capture_confidentiality",
             (str(packet_capture_evidence),) if packet_capture_evidence is not None else ("packet-capture-confidentiality.json",),
             "packet capture confidentiality evidence must report pass",
+            allow_cwd_relative=packet_capture_evidence is not None,
         ),
         _soak_gate(root, soak_report or root / "soak-2h/exact-window-report.json"),
     ]

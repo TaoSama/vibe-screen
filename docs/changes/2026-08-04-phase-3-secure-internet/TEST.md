@@ -159,29 +159,28 @@ Store evidence under a new immutable run directory such as:
 ```text
 docs/changes/2026-08-04-phase-3-secure-internet/evidence/
   2026-08-04T120000Z-xiaomi12-internet/
+    README.md
     phase3-internet-manifest.json
-    commands.txt
-    adb-devices.txt
-    device-properties.txt
-    artifact-sha256.txt
-    host-version.txt
-    client-version.txt
+    device-info.json
+    host.txt
+    build.txt
+    apk-sha256.txt
     direct-session.jsonl
     relay-session.jsonl
     network-handoff.jsonl
     network-handoff.json
     replay-revocation.jsonl
     revocation-evidence.json
-    soak-summary.json
     soak-2h/summary.json
     soak-2h/samples.jsonl
     soak-2h/host-telemetry.jsonl
     soak-2h/exact-window-report.json
-    logcat-redacted.txt
-    host-log-redacted.txt
+    raw-logcat.txt
+    host.log
     real-media-continuity.json
     packet-capture-notes.md
     packet-capture-confidentiality.json
+    privacy-manifest.json
     latency/direct/manifest.json
     latency/direct/samples.csv
     latency/direct/raw-camera.mov
