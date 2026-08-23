@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2683,
+      "bytes": 2738,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,10 +11,10 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "13ba2fb46bf2942d56e6913f33a4252072467baab85bb6d0ccc39928e47c88c3"
+      "sha256": "56ddcfbfdf8300cdde8d77e745ebe24a501855fdfee4c4963935aa944d36459e"
     },
     {
-      "bytes": 5941,
+      "bytes": 6261,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,10 +24,10 @@
       ],
       "path": "acceptance.json",
       "result": "pass",
-      "sha256": "50a00b3d553a9f310480ef24d7186badc833dd881046b562f8f79f661cf36c57"
+      "sha256": "e306080b150273635589803ef27f4e476f95f7128938ec5c4bc4feff046be73d"
     },
     {
-      "bytes": 5307,
+      "bytes": 5338,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,7 +37,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "c56d49e8f10af517e6a3c6b3d87982ae68f1fbce8c4a3b4001f1788efc762fed"
+      "sha256": "7ed185132580db4f31ba5bca478506978b1efd0854da72ed34b3cc6e476a9a27"
     }
   ],
   "categories": [

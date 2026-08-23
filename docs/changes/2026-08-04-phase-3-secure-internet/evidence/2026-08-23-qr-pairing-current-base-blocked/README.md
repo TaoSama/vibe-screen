@@ -19,19 +19,21 @@ paired host/device binding on source-level and fixture paths only.
   `vibescreen://pair?v=1&o=` envelope and base64url payload before credential
   material is decoded.
 - Android consumes a scanned offer object exactly once.
-- macOS consumes a one-time offer on first redemption attempt, including a failed
-  bootstrap MAC attempt, so replaying the original request fails closed.
 - Android refuses a signed session lease when the lease signature does not verify
   against the paired host identity.
 - Authority emits the unsigned Android lease fields required by the Mac issuer and
   Android profile contract, including bounded `expires_at` for admission.
-- macOS unsigned local lease input requires a bounded `expires_at`, and the local
-  issuer rewrites it to the issuer TTL before signing.
 - macOS reserves the exact Authority-supplied `session_epoch` and rejects stale
   epochs at or below the durable high-water mark.
 - Existing shared pairing fixtures remain the cross-language offline source for
   canonical request, acceptance, transcript, derived context, and key
   identifiers.
+
+The local Command Line Tools environment could not compile XCTest, so this
+record does not count the macOS XCTest cases for first-attempt offer consumption
+or unsigned-lease `expires_at` rewriting as locally executed evidence. Those
+source-level cases require an Xcode-capable test run before they can be cited as
+executed macOS XCTest coverage.
 
 ## Blocked gates
 

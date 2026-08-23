@@ -508,8 +508,11 @@ macOS consumes an offer on the first redemption attempt even when the request is
 invalid, and Android refuses imported leases whose host signature is not bound to
 the previously verified pairing identity. The local lease codec also requires a
 bounded unsigned `expires_at` compatibility field and rewrites it to the issuer
-TTL before signing. This does not prove production account/session-authority
-profile issuance or a real camera QR pairing round trip.
+TTL before signing. The archived local current-base evidence marks the related
+macOS XCTest filters blocked where the selected Command Line Tools environment
+could not compile XCTest, so those local artifacts must not be treated as an
+executed macOS XCTest pass. This does not prove production account/session-
+authority profile issuance or a real camera QR pairing round trip.
 
 Main commit `73be8c0` hardens this slice at the source level: the Internet
 session lease issuer validates the pairing binding before reading identity

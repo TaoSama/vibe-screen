@@ -4,7 +4,7 @@
   "branch": "codex/phase3-pairing-flow",
   "base_ref": "origin/main",
   "base_commit": "1230caf597f52e285d6e9e6b985aad185cb07fc8",
-  "verified_source_commit": "d1bc2cfbd401abd7b3a9eed08e5de71db9ef2f50",
+  "verified_source_commit": "dd3d92b6534f384af78032365aee886356fb7801",
   "verified_source_note": "Focused local verification was run at this PR commit after rebasing onto base_commit; later evidence-only metadata commits do not change executable sources.",
   "scope": "offline QR/manual pairing verifier and local lease fail-closed checks",
   "result": "blocked",
@@ -76,10 +76,12 @@
     "Android scanned-offer single-use handling",
     "Android signed lease host identity binding to the verified pairing",
     "Authority unsigned Android lease output includes the bounded expires_at input required by the Mac issuer and Android profile contract",
-    "macOS first-attempt one-time offer consumption, including invalid bootstrap proofs",
-    "macOS unsigned lease expires_at requirement and issuer-side TTL rewrite",
     "macOS issuer reserves the exact Authority-supplied session_epoch and rejects values at or below the durable high-water mark",
     "cross-language pairing wire fixtures"
+  ],
+  "source_level_not_locally_executed": [
+    "macOS XCTest coverage for first-attempt one-time offer consumption, including invalid bootstrap proofs, was not executed in this local evidence because the selected Command Line Tools environment could not compile XCTest",
+    "macOS XCTest coverage for unsigned lease expires_at requirement and issuer-side TTL rewrite was not executed in this local evidence because the selected Command Line Tools environment could not compile XCTest"
   ],
   "blocked_gates": [
     "public TLS signaling or Authority deployment",
