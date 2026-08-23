@@ -502,7 +502,11 @@ No current-worktree Phase 3 Internet pass is recorded for real
 ScreenCaptureKit/CGDisplayStream output reaching Android MediaCodec on a real
 device over a public route; the continuity preflight remains blocked until
 public-route, identity-signed Host, Screen Recording, capture, encoder, and
-decoder-output evidence are all present.
+decoder-output evidence are all present. A dedicated current-base child gate now
+also requires that continuity result to match clean current `HEAD` and include a
+retained Android screenshot or recording with an operator note proving decoded
+Mac desktop content is visible in the Android UI; missing UI evidence keeps the
+gate blocked.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay

@@ -44,6 +44,9 @@ DEFAULT_BLOCKED_REAL_MEDIA = Path(
     "docs/changes/2026-08-04-phase-3-secure-internet/evidence/"
     "2026-08-18-nubia-p0110-current-main-real-media-blocked/acceptance.json"
 )
+DEFAULT_CURRENT_BASE_REAL_MEDIA = Path(
+    ".build/evidence/phase3-real-media-current-base/current-base-real-media.json"
+)
 
 RELEASE_GATES = (
     (
@@ -155,6 +158,25 @@ REQUIRED_FALSE_REAL_MEDIA_CLAIMS = (
     "hardware_decode",
     "internet_or_turn",
 )
+REQUIRED_CURRENT_BASE_REAL_MEDIA_CHECKS = (
+    "continuity_schema",
+    "continuity_passed",
+    "current_base_commit",
+    "continuity_source_clean",
+    "android_device_identity",
+    "public_internet_path",
+    "identity_signed_host",
+    "screen_recording_granted",
+    "real_capture_first_frame",
+    "videotoolbox_output",
+    "webrtc_media_channel",
+    "protocol_v1_epoch",
+    "android_mediacodec_decode",
+    "no_synthetic_media",
+    "visible_android_ui",
+    "no_decoder_errors",
+    "bounded_drops",
+)
 
 
 class GateSummaryError(RuntimeError):
@@ -224,6 +246,50 @@ def _is_git_revision(value: object) -> bool:
         and len(value) == 40
         and all(character in "0123456789abcdef" for character in value.lower())
     )
+
+
+def _non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _valid_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value.lower())
+    )
+
+
+def _validate_input_record(
+    value: object,
+    *,
+    expected_category: str,
+    require_existing: bool,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(value, dict):
+        return [f"{expected_category} input record must be an object"]
+    if value.get("category") != expected_category:
+        errors.append(f"{expected_category} input record category is required")
+    if not _non_empty_string(value.get("path")):
+        errors.append(f"{expected_category} input record path is required")
+    if not isinstance(value.get("extension"), str):
+        errors.append(f"{expected_category} input record extension is required")
+    exists = value.get("exists")
+    if not isinstance(exists, bool):
+        errors.append(f"{expected_category} input record exists must be boolean")
+    if exists is not True and require_existing:
+        errors.append(f"{expected_category} input record must exist")
+    if exists is True or require_existing:
+        if not _valid_sha256(value.get("sha256")):
+            errors.append(f"{expected_category} input record sha256 is required")
+        if not isinstance(value.get("bytes"), int) or value.get("bytes") <= 0:
+            errors.append(f"{expected_category} input record bytes must be positive")
+    elif value.get("sha256") is not None:
+        errors.append(f"{expected_category} missing input record sha256 must be null")
+    elif value.get("bytes") is not None:
+        errors.append(f"{expected_category} missing input record bytes must be null")
+    return errors
 
 
 def inspect_local_public_artifacts(
@@ -365,6 +431,200 @@ def inspect_blocked_real_media(
         "blocker": value.get("blocker", {}),
         "claims": claims,
         "release_gate_impact": "blocked_readiness_only",
+    }
+
+
+def _validate_current_base_real_media(value: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if value.get("schema_version") != "vibescreen.evidence/v1":
+        errors.append("schema_version must be vibescreen.evidence/v1")
+    if value.get("kind") != "phase3_real_media_current_base_gate":
+        errors.append("kind must be phase3_real_media_current_base_gate")
+    if value.get("gate_can_close_phase3_release") is not False:
+        errors.append("gate_can_close_phase3_release must be false")
+    release_gate_effect = value.get("release_gate_effect")
+    if release_gate_effect not in {"none", "child_gate_only"}:
+        errors.append("release_gate_effect must be none or child_gate_only")
+    verdict = value.get("verdict")
+    if verdict not in {"pass", "blocked", "fail"}:
+        errors.append("verdict must be pass, blocked, or fail")
+    can_claim = value.get("can_claim_current_base_real_media_continuity")
+    if not isinstance(can_claim, bool):
+        errors.append("can_claim_current_base_real_media_continuity must be boolean")
+    elif verdict == "pass" and can_claim is not True:
+        errors.append("pass verdict must claim current-base real-media continuity")
+    elif verdict in {"blocked", "fail"} and can_claim is not False:
+        errors.append("blocked or fail verdict cannot claim current-base real-media continuity")
+    if verdict == "pass" and release_gate_effect != "child_gate_only":
+        errors.append("pass verdict must use release_gate_effect child_gate_only")
+    if verdict in {"blocked", "fail"} and release_gate_effect != "none":
+        errors.append("blocked or fail verdict must use release_gate_effect none")
+    current_base = value.get("current_base")
+    if not isinstance(current_base, dict):
+        errors.append("current_base must be an object")
+    else:
+        if not _is_git_revision(current_base.get("repository_commit")):
+            errors.append("current_base.repository_commit must be a full Git revision")
+        if not _is_git_revision(current_base.get("continuity_repository_revision")):
+            errors.append("current_base.continuity_repository_revision must be a full Git revision")
+        if not isinstance(current_base.get("continuity_repository_dirty"), bool):
+            errors.append("current_base.continuity_repository_dirty must be boolean")
+        if verdict == "pass" and current_base.get("continuity_repository_revision") != current_base.get("repository_commit"):
+            errors.append("pass verdict requires continuity repository revision to match repository_commit")
+        if verdict == "pass" and current_base.get("continuity_repository_dirty") is not False:
+            errors.append("pass verdict requires clean continuity repository source")
+    owner = value.get("owner")
+    if not isinstance(owner, dict):
+        errors.append("owner must be an object")
+    else:
+        if owner.get("role") != "phase3_real_media_current_base_owner":
+            errors.append("owner.role must be phase3_real_media_current_base_owner")
+        for key in ("pull_request", "head_ref", "scope"):
+            if not _non_empty_string(owner.get(key)):
+                errors.append(f"owner.{key} must be present")
+        if owner.get("repository") != "TaoSama/vibe-screen":
+            errors.append("owner.repository must be TaoSama/vibe-screen")
+    source = value.get("source")
+    if not isinstance(source, dict):
+        errors.append("source must be an object")
+    else:
+        errors.extend(
+            _validate_input_record(
+                source.get("continuity_result"),
+                expected_category="real_media_continuity",
+                require_existing=True,
+            )
+        )
+        if not _is_git_revision(source.get("continuity_repository_revision")):
+            errors.append("source.continuity_repository_revision must be a full Git revision")
+        if not isinstance(source.get("continuity_repository_dirty"), bool):
+            errors.append("source.continuity_repository_dirty must be boolean")
+        if (
+            verdict == "pass"
+            and isinstance(current_base, dict)
+            and source.get("continuity_repository_revision")
+            != current_base.get("continuity_repository_revision")
+        ):
+            errors.append("pass verdict requires source revision to match current_base continuity revision")
+        if (
+            verdict == "pass"
+            and isinstance(current_base, dict)
+            and source.get("continuity_repository_dirty")
+            != current_base.get("continuity_repository_dirty")
+        ):
+            errors.append("pass verdict requires source dirty flag to match current_base dirty flag")
+    device = value.get("device")
+    if not isinstance(device, dict):
+        errors.append("device must be an object")
+    else:
+        for key in ("manufacturer", "model", "codename", "android_version"):
+            if not _non_empty_string(device.get(key)):
+                errors.append(f"device.{key} must be present")
+        if not isinstance(device.get("sdk"), int):
+            errors.append("device.sdk must be an integer")
+    android_visible_ui = value.get("android_visible_ui")
+    if not isinstance(android_visible_ui, dict):
+        errors.append("android_visible_ui must be an object")
+    else:
+        artifact_kind = android_visible_ui.get("artifact_kind")
+        if artifact_kind not in {
+            "device_screenshot",
+            "device_screen_recording",
+            "external_camera_recording",
+        }:
+            errors.append("android_visible_ui.artifact_kind is invalid")
+        operator_note = android_visible_ui.get("operator_note")
+        if verdict == "pass" and not _non_empty_string(operator_note):
+            errors.append("android_visible_ui.operator_note must be present")
+        elif operator_note is not None and not isinstance(operator_note, str):
+            errors.append("android_visible_ui.operator_note must be a string or null")
+        artifacts = android_visible_ui.get("artifacts")
+        if not isinstance(artifacts, list):
+            errors.append("android_visible_ui.artifacts must be a list")
+        elif verdict == "pass" and not artifacts:
+            errors.append("android_visible_ui.artifacts must contain at least one artifact")
+        else:
+            valid_extensions = {
+                "device_screenshot": {".png", ".jpg", ".jpeg", ".webp"},
+                "device_screen_recording": {".mp4", ".mov", ".webm"},
+                "external_camera_recording": {".mp4", ".mov", ".webm"},
+            }.get(artifact_kind, set())
+            valid_artifacts = 0
+            for artifact in artifacts:
+                artifact_errors = _validate_input_record(
+                    artifact,
+                    expected_category="android_visible_ui",
+                    require_existing=verdict == "pass",
+                )
+                if artifact_errors:
+                    errors.extend(artifact_errors)
+                    continue
+                if artifact.get("artifact_kind") != artifact_kind:
+                    errors.append("android_visible_ui artifact kind must match parent")
+                    continue
+                if artifact.get("extension") not in valid_extensions:
+                    errors.append("android_visible_ui artifact extension is not allowed")
+                    continue
+                if artifact.get("exists") is True:
+                    valid_artifacts += 1
+            if verdict == "pass" and valid_artifacts == 0:
+                errors.append("android_visible_ui must include at least one valid artifact")
+    checks = value.get("checks")
+    if not isinstance(checks, dict):
+        errors.append("checks must be an object")
+    else:
+        for key in REQUIRED_CURRENT_BASE_REAL_MEDIA_CHECKS:
+            check = checks.get(key)
+            if not isinstance(check, dict) or not isinstance(check.get("passed"), bool):
+                errors.append(f"check {key} must record a boolean passed value")
+                continue
+            if not _non_empty_string(check.get("expected")):
+                errors.append(f"check {key} must record expected evidence")
+            if not isinstance(check.get("evidence"), list):
+                errors.append(f"check {key} must record an evidence list")
+            if verdict == "pass" and check.get("passed") is not True:
+                errors.append(f"pass verdict requires check {key} to pass")
+    return errors
+
+
+def inspect_current_base_real_media_gate(
+    path: Path,
+    current_commit: str,
+    path_label: str,
+) -> dict[str, Any]:
+    if not path.exists():
+        return _missing_record("current_base_real_media_gate", path_label)
+    value = read_json_file(path, "current-base real-media gate")
+    errors = _validate_current_base_real_media(value)
+    current_base = value.get("current_base") if isinstance(value.get("current_base"), dict) else {}
+    source_commit = current_base.get("repository_commit")
+    commit_matches = source_commit == current_commit
+    if errors:
+        invalid = _invalid_record("current_base_real_media_gate", path_label, errors)
+        invalid.update(
+            {
+                "verdict": value.get("verdict"),
+                "source_commit": source_commit,
+                "current_base": False,
+            }
+        )
+        return invalid
+    return {
+        "kind": "current_base_real_media_gate",
+        "status": value.get("verdict"),
+        "path": path_label,
+        "current_base": commit_matches,
+        "source_commit": source_commit,
+        "can_claim_current_base_real_media_continuity": (
+            value.get("can_claim_current_base_real_media_continuity") is True
+            and value.get("verdict") == "pass"
+            and commit_matches
+        ),
+        "required_checks": {
+            key: value["checks"][key]["passed"]
+            for key in REQUIRED_CURRENT_BASE_REAL_MEDIA_CHECKS
+        },
+        "release_gate_impact": value.get("release_gate_effect"),
     }
 
 
@@ -531,6 +791,7 @@ def build_summary(
     local_public_dir: Path = DEFAULT_LOCAL_PUBLIC_DIR,
     android_interop_acceptance: Path = DEFAULT_ANDROID_INTEROP,
     blocked_real_media_acceptance: Path = DEFAULT_BLOCKED_REAL_MEDIA,
+    current_base_real_media_gate: Path = DEFAULT_CURRENT_BASE_REAL_MEDIA,
     current_commit: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
@@ -538,6 +799,7 @@ def build_summary(
     local_public_path = _resolve(repo, local_public_dir)
     android_interop_path = _resolve(repo, android_interop_acceptance)
     blocked_real_media_path = _resolve(repo, blocked_real_media_acceptance)
+    current_base_real_media_path = _resolve(repo, current_base_real_media_gate)
     observations = [
         inspect_local_public_artifacts(
             local_public_path,
@@ -554,6 +816,11 @@ def build_summary(
             commit,
             _path_label(blocked_real_media_path, repo),
         ),
+        inspect_current_base_real_media_gate(
+            current_base_real_media_path,
+            commit,
+            _path_label(current_base_real_media_path, repo),
+        ),
     ]
     return {
         "schema": SCHEMA,
@@ -568,6 +835,7 @@ def build_summary(
             "forced_local_coturn": "readiness only; distinct from deployed remote TURN",
             "historical_device_synthetic_media": "bound only to its recorded source and device",
             "blocked_attempt": "records blocker only; cannot be promoted to pass",
+            "current_base_real_media_child_gate": "may prove only the ScreenCaptureKit/CGDisplayStream to Android MediaCodec plus visible Android UI child gate; it still cannot close the Phase 3 public release gate alone",
             "release_gate": "requires real public-path Android/macOS evidence with ScreenCaptureKit-to-MediaCodec, handoff, revocation, capture privacy, latency, and soak artifacts",
         },
         "fixed_public_limitations": list(PUBLIC_LIMITATIONS),
@@ -601,6 +869,7 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--local-public-dir", type=Path, default=DEFAULT_LOCAL_PUBLIC_DIR)
     parser.add_argument("--android-interop-acceptance", type=Path, default=DEFAULT_ANDROID_INTEROP)
     parser.add_argument("--blocked-real-media-acceptance", type=Path, default=DEFAULT_BLOCKED_REAL_MEDIA)
+    parser.add_argument("--current-base-real-media-gate", type=Path, default=DEFAULT_CURRENT_BASE_REAL_MEDIA)
     parser.add_argument(
         "--current-commit",
         help="Git revision to record as the current base; defaults to git rev-parse HEAD.",
@@ -630,6 +899,7 @@ def main(arguments: list[str] | None = None) -> int:
             local_public_dir=args.local_public_dir,
             android_interop_acceptance=args.android_interop_acceptance,
             blocked_real_media_acceptance=args.blocked_real_media_acceptance,
+            current_base_real_media_gate=args.current_base_real_media_gate,
             current_commit=current_commit,
         )
     except (E2EFailure, GateSummaryError) as error:

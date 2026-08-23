@@ -214,6 +214,21 @@ file is a narrow continuity preflight and always records
 `gate_can_close_phase3_release=false`; it cannot by itself close the broader
 Phase 3 release gate.
 
+After `real-media-continuity.json` exists, bind it to the checked-out current
+base and retained Android visible-UI evidence with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_current_base`
+or `make phase3-real-media-current-base`. This child gate requires the
+continuity result's repository revision to match current `HEAD`, the captured
+tree to be clean, Android device identity to record manufacturer/model/codename,
+Android version, and SDK, and a non-empty screenshot, device recording, or
+external-camera recording plus an operator note confirming decoded Mac desktop
+content is visible in the Android UI. Missing UI evidence, stale or dirty source,
+synthetic media, local-only or forced-local-coturn routes, unsigned/ad-hoc Host
+builds, blocked TCC, missing capture/VideoToolbox/MediaCodec stages, decoder
+errors, or excess drops keep the current-base gate blocked or failed. Even a
+pass records only `release_gate_effect=child_gate_only`; it does not close the
+broader public Internet release gate.
+
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not
 claim a network handoff based only on toggling UI.
