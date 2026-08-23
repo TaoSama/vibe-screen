@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-aggregate-owner.schema.json",
+  "title": "Vibe Screen Phase 2 aggregate owner report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "verdict",
+    "can_close_readme_phase2_gates",
+    "source_baseline",
+    "audit_summary",
+    "input_summaries",
+    "owner_matrix",
+    "merge_plan",
+    "stale_prs",
+    "substitute_readiness",
+    "open_reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase2_aggregate_owner"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_readme_phase2_gates": {"type": "boolean"},
+    "source_baseline": {"type": "string", "minLength": 1},
+    "audit_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["single_prs_against_origin_main", "pairwise_overlap", "recommendation"],
+      "properties": {
+        "single_prs_against_origin_main": {"type": "string", "minLength": 1},
+        "pairwise_overlap": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "recommendation": {"type": "string", "minLength": 1}
+      }
+    },
+    "input_summaries": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provided", "status"],
+        "properties": {
+          "provided": {"type": "boolean"},
+          "status": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "owner_matrix": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/gateOwner"}
+    },
+    "merge_plan": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/ownerPr"}
+    },
+    "stale_prs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stalePr"}
+    },
+    "substitute_readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_class", "device_identity", "notes"],
+      "properties": {
+        "device_class": {"type": ["string", "null"]},
+        "device_identity": {"type": ["object", "null"], "additionalProperties": true},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "open_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "ownerPr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pr_number", "title", "branch", "head_sha", "state", "merge_order", "note"],
+      "properties": {
+        "pr_number": {"type": ["integer", "null"]},
+        "title": {"type": "string", "minLength": 1},
+        "branch": {"type": "string", "minLength": 1},
+        "head_sha": {"type": ["string", "null"]},
+        "state": {"type": "string", "minLength": 1},
+        "merge_order": {"type": "integer", "minimum": 1},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "gateOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate_id",
+        "label",
+        "status",
+        "can_close",
+        "owner",
+        "input_key",
+        "requirement",
+        "reasons"
+      ],
+      "properties": {
+        "gate_id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1},
+        "status": {"enum": ["closed", "blocked", "insufficient"]},
+        "can_close": {"type": "boolean"},
+        "owner": {"$ref": "#/$defs/ownerPr"},
+        "input_key": {"type": ["string", "null"]},
+        "requirement": {"type": "string", "minLength": 1},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "stalePr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pr_number", "title", "status", "replacement", "reason"],
+      "properties": {
+        "pr_number": {"type": "integer"},
+        "title": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "replacement": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -107,6 +107,13 @@ be kept here when the Android device lock, physical keyboard, Host listener, or
 stable signed/TCC Host prerequisite is missing; blocked evidence must not run
 ADB when the shared Android lock is already held.
 
+Aggregate owner records live in dated `phase2-aggregate-owner-current-base`
+directories. They consume child gate summaries and write
+`phase2-aggregate-owner.json` plus `SHA256SUMS`. The aggregate is an ownership
+and closure report only: missing child summaries remain blocked, and a Nubia
+P0110/pacific phone manifest stays `android_substitute` readiness rather than
+8-9 inch tablet evidence.
+
 ## Blocked evidence
 
 When no physical 8-9 inch tablet is available, create a blocked record instead

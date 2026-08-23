@@ -387,5 +387,26 @@ Only a `phase2-tablet-preflight.json` verdict of `pass` can close the README
 Phase 2 8-9 inch tablet acceptance gap. A `blocked` verdict is the expected
 result when the available device is the Nubia P0110/pacific phone substitute.
 
+After child evidence owners produce their summaries, create a current-base
+aggregate owner report so the open Phase 2 workstreams have one merge owner and
+README gate closure remains fail-closed:
+
+```bash
+make phase2-aggregate-owner EVIDENCE_DIR="$RUN_DIR" \
+  PHASE2_TABLET_GATE="$RUN_DIR/soak-8h/phase2-tablet-gate.json" \
+  PHASE2_TABLET_MANIFEST="$RUN_DIR/phase2-tablet-manifest.json" \
+  PHASE2_HARDWARE_KEYBOARD="$RUN_DIR/hardware-keyboard-summary.json" \
+  PHASE2_DEVICE_MEMORY="$RUN_DIR/soak-8h/phase2-device-memory-gate.json"
+```
+
+Add `PHASE2_DEVICE_ENVIRONMENT`, `PHASE2_SOAK_READINESS`,
+`PHASE2_TABLET_UI`, `PHASE2_RECOVERY`, and `PHASE2_LOGIN_HEADLESS` when those
+owner outputs exist. Missing inputs are recorded as blocked rows in
+`phase2-aggregate-owner.json`. The aggregate can close README Phase 2 gates only
+when every child gate reports an explicit pass or close boolean and the
+package-aware tablet gate passes with `physical_8_9_inch_tablet`. A Nubia
+P0110/pacific phone record must stay `android_substitute`; the aggregate layer
+must not upgrade it to 8-9 inch tablet evidence.
+
 Do not mark Phase 2 accepted from this runbook unless the raw evidence exists in
 the directory and the summary explains every failed or skipped gate.
