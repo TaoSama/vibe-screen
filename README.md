@@ -480,6 +480,11 @@ pairing-scoped transaction, the cross-process security tests are stabilized
 against pipe-buffer deadlocks, and the Android decoder-config publish now fails
 closed when it cannot publish. These are offline-verified source changes; the
 release gates below are unchanged.
+The current worktree adds an admin/operator Authority session-profile issuance
+primitive for already registered devices, signaling adoption of those sessions
+after successful role authorization, and Mac signing of the exact
+Authority-supplied epoch. This is local control-plane evidence only; Mac/Android
+automatic profile invocation remains open.
 A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
 release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
@@ -574,7 +579,7 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
-Automatic account/session-authority issuance, real
+Mac/Android automatic invocation of Authority session-profile issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped

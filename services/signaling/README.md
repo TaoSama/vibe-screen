@@ -17,6 +17,11 @@ Version `0.1.0` runs in one of two explicit authority modes:
   process never falls back to locally minted tokens, and `/readyz` reports
   unavailable while the authority is unreachable.
 
+The `production_authority` mode name means the signaling service delegates trust
+decisions to Authority. It is not a claim that the public Internet deployment,
+Mac/Android automatic profile issuance, Android UI import, or real media path is
+production-ready.
+
 The service has two explicit store backends. `memory` is process-local and
 intended for local development; `postgres` persists the short-lived rendezvous
 routing state and is required in `production_authority` mode. It is not an
@@ -114,6 +119,14 @@ metadata and rechecks role tokens with the authority. Deliver each role token
 over an already authenticated channel to that endpoint. Repeating the same
 `request_id` and body returns the identical response with `200`; changing any
 field returns `409`.
+
+When an operator creates a session through Authority's admin-only
+`POST /v1/session-authority/profiles` endpoint, signaling has no local `/v1/sessions`
+creation record. In `production_authority` mode, the first successful role
+authorization for that authority-issued `session_id` creates local routing
+metadata with empty role-token columns and an Authority-derived expiry. The
+role token is still rechecked remotely on every publish and poll; signaling does
+not retain the bearer token as a local fallback.
 
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
@@ -343,9 +356,10 @@ risks.
 The following are explicit limitations of the current `production_authority`
 slice, not accepted production behavior:
 
-- Mac and Android automatic profile/account/session issuance is not wired to the
-  authority; the local development flows still require operator-supplied
-  credentials and epoch.
+- Mac and Android automatic invocation of Authority session-profile issuance is
+  not wired; local development flows still require an operator to request the
+  profile, pass the unsigned lease through the Mac signer, and import the signed
+  lease.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a session can be
   created.

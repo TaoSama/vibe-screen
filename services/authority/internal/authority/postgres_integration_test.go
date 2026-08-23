@@ -39,7 +39,7 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_session_profile_issuance,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
@@ -146,6 +146,60 @@ func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
 	}
 	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
+func TestPostgresSessionProfileIssuanceReplayIsDurableAndDigestOnly(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	profile := testSessionProfileRequest(t, "profile-request", 7)
+	if err := store.EnsureAccount(ctx, profile.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{profile.HostIdentity.DeviceID, profile.ClientIdentity.DeviceID} {
+		if err := store.RegisterDevice(ctx, profile.AccountID, deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	created, err := store.IssueSessionProfile(ctx, profile, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created || len(created.UnsignedAndroidLease) == 0 {
+		t.Fatalf("unexpected profile response: %#v", created)
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.IssueSessionProfile(ctx, profile, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Created || replayed.SignalingSessionID != created.SignalingSessionID || replayed.HostSignalingToken != created.HostSignalingToken {
+		t.Fatalf("durable profile replay changed stable fields: replay=%#v created=%#v", replayed, created)
+	}
+	var profileRows, tokenColumns int
+	if err := restarted.pool.QueryRow(ctx, `SELECT count(*) FROM authority_session_profile_issuance`).Scan(&profileRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='authority_session_profile_issuance' AND (column_name ILIKE '%token%' OR column_name ILIKE '%credential%' OR column_name ILIKE '%lease%')`).Scan(&tokenColumns); err != nil {
+		t.Fatal(err)
+	}
+	if profileRows != 1 || tokenColumns != 0 {
+		t.Fatalf("profile issuance table rows=%d token-like columns=%d", profileRows, tokenColumns)
+	}
+	changed := profile
+	changed.SessionEpoch = 8
+	if _, err := restarted.IssueSessionProfile(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed profile replay error=%v, want ErrConflict", err)
+	}
+	stale := testSessionProfileRequest(t, "stale-profile-request", 6)
+	if _, err := restarted.IssueSessionProfile(ctx, stale, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale profile epoch error=%v, want ErrConflict", err)
 	}
 }
 
