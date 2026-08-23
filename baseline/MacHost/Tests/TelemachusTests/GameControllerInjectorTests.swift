@@ -40,6 +40,24 @@ final class GameControllerInjectorTests: XCTestCase {
         try injector.handle(.testEvent(inputID: 2, kind: .disconnected), generation: 1)
 
         let device = factory.devices[0]
+        XCTAssertEqual(device.submittedStates.last, .neutral)
+        XCTAssertEqual(device.closeCount, 1)
+    }
+
+    func testDisconnectedSubmitsNeutralBeforeCloseEvenForGenericDevice() throws {
+        let factory = FakeVirtualGamepadFactory()
+        let injector = GameControllerInjector(factory: factory)
+        try injector.handle(.testEvent(inputID: 1, kind: .connected), generation: 1)
+        let state = GameControllerState(
+            buttonMask: 1, leftX: 0.5, leftY: -0.25, rightX: 0, rightY: 0,
+            leftTrigger: 1, rightTrigger: 0.25, hatX: 1, hatY: 0
+        )
+        try injector.handle(.testEvent(inputID: 2, kind: .state, state: state), generation: 1)
+
+        try injector.handle(.testEvent(inputID: 3, kind: .disconnected), generation: 1)
+
+        let device = factory.devices[0]
+        XCTAssertEqual(device.submittedStates, [.neutral, state, .neutral])
         XCTAssertEqual(device.closeCount, 1)
     }
 
@@ -101,17 +119,44 @@ final class GameControllerInjectorTests: XCTestCase {
         )
         let route = SessionGameControllerInputRoute(input: sessionInput)
         try route.handle(.testEvent(inputID: 1, kind: .connected), generation: 1)
+        let state = GameControllerState(
+            buttonMask: 1, leftX: 0, leftY: 0, rightX: 0, rightY: 0,
+            leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0
+        )
+        try route.handle(.testEvent(inputID: 2, kind: .state, state: state), generation: 1)
 
         route.invalidate()
 
         XCTAssertThrowsError(try route.handle(
-            .testEvent(inputID: 2, kind: .state),
+            .testEvent(inputID: 3, kind: .state),
             generation: 1
         )) { error in
             XCTAssertEqual(error as? GameControllerInputError, .invalidTransition)
         }
         XCTAssertEqual(factory.devices.count, 1)
-        XCTAssertEqual(factory.devices[0].submittedStates, [.neutral])
+        XCTAssertEqual(factory.devices[0].submittedStates, [.neutral, state, .neutral])
+        XCTAssertEqual(factory.devices[0].closeCount, 1)
+    }
+
+    func testInvalidatedInternetRouteIsIdempotentAndKeepsFirstResetError() throws {
+        let factory = FakeVirtualGamepadFactory()
+        let sessionInput = SessionGameControllerInput(
+            injector: GameControllerInjector(factory: factory)
+        )
+        let route = SessionGameControllerInputRoute(input: sessionInput)
+        try route.handle(.testEvent(inputID: 1, kind: .connected), generation: 1)
+        factory.devices[0].submitError = GameControllerInputError.reportFailed(kIOReturnBadArgument)
+
+        route.invalidate()
+        route.invalidate()
+
+        XCTAssertEqual(factory.devices[0].closeCount, 1)
+        XCTAssertThrowsError(try route.handle(
+            .testEvent(inputID: 2, kind: .state),
+            generation: 1
+        )) { error in
+            XCTAssertEqual(error as? GameControllerInputError, .reportFailed(kIOReturnBadArgument))
+        }
     }
 
     @MainActor

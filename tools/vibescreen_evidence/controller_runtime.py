@@ -21,6 +21,11 @@ GATE_PROFILE = "controller-runtime-acceptance"
 STATUS_PASS = "pass"
 STATUS_BLOCKED = "blocked"
 STATUS_INSUFFICIENT = "insufficient"
+EXIT_STATUS_BY_VERDICT = {
+    STATUS_PASS: 0,
+    STATUS_BLOCKED: 2,
+    STATUS_INSUFFICIENT: 1,
+}
 
 REQUIRED_FIELDS = (
     ("device_identity_recorded", "record Android hardware identity and OS/build details"),
@@ -45,6 +50,39 @@ BLOCKING_FIELDS = {
 }
 
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
+
+CONSISTENCY_RULES = (
+    (
+        "physical_controller_attached",
+        ("android_controller_source_observed",),
+        "physical controller evidence must include an Android SOURCE_GAMEPAD or SOURCE_JOYSTICK observation",
+    ),
+    (
+        "android_production_forwarding_observed",
+        ("protocol_controller_capability_negotiated",),
+        "production forwarding evidence must come from a negotiated controller-capable Protocol v1 session",
+    ),
+    (
+        "controller_connected_state_disconnected_observed",
+        ("android_production_forwarding_observed",),
+        "controller lifecycle samples must be observed on the production forwarding path",
+    ),
+    (
+        "host_virtual_gamepad_available",
+        ("host_identity_signed", "host_virtual_hid_entitlement_present"),
+        "Host virtual-gamepad availability requires an identity-signed build with the virtual HID entitlement",
+    ),
+    (
+        "mac_side_controller_response_observed",
+        ("host_virtual_gamepad_available",),
+        "Mac-side response evidence requires Host virtual-gamepad availability",
+    ),
+    (
+        "neutral_release_on_disconnect_observed",
+        ("controller_connected_state_disconnected_observed",),
+        "neutral release evidence requires connected, state, and disconnected controller lifecycle samples",
+    ),
+)
 
 
 class ControllerRuntimeEvidenceError(ValueError):
@@ -77,6 +115,23 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
     return value
 
 
+def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, Any]]:
+    inconsistencies: list[dict[str, Any]] = []
+    for observed_field, prerequisites, requirement in CONSISTENCY_RULES:
+        if not field_values[observed_field]:
+            continue
+        missing_prerequisites = [field for field in prerequisites if not field_values[field]]
+        if missing_prerequisites:
+            inconsistencies.append(
+                {
+                    "field": observed_field,
+                    "requires": missing_prerequisites,
+                    "requirement": requirement,
+                }
+            )
+    return inconsistencies
+
+
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     missing = [
@@ -87,7 +142,8 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
-    if not missing:
+    inconsistencies = _inconsistent_observations(field_values)
+    if not missing and not inconsistencies:
         verdict = STATUS_PASS
     elif blocking_reasons:
         verdict = STATUS_BLOCKED
@@ -105,6 +161,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "requires_entitled_host": True,
         "observations": field_values,
         "missing_requirements": missing,
+        "inconsistent_observations": inconsistencies,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": _string_list(record, "artifact_paths"),
         "notes": record.get("notes", "") if isinstance(record.get("notes", ""), str) else "",
@@ -147,10 +204,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _write_summary(summary, stream)
         else:
             _write_summary(summary, sys.stdout)
+        return EXIT_STATUS_BY_VERDICT[summary["verdict"]]
     except (ControllerRuntimeEvidenceError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    return 0
 
 
 if __name__ == "__main__":

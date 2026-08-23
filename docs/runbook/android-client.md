@@ -280,10 +280,18 @@ note is `failed`, not a pass.
 Summarize a run, including blocked runs, with:
 
 ```bash
+set +e
 PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
   controller-runtime-observations.json \
   --output controller-runtime-summary.json
+status=$?
+set -e
+test "$status" -eq 0 -o "$status" -eq 2
 ```
+
+The summarizer exits `0` only for `pass`, `2` for `blocked`, and `1` for
+`insufficient` or malformed evidence; read `can_close_runtime_gate` before
+claiming acceptance.
 
 ## Physical stylus acceptance
 

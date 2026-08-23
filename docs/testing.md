@@ -268,7 +268,9 @@ supported latency evidence formats and gate semantics.
 
 Use `PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime --help`
 for the controller runtime gate summary. The tool treats missing physical
-controller or entitled Host runtime observations as `blocked`, not `pass`.
+controller or entitled Host runtime observations as `blocked`, not `pass`; its
+CLI exits `0` only for `pass`, `2` for `blocked`, and `1` for `insufficient`
+or malformed evidence.
 
 Use the read-only readiness collector before attempting the interactive gate so
 missing hardware, APK identity, Host signing, entitlement, or Host availability
