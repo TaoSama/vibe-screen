@@ -213,8 +213,10 @@ class MainActivityControllerForwardingContractTest {
         val streamClient = streamClientSource()
 
         assertContains(displaysCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated")
+        assertContains(displaysCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiated")
         assertContains(displaysCallback, "controller = controller")
-        assertContains(displaysCallback, "if (keyboard || nativePointer || controller)")
+        assertContains(displaysCallback, "peripheralInputFramework = peripheralInputFramework")
+        assertContains(displaysCallback, "if (keyboard || nativePointer || controller || peripheralInputFramework)")
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
         assertContains(displaysCallback, "if (controller) synchronizeControllerDevices(\"capability negotiation\")")
         assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")

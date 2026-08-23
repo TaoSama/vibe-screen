@@ -12,6 +12,7 @@ class ClientInputDispatchTest {
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendController(controller()))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPeripheral(peripheral()))
     }
 
     @Test
@@ -33,6 +34,11 @@ class ClientInputDispatchTest {
                     received += input.dispatch.delivery.name
                     return true
                 }
+
+                override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+                    received += input.peripheralKind
+                    return true
+                }
             }
         val dispatch = ClientInputDispatch(ClientSessionBinding(NEGOTIATED_INPUT, sink))
 
@@ -42,9 +48,10 @@ class ClientInputDispatchTest {
         dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE))
         dispatch.sendPointer(pointer(ClientPointerAction.SCROLL))
         dispatch.sendController(controller())
+        dispatch.sendPeripheral(peripheral())
 
         assertEquals(
-            listOf("key-down", "key-up", "BUTTON_PRESS", "BUTTON_RELEASE", "SCROLL", "STRUCTURAL"),
+            listOf("key-down", "key-up", "BUTTON_PRESS", "BUTTON_RELEASE", "SCROLL", "STRUCTURAL", "vendor-device"),
             received,
         )
     }
@@ -68,18 +75,21 @@ class ClientInputDispatchTest {
             ),
         )
 
+    private fun peripheral() = ClientPeripheralInput("vendor-device", byteArrayOf(0x01, 0x02))
+
     private companion object {
         val NEGOTIATED_INPUT =
-           ClientSessionCapabilities(
-               touch = true,
-               displaySelection = false,
-               keyboard = true,
-               nativePointer = true,
+            ClientSessionCapabilities(
+                touch = true,
+                displaySelection = false,
+                keyboard = true,
+                nativePointer = true,
                 controller = true,
                 customGestures = false,
                 hostActions = false,
                 clipboard = false,
                 fileTransfer = false,
-           )
+                peripheralInputFramework = true,
+            )
     }
 }

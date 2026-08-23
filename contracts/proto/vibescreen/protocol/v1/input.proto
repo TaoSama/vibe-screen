@@ -139,6 +139,22 @@ message ControllerEvent {
   InputTarget target = 14;
 }
 
+// Generic peripheral input requires CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK. This
+// message is an admission boundary only: it does not define support for any
+// concrete peripheral kind, Android input source, hardware path, or macOS
+// injection behavior. input_id must be non-zero. peripheral_kind must encode to
+// 1-128 UTF-8 bytes and is matched by explicit receiver policy; receivers must
+// fail closed for every kind they do not implement by sending InputAck with
+// accepted=false and a stable rejection_reason such as
+// "unsupported_peripheral_kind". payload is opaque to the protocol contract and
+// must be bounded by the receiver before any native handler is reached.
+message PeripheralEvent {
+  uint64 input_id = 1;
+  string peripheral_kind = 2;
+  bytes payload = 3;
+  InputTarget target = 4;
+}
+
 message PointerEvent {
   uint64 input_id = 1;
   InputPhase phase = 2;

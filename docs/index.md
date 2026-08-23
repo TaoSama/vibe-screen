@@ -20,6 +20,7 @@
   - [Verification record](changes/2026-08-05-phase-1-macos-host/TEST.md)
 - [Phase 1 Android client verification](changes/2026-08-05-phase-1-android-client/TEST.md)
 - [Phase 1 actionable error state owner](changes/2026-08-23-actionable-error-states/README.md)
+- [Peripheral input framework gate](changes/2026-08-23-peripheral-input-framework/TEST.md)
 - [Host RSS growth investigation](changes/2026-08-10-host-rss-growth/TECH.md)
 - [Protocol v1 video preference stability](changes/2026-08-10-video-preferences/TECH.md)
   - [Verification record](changes/2026-08-10-video-preferences/TEST.md)
