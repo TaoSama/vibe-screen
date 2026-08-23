@@ -1,7 +1,7 @@
 # 2026-08-22 Nubia P0110 latency current-base preflight: blocked
 
 This record refreshes the README external latency gates on origin/main commit
-`d3c62b25d05b6c13bd93388031f7a2dd3832270c`. It uses the connected Android
+`7247f313e24cc465c9ddd0b60e271b361d1f9d4a`. It uses the connected Android
 acceptance substitute recorded as `nubia-p0110-pacific-device-1`.
 
 ## Verdict
@@ -43,7 +43,7 @@ The connected Android device reported:
 - Evidence device id: `nubia-p0110-pacific-device-1`
 
 The live ADB checks used the required explicit serial form
-`adb -s EP0110PZ0B9110300B`. Committed machine-readable artifacts redact the raw
+`adb -s nubia-p0110-pacific-device-1`. Committed machine-readable artifacts redact the raw
 ADB serial to the stable evidence id above. This record is Nubia P0110/pacific
 evidence and must not be relabeled as Xiaomi 13/fuxi evidence.
 
@@ -56,7 +56,7 @@ The preflight records these missing closure inputs:
   manifest, and no USB connection/active stream artifact.
 - LAN glass-to-glass: no Host/build identity for a measured run, no external
   camera timebase, no raw camera recording, no annotated samples, no formal
-  manifest, and no LAN network/active stream artifact.
+  manifest, and no LAN/active stream artifact.
 - Input P95: no Host/build identity for a measured run, no external-camera or
   synchronized-clock timebase proof, no direct latency samples, no formal
   manifest, no physical input actuation record, and no visible Mac-side result

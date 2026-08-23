@@ -8,7 +8,7 @@ Repository/context checks:
 
 Outcome:
 
-  origin/main was d3c62b25d05b6c13bd93388031f7a2dd3832270c. The
+  origin/main was 7247f313e24cc465c9ddd0b60e271b361d1f9d4a. The
   codex/external-camera-latency-readiness branch was rebased on that commit and
   then carries the latency preflight/tooling successor commits.
 
@@ -22,7 +22,7 @@ PR context checked with GitHub CLI/MCP during the task:
   current-base closure owner.
 
   PR #264: open, based on an older main commit before origin/main advanced to
-  d3c62b25d05b6c13bd93388031f7a2dd3832270c. Its
+  7247f313e24cc465c9ddd0b60e271b361d1f9d4a. Its
   fail-closed tooling shape was cherry-picked into this successor branch and
   refreshed against current origin/main rather than modifying PR #264's dirty
   local worktree.
@@ -49,7 +49,7 @@ Fail-closed latency preflight generation:
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked \
   LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/device-info.json \
   LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/preflight-input.json \
-  LATENCY_REPOSITORY_REVISION=d3c62b25d05b6c13bd93388031f7a2dd3832270c \
+  LATENCY_REPOSITORY_REVISION=7247f313e24cc465c9ddd0b60e271b361d1f9d4a \
   make evidence-latency-preflight
 
 Outcome:
