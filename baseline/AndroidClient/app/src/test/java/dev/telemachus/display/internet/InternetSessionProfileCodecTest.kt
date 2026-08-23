@@ -370,6 +370,56 @@ class InternetSessionProfileCodecTest {
     }
 
     @Test
+    fun `rejects missing or reserved profile expiry`() {
+        val missingExpiry = JsonParser.parseString(profileJson("https://signal.example.test", false)).asJsonObject.apply {
+            remove("expires_at")
+        }
+        val reservedExpiry = JsonParser.parseString(profileJson("https://signal.example.test", false)).asJsonObject.apply {
+            addProperty("expires_at", Long.MAX_VALUE)
+        }
+
+        assertFails {
+            InternetSessionProfileCodec.decode(
+                missingExpiry.toString(),
+                false,
+            )
+        }
+        assertFails {
+            InternetSessionProfileCodec.decode(
+                reservedExpiry.toString(),
+                false,
+            )
+        }
+    }
+
+    @Test
+    fun `host signature fails closed when lease signer key differs from verified pairing`() {
+        val keyPair = generateEphemeral(SecureRandom())
+        val publicKey = publicPoint(keyPair)
+        val pairedHost =
+            InternetPairingIdentity(
+                deviceId = "host-1",
+                keyId = pairingSha256(publicKey).toPairingHex(),
+                keyEpoch = 1,
+                signingPublicKey = publicKey,
+            )
+        val decoded = signedLeaseFixture(pairedHost.keyId)
+        val signed = decoded.copy(profile = decoded.profile.copy(leaseSignature = sign(keyPair, InternetSessionLeaseSignature.digest(decoded))))
+        InternetSessionLeaseSignature.verify(signed, pairedHost)
+
+        val otherPublicKey = publicPoint(generateEphemeral(SecureRandom()))
+        val wrongVerifiedHost =
+            InternetPairingIdentity(
+                deviceId = "host-1",
+                keyId = pairingSha256(otherPublicKey).toPairingHex(),
+                keyEpoch = 1,
+                signingPublicKey = otherPublicKey,
+            )
+
+        assertFails { InternetSessionLeaseSignature.verify(signed, wrongVerifiedHost) }
+    }
+
+    @Test
     fun `legacy single identity epoch lease fails closed`() {
         val legacy = JsonParser.parseString(profileJson("https://signal.example.test", false)).asJsonObject
         legacy.remove("host_identity_epoch")

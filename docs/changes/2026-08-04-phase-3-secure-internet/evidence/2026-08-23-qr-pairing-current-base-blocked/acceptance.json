@@ -1,0 +1,108 @@
+{
+  "schema": "dev.vibescreen.phase3-qr-pairing-current-base/v1",
+  "date": "2026-08-23",
+  "branch": "codex/phase3-pairing-flow",
+  "base_ref": "origin/main",
+  "base_commit": "5e269a7dea2fa5dc8c29334748fc3705edd555ba",
+  "scope": "offline QR/manual pairing verifier and local lease fail-closed checks",
+  "result": "blocked",
+  "local_verification": [
+    {
+      "command": "uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q",
+      "result": "pass",
+      "summary": "4 passed in 0.09s"
+    },
+    {
+      "command": "cd baseline/MacHost && swift build -c release",
+      "result": "pass",
+      "summary": "Build complete in 0.11s after the prior full release build populated artifacts"
+    },
+    {
+      "command": "cd baseline/MacHost && ./.build/release/Vibe Screen --phase3-internet-lease-self-test",
+      "result": "pass",
+      "summary": "Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true, identityBinding=true, missingAliasFailClosed=true, legacyBindingFailClosed=true, missingDurableStateFailClosed=true, stateBeforeCredentials=true, epochUnchangedOnIdentityFailure=true, durableEpochAuthority=true, pairingScopedEpoch=true, staleCipherFailClosed=true, atomicEpochOpen=true)"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew testDebugUnitTest --tests dev.telemachus.display.internet.security.InternetPairingTest --no-daemon",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 16s in a combined focused run with InternetSessionProfileCodecTest"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew testDebugUnitTest --tests dev.telemachus.display.internet.InternetSessionProfileCodecTest --no-daemon",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 16s in a combined focused run with InternetPairingTest"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 24s; existing startActivityForResult deprecation warnings only"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_authority_production_gates tests.phase3.test_release_gate_summary tests.phase3.test_authority_session_profile_contract -v",
+      "result": "pass",
+      "summary": "Ran 23 tests in 0.137s, OK"
+    },
+    {
+      "command": "cd services/authority && go test -count=1 ./internal/authority",
+      "result": "pass",
+      "summary": "ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.659s with -count=1"
+    },
+    {
+      "command": "cd baseline/MacHost && swift test --filter InternetSessionLeaseIssuerTests/testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt && swift test --filter InternetPairingTests/testBootstrapMACMutationIsRejected",
+      "result": "blocked",
+      "summary": "Local Command Line Tools environment cannot compile XCTest: error: no such module XCTest"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass",
+      "summary": "No whitespace errors"
+    },
+    {
+      "command": "python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked/privacy-scan.json",
+      "result": "pass",
+      "summary": "privacy-scan.json result is pass"
+    },
+    {
+      "command": "cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked && shasum -a 256 -c SHA256SUMS",
+      "result": "pass",
+      "summary": "acceptance.json, commands.txt, privacy-scan.json, and README.md verified"
+    }
+  ],
+  "offline_coverage": [
+    "Android canonical vibescreen://pair?v=1&o= URL envelope parsing",
+    "Android pre-decode rejection of non-canonical QR payload characters",
+    "Android scanned-offer single-use handling",
+    "Android signed lease host identity binding to the verified pairing",
+    "Authority unsigned Android lease output includes the bounded expires_at input required by the Mac issuer and Android profile contract",
+    "macOS first-attempt one-time offer consumption, including invalid bootstrap proofs",
+    "macOS unsigned lease expires_at requirement and issuer-side TTL rewrite",
+    "macOS issuer reserves the exact Authority-supplied session_epoch and rejects values at or below the durable high-water mark",
+    "cross-language pairing wire fixtures"
+  ],
+  "blocked_gates": [
+    "public TLS signaling or Authority deployment",
+    "Mac/Android automatic invocation of Authority session-profile issuance",
+    "real Android camera QR scan and device-to-host request/acceptance exchange",
+    "public Internet NAT traversal and real remote TURN route",
+    "ScreenCaptureKit-to-Android decoded video",
+    "real network handoff, revocation propagation, latency, and soak"
+  ],
+  "not_evidence": [
+    "local loopback",
+    "forced local coturn",
+    "synthetic Protocol v1 media",
+    "legacy plaintext/LAN fallback",
+    "source-level parser and state-machine tests without camera scan"
+  ],
+  "claims": {
+    "can_close_public_internet_release_gate": false,
+    "production_authority_issuance_verified": false,
+    "real_android_camera_qr_scan_verified": false,
+    "device_to_host_pairing_exchange_verified": false,
+    "public_turn_nat_verified": false,
+    "real_screen_capture_to_mediacodec_verified": false,
+    "network_handoff_verified": false,
+    "active_revocation_verified": false,
+    "latency_or_soak_verified": false
+  }
+}

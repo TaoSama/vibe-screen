@@ -38,17 +38,22 @@ WebRTC/network/key-store implementations.
    create an ECDSA-P256 signing key and stable random device identifier.
 2. Pair locally or through an already authenticated rendezvous. The QR offer is
    single-use, expires quickly, and carries a random challenge, host identity,
-   ephemeral key, and supported algorithms.
+   ephemeral key, and supported algorithms. Android accepts only the canonical
+   `vibescreen://pair?v=1&o=` URL envelope with raw base64url payload characters
+   before decoding the embedded one-time credential.
 3. Both peers sign a canonical transcript containing protocol range,
    capabilities, identities, ephemeral keys, offer identifier, challenge, and
    roles. Unknown required algorithms or downgrade attempts abort pairing.
-4. Derive a root secret from ECDH-P256 and transcript using HKDF-SHA-256. Derive
-   direction/channel/session-specific traffic keys; never use the raw shared
-   secret as an AEAD key.
+4. Mac consumes the offer on the first redemption attempt, including invalid
+   device proofs, before deriving a root secret from ECDH-P256 and transcript
+   using HKDF-SHA-256. Derive direction/channel/session-specific traffic keys;
+   never use the raw shared secret as an AEAD key.
 5. Before Android stores or activates a session lease, verify a signature from
    the paired host identity over every routing, epoch, transcript, token, ICE,
    TURN-credential, and test-policy field. Verify before advancing any durable
-   high-water mark.
+   high-water mark. The local host lease issuer requires a bounded unsigned
+   `expires_at` compatibility field, but rewrites it to the issuer TTL before
+   signing so the caller cannot choose the accepted expiry.
 6. Exchange signaling messages over authenticated HTTPS/WebSocket. Authenticate
    the remote identity independently of the signaling channel.
 7. Gather ICE candidates, prefer direct connectivity, and use short-lived TURN

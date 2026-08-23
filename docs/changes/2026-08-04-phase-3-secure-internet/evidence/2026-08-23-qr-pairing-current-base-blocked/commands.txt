@@ -1,0 +1,144 @@
+# Local verification commands and outcomes
+
+## Repository setup
+
+```bash
+git fetch origin --prune
+git checkout -b codex/phase3-pairing-flow origin/main
+git fetch origin pull/216/head:refs/pr/216
+```
+
+Result: branch prepared in an isolated Codex worktree. PR #216 was inspected as
+the prior draft source, but this record documents a current-base slice rather
+than a direct merge.
+
+After origin/main advanced again, this branch was rebased to
+5e269a7dea2fa5dc8c29334748fc3705edd555ba.
+
+## Pairing fixture tests
+
+Command:
+
+```bash
+uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
+```
+
+Result: passed, 4 passed in 0.09s.
+
+## Android QR pairing and profile tests
+
+Command:
+
+```bash
+cd baseline/AndroidClient
+./gradlew testDebugUnitTest \
+  --tests "dev.telemachus.display.internet.security.InternetPairingTest" \
+  --no-daemon
+./gradlew testDebugUnitTest \
+  --tests "dev.telemachus.display.internet.InternetSessionProfileCodecTest" \
+  --no-daemon
+```
+
+Result: the combined focused test run passed with Gradle BUILD SUCCESSFUL in 16s.
+
+Command:
+
+```bash
+cd baseline/AndroidClient
+./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks
+```
+
+Result: passed with Gradle BUILD SUCCESSFUL in 24s. The compile emitted existing
+deprecation warnings for startActivityForResult in MainActivity.kt. One earlier
+attempt failed before tests because overlapping Gradle processes in the same
+worktree raced while deleting app/build/tmp/kotlin-classes/debug; the rerun after
+stopping that worktree's Gradle daemon passed.
+
+## Authority session profile contract
+
+Command:
+
+```bash
+cd services/authority
+go test -count=1 ./internal/authority
+```
+
+Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.659s.
+
+## Phase 3 release-gate documentation checks
+
+Command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.phase3.test_authority_production_gates \
+  tests.phase3.test_release_gate_summary \
+  tests.phase3.test_authority_session_profile_contract \
+  -v
+```
+
+Result: passed, Ran 23 tests in 0.137s, OK.
+
+## macOS Swift build and lease self-test
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift build -c release
+"./.build/release/Vibe Screen" --phase3-internet-lease-self-test
+```
+
+Result: release build passed, with the final incremental `swift build -c release`
+finishing in 0.11s after the prior full release build populated artifacts. The
+binary self-test printed Phase 3 Internet lease self-test: PASS with
+canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true,
+identityBinding=true, missingAliasFailClosed=true, legacyBindingFailClosed=true,
+missingDurableStateFailClosed=true, stateBeforeCredentials=true,
+epochUnchangedOnIdentityFailure=true, durableEpochAuthority=true,
+pairingScopedEpoch=true, staleCipherFailClosed=true, and atomicEpochOpen=true.
+An intermediate run failed after the rebase because the
+self-test constructed an epoch-10 cipher without first reserving epoch 10 in the
+test lifecycle; the self-test fixture now reserves epoch 10 before advancing to
+epoch 11 and proving the old packet fails closed.
+
+## macOS XCTest
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift test --filter InternetSessionLeaseIssuerTests/testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt
+swift test --filter InternetPairingTests/testBootstrapMACMutationIsRejected
+```
+
+Result: blocked before test execution by local Command Line Tools XCTest
+availability. Swift failed compiling the test target with error: no such module
+XCTest. This is an environment/toolchain failure, not a test assertion failure.
+
+## Diff hygiene
+
+Command:
+
+```bash
+git diff --check
+```
+
+Result: passed with no whitespace errors.
+
+## Evidence privacy and integrity
+
+Command:
+
+```bash
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked \
+  --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked/privacy-scan.json
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked && \
+  find . -type f ! -name SHA256SUMS -print | sort | xargs shasum -a 256 > SHA256SUMS)
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked && \
+  shasum -a 256 -c SHA256SUMS)
+```
+
+Result: privacy scan passed with no violations. SHA256 verification passed for
+acceptance.json, commands.txt, privacy-scan.json, and README.md.

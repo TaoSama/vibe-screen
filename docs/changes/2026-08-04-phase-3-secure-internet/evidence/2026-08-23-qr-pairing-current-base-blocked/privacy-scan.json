@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2683,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "13ba2fb46bf2942d56e6913f33a4252072467baab85bb6d0ccc39928e47c88c3"
+    },
+    {
+      "bytes": 5695,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "acceptance.json",
+      "result": "pass",
+      "sha256": "aa69979743a838b5aca7701212462a289ec1df5b0a12e6e427a12054ce3d0fd1"
+    },
+    {
+      "bytes": 4522,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "d9af71a8b48b986bbc9039ef5dcba2798a7d9b791a2d1bb6adb3796ccc73a299"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
