@@ -67,6 +67,7 @@ enum VideoEncoderSelfTest {
                 sessionEpoch: 1
             )
         }
+        _ = encoder.completeFrames()
 
         guard waitForEncodedFrameCount(1, in: result, timeout: 8) else {
             let snapshot = result.snapshot()
@@ -121,6 +122,7 @@ enum VideoEncoderSelfTest {
             return false
         }
 
+        _ = encoder.completeFrames()
         _ = waitForEncodedFrameCount(warmupSnapshot.encodedFrameCount + 1, in: result, timeout: 5)
         let snapshot = result.snapshot()
         let passed = snapshot.settingsFailure == nil

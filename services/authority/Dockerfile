@@ -13,7 +13,7 @@ FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/vibe-authority /vibe-authority
 COPY config.container.json /etc/vibe-screen/authority.json
-COPY migrations/001_authority.sql /usr/share/vibe-screen/migrations/001_authority.sql
+COPY migrations /usr/share/vibe-screen/migrations
 USER 65532:65532
 EXPOSE 8091
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \

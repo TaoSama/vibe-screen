@@ -12,6 +12,8 @@ RELAY_README = ROOT / "services/relay/README.md"
 SIGNALING_README = ROOT / "services/signaling/README.md"
 DEPLOY_README = ROOT / "deploy/phase3/README.md"
 AUTHORITY_PRODUCTION_COMPOSE = ROOT / "deploy/phase3/docker-compose.authority.production.yml"
+AUTHORITY_LOCAL_COMPOSE = ROOT / "deploy/phase3/docker-compose.authority.yml"
+AUTHORITY_DOCKERFILE = ROOT / "services/authority/Dockerfile"
 
 
 class AuthorityProductionGateTests(unittest.TestCase):
@@ -98,6 +100,17 @@ class AuthorityProductionGateTests(unittest.TestCase):
         for variable in required_secret_vars:
             with self.subTest(variable=variable):
                 self.assertIn("$" + "{" + variable + ":?set ", text)
+
+    def test_authority_profiles_run_versioned_migration_directory(self) -> None:
+        dockerfile = AUTHORITY_DOCKERFILE.read_text(encoding="utf-8")
+        self.assertIn("COPY migrations /usr/share/vibe-screen/migrations", dockerfile)
+
+        for path in (AUTHORITY_LOCAL_COMPOSE, AUTHORITY_PRODUCTION_COMPOSE):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("--migrate", text)
+                self.assertIn("/usr/share/vibe-screen/migrations", text)
+                self.assertNotIn("/usr/share/vibe-screen/migrations/001_authority.sql", text)
 
 
 if __name__ == "__main__":

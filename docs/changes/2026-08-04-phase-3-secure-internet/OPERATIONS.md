@@ -10,10 +10,12 @@ local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
-multi-instance operation is not proved, no authoritative usage exporter is
-bundled, Mac/Android automatic invocation of Authority profile issuance is not
-wired, and no integrated implementation has run on a public host in this
-environment.
+multi-instance operation is not proved, no authoritative usage exporter or
+active-allocation disconnect executor is bundled, Mac/Android automatic
+invocation of Authority profile issuance is not wired, the bundled coturn
+deployment does not run a usage exporter, reconciliation scheduler, or concrete
+data-plane disconnect executor, and no integrated implementation has run on a
+public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -35,15 +37,21 @@ PostgreSQL-backed routing state in production. Dependency or malformed-response
 failures return `502` without falling back to locally minted tokens; signaling
 storage failures return `503`; authority policy rejections remain denials.
 Relay credential
-admission now delegates to the authority before TURN credential issuance, and
+admission now delegates to the authority before TURN credential issuance when
+`services/relay/` is run in its Authority-backed production mode, and
 Authority owns coturn usage/reconciliation APIs. The repository also includes
 `scripts/phase3/coturn_reconcile.py`, a bounded helper that submits a trusted
-structured coturn allocation snapshot to Authority and invokes an external
-disconnect executor for unauthorized or conflicting active source allocations.
-The helper is not a production-proven coturn machine exporter, scheduled
-reconciliation loop, or concrete data-plane disconnect implementation. Therefore
-this does not remove the public-launch prohibition below. See the service README
-for the migration procedure, API contract, and remaining infrastructure gates.
+structured coturn allocation snapshot to Authority, can call an external exporter
+command whose stdout is that same strict JSON, retries failures when explicitly
+configured, and invokes an external disconnect executor for unauthorized,
+conflicting, or revoked active source allocations. The helper is not a
+production-proven coturn machine exporter, production scheduler, or concrete
+data-plane disconnect implementation. Therefore this does not remove the public-launch prohibition
+below. See the service README for the migration
+procedure, API contract, and remaining infrastructure gates.
+The structured reconcile
+  helper is locally tested, but the coturn exporter, scheduled reconciliation loop,
+  and active-allocation disconnect are not production proven.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
@@ -325,8 +333,10 @@ shipped:
   must be registered through the authority admin API before a profile or
   signaling admission can be created.
 - Relay credential admission is wired to the authority; the structured reconcile
-  helper is locally tested, but coturn exporter, scheduled reconciliation loop,
-  and active-allocation disconnect are not production proven.
+  helper is locally tested and can invoke external exporter and disconnect
+  commands, but a real coturn exporter is not implemented, no production
+  scheduler is shipped, and no concrete active-allocation disconnect executor is
+  bundled or production-proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped

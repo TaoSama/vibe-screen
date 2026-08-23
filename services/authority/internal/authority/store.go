@@ -45,8 +45,13 @@ type PostgresStore struct {
 }
 
 const (
-	requiredSchemaVersion  int64 = 1
-	requiredSchemaChecksum       = "8c10390258422ef7427cb9888395f7b57f6bbbacb234ba35ac0ad0e008e3f94d"
+	requiredSchemaVersion                  int64 = 2
+	requiredSchemaChecksum                       = "b9a720cb795a6f40f35e6719d1decb3a109021f4a2cb61248ef46d315713954b"
+	allocationClosedBySource                     = "source_closed"
+	allocationClosedByAccountSuspended           = "account_suspended"
+	allocationClosedByDeviceRevoked              = "device_revoked"
+	allocationClosedBySignalingInvalidated       = "signaling_invalidated"
+	allocationClosedByRelayQuotaExceeded         = "relay_quota_exceeded"
 )
 
 func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
@@ -97,7 +102,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 	if !complete {
 		return fmt.Errorf("%w: required authority relation is missing", ErrStorage)
 	}
-	if _, err := s.pool.Exec(ctx, `SELECT m.version,m.checksum_sha256,m.applied_at,a.account_id,a.suspended_at,a.created_at,d.device_id,d.account_id,d.revocation_epoch,d.revoked_at,d.created_at,f.device_id,f.highest_epoch,s.session_id,s.request_id,s.account_id,s.host_device_id,s.client_device_id,s.session_epoch,s.expires_at,s.revoked_at,s.created_at,p.request_id,p.request_sha256,p.account_id,p.host_device_id,p.client_device_id,p.signaling_session_id,p.created_at,u.device_id,u.usage_day,u.ingress_bytes,u.egress_bytes,r.allocation_id,r.source_id,r.device_id,r.session_id,r.observed_sequence,r.ingress_bytes,r.egress_bytes,r.admitted_at,r.last_observed_at,r.closed_at,e.source_id,e.event_id,e.payload_sha256,e.received_at,x.audit_id,x.event_type,x.account_id,x.device_id,x.session_id,x.occurred_at FROM authority_schema_migrations m,authority_accounts a,authority_devices d,authority_session_epoch_floors f,authority_signaling_sessions s,authority_session_profile_issuance p,authority_relay_daily_usage u,authority_relay_allocations r,authority_coturn_events e,authority_audit_events x LIMIT 0`); err != nil {
+	if _, err := s.pool.Exec(ctx, `SELECT m.version,m.checksum_sha256,m.applied_at,a.account_id,a.suspended_at,a.created_at,d.device_id,d.account_id,d.revocation_epoch,d.revoked_at,d.created_at,f.device_id,f.highest_epoch,s.session_id,s.request_id,s.account_id,s.host_device_id,s.client_device_id,s.session_epoch,s.expires_at,s.revoked_at,s.created_at,p.request_id,p.request_sha256,p.account_id,p.host_device_id,p.client_device_id,p.signaling_session_id,p.created_at,u.device_id,u.usage_day,u.ingress_bytes,u.egress_bytes,r.allocation_id,r.source_id,r.device_id,r.session_id,r.observed_sequence,r.ingress_bytes,r.egress_bytes,r.admitted_at,r.last_observed_at,r.closed_at,r.closure_reason,e.source_id,e.event_id,e.payload_sha256,e.received_at,x.audit_id,x.event_type,x.account_id,x.device_id,x.session_id,x.occurred_at FROM authority_schema_migrations m,authority_accounts a,authority_devices d,authority_session_epoch_floors f,authority_signaling_sessions s,authority_session_profile_issuance p,authority_relay_daily_usage u,authority_relay_allocations r,authority_coturn_events e,authority_audit_events x LIMIT 0`); err != nil {
 		return fmt.Errorf("%w: required authority column is missing: %v", ErrStorage, err)
 	}
 	var constraints int
@@ -133,6 +138,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"authority_relay_allocations_ingress_bytes_check",
 		"authority_relay_allocations_egress_bytes_check",
 		"authority_relay_allocations_session_fk",
+		"authority_relay_allocations_closure_reason_check",
 		"authority_coturn_events_pkey",
 		"authority_coturn_events_event_id_check",
 		"authority_audit_events_pkey",
@@ -147,7 +153,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"authority_signaling_sessions", "authority_signaling_sessions", "authority_signaling_sessions",
 		"authority_session_profile_issuance", "authority_session_profile_issuance",
 		"authority_relay_daily_usage", "authority_relay_daily_usage", "authority_relay_daily_usage",
-		"authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations",
+		"authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations",
 		"authority_coturn_events", "authority_coturn_events",
 	}
 	columns := []string{
@@ -157,7 +163,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"session_id", "session_epoch", "expires_at",
 		"request_id", "request_sha256",
 		"usage_day", "ingress_bytes", "egress_bytes",
-		"allocation_id", "session_id", "ingress_bytes", "egress_bytes",
+		"allocation_id", "session_id", "ingress_bytes", "egress_bytes", "closure_reason",
 		"event_id", "payload_sha256",
 	}
 	types := []string{
@@ -167,7 +173,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"text", "bigint", "timestamp with time zone",
 		"text", "bytea",
 		"date", "numeric", "numeric",
-		"text", "text", "bigint", "bigint",
+		"text", "text", "bigint", "bigint", "text",
 		"text", "bytea",
 	}
 	nullable := []string{
@@ -177,7 +183,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"NO", "NO", "NO",
 		"NO", "NO",
 		"NO", "NO", "NO",
-		"NO", "NO", "NO", "NO",
+		"NO", "NO", "NO", "NO", "YES",
 		"NO", "NO",
 	}
 	if err := s.pool.QueryRow(ctx, `SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable`, tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
@@ -228,7 +234,7 @@ func (s *PostgresStore) SuspendAccount(ctx context.Context, accountID string, no
 		// Fail closed: close every relay allocation bound to this account so a
 		// suspended account cannot keep consuming TURN bandwidth or advance
 		// coturn accounting through a later usage update.
-		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE device_id IN (SELECT device_id FROM authority_devices WHERE account_id=$1) AND closed_at IS NULL`, accountID, now); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=$2,closure_reason=$3 WHERE device_id IN (SELECT device_id FROM authority_devices WHERE account_id=$1) AND closed_at IS NULL`, accountID, now, allocationClosedByAccountSuspended); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,account_id,occurred_at) VALUES ('account_suspended',$1,$2)`, accountID, now)
@@ -294,7 +300,7 @@ func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch
 		// Fail closed: close every relay allocation bound to this device so a
 		// revoked device cannot keep consuming TURN bandwidth or advance
 		// coturn accounting through a later usage update.
-		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE device_id=$1 AND closed_at IS NULL`, deviceID, now); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=$2,closure_reason=$3 WHERE device_id=$1 AND closed_at IS NULL`, deviceID, now, allocationClosedByDeviceRevoked); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,device_id,occurred_at) VALUES ('device_revoked',$1,$2)`, deviceID, now)
@@ -482,7 +488,7 @@ func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID strin
 		// Fail closed: close every relay allocation bound to this session so
 		// invalidating a signaling admission also blocks later coturn usage
 		// updates for the authority ledger.
-		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE session_id=$1 AND closed_at IS NULL`, sessionID, now); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=$2,closure_reason=$3 WHERE session_id=$1 AND closed_at IS NULL`, sessionID, now, allocationClosedBySignalingInvalidated); err != nil {
 			return err
 		}
 		return nil
@@ -622,7 +628,7 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 				return err
 			}
 		}
-		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN closed_at IS NOT NULL THEN closed_at WHEN $7 THEN $6::timestamptz ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
+		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN closed_at IS NOT NULL THEN closed_at WHEN $7 THEN $6::timestamptz ELSE NULL END,closure_reason=CASE WHEN closure_reason IS NOT NULL THEN closure_reason WHEN $7 THEN $8 ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed, allocationClosedBySource)
 		return err
 	})
 	return duplicate, err
@@ -657,7 +663,7 @@ func revokeDeviceForRelayQuotaExceeded(ctx context.Context, tx pgx.Tx, deviceID 
 	if _, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP) WHERE (host_device_id=$1 OR client_device_id=$1) AND revoked_at IS NULL`, deviceID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,CURRENT_TIMESTAMP) WHERE device_id=$1 AND closed_at IS NULL`, deviceID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=CURRENT_TIMESTAMP,closure_reason=$2 WHERE device_id=$1 AND closed_at IS NULL`, deviceID, allocationClosedByRelayQuotaExceeded); err != nil {
 		return err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,device_id) VALUES ('relay_quota_exceeded',$1)`, deviceID)
@@ -665,7 +671,7 @@ func revokeDeviceForRelayQuotaExceeded(ctx context.Context, tx pgx.Tx, deviceID 
 }
 
 func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
-	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
+	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}, RevokedAllocationIDs: []string{}}
 	seen := make(map[string]bool, len(request.Allocations))
 	for index, usage := range request.Allocations {
 		usage.SourceID = request.SourceID
@@ -673,15 +679,30 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		usage.ObservedAt = request.ObservedAt
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevoked) {
+			if errors.Is(err, ErrNotFound) {
 				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrRevoked) {
+				if revoked, classifyErr := s.reconciliationAllocationRevoked(ctx, usage); classifyErr == nil && revoked {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+				} else {
+					result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				}
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
 			if errors.Is(err, ErrStaleUsage) {
 				var sourceID, deviceID, sessionID string
 				var sequence, ingress, egress int64
-				queryErr := s.pool.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress)
+				var closureReason *string
+				queryErr := s.pool.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,closure_reason FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress, &closureReason)
+				if queryErr == nil && isAuthorityClosure(closureReason) && sourceID == usage.SourceID && deviceID == usage.DeviceID && sessionID == usage.SessionID {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+					seen[request.Allocations[index].AllocationID] = true
+					continue
+				}
 				if queryErr == nil && sourceID == usage.SourceID && deviceID == usage.DeviceID && sessionID == usage.SessionID && uint64(sequence) >= usage.Sequence && uint64(ingress) >= usage.IngressBytes && uint64(egress) >= usage.EgressBytes {
 					result.AlreadyAhead++
 					seen[request.Allocations[index].AllocationID] = true
@@ -707,6 +728,7 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 	}
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
+	sort.Strings(result.RevokedAllocationIDs)
 	rows, err := s.pool.Query(ctx, `SELECT allocation_id FROM authority_relay_allocations WHERE source_id=$1 AND closed_at IS NULL AND last_observed_at<$2 ORDER BY allocation_id`, request.SourceID, request.ObservedAt.Add(-grace))
 	if err != nil {
 		return result, storageError("reconcile allocations", err)
@@ -724,9 +746,43 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 	return result, rows.Err()
 }
 
+func (s *PostgresStore) reconciliationAllocationRevoked(ctx context.Context, usage CoturnUsage) (bool, error) {
+	var sourceID, deviceID, sessionID string
+	var expiresAt time.Time
+	var sessionRevokedAt, accountSuspendedAt, deviceRevokedAt *time.Time
+	var closureReason *string
+	err := s.pool.QueryRow(ctx, `SELECT r.source_id,r.device_id,r.session_id,s.expires_at,s.revoked_at,a.suspended_at,d.revoked_at,r.closure_reason FROM authority_relay_allocations r JOIN authority_signaling_sessions s ON s.session_id=r.session_id JOIN authority_accounts a ON a.account_id=s.account_id JOIN authority_devices d ON d.device_id=r.device_id WHERE r.source_id=$1 AND r.allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &expiresAt, &sessionRevokedAt, &accountSuspendedAt, &deviceRevokedAt, &closureReason)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrNotFound
+		}
+		return false, err
+	}
+	if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID {
+		return false, ErrStaleUsage
+	}
+	return isAuthorityClosure(closureReason) || sessionRevokedAt != nil || accountSuspendedAt != nil || deviceRevokedAt != nil || !usage.ObservedAt.Before(expiresAt), nil
+}
+
 func reconciliationEventID(sourceID string, observedAt time.Time, allocationID string) string {
 	digest := sha256.Sum256([]byte(sourceID + "\x00" + observedAt.UTC().Format(time.RFC3339Nano) + "\x00" + allocationID))
 	return fmt.Sprintf("reconcile-%x", digest)
+}
+
+func isAuthorityClosure(reason *string) bool {
+	if reason == nil {
+		return false
+	}
+	return isAuthorityClosureString(*reason)
+}
+
+func isAuthorityClosureString(reason string) bool {
+	switch reason {
+	case allocationClosedByAccountSuspended, allocationClosedByDeviceRevoked, allocationClosedBySignalingInvalidated, allocationClosedByRelayQuotaExceeded:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *PostgresStore) transaction(ctx context.Context, operation func(pgx.Tx) error) error {
