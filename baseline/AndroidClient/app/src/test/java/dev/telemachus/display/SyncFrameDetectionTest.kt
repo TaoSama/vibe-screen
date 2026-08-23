@@ -20,35 +20,35 @@ class SyncFrameDetectionTest {
     fun hevcIdrIsSync() {
         // HEVC NAL header 0x26: type = (0x26 and 0x7E) shr 1 = 19 (IDR_W_RADL)
         val frame = annexB(0x26)
-        assertTrue(StreamClient.isSyncFrame(frame, frame.size, isHevc = true))
+        assertTrue(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = true))
     }
 
     @Test
     fun hevcTrailFrameIsNotSync() {
         // HEVC NAL header 0x02: type 1 (TRAIL_R)
         val frame = annexB(0x02)
-        assertFalse(StreamClient.isSyncFrame(frame, frame.size, isHevc = true))
+        assertFalse(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = true))
     }
 
     @Test
     fun h264IdrIsSync() {
         // H.264 NAL header 0x65: type = 0x65 and 0x1F = 5 (IDR slice)
         val frame = annexB(0x65)
-        assertTrue(StreamClient.isSyncFrame(frame, frame.size, isHevc = false))
+        assertTrue(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = false))
     }
 
     @Test
     fun h264NonIdrIsNotSync() {
         // H.264 NAL header 0x41: type 1 (non-IDR slice)
         val frame = annexB(0x41)
-        assertFalse(StreamClient.isSyncFrame(frame, frame.size, isHevc = false))
+        assertFalse(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = false))
     }
 
     @Test
     fun h264IdrAfterSpsPpsIsSync() {
         // Typical keyframe layout: SPS (0x67), PPS (0x68), then IDR (0x65)
         val frame = annexB(0x67, 0x68, 0x65)
-        assertTrue(StreamClient.isSyncFrame(frame, frame.size, isHevc = false))
+        assertTrue(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = false))
     }
 
     @Test
@@ -57,6 +57,6 @@ class SyncFrameDetectionTest {
         // This is exactly the bug that would freeze H.264 streams if the
         // detection stayed HEVC-only.
         val frame = annexB(0x65)
-        assertFalse(StreamClient.isSyncFrame(frame, frame.size, isHevc = true))
+        assertFalse(StreamMediaFrameRouter.isSyncFrame(frame, frame.size, isHevc = true))
     }
 }
