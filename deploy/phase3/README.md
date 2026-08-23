@@ -265,6 +265,34 @@ curl --fail http://127.0.0.1:8090/readyz
 docker compose -f docker-compose.production.yml logs --since=10m relay coturn
 ```
 
+Before treating this as public NAT/TURN release evidence, write a sanitized
+connectivity JSON outside the repository and run the fail-closed preflight:
+
+```bash
+python3 ../../scripts/phase3/public_nat_turn_preflight.py \
+  --relay-config ./config/relay.production.json \
+  --coturn-config ./coturn/production.conf \
+  --turn-secret-file ./secrets/turn_secret.txt \
+  --tls-certificate ./tls/fullchain.pem \
+  --tls-private-key ./tls/privkey.pem \
+  --coturn-external-ip "$COTURN_EXTERNAL_IP" \
+  --authority-ready-url https://authority.example.com/readyz \
+  --relay-ready-url https://relay.example.com/readyz \
+  --connectivity-evidence /protected/evidence/public-nat-turn-connectivity.json \
+  --output /protected/evidence/public-nat-turn-preflight.json \
+  --connectivity-command /usr/local/bin/vibe-public-turn-canary
+```
+
+The preflight returns non-zero and records `blocked` when any public address,
+runtime secret, TLS material, readiness probe, quota/ACL invariant, or remote
+connectivity artifact is missing. A saved `--connectivity-evidence` file is only
+reviewed context; pass evidence requires `--connectivity-command` to run an
+external observer during the preflight and emit a matching sanitized JSON record
+on stdout. Use `--allow-blocked` only to archive a readiness blocker. The
+checked-in example config, local coturn profile, loopback runs, and synthetic
+peers are expected to remain blocked and cannot close the public Internet or
+remote TURN gates.
+
 The `relay-migrate` job applies `001_relay.sql` behind an advisory lock and a
 checksum ledger. Relay starts only after that job exits successfully. `/readyz`
 requires the database, schema checksum, required relations/columns/constraints,
