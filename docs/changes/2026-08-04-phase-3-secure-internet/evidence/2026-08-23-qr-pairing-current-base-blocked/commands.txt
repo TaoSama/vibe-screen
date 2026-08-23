@@ -13,7 +13,12 @@ the prior draft source, but this record documents a current-base slice rather
 than a direct merge.
 
 After origin/main advanced again, this branch was rebased to
-5e269a7dea2fa5dc8c29334748fc3705edd555ba.
+5e269a7dea2fa5dc8c29334748fc3705edd555ba, and after PR #303 landed it was
+rebased again to c4b8121d9346557ba5d0db7b5c3e63400c8569d2.
+
+Focused local verification was run at PR commit
+f5218726948c31c0740a208de136df42724d0b83 after the latest rebase. Later
+evidence-only metadata commits do not change executable sources.
 
 ## Pairing fixture tests
 
@@ -23,7 +28,7 @@ Command:
 uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
 ```
 
-Result: passed, 4 passed in 0.09s.
+Result: passed, 4 passed in 0.12s.
 
 ## Android QR pairing and profile tests
 
@@ -39,7 +44,7 @@ cd baseline/AndroidClient
   --no-daemon
 ```
 
-Result: the combined focused test run passed with Gradle BUILD SUCCESSFUL in 16s.
+Result: the combined focused test run passed with Gradle BUILD SUCCESSFUL in 5s.
 
 Command:
 
@@ -48,7 +53,7 @@ cd baseline/AndroidClient
 ./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks
 ```
 
-Result: passed with Gradle BUILD SUCCESSFUL in 24s. The compile emitted existing
+Result: passed with Gradle BUILD SUCCESSFUL in 40s. The compile emitted existing
 deprecation warnings for startActivityForResult in MainActivity.kt. One earlier
 attempt failed before tests because overlapping Gradle processes in the same
 worktree raced while deleting app/build/tmp/kotlin-classes/debug; the rerun after
@@ -63,7 +68,7 @@ cd services/authority
 go test -count=1 ./internal/authority
 ```
 
-Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.659s.
+Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.807s.
 
 ## Phase 3 release-gate documentation checks
 
@@ -77,7 +82,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   -v
 ```
 
-Result: passed, Ran 23 tests in 0.137s, OK.
+Result: passed, Ran 27 tests in 0.354s, OK.
 
 ## macOS Swift build and lease self-test
 
@@ -90,7 +95,7 @@ swift build -c release
 ```
 
 Result: release build passed, with the final incremental `swift build -c release`
-finishing in 0.11s after the prior full release build populated artifacts. The
+finishing in 0.14s after the prior full release build populated artifacts. The
 binary self-test printed Phase 3 Internet lease self-test: PASS with
 canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true,
 identityBinding=true, missingAliasFailClosed=true, legacyBindingFailClosed=true,

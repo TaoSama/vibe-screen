@@ -3,19 +3,21 @@
   "date": "2026-08-23",
   "branch": "codex/phase3-pairing-flow",
   "base_ref": "origin/main",
-  "base_commit": "5e269a7dea2fa5dc8c29334748fc3705edd555ba",
+  "base_commit": "c4b8121d9346557ba5d0db7b5c3e63400c8569d2",
+  "verified_source_commit": "f5218726948c31c0740a208de136df42724d0b83",
+  "verified_source_note": "Focused local verification was run at this PR commit after rebasing onto base_commit; later evidence-only metadata commits do not change executable sources.",
   "scope": "offline QR/manual pairing verifier and local lease fail-closed checks",
   "result": "blocked",
   "local_verification": [
     {
       "command": "uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q",
       "result": "pass",
-      "summary": "4 passed in 0.09s"
+      "summary": "4 passed in 0.12s"
     },
     {
       "command": "cd baseline/MacHost && swift build -c release",
       "result": "pass",
-      "summary": "Build complete in 0.11s after the prior full release build populated artifacts"
+      "summary": "Build complete in 0.14s after the prior full release build populated artifacts"
     },
     {
       "command": "cd baseline/MacHost && ./.build/release/Vibe Screen --phase3-internet-lease-self-test",
@@ -25,27 +27,27 @@
     {
       "command": "cd baseline/AndroidClient && ./gradlew testDebugUnitTest --tests dev.telemachus.display.internet.security.InternetPairingTest --no-daemon",
       "result": "pass",
-      "summary": "BUILD SUCCESSFUL in 16s in a combined focused run with InternetSessionProfileCodecTest"
+      "summary": "BUILD SUCCESSFUL in 5s in a combined focused run with InternetSessionProfileCodecTest"
     },
     {
       "command": "cd baseline/AndroidClient && ./gradlew testDebugUnitTest --tests dev.telemachus.display.internet.InternetSessionProfileCodecTest --no-daemon",
       "result": "pass",
-      "summary": "BUILD SUCCESSFUL in 16s in a combined focused run with InternetPairingTest"
+      "summary": "BUILD SUCCESSFUL in 5s in a combined focused run with InternetPairingTest"
     },
     {
       "command": "cd baseline/AndroidClient && ./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks",
       "result": "pass",
-      "summary": "BUILD SUCCESSFUL in 24s; existing startActivityForResult deprecation warnings only"
+      "summary": "BUILD SUCCESSFUL in 40s; existing startActivityForResult deprecation warnings only"
     },
     {
       "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_authority_production_gates tests.phase3.test_release_gate_summary tests.phase3.test_authority_session_profile_contract -v",
       "result": "pass",
-      "summary": "Ran 23 tests in 0.137s, OK"
+      "summary": "Ran 27 tests in 0.354s, OK"
     },
     {
       "command": "cd services/authority && go test -count=1 ./internal/authority",
       "result": "pass",
-      "summary": "ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.659s with -count=1"
+      "summary": "ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.807s with -count=1"
     },
     {
       "command": "cd baseline/MacHost && swift test --filter InternetSessionLeaseIssuerTests/testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt && swift test --filter InternetPairingTests/testBootstrapMACMutationIsRejected",
