@@ -193,6 +193,14 @@ def copy_optional_log(source: Path | None, destination: Path, artifacts: list[di
         return
 
 
+def archive_host_telemetry(source: Path, destination: Path, artifacts: list[dict[str, Any]]) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if source.resolve() != destination.resolve():
+        shutil.copyfile(source, destination)
+    artifacts.append({"path": str(destination.parent.name + "/" + destination.name), "kind": "host_telemetry"})
+    return destination
+
+
 def write_log_derivatives(raw_logcat: Path, output_dir: Path) -> dict[str, int]:
     try:
         lines = raw_logcat.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -689,10 +697,15 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                         blockers.append(message)
                     if arguments.mode == "run" and arguments.host_telemetry_jsonl is not None:
                         try:
+                            archived_telemetry = archive_host_telemetry(
+                                arguments.host_telemetry_jsonl,
+                                soak_dir / "host-telemetry.jsonl",
+                                artifacts,
+                            )
                             report = derive_report(
                                 soak_dir / "summary.json",
                                 soak_dir / "samples.jsonl",
-                                arguments.host_telemetry_jsonl,
+                                archived_telemetry,
                             )
                             write_json(soak_dir / "exact-window-report.json", report)
                             gate = derive_gate(

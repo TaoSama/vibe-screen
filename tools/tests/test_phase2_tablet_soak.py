@@ -12,6 +12,7 @@ from unittest.mock import patch
 from vibescreen_evidence.phase2_tablet_soak import (
     DeviceLock,
     acquire_device_locks,
+    archive_host_telemetry,
     append_preflight_blockers,
     build_readiness,
     is_sha256_digest,
@@ -440,7 +441,9 @@ class Phase2TabletSoakTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
-            telemetry = directory / "host-telemetry.jsonl"
+            telemetry_source_dir = directory / "external"
+            telemetry_source_dir.mkdir()
+            telemetry = telemetry_source_dir / "host-telemetry.jsonl"
             telemetry.write_text("{}\n", encoding="utf-8")
             with (
                 patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", directory / "soak.lock"),
@@ -468,13 +471,32 @@ class Phase2TabletSoakTests(unittest.TestCase):
                     ),
                     ["phase2-tablet-soak"],
                 )
+                archived_telemetry = (directory / "soak-8h" / "host-telemetry.jsonl").read_text(encoding="utf-8")
 
         self.assertTrue(readiness["can_close_phase2_gate"])
+        self.assertEqual(archived_telemetry, "{}\n")
+        self.assertIn(
+            {"path": "soak-8h/host-telemetry.jsonl", "kind": "host_telemetry"},
+            readiness["artifacts"],
+        )
         derive_gate.assert_called_once_with(
             directory / "soak-8h" / "exact-window-report.json",
             manifest_path=directory / "phase2-tablet-manifest.json",
             evidence_dir=directory,
         )
+
+    def test_archive_host_telemetry_allows_existing_evidence_path(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            telemetry = directory / "soak-8h" / "host-telemetry.jsonl"
+            telemetry.parent.mkdir()
+            telemetry.write_text("{}\n", encoding="utf-8")
+            artifacts: list[dict[str, object]] = []
+
+            archived = archive_host_telemetry(telemetry, telemetry, artifacts)
+
+        self.assertEqual(archived, telemetry)
+        self.assertEqual(artifacts, [{"path": "soak-8h/host-telemetry.jsonl", "kind": "host_telemetry"}])
 
     def test_formal_mode_rejects_placeholder_apk_sha256(self):
         with tempfile.TemporaryDirectory() as directory_name:

@@ -141,7 +141,11 @@
   "required_gates": [
     "physical_8_9_inch_tablet",
     "stand_mounted_charging",
+    "portrait_landscape_ui",
+    "physical_stylus",
+    "hardware_keyboard",
     "thermal_power_sampling",
+    "device_memory_sampling",
     "foreground_background_recovery",
     "transport_reconnect_recovery",
     "login_startup_or_headless_recovery",
