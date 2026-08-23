@@ -618,7 +618,7 @@ func TestPostgresMigrationUpgradesPublishedV1ToCurrentSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = connection.Close(ctx) }()
-	if _, err := connection.Exec(ctx, `DROP TABLE IF EXISTS authority_audit_events,authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_signaling_sessions,authority_session_epoch_floors,authority_devices,authority_accounts,authority_schema_migrations CASCADE`); err != nil {
+	if _, err := connection.Exec(ctx, `DROP TABLE IF EXISTS authority_audit_events,authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_session_profile_issuance,authority_signaling_sessions,authority_session_epoch_floors,authority_devices,authority_accounts,authority_schema_migrations CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 

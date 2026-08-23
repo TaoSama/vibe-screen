@@ -384,14 +384,23 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			return result, err
 		}
 		if revoked {
-			result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+			result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
 			seen[request.Allocations[index].AllocationID] = true
 			continue
 		}
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevoked) {
+			if errors.Is(err, ErrNotFound) {
 				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrRevoked) {
+				if revoked, classifyErr := s.reconciliationAllocationRevoked(usage); classifyErr == nil && revoked {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+				} else {
+					result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				}
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
@@ -417,11 +426,6 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			}
 			if errors.Is(err, ErrConflict) {
 				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
-				seen[request.Allocations[index].AllocationID] = true
-				continue
-			}
-			if errors.Is(err, ErrRevoked) {
-				result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
@@ -463,7 +467,7 @@ func (s *memoryStore) reconciliationAllocationRevoked(usage CoturnUsage) (bool, 
 	if session == nil {
 		return false, ErrNotFound
 	}
-	return s.revoked[usage.DeviceID] > 0 || s.accounts[s.devices[usage.DeviceID]] || session.revoked || allocation.closed || !usage.ObservedAt.Before(session.admission.ExpiresAt), nil
+	return isAuthorityClosureString(allocation.closureReason) || s.revoked[usage.DeviceID] > 0 || s.accounts[s.devices[usage.DeviceID]] || session.revoked || !usage.ObservedAt.Before(session.admission.ExpiresAt), nil
 }
 
 func memoryAllocationKey(sourceID, allocationID string) string {

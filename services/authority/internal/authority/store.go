@@ -679,8 +679,17 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		usage.ObservedAt = request.ObservedAt
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevoked) {
+			if errors.Is(err, ErrNotFound) {
 				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrRevoked) {
+				if revoked, classifyErr := s.reconciliationAllocationRevoked(ctx, usage); classifyErr == nil && revoked {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+				} else {
+					result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				}
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
@@ -705,11 +714,6 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 			}
 			if errors.Is(err, ErrConflict) {
 				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
-				seen[request.Allocations[index].AllocationID] = true
-				continue
-			}
-			if errors.Is(err, ErrRevoked) {
-				result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
@@ -740,6 +744,24 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		}
 	}
 	return result, rows.Err()
+}
+
+func (s *PostgresStore) reconciliationAllocationRevoked(ctx context.Context, usage CoturnUsage) (bool, error) {
+	var sourceID, deviceID, sessionID string
+	var expiresAt time.Time
+	var sessionRevokedAt, accountSuspendedAt, deviceRevokedAt *time.Time
+	var closureReason *string
+	err := s.pool.QueryRow(ctx, `SELECT r.source_id,r.device_id,r.session_id,s.expires_at,s.revoked_at,a.suspended_at,d.revoked_at,r.closure_reason FROM authority_relay_allocations r JOIN authority_signaling_sessions s ON s.session_id=r.session_id JOIN authority_accounts a ON a.account_id=s.account_id JOIN authority_devices d ON d.device_id=r.device_id WHERE r.source_id=$1 AND r.allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &expiresAt, &sessionRevokedAt, &accountSuspendedAt, &deviceRevokedAt, &closureReason)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrNotFound
+		}
+		return false, err
+	}
+	if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID {
+		return false, ErrStaleUsage
+	}
+	return isAuthorityClosure(closureReason) || sessionRevokedAt != nil || accountSuspendedAt != nil || deviceRevokedAt != nil || !usage.ObservedAt.Before(expiresAt), nil
 }
 
 func reconciliationEventID(sourceID string, observedAt time.Time, allocationID string) string {
