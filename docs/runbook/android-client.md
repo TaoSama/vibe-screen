@@ -39,6 +39,10 @@ session-generation/capability gating, Camera settings-return policy, bounded
 outbound ordering, typed connection guidance, reconnect backoff, framing, and
 reliability. This proves code paths and packaging only; it is not device
 acceptance.
+For color behavior, the offline suite may prove SDR decode configuration and
+HDR-to-SDR fallback negotiation only. Do not report Android HDR decode/display
+support until the [HDR/color acceptance runbook](hdr-color-acceptance.md) has a
+retained real-device HDR run.
 
 The Phase 1 actionable-error state owner matrix is tracked in
 docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json.

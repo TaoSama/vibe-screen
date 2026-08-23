@@ -1,6 +1,7 @@
 import CoreMedia
 import CoreVideo
 import Foundation
+import VideoToolbox
 
 enum VideoEncoderSelfTest {
     private static let width = 640
@@ -36,6 +37,11 @@ enum VideoEncoderSelfTest {
     }
 
     static func run() -> Bool {
+        guard sdrColorMetadataIsPinned() else {
+            FileHandle.standardError.write(Data("video encoder self-test: SDR color metadata drifted\n".utf8))
+            return false
+        }
+
         guard let pixelBuffer = makePixelBuffer() else {
             FileHandle.standardError.write(Data("video encoder self-test: pixel buffer creation failed\n".utf8))
             return false
@@ -157,6 +163,23 @@ enum VideoEncoderSelfTest {
             Thread.sleep(forTimeInterval: 0.05)
         }
         return result.snapshot().encodedFrameCount >= expectedCount
+    }
+
+    private static func sdrColorMetadataIsPinned() -> Bool {
+        let properties = Dictionary(
+            uniqueKeysWithValues: VideoEncoderSDRColorMetadata.compressionProperties.map { property in
+                (property.key as String, property.value as Any)
+            }
+        )
+        return properties[kVTCompressionPropertyKey_ColorPrimaries as String] as? String
+            == kCMFormatDescriptionColorPrimaries_ITU_R_709_2 as String
+            && properties[kVTCompressionPropertyKey_TransferFunction as String] as? String
+                == kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String
+            && properties[kVTCompressionPropertyKey_YCbCrMatrix as String] as? String
+                == kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2 as String
+            && (properties[kVTCompressionPropertyKey_OutputBitDepth as String] as? NSNumber)?.intValue == 8
+            && properties[kVTCompressionPropertyKey_HDRMetadataInsertionMode as String] as? String
+                == kVTHDRMetadataInsertionMode_None as String
     }
 
     private static func makePixelBuffer() -> CVPixelBuffer? {

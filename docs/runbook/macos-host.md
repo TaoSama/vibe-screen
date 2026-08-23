@@ -19,6 +19,10 @@ The virtual extension path uses private `CGVirtualDisplay` APIs. It may stop
 working after a macOS update and is not suitable for Mac App Store delivery.
 The **Current Main Display** path remains the supported fallback. A physical or
 dummy display is required when macOS does not expose a usable headless display.
+HDR/EDR capture or output must not be claimed from the host until the
+[HDR/color acceptance runbook](hdr-color-acceptance.md) has retained hardware
+evidence. Current fallback and encoder metadata tests prove SDR fail-closed
+readiness only.
 
 ## Install a release artifact
 

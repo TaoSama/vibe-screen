@@ -1,8 +1,38 @@
 import CoreMedia
+import VideoToolbox
 import XCTest
 @testable import Telemachus
 
 final class VideoEncoderInFlightAdmissionTests: XCTestCase {
+    func testSDRColorMetadataPropertiesDescribeBT709EightBitOutput() {
+        let properties = Dictionary(
+            uniqueKeysWithValues: VideoEncoderSDRColorMetadata.compressionProperties.map { property in
+                (property.key as String, property.value as Any)
+            }
+        )
+
+        XCTAssertEqual(
+            properties[kVTCompressionPropertyKey_ColorPrimaries as String] as? String,
+            kCMFormatDescriptionColorPrimaries_ITU_R_709_2 as String
+        )
+        XCTAssertEqual(
+            properties[kVTCompressionPropertyKey_TransferFunction as String] as? String,
+            kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String
+        )
+        XCTAssertEqual(
+            properties[kVTCompressionPropertyKey_YCbCrMatrix as String] as? String,
+            kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2 as String
+        )
+        XCTAssertEqual(
+            (properties[kVTCompressionPropertyKey_OutputBitDepth as String] as? NSNumber)?.intValue,
+            8
+        )
+        XCTAssertEqual(
+            properties[kVTCompressionPropertyKey_HDRMetadataInsertionMode as String] as? String,
+            kVTHDRMetadataInsertionMode_None as String
+        )
+    }
+
     private final class FakeVideoToolbox {
         var synchronousStatus: OSStatus = noErr
         private(set) var submissionCount = 0

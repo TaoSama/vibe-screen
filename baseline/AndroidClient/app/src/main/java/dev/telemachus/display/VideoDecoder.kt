@@ -16,6 +16,23 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 private fun diagLog(msg: String) = DiagLog.log("VD", msg)
 
+internal object VideoDecoderSdrColorSettings {
+    @SuppressLint("InlinedApi")
+    val integerProperties: List<Pair<String, Int>> =
+        listOf(
+            MediaFormat.KEY_COLOR_STANDARD to MediaFormat.COLOR_STANDARD_BT709,
+            MediaFormat.KEY_COLOR_TRANSFER to MediaFormat.COLOR_TRANSFER_SDR_VIDEO,
+            MediaFormat.KEY_COLOR_RANGE to MediaFormat.COLOR_RANGE_LIMITED,
+        )
+
+    fun applyTo(format: MediaFormat): MediaFormat {
+        integerProperties.forEach { (key, value) ->
+            format.setInteger(key, value)
+        }
+        return format
+    }
+}
+
 class VideoDecoder(
     private val surface: Surface,
     private val display: Display? = null,
@@ -196,10 +213,12 @@ class VideoDecoder(
         codec.setCallback(callback, decoderHandler)
 
         val format =
-            MediaFormat.createVideoFormat(
-                mime,
-                currentWidth,
-                currentHeight,
+            VideoDecoderSdrColorSettings.applyTo(
+                MediaFormat.createVideoFormat(
+                    mime,
+                    currentWidth,
+                    currentHeight,
+                ),
             )
 
         var configured = false
@@ -225,10 +244,12 @@ class VideoDecoder(
         if (!configured) {
             try {
                 val basicFormat =
-                    MediaFormat.createVideoFormat(
-                        mime,
-                        currentWidth,
-                        currentHeight,
+                    VideoDecoderSdrColorSettings.applyTo(
+                        MediaFormat.createVideoFormat(
+                            mime,
+                            currentWidth,
+                            currentHeight,
+                        ),
                     )
                 basicFormat.setInteger(MediaFormat.KEY_PRIORITY, 0)
                 basicFormat.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
@@ -246,10 +267,12 @@ class VideoDecoder(
         if (!configured) {
             try {
                 val minimalFormat =
-                    MediaFormat.createVideoFormat(
-                        mime,
-                        currentWidth,
-                        currentHeight,
+                    VideoDecoderSdrColorSettings.applyTo(
+                        MediaFormat.createVideoFormat(
+                            mime,
+                            currentWidth,
+                            currentHeight,
+                        ),
                     )
                 codec.configure(minimalFormat, surface, null, 0)
                 diagLog("Configured with minimal format")
