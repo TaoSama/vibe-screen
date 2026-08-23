@@ -1,0 +1,128 @@
+{
+  "artifact_paths": [
+    "commands.txt"
+  ],
+  "baseline_pr": 225,
+  "blocking_notes": [
+    "No real sleeping Mac, router broadcast or directed WOL delivery, NIC firmware setting, packet capture, or post-wake Host evidence was available in this worktree."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "identity_signed_host_tcc_ready",
+      "requirement": "run an identity-signed installed Host with required TCC permissions before the sleep attempt"
+    },
+    {
+      "field": "wake_for_network_access_enabled",
+      "requirement": "record macOS and NIC Wake for network access / Wake-on-LAN settings"
+    },
+    {
+      "field": "host_sleep_state_recorded",
+      "requirement": "record the target Mac entering a real sleep state before the wake request"
+    },
+    {
+      "field": "router_broadcast_or_directed_wol_verified",
+      "requirement": "record router, subnet broadcast, or directed WOL delivery support for the target network"
+    },
+    {
+      "field": "mac_woke_from_sleep_observed",
+      "requirement": "record the Mac waking from the prior sleep state after the authorized request"
+    }
+  ],
+  "can_claim_sleeping_mac_wake": false,
+  "can_close_wake_host_current_base_gate": false,
+  "current_main_sha": "f46163524fe757e7021a4333b3370af00ec651f1",
+  "failure_reasons": [],
+  "kind": "wake_host_current_base_gate",
+  "missing_requirements": [
+    {
+      "field": "device_identity_recorded",
+      "requirement": "record the actual paired client device identity without relabeling substitute hardware"
+    },
+    {
+      "field": "identity_signed_host_tcc_ready",
+      "requirement": "run an identity-signed installed Host with required TCC permissions before the sleep attempt"
+    },
+    {
+      "field": "wake_for_network_access_enabled",
+      "requirement": "record macOS and NIC Wake for network access / Wake-on-LAN settings"
+    },
+    {
+      "field": "host_sleep_state_recorded",
+      "requirement": "record the target Mac entering a real sleep state before the wake request"
+    },
+    {
+      "field": "router_broadcast_or_directed_wol_verified",
+      "requirement": "record router, subnet broadcast, or directed WOL delivery support for the target network"
+    },
+    {
+      "field": "magic_packet_emitted_after_authorization",
+      "requirement": "prove the WOL magic packet was emitted only after WakeHost authorization succeeded"
+    },
+    {
+      "field": "network_packet_capture_retained",
+      "requirement": "retain packet capture or equivalent router log evidence for the WOL packet"
+    },
+    {
+      "field": "mac_woke_from_sleep_observed",
+      "requirement": "record the Mac waking from the prior sleep state after the authorized request"
+    },
+    {
+      "field": "post_wake_host_available_observed",
+      "requirement": "record Host or network availability after wake"
+    },
+    {
+      "field": "negative_unpaired_rejected",
+      "requirement": "retain a negative check showing an unpaired device is rejected"
+    },
+    {
+      "field": "negative_expired_authorization_rejected",
+      "requirement": "retain a negative check showing expired authorization is rejected"
+    },
+    {
+      "field": "negative_replayed_nonce_rejected",
+      "requirement": "retain a negative check showing nonce replay is rejected"
+    },
+    {
+      "field": "negative_wrong_key_or_signature_rejected",
+      "requirement": "retain a negative check showing a wrong key or signature is rejected"
+    },
+    {
+      "field": "host_logs_retained",
+      "requirement": "retain Host logs covering the authorized and negative WakeHost attempts"
+    },
+    {
+      "field": "client_logs_retained",
+      "requirement": "retain client logs covering the authorized and negative WakeHost attempts"
+    }
+  ],
+  "notes": "Current-base smoke records #225 baseline presence on origin/main f46163524fe757e7021a4333b3370af00ec651f1 and focused offline checks only. It must remain blocked until hardware WOL evidence is attached.",
+  "observations": {
+    "client_logs_retained": false,
+    "current_main_verified": true,
+    "device_identity_recorded": false,
+    "host_logs_retained": false,
+    "host_sleep_state_recorded": false,
+    "identity_signed_host_tcc_ready": false,
+    "mac_woke_from_sleep_observed": false,
+    "magic_packet_emitted_after_authorization": false,
+    "magic_packet_path_baseline_merged": true,
+    "negative_expired_authorization_rejected": false,
+    "negative_replayed_nonce_rejected": false,
+    "negative_unpaired_rejected": false,
+    "negative_wrong_key_or_signature_rejected": false,
+    "network_packet_capture_retained": false,
+    "paired_authorization_offline_passed": true,
+    "post_wake_host_available_observed": false,
+    "router_broadcast_or_directed_wol_verified": false,
+    "wake_attempt_failed_observed": false,
+    "wake_for_network_access_enabled": false
+  },
+  "offline_baseline_only_is_not_acceptance": true,
+  "owner_pr": 199,
+  "profile": "phase5-wake-host-current-base",
+  "requires_network_wol_delivery": true,
+  "requires_real_sleeping_mac": true,
+  "run_id": "2026-08-25-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}
