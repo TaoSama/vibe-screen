@@ -51,8 +51,12 @@ PHASE3_HOST_SIGNING ?= unknown
 PHASE3_SCREEN_RECORDING ?= unknown
 PHASE3_MINIMUM_OUTPUT_FRAMES ?= 120
 PHASE3_MAXIMUM_DROPPED_FRAMES ?= 0
+PHASE3_REAL_MEDIA_CONTINUITY_JSON ?= $(EVIDENCE_DIR)/real-media-continuity.json
+PHASE3_ANDROID_UI_EVIDENCE ?=
+PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
+PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked actionable-error-states-gate harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate phase2-tablet-preflight ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -121,6 +125,22 @@ phase3-real-media-continuity:
 		--maximum-dropped-frames "$(PHASE3_MAXIMUM_DROPPED_FRAMES)" \
 		$(if $(strip $(PHASE3_DEVICE_INFO)),--device-info "$(PHASE3_DEVICE_INFO)",) \
 		--output "$(EVIDENCE_DIR)/real-media-continuity.json"
+
+phase3-real-media-current-base:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_REAL_MEDIA_CONTINUITY_JSON))" || (echo "error: set PHASE3_REAL_MEDIA_CONTINUITY_JSON" >&2; exit 2)
+	@test -f "$(PHASE3_REAL_MEDIA_CONTINUITY_JSON)" && test -r "$(PHASE3_REAL_MEDIA_CONTINUITY_JSON)" || (echo "error: PHASE3_REAL_MEDIA_CONTINUITY_JSON is not a readable file" >&2; exit 2)
+	@if test -n "$(strip $(PHASE3_ANDROID_UI_EVIDENCE))"; then \
+		test -f "$(PHASE3_ANDROID_UI_EVIDENCE)" && test -r "$(PHASE3_ANDROID_UI_EVIDENCE)" || (echo "error: PHASE3_ANDROID_UI_EVIDENCE is not a readable file" >&2; exit 2); \
+	fi
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_real_media_current_base \
+		--continuity-result "$(PHASE3_REAL_MEDIA_CONTINUITY_JSON)" \
+		$(if $(strip $(PHASE3_ANDROID_UI_EVIDENCE)),--android-ui-evidence "$(PHASE3_ANDROID_UI_EVIDENCE)",) \
+		--android-ui-evidence-kind "$(PHASE3_ANDROID_UI_EVIDENCE_KIND)" \
+		$(if $(strip $(PHASE3_ANDROID_UI_NOTE)),--android-ui-note "$(PHASE3_ANDROID_UI_NOTE)",) \
+		--output "$(EVIDENCE_DIR)/current-base-real-media.json"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release

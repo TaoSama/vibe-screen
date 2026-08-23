@@ -17,6 +17,7 @@ from scripts.phase3.release_gate_summary import (  # noqa: E402
     CANDIDATE_PRS,
     HISTORICAL_ANDROID_BOUNDARY_DEFAULTS,
     RELEASE_GATES,
+    REQUIRED_CURRENT_BASE_REAL_MEDIA_CHECKS,
     SCHEMA,
     build_summary,
     main,
@@ -101,6 +102,88 @@ def private_product_evidence(
     return evidence
 
 
+def current_base_real_media_gate(
+    commit: str,
+    *,
+    verdict: str = "pass",
+    can_claim: bool = True,
+    release_gate_effect: str = "child_gate_only",
+    checks: dict[str, dict[str, object]] | None = None,
+) -> dict[str, object]:
+    required_checks = {
+        key: {"passed": True, "expected": "fixture evidence is present", "evidence": ["fixture"]}
+        for key in REQUIRED_CURRENT_BASE_REAL_MEDIA_CHECKS
+    }
+    if checks:
+        required_checks.update(checks)
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase3_real_media_current_base_gate",
+        "verdict": verdict,
+        "gate_can_close_phase3_release": False,
+        "can_claim_current_base_real_media_continuity": can_claim,
+        "current_base": {
+            "repository_commit": commit,
+            "continuity_repository_revision": commit,
+            "continuity_repository_dirty": False,
+        },
+        "owner": {
+            "role": "phase3_real_media_current_base_owner",
+            "pull_request": "#303",
+            "head_ref": "codex/phase3-real-media-evidence-gate",
+            "repository": "TaoSama/vibe-screen",
+            "scope": "fixture current-base real-media child gate",
+        },
+        "source": {
+            "continuity_result": {
+                "category": "real_media_continuity",
+                "path": "real-media-continuity.json",
+                "extension": ".json",
+                "exists": True,
+                "sha256": "a" * 64,
+                "bytes": 42,
+            },
+            "continuity_repository_revision": commit,
+            "continuity_repository_branch": "codex/phase3-real-media-continuity",
+            "continuity_repository_dirty": False,
+        },
+        "device": {
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "codename": "pacific",
+            "android_version": "16",
+            "sdk": 36,
+        },
+        "android_visible_ui": {
+            "artifact_kind": "device_screenshot",
+            "operator_note": "decoded Mac desktop content visible in the Android UI",
+            "artifacts": [
+                {
+                    "category": "android_visible_ui",
+                    "path": "android-visible-ui.png",
+                    "extension": ".png",
+                    "exists": True,
+                    "sha256": "b" * 64,
+                    "bytes": 42,
+                    "artifact_kind": "device_screenshot",
+                }
+            ],
+        },
+        "checks": required_checks,
+        "continuity_summary": {
+            "media_source": "real_screencapturekit_or_cgdisplaystream",
+            "public_internet_path": True,
+            "selected_webrtc_route": "relay",
+            "continuous_output_frames": 120,
+            "dropped_frames": 0,
+            "decoder_error_count": 0,
+        },
+        "reasons": [] if verdict == "pass" else ["fixture blocked"],
+        "release_gate_effect": release_gate_effect,
+        "interpretation": "fixture current-base real-media child gate result",
+    }
+
+
 class Phase3ReleaseGateSummaryTests(unittest.TestCase):
     def test_release_gate_name_set_is_explicit(self) -> None:
         self.assertEqual(
@@ -142,6 +225,9 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         self.assertEqual(
             {candidate["pull_request"] for candidate in summary["candidate_prs"]},
             {candidate["pull_request"] for candidate in CANDIDATE_PRS},
+        )
+        self.assertTrue(
+            all(isinstance(candidate["pull_request"], int) for candidate in summary["candidate_prs"])
         )
         owner_by_gate = {gate["gate"]: gate["owner_pr"] for gate in summary["release_gates"]}
         self.assertEqual(owner_by_gate["public_internet_path"], 194)
@@ -484,6 +570,135 @@ class Phase3ReleaseGateSummaryTests(unittest.TestCase):
         self.assertEqual(observation["release_gate_impact"], "blocked_readiness_only")
         self.assertTrue(all(claim is False for claim in observation["claims"].values()))
         self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_current_base_real_media_child_gate_is_observed_without_closing_release(self) -> None:
+        commit = "c" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child_gate = root / "current-base-real-media.json"
+            child_gate.write_text(
+                json.dumps(current_base_real_media_gate(commit)),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_base_real_media_gate=child_gate,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][3]
+        self.assertEqual(observation["kind"], "current_base_real_media_gate")
+        self.assertEqual(observation["status"], "pass")
+        self.assertTrue(observation["current_base"])
+        self.assertTrue(observation["can_claim_current_base_real_media_continuity"])
+        self.assertEqual(observation["release_gate_impact"], "child_gate_only")
+        self.assertEqual(summary["result"], "open")
+        self.assertTrue(all(gate["status"] == "open" for gate in summary["release_gates"]))
+
+    def test_current_base_real_media_child_gate_rejects_wrong_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child_gate = root / "current-base-real-media.json"
+            child_gate.write_text(
+                json.dumps(current_base_real_media_gate("d" * 40)),
+                encoding="utf-8",
+            )
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_base_real_media_gate=child_gate,
+                current_commit="e" * 40,
+            )
+
+        observation = summary["readiness_observations"][3]
+        self.assertFalse(observation["current_base"])
+        self.assertFalse(observation["can_claim_current_base_real_media_continuity"])
+
+    def test_current_base_real_media_child_gate_rejects_incomplete_pass_result(self) -> None:
+        commit = "c" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child_gate = root / "current-base-real-media.json"
+            forged = current_base_real_media_gate(commit)
+            forged["checks"] = {
+                "current_base_commit": {"passed": True},
+                "visible_android_ui": {"passed": True},
+                "public_internet_path": {"passed": True},
+                "real_capture_first_frame": {"passed": True},
+                "videotoolbox_output": {"passed": True},
+                "android_mediacodec_decode": {"passed": True},
+                "no_synthetic_media": {"passed": True},
+            }
+            child_gate.write_text(json.dumps(forged), encoding="utf-8")
+
+            summary = build_summary(
+                root,
+                local_public_dir=root / "missing-public",
+                android_interop_acceptance=root / "missing-android.json",
+                blocked_real_media_acceptance=root / "missing-blocked.json",
+                current_base_real_media_gate=child_gate,
+                current_commit=commit,
+            )
+
+        observation = summary["readiness_observations"][3]
+        self.assertEqual(observation["status"], "invalid")
+        self.assertFalse(observation["current_base"])
+        self.assertIn("continuity_passed", " ".join(observation["errors"]))
+
+    def test_current_base_real_media_child_gate_rejects_inconsistent_claim_state(self) -> None:
+        cases = (
+            current_base_real_media_gate(
+                "c" * 40,
+                can_claim=False,
+                release_gate_effect="child_gate_only",
+            ),
+            current_base_real_media_gate(
+                "c" * 40,
+                can_claim=True,
+                release_gate_effect="none",
+            ),
+            current_base_real_media_gate(
+                "c" * 40,
+                verdict="blocked",
+                can_claim=True,
+                release_gate_effect="none",
+            ),
+            current_base_real_media_gate(
+                "c" * 40,
+                verdict="blocked",
+                can_claim=False,
+                release_gate_effect="child_gate_only",
+            ),
+            current_base_real_media_gate(
+                "c" * 40,
+                checks={"screen_recording_granted": {"passed": False}},
+            ),
+        )
+        for forged in cases:
+            with self.subTest(forged=forged), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                child_gate = root / "current-base-real-media.json"
+                child_gate.write_text(json.dumps(forged), encoding="utf-8")
+
+                summary = build_summary(
+                    root,
+                    local_public_dir=root / "missing-public",
+                    android_interop_acceptance=root / "missing-android.json",
+                    blocked_real_media_acceptance=root / "missing-blocked.json",
+                    current_base_real_media_gate=child_gate,
+                    current_commit="c" * 40,
+                )
+
+            observation = summary["readiness_observations"][3]
+            self.assertEqual(observation["status"], "invalid")
+            self.assertFalse(observation["current_base"])
 
     def test_blocked_real_media_dirty_source_is_not_current_base(self) -> None:
         commit = "a" * 40

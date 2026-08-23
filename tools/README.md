@@ -131,6 +131,27 @@ make phase3-real-media-continuity \
   PHASE3_SCREEN_RECORDING=granted
 ```
 
+To bind that narrow continuity result to the current repository HEAD and to a
+retained Android visible-UI artifact, run the current-base child gate:
+
+```sh
+make phase3-real-media-current-base \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_REAL_MEDIA_CONTINUITY_JSON=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/real-media-continuity.json \
+  PHASE3_ANDROID_UI_EVIDENCE=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/android-visible-ui.png \
+  PHASE3_ANDROID_UI_NOTE='operator confirmed decoded Mac desktop content visible in the Android UI'
+```
+
+The current-base gate writes `$(EVIDENCE_DIR)/current-base-real-media.json`.
+It requires the continuity result to be a clean current-HEAD run, plus a real
+Android device identity and a screenshot, screen recording, or external-camera
+recording of the decoded UI. Missing UI evidence, old commits, dirty source,
+local-only routes, synthetic media, missing identity signing, missing Screen
+Recording permission, missing capture/encoder/decoder stages, decoder errors,
+or excess drops produce `blocked` or `fail`. A pass closes only this child gate;
+remote TURN, handoff, revocation, latency, soak, and the broader Phase 3 release
+gate remain separate.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB
