@@ -1,0 +1,4 @@
+time=2026-08-23T07:25:13+0800
+--- focus-before-second-tap ---
+  mCurrentFocus=Window{de91c2e u0 com.android.permissioncontroller/com.android.permissioncontroller.permissionplus.ui.InterceptJumpDialogActivity}
+  mFocusedApp=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}

@@ -1,0 +1,10 @@
+time=2026-08-23T07:24:35+0800
+--- focus-after ---
+  mCurrentFocus=Window{de91c2e u0 com.android.permissioncontroller/com.android.permissioncontroller.permissionplus.ui.InterceptJumpDialogActivity}
+  mFocusedApp=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}
+--- package pids ---
+--- activity top compact ---
+    topResumedActivity=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}
+    topResumedActivity=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}
+  ResumedActivity: ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}
+  mFocusedApp=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}

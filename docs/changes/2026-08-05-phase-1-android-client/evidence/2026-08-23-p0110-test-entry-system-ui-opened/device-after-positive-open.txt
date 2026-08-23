@@ -1,0 +1,11 @@
+time=2026-08-23T07:25:20+0800
+--- focus-after-second-tap ---
+  mCurrentFocus=Window{842c367 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}
+  mFocusedApp=ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}
+--- package pids ---
+19851
+--- activity top compact ---
+    topResumedActivity=ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}
+    topResumedActivity=ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}
+  ResumedActivity: ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}
+  mFocusedApp=ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}

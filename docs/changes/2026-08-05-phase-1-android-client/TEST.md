@@ -524,3 +524,90 @@ host-display evidence.
 Evidence:
 
 - [`evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/)
+
+## P0110 Android visual/UI E2E test-entry blocker
+
+On 2026-08-23, a controller-side read-only Android visual/UI sampling run found
+the connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B) online with both dev.telemachus.display and
+dev.telemachus.display.test installed, but the foreground Activity was the
+system permission controller:
+
+```text
+com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity
+```
+
+The retained screenshot shows a firmware/system confirmation dialog asking
+whether Vibe Screen should open dev.telemachus.display.test, with Cancel/Open
+actions, over the launcher. This blocked the visual/UI E2E entry before the
+test reached any Vibe Screen product surface.
+
+This is classified as an external system UI / test-entry blocker, not a Vibe
+Screen product UI regression. It does not require a product-code change by
+itself. Future test harnesses should pre-acknowledge or bypass this
+device-specific confirmation before starting visual/UI E2E, or record the same
+permission-controller Activity as a blocked external-system state. This record
+does not close any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-test-entry-system-ui-blocked/`](evidence/2026-08-23-p0110-test-entry-system-ui-blocked/)
+
+## P0110 Android visual/UI E2E test-entry confirmation handled
+
+On 2026-08-23, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
+serial EP0110PZ0B9110300B) was sampled again from the same system
+permission-controller confirmation page. The main Android coordination lock and
+soak lock were absent, so this task created the configured Android coordination
+lock before issuing explicit serial-targeted ADB commands, then released the
+lock after each bounded sample. The older test-specific lock path still existed
+with content "pre-existing lock" and was retained as evidence.
+
+The first tap did not hit the confirmation button, and the system dialog
+remained focused. The retained UIAutomator XML then identified the positive
+button as com.android.permissioncontroller:id/actionPositive with text
+"打开" and bounds `[653,2548][1180,2716]`. A second tap at the button center
+opened dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity,
+confirming that the blocker belonged to the test-package entry path rather than
+the product UI. A direct launch of dev.telemachus.display/.MainActivity then
+reached the Vibe Screen product surface and captured the Internet development
+preview UI.
+
+This remains an external system UI / test-entry blocker with a documented
+workaround. It does not require a product-code change by itself. Future
+visual/UI E2E harnesses should detect this permission-controller Activity, tap
+the positive action by resource id or bounds, and then explicitly launch the
+intended product Activity before judging product UI. This record does not close
+any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-test-entry-system-ui-opened/`](evidence/2026-08-23-p0110-test-entry-system-ui-opened/)
+
+## P0110 Android visual/UI E2E launcher-state update
+
+On 2026-08-23 08:09 +08, a controller-side read-only Android state sample found
+the same Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B) online with the foreground Activity at the Nubia launcher:
+
+```text
+com.android.launcher3/com.obric.feature.ObricLauncher
+```
+
+The retained screenshot shows the launcher, not the earlier
+permission-controller test-entry confirmation and not the Vibe Screen product
+surface. The stale test-specific lock path still existed with content
+"pre-existing lock". No device command was run for this classification step,
+and the main Android coordination lock plus soak lock were absent when the
+evidence was prepared.
+
+This is a read-only idle-state update for the next UI/E2E attempt. Future
+device interaction should set `REPO`, `EVIDENCE_DIR`, `ANDROID_SERIAL`,
+`ADB_SERIAL="${ANDROID_SERIAL}"`, and the coordination-lock path variables,
+acquire the Android coordination lock, and use `adb -s "$ADB_SERIAL"` before
+launching the intended product or test Activity. This record does not require a
+product-code change and does not close any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-launcher-idle-state/`](evidence/2026-08-23-p0110-launcher-idle-state/)

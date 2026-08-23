@@ -1,0 +1,9 @@
+time=2026-08-23T07:22:38+08:00
+adb_state=device
+manufacturer=nubia
+model=P0110
+device=pacific
+android=16
+sdk=36
+foreground=com.android.permissioncontroller/com.android.permissioncontroller.permissionplus.ui.InterceptJumpDialogActivity
+locks=/tmp/vibe-screen-device-android-test.lock
