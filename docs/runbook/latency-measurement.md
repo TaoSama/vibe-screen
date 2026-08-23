@@ -301,8 +301,7 @@ A reusable input template is available at
 `tools/fixtures/latency/preflight-input.template.json`. The target writes `latency-preflight.json` and
 `latency-preflight-exit.txt`. Exit `0` means the declared artifacts are ready
 for a formal checker attempt, exit `2` means the run is blocked before formal
-gate closure, and exit `1` means the preflight input failed validation or a
-profile returned a failed formal verdict.
+gate closure, and exit `1` means malformed input or evaluation failures.
 This readiness record cannot close `usb-glass-to-glass-sub50`,
 `lan-glass-to-glass-sub80`, or `input-p95-sub50`; it only preserves why the
 gate is still open.
