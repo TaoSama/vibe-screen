@@ -44,14 +44,19 @@ REQUIRED_COTURN_LINES = {
     "pkey=/run/secrets/tls_private_key",
 }
 REQUIRED_COTURN_DENIES = {
+    "denied-peer-ip=0.0.0.0-0.255.255.255",
     "denied-peer-ip=10.0.0.0-10.255.255.255",
     "denied-peer-ip=100.64.0.0-100.127.255.255",
     "denied-peer-ip=127.0.0.0-127.255.255.255",
     "denied-peer-ip=169.254.0.0-169.254.255.255",
     "denied-peer-ip=172.16.0.0-172.31.255.255",
+    "denied-peer-ip=192.0.0.0-192.0.0.255",
     "denied-peer-ip=192.168.0.0-192.168.255.255",
+    "denied-peer-ip=198.18.0.0-198.19.255.255",
+    "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
     "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
 }
 REQUIRED_RUNTIME_INPUTS = (
     "turn_secret_file",
@@ -85,7 +90,7 @@ def stable_hash(value: str) -> str:
 def read_json(path: Path, label: str) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise PreflightError(f"cannot read {label}: {type(error).__name__}") from error
     if not isinstance(value, dict):
         raise PreflightError(f"{label} must be a JSON object")
@@ -140,9 +145,30 @@ def _placeholder_host(host: str) -> bool:
 
 def _is_global_address(address: str) -> bool:
     try:
-        return ipaddress.ip_address(address).is_global
+        parsed = ipaddress.ip_address(address)
     except ValueError:
         return False
+    if (
+        parsed.is_unspecified
+        or parsed.is_multicast
+        or getattr(parsed, "is_site_local", False)
+        or (parsed.version == 6 and ipaddress.IPv6Address("fec0::") <= parsed <= ipaddress.IPv6Address("feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"))
+    ):
+        return False
+    return parsed.is_global
+
+
+def _reject_non_dotted_ipv4_mapped(value: str) -> None:
+    try:
+        parsed = ipaddress.ip_address(value)
+    except ValueError:
+        return
+    if not isinstance(parsed, ipaddress.IPv6Address) or parsed.ipv4_mapped is None:
+        return
+    try:
+        ipaddress.IPv4Address(value.strip().lower().rsplit(":ffff:", 1)[1])
+    except ValueError:
+        raise PreflightError("IPv4-mapped addresses must use dotted IPv4 notation")
 
 
 def require_public_host(host: str, *, resolve: bool) -> tuple[str, ...]:
@@ -151,11 +177,12 @@ def require_public_host(host: str, *, resolve: bool) -> tuple[str, ...]:
     if _placeholder_host(host):
         raise PreflightError("host is local, reserved, or a placeholder")
     try:
+        _reject_non_dotted_ipv4_mapped(host)
         literal = ipaddress.ip_address(host)
     except ValueError:
         literal = None
     if literal is not None:
-        if not literal.is_global:
+        if not _is_global_address(host):
             raise PreflightError("host address is not globally routable")
         return (host,)
     if not resolve:
@@ -295,7 +322,7 @@ def validate_coturn_config(path: Path) -> dict[str, Any]:
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.lstrip().startswith("#")
         }
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         raise PreflightError("coturn production configuration is not readable") from error
     missing = sorted(REQUIRED_COTURN_LINES - lines)
     if missing:
@@ -384,6 +411,7 @@ def validate_external_ip(value: str | None) -> str:
     if value is None or not value.strip():
         raise PreflightError("COTURN_EXTERNAL_IP must be provided")
     public_part = value.split("/", 1)[0].strip()
+    _reject_non_dotted_ipv4_mapped(public_part)
     if not _is_global_address(public_part):
         raise PreflightError("COTURN_EXTERNAL_IP public side is not globally routable")
     return stable_hash(public_part)
@@ -618,7 +646,11 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--connectivity-command",
         nargs=argparse.REMAINDER,
-        help="external canary command that emits connectivity evidence JSON on stdout; required for pass",
+        help=(
+            "external canary command that emits connectivity evidence JSON on stdout; "
+            "required for pass. This option consumes all following arguments, so place "
+            "--output and other preflight flags before --connectivity-command."
+        ),
     )
     parser.add_argument("--skip-dns-resolution", action="store_true")
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)

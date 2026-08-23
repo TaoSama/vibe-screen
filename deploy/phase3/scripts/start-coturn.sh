@@ -3,7 +3,7 @@ set -eu
 
 config_file=${COTURN_CONFIG_FILE:-/etc/vibe-coturn/local.conf}
 secret_file=${VIBE_RELAY_TURN_SECRET_FILE:-/run/secrets/turn_secret}
-runtime_config=/tmp/vibe-turnserver.conf
+runtime_config=${COTURN_RUNTIME_CONFIG:-/tmp/vibe-turnserver.conf}
 production_config=false
 case "$config_file" in
   */production.conf|production.conf) production_config=true ;;
@@ -24,10 +24,6 @@ if [ "${#turn_secret}" -lt 32 ]; then
   exit 1
 fi
 
-umask 077
-cp "$config_file" "$runtime_config"
-printf '\nstatic-auth-secret=%s\n' "$turn_secret" >> "$runtime_config"
-
 if [ "$production_config" = true ]; then
   if [ -z "${COTURN_EXTERNAL_IP:-}" ]; then
     echo "COTURN_EXTERNAL_IP is required for production coturn config" >&2
@@ -40,20 +36,35 @@ if [ "$production_config" = true ]; then
 fi
 
 if [ -n "${COTURN_EXTERNAL_IP:-}" ]; then
-  case "$COTURN_EXTERNAL_IP" in
+  external_ip=$(printf '%s' "$COTURN_EXTERNAL_IP" | tr '[:upper:]' '[:lower:]')
+  case "$external_ip" in
     *[!0-9A-Fa-f:./]*)
       echo "COTURN_EXTERNAL_IP must be an IP or public/private IP mapping" >&2
       exit 1
       ;;
   esac
-  public_ip=${COTURN_EXTERNAL_IP%%/*}
-  public_ip_lc=$(printf '%s' "$public_ip" | tr '[:upper:]' '[:lower:]')
+  public_ip=${external_ip%%/*}
+  if [ -z "$public_ip" ]; then
+    echo "COTURN_EXTERNAL_IP public side must be globally routable" >&2
+    exit 1
+  fi
   mapped_ipv4=
-  case "$public_ip_lc" in
-    *:ffff:*) mapped_ipv4=${public_ip_lc##*:ffff:} ;;
+  case "$public_ip" in
+    *:ffff:*)
+      mapped_prefix=${public_ip%:ffff:*}
+      if [ -z "$(printf '%s' "$mapped_prefix" | tr -d '0:')" ]; then
+        mapped_ipv4=${public_ip##*:ffff:}
+      fi
+      ;;
   esac
-  case "$public_ip_lc" in
-    0.*|10.*|127.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.0.2.*|192.168.*|198.18.*|198.19.*|198.51.100.*|203.0.113.*|100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*|::1|fc*|fd*|fe8*|fe9*|fea*|feb*)
+  case "$mapped_ipv4" in
+    *:*)
+      echo "COTURN_EXTERNAL_IP IPv4-mapped public side must use dotted IPv4 notation" >&2
+      exit 1
+      ;;
+  esac
+  case "$public_ip" in
+    0.*|10.*|127.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.0.2.*|192.168.*|198.18.*|198.19.*|198.51.100.*|203.0.113.*|224.*|225.*|226.*|227.*|228.*|229.*|23[0-9].*|24[0-9].*|25[0-5].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*|::|::1|0:0:0:0:0:0:0:0|fc*|fd*|fe8*|fe9*|fea*|feb*|fec*|fed*|fee*|fef*|ff*)
       echo "COTURN_EXTERNAL_IP public side must be globally routable" >&2
       exit 1
       ;;
@@ -64,7 +75,6 @@ if [ -n "${COTURN_EXTERNAL_IP:-}" ]; then
       exit 1
       ;;
   esac
-  printf 'external-ip=%s\n' "$COTURN_EXTERNAL_IP" >> "$runtime_config"
 fi
 
 if [ -n "${COTURN_REALM:-}" ]; then
@@ -85,6 +95,15 @@ if [ -n "${COTURN_REALM:-}" ]; then
       exit 1
       ;;
   esac
+fi
+
+umask 077
+cp "$config_file" "$runtime_config"
+printf '\nstatic-auth-secret=%s\n' "$turn_secret" >> "$runtime_config"
+if [ -n "${COTURN_EXTERNAL_IP:-}" ]; then
+  printf 'external-ip=%s\n' "$external_ip" >> "$runtime_config"
+fi
+if [ -n "${COTURN_REALM:-}" ]; then
   printf 'realm=%s\n' "$coturn_realm" >> "$runtime_config"
 fi
 

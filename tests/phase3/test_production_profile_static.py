@@ -284,6 +284,81 @@ class ProductionProfileStaticTests(unittest.TestCase):
             self.assertNotEqual(uppercase_placeholder_realm.returncode, 0)
             self.assertIn("production public DNS hostname", uppercase_placeholder_realm.stderr)
 
+    def test_start_coturn_writes_runtime_config_only_after_valid_production_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            bin_directory = directory / "bin"
+            bin_directory.mkdir()
+            turnserver_log = directory / "turnserver.log"
+            fake_turnserver = bin_directory / "turnserver"
+            fake_turnserver.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$TURN_SERVER_LOG\"\n",
+                encoding="utf-8",
+            )
+            fake_turnserver.chmod(0o755)
+            secret = directory / "turn-secret.txt"
+            secret.write_text("x" * 32, encoding="utf-8")
+            secret.chmod(0o600)
+            runtime_config = directory / "runtime.conf"
+            base_environment = {
+                "PATH": f"{bin_directory}:/usr/bin:/bin",
+                "COTURN_CONFIG_FILE": str(COTURN_PRODUCTION_CONFIG),
+                "COTURN_RUNTIME_CONFIG": str(runtime_config),
+                "TURN_SERVER_LOG": str(turnserver_log),
+                "VIBE_RELAY_TURN_SECRET_FILE": str(secret),
+            }
+
+            def run_start(external_ip: str, realm: str) -> subprocess.CompletedProcess[str]:
+                runtime_config.unlink(missing_ok=True)
+                turnserver_log.unlink(missing_ok=True)
+                return subprocess.run(
+                    ["sh", str(START_COTURN)],
+                    env={
+                        **base_environment,
+                        "COTURN_EXTERNAL_IP": external_ip,
+                        "COTURN_REALM": realm,
+                    },
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+            rejected_inputs = (
+                ("/10.0.0.5", "relay.production.example.net", "public side must be globally routable"),
+                ("::", "relay.production.example.net", "public side must be globally routable"),
+                ("224.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("240.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("255.255.255.255", "relay.production.example.net", "public side must be globally routable"),
+                ("ff02::1", "relay.production.example.net", "public side must be globally routable"),
+                ("FEC0::1", "relay.production.example.net", "public side must be globally routable"),
+                ("::ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("::0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("0:0:0:0:0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+            )
+            for external_ip, realm, expected_error in rejected_inputs:
+                with self.subTest(external_ip=external_ip):
+                    result = run_start(external_ip, realm)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(expected_error, result.stderr)
+                    self.assertFalse(runtime_config.exists())
+                    self.assertFalse(turnserver_log.exists())
+
+            accepted_inputs = (
+                "8.8.8.8/10.0.0.5",
+                "::ffff:8.8.8.8",
+                "2606:4700:ffff::1",
+            )
+            for external_ip in accepted_inputs:
+                with self.subTest(external_ip=external_ip):
+                    valid = run_start(external_ip, "RELAY.PRODUCTION.INVALIDNAME.NET.")
+                    self.assertEqual(valid.returncode, 0, valid.stderr)
+                    self.assertEqual(turnserver_log.read_text(encoding="utf-8"), f"-c\n{runtime_config}\n")
+                    config_text = runtime_config.read_text(encoding="utf-8")
+                    self.assertIn("static-auth-secret=" + "x" * 32, config_text)
+                    self.assertIn(f"external-ip={external_ip.lower()}", config_text)
+                    self.assertIn("realm=relay.production.invalidname.net", config_text)
+
 
 if __name__ == "__main__":
     unittest.main()

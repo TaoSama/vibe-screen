@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 from scripts.phase3.public_nat_turn_preflight import (
@@ -18,8 +18,11 @@ from scripts.phase3.public_nat_turn_preflight import (
     build_report,
     main,
     parse_turn_uri,
+    parse_arguments,
     require_public_host,
     read_json,
+    validate_coturn_config,
+    validate_external_ip,
 )
 
 
@@ -44,10 +47,10 @@ def valid_relay_config() -> dict[str, object]:
         "credential_requests_per_minute": 12,
         "max_concurrent_sessions_per_device": 2,
         "daily_bytes_per_device": 20 * 1024 * 1024 * 1024,
-        "max_usage_event_bytes": 1024 * 1024 * 1024,
-        "storage_backend": "postgres",
-        "authority_mode": "production_authority",
-        "authority_url": "https://authority.production.invalidname.net",
+            "max_usage_event_bytes": 1024 * 1024 * 1024,
+            "storage_backend": "postgres",
+            "authority_mode": "production_authority",
+            "authority_url": "https://authority.production.invalidname.net",
         "authority_source_id": "turn-prod-a",
         "maximum_database_clock_skew_seconds": 5,
         "state_file": "/data/relay-state.json",
@@ -69,14 +72,19 @@ def valid_coturn_config(extra: str = "") -> str:
             "total-quota=1000",
             "user-quota=12",
             "max-bps=20000000",
+            "denied-peer-ip=0.0.0.0-0.255.255.255",
             "denied-peer-ip=10.0.0.0-10.255.255.255",
             "denied-peer-ip=100.64.0.0-100.127.255.255",
             "denied-peer-ip=127.0.0.0-127.255.255.255",
             "denied-peer-ip=169.254.0.0-169.254.255.255",
             "denied-peer-ip=172.16.0.0-172.31.255.255",
+            "denied-peer-ip=192.0.0.0-192.0.0.255",
             "denied-peer-ip=192.168.0.0-192.168.255.255",
+            "denied-peer-ip=198.18.0.0-198.19.255.255",
+            "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
             "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             extra,
         ]
     )
@@ -120,10 +128,48 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
             parse_turn_uri("stun:relay.prod.test:3478")
 
     def test_public_host_rejects_local_private_and_placeholder_hosts(self) -> None:
-        for host in ("127.0.0.1", "10.0.0.1", "relay.example.com", "relay.local"):
+        for host in (
+            "127.0.0.1",
+            "10.0.0.1",
+            "relay.example.com",
+            "relay.local",
+            "::",
+            "fec0::1",
+            "224.0.0.1",
+            "240.0.0.1",
+            "255.255.255.255",
+            "ff02::1",
+            "::ffff:0a00:0005",
+        ):
             with self.subTest(host=host):
                 with self.assertRaises(PreflightError):
                     require_public_host(host, resolve=False)
+
+    def test_public_host_allows_global_ipv4_mapped_dotted_literal(self) -> None:
+        self.assertEqual(("::ffff:8.8.8.8",), require_public_host("::ffff:8.8.8.8", resolve=False))
+
+    def test_external_ip_rejects_non_public_and_non_dotted_ipv4_mapped_values(self) -> None:
+        for external_ip in (
+            "/10.0.0.5",
+            "::",
+            "fec0::1",
+            "224.0.0.1",
+            "240.0.0.1",
+            "255.255.255.255",
+            "ff02::1",
+            "::ffff:0a00:0005",
+            "::FFFF:0A00:0005",
+            "::0:ffff:0a00:0005",
+            "0:0:0:0:0:ffff:0a00:0005",
+        ):
+            with self.subTest(external_ip=external_ip):
+                with self.assertRaises(PreflightError):
+                    validate_external_ip(external_ip)
+
+    def test_external_ip_allows_global_ipv6_with_ffff_group_and_dotted_mapping(self) -> None:
+        for external_ip in ("2606:4700:ffff::1", "2001:4860:4860:ffff::1", "::ffff:8.8.8.8"):
+            with self.subTest(external_ip=external_ip):
+                self.assertRegex(validate_external_ip(external_ip), r"^[0-9a-f]{64}$")
 
     def test_read_json_error_detail_omits_filesystem_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -137,6 +183,48 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         self.assertIn("JSONDecodeError", detail)
         self.assertNotIn(directory_name, detail)
         self.assertNotIn("sensitive-path-connectivity.json", detail)
+
+    def test_read_json_unicode_error_detail_omits_filesystem_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            broken = Path(directory_name) / "sensitive-path-connectivity.json"
+            broken.write_bytes(b"{\xff")
+
+            with self.assertRaises(PreflightError) as context:
+                read_json(broken, "public NAT/TURN connectivity evidence")
+
+        detail = str(context.exception)
+        self.assertIn("UnicodeDecodeError", detail)
+        self.assertNotIn(directory_name, detail)
+        self.assertNotIn("sensitive-path-connectivity.json", detail)
+
+    def test_coturn_unicode_error_detail_omits_filesystem_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            broken = Path(directory_name) / "sensitive-production.conf"
+            broken.write_bytes(b"\xff")
+
+            with self.assertRaises(PreflightError) as context:
+                validate_coturn_config(broken)
+
+        detail = str(context.exception)
+        self.assertIn("coturn production configuration is not readable", detail)
+        self.assertNotIn(directory_name, detail)
+        self.assertNotIn("sensitive-production.conf", detail)
+
+    def test_connectivity_command_help_warns_about_remainder_ordering(self) -> None:
+        stdout = io.StringIO()
+        with self.assertRaises(SystemExit) as context, redirect_stdout(stdout):
+            parse_arguments(["--help"])
+
+        self.assertEqual(context.exception.code, 0)
+        self.assertIn("consumes all following arguments", stdout.getvalue())
+        self.assertIn("--output and other preflight flags before", stdout.getvalue())
+        self.assertIn("--connectivity-command", stdout.getvalue())
+        self.assertEqual(
+            parse_arguments(["--output", "out.json", "--connectivity-command", "canary", "--flag"]).connectivity_command,
+            ["canary", "--flag"],
+        )
+        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+            parse_arguments(["--connectivity-command", "canary", "--output", "out.json"])
 
     @mock.patch("scripts.phase3.public_nat_turn_preflight.request.urlopen")
     @mock.patch("scripts.phase3.public_nat_turn_preflight.socket.getaddrinfo")
