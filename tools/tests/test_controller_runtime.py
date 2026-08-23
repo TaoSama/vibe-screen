@@ -64,6 +64,30 @@ class ControllerRuntimeEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "pass")
         self.assertTrue(summary["can_close_runtime_gate"])
         self.assertEqual(summary["missing_requirements"], [])
+        self.assertEqual(summary["inconsistent_observations"], [])
+
+    def test_insufficient_when_observations_are_inconsistent(self) -> None:
+        record = self.complete_record()
+        record["controller_connected_state_disconnected_observed"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_runtime_gate"])
+        self.assertEqual(summary["blocking_reasons"], [])
+        self.assertEqual(
+            summary["inconsistent_observations"],
+            [
+                {
+                    "field": "neutral_release_on_disconnect_observed",
+                    "requires": ["controller_connected_state_disconnected_observed"],
+                    "requirement": (
+                        "neutral release evidence requires connected, state, and disconnected "
+                        "controller lifecycle samples"
+                    ),
+                }
+            ],
+        )
 
     def test_rejects_non_boolean_observations(self) -> None:
         record = self.complete_record()
@@ -74,6 +98,9 @@ class ControllerRuntimeEvidenceTest(unittest.TestCase):
 
 
 class ControllerRuntimeCliTest(unittest.TestCase):
+    def complete_record(self) -> dict[str, bool]:
+        return {field: True for field in BOOLEAN_FIELDS}
+
     def test_cli_outputs_blocked_summary(self) -> None:
         result = subprocess.run(
             [sys.executable, "-m", MODULE, "-", "--run-id", "run-cli"],
@@ -83,11 +110,26 @@ class ControllerRuntimeCliTest(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2, result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["run_id"], "run-cli")
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_runtime_gate"])
+
+    def test_cli_returns_one_for_insufficient_summary(self) -> None:
+        record = self.complete_record()
+        record["mac_side_controller_response_observed"] = False
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", "run-insufficient"],
+            input=json.dumps(record),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "insufficient")
 
 
 if __name__ == "__main__":

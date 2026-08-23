@@ -1,0 +1,31 @@
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier=dev.telemachus.display
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=22575 flags=0x0(none) hashes=695+7 location=embedded
+VersionPlatform=1
+VersionMin=851968
+VersionSDK=1704960
+Hash type=sha256 size=32
+CandidateCDHash sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2
+CandidateCDHashFull sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+Hash choices=sha256
+CMSDigest=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=4423680
+Executable Segment flags=0x1
+Page size=16384
+CDHash=2fe65fd5cd69c80249140da3f139cfa68037c5c2
+Signature size=3186
+Authority=Vibe Screen Dev
+Authority=Vibe Screen Dev Root
+Signed Time=Aug 15, 2026 at 22:57:00
+Info.plist entries=14
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10
+Internal requirements count=1 size=100
+
+--- entitlements ---
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+warning: Specifying ':' in the path is deprecated and will not work in a future release
