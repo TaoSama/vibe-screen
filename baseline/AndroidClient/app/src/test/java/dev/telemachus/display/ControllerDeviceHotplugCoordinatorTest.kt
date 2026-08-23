@@ -139,4 +139,45 @@ class ControllerDeviceHotplugCoordinatorTest {
         assertEquals(ControllerHotplugSyncResult(connected = 1, disconnected = 0, resynchronized = false, limitReached = 0), retried)
         assertEquals(ControllerEventKind.CONNECTED, retriedDispatches.single().samples.first().kind)
     }
+
+    @Test
+    fun failedDisconnectSubmitKeepsControllerActiveSoNextHotplugRetriesDisconnect() {
+        val coordinator = ControllerDeviceHotplugCoordinator()
+        val state = ControllerSessionState()
+        val failedDispatches = mutableListOf<ControllerDispatch>()
+        val retriedDispatches = mutableListOf<ControllerDispatch>()
+
+        coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(
+                ControllerDeviceSnapshot(1, "controller-a"),
+                ControllerDeviceSnapshot(2, "controller-b"),
+            ),
+            sessionState = state,
+            submit = { true },
+        )
+        state.applyKey(ControllerKeyChange.Button("controller-a", pressed = true, ControllerButton.A))
+
+        val failed = coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(ControllerDeviceSnapshot(2, "controller-b")),
+            sessionState = state,
+            submit = { dispatch ->
+                failedDispatches += dispatch
+                false
+            },
+        )
+
+        assertEquals(ControllerHotplugSyncResult(connected = 0, disconnected = 0, resynchronized = false, limitReached = 0), failed)
+        assertTrue(state.isActive("controller-a"))
+        assertTrue(failedDispatches.single().samples.any { it.controllerId == "controller-a" && it.kind == ControllerEventKind.DISCONNECTED })
+
+        val retried = coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(ControllerDeviceSnapshot(2, "controller-b")),
+            sessionState = state,
+            submit = retriedDispatches::add,
+        )
+
+        assertEquals(ControllerHotplugSyncResult(connected = 0, disconnected = 1, resynchronized = false, limitReached = 0), retried)
+        assertFalse(state.isActive("controller-a"))
+        assertTrue(retriedDispatches.single().samples.any { it.controllerId == "controller-a" && it.kind == ControllerEventKind.DISCONNECTED })
+    }
 }

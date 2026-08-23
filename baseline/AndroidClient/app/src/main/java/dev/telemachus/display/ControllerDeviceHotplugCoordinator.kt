@@ -45,6 +45,7 @@ internal class ControllerDeviceHotplugCoordinator {
         var disconnected = 0
         var resynchronized = false
         var limitReached = 0
+        var disconnectAttempted = false
 
         val missingKnownControllers =
             controllerIdsByDeviceId
@@ -53,8 +54,11 @@ internal class ControllerDeviceHotplugCoordinator {
                 .filterNot(availableControllerIds::contains)
         val missingActiveControllers = sessionState.activeControllerIds().filterNot(availableControllerIds::contains)
         (missingKnownControllers + missingActiveControllers).distinct().forEach { controllerId ->
-            sessionState.disconnect(controllerId)?.let { dispatch ->
-                if (submit(dispatch)) disconnected++
+            sessionState.prepareDisconnect(controllerId)?.let { result ->
+                disconnectAttempted = true
+                if (submit(result.dispatch) && sessionState.completeDisconnect(result.controllerId, result.controllerEpoch)) {
+                    disconnected++
+                }
             }
         }
 
@@ -84,7 +88,7 @@ internal class ControllerDeviceHotplugCoordinator {
             }
         }
 
-        if (connected == 0 && disconnected == 0) {
+        if (connected == 0 && disconnected == 0 && !disconnectAttempted) {
             sessionState.resynchronize()?.let { dispatch ->
                 if (submit(dispatch)) resynchronized = true
             }
