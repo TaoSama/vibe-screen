@@ -27,6 +27,9 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "accepted coturn usage into the control-plane daily-byte ledger",
             "structured\ncoturn reconcile helper can fail closed",
             "production end-to-end enforcement\nremain release gates",
+            "revocation propagation verifier now fixes the required evidence schema",
+            "same-allocation relay credential rejection",
+            "current blocked\nevidence still lacks the live coturn/data-plane deployment observations",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
@@ -59,8 +62,9 @@ class AuthorityProductionGateTests(unittest.TestCase):
 
         self.assertIn("not authoritative until" + "\n" + "a trusted coturn collector", relay)
         self.assertIn("contract helper only", relay)
-        self.assertIn("production exporter, durable" + "\n" + "collector loop", relay)
-        self.assertIn("concrete coturn allocation" + "\n" + "termination", relay)
+        self.assertIn("production exporter,\n" + "durable collector loop", relay)
+        self.assertIn("concrete coturn", relay)
+        self.assertIn("allocation termination", relay)
 
         self.assertIn("coturn exporter," + "\n" + "  reconciliation loop", signaling)
         self.assertIn("active-allocation disconnect path are not production" + "\n" + "  proven", signaling)

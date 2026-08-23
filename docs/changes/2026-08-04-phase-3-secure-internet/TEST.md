@@ -52,8 +52,9 @@ remain explicit production or end-to-end gates. When
 `services/signaling` also runs a process integration test that starts real
 Authority, signaling, and relay binaries, creates authority-backed signaling
 sessions, obtains authority-admitted relay credentials, invalidates one session,
-revokes the client device at Authority, then proves both signaling role access
-and future relay credential admission fail closed.
+revokes the client device at Authority, then proves signaling role access, future
+relay credential admission, exact same-allocation credential retry, and later
+Authority coturn usage accounting fail closed.
 
 `make phase3-test` also runs static production-profile checks for the Phase 3
 relay/Authority deployment files. These checks prove only repository configuration
@@ -68,6 +69,16 @@ execution when Authority reports unauthorized or conflicting active source
 allocations. That helper test does not prove a production coturn exporter,
 scheduled loop, provider billing reconciliation, or real data-plane allocation
 termination.
+The Phase 3 revocation propagation verifier now pins the evidence contract for
+Authority/signaling/relay/coturn propagation. It passes only when a report proves
+Authority audit visibility, signaling long-poll wakeup rejection, future and
+same-allocation relay credential rejection, active allocation disconnect, stale
+credential rejection, and zero relayed post-revocation packets; a missing live
+deployment observation returns a blocked status. The 2026-08-23 current-base
+blocked record documents that the local process integration path covers
+Authority-backed signaling, future and same-allocation relay credential
+rejection, and Authority coturn usage rejection, but not deployed coturn
+allocation teardown or packet-denial behavior.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code

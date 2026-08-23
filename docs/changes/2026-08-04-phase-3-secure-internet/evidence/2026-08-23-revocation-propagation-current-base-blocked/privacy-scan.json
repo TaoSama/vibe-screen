@@ -1,0 +1,48 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2257,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "974c54fe139634a02f8728ad0853d708fb5cf2436b30e70888d7cc1bb2bd84cb"
+    },
+    {
+      "bytes": 1112,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "revocation-propagation-current-base-blocked.json",
+      "result": "pass",
+      "sha256": "29b74241c1acc1d81ad6b3e147ef5f01ce8c8122b2e1e8d5b67aab8dd5f1e688"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

@@ -138,13 +138,19 @@ func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
 	if _, err := restarted.CreateSignaling(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed idempotency replay error=%v, want ErrConflict", err)
 	}
-	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+	if err := restarted.InvalidateSignaling(ctx, created.SessionID, now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, request, now.Add(4*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("idempotent replay after invalidation error=%v, want ErrRevoked", err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(5*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable host epoch floor error=%v, want ErrConflict", err)
 	}
 	if err := restarted.RegisterDevice(ctx, "account", "other-host"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(6*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
 	}
 }
@@ -349,6 +355,9 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if err := store.RevokeDevice(ctx, "client", 1, now); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AdmitRelay(ctx, exactRetry, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("exact relay retry after device revocation error=%v, want ErrRevoked", err)
+	}
 	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
 	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("final usage after revocation error=%v, want ErrRevoked", err)
@@ -383,6 +392,9 @@ func TestPostgresSignalingInvalidationClosesRelayAllocationLedgerOnly(t *testing
 	}
 	if err := store.InvalidateSignaling(ctx, session.SessionID, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("exact relay retry after signaling invalidation error=%v, want ErrRevoked", err)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "blocked", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("invalidated session relay admission error=%v", err)
@@ -669,11 +681,11 @@ func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
 		{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21},
 		{AllocationID: "after-revoked", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 99},
 	}}, time.Minute)
-	if !errors.Is(err, ErrRevoked) {
-		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	if err != nil {
+		t.Fatalf("reconcile after device revoke: %v", err)
 	}
-	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 {
-		t.Fatalf("partial reconcile result before fail-closed stop=%+v", result)
+	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 || !slices.Equal(result.UnauthorizedAllocationIDs, []string{"after-revoked", "allocation"}) {
+		t.Fatalf("reconcile result after device revoke=%+v", result)
 	}
 	var ingress, egress string
 	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&ingress, &egress); err != nil {

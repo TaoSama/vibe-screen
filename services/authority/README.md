@@ -240,21 +240,22 @@ revoked session, expired session, or already closed allocation fails closed and
 does not advance counters. Revocation does not prove the coturn data plane
 disconnected an already running allocation. Relay admission retries with the
 same source, allocation, device and session identity return the original
-reservation without consuming quota again; reuse with different identity is a
-conflict.
+reservation only while the allocation, device, account, and session are still
+active; replay after revocation or expiry fails closed, and reuse with different
+identity is a conflict.
 
 `POST /v1/coturn/reconcile` accepts one source snapshot (maximum 10,000
 allocations). Its `observed_at` cannot be in the future, including for an empty
 snapshot. The service applies newer counters and returns ledger allocations missing
 from a source beyond `reconciliation_grace_seconds`. The response separately
-lists `unauthorized_allocation_ids` that exist only at the source and
-`conflict_allocation_ids` whose identity or counters conflict with the ledger;
-one conflict does not stop processing the rest of the snapshot. A revoked device
-or session fails the snapshot closed rather than silently advancing its ledger;
-allocations applied earlier in that request remain committed and replay as
-duplicates or already-ahead entries on retry. Operators must disconnect
-unauthorized allocations and close ledger-only allocations only after the
-configured consecutive-snapshot policy in their collector.
+lists `unauthorized_allocation_ids` that exist only at the source or are bound to
+a revoked device/session, and `conflict_allocation_ids` whose identity or
+counters conflict with the ledger; one conflict does not stop processing the rest
+of the snapshot. A revoked device or session is reported as unauthorized rather
+than silently advancing its ledger, giving the caller a concrete allocation ID to
+disconnect. Operators must disconnect unauthorized allocations and close
+ledger-only allocations only after the configured consecutive-snapshot policy in
+their collector.
 
 The repository does **not** yet contain a production-proven coturn exporter.
 Launch remains blocked until the pinned coturn build or provider API proves it
