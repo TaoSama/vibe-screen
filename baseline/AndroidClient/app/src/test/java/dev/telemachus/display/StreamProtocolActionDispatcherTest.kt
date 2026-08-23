@@ -2,6 +2,8 @@ package dev.telemachus.display
 
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.vibescreen.protocol.v1.AudioCodec
+import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileAccept
@@ -53,6 +55,12 @@ class StreamProtocolActionDispatcherTest {
                     bitrateKbps = 12_000,
                     framesPerSecond = 60,
                 ),
+                ProtocolV1Session.Action.AudioConfigurationRequested(
+                    config = audioConfig(configEpoch = 3),
+                    sessionEpoch = 5,
+                    correlationId = 12,
+                ),
+                ProtocolV1Session.Action.AudioStopped("audio_disabled"),
                 ProtocolV1Session.Action.DisplayGeometryChanged(1920, 1080, 0),
                 ProtocolV1Session.Action.PongReceived(9),
                 ProtocolV1Session.Action.ControllerInputAck(10, true, ""),
@@ -101,6 +109,8 @@ class StreamProtocolActionDispatcherTest {
                 "display-confirmed:virtual",
                 "display-rejected:main:missing:not_found",
                 "video-request:11:CODEC_HEVC:1920x1080:7",
+                "audio-request:12:3",
+                "audio-stopped:audio_disabled",
                 "geometry:1920x1080:0",
                 "pong:9",
                 "controller-ack:10:true:",
@@ -176,10 +186,16 @@ class StreamProtocolActionDispatcherTest {
 
         val result = dispatcher.dispatchVideoConfigurationCompletionActions(
             out = out,
+            session = session(),
             actions = listOf(
                 ProtocolV1Session.Action.VideoConfigurationRejected(4, "decoder_failed"),
                 ProtocolV1Session.Action.Send(Envelope.getDefaultInstance()),
                 ProtocolV1Session.Action.VideoConfigurationCommitted(4, appliesClientVideoPreferences = true),
+                ProtocolV1Session.Action.AudioConfigurationRequested(
+                    config = audioConfig(configEpoch = 5),
+                    sessionEpoch = 7,
+                    correlationId = 14,
+                ),
                 ProtocolV1Session.Action.DisplaysAvailable(
                     displays = listOf(ProtocolV1Session.DisplayOption("virtual", "Virtual", 2000, 1200, false, true)),
                     selectedId = "virtual",
@@ -198,6 +214,7 @@ class StreamProtocolActionDispatcherTest {
                 "video-rejected-before-response:decoder_failed",
                 "send:PAYLOAD_NOT_SET",
                 "video-committed:true",
+                "audio-request:14:5",
                 "displays:virtual:1",
                 "display-confirmed:virtual",
                 "display-rejected:main:missing:not_found",
@@ -209,6 +226,7 @@ class StreamProtocolActionDispatcherTest {
         assertThrows(IllegalStateException::class.java) {
             dispatcher.dispatchVideoConfigurationCompletionActions(
                 out = out,
+                session = session(),
                 actions = listOf(ProtocolV1Session.Action.PongReceived(1)),
             )
         }
@@ -294,6 +312,18 @@ class StreamProtocolActionDispatcherTest {
 
         override fun onVideoConfigurationCommitted(appliesClientVideoPreferences: Boolean) {
             events += "video-committed:" + appliesClientVideoPreferences
+        }
+
+        override fun onAudioConfigurationRequested(
+            out: DataOutputStream,
+            session: ProtocolV1Session,
+            action: ProtocolV1Session.Action.AudioConfigurationRequested,
+        ) {
+            events += "audio-request:" + action.correlationId + ":" + action.config.configEpoch
+        }
+
+        override fun onAudioStopped(reason: String) {
+            events += "audio-stopped:" + reason
         }
 
         override fun onDisplayGeometryChanged(width: Int, height: Int, rotation: Int) {
@@ -396,6 +426,17 @@ class StreamProtocolActionDispatcherTest {
             }
         }
     }
+
+    private fun audioConfig(configEpoch: Long): AudioConfig =
+        AudioConfig
+            .newBuilder()
+            .setStreamId(7)
+            .setConfigEpoch(configEpoch)
+            .setCodec(AudioCodec.AUDIO_CODEC_PCM_S16LE)
+            .setSampleRateHz(48_000)
+            .setChannelCount(2)
+            .setFramesPerPacket(480)
+            .build()
 
     private companion object {
         const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"

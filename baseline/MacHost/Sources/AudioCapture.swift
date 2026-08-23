@@ -4,6 +4,8 @@ import Foundation
 import VibeScreenProtocol
 
 protocol MacHostAudioCaptureSource: AnyObject, Sendable {
+    var canAdvertiseCapture: Bool { get }
+
     func start(
         format: MacHostAudioFormat,
         onBuffer: @escaping @Sendable (MacHostAudioCaptureBuffer) -> Void,
@@ -12,10 +14,27 @@ protocol MacHostAudioCaptureSource: AnyObject, Sendable {
     func stop()
 }
 
+extension MacHostAudioCaptureSource {
+    var canAdvertiseCapture: Bool { true }
+}
+
 final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendable {
     private let lock = NSLock()
     private var engine: AVAudioEngine?
     private var conversionState: AVAudioPCMConversionState?
+
+    var canAdvertiseCapture: Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .denied, .restricted:
+            return false
+        case .authorized:
+            return true
+        case .notDetermined:
+            return false
+        @unknown default:
+            return false
+        }
+    }
 
     func start(
         format: MacHostAudioFormat,
@@ -230,6 +249,10 @@ final class MacHostAudioStream: @unchecked Sendable {
 
     var currentFormat: MacHostAudioFormat? {
         lock.withAudioLock { runningState?.format }
+    }
+
+    var canAdvertiseCapture: Bool {
+        captureSource.canAdvertiseCapture
     }
 
     func start(

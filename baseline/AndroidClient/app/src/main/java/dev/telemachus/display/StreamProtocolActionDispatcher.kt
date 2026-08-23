@@ -53,6 +53,14 @@ internal class StreamProtocolActionDispatcher(
 
         fun onVideoConfigurationCommitted(appliesClientVideoPreferences: Boolean)
 
+        fun onAudioConfigurationRequested(
+            out: DataOutputStream,
+            session: ProtocolV1Session,
+            action: ProtocolV1Session.Action.AudioConfigurationRequested,
+        )
+
+        fun onAudioStopped(reason: String)
+
         fun onDisplayGeometryChanged(
             width: Int,
             height: Int,
@@ -187,6 +195,9 @@ internal class StreamProtocolActionDispatcher(
                 -> throw IllegalStateException(
                     "Unexpected decoder completion action during protocol receive",
                 )
+                is ProtocolV1Session.Action.AudioConfigurationRequested ->
+                    sink.onAudioConfigurationRequested(out, session, action)
+                is ProtocolV1Session.Action.AudioStopped -> sink.onAudioStopped(action.reason)
                 is ProtocolV1Session.Action.DisplayGeometryChanged ->
                     sink.onDisplayGeometryChanged(action.width, action.height, action.rotation)
                 is ProtocolV1Session.Action.PongReceived -> sink.onPongReceived(action.sequence)
@@ -245,6 +256,7 @@ internal class StreamProtocolActionDispatcher(
 
     fun dispatchVideoConfigurationCompletionActions(
         out: DataOutputStream,
+        session: ProtocolV1Session,
         actions: List<ProtocolV1Session.Action>,
     ): VideoConfigurationCompletionResult {
         val rejectedReason = actions
@@ -272,6 +284,9 @@ internal class StreamProtocolActionDispatcher(
                     sink.onDisplaySelectionRejected(action.selectedId, action.rejectedId, action.reason)
                 is ProtocolV1Session.Action.DisplayGeometryChanged ->
                     sink.onDisplayGeometryChanged(action.width, action.height, action.rotation)
+                is ProtocolV1Session.Action.AudioConfigurationRequested ->
+                    sink.onAudioConfigurationRequested(out, session, action)
+                is ProtocolV1Session.Action.AudioStopped -> sink.onAudioStopped(action.reason)
                 is ProtocolV1Session.Action.VideoConfigurationRequested,
                 is ProtocolV1Session.Action.DisplaySelectionPending,
                 is ProtocolV1Session.Action.PongReceived,

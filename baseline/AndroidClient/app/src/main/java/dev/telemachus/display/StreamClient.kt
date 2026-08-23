@@ -5,6 +5,11 @@ import android.os.Build
 import android.util.Log
 import android.view.WindowManager
 import com.google.protobuf.ByteString
+import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
+import dev.telemachus.display.audio.AudioPacketRejectReason
+import dev.telemachus.display.audio.ProtocolAudioConfigureResult
+import dev.telemachus.display.audio.ProtocolAudioPacketResult
+import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.CompletedIncomingFile
 import dev.telemachus.display.protocol.FileChunk
@@ -116,6 +121,7 @@ class StreamClient(
     private val wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
 ) {
     internal val actualPort: Int = port
+    internal var audioPlayer: ProtocolPcmAudioPlayer = ProtocolPcmAudioPlayer(AndroidAudioTrackOutputFactory())
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
     /** Process-local decoder/attempt generation. Never assigned from a wire session epoch. */
@@ -685,6 +691,9 @@ class StreamClient(
     private fun configureLegacyMode(firstByte: Int? = null) {
         wireMode = WireMode.LEGACY
         protocolSession = null
+        audioPlayer.stop()?.let {
+            Log.w(TAG, "Audio stop reported ${it.code} while switching to legacy mode")
+        }
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = firstByte
         advertiseAvcOnlyIfNeeded()
@@ -1149,6 +1158,36 @@ class StreamClient(
                     currentEpoch = localSessionState::currentEpoch,
                     validateMedia = session::validateMedia,
                 )
+            }
+            ProtocolChannel.AUDIO -> {
+                val session = checkNotNull(protocolSession)
+                if (!session.canReceiveAudio) {
+                    throw SessionProtocolException(
+                        SessionFailure.protocol(
+                            SessionFailureKind.INVALID_MEDIA_PAYLOAD,
+                            "Audio packet received before AudioConfig acceptance",
+                        ),
+                    )
+                }
+                when (val result = audioPlayer.submit(frame.payload)) {
+                    is ProtocolAudioPacketResult.Accepted -> {
+                        heartbeat.recordInbound(System.nanoTime())
+                    }
+                    is ProtocolAudioPacketResult.Rejected -> {
+                        throw SessionProtocolException(
+                            SessionFailure.protocol(
+                                SessionFailureKind.INVALID_MEDIA_PAYLOAD,
+                                "Audio packet rejected: ${result.reason.audioCode()}",
+                            ),
+                        )
+                    }
+                    is ProtocolAudioPacketResult.PlaybackFailed -> {
+                        result.cleanupFailureReason?.let {
+                            Log.w(TAG, "Audio cleanup after playback failure also failed: ${it.code}")
+                        }
+                        throw SessionProtocolException(SessionFailure.codec("audio_playback_failed: ${result.reason.code}"))
+                    }
+                }
             }
             ProtocolChannel.BULK -> {
                 val chunk =
@@ -1865,6 +1904,20 @@ class StreamClient(
             }
         }
 
+        override fun onAudioConfigurationRequested(
+            out: java.io.DataOutputStream,
+            session: ProtocolV1Session,
+            action: ProtocolV1Session.Action.AudioConfigurationRequested,
+        ) {
+            configureProtocolAudio(out, session, action)
+        }
+
+        override fun onAudioStopped(reason: String) {
+            audioPlayer.stop()?.let {
+                Log.w(TAG, "Audio stop reported ${it.code} after $reason")
+            }
+        }
+
         override fun onDisplayGeometryChanged(
             width: Int,
             height: Int,
@@ -2088,6 +2141,50 @@ class StreamClient(
         }
     }
 
+    private fun configureProtocolAudio(
+        out: java.io.DataOutputStream,
+        session: ProtocolV1Session,
+        action: ProtocolV1Session.Action.AudioConfigurationRequested,
+    ) {
+        val result = audioPlayer.configure(action.config, action.sessionEpoch)
+        val response =
+            when (result) {
+                is ProtocolAudioConfigureResult.Accepted ->
+                    session.completeAudioConfiguration(
+                        config = action.config,
+                        accepted = true,
+                        rejectionReason = "",
+                        correlationId = action.correlationId,
+                    )
+                is ProtocolAudioConfigureResult.Rejected -> {
+                    audioPlayer.stop()?.let {
+                        Log.w(TAG, "Audio stop after rejected configuration reported ${it.code}")
+                    }
+                    session.completeAudioConfiguration(
+                        config = action.config,
+                        accepted = false,
+                        rejectionReason = result.reason.code,
+                        correlationId = action.correlationId,
+                    )
+                }
+                is ProtocolAudioConfigureResult.PlaybackFailed -> {
+                    result.cleanupFailureReason?.let {
+                        Log.w(TAG, "Audio cleanup after configure failure also failed: ${it.code}")
+                    }
+                    audioPlayer.stop()?.let {
+                        Log.w(TAG, "Audio stop after failed configuration reported ${it.code}")
+                    }
+                    session.completeAudioConfiguration(
+                        config = action.config,
+                        accepted = false,
+                        rejectionReason = result.reason.code,
+                        correlationId = action.correlationId,
+                    )
+                }
+            }
+        response?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
+    }
     private fun sendNextOutgoingFileChunk(
         out: java.io.DataOutputStream,
         session: ProtocolV1Session,
@@ -2266,7 +2363,11 @@ class StreamClient(
             )
             return
         }
-        val result = protocolActionDispatcher.dispatchVideoConfigurationCompletionActions(out, actions)
+        val result = protocolActionDispatcher.dispatchVideoConfigurationCompletionActions(
+            out = out,
+            session = pending.session,
+            actions = actions,
+        )
         out.flush()
         if (result.configurationCommitted && isCurrentProtocolSession(pending.session, pending.connectionGeneration)) {
             onVideoConfigurationApplied?.invoke(
@@ -2494,6 +2595,9 @@ class StreamClient(
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
+        audioPlayer.stop()?.let {
+            Log.w(TAG, "Audio stop during cleanup reported ${it.code}")
+        }
         protocolSession = null
         wakeHostAuthorizationSecret = null
         incomingFileTransfers.getAndSet(null)?.cancelAll()
@@ -2565,6 +2669,12 @@ class StreamClient(
         completeConnectionEndNow(failure)
         return SessionProtocolException(failure)
     }
+
+    private fun AudioPacketRejectReason.audioCode(): String =
+        when (this) {
+            AudioPacketRejectReason.NO_CONFIGURATION -> "no_audio_configuration"
+            is AudioPacketRejectReason.ProtocolRejected -> reason.code
+        }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 

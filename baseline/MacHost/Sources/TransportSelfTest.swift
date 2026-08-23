@@ -63,7 +63,10 @@ enum TransportSelfTest {
         }
         let port: UInt16 = 55432
         let state = ResultState()
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(
+            port: port,
+            audioStream: MacHostAudioStream(captureSource: SelfTestAudioCaptureSource())
+        )
         server.setDisplaySize(width: 2000, height: 1124)
         server.onCodecNegotiated = { _, _, completion in
             state.lock.withLock { state.codecNegotiationCount += 1 }
@@ -281,7 +284,10 @@ enum TransportSelfTest {
 
     private static func runProtocolV1Lifecycle() -> Bool {
         let port: UInt16 = 55433
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(
+            port: port,
+            audioStream: MacHostAudioStream(captureSource: SelfTestAudioCaptureSource())
+        )
         let connected = DispatchSemaphore(value: 0)
         server.setDisplaySize(width: 1920, height: 1080, rotation: 90)
         server.onCodecNegotiated = { _, _, completion in
@@ -314,7 +320,7 @@ enum TransportSelfTest {
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte, .fileTransfer],
+                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte, .fileTransfer, .audio],
                   case .sessionAccepted(let session)? = accepted.payload,
                   Set(session.negotiatedCapabilities) == [.touch, .multiDisplay, .fileTransfer, .managedConfiguration] else {
                 server.stop()
@@ -766,4 +772,16 @@ enum TransportSelfTest {
             $0.loadUnaligned(fromByteOffset: offset, as: Int32.self).bigEndian
         }
     }
+}
+
+private final class SelfTestAudioCaptureSource: MacHostAudioCaptureSource, @unchecked Sendable {
+    var canAdvertiseCapture: Bool { true }
+
+    func start(
+        format: MacHostAudioFormat,
+        onBuffer: @escaping @Sendable (MacHostAudioCaptureBuffer) -> Void,
+        onError: @escaping @Sendable (Error) -> Void
+    ) throws {}
+
+    func stop() {}
 }
