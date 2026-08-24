@@ -595,10 +595,10 @@ reports; it stays fail-closed unless the run proves public-Internet WebRTC,
 controlled real impairment, fast-drop/slow-rise, bitrate/FPS/config-epoch
 changes, `VideoConfig` ACK/keyframe resume, and transport continuity without
 static latency fixtures, local loopback, synthetic media, or relabeled device
-identity. Not proved: public Internet, real remote TURN (local loopback and
-forced local coturn are not public-Internet or real-deployment evidence), real
-ScreenCaptureKit-to-Android device decoder continuity, real network fluctuation,
-network handoff, and soak.
+identity. Not proved:
+public Internet, real remote TURN (local loopback and forced local coturn are
+not public-Internet or real-deployment evidence), real ScreenCaptureKit-to-Android
+device decoder continuity, real network fluctuation, network handoff, and soak.
 
 Current Phase 3 release-gate gaps are tracked as explicit open evidence rows:
 
