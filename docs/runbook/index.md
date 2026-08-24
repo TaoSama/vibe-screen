@@ -4,6 +4,7 @@
 - [macOS Host compatibility matrix gate](macos-host-compatibility.md)
 - [Android client operation and acceptance](android-client.md)
 - [HDR/color acceptance](hdr-color-acceptance.md)
+- [Hardware keyboard workflow acceptance](hardware-keyboard-workflow.md)
 - [Controller runtime acceptance](controller-runtime-acceptance.md)
 - [Peripheral input framework readiness](peripheral-input-framework.md)
 - [External-camera latency measurement](latency-measurement.md)

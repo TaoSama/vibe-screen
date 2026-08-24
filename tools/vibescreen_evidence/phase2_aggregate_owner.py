@@ -19,8 +19,8 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main fed8ac0c891b610def1cb03cb8bfd5216af56784"
-REDACTED_SERIAL = "<redacted-adb-serial>"
+CURRENT_BASE = "origin/main c754f2dab4d3781847b40988105fcdefe1723538"
+REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 
 
@@ -90,22 +90,22 @@ OWNER_PRS: dict[str, OwnerPr] = {
         "Merged baseline for Android PSS, Host RSS, charging/full-state, and thermal sample sufficiency.",
     ),
     "device_environment": OwnerPr(
-        None,
-        "Phase 2 device-environment current-base gate",
-        "codex/phase2-stability-current-base",
-        None,
-        "this_current_base_pr",
+        338,
+        "test: add Phase 2 device environment gate",
+        "origin/main",
+        "c754f2dab4d3781847b40988105fcdefe1723538",
+        "merged_baseline",
         5,
-        "Current-base device-environment gate for stand charging, controlled thermal load, and power stability; supersedes #252, #255, and #285 conflicting draft direction.",
+        "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; now present in latest main after #342 advanced the base.",
     ),
     "hardware_keyboard": OwnerPr(
-        240,
-        "Document Phase 2 hardware keyboard blocked evidence",
-        "codex/phase2-hardware-keyboard-gate",
-        "4b0391c8628214721bb4e314da4b31e3bfb24041",
-        "active_child_draft_conflicting",
+        None,
+        "Add Phase 2 hardware keyboard current-base owner",
+        "codex/phase2-hardware-keyboard-current-base-owner",
+        None,
+        "this_current_base_pr",
         6,
-        "Owns physical Android-attached hardware-keyboard workflow evidence.",
+        "Owns the dedicated current-base physical Android-attached hardware-keyboard workflow gate.",
     ),
     "aggregate": OwnerPr(
         None,
@@ -120,6 +120,13 @@ OWNER_PRS: dict[str, OwnerPr] = {
 
 STALE_PRS: tuple[dict[str, Any], ...] = (
     {
+        "pr_number": 240,
+        "title": "Document Phase 2 hardware keyboard blocked evidence",
+        "status": "closed_superseded",
+        "replacement": "this hardware-keyboard current-base owner branch",
+        "reason": "The old hardware-keyboard child branch was closed; this branch preserves the merged #179 gate and refreshes the owner contract on current base.",
+    },
+    {
         "pr_number": 274,
         "title": "Add Phase 2 aggregate owner gate",
         "status": "stale_source_superseded",
@@ -130,31 +137,31 @@ STALE_PRS: tuple[dict[str, Any], ...] = (
         "pr_number": 285,
         "title": "Add Phase 2 device environment owner gate",
         "status": "stale_source_superseded",
-        "replacement": "this current-base device-environment gate branch",
-        "reason": "The draft branch was conflicting; this branch replays the device-environment gate semantics on current base and adds retained blocked P0110 evidence.",
+        "replacement": "#338",
+        "reason": "The draft branch was conflicting; #338 replayed the device-environment gate semantics on current base and added retained blocked P0110 evidence.",
     },
     {
         "pr_number": 252,
         "title": "Add Phase 2 device environment gate",
         "status": "stale_duplicate",
-        "replacement": "this current-base device-environment gate branch",
-        "reason": "The current-base device-environment gate supersedes the older implementation.",
+        "replacement": "#338",
+        "reason": "The merged current-base device-environment gate supersedes the older implementation.",
     },
     {
         "pr_number": 255,
         "title": "Require Phase 2 charging gate owners",
         "status": "partially_superseded",
-        "replacement": "this current-base device-environment gate plus aggregate owner matrix",
-        "reason": "Its stand-charging owner-map direction is represented by the current-base device-environment gate and aggregate report; the old branch should not be merged as-is.",
+        "replacement": "#338 plus this aggregate owner matrix",
+        "reason": "Its stand-charging owner-map direction is represented by #338 and this aggregate report; the old branch should not be merged as-is.",
     },
 )
 
 PAIRWISE_OVERLAP_NOTES = [
-    "#252 and #285 both owned older device-environment style checks; this current-base branch supersedes both.",
-    "#255 overlaps the current device-environment gate on stand-charging owner mapping and tablet gate wiring; keep #255 as stale/partially superseded unless rebased deliberately.",
+    "#252 and #285 both owned older device-environment style checks; #338 supersedes both and is retained in latest main.",
+    "#255 overlaps #338 on stand-charging owner mapping and tablet gate wiring; keep #255 as stale/partially superseded unless rebased deliberately.",
     "#174 owns the eight-hour runner and remains separate from the aggregate verdict layer.",
-    "#189 and #213 are already merged into current base and are consumed as baseline gates, not reimplemented here.",
-    "#234 and #240 remain independent child slices for tablet UI and hardware keyboard evidence.",
+    "#189, #213, and #321 are already merged into current base and are consumed as baseline gates, not reimplemented here.",
+    "#234 remains the tablet UI child slice; hardware keyboard is owned by this dedicated current-base branch and supersedes closed #240 while preserving merged #179 tooling.",
 ]
 
 
@@ -318,7 +325,13 @@ def _manifest_identity(manifest: dict[str, Any] | None) -> dict[str, Any] | None
     if not isinstance(device, dict):
         return None
     identity = device.get("identity")
-    return identity if isinstance(identity, dict) else None
+    if not isinstance(identity, dict):
+        return None
+    redacted = dict(identity)
+    for key in ("adb_serial", "device_serial"):
+        if isinstance(redacted.get(key), str) and redacted[key]:
+            redacted[key] = REDACTED_DEVICE_SERIAL
+    return redacted
 
 
 def _public_manifest_identity(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -326,7 +339,7 @@ def _public_manifest_identity(manifest: dict[str, Any] | None) -> dict[str, Any]
     if identity is None:
         return None
     return {
-        key: REDACTED_SERIAL if key in SERIAL_IDENTITY_FIELDS and value else value
+        key: REDACTED_DEVICE_SERIAL if key in SERIAL_IDENTITY_FIELDS and value else value
         for key, value in identity.items()
     }
 
@@ -356,7 +369,7 @@ def _substitute_notes(manifest: dict[str, Any] | None) -> list[str]:
         )
     if _known_phone_substitute(identity):
         notes.append(
-            "device identity is Nubia P0110/pacific/Android 16 when present; do not relabel it as Xiaomi/fuxi or 8-9 inch tablet evidence"
+            "device identity is Nubia P0110/pacific; do not relabel it as another device or 8-9 inch tablet evidence"
         )
     return notes
 
@@ -469,8 +482,9 @@ def derive_report(
         "source_baseline": CURRENT_BASE,
         "audit_summary": {
             "single_prs_against_origin_main": (
-                "#189 and #213 are merged into current base. #174 is the current-base soak child owner. "
-                "this branch carries the device-environment child gate; #252, #255, and #285 are stale or superseded inputs."
+                "#179, #189, #213, #315, #321, #338, and #342 are merged into current base. "
+                "#174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, "
+                "and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, and #285 are stale or superseded inputs."
             ),
             "pairwise_overlap": PAIRWISE_OVERLAP_NOTES,
             "recommendation": (

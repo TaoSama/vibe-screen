@@ -86,13 +86,26 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
         )
         stale_prs = {entry["pr_number"]: entry for entry in report["stale_prs"]}
 
-        self.assertIsNone(environment["owner"]["pr_number"])
-        self.assertEqual(environment["owner"]["branch"], "codex/phase2-stability-current-base")
-        self.assertEqual(environment["owner"]["state"], "this_current_base_pr")
-        self.assertIn(285, stale_prs)
-        self.assertEqual(stale_prs[252]["replacement"], "this current-base device-environment gate branch")
-        self.assertIn("current-base device-environment gate", stale_prs[255]["replacement"])
+        self.assertEqual(environment["owner"]["pr_number"], 338)
+        self.assertEqual(environment["owner"]["state"], "merged_baseline")
+        self.assertEqual(stale_prs[240]["status"], "closed_superseded")
+        self.assertEqual(stale_prs[285]["replacement"], "#338")
+        self.assertEqual(stale_prs[252]["replacement"], "#338")
+        self.assertIn("#338", stale_prs[255]["replacement"])
         self.assertEqual(stale_prs[274]["status"], "stale_source_superseded")
+
+    def test_hardware_keyboard_owner_is_this_current_base_branch(self):
+        report = derive_report()
+        keyboard = next(
+            gate for gate in report["owner_matrix"] if gate["gate_id"] == "hardware_keyboard"
+        )
+
+        self.assertIsNone(keyboard["owner"]["pr_number"])
+        self.assertEqual(
+            keyboard["owner"]["branch"],
+            "codex/phase2-hardware-keyboard-current-base-owner",
+        )
+        self.assertEqual(keyboard["owner"]["state"], "this_current_base_pr")
 
     def test_all_child_pass_signals_close_aggregate(self):
         report = derive_report(
@@ -123,8 +136,9 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
 
         self.assertEqual(orders, sorted(orders))
         self.assertEqual(len(orders), len(set(orders)))
-        self.assertTrue({174, 234, 240}.issubset(pr_numbers))
+        self.assertTrue({174, 234, 338}.issubset(pr_numbers))
         self.assertIn(None, pr_numbers)
+        self.assertNotIn(240, pr_numbers)
         self.assertNotIn(285, pr_numbers)
         self.assertNotIn(252, pr_numbers)
         self.assertNotIn(255, pr_numbers)

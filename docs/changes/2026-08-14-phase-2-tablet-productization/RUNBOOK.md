@@ -154,26 +154,24 @@ machine-readable owner is `stylus-summary.json`; only `verdict=pass` with
 
 ## Hardware keyboard workflow
 
-Attach the keyboard that will be used with the tablet stand setup and record a
-structured `hardware-keyboard-evidence.json` at the run root. The minimum
-contract for a passing file is:
+Attach the keyboard that will be used with the tablet stand setup and follow the
+dedicated [hardware keyboard workflow acceptance runbook](../../runbook/hardware-keyboard-workflow.md).
+The run root must include `hardware-keyboard-observations.json` and
+`hardware-keyboard-summary.json`; the summary is generated with:
 
-```json
-{
-  "schema_version": "vibescreen.evidence/v1",
-  "status": "pass",
-  "observed_physical_keyboard": true,
-  "host_input_observed": true,
-  "keys": ["A", "B", "C", "ArrowLeft", "ArrowRight"],
-  "shortcuts": ["Command-C", "Command-V"],
-  "artifacts": ["dumpsys-input.txt", "host-keyboard.log", "mac-input-observation.txt"]
-}
+```bash
+make hardware-keyboard-gate EVIDENCE_DIR="$RUN_DIR"
 ```
 
-The raw evidence must include `dumpsys input` showing the physical keyboard, a
-Host log excerpt with the received key events, and a Mac-side observation such
-as text insertion or shortcut behavior in the focused application. Synthetic
-ADB key events are not physical-keyboard evidence.
+The observation contract is the schema-backed boolean field set in
+`tools/schemas/hardware-keyboard.schema.json`. A pass requires the physical
+Android keyboard source, active selected-display stream, Protocol v1 keyboard
+and USB HID modifier capability negotiation, Android production forwarding with
+focus/IME boundary evidence, Host listener and stable signed/TCC readiness,
+Host `Key injected:` or acknowledgement/CGEvent logs, key and modifier
+press/release, shortcut behavior, modifier cleanup, retained Host/Android logs,
+and a visible Mac result.
+Synthetic ADB key events are not physical-keyboard evidence.
 
 ## Eight-hour sampling
 

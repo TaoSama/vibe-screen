@@ -647,8 +647,10 @@ snapshots and Host listener/signing/TCC preflight artifacts, then writes
 `hardware-keyboard-readiness.json`, `hardware-keyboard-observations.json`, and
 `hardware-keyboard-summary.json`. It exits nonzero for blocked or insufficient
 readiness; that is expected when the physical Android-attached keyboard, stable
-signed/TCC-ready Host, production Protocol v1 forwarding logs, Host `Key
-injected:` lines, or visible Mac-side result are missing.
+signed/TCC-ready Host, active selected-display stream, production Protocol v1
+forwarding plus focus/IME boundary logs, Host `Key injected:` or
+acknowledgement/CGEvent logs, modifier press/release and cleanup proof, or
+visible Mac-side result are missing.
 
 ### Short Host memory regression gate
 

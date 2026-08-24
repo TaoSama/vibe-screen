@@ -260,6 +260,16 @@ negotiation and the host log line for the received event.
 | physical stylus | Android stylus source/tool kind plus pressure/tilt/barrel/hover fields as applicable, negotiated stylus capability, host tablet event construction, and drawing-app result |
 | physical controller | Android controller mapping/state, production forwarding through `MainActivity` and `StreamClient`, and Protocol v1 envelope encoding are offline-tested. Runtime acceptance still requires a named physical controller, Android `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` logs, negotiated controller capability, a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability from an entitled Host, visible Mac-side controller response, and neutral release on disconnect |
 
+The dedicated [hardware keyboard workflow acceptance](hardware-keyboard-workflow.md)
+runbook owns the Phase 2 keyboard gate. A pass requires a real Android-attached
+hardware keyboard, the production `MainActivity` / `StreamClient` forwarding
+path, Protocol v1 keyboard and USB HID modifier-byte capability negotiation, an
+active selected-display stream, foreground/focus and IME-boundary evidence, Host
+listener plus stable signed/TCC readiness, retained Host `Key injected:` or
+CGEvent acknowledgement logs, key and modifier press/release proof, shortcut
+behavior, modifier cleanup, and a visible Mac-side result. ADB key injection and
+offline mapper tests are readiness only.
+
 Native pointer move/click cannot be closed with `adb shell input tap/swipe`:
 those commands synthesize touchscreen contact, not HID hover or mouse-button
 events. They may support touch and mapper regression notes, but the native
