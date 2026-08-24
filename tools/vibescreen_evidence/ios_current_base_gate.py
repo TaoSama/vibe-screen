@@ -26,6 +26,7 @@ HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 PASS_STATUSES = {"pass", "passed", "passed-offline"}
 OPEN_STATUSES = {"open", "blocked", "blocked-readiness", "not-evidence"}
 DEVICE_ROLES = {"iphone", "ipad"}
+HDR_OWNER_EVIDENCE_MARKERS = ("ios-hdr-edr-gate", "can_close_ios_hdr_output_gate=true")
 REQUIRED_SIGNING_FIELDS = {
     "status",
     "bundle_id",
@@ -88,6 +89,12 @@ def _status_open(value: Any) -> bool:
 def _evidence_present(record: dict[str, Any]) -> bool:
     evidence = record.get("evidence", [])
     return isinstance(evidence, list) and any(_non_empty_string(item) for item in evidence)
+
+
+def _hdr_owner_evidence_present(record: dict[str, Any]) -> bool:
+    evidence = _string_list(record.get("evidence"))
+    joined = "\n".join(evidence)
+    return all(marker in joined for marker in HDR_OWNER_EVIDENCE_MARKERS)
 
 
 def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, blocking: bool = False) -> dict[str, Any]:
@@ -343,8 +350,11 @@ def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], d
         )
     for name, requirement in BROADER_GATES.items():
         record = gates.get(name) if isinstance(gates.get(name), dict) else {}
+        has_required_evidence = _evidence_present(record)
+        if name == "hdr_output":
+            has_required_evidence = _hdr_owner_evidence_present(record)
         broader[name] = _check(
-            _status_pass(record.get("status")) and _evidence_present(record),
+            _status_pass(record.get("status")) and has_required_evidence,
             requirement,
             evidence=_string_list(record.get("evidence")),
             blocking=False,

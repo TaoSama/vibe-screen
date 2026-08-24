@@ -222,13 +222,29 @@ secure-record evidence. Simulator UI, unsigned archives, MacHost loopback,
 Android device evidence, and plaintext legacy fallback are readiness inputs
 only.
 
+The HDR output row now has its own fail-closed current-base verifier:
+
+```bash
+make ios-hdr-edr-gate EVIDENCE_DIR=.build/evidence/ios-hdr-edr
+```
+
+With no retained physical iOS HDR/EDR observations, the expected verdict is
+`blocked` and `can_close_ios_hdr_output_gate=false`. A pass requires physical
+iPhone/iPad HDR-capable display identity, measured EDR/HDR display capability,
+`CAPABILITY_HDR_VIDEO` negotiation, an accepted HDR config rather than SDR
+fallback, 10-bit PQ/HLG VideoToolbox output metadata, renderer-layer EDR
+enablement, visible HDR/EDR output diagnostics, same-revision SDR peer fallback,
+and retained artifacts. Simulator, unsigned archive, Android, SDR fallback,
+protocol-only, and macOS fallback evidence returns `fail` if it is used as an
+HDR claim.
+
 | Gate | Current-base state | Evidence boundary |
 | --- | --- | --- |
 | signing | blocked-readiness | Requires a signed archive, a unique bundle ID, a certificate, and a provisioning profile. |
 | VideoToolbox H.264/HEVC | open | Implementation and CI build evidence exist; hardware decode requires iPhone and iPad records. |
 | advanced adapters | open | Client/core and Mac/Android slices are offline-tested; host/product E2E remains separate. |
 | AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
-| HDR | open | SDR fallback is offline-tested; HDR/EDR output is not recorded. |
+| HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
 | trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |

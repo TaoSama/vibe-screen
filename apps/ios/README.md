@@ -187,7 +187,9 @@ currently no key migration step.
   Mac/Android Internet product-session audio/bulk end-to-end behavior.
 - The renderer does not advertise HDR output. HDR10/PQ/Main10 requests are
   explicitly rejected with an 8-bit BT.709 SDR fallback at a newer
-  `config_epoch`; color is never changed silently.
+  `config_epoch`; color is never changed silently. Use `make ios-hdr-edr-gate`
+  with retained physical-device HDR/EDR observations before reporting any future
+  iOS HDR output pass.
 - Gesture definitions remain local. Only action IDs from a negotiated host
   catalog may be invoked.
 

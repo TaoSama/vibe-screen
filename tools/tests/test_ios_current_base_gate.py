@@ -89,6 +89,11 @@ def complete_manifest(root: Path) -> dict[str, object]:
         assert isinstance(gate, dict)
         gate["status"] = "pass"
         gate["evidence"] = [f"{name}.json"]
+    hdr_gate = gates["hdr_output"]
+    assert isinstance(hdr_gate, dict)
+    hdr_gate["evidence"] = [
+        "ios-hdr-edr-gate.json verdict=pass can_close_ios_hdr_output_gate=true"
+    ]
     return manifest
 
 
@@ -148,6 +153,25 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                 assert isinstance(gate, dict)
                 gate["status"] = "open"
                 gate["evidence"] = []
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(report["can_close_ios_device_acceptance"])
+        self.assertFalse(report["can_close_current_base_aggregate"])
+        self.assertIn("insufficient: hdr_output", report["reasons"])
+
+    def test_hdr_output_requires_dedicated_owner_gate_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            hdr_gate = gates["hdr_output"]
+            assert isinstance(hdr_gate, dict)
+            hdr_gate["status"] = "pass"
+            hdr_gate["evidence"] = ["hdr-output.json"]
             manifest_path = write_manifest(root, manifest)
 
             report = derive_gate(manifest_path)

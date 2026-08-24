@@ -79,6 +79,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
                 "#282",
             },
         )
+        self.assertIn("docs/runbook/hdr-color-acceptance.md", manifest["source_docs"])
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
