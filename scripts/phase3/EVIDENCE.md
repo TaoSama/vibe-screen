@@ -6,6 +6,8 @@ passes. Run all Python checks from the repository root:
 ```bash
 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 python3 scripts/phase3/network_profile.py --profile handoff --output /tmp/vibe-screen-phase3/handoff.json
+python3 scripts/phase3/network_profile.py --profile bandwidth-step --output /tmp/vibe-screen-phase3/bandwidth-step.json
+python3 scripts/phase3/network_profile.py --profile relay-loss --output /tmp/vibe-screen-phase3/relay-loss.json
 python3 scripts/phase3/security_vectors.py --output /tmp/vibe-screen-phase3/security-model.json
 python3 scripts/phase3/public_nat_turn_preflight.py \
   --relay-config deploy/phase3/config/relay.production.example.json \
@@ -61,6 +63,13 @@ python3 scripts/phase3/android_internet_acceptance.py \
   --host-input-pattern 'phase3_input_injected session_epoch=[0-9]+ input_id=[0-9]+' \
   --reconnect-pattern 'VibeInternet.*active.*epoch=[0-9]+' \
   --session-epoch-pattern 'epoch=(?P<epoch>[0-9]+)' \
+  --fresh-session-pattern 'fresh.*session|replacement.*session' \
+  --ice-restart-pattern 'ICE.*restart|fresh.*session' \
+  --old-session-closed-pattern 'old.*session.*closed|owner.*invalidated' \
+  --stale-epoch-rejected-pattern 'stale.*epoch.*rejected|old.*epoch.*rejected' \
+  --network-topology public-internet-controlled-router \
+  --route mixed \
+  --impairment-profile wifi-cellular-handoff-direct-relay \
   --evidence /tmp/vibe-screen-phase3/android.json
 ```
 
@@ -93,6 +102,20 @@ and network-ID handoff without root. It is not evidence for kernel-level packet
 shaping. Any later `pf`, Network Link Conditioner, or remote Linux `tc` driver
 must default to dry-run, require an explicit interface/target, and restore the
 previous state in a `finally`/trap path.
+
+When the shared Android device lease, signed Host permissions, public Internet
+path, remote TURN deployment, controlled impairment router, or two-hour soak
+window is unavailable, write a blocked package instead of probing the device:
+
+```bash
+python3 scripts/phase3/network_recovery_blocked_evidence.py \
+  --output-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked
+```
+
+The generated `release-gate-manifest.json` is expected to fail
+`scripts/phase3/release_gate_manifest.py`. It documents why the run did not
+start and cannot close public Internet, remote TURN, handoff, real media,
+latency, or soak gates.
 
 ## Security coverage boundary
 

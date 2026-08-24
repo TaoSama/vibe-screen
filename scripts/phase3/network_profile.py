@@ -76,6 +76,10 @@ class Packet:
 
 @dataclass
 class SimulationResult:
+    evidence_scope: str
+    evidence_limitations: list[str]
+    segments: list[dict[str, Any]]
+    route_sequence: list[str]
     seed: int
     duration_ms: int
     control_sent: int
@@ -95,11 +99,22 @@ class SimulationResult:
 
 DEFAULT_PROFILES: dict[str, list[Segment]] = {
     "healthy": [Segment("healthy", 10_000, 35, 5, 0.2, 20_000, "wifi")],
+    "moderate": [Segment("moderate", 10_000, 100, 25, 2.0, 10_000, "wifi")],
     "weak": [Segment("weak", 10_000, 160, 60, 12.0, 2_000, "wifi")],
+    "bandwidth-step": [
+        Segment("wifi-high", 3_000, 35, 5, 0.5, 20_000, "wifi"),
+        Segment("wifi-constrained", 3_000, 100, 35, 4.0, 3_000, "wifi"),
+        Segment("wifi-recovered", 4_000, 70, 15, 1.0, 12_000, "wifi"),
+    ],
     "handoff": [
         Segment("wifi", 3_000, 40, 8, 0.5, 15_000, "wifi"),
         Segment("handoff-gap", 1_000, 350, 150, 45.0, 500, "transition"),
         Segment("cellular", 6_000, 95, 25, 3.0, 6_000, "cellular"),
+    ],
+    "relay-loss": [
+        Segment("relay-healthy", 3_000, 80, 15, 0.5, 12_000, "relay"),
+        Segment("relay-loss", 2_000, 450, 200, 70.0, 500, "relay-outage"),
+        Segment("relay-recovered", 5_000, 120, 30, 2.0, 8_000, "relay"),
     ],
 }
 
@@ -220,7 +235,21 @@ def simulate(
     while len(ordered_control) in control_deliveries:
         ordered_control.append(len(ordered_control))
     delivered_media = [sequence for _, sequence in sorted(media_deliveries)]
+    route_sequence = [segments[0].network_id]
+    for segment in segments[1:]:
+        if segment.network_id != route_sequence[-1]:
+            route_sequence.append(segment.network_id)
     return SimulationResult(
+        evidence_scope="deterministic_contract_simulation_only",
+        evidence_limitations=[
+            "not_os_level_packet_impairment",
+            "not_public_internet_path",
+            "not_webrtc_ice_or_turn_evidence",
+            "not_android_device_or_screen_capture_evidence",
+            "not_soak_or_latency_gate_evidence",
+        ],
+        segments=[asdict(segment) for segment in segments],
+        route_sequence=route_sequence,
         seed=seed,
         duration_ms=duration_ms,
         control_sent=len(control_packets),
