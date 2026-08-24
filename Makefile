@@ -194,6 +194,12 @@ phase3-adaptive-media-current-base:
 		--repo . \
 		--output "$(PHASE3_ADAPTIVE_MEDIA_CURRENT_BASE_JSON)"
 
+phase3-internet-release-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_internet_release_gate \
+		--evidence-dir "$(EVIDENCE_DIR)"
+
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
 

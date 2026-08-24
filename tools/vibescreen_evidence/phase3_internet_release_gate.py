@@ -9,6 +9,7 @@ release evidence.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import math
 import re
@@ -71,6 +72,7 @@ REQUIRED_RAW_ARTIFACTS = (
     "soak-2h/exact-window-report.json",
     "host.log",
     "raw-logcat.txt",
+    "datachannel-record-layer.json",
 )
 
 BUILD_SIGNING_PATTERNS = (
@@ -102,6 +104,58 @@ REQUIRED_SESSION_FIELDS = (
     "packet_capture_confidentiality",
     "no_synthetic_media",
 )
+
+REQUIRED_SESSION_FALSE_FIELDS = (
+    "usb_transport",
+    "trusted_lan_only",
+    "private_network_only",
+    "same_private_network",
+    "loopback",
+    "synthetic_loopback",
+    "synthetic_peer",
+    "forced_local_coturn",
+    "plaintext_fallback",
+)
+
+DATACHANNEL_CHANNELS: dict[str, dict[str, Any]] = {
+    "control": {"label": "vibescreen.control.v1", "ordered": True, "reliable": True},
+    "media": {"label": "vibescreen.media.v1", "ordered": False, "max_retransmits": 0},
+    "audio": {
+        "label": "vibescreen.audio.v1",
+        "ordered": False,
+        "max_retransmits": 0,
+        "capability_gated": True,
+        "product_flow_implemented": False,
+        "phase3_scope": "transport_boundary_only",
+    },
+    "bulk": {
+        "label": "vibescreen.bulk.v1",
+        "ordered": True,
+        "reliable": True,
+        "capability_gated": True,
+        "product_flow_implemented": False,
+        "phase3_scope": "transport_boundary_only",
+    },
+}
+
+DATACHANNEL_RECORD_TRUE_FIELDS = (
+    "header_as_aad",
+    "session_epoch_bound",
+    "key_epoch_bound",
+    "directional_key_separation",
+    "channel_key_separation",
+    "replay_protection",
+    "wrong_channel_rejected",
+    "packet_capture_no_plaintext",
+)
+
+DATACHANNEL_PRODUCT_FLOWS = (
+    "audio_capture_playback",
+    "clipboard_sync",
+    "file_transfer",
+)
+
+LOCAL_HOSTNAMES = {"localhost", "localhost.localdomain"}
 
 STATUS_GATE_REQUIREMENTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "network_handoff": (
@@ -272,6 +326,26 @@ def _is_redacted(value: str | None) -> bool:
     return value is None or value.strip().lower() in {"[redacted]", "redacted", "<redacted>"}
 
 
+def _is_public_hostname_or_ip(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = value.strip().lower().rstrip(".")
+    if not normalized or normalized in LOCAL_HOSTNAMES or normalized.endswith(".local"):
+        return False
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return True
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
 def _device_record(document: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(document, dict):
         return {}
@@ -370,6 +444,9 @@ def _session_manifest_gate(manifest: dict[str, Any] | None) -> dict[str, Any]:
     for field in REQUIRED_SESSION_FIELDS:
         if session.get(field) is not True:
             reasons.append(f"session.{field} must be true for Phase 3 release evidence")
+    for field in REQUIRED_SESSION_FALSE_FIELDS:
+        if session.get(field) is not False:
+            reasons.append(f"session.{field} must be false for Phase 3 public Internet evidence")
     if session.get("network_scope") != "public_internet":
         reasons.append("session.network_scope must be public_internet")
     if session.get("turn_scope") != "deployed_remote_turn":
@@ -395,6 +472,130 @@ def _session_manifest_gate(manifest: dict[str, Any] | None) -> dict[str, Any]:
         "public_internet_session_manifest",
         PASS if not reasons else BLOCKED,
         evidence=evidence,
+        reasons=reasons,
+    )
+
+
+def _datachannel_record_layer_gate(root: Path, path: Path | None) -> dict[str, Any]:
+    document, error = _read_optional_json(path, "DataChannel record-layer evidence")
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate(
+            "webrtc_datachannel_record_layer",
+            BLOCKED,
+            evidence=[item for item in evidence if item],
+            reasons=[error],
+        )
+    reasons: list[str] = []
+    if (document or {}).get("schema_version") != SCHEMA_VERSION:
+        reasons.append(f"datachannel schema_version must be {SCHEMA_VERSION}")
+    if (document or {}).get("kind") != "phase3_datachannel_record_layer_evidence":
+        reasons.append("datachannel kind must be phase3_datachannel_record_layer_evidence")
+    if _status_from_json(document) != PASS:
+        reasons.append("datachannel record-layer status must be pass")
+    if (document or {}).get("network_scope") != "public_internet":
+        reasons.append("datachannel network_scope must be public_internet")
+    if (document or {}).get("turn_scope") != "deployed_remote_turn":
+        reasons.append("datachannel turn_scope must be deployed_remote_turn")
+    if (document or {}).get("synthetic_media") is not False:
+        reasons.append("datachannel synthetic_media must be false")
+    for field in REQUIRED_SESSION_FALSE_FIELDS:
+        if (document or {}).get(field) is not False:
+            reasons.append(f"datachannel {field} must be false")
+
+    adapter = (document or {}).get("webrtc_adapter")
+    if not isinstance(adapter, dict):
+        reasons.append("datachannel webrtc_adapter is required")
+        adapter = {}
+    if adapter.get("fake_engine") is not False:
+        reasons.append("datachannel webrtc_adapter.fake_engine must be false")
+    if adapter.get("synthetic_loopback") is not False:
+        reasons.append("datachannel webrtc_adapter.synthetic_loopback must be false")
+
+    record_layer = (document or {}).get("record_layer")
+    if not isinstance(record_layer, dict):
+        reasons.append("datachannel record_layer is required")
+        record_layer = {}
+    if record_layer.get("algorithm") != "AES-256-GCM":
+        reasons.append("datachannel record_layer.algorithm must be AES-256-GCM")
+    for field in DATACHANNEL_RECORD_TRUE_FIELDS:
+        if record_layer.get(field) is not True:
+            reasons.append(f"datachannel record_layer.{field} must be true")
+    if record_layer.get("nonce_reuse_detected") is not False:
+        reasons.append("datachannel record_layer.nonce_reuse_detected must be false")
+    if record_layer.get("plaintext_fallback") is not False:
+        reasons.append("datachannel record_layer.plaintext_fallback must be false")
+
+    routes = (document or {}).get("routes")
+    if not isinstance(routes, dict):
+        reasons.append("datachannel routes must be an object")
+        routes = {}
+    for route, expected in (("direct", "direct"), ("relay", "relay")):
+        route_record = routes.get(route)
+        if not isinstance(route_record, dict):
+            reasons.append(f"datachannel routes.{route} is required")
+            continue
+        if route_record.get("route") != expected:
+            reasons.append(f"datachannel routes.{route}.route must be {expected}")
+        if route_record.get("public_internet_path") is not True:
+            reasons.append(f"datachannel routes.{route}.public_internet_path must be true")
+        for field in (
+            "same_private_network",
+            "loopback",
+            "synthetic_peer",
+            "usb_adb_reverse",
+            "trusted_lan_only",
+        ):
+            if route_record.get(field) is not False:
+                reasons.append(f"datachannel routes.{route}.{field} must be false")
+        if route == "relay":
+            if route_record.get("forced_local_coturn") is not False:
+                reasons.append("datachannel routes.relay.forced_local_coturn must be false")
+            turn = route_record.get("turn_deployment")
+            if not isinstance(turn, dict):
+                reasons.append("datachannel routes.relay.turn_deployment is required")
+            else:
+                for field in ("provider", "region"):
+                    if _string_or_none(turn.get(field)) is None:
+                        reasons.append(f"datachannel routes.relay.turn_deployment.{field} is required")
+                if not _is_public_hostname_or_ip(_string_or_none(turn.get("public_hostname"))):
+                    reasons.append("datachannel routes.relay.turn_deployment.public_hostname must be public")
+                if not _is_public_hostname_or_ip(_string_or_none(turn.get("resolved_ip"))):
+                    reasons.append("datachannel routes.relay.turn_deployment.resolved_ip must be public")
+
+    channels = (document or {}).get("channels")
+    if not isinstance(channels, dict):
+        reasons.append("datachannel channels must be an object")
+        channels = {}
+    for name, expected in DATACHANNEL_CHANNELS.items():
+        channel = channels.get(name)
+        if not isinstance(channel, dict):
+            reasons.append(f"datachannel channels.{name} is required")
+            continue
+        for field, expected_value in expected.items():
+            if channel.get(field) != expected_value:
+                reasons.append(f"datachannel channels.{name}.{field} must be {expected_value!r}")
+        if channel.get("application_records_observed") is not True:
+            reasons.append(f"datachannel channels.{name}.application_records_observed must be true")
+
+    flows = (document or {}).get("product_flows")
+    if not isinstance(flows, dict):
+        reasons.append("datachannel product_flows must be an object")
+        flows = {}
+    for flow in DATACHANNEL_PRODUCT_FLOWS:
+        if flows.get(flow) != "not_claimed":
+            reasons.append(f"datachannel product_flows.{flow} must be not_claimed for transport-boundary evidence")
+
+    raw_sources = (document or {}).get("raw_sources")
+    if not isinstance(raw_sources, list) or not raw_sources:
+        reasons.append("datachannel raw_sources must list source logs or captures")
+    elif any(not isinstance(item, str) or not item.strip() for item in raw_sources):
+        reasons.append("datachannel raw_sources must contain non-empty strings")
+
+    return _gate(
+        "webrtc_datachannel_record_layer",
+        PASS if not reasons else BLOCKED,
+        evidence=[item for item in evidence if item],
         reasons=reasons,
     )
 
@@ -483,6 +684,7 @@ def _raw_artifacts_gate(root: Path) -> dict[str, Any]:
             and record.get("selected_candidate_pair") is not None
             and record.get("no_plaintext_fallback") is True
             and record.get("no_synthetic_media") is True
+            and all(record.get(field) is False for field in REQUIRED_SESSION_FALSE_FIELDS)
         ]
         if not matching_records:
             reasons.append(
@@ -807,6 +1009,7 @@ def derive_gate(
         _session_manifest_gate(manifest),
         _device_identity_gate(root, manifest, device_info),
         _raw_artifacts_gate(root),
+        _datachannel_record_layer_gate(root, root / "datachannel-record-layer.json"),
         _latency_gate(root, "direct", direct_latency or root / "latency/direct/latency-evidence.json"),
         _latency_gate(root, "relay", relay_latency or root / "latency/relay/latency-evidence.json"),
         _real_media_gate(root, real_media or root / "real-media-continuity.json"),
@@ -863,9 +1066,13 @@ def derive_gate(
             "a deployed remote TURN route, real ScreenCaptureKit or CGDisplayStream frames "
             "decoded by Android MediaCodec, external-camera latency evidence for direct and "
             "relay routes, network handoff, cross-service revocation, packet-capture "
-            "confidentiality, and a two-hour mixed-route soak. Local loopback, forced local "
-            "coturn, synthetic media, missing raw samples, or blocked attempts cannot close "
-            "the Phase 3 release gate."
+            "confidentiality, a four-channel AES-256-GCM DataChannel record-layer "
+            "contract, and a two-hour mixed-route soak. The DataChannel record-layer "
+            "contract is transport-boundary evidence only: audio capture/playback, "
+            "clipboard sync, and file-transfer product flows must remain not_claimed "
+            "until real public Internet product evidence exists. Local loopback, USB, "
+            "trusted LAN, forced local coturn, synthetic peers, synthetic media, missing "
+            "raw samples, or blocked attempts cannot close the Phase 3 release gate."
         ),
     }
 
