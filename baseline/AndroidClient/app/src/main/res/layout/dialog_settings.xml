@@ -21,7 +21,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/settings_content_padding">
+        android:paddingStart="@dimen/settings_content_padding"
+        android:paddingTop="@dimen/settings_content_padding_top"
+        android:paddingEnd="@dimen/settings_content_padding"
+        android:paddingBottom="@dimen/settings_content_padding_bottom">
 
         <!-- Header -->
         <TextView
@@ -32,7 +35,7 @@
             android:textSize="28sp"
             android:textStyle="bold"
             android:gravity="center"
-            android:layout_marginBottom="32dp" />
+            android:layout_marginBottom="@dimen/settings_header_margin_bottom" />
 
         <LinearLayout
             android:id="@+id/settingsAdaptiveColumns"
@@ -54,8 +57,8 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/settings_item_bg"
-                    android:padding="16dp"
-                    android:layout_marginBottom="16dp">
+                    android:padding="@dimen/settings_section_padding"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -91,10 +94,10 @@
                     android:id="@+id/deviceHealthSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom"
                     android:background="@drawable/settings_item_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="@dimen/settings_section_padding">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -129,10 +132,10 @@
                     android:id="@+id/viewportSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom"
                     android:background="@drawable/settings_item_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="@dimen/settings_section_padding">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -261,8 +264,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -351,7 +354,7 @@
                 android:text="@string/video_frame_rate_label"
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
                 android:layout_marginBottom="8dp" />
 
             <com.google.android.material.button.MaterialButtonToggleGroup
@@ -396,7 +399,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
                 android:baselineAligned="false">
 
                 <TextView
@@ -447,8 +450,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -519,7 +522,7 @@
                 android:text="@string/gesture_swipe_down_label"
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
                 android:layout_marginBottom="8dp" />
 
             <com.google.android.material.button.MaterialButtonToggleGroup
@@ -577,8 +580,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:id="@+id/opacityLabel"
@@ -620,8 +623,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:layout_width="wrap_content"

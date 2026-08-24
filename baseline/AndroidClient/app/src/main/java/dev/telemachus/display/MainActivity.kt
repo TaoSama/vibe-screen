@@ -2142,6 +2142,7 @@ class MainActivity : AppCompatActivity() {
         val displays = availableDisplays
         val popup = PopupMenu(this, binding.displayCapsuleGroup)
         val menu = popup.menu
+        var displayMenuShownAtMs = -1L
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
             val kindTag =
@@ -2166,6 +2167,15 @@ class MainActivity : AppCompatActivity() {
             item.isChecked = option.id == selectedDisplayId
         }
         popup.setOnMenuItemClickListener { item ->
+            if (!DisplayMenuSelectionGuard.acceptsSelection(
+                    menuShownAtMs = displayMenuShownAtMs,
+                    nowMs = SystemClock.uptimeMillis(),
+                    armDelayMs = DISPLAY_MENU_SELECTION_GUARD_MS,
+                )
+            ) {
+                mainDiag("capsule ignored immediate display menu selection item=${item.itemId}")
+                return@setOnMenuItemClickListener true
+            }
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
             if (option.id != selectedDisplayId) {
                 mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
@@ -2187,7 +2197,9 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        showControlPopupMenu(popup, binding.displayCapsuleGroup)
+        showDisplayPopupMenu(popup, binding.displayCapsuleGroup) { shownAtMs ->
+            displayMenuShownAtMs = shownAtMs
+        }
     }
 
     /**
@@ -2913,6 +2925,21 @@ class MainActivity : AppCompatActivity() {
     private fun showControlPopupMenu(popup: PopupMenu, anchor: View) {
         popup.gravity = Gravity.END
         anchor.post { popup.show() }
+    }
+
+    private fun showDisplayPopupMenu(
+        popup: PopupMenu,
+        anchor: View,
+        onShown: (Long) -> Unit,
+    ) {
+        popup.gravity = Gravity.END
+        anchor.postDelayed(
+            {
+                popup.show()
+                onShown(SystemClock.uptimeMillis())
+            },
+            DISPLAY_MENU_SHOW_DELAY_MS,
+        )
     }
 
     private fun requestHostAction(option: HostActionOption, label: String) {
@@ -6437,6 +6464,8 @@ class MainActivity : AppCompatActivity() {
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val DISPLAY_MENU_SHOW_DELAY_MS = 120L
+        private const val DISPLAY_MENU_SELECTION_GUARD_MS = 300L
 
         // Uniform breathing gap, in dp, added on top of the safe-area insets for
         // floating chrome (control bar, settings panel, settings button) and the

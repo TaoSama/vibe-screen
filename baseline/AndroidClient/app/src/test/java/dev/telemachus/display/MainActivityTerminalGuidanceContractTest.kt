@@ -348,11 +348,19 @@ class MainActivityTerminalGuidanceContractTest {
             "The display menu must not anchor to the small icon inside the selector",
             displaysMenu.contains("PopupMenu(this, binding.controlDisplaysButton)"),
         )
-        assertTrue(displaysMenu.contains("showControlPopupMenu(popup, binding.displayCapsuleGroup)"))
+        assertTrue(displaysMenu.contains("showDisplayPopupMenu(popup, binding.displayCapsuleGroup)"))
+        assertTrue(displaysMenu.contains("DisplayMenuSelectionGuard.acceptsSelection"))
+        assertTrue(displaysMenu.contains("DISPLAY_MENU_SELECTION_GUARD_MS"))
+        assertFalse(displaysMenu.contains("showControlPopupMenu(popup, binding.displayCapsuleGroup)"))
         assertTrue(hostActionsMenu.contains("showControlPopupMenu(popup, binding.controlHostActionsButton)"))
         assertTrue(clipboardMenu.contains("showControlPopupMenu(popup, binding.controlClipboardButton)"))
         assertTrue(compactPresenter.contains("popup.gravity=Gravity.END"))
         assertTrue(compactPresenter.contains("anchor.post{popup.show()}"))
+
+        val displayPopupPresenter = extractMethod(source, "private fun showDisplayPopupMenu")
+        val compactDisplayPresenter = displayPopupPresenter.replace(Regex("\\s+"), "")
+        assertTrue(compactDisplayPresenter.contains("popup.show()onShown(SystemClock.uptimeMillis())"))
+        assertTrue(compactDisplayPresenter.contains("DISPLAY_MENU_SHOW_DELAY_MS"))
     }
 
     @Test
