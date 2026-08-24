@@ -1,0 +1,2 @@
+  PID  PPID COMM             ARGS
+22385     1 /Applications/Vi /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen

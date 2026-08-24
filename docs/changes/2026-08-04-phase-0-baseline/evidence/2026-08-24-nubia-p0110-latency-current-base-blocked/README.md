@@ -2,7 +2,7 @@
 
 This record refreshes the README Phase 1 USB/LAN glass-to-glass and input P95
 latency gates on origin/main commit
-`34b75ac7d945dfa6697ff311fd0a821fb75532ef`. It uses the connected Android
+`942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0`. It uses the connected Android
 acceptance substitute recorded as `nubia-p0110-pacific-device-1`.
 
 ## Verdict
@@ -43,15 +43,20 @@ The connected Android device reported:
 - Evidence device id: `nubia-p0110-pacific-device-1`
 
 The live ADB checks used the required explicit serial form
-`adb -s EP0110PZ0B9110300B ...`. Committed machine-readable artifacts redact the
-raw ADB serial to the stable evidence id above. This record is Nubia
-P0110/pacific evidence and must not be relabeled as Xiaomi 13/fuxi evidence.
+`adb -s <device-serial> ...`; committed command transcripts and
+machine-readable artifacts redact the raw ADB serial to either that placeholder
+or the stable evidence id above. This record is Nubia P0110/pacific evidence and
+must not be relabeled as Xiaomi 13/fuxi evidence.
 
 ## Blockers
 
 - USB glass-to-glass: no Host/build identity for a measured run, no external
-  camera timebase, no raw camera recording, no annotated samples, no formal
-  manifest, and no USB connection/active stream artifact.
+  camera timebase, no raw camera recording, no annotated samples, and no formal
+  manifest. A later read-only live USB observation in this directory saw Host
+  loopback listening, ADB reverse, foreground Android app state, and app-private
+  Protocol v1/HEVC decode context, but the formal USB live-smoke helper still
+  returned `insufficient` because current-process logcat did not contain the
+  required telemetry and decoder evidence.
 - LAN glass-to-glass: no Host/build identity for a measured run, no external
   camera timebase, no raw camera recording, no annotated samples, no formal
   manifest, and no LAN/active stream artifact.
@@ -69,10 +74,25 @@ P0110/pacific evidence and must not be relabeled as Xiaomi 13/fuxi evidence.
 - `latency-preflight.json`: machine-readable blocked preflight report generated
   by `make evidence-latency-preflight`.
 - `latency-preflight-exit.txt`: captured target exit status, `2`.
+- `live-usb-observation-summary.json`: read-only follow-up observation from the
+  already-running USB window. It records Host listener, ADB reverse, foreground
+  Android app, and diagnostic decode context, but keeps every README latency
+  gate closed.
+- `usb-live-smoke-wide.json` and `usb-live-smoke-wide.exit`: read-only USB
+  smoke helper attempt with a wider log window. It exited `1` with verdict
+  `insufficient`; its machine-readable serial fields are redacted to the
+  evidence device id.
+- `host-process.txt`, `host-listener.txt`, `host-app-sha256.txt`,
+  `host-app-codesign.txt`, `adb-reverse.txt`, and `android-pid.txt`:
+  read-only Host and Android process/transport observations.
+- `android-diag-wide.txt` and `android-logcat-current-pid-decoder.txt`: context
+  logs showing Protocol v1 upgrade / HEVC decoder activity from the live app.
+  These are diagnostic only and are not latency evidence.
 - `commands.txt`: commands run during this preflight and their outcomes.
 
 ## Boundary
 
 This record is a preflight/blocker record only. It proves the Android target was
-reachable and records exactly why the latency gates remain open; it does not
-measure USB glass-to-glass, LAN glass-to-glass, or input latency.
+reachable, records a limited live USB transport observation, and records exactly
+why the latency gates remain open; it does not measure USB glass-to-glass, LAN
+glass-to-glass, or input latency.

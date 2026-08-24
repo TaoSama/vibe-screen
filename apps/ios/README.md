@@ -24,10 +24,11 @@ secure-record LAN, or advanced-host evidence.
   technical design;
 - an Apple development team and a unique bundle identifier for device signing.
 
-The package pins `swift-protobuf` to immutable revision
-`c6fe6442e6a64250495669325044052e113e990c`. The first build therefore needs
-network access unless the Swift Package cache is already populated. The full
-Apache-2.0 license with runtime-library exception is retained at
+The package requires exact `swift-protobuf` version `1.32.0`, which Swift
+Package Manager resolves to immutable revision
+`c6fe6442e6a64250495669325044052e113e990c` in `Package.resolved`. The first
+build therefore needs network access unless the Swift Package cache is already
+populated. The full Apache-2.0 license with runtime-library exception is retained at
 `ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt` and included in the application
 Resources build phase.
 

@@ -44,6 +44,6 @@
   ],
   "notes": [
     "Nubia P0110/pacific/Android 16 device identity was collected with the required explicit ADB serial documented in commands.txt and committed under a stable evidence id.",
-    "No external-camera recording, annotated latency samples, synchronized-clock proof, physical input actuation record, or transport-specific active-stream artifact is available in this run."
+    "No external-camera recording, annotated latency samples, synchronized-clock proof, physical input actuation record, or formal profile-specific transport artifact is available in this run. A separate read-only live USB observation was captured as diagnostic context only."
   ]
 }

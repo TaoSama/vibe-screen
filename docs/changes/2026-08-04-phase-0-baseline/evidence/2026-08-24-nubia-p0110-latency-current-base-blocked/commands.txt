@@ -7,7 +7,7 @@ Repository/context checks:
 Outcome:
 
   origin/main advanced during the task and the final current-base preflight was
-  regenerated against 34b75ac7d945dfa6697ff311fd0a821fb75532ef. The local
+  regenerated against 942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0. The local
   codex/latency-current-base-preflight branch was kept as the successor branch.
 
 PR context checked with GitHub CLI during the task:
@@ -28,18 +28,18 @@ PR context checked with GitHub CLI during the task:
 
 Android device lock and read-only identity preflight:
 
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+  adb -s <device-serial> shell getprop ro.product.manufacturer
+  adb -s <device-serial> shell getprop ro.product.model
+  adb -s <device-serial> shell getprop ro.product.device
+  adb -s <device-serial> shell getprop ro.build.version.release
+  adb -s <device-serial> shell getprop ro.build.version.sdk
 
 Outcome:
 
   The device reported nubia / P0110 / pacific / Android 16 / SDK 36.
 
   PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info \
-    --serial EP0110PZ0B9110300B \
+    --serial <device-serial> \
     --no-connect \
     --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-24-nubia-p0110-latency-current-base-blocked/device-info.json
 
@@ -56,7 +56,7 @@ Fail-closed latency preflight generation:
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-24-nubia-p0110-latency-current-base-blocked
   LATENCY_DEVICE_INFO="$EVIDENCE_DIR/device-info.json" \
   LATENCY_PREFLIGHT_INPUT="$EVIDENCE_DIR/preflight-input.json" \
-  LATENCY_REPOSITORY_REVISION=34b75ac7d945dfa6697ff311fd0a821fb75532ef \
+  LATENCY_REPOSITORY_REVISION=942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0 \
   make evidence-latency-preflight EVIDENCE_DIR="$EVIDENCE_DIR"
 
 Outcome:
@@ -64,6 +64,65 @@ Outcome:
   make exited 2 and wrote latency-preflight.json plus
   latency-preflight-exit.txt. Exit 2 is the expected blocked-readiness result
   when formal measurement artifacts are missing.
+
+Read-only live USB observation from the already-running app window:
+
+  test ! -e /tmp/vibe-screen-device-android.lock
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  lsof -nP -iTCP:54321 -sTCP:LISTEN
+  ps -p 22385 -o pid,ppid,comm,args
+  shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen
+  codesign -dv --verbose=4 /Applications/Vibe\ Screen.app
+  adb -s <device-serial> get-state
+  adb -s <device-serial> reverse --list
+  adb -s <device-serial> shell pidof dev.telemachus.display
+
+Outcome:
+
+  No shared Android device lock existed. `/Applications/Vibe Screen.app` PID
+  22385 was listening on 127.0.0.1:54321, ADB reverse contained
+  `UsbFfs tcp:54321 tcp:54321`, and the Android foreground app PID was 15457.
+  The Host executable SHA-256 was
+  c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996 and
+  `codesign` showed the development identity `Vibe Screen Dev` with no team
+  identifier; this is Host identity context, not stable release-signing
+  evidence.
+
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke \
+    --serial <device-serial> \
+    --allow-existing-device-lock \
+    --output "$EVIDENCE_DIR/usb-live-smoke.json"
+
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke \
+    --serial <device-serial> \
+    --allow-existing-device-lock \
+    --logcat-lines 12000 \
+    --max-log-bytes 1048576 \
+    --output "$EVIDENCE_DIR/usb-live-smoke-wide.json"
+
+Outcome:
+
+  Both helper runs exited 1 with verdict `insufficient`. They observed device
+  identity, ADB reverse, installed/running foreground app state, and app-private
+  diagnostic decoder context, but the helper's tag-filtered current-process
+  logcat source contained zero lines. The missing helper evidence was
+  current-process `VibeScreenTelemetry` stream_stats plus decoder setup/output
+  counters in that same logcat source.
+
+Additional diagnostic-only log reads:
+
+  adb -s <device-serial> logcat -d -v threadtime | \
+    rg '15457|VibeScreenTelemetry|setupDecoder|Decode stats|Output #|c2\.qti\.hevc|Protocol v1|First frame' | tail -160
+
+Outcome:
+
+  The unfiltered logcat excerpt captured current PID 15457 system MediaCodec
+  lines for `c2.qti.hevc.decoder` and app `VD` decoder-start lines. The
+  app-private diagnostic log captured `SC: Protocol v1 upgrade accepted`,
+  `SC: First frame`, `VD: setupDecoder: 1512x982, decoder=c2.qti.hevc.decoder`,
+  and 969 decode/output-latency samples ending at input 58140, output 58139,
+  dropped 0. These observations are USB transport/readiness context only; they
+  do not replace external-camera or synchronized-clock latency evidence.
 
 Verification run for this branch:
 

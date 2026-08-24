@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-24T10:26:53Z",
+  "checked_at": "2026-08-25T01:23:37Z",
   "claim_boundary": "This preflight is readiness evidence only. It cannot close USB, LAN, or input latency gates; only a passing formal latency evidence report with retained real measurement artifacts can do that.",
   "device": {
     "abi": "arm64-v8a",
@@ -165,9 +165,9 @@
   "kind": "latency_gate_preflight",
   "notes": [
     "Nubia P0110/pacific/Android 16 device identity was collected with the required explicit ADB serial documented in commands.txt and committed under a stable evidence id.",
-    "No external-camera recording, annotated latency samples, synchronized-clock proof, physical input actuation record, or transport-specific active-stream artifact is available in this run."
+    "No external-camera recording, annotated latency samples, synchronized-clock proof, physical input actuation record, or formal profile-specific transport artifact is available in this run. A separate read-only live USB observation was captured as diagnostic context only."
   ],
-  "repository_revision": "34b75ac7d945dfa6697ff311fd0a821fb75532ef",
+  "repository_revision": "942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0",
   "run_id": "2026-08-24-nubia-p0110-latency-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "status": "blocked"
