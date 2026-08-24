@@ -168,7 +168,7 @@
     "No high-frame-rate external-camera package, annotated latency samples, synchronized-clock proof, or physical input actuation package was available in this worktree session.",
     "PR #167 is merged into the current base and supplies synchronized-clock input tooling; PR #192 is draft/stale/conflicting and is not treated as a closure owner."
   ],
-  "repository_revision": "7247f313e24cc465c9ddd0b60e271b361d1f9d4a",
+  "repository_revision": "e9a8e447f4e8184ba0472def0d9d3c08888f907d",
   "run_id": "2026-08-22-nubia-p0110-latency-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "status": "blocked"
