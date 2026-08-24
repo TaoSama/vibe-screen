@@ -412,6 +412,27 @@ make host-rss-gate EVIDENCE_DIR=.build/evidence
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
+Before a short USB end-to-end smoke, use the fail-closed preflight to capture
+whether the required state already exists without changing the Host, ADB reverse
+mappings, TCC, Keychain, or Android app data:
+
+~~~sh
+make evidence-usb-smoke-preflight \
+  EVIDENCE_SERIAL=<P0110_USB_SERIAL> \
+  EVIDENCE_EXPECTED_MANUFACTURER=nubia \
+  EVIDENCE_EXPECTED_MODEL=P0110 \
+  EVIDENCE_EXPECTED_DEVICE=pacific \
+  EVIDENCE_EXPECTED_ANDROID_RELEASE=16 \
+  EVIDENCE_EXPECTED_SDK=36
+~~~
+
+The command writes usb-smoke-preflight.json and exits zero only when the device
+identity matches, no /tmp/vibe-screen-*.lock exists, adb reverse tcp:54321
+tcp:54321 is configured, the Android app is running in the foreground, the Mac
+Host is listening on TCP 54321, and the stable-signed Host preflight passes. A
+nonzero exit is a blocker record; it must not be reported as a USB stream,
+reconnect, input, latency, soak, or host RSS pass.
+
 ### USB live-stream smoke
 
 The read-only USB live-stream smoke collector inspects an already-running

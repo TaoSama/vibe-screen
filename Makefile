@@ -4,6 +4,11 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
+EVIDENCE_EXPECTED_MANUFACTURER ?=
+EVIDENCE_EXPECTED_MODEL ?=
+EVIDENCE_EXPECTED_DEVICE ?=
+EVIDENCE_EXPECTED_ANDROID_RELEASE ?=
+EVIDENCE_EXPECTED_SDK ?=
 EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
@@ -180,6 +185,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	require-host-pid \
 	evidence-device-info \
 	evidence-usb-live-smoke \
+	evidence-usb-smoke-preflight \
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
@@ -479,6 +485,19 @@ evidence-device-info: require-evidence-serial
 evidence-usb-live-smoke: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --port $(EVIDENCE_PORT) --output $(EVIDENCE_DIR)/usb-live-smoke.json
+
+evidence-usb-smoke-preflight: require-evidence-serial
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+		--serial $(EVIDENCE_SERIAL) \
+		--package $(EVIDENCE_PACKAGE) \
+		--port $(EVIDENCE_PORT) \
+		$(if $(strip $(EVIDENCE_EXPECTED_MANUFACTURER)),--expected-manufacturer $(EVIDENCE_EXPECTED_MANUFACTURER),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_MODEL)),--expected-model $(EVIDENCE_EXPECTED_MODEL),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_DEVICE)),--expected-device $(EVIDENCE_EXPECTED_DEVICE),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(EVIDENCE_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_SDK)),--expected-sdk $(EVIDENCE_EXPECTED_SDK),) \
+		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
 
 evidence-touch-rerun-preflight: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
