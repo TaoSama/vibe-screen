@@ -64,6 +64,33 @@ signing, TCC, port `54321`, ADB, or LAN conditions block the run, write a
 blocked summary with `--blocked` or `make evidence-reconnect-timing-blocked`
 instead of upgrading an older reconnect smoke to a timing pass.
 
+For the Protocol v1 Android audio playback gate, keep a dedicated
+`android-audio-playback-observations.json` beside the raw Host log, Android
+logcat, private Android diag log, device/build metadata, ADB reverse state, and
+Host listener/signing/TCC evidence. Re-check the record with:
+
+```bash
+make android-audio-playback-gate \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+A pass requires a real USB or trusted-LAN session on a named Android device, a
+stable signed macOS Host with Microphone permission, Host listener evidence,
+production Protocol v1 negotiation of `CAPABILITY_AUDIO`, accepted PCM S16LE
+`AudioConfig`, Host channel `3` packet flow, Android production `AudioTrack`
+start and write evidence, audible or instrumentation-backed playback
+confirmation, and cleanup on disconnect or reconfiguration. The checker also
+requires structured device identity plus non-empty retained artifacts under the
+evidence directory for device identity, Host audio, Android audio, and playback
+confirmation. Loopback harnesses, synthetic Protocol v1 peers, Android-only
+logs, app private diagnostics without current-process playback writes, and old
+plaintext fallback sessions cannot close the gate. If signing, Microphone/TCC,
+Host listener, Wi-Fi/route, or audio output confirmation is missing, keep the
+generated summary as `blocked` or `insufficient` instead of treating offline
+tests as a playback pass. Evidence from the local Nubia phone must use
+`adb -s EP0110PZ0B9110300B` and remain labeled
+`nubia P0110 / pacific / Android 16 / SDK 36`.
+
 For performance-gate runs, keep latency evidence in the same evidence directory
 as the device identity and soak artifacts:
 
