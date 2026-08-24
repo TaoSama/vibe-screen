@@ -84,6 +84,7 @@ class SettingsDialogLayoutInstrumentedTest {
     fun smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable() {
         listOf(600 to 960, 960 to 600).forEach { (widthDp, heightDp) ->
             withLayout(screenWidthDp = widthDp, screenHeightDp = heightDp) { layout ->
+                assertAdaptiveColumns(layout, twoColumns = widthDp > heightDp)
                 val section = layout.root.findViewById<View>(R.id.deviceHealthSection)
                 val status = layout.root.findViewById<TextView>(R.id.deviceHealthStatus)
                 val summary = layout.root.findViewById<TextView>(R.id.deviceHealthSummary)
@@ -103,6 +104,62 @@ class SettingsDialogLayoutInstrumentedTest {
                 assertAllTextReadable(layout.root)
                 assertLastItemCanScrollIntoView(layout)
             }
+        }
+    }
+
+    @Test
+    fun smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions() {
+        withLayout(screenWidthDp = 960, screenHeightDp = 600) { layout ->
+            assertAdaptiveColumns(layout, twoColumns = true)
+            assertAllTextReadable(layout.root)
+            assertLastItemCanScrollIntoView(layout)
+
+            val closeButton = layout.root.findViewById<View>(R.id.closeButton)
+            val resetActions = layout.root.findViewById<LinearLayout>(R.id.settingsResetActions)
+            assertTrue(closeButton.measuredHeight >= layout.dp(48))
+            assertTrue(resetActions.measuredHeight >= layout.dp(48))
+            assertEquals(LinearLayout.HORIZONTAL, resetActions.orientation)
+            assertTrue(
+                "reset actions should keep the full dialog row width outside the two-column body",
+                resetActions.measuredWidth > layout.root.findViewById<View>(R.id.settingsControlsColumn).measuredWidth,
+            )
+            listOf(R.id.gestureSwipeUpGroup, R.id.gestureSwipeDownGroup).forEach { groupId ->
+                assertGroupInsideControlsColumn(layout, groupId)
+                assertReadable(layout, groupId)
+            }
+        }
+    }
+
+    @Test
+    fun sixHundredDpLandscapeWindowUsesTwoSettingsColumns() {
+        withLayout(
+            screenWidthDp = 600,
+            screenHeightDp = 420,
+            dialogWidthDp = 600,
+            dialogHeightDp = 420,
+        ) { layout ->
+            assertAdaptiveColumns(layout, twoColumns = true)
+            listOf(R.id.gestureSwipeUpGroup, R.id.gestureSwipeDownGroup).forEach { groupId ->
+                assertGroupInsideControlsColumn(layout, groupId, expectedHorizontal = false)
+                assertReadable(layout, groupId)
+            }
+        }
+    }
+
+    @Test
+    fun sixHundredDpPortraitWindowKeepsOneSettingsColumn() {
+        withLayout(screenWidthDp = 600, screenHeightDp = 800) { layout ->
+            assertAdaptiveColumns(layout, twoColumns = false)
+            assertAllTextReadable(layout.root)
+        }
+    }
+
+    @Test
+    fun smallTabletPortraitKeepsSettingsSingleColumnForReadableCards() {
+        withLayout(screenWidthDp = 600, screenHeightDp = 960) { layout ->
+            assertAdaptiveColumns(layout, twoColumns = false)
+            assertAllTextReadable(layout.root)
+            assertLastItemCanScrollIntoView(layout)
         }
     }
 
@@ -212,6 +269,58 @@ class SettingsDialogLayoutInstrumentedTest {
         visit(layout.root)
     }
 
+    private fun assertAdaptiveColumns(
+        layout: MeasuredLayout,
+        twoColumns: Boolean,
+    ) {
+        val columns = layout.root.findViewById<LinearLayout>(R.id.settingsAdaptiveColumns)
+        val primary = layout.root.findViewById<LinearLayout>(R.id.settingsPrimaryColumn)
+        val controls = layout.root.findViewById<LinearLayout>(R.id.settingsControlsColumn)
+        val primaryParams = primary.layoutParams as LinearLayout.LayoutParams
+        val controlsParams = controls.layoutParams as LinearLayout.LayoutParams
+        if (twoColumns) {
+            assertEquals(LinearLayout.HORIZONTAL, columns.orientation)
+            assertEquals(0, primaryParams.width)
+            assertEquals(1f, primaryParams.weight, 0f)
+            assertEquals(0, controlsParams.width)
+            assertEquals(1f, controlsParams.weight, 0f)
+            assertTrue(controlsParams.marginStart > 0)
+            assertTrue("secondary column starts after primary", controls.left >= primary.right)
+            assertTrue("columns remain in settings width", controls.right <= columns.width)
+        } else {
+            assertEquals(LinearLayout.VERTICAL, columns.orientation)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, primaryParams.width)
+            assertEquals(0f, primaryParams.weight, 0f)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, controlsParams.width)
+            assertEquals(0f, controlsParams.weight, 0f)
+            assertEquals(0, controlsParams.marginStart)
+            assertTrue("secondary column is below primary", controls.top >= primary.bottom)
+        }
+    }
+
+    private fun assertGroupInsideControlsColumn(
+        layout: MeasuredLayout,
+        groupId: Int,
+        expectedHorizontal: Boolean = true,
+    ) {
+        val controls = layout.root.findViewById<LinearLayout>(R.id.settingsControlsColumn)
+        val group = layout.root.findViewById<LinearLayout>(groupId)
+        if (expectedHorizontal) {
+            assertEquals(LinearLayout.HORIZONTAL, group.orientation)
+        }
+        assertTrue("group is nested in controls column", group.hasAncestor(controls))
+        assertTrue("group fits controls column width", group.measuredWidth <= controls.measuredWidth)
+    }
+
+    private fun View.hasAncestor(ancestor: View): Boolean {
+        var current = parent as? View
+        while (current != null) {
+            if (current === ancestor) return true
+            current = current.parent as? View
+        }
+        return false
+    }
+
     private fun assertStackedAndReadable(
         layout: MeasuredLayout,
         groupId: Int,
@@ -266,6 +375,8 @@ class SettingsDialogLayoutInstrumentedTest {
         screenWidthDp: Int,
         screenHeightDp: Int = 800,
         fontScale: Float = 1f,
+        dialogWidthDp: Int? = null,
+        dialogHeightDp: Int? = null,
         assertion: (MeasuredLayout) -> Unit,
     ) {
         val configuration = Configuration(applicationContext().resources.configuration)
@@ -284,8 +395,8 @@ class SettingsDialogLayoutInstrumentedTest {
         val root =
             LayoutInflater.from(themedContext)
                 .inflate(R.layout.dialog_settings, parent, false) as ViewGroup
-        val dialogWidth = layoutWidth(themedContext, screenWidthDp)
-        val dialogHeight = layoutHeight(themedContext, screenHeightDp)
+        val dialogWidth = dialogWidthDp?.let { dp(themedContext, it) } ?: layoutWidth(themedContext, screenWidthDp)
+        val dialogHeight = dialogHeightDp?.let { dp(themedContext, it) } ?: layoutHeight(themedContext, screenHeightDp)
         parent.addView(root)
         val measured = MeasuredLayout(themedContext, parent, root, dialogWidth, dialogHeight)
         measured.measureAndLayout()
@@ -362,7 +473,10 @@ class SettingsDialogLayoutInstrumentedTest {
         screenWidthDp: Int,
     ): Int {
         val availableWidthDp = screenWidthDp - SETTINGS_WINDOW_MARGIN_DP * 2
-        return dp(context, minOf(SETTINGS_MAX_WIDTH_DP, availableWidthDp))
+        return minOf(
+            context.resources.getDimensionPixelSize(R.dimen.settings_dialog_max_width),
+            dp(context, availableWidthDp),
+        )
     }
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
@@ -396,7 +510,6 @@ class SettingsDialogLayoutInstrumentedTest {
 
     private companion object {
         const val SETTINGS_WINDOW_MARGIN_DP = 24
-        const val SETTINGS_MAX_WIDTH_DP = 680
         const val SETTINGS_MAX_HEIGHT_RATIO = 0.85f
         val POSITION_BUTTON_IDS =
             listOf(
