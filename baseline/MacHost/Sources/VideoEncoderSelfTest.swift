@@ -9,6 +9,8 @@ enum VideoEncoderSelfTest {
     private static let warmupFrameCount = 4
     private static let frameCount = 120
     private static let settingsUpdateCount = 24
+    private static let warmupTimeout: TimeInterval = 8
+    private static let warmupPollInterval: TimeInterval = 0.05
 
     private final class ResultState: @unchecked Sendable {
         private let lock = NSLock()
@@ -66,16 +68,39 @@ enum VideoEncoderSelfTest {
         encoder.onEncodedFrame = { _, _, _, _ in result.recordEncodedFrame() }
         encoder.requestKeyframe()
 
-        for index in 0..<warmupFrameCount {
-            encoder.encode(
-                pixelBuffer: pixelBuffer,
-                presentationTimeStamp: CMTime(value: CMTimeValue(index), timescale: 60),
-                sessionEpoch: 1
-            )
-        }
-        _ = encoder.completeFrames()
+        let warmup = WarmupPump(
+            frameCount: warmupFrameCount,
+            timeout: warmupTimeout,
+            pollInterval: warmupPollInterval
+        )
+        let warmupResult = warmup.run(
+            availableCapacity: {
+                let snapshot = encoder.inFlightSnapshot
+                return max(0, snapshot.capacity - snapshot.inFlight)
+            },
+            callbackCount: { result.snapshot().encodedFrameCount },
+            submitFrame: { index in
+                encoder.encode(
+                    pixelBuffer: pixelBuffer,
+                    presentationTimeStamp: CMTime(value: CMTimeValue(index), timescale: 60),
+                    sessionEpoch: 1
+                )
+            },
+            completeFrames: { encoder.completeFrames() },
+            sleep: Thread.sleep(forTimeInterval:)
+        )
 
-        guard waitForEncodedFrameCount(1, in: result, timeout: 8) else {
+        guard warmupResult.completionStatus == noErr else {
+            FileHandle.standardError.write(Data(
+                "video encoder self-test failed: warmup frame completion failed "
+                    .appending("(status=\(warmupResult.completionStatus), ")
+                    .appending("callbacks=\(warmupResult.callbacks))\n")
+                    .utf8
+            ))
+            return false
+        }
+
+        guard warmupResult.observedEncodedFrame else {
             let snapshot = result.snapshot()
             FileHandle.standardError.write(Data(
                 "video encoder self-test failed: warmup produced no encoded callbacks "
@@ -128,7 +153,15 @@ enum VideoEncoderSelfTest {
             return false
         }
 
-        _ = encoder.completeFrames()
+        let completionStatus = encoder.completeFrames()
+        guard completionStatus == noErr else {
+            FileHandle.standardError.write(Data(
+                "video encoder self-test failed: frame completion failed "
+                    .appending("(status=\(completionStatus), callbacks=\(result.snapshot().encodedFrameCount))\n")
+                    .utf8
+            ))
+            return false
+        }
         _ = waitForEncodedFrameCount(warmupSnapshot.encodedFrameCount + 1, in: result, timeout: 5)
         let snapshot = result.snapshot()
         let passed = snapshot.settingsFailure == nil
@@ -163,6 +196,54 @@ enum VideoEncoderSelfTest {
             Thread.sleep(forTimeInterval: 0.05)
         }
         return result.snapshot().encodedFrameCount >= expectedCount
+    }
+
+    struct WarmupPump {
+        struct Result: Equatable {
+            let submittedFrames: Int
+            let callbacks: Int
+            let completionStatus: OSStatus
+
+            var observedEncodedFrame: Bool { callbacks > 0 }
+        }
+
+        let frameCount: Int
+        let timeout: TimeInterval
+        let pollInterval: TimeInterval
+
+        func run(
+            availableCapacity: () -> Int,
+            callbackCount: () -> Int,
+            submitFrame: (Int) -> Void,
+            completeFrames: () -> OSStatus,
+            sleep: (TimeInterval) -> Void
+        ) -> Result {
+            let deadline = Date().addingTimeInterval(timeout)
+            var submittedFrames = 0
+            var completionStatus: OSStatus = noErr
+
+            while Date() < deadline, callbackCount() == 0 {
+                while submittedFrames < frameCount, availableCapacity() > 0 {
+                    submitFrame(submittedFrames)
+                    submittedFrames += 1
+                }
+
+                completionStatus = completeFrames()
+                if completionStatus != noErr {
+                    break
+                }
+                if callbackCount() > 0 {
+                    break
+                }
+                sleep(pollInterval)
+            }
+
+            return Result(
+                submittedFrames: submittedFrames,
+                callbacks: callbackCount(),
+                completionStatus: completionStatus
+            )
+        }
     }
 
     private static func sdrColorMetadataIsPinned() -> Bool {
