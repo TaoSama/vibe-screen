@@ -241,6 +241,74 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
   --output "$EVIDENCE_DIR/latency-evidence-report.json"
 ```
 
+For Internet glass-to-glass, use `--transport internet` with
+`internet-glass-to-glass-sub150` and add the public-route manifest fields.
+`--turn-resolved-ip` must be the retained global IP from resolving the selected
+TURN hostname during the run. The Internet manifest must also retain a
+profile-specific `internet_public_route_record` artifact through
+`--gate-artifact`:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --latency-kind glass-to-glass \
+  --transport internet \
+  --gate-profile internet-glass-to-glass-sub150 \
+  --raw-video "$EVIDENCE_DIR/raw-camera.mov" \
+  --samples "$EVIDENCE_DIR/samples.csv" \
+  --samples-format csv \
+  --annotation-method manual-frame-count \
+  --camera-manufacturer "camera vendor" \
+  --camera-model "camera model" \
+  --camera-mode 1080p240 \
+  --camera-frame-rate-fps 240 \
+  --camera-shutter-mode fixed \
+  --operator "operator name" \
+  --annotator "annotator name" \
+  --device-info "$EVIDENCE_DIR/device-info.json" \
+  --host-artifact "host binary identity or hash" \
+  --client-artifact "APK identity or hash" \
+  --stimulus "visible Mac-side stimulus" \
+  --start-event-definition "first camera frame where the stimulus is visible" \
+  --end-event-definition "first camera frame where the Android result is visible" \
+  --lighting "lighting conditions" \
+  --mounting "camera and device mounting" \
+  --max-frame-annotation-uncertainty-ms 4.2 \
+  --gate-artifact "$EVIDENCE_DIR/internet-public-route-record.txt" \
+  --gate-artifact-description "public TURN route, remote peer, ICE pair, and non-LAN topology proof" \
+  --notes "run-specific notes" \
+  --internet-route forced-public-turn \
+  --turn-provider "provider" \
+  --turn-region "region" \
+  --turn-public-hostname "turn.example.net" \
+  --turn-resolved-ip "$TURN_RESOLVED_IP" \
+  --turn-tls turns \
+  --turn-credential-source "authority-issued short-lived credential" \
+  --remote-peer-operator "remote tester" \
+  --remote-peer-network "remote carrier or ISP" \
+  --remote-peer-public-ip-asn "AS number" \
+  --remote-peer-location "city, country" \
+  --local-candidate-type relay \
+  --remote-candidate-type relay \
+  --relay-protocol turn-tls \
+  --host-network "host ISP" \
+  --device-network "remote carrier or ISP" \
+  --different-private-network
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \
+  --kind glass-to-glass \
+  --transport internet \
+  --measurement-method external-camera \
+  --gate-profile internet-glass-to-glass-sub150 \
+  --run-id "$RUN_ID" \
+  --output "$EVIDENCE_DIR/summary.json"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile internet-glass-to-glass-sub150 \
+  --output "$EVIDENCE_DIR/latency-evidence.json"
+```
+
 For external-camera input latency, use `--kind input` with
 `input-p95-sub50` and make `--gate-artifact` point at the physical input
 actuation proof:

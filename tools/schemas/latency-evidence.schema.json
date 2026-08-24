@@ -22,10 +22,15 @@
     "schema_version": {"const": "vibescreen.evidence/v1"},
     "run_id": {"type": "string", "minLength": 1},
     "latency_kind": {"enum": ["glass-to-glass", "input"]},
-    "transport": {"enum": ["usb", "lan"]},
+    "transport": {"enum": ["usb", "lan", "internet"]},
     "measurement_method": {"enum": ["external-camera", "synchronized-clock"]},
     "gate_profile": {
-      "enum": ["usb-glass-to-glass-sub50", "lan-glass-to-glass-sub80", "input-p95-sub50"]
+      "enum": [
+        "usb-glass-to-glass-sub50",
+        "lan-glass-to-glass-sub80",
+        "internet-glass-to-glass-sub150",
+        "input-p95-sub50"
+      ]
     },
     "camera": {
       "type": "object",
@@ -113,6 +118,16 @@
             "description": {"type": "string", "minLength": 1}
           }
         },
+        "internet_public_route_record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
         "input_actuation_record": {
           "type": "object",
           "additionalProperties": false,
@@ -189,6 +204,64 @@
         "max_frame_annotation_uncertainty_ms": {"type": "number", "minimum": 0},
         "notes": {"type": "string", "minLength": 1}
       }
+    },
+    "internet_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "turn_deployment",
+        "remote_peer",
+        "candidate_pair",
+        "network_topology"
+      ],
+      "properties": {
+        "route": {"enum": ["direct-public-internet", "forced-public-turn"]},
+        "turn_deployment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "region", "public_hostname", "resolved_ip", "tls", "credential_source"],
+          "properties": {
+            "provider": {"type": "string", "minLength": 1},
+            "region": {"type": "string", "minLength": 1},
+            "public_hostname": {"type": "string", "minLength": 1},
+            "resolved_ip": {"type": "string", "minLength": 1},
+            "tls": {"type": "string", "minLength": 1},
+            "credential_source": {"type": "string", "minLength": 1}
+          }
+        },
+        "remote_peer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "network", "public_ip_asn", "location"],
+          "properties": {
+            "operator": {"type": "string", "minLength": 1},
+            "network": {"type": "string", "minLength": 1},
+            "public_ip_asn": {"type": "string", "minLength": 1},
+            "location": {"type": "string", "minLength": 1}
+          }
+        },
+        "candidate_pair": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["local_candidate_type", "remote_candidate_type", "relay_protocol"],
+          "properties": {
+            "local_candidate_type": {"type": "string", "minLength": 1},
+            "remote_candidate_type": {"type": "string", "minLength": 1},
+            "relay_protocol": {"type": "string", "minLength": 1}
+          }
+        },
+        "network_topology": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host_network", "device_network", "same_private_network"],
+          "properties": {
+            "host_network": {"type": "string", "minLength": 1},
+            "device_network": {"type": "string", "minLength": 1},
+            "same_private_network": {"type": "boolean"}
+          }
+        }
+      }
     }
   },
   "allOf": [
@@ -232,6 +305,30 @@
             "required": ["synchronization_record"]
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transport": {"const": "internet"}},
+        "required": ["transport"]
+      },
+      "then": {
+        "required": ["internet_route"],
+        "properties": {
+          "gate_profile": {"const": "internet-glass-to-glass-sub150"},
+          "gate_artifacts": {
+            "required": ["internet_public_route_record"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transport": {"enum": ["usb", "lan"]}},
+        "required": ["transport"]
+      },
+      "then": {
+        "not": {"required": ["internet_route"]}
       }
     }
   ]

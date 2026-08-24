@@ -5,8 +5,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from tools.vibescreen_evidence.latency import GATE_INPUT_P95_SUB50, GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+    GATE_INPUT_P95_SUB50,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
+)
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 from tools.vibescreen_evidence.latency_manifest import (
     LatencyManifestError,
@@ -16,6 +21,7 @@ from tools.vibescreen_evidence.latency_manifest import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.latency_manifest"
+VALID_CAMERA_FIXTURE = REPOSITORY_ROOT / "tools" / "fixtures" / "latency" / "external-camera-valid" / "raw-camera-fixture.mov"
 
 
 def _base_metadata() -> dict[str, object]:
@@ -62,9 +68,9 @@ def _base_metadata() -> dict[str, object]:
 
 
 def _write_fixture_files(root: Path) -> tuple[Path, Path]:
-    raw_video = root / "raw-camera-placeholder.mov"
+    raw_video = root / "raw-camera-fixture.mov"
     samples = root / "samples.csv"
-    raw_video.write_bytes(b"synthetic camera placeholder")
+    raw_video.write_bytes(VALID_CAMERA_FIXTURE.read_bytes())
     samples.write_text(
         "start_frame,end_frame,camera_fps\n"
         "100,108,240\n200,209,240\n300,309,240\n400,409,240\n500,509,240\n",
@@ -89,6 +95,36 @@ def _write_synchronization_artifact(root: Path) -> Path:
     artifact = root / "synchronization-record.txt"
     artifact.write_text("fixture clock synchronization proof\n", encoding="utf-8")
     return artifact
+
+
+def _valid_internet_route() -> dict[str, object]:
+    return {
+        "route": "forced-public-turn",
+        "turn_deployment": {
+            "provider": "example provider",
+            "region": "us-west",
+            "public_hostname": "1.1.1.1",
+            "resolved_ip": "1.1.1.1",
+            "tls": "turns",
+            "credential_source": "authority-issued short-lived credential",
+        },
+        "remote_peer": {
+            "operator": "fixture",
+            "network": "remote carrier",
+            "public_ip_asn": "AS64500",
+            "location": "remote lab",
+        },
+        "candidate_pair": {
+            "local_candidate_type": "relay",
+            "remote_candidate_type": "relay",
+            "relay_protocol": "turn-tls",
+        },
+        "network_topology": {
+            "host_network": "home ISP",
+            "device_network": "remote carrier",
+            "same_private_network": False,
+        },
+    }
 
 
 class LatencyManifestBuilderTest(unittest.TestCase):
@@ -172,6 +208,149 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     evidence_dir=root,
                     raw_video=raw_video,
                     samples=samples,
+                    **metadata,
+                )
+
+    def test_builds_internet_manifest_with_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            metadata = _base_metadata()
+            metadata["transport"] = "internet"
+            metadata["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+
+            manifest = build_latency_manifest(
+                evidence_dir=root,
+                raw_video=raw_video,
+                samples=samples,
+                internet_route=_valid_internet_route(),
+                gate_artifact=artifact,
+                gate_artifact_description="Synthetic public Internet route proof.",
+                **metadata,
+            )
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(manifest["transport"], "internet")
+        self.assertIn("internet_route", manifest)
+        self.assertEqual(
+            manifest["gate_artifacts"]["internet_public_route_record"]["file"],
+            artifact.name,
+        )
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_internet_manifest_resolves_turn_hostname_when_retained_ip_is_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            metadata = _base_metadata()
+            metadata["transport"] = "internet"
+            metadata["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            route = _valid_internet_route()
+            turn = route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["public_hostname"] = "turn.example.net"
+            del turn["resolved_ip"]
+
+            with patch(
+                "tools.vibescreen_evidence.latency_manifest._resolve_hostname_ips",
+                return_value={"1.1.1.1"},
+            ):
+                manifest = build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=raw_video,
+                    samples=samples,
+                    internet_route=route,
+                    gate_artifact=artifact,
+                    gate_artifact_description="Synthetic public Internet route proof.",
+                    **metadata,
+                )
+
+        self.assertEqual(
+            manifest["internet_route"]["turn_deployment"]["resolved_ip"],
+            "1.1.1.1",
+        )
+
+    def test_internet_manifest_rejects_claimed_turn_ip_not_in_dns_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            metadata = _base_metadata()
+            metadata["transport"] = "internet"
+            metadata["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            route = _valid_internet_route()
+            turn = route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["public_hostname"] = "turn.example.net"
+            turn["resolved_ip"] = "1.1.1.1"
+
+            with patch(
+                "tools.vibescreen_evidence.latency_manifest._resolve_hostname_ips",
+                return_value={"8.8.8.8"},
+            ):
+                with self.assertRaisesRegex(LatencyManifestError, "must match a retained DNS resolution"):
+                    build_latency_manifest(
+                        evidence_dir=root,
+                        raw_video=raw_video,
+                        samples=samples,
+                        internet_route=route,
+                        gate_artifact=artifact,
+                        gate_artifact_description="Synthetic public Internet route proof.",
+                        **metadata,
+                    )
+
+    def test_internet_manifest_rejects_private_turn_hostname_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            metadata = _base_metadata()
+            metadata["transport"] = "internet"
+            metadata["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            route = _valid_internet_route()
+            turn = route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["public_hostname"] = "turn.example.net"
+            turn["resolved_ip"] = "10.0.0.10"
+
+            with patch(
+                "tools.vibescreen_evidence.latency_manifest._resolve_hostname_ips",
+                return_value={"10.0.0.10"},
+            ):
+                with self.assertRaisesRegex(LatencyManifestError, "must resolve only to global IP addresses"):
+                    build_latency_manifest(
+                        evidence_dir=root,
+                        raw_video=raw_video,
+                        samples=samples,
+                        internet_route=route,
+                        gate_artifact=artifact,
+                        gate_artifact_description="Synthetic public Internet route proof.",
+                        **metadata,
+                    )
+
+    def test_rejects_missing_internet_route_for_internet_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            metadata = _base_metadata()
+            metadata["transport"] = "internet"
+            metadata["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+
+            with self.assertRaisesRegex(LatencyManifestError, "internet_route metadata is required"):
+                build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=raw_video,
+                    samples=samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="Synthetic public Internet route proof.",
                     **metadata,
                 )
 
@@ -407,6 +586,132 @@ class LatencyManifestCliTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("synchronization artifact is required", result.stderr)
+
+    def test_cli_writes_schema_compatible_internet_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            arguments[arguments.index("--transport") + 1] = "internet"
+            arguments[arguments.index("--gate-profile") + 1] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            arguments[arguments.index("--gate-artifact") + 1] = str(artifact)
+            arguments[arguments.index("--gate-artifact-description") + 1] = (
+                "Synthetic public Internet route proof."
+            )
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--internet-route",
+                "forced-public-turn",
+                "--turn-provider",
+                "example provider",
+                "--turn-region",
+                "us-west",
+                "--turn-public-hostname",
+                "1.1.1.1",
+                "--turn-resolved-ip",
+                "1.1.1.1",
+                "--turn-tls",
+                "turns",
+                "--turn-credential-source",
+                "authority-issued short-lived credential",
+                "--remote-peer-operator",
+                "fixture",
+                "--remote-peer-network",
+                "remote carrier",
+                "--remote-peer-public-ip-asn",
+                "AS64500",
+                "--remote-peer-location",
+                "remote lab",
+                "--local-candidate-type",
+                "relay",
+                "--remote-candidate-type",
+                "relay",
+                "--relay-protocol",
+                "turn-tls",
+                "--host-network",
+                "home ISP",
+                "--device-network",
+                "remote carrier",
+                "--different-private-network",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(manifest["device"]["manufacturer"], "nubia")
+        self.assertEqual(manifest["device"]["codename"], "pacific")
+        self.assertEqual(manifest["internet_route"]["network_topology"]["same_private_network"], False)
+        self.assertIn("internet_public_route_record", manifest["gate_artifacts"])
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_requires_explicit_internet_private_network_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            arguments[arguments.index("--transport") + 1] = "internet"
+            arguments[arguments.index("--gate-profile") + 1] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--internet-route",
+                "forced-public-turn",
+                "--turn-provider",
+                "example provider",
+                "--turn-region",
+                "us-west",
+                "--turn-public-hostname",
+                "1.1.1.1",
+                "--turn-resolved-ip",
+                "1.1.1.1",
+                "--turn-tls",
+                "turns",
+                "--turn-credential-source",
+                "authority-issued short-lived credential",
+                "--remote-peer-operator",
+                "fixture",
+                "--remote-peer-network",
+                "remote carrier",
+                "--remote-peer-public-ip-asn",
+                "AS64500",
+                "--remote-peer-location",
+                "remote lab",
+                "--local-candidate-type",
+                "relay",
+                "--remote-candidate-type",
+                "relay",
+                "--relay-protocol",
+                "turn-tls",
+                "--host-network",
+                "home ISP",
+                "--device-network",
+                "remote carrier",
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("same_private_network must be explicitly recorded", result.stderr)
 
     def test_cli_rejects_non_finite_camera_frame_rate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

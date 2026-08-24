@@ -159,23 +159,38 @@ Store evidence under a new immutable run directory such as:
 ```text
 docs/changes/2026-08-04-phase-3-secure-internet/evidence/
   2026-08-04T120000Z-xiaomi12-internet/
-    manifest.json
-    commands.txt
-    adb-devices.txt
-    device-properties.txt
-    artifact-sha256.txt
-    host-version.txt
-    client-version.txt
+    README.md
+    phase3-internet-manifest.json
+    device-info.json
+    host.txt
+    build.txt
+    apk-sha256.txt
     direct-session.jsonl
     relay-session.jsonl
     network-handoff.jsonl
+    network-handoff.json
     replay-revocation.jsonl
-    soak-summary.json
-    logcat-redacted.txt
-    host-log-redacted.txt
+    revocation-evidence.json
+    soak-2h/summary.json
+    soak-2h/samples.jsonl
+    soak-2h/host-telemetry.jsonl
+    soak-2h/exact-window-report.json
+    raw-logcat.txt
+    host.log
     real-media-continuity.json
     packet-capture-notes.md
+    packet-capture-confidentiality.json
+    privacy-manifest.json
+    latency/direct/manifest.json
+    latency/direct/samples.csv
+    latency/direct/raw-camera.mov
+    latency/direct/latency-evidence.json
+    latency/relay/manifest.json
+    latency/relay/samples.csv
+    latency/relay/raw-camera.mov
+    latency/relay/latency-evidence.json
     latency-method.md          # copy or link docs/runbook/latency-measurement.md
+    phase3-internet-release-gate.json
 ```
 
 When a curated evidence package is intended to close the Phase 3 release gate,
@@ -384,6 +399,37 @@ The run log must state, with timestamps and route evidence:
 8. two-hour mixed-route soak with RSS, queue, loss, RTT, FPS, bitrate, relay bytes,
    ICE restarts, drops, thermal/battery, and latency series;
 9. redaction/secret scan result for every archived artifact.
+
+Before treating the package as release evidence, run the package gate:
+
+```bash
+make phase3-internet-release-gate \
+  EVIDENCE_DIR=/absolute/path/to/phase3-public-internet-run
+```
+
+The gate is fail-closed. `phase3-internet-manifest.json` must explicitly record
+`network_scope=public_internet`, `turn_scope=deployed_remote_turn`, both direct
+and relay routes, a real Android device, a real macOS Host, an identity-signed
+Host, granted Screen Recording, real capture-to-MediaCodec continuity, visible
+input effects, network handoff, cross-service revocation, packet-capture
+confidentiality, and `no_synthetic_media=true`. Missing raw camera files,
+annotated latency samples, the exact-window two-hour soak report, public-route
+evidence, or remote TURN evidence returns `blocked` or `insufficient`; it never
+closes a gate from local loopback, forced local coturn, synthetic media, or a
+diagnostic-only device run. A Nubia P0110 run must keep
+`manufacturer=nubia`, `model=P0110`, `codename=pacific`, and the real Android
+version; it must not be relabeled as Xiaomi/fuxi evidence.
+
+`device-info.json` must independently match the manifest identity fields.
+Structured pass files are not free-form status markers: `network-handoff.json`,
+`revocation-evidence.json`, and `packet-capture-confidentiality.json` must use
+their Phase 3 `kind`, list non-empty `raw_sources`, and set each required
+observation to `true`. The soak report must include `phase3_internet_scope`
+with public Internet scope, direct and relay route coverage, observed handoff,
+observed cross-service revocation, packet-capture confidentiality,
+`no_synthetic_media=true`, `no_plaintext_fallback=true`, and
+`nonce_reuse_detected=false`; otherwise the aggregate package remains
+`insufficient` even when generic two-hour metrics pass.
 
 For the real capture -> Android decoder continuity slice, generate
 `real-media-continuity.json` from retained Host and Android logs with

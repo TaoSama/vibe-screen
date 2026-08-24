@@ -191,6 +191,16 @@ cryptographic primitive may be introduced.
 - a two-hour mixed direct/relay/network-change soak shows bounded queues, bounded
   memory, no nonce reuse, and no steadily increasing latency.
 
+The current-base release package checker is
+`vibescreen_evidence.phase3_internet_release_gate`. It is deliberately
+fail-closed for the soak and latency gates: missing public-route proof, missing
+deployed remote TURN proof, missing external-camera raw video or annotated
+samples, missing exact-window two-hour soak telemetry, or any synthetic/local
+media marker keeps the gate blocked or insufficient. Local loopback, forced
+local coturn, host/client telemetry-only latency, and diagnostic-only Nubia
+P0110 runs can document readiness, but they cannot close Phase 3 public
+Internet soak or latency acceptance.
+
 ### Required device evidence
 
 The target Xiaomi 13 (2211133C) at `$ADB_ENDPOINT` must be connected with ADB, identified,

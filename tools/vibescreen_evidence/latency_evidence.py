@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 import re
@@ -20,6 +21,7 @@ from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
 from .latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_PROFILES,
@@ -35,6 +37,7 @@ from .latency import (
 FORMAL_LATENCY_PROFILES = (
     GATE_USB_GLASS_TO_GLASS_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
 )
 PROFILE_ARTIFACT_REQUIREMENTS = {
@@ -45,6 +48,10 @@ PROFILE_ARTIFACT_REQUIREMENTS = {
     GATE_LAN_GLASS_TO_GLASS_SUB80: (
         "lan_network_preflight",
         "retain LAN network preflight plus active trusted-LAN stream proof",
+    ),
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150: (
+        "internet_public_route_record",
+        "retain public Internet route, remote peer, TURN endpoint, and active stream proof",
     ),
     GATE_INPUT_P95_SUB50: (
         "input_actuation_record",
@@ -126,6 +133,8 @@ def _json_type_matches(value: Any, expected_type: str) -> bool:
         return isinstance(value, str)
     if expected_type == "number":
         return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
     return True
 
 
@@ -136,6 +145,8 @@ def _describe_json_type(expected_type: str) -> str:
         return "an object"
     if expected_type == "string":
         return "a string"
+    if expected_type == "boolean":
+        return "a boolean"
     return expected_type
 
 
@@ -155,6 +166,10 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
     ):
         errors.extend(_validate_schema_node(value, then_schema, path))
 
+    not_schema = schema.get("not")
+    if isinstance(not_schema, dict) and not _validate_schema_node(value, not_schema, path):
+        errors.append(f"{path} must not match disallowed schema")
+
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path} must be {schema['const']}")
     if "enum" in schema and value not in schema["enum"]:
@@ -166,7 +181,12 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         errors.append(f"{path} must be {_describe_json_type(expected_type)}")
         return errors
 
-    if isinstance(value, dict):
+    object_keywords = (
+        isinstance(schema.get("properties"), dict)
+        or isinstance(schema.get("required"), list)
+        or schema.get("additionalProperties") is False
+    )
+    if isinstance(value, dict) and (expected_type == "object" or object_keywords):
         properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []
         for field in required:
@@ -252,6 +272,119 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _iter_iso_bmff_boxes(data: bytes, start: int = 0, end: int | None = None):
+    limit = len(data) if end is None else min(end, len(data))
+    offset = start
+    while offset + 8 <= limit:
+        size = int.from_bytes(data[offset:offset + 4], "big")
+        box_type = data[offset + 4:offset + 8]
+        header_size = 8
+        if size == 1:
+            if offset + 16 > limit:
+                break
+            size = int.from_bytes(data[offset + 8:offset + 16], "big")
+            header_size = 16
+        elif size == 0:
+            size = limit - offset
+        if size < header_size or offset + size > limit:
+            break
+        content_start = offset + header_size
+        box_end = offset + size
+        yield box_type, content_start, box_end
+        offset = box_end
+
+
+def _walk_iso_bmff_boxes(data: bytes, start: int, end: int):
+    for box_type, content_start, box_end in _iter_iso_bmff_boxes(data, start, end):
+        yield box_type, content_start, box_end
+        if box_type in {b"moov", b"trak", b"mdia", b"minf", b"stbl", b"moof", b"traf"}:
+            yield from _walk_iso_bmff_boxes(data, content_start, box_end)
+
+
+def _looks_like_iso_bmff_video(data: bytes) -> bool:
+    if len(data) < 32 or data[4:8] != b"ftyp":
+        return False
+    top_level = list(_iter_iso_bmff_boxes(data))
+    if not any(box_type == b"ftyp" for box_type, _start, _end in top_level):
+        return False
+    if not any(box_type == b"mdat" and end > start for box_type, start, end in top_level):
+        return False
+    moov_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"moov"]
+    mdat_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"mdat"]
+    has_video_handler = False
+    has_video_samples = False
+    has_fragmented_video_samples = False
+    has_video_sample_description = False
+    has_chunk_offset_into_media = False
+    for moov_start, moov_end in moov_ranges:
+        for box_type, content_start, content_end in _walk_iso_bmff_boxes(data, moov_start, moov_end):
+            if box_type == b"hdlr" and content_start + 12 <= content_end:
+                has_video_handler = has_video_handler or data[content_start + 8:content_start + 12] == b"vide"
+            elif box_type == b"stsd" and content_start + 16 <= content_end:
+                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                sample_entry = data[content_start + 12:content_start + 16]
+                has_video_sample_description = has_video_sample_description or (
+                    entry_count > 0 and sample_entry in {b"avc1", b"avc3", b"hvc1", b"hev1", b"mp4v"}
+                )
+            elif box_type == b"stsz" and content_start + 12 <= content_end:
+                default_sample_size = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                sample_count = int.from_bytes(data[content_start + 8:content_start + 12], "big")
+                has_sample_sizes = False
+                if sample_count > 0:
+                    if default_sample_size > 0:
+                        has_sample_sizes = True
+                    elif content_start + 12 + (sample_count * 4) <= content_end:
+                        has_sample_sizes = any(
+                            int.from_bytes(
+                                data[content_start + 12 + (index * 4):content_start + 16 + (index * 4)],
+                                "big",
+                            )
+                            > 0
+                            for index in range(sample_count)
+                        )
+                has_video_samples = has_video_samples or has_sample_sizes
+            elif box_type == b"stco" and content_start + 12 <= content_end:
+                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                if entry_count > 0:
+                    chunk_offset = int.from_bytes(data[content_start + 8:content_start + 12], "big")
+                    has_chunk_offset_into_media = has_chunk_offset_into_media or any(
+                        start <= chunk_offset < end for start, end in mdat_ranges
+                    )
+            elif box_type == b"co64" and content_start + 16 <= content_end:
+                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                if entry_count > 0:
+                    chunk_offset = int.from_bytes(data[content_start + 8:content_start + 16], "big")
+                    has_chunk_offset_into_media = has_chunk_offset_into_media or any(
+                        start <= chunk_offset < end for start, end in mdat_ranges
+                    )
+            elif box_type == b"trun" and content_start + 8 <= content_end:
+                sample_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                has_fragmented_video_samples = has_fragmented_video_samples or sample_count > 0
+    for moof_start, moof_end in ((start, end) for box_type, start, end in top_level if box_type == b"moof"):
+        for box_type, content_start, content_end in _walk_iso_bmff_boxes(data, moof_start, moof_end):
+            if box_type == b"trun" and content_start + 8 <= content_end:
+                sample_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
+                has_fragmented_video_samples = has_fragmented_video_samples or sample_count > 0
+    has_progressive_samples = has_video_samples and has_chunk_offset_into_media
+    return has_video_handler and has_video_sample_description and (
+        has_progressive_samples or has_fragmented_video_samples
+    )
+
+
+def _looks_like_camera_video(path: Path) -> bool:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
+    header = data[:64]
+    suffix = path.suffix.lower()
+    if suffix in {".mp4", ".mov", ".m4v"}:
+        return _looks_like_iso_bmff_video(data)
+    if suffix in {".mkv", ".webm"}:
+        return len(data) >= 128 and header.startswith(b"\x1a\x45\xdf\xa3")
+    return False
 
 
 def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
@@ -366,6 +499,110 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _looks_local_or_private_hostname(hostname: str) -> bool:
+    normalized = hostname.strip().lower().rstrip(".")
+    if normalized in {"localhost", "loopback"} or normalized.endswith(".local"):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized.strip("[]"))
+    except ValueError:
+        return False
+    return not address.is_global
+
+
+def _ip_address(value: Any) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return ipaddress.ip_address(value.strip().strip("[]"))
+    except ValueError:
+        return None
+
+
+def _validate_retained_turn_endpoint(public_hostname: Any, resolved_ip: Any) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(public_hostname, str) or not public_hostname.strip():
+        return errors
+    retained_address = _ip_address(resolved_ip)
+    if retained_address is None or not retained_address.is_global:
+        errors.append(
+            "internet_route.turn_deployment.resolved_ip must record the retained "
+            "resolved global IP for the TURN hostname"
+        )
+        return errors
+
+    hostname_address = _ip_address(public_hostname)
+    if hostname_address is not None and hostname_address != retained_address:
+        errors.append(
+            "internet_route.turn_deployment.resolved_ip must match the literal "
+            "TURN public_hostname address"
+        )
+    return errors
+
+
+def _validate_internet_route(manifest: dict[str, Any], gate_profile: str) -> list[str]:
+    if gate_profile != GATE_INTERNET_GLASS_TO_GLASS_SUB150:
+        if "internet_route" in manifest:
+            return ["internet_route is only allowed for the internet-glass-to-glass-sub150 profile"]
+        return []
+
+    errors: list[str] = []
+    route = manifest.get("internet_route")
+    if not isinstance(route, dict):
+        return [
+            "internet_route is required for internet-glass-to-glass-sub150 and must "
+            "record the public TURN deployment, remote peer, selected candidate pair, "
+            "and non-LAN network topology"
+        ]
+
+    turn = route.get("turn_deployment") if isinstance(route.get("turn_deployment"), dict) else {}
+    public_hostname = turn.get("public_hostname")
+    if isinstance(public_hostname, str) and _looks_local_or_private_hostname(public_hostname):
+        errors.append(
+            "internet_route.turn_deployment.public_hostname must be a public Internet "
+            "TURN hostname or global IP, not localhost, .local, loopback, or private address"
+        )
+    errors.extend(_validate_retained_turn_endpoint(public_hostname, turn.get("resolved_ip")))
+
+    remote_peer = route.get("remote_peer") if isinstance(route.get("remote_peer"), dict) else {}
+    for field in ("operator", "network", "public_ip_asn", "location"):
+        value = remote_peer.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"internet_route.remote_peer.{field} is required for Internet latency evidence")
+
+    topology = route.get("network_topology") if isinstance(route.get("network_topology"), dict) else {}
+    if topology.get("same_private_network") is not False:
+        errors.append(
+            "internet_route.network_topology.same_private_network must be false; "
+            "trusted LAN or loopback routes cannot close the Internet latency gate"
+        )
+
+    candidate_pair = route.get("candidate_pair") if isinstance(route.get("candidate_pair"), dict) else {}
+    selected_route = route.get("route")
+    local_type = candidate_pair.get("local_candidate_type")
+    remote_type = candidate_pair.get("remote_candidate_type")
+    relay_protocol = candidate_pair.get("relay_protocol")
+    if selected_route == "forced-public-turn":
+        if local_type != "relay" or remote_type != "relay":
+            errors.append(
+                "internet_route.candidate_pair must record relay/relay candidate types "
+                "for forced-public-turn evidence"
+            )
+        if relay_protocol not in ("turn-udp", "turn-tcp", "turn-tls"):
+            errors.append(
+                "internet_route.candidate_pair.relay_protocol must be turn-udp, turn-tcp, "
+                "or turn-tls for forced-public-turn evidence"
+            )
+    elif selected_route == "direct-public-internet":
+        if local_type not in ("host", "srflx") or remote_type not in ("host", "srflx"):
+            errors.append(
+                "internet_route.candidate_pair must record host/srflx candidate types "
+                "for direct-public-internet evidence"
+            )
+
+    return errors
+
+
 def _validate_manifest_matches_summary(
     manifest: dict[str, Any], summary: dict[str, Any], gate_profile: str
 ) -> list[str]:
@@ -463,6 +700,9 @@ def _validate_referenced_files(
             else:
                 if actual_sha256 != expected_sha256.lower():
                     errors.append(f"{field} does not match its referenced file")
+    raw_video = references.get("recording.raw_video")
+    if is_external_camera and raw_video is not None and raw_video.is_file() and not _looks_like_camera_video(raw_video):
+        errors.append("recording.raw_video must be a readable camera video container with a supported layout")
     return errors, references
 
 
@@ -542,6 +782,7 @@ def build_latency_evidence_report(
     schema_errors = _validate_manifest_schema(manifest)
     errors = list(schema_errors)
     errors.extend(_validate_required_metadata(manifest))
+    errors.extend(_validate_internet_route(manifest, gate_profile))
     reference_errors, references = _validate_referenced_files(manifest_path, manifest, gate_profile)
     errors.extend(reference_errors)
 
@@ -620,6 +861,7 @@ def build_latency_evidence_report(
         "latency_kind": manifest.get("latency_kind"),
         "transport": manifest.get("transport"),
         "measurement_method": manifest.get("measurement_method"),
+        "internet_route": manifest.get("internet_route") if manifest.get("transport") == "internet" else None,
         "gate": {
             "profile": gate_profile,
             "can_close_performance_gate": verdict == "pass",

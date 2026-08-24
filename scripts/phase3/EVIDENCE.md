@@ -19,6 +19,8 @@ python3 scripts/phase3/release_gate_summary.py --output /tmp/vibe-screen-phase3/
 python3 scripts/phase3/revocation_propagation_verifier.py \
   --report /tmp/vibe-screen-phase3/revocation-propagation.json \
   --write-summary /tmp/vibe-screen-phase3/revocation-propagation-summary.json
+PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_release_gate \
+  --evidence-dir /tmp/vibe-screen-phase3/public-internet-run
 ```
 
 `revocation_propagation_verifier.py` validates the cross-service revocation
@@ -173,6 +175,21 @@ close from loopback, synthetic media, forced local coturn, or blocked deployment
 records; public deployment evidence must fail closed until the real external
 route, remote TURN, capture-to-device decoder, handoff, revocation, latency, and
 soak artifacts exist.
+
+`vibescreen_evidence.phase3_internet_release_gate` is the package-level checker
+for the future public Internet run. It requires a `phase3-internet-manifest.json`
+that explicitly marks a genuine public Internet path, a deployed remote TURN
+route, real Android and macOS peers, identity-signed Host, Screen Recording,
+real capture-to-MediaCodec continuity, visible input effects, network handoff,
+cross-service revocation, packet-capture confidentiality, and no synthetic media.
+It also requires direct and relay latency reports generated from raw
+external-camera packages, the exact-window two-hour soak report, raw session and
+telemetry logs, and privacy-reviewed packet/capture notes. If any of these are
+missing, local-only, synthetic, or marked blocked, the checker returns non-zero
+and writes `verdict: blocked` or `insufficient`; it never promotes readiness
+evidence into a release pass. Use `make phase3-internet-release-gate
+EVIDENCE_DIR=/tmp/vibe-screen-phase3/public-internet-run` after deriving the
+latency and soak reports.
 
 Use the explicit product slice to exercise the macOS product-session composition
 through real signaling/libwebrtc and, in relay mode, forced local coturn:

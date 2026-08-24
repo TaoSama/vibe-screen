@@ -173,13 +173,15 @@ class RepositoryPrivacyTests(unittest.TestCase):
         fixtures = {
             "network_endpoint": b"peer=" + b"100." + b"72.1.2:5555",
             "hardware_identifier": b'"hardware_serial": "DEVICE-UNIQUE-123"',
+            "adb_identifier": b'"adb_serial": "DEVICE-UNIQUE-123"',
             "credential_material": b'"token": "sensitive-token-value"',
             "url": b"https://private.example.invalid/session",
             "user_absolute_path": b"/Users/private-account/work/evidence.log",
         }
         for category, content in fixtures.items():
             with self.subTest(category=category):
-                self.assertIn(category, scan_content(content))
+                expected_category = "hardware_identifier" if category == "adb_identifier" else category
+                self.assertIn(expected_category, scan_content(content))
         self.assertEqual(scan_content(b"swiftlang-6.3.1.1.2 and <redacted-ip>"), {})
 
     def test_phase3_privacy_rules_reject_project_credential_schemas(self) -> None:

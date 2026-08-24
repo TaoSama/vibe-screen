@@ -191,7 +191,7 @@
     "user_absolute_path"
   ],
   "result": "pass",
-  "rule_version": "2026-08-06.4",
+  "rule_version": "2026-08-23.1",
   "schema": "dev.vibescreen.evidence-privacy-scan/v1",
   "scope": {
     "excluded_derived_files": [
