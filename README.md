@@ -720,6 +720,12 @@ increase it.
   transport, resume-capable Host interoperability, or real-device behavior.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
+- Gate ownership is explicit while those records are open: the HarmonyOS client
+  owns H.264/HEVC hardware-decode readiness and device evidence, with Mac Host
+  video negotiation as dependency evidence; the Mac Host and HarmonyOS client
+  jointly own resume-capable interoperability, with the Host responsible for
+  resume registry/session behavior and HarmonyOS responsible for lifecycle,
+  network-recovery, and old-epoch rejection evidence.
 - HarmonyOS device acceptance must follow the
   [MatePad Mini runbook](docs/runbook/harmony-matepad-mini.md); Android results
   are never treated as HarmonyOS evidence.
