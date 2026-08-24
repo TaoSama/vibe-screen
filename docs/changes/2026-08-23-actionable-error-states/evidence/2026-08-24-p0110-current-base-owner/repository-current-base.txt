@@ -1,0 +1,6 @@
+timestamp_utc=2026-08-24T08:35:18Z
+branch=codex/actionable-error-current-base-matrix
+current_base=origin/main
+current_base_commit=6bcf185094bb2a9c77abb7c642833b7ac03b5835
+device_collection_commit=b759d785898ede5bbd4370255b3d49e56457f0ef
+note=Device artifacts in this directory were collected before rebasing to the current base. The newer base does not add retained real-device actionable-error evidence for the missing states.

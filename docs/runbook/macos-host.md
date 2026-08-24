@@ -258,6 +258,21 @@ Run make actionable-error-states-gate before changing Host permission, ADB,
 listener, capture, virtual-display, LAN, or Internet recovery copy. The gate is
 offline only and does not prove Host alert rendering or device acceptance.
 
+When producing README-facing evidence, retain an
+`actionable-error-current-base.json` manifest and run:
+
+```bash
+make actionable-error-current-base-gate EVIDENCE_DIR=<evidence-dir>
+```
+
+This gate validates exact retained artifacts and prevents blocked or not-run
+states from being counted as a real-device matrix pass; it exits non-zero unless
+the report is a pass. Use `make actionable-error-current-base-owner-record
+EVIDENCE_DIR=<evidence-dir>` to refresh a blocked current-base owner report. Do
+not induce Screen Recording or Accessibility denial by modifying TCC on a shared
+machine; record the environment as blocked unless a safe, stable-signed
+denied-permission run is already available.
+
 ### ADB is missing or reverse forwarding disappeared
 
 ```bash

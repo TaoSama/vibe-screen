@@ -1,0 +1,22 @@
+Sanitized app-tag-filtered USB Host-not-listening excerpt.
+
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B
+Transport setup: ADB reverse tcp:54321 was present before and after the observation.
+Host setup: no local process was listening on TCP 54321 before or after the observation.
+
+Relevant retained lines:
+
+08-24 16:00:16.929 D/MA(15457): session ended kind=TRANSPORT_CLOSED retryable=true
+08-24 16:00:16.929 I/VibeScreenTelemetry(15457): event=reconnect_scheduled delay_ms=405 session_epoch=1
+08-24 16:00:16.930 D/StreamClient(15457): Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-24 16:00:18.453 D/MA(15457): session ended kind=TRANSPORT_CLOSED retryable=true
+08-24 16:00:18.454 I/VibeScreenTelemetry(15457): event=reconnect_scheduled delay_ms=406 session_epoch=2
+08-24 16:00:18.454 D/StreamClient(15457): Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-24 16:00:19.976 D/MA(15457): session ended kind=TRANSPORT_CLOSED retryable=true
+08-24 16:00:19.977 I/VibeScreenTelemetry(15457): event=reconnect_scheduled delay_ms=404 session_epoch=3
+08-24 16:00:19.977 D/StreamClient(15457): Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-24 16:00:21.489 D/MA(15457): session ended kind=TRANSPORT_CLOSED retryable=true
+08-24 16:00:21.489 I/VibeScreenTelemetry(15457): event=reconnect_scheduled delay_ms=495 session_epoch=4
+08-24 16:00:21.489 D/StreamClient(15457): Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+
+Boundary: these lines prove bounded pre-session retry for a missing Host listener only. They are not stale epoch/session evidence and do not prove a complete user-facing state matrix pass.

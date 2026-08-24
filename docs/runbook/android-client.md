@@ -409,6 +409,21 @@ cd /path/to/vibe-screen
 make actionable-error-states-gate
 ```
 
+For README-facing real-device ownership, also run the current-base gate against
+the retained manifest from the evidence directory:
+
+```bash
+make actionable-error-current-base-gate EVIDENCE_DIR=<evidence-dir>
+```
+
+This second gate is still read-only, but it checks retained artifacts and exact
+device identity. It exits non-zero for `blocked` or `insufficient` reports. To
+refresh a blocked current-base owner record without treating it as acceptance,
+run `make actionable-error-current-base-owner-record EVIDENCE_DIR=<evidence-dir>`
+instead. Only `verdict=pass` with
+`can_close_readme_phase1_actionable_errors_gate=true` can close the README
+actionable-errors item.
+
 Exercise a missing Mac app, missing ADB reverse, unreachable route, timeout,
 camera denial, incompatible message/display configuration, outbound
 backpressure, and decoder failure. Each state must identify the failed layer
