@@ -14,7 +14,7 @@ macOS hardware gates.
 - Codename: pacific
 - Android: 16
 - SDK: 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <device-serial>
 - Physical display: 1264x2800 at 560 dpi
 
 ## Base
@@ -43,21 +43,21 @@ git rev-parse origin/main HEAD
   --rerun-tasks)
 (cd "$ANDROID_PROJECT" && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest)
 (cd "$ANDROID_PROJECT" && ./gradlew :app:lintDebug)
-adb -s EP0110PZ0B9110300B get-state
-adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-adb -s EP0110PZ0B9110300B shell wm size
-adb -s EP0110PZ0B9110300B shell wm density
-adb -s EP0110PZ0B9110300B install -r "$ANDROID_PROJECT/app/build/outputs/apk/debug/app-debug.apk"
-adb -s EP0110PZ0B9110300B install -r "$ANDROID_PROJECT/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-adb -s EP0110PZ0B9110300B shell am instrument -w \
+adb -s <device-serial> get-state
+adb -s <device-serial> shell getprop ro.product.manufacturer
+adb -s <device-serial> shell getprop ro.product.model
+adb -s <device-serial> shell getprop ro.product.device
+adb -s <device-serial> shell getprop ro.build.version.release
+adb -s <device-serial> shell getprop ro.build.version.sdk
+adb -s <device-serial> shell wm size
+adb -s <device-serial> shell wm density
+adb -s <device-serial> install -r "$ANDROID_PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+adb -s <device-serial> install -r "$ANDROID_PROJECT/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+adb -s <device-serial> shell am instrument -w \
   -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-landscape.png "$EVIDENCE_DIR/sustained-use-landscape.png"
-adb -s EP0110PZ0B9110300B pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-portrait.png "$EVIDENCE_DIR/sustained-use-portrait.png"
+adb -s <device-serial> pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-landscape.png "$EVIDENCE_DIR/sustained-use-landscape.png"
+adb -s <device-serial> pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-portrait.png "$EVIDENCE_DIR/sustained-use-portrait.png"
 ```
 
 ## Results
@@ -79,7 +79,7 @@ adb -s EP0110PZ0B9110300B pull /sdcard/Android/data/dev.telemachus.display/files
 - Focused instrumentation completed with `OK (23 tests)` after running all
   `SettingsDialogLayoutInstrumentedTest` and `ControlBarLayoutInstrumentedTest`
   cases on the attached Nubia P0110 device selected by
-  `adb -s EP0110PZ0B9110300B`; see `instrumentation-settings-controlbar.txt`.
+  `adb -s <device-serial>`; see `instrumentation-settings-controlbar.txt`.
 
 ## UI evidence
 
