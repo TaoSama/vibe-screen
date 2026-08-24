@@ -1,0 +1,43 @@
+Host bundle
+-----------
+Path: /Applications/Vibe Screen.app
+Identifier: dev.telemachus.display
+Identity: Vibe Screen Dev
+Authority: Vibe Screen Dev
+Authority: Vibe Screen Dev Root
+TeamIdentifier: not set
+Certificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C
+CDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2
+Binary SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+Designated requirement: identifier "dev.telemachus.display" and certificate leaf = H"9aae572bf6d764e3436a6109197d345b5a87998c"
+Source commit: missing
+Source tree: missing
+Source dirty: missing
+Current source commit: af3c02beee23b680f56b0bdc211c714df52b1119
+Current source tree: 5642b4cdb8f59cb3fdb05fd503a6d4f81d5dabb6
+Current source dirty: False
+Source mismatch allowed: False
+Verification: valid on disk (codesign --verify --deep --strict)
+
+Read-only TCC capture
+---------------------
+Database: <user-tcc-db>; <system-tcc-db>
+Field order: service|client|client_type|auth_value|auth_reason|last_modified
+(no matching rows)
+
+Interpretation: unverified (<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file)
+
+Preflight result
+----------------
+Status: FAIL
+Blocking issues:
+- codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.
+- installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py
+- cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file
+System permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility
+
+Keychain and TCC handling
+-------------------------
+This tool does not reset Keychain, import certificates, request passwords, update
+partition lists, modify TCC.db, or request/override macOS privacy authorization.
+It only uses the configured codesign identity and reads TCC.db in read-only mode.

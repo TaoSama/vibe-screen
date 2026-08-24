@@ -32,7 +32,7 @@ The focused implementation checks for this change are:
 ```bash
 python3 -m py_compile scripts/macos_dev_host.py scripts/tests/test_macos_dev_host.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v
-make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-25-current-base-host-readiness-blocked
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/host-readiness-current-base-clean
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_controller_runtime -v
 git diff --check
 ```
