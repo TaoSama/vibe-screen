@@ -38,6 +38,9 @@ SYSTEM_SETTINGS_PATH = (
 class SigningMetadata:
     app_path: Path
     identifier: str
+    source_commit: str | None
+    source_tree: str | None
+    source_dirty: bool | None
     binary_sha256: str
     authorities: tuple[str, ...]
     cdhash: str | None
@@ -129,6 +132,17 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
         default=DEFAULT_REPORT_PATH,
         help="path for the signing and permission report",
     )
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        default=package_macos.REPOSITORY_ROOT,
+        help="repository root whose current clean HEAD the installed Host must match",
+    )
+    parser.add_argument(
+        "--allow-source-mismatch",
+        action="store_true",
+        help="record source mismatch but do not fail the preflight; use only for historical fixed-binary reruns",
+    )
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
 
@@ -202,6 +216,7 @@ def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
 
 def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
+    plist = read_bundle_plist(app_path)
     try:
         run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
         details = run("/usr/bin/codesign", "-dvvv", str(app_path))
@@ -211,7 +226,6 @@ def collect_signing_metadata(app_path: Path) -> SigningMetadata:
         raise SystemExit(f"codesign inspection failed for {app_path}: {output}") from error
     fields = parse_codesign_details(details)
     requirement = parse_designated_requirement(requirement_output)
-    plist = read_bundle_plist(app_path)
     executable_name = str(plist.get("CFBundleExecutable", EXECUTABLE_NAME))
     executable_path = app_path / "Contents" / "MacOS" / executable_name
     if not executable_path.is_file():
@@ -219,6 +233,9 @@ def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     return SigningMetadata(
         app_path=app_path,
         identifier=str(fields.get("Identifier", "")),
+        source_commit=string_or_none(plist.get(package_macos.SOURCE_COMMIT_PLIST_KEY)),
+        source_tree=string_or_none(plist.get(package_macos.SOURCE_TREE_PLIST_KEY)),
+        source_dirty=bool_or_none(plist.get(package_macos.SOURCE_DIRTY_PLIST_KEY)),
         binary_sha256=sha256(executable_path),
         authorities=tuple(fields.get("Authority", [])),
         cdhash=fields.get("CDHash") if isinstance(fields.get("CDHash"), str) else None,
@@ -227,6 +244,18 @@ def collect_signing_metadata(app_path: Path) -> SigningMetadata:
         team_identifier=fields.get("TeamIdentifier") if isinstance(fields.get("TeamIdentifier"), str) else None,
         leaf_certificate_hash=parse_leaf_certificate_hash(requirement),
     )
+
+
+def string_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def bool_or_none(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def current_source_identity(source_root: Path) -> package_macos.SourceIdentity:
+    return package_macos.collect_source_identity(source_root.resolve())
 
 
 def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> PermissionStatus:
@@ -297,7 +326,13 @@ def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
 
 
 def validate_preflight(
-    metadata: SigningMetadata, permissions: PermissionStatus, *, install_path: Path, expected_sign_identity: str | None = None
+    metadata: SigningMetadata,
+    permissions: PermissionStatus,
+    *,
+    install_path: Path,
+    expected_sign_identity: str | None = None,
+    source_identity: package_macos.SourceIdentity | None = None,
+    allow_source_mismatch: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     if not is_default_install_path(install_path):
@@ -314,6 +349,20 @@ def validate_preflight(
         errors.append("codesign CDHash is missing")
     if not metadata.designated_requirement:
         errors.append("codesign designated requirement is missing")
+    if source_identity is not None:
+        if source_identity.dirty and not allow_source_mismatch:
+            errors.append("source repository is dirty; rerun from a clean current-base checkout")
+        if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
+            if not allow_source_mismatch:
+                errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
+        else:
+            if metadata.source_dirty and not allow_source_mismatch:
+                errors.append("installed Host was packaged from a dirty source tree")
+            if (
+                metadata.source_commit != source_identity.commit
+                or metadata.source_tree != source_identity.tree
+            ) and not allow_source_mismatch:
+                errors.append("installed Host source provenance does not match the current source checkout")
     if not permissions.readable:
         errors.append(f"cannot verify TCC permissions read-only: {permissions.error}")
     elif permissions.error:
@@ -344,7 +393,14 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
     return f"Screen Recording {screen}; Accessibility {accessibility}."
 
 
-def format_report(metadata: SigningMetadata, permissions: PermissionStatus, errors: list[str]) -> str:
+def format_report(
+    metadata: SigningMetadata,
+    permissions: PermissionStatus,
+    errors: list[str],
+    *,
+    source_identity: package_macos.SourceIdentity | None = None,
+    allow_source_mismatch: bool = False,
+) -> str:
     authorities = "\n".join(f"Authority: {authority}" for authority in metadata.authorities)
     if not authorities:
         authorities = "Authority: ad-hoc"
@@ -364,6 +420,13 @@ Certificate SHA-1: {metadata.leaf_certificate_hash or 'not available'}
 CDHash: {metadata.cdhash or 'missing'}
 Binary SHA-256: {metadata.binary_sha256}
 Designated requirement: {metadata.designated_requirement or 'missing'}
+Source commit: {metadata.source_commit or 'missing'}
+Source tree: {metadata.source_tree or 'missing'}
+Source dirty: {metadata.source_dirty if metadata.source_dirty is not None else 'missing'}
+Current source commit: {source_identity.commit if source_identity else 'not checked'}
+Current source tree: {source_identity.tree if source_identity else 'not checked'}
+Current source dirty: {source_identity.dirty if source_identity else 'not checked'}
+Source mismatch allowed: {allow_source_mismatch}
 Verification: valid on disk (codesign --verify --deep --strict)
 
 Read-only TCC capture
@@ -395,12 +458,25 @@ def write_report(path: Path, report: str) -> None:
 
 
 def metadata_and_permissions(
-    install_path: Path, tcc_db: Path, *, expected_sign_identity: str | None = None
-) -> tuple[SigningMetadata, PermissionStatus, list[str]]:
+    install_path: Path,
+    tcc_db: Path,
+    *,
+    expected_sign_identity: str | None = None,
+    source_root: Path = package_macos.REPOSITORY_ROOT,
+    allow_source_mismatch: bool = False,
+) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
+    source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(metadata, permissions, install_path=install_path, expected_sign_identity=expected_sign_identity)
-    return metadata, permissions, errors
+    errors = validate_preflight(
+        metadata,
+        permissions,
+        install_path=install_path,
+        expected_sign_identity=expected_sign_identity,
+        source_identity=source_identity,
+        allow_source_mismatch=allow_source_mismatch,
+    )
+    return metadata, source_identity, permissions, errors
 
 
 def refuse_ad_hoc_identity(sign_identity: str) -> None:
@@ -479,12 +555,20 @@ def install_command(args: argparse.Namespace) -> int:
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
     packaged_app = package_dev_app(args.output_dir, args.sign_identity)
     safe_replace_app(packaged_app, install_path, EXPECTED_BUNDLE_ID)
-    metadata, permissions, errors = metadata_and_permissions(
+    metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
+        source_root=args.source_root,
+        allow_source_mismatch=args.allow_source_mismatch,
     )
-    report = format_report(metadata, permissions, errors)
+    report = format_report(
+        metadata,
+        permissions,
+        errors,
+        source_identity=source_identity,
+        allow_source_mismatch=args.allow_source_mismatch,
+    )
     write_report(args.report, report)
     print(f"Installed {install_path}")
     print(f"Wrote {args.report}")
@@ -502,12 +586,20 @@ def preflight_command(args: argparse.Namespace) -> int:
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
     refuse_ad_hoc_identity(args.sign_identity)
     package_macos.resolve_sign_identity(args.sign_identity)
-    metadata, permissions, errors = metadata_and_permissions(
+    metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
+        source_root=args.source_root,
+        allow_source_mismatch=args.allow_source_mismatch,
     )
-    report = format_report(metadata, permissions, errors)
+    report = format_report(
+        metadata,
+        permissions,
+        errors,
+        source_identity=source_identity,
+        allow_source_mismatch=args.allow_source_mismatch,
+    )
     write_report(args.report, report)
     print(f"Wrote {args.report}")
     if errors:

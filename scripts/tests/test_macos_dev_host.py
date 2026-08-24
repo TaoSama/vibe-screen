@@ -84,6 +84,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Identity: Vibe Screen Dev", report)
         self.assertIn("Certificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C", report)
         self.assertIn("CDHash: e4ac7dab68720d647550f2e031f40070ab291e8b", report)
+        self.assertIn("Source commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", report)
+        self.assertIn("Source tree: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", report)
         self.assertIn("kTCCServiceAccessibility|dev.telemachus.display|0|0|4|1786811429", report)
         self.assertIn("Status: FAIL", report)
         self.assertIn("System Settings -> Privacy & Security", report)
@@ -128,12 +130,78 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertIn("expected configured identity", "\n".join(errors))
 
+    def test_validate_preflight_rejects_source_mismatch(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(source_commit="c" * 40),
+            macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+        )
+
+        self.assertIn("installed Host source provenance does not match", "\n".join(errors))
+
+    def test_validate_preflight_rejects_dirty_current_source(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=True,
+            ),
+        )
+
+        self.assertIn("source repository is dirty", "\n".join(errors))
+
+    def test_validate_preflight_allows_historical_source_mismatch_escape_hatch(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(source_commit="c" * 40, source_dirty=True),
+            macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=True,
+            ),
+            allow_source_mismatch=True,
+        )
+
+        self.assertEqual(errors, [])
+
     def test_preflight_command_refuses_ad_hoc_before_reading_bundle_or_tcc(self) -> None:
         args = mock.Mock(
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             sign_identity="-",
             tcc_db=Path("TCC.db"),
             report=Path("report.txt"),
+            source_root=Path("."),
+            allow_source_mismatch=False,
         )
         with (
             mock.patch.object(macos_dev_host, "collect_signing_metadata") as metadata_mock,
@@ -150,12 +218,23 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="Vibe Screen Dev",
-                tcc_db=Path("TCC.db"),
-                report=report,
-            )
+            tcc_db=Path("TCC.db"),
+            report=report,
+            source_root=Path("."),
+            allow_source_mismatch=False,
+        )
             with (
                 mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity"),
                 mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "current_source_identity",
+                    return_value=macos_dev_host.package_macos.SourceIdentity(
+                        commit="a" * 40,
+                        tree="b" * 40,
+                        dirty=False,
+                    ),
+                ),
                 mock.patch.object(
                     macos_dev_host,
                     "query_tcc_rows",
@@ -188,6 +267,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             sign_identity="Missing Dev",
             tcc_db=Path("TCC.db"),
             report=Path("report.txt"),
+            source_root=Path("."),
+            allow_source_mismatch=False,
         )
         with (
             mock.patch.object(
@@ -223,6 +304,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             sign_identity="Vibe Screen Dev",
             tcc_db=Path("TCC.db"),
             report=Path("report.txt"),
+            source_root=Path("."),
+            allow_source_mismatch=False,
         )
         with (
             mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")),
@@ -230,7 +313,16 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             mock.patch.object(
                 macos_dev_host,
                 "metadata_and_permissions",
-                return_value=(self.metadata(), macos_dev_host.PermissionStatus(Path("TCC.db"), (), True), []),
+                return_value=(
+                    self.metadata(),
+                    macos_dev_host.package_macos.SourceIdentity(
+                        commit="a" * 40,
+                        tree="b" * 40,
+                        dirty=False,
+                    ),
+                    macos_dev_host.PermissionStatus(Path("TCC.db"), (), True),
+                    [],
+                ),
             ) as metadata_mock,
             mock.patch.object(macos_dev_host, "write_report"),
             redirect_stdout(StringIO()),
@@ -240,6 +332,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.DEFAULT_INSTALL_PATH,
             Path("TCC.db"),
             expected_sign_identity="Vibe Screen Dev",
+            source_root=Path("."),
+            allow_source_mismatch=False,
         )
 
     @staticmethod
@@ -247,6 +341,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         *,
         authorities: tuple[str, ...] = ("Vibe Screen Dev", "Vibe Screen Dev Root"),
         signature: str | None = None,
+        source_commit: str | None = "a" * 40,
+        source_tree: str | None = "b" * 40,
+        source_dirty: bool | None = False,
     ) -> macos_dev_host.SigningMetadata:
         requirement = (
             'identifier "dev.telemachus.display" and certificate leaf = '
@@ -255,6 +352,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         return macos_dev_host.SigningMetadata(
             app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             identifier="dev.telemachus.display",
+            source_commit=source_commit,
+            source_tree=source_tree,
+            source_dirty=source_dirty,
             binary_sha256="aa1cdba1d65b8a4ed7e9376fcd329b3c8dbb6e635dbf61f1c1b61af727fb592d",
             authorities=authorities,
             cdhash="e4ac7dab68720d647550f2e031f40070ab291e8b",
