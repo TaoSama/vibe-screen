@@ -534,11 +534,15 @@ def derive_gate(
             adaptive.get("rollback_fail_closed"),
         ],
     )
-    if adaptive.get("oscillation_detected") is True:
+    oscillation_detected = adaptive.get("oscillation_detected")
+    if oscillation_detected is True:
         checks["no_unsafe_oscillation"] = _check(False, "adaptive policy does not oscillate under jitter", evidence=[True])
         failures.append("fail: no_unsafe_oscillation")
+    elif oscillation_detected is False:
+        checks["no_unsafe_oscillation"] = _check(True, "adaptive policy does not oscillate under jitter", evidence=[False])
     else:
-        checks["no_unsafe_oscillation"] = _check(True, "adaptive policy does not oscillate under jitter", evidence=[adaptive.get("oscillation_detected")])
+        checks["no_unsafe_oscillation"] = _check(False, "adaptive policy explicitly reports no unsafe jitter oscillation", evidence=[oscillation_detected])
+        blocked.append("blocked: no_unsafe_oscillation")
 
     transport_restart_count = _integer(transport.get("transport_restart_count"))
     transport_ok = (

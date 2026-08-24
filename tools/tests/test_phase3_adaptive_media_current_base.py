@@ -247,6 +247,15 @@ class Phase3AdaptiveMediaCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "fail")
         self.assertIn("fail: no_unsafe_oscillation", result["reasons"])
 
+    def test_missing_oscillation_observation_is_blocked(self) -> None:
+        report = adaptive_report()
+        del report["adaptive_media"]["oscillation_detected"]
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.derive(Path(directory), report)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("blocked: no_unsafe_oscillation", result["reasons"])
+
     def test_old_or_dirty_report_is_blocked(self) -> None:
         cases = {
             "old_commit": adaptive_report(commit="b" * 40),
@@ -279,6 +288,37 @@ class Phase3AdaptiveMediaCurrentBaseGateTests(unittest.TestCase):
         serialized = json.dumps(result, sort_keys=True)
         self.assertIn("P0110", serialized)
         self.assertNotIn("EP0110PZ0B9110300B", serialized)
+
+    def test_xiaomi_identity_must_stay_fuxi(self) -> None:
+        cases = {
+            "xiaomi_fuxi": (
+                {
+                    "manufacturer": "Xiaomi",
+                    "model": "2211133C",
+                    "codename": "fuxi",
+                    "android_version": "14",
+                    "sdk": 34,
+                },
+                "pass",
+            ),
+            "xiaomi_wrong_codename": (
+                {
+                    "manufacturer": "Xiaomi",
+                    "model": "2211133C",
+                    "codename": "pacific",
+                    "android_version": "14",
+                    "sdk": 34,
+                },
+                "blocked",
+            ),
+        }
+        for label, (device, expected_verdict) in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                result = self.derive(Path(directory), adaptive_report(device=device))
+
+            self.assertEqual(result["verdict"], expected_verdict)
+            if expected_verdict == "blocked":
+                self.assertIn("blocked: android_device_identity", result["reasons"])
 
     def test_raw_fixture_sources_are_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
