@@ -36,8 +36,8 @@
 > Task :app:processDebugResources
 
 > Task :app:compileDebugKotlin
-w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/8d9b/vibe-screen/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:1726:9 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
-w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/8d9b/vibe-screen/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:2266:23 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file://<repo-root>/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:1726:9 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file://<repo-root>/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:2266:23 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
 
 > Task :app:compileDebugJavaWithJavac
 > Task :app:processDebugJavaRes

@@ -1,6 +1,6 @@
 # PR234 current-base Android UI ergonomics check
 
-This is a focused current-base verification for draft PR #234 on the connected
+This is a focused current-base verification for PR #234 on the connected
 Nubia P0110 Android device. It records instrumented width-class coverage and a
 general Android-device substitute run only. It does not claim that P0110 is a
 tablet, does not claim Xiaomi 13/fuxi evidence, and does not close streaming,
@@ -20,17 +20,17 @@ macOS hardware gates.
 ## Base
 
 - Repository: TaoSama/vibe-screen
-- Base: origin/main `fb4ba4a4801c3ab228855a2e374791558e80401e`
-- Tested branch: `codex/android-tablet-ui-ergonomics-current-20260824`
-- Tested implementation revision: `b8cd488009edbc3622e2e807d3e458758fa5a139`
-  before this README-only metadata correction. The final PR head is reported by
-  GitHub.
+- Base: origin/main `6cdb34a1fd9e87174f6113ff34603d8bf297eaef`
+- Tested branch: `codex/android-tablet-ui-optimization`
+- Tested implementation revision: `873d56694a6daf35daf005c6ff37218902e49cf2`
+  for the Android source and retained P0110 device/instrumented evidence. The
+  PR head may advance by evidence-only metadata commits; report the final head
+  from GitHub when merging.
 
 ## Commands
 
 ```sh
 set -euo pipefail
-ANDROID_SERIAL=EP0110PZ0B9110300B
 ANDROID_PROJECT=baseline/AndroidClient
 EVIDENCE_DIR=docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-08-24-nubia-p0110-pr234-current-base
 
@@ -43,27 +43,28 @@ git rev-parse origin/main HEAD
   --rerun-tasks)
 (cd "$ANDROID_PROJECT" && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest)
 (cd "$ANDROID_PROJECT" && ./gradlew :app:lintDebug)
-adb -s "$ANDROID_SERIAL" get-state
-adb -s "$ANDROID_SERIAL" shell getprop ro.product.manufacturer
-adb -s "$ANDROID_SERIAL" shell getprop ro.product.model
-adb -s "$ANDROID_SERIAL" shell getprop ro.product.device
-adb -s "$ANDROID_SERIAL" shell getprop ro.build.version.release
-adb -s "$ANDROID_SERIAL" shell getprop ro.build.version.sdk
-adb -s "$ANDROID_SERIAL" shell wm size
-adb -s "$ANDROID_SERIAL" shell wm density
-adb -s "$ANDROID_SERIAL" install -r "$ANDROID_PROJECT/app/build/outputs/apk/debug/app-debug.apk"
-adb -s "$ANDROID_SERIAL" install -r "$ANDROID_PROJECT/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-adb -s "$ANDROID_SERIAL" shell am instrument -w \
+adb -s EP0110PZ0B9110300B get-state
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s EP0110PZ0B9110300B shell wm size
+adb -s EP0110PZ0B9110300B shell wm density
+adb -s EP0110PZ0B9110300B install -r "$ANDROID_PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+adb -s EP0110PZ0B9110300B install -r "$ANDROID_PROJECT/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+adb -s EP0110PZ0B9110300B shell am instrument -w \
   -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s "$ANDROID_SERIAL" pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-landscape.png "$EVIDENCE_DIR/sustained-use-landscape.png"
-adb -s "$ANDROID_SERIAL" pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-portrait.png "$EVIDENCE_DIR/sustained-use-portrait.png"
+adb -s EP0110PZ0B9110300B pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-landscape.png "$EVIDENCE_DIR/sustained-use-landscape.png"
+adb -s EP0110PZ0B9110300B pull /sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-portrait.png "$EVIDENCE_DIR/sustained-use-portrait.png"
 ```
 
 ## Results
 
-- `git fetch origin --prune`: passed. `origin/main` and local `HEAD` were both
-  `fb4ba4a4801c3ab228855a2e374791558e80401e` before committing this change.
+- `git fetch origin --prune`: passed. The focused checks were collected from a
+  clean PR-head checkout at `873d56694a6daf35daf005c6ff37218902e49cf2`; this
+  record was then rebased onto `6cdb34a1fd9e87174f6113ff34603d8bf297eaef`.
 - Focused JVM layout policy tests: passed with `BUILD SUCCESSFUL`; 39 tasks
   executed under `--rerun-tasks`; see `focused-unit-tests.txt`.
 - `:app:assembleDebug :app:assembleDebugAndroidTest`: passed with
@@ -77,8 +78,8 @@ adb -s "$ANDROID_SERIAL" pull /sdcard/Android/data/dev.telemachus.display/files/
 - Debug and androidTest APK installs both returned `Success`.
 - Focused instrumentation completed with `OK (23 tests)` after running all
   `SettingsDialogLayoutInstrumentedTest` and `ControlBarLayoutInstrumentedTest`
-  cases on `EP0110PZ0B9110300B`; see
-  `instrumentation-settings-controlbar.txt`.
+  cases on the attached Nubia P0110 device selected by
+  `adb -s EP0110PZ0B9110300B`; see `instrumentation-settings-controlbar.txt`.
 
 ## UI evidence
 
