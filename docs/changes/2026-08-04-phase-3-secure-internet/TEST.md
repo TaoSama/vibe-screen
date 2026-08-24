@@ -588,6 +588,20 @@ errors, or excess drops keep the current-base gate blocked or failed. Even a
 pass records only `release_gate_effect=child_gate_only`; it does not close the
 broader public Internet release gate.
 
+For Internet DataChannel audio, clipboard, and file-transfer product-flow
+ownership, run `make phase3-advanced-datachannel-current-base` with
+`PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON` pointing at the reviewed retained
+manifest. To create the default blocked baseline manifest, run
+`make phase3-advanced-datachannel-blocked-baseline`. A pass requires retained
+evidence files with matching SHA-256 values proving real macOS+Android
+public-Internet product sessions with `vibescreen.audio.v1`, the protected
+control DataChannel clipboard flow, and `vibescreen.bulk.v1` file-transfer flow.
+Existing USB/LAN audio, clipboard, and file-transfer evidence, iOS trusted-LAN
+evidence, local loopback, forced local coturn, synthetic Protocol v1 peers, or
+raw audio/bulk hook tests must not be used as pass evidence for this gate. A
+pass would remain a child gate and would not close the broader public Internet
+release gate.
+
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not
 claim a network handoff based only on toggling UI.

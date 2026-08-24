@@ -1,0 +1,223 @@
+{
+  "can_claim_internet_datachannel_product_flows": false,
+  "checks": {
+    "actual_current_base": {
+      "blocking": true,
+      "evidence": [
+        "984f34a615c1c98ca40e378149bd05cc023b5581",
+        "984f34a615c1c98ca40e378149bd05cc023b5581",
+        "True"
+      ],
+      "expected": "manifest source commit matches actual HEAD and actual worktree is clean",
+      "passed": true
+    },
+    "advanced_channel_backpressure": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "owner-scoped audio/bulk admission, bounded backlog, and stale-owner rejection",
+      "passed": false
+    },
+    "aes_record_layer_boundary": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "distinct AES-256-GCM key/nonce/replay domains for control, media, audio, and bulk",
+      "passed": false
+    },
+    "audio_product_flow": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "PCM audio capture/playback over vibescreen.audio.v1 with Android playback evidence",
+      "passed": false
+    },
+    "claim_audio": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "internet_audio_product_flow is true only when retained evidence supports it",
+      "passed": false
+    },
+    "claim_clipboard": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "internet_clipboard_product_flow is true only when retained evidence supports it",
+      "passed": false
+    },
+    "claim_file_transfer": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "internet_file_transfer_product_flow is true only when retained evidence supports it",
+      "passed": false
+    },
+    "clean_current_base": {
+      "blocking": true,
+      "evidence": [
+        "984f34a615c1c98ca40e378149bd05cc023b5581",
+        "clean"
+      ],
+      "expected": "manifest records a clean 40-character current-base commit",
+      "passed": true
+    },
+    "clipboard_product_flow": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "explicit clipboard offer/request/content over the protected control DataChannel",
+      "passed": false
+    },
+    "file_transfer_product_flow": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "approved file transfer over vibescreen.bulk.v1 with chunk/backpressure/digest evidence",
+      "passed": false
+    },
+    "identity_signed_host": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "Host build was identity-signed",
+      "passed": false
+    },
+    "internet_transport_scope": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "real macOS and Android peers over a genuine public Internet WebRTC path",
+      "passed": false
+    },
+    "ios_trusted_lan_evidence_used_for_android_internet": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "iOS trusted-LAN evidence cannot close Android Internet flows",
+      "passed": true
+    },
+    "local_loopback_or_forced_local_coturn_used_as_public_internet": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "local loopback or forced local coturn cannot close public Internet scope",
+      "passed": true
+    },
+    "no_plaintext_fallback": {
+      "blocking": true,
+      "evidence": [
+        "True"
+      ],
+      "expected": "no plaintext legacy fallback was used",
+      "passed": true
+    },
+    "no_synthetic_peer": {
+      "blocking": true,
+      "evidence": [
+        "True"
+      ],
+      "expected": "no synthetic peer was used as product evidence",
+      "passed": true
+    },
+    "owner": {
+      "blocking": true,
+      "evidence": [
+        "phase3_advanced_datachannel_current_base_owner",
+        "TaoSama/vibe-screen"
+      ],
+      "expected": "dedicated current-base owner is recorded",
+      "passed": true
+    },
+    "public_internet_path": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "route used public Internet rather than local loopback",
+      "passed": false
+    },
+    "raw_channel_hook_tests_used_as_product_flow": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "raw channel hook tests cannot close product-flow evidence",
+      "passed": true
+    },
+    "real_android_device": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "real Android device participated",
+      "passed": false
+    },
+    "real_macos_host": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "real macOS Host participated",
+      "passed": false
+    },
+    "schema": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "manifest is phase3_advanced_datachannel_current_base_manifest v1",
+      "passed": true
+    },
+    "usb_lan_tcp_evidence_used_for_internet": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "USB/LAN TCP evidence cannot close Internet DataChannel flows",
+      "passed": true
+    }
+  },
+  "gate_can_close_phase3_release": false,
+  "generated_at": "2026-08-24T09:29:52.285956+00:00",
+  "interpretation": "A pass requires retained real macOS plus Android public-Internet product evidence for audio playback, explicit clipboard transfer, and bounded file transfer over protected WebRTC DataChannels. This child gate never closes Phase 3 public Internet release by itself.",
+  "kind": "phase3_advanced_datachannel_current_base_gate",
+  "owner": {
+    "head_ref": "codex/phase3-advanced-datachannel-owner",
+    "pull_request": "pending",
+    "repository": "TaoSama/vibe-screen",
+    "role": "phase3_advanced_datachannel_current_base_owner"
+  },
+  "reasons": [
+    "blocked: real_macos_host",
+    "blocked: real_android_device",
+    "blocked: public_internet_path",
+    "blocked: identity_signed_host",
+    "blocked: internet_transport_scope",
+    "blocked: audio_product_flow",
+    "blocked: clipboard_product_flow",
+    "blocked: file_transfer_product_flow",
+    "blocked: advanced_channel_backpressure",
+    "blocked: aes_record_layer_boundary",
+    "blocked: claim_audio",
+    "blocked: claim_clipboard",
+    "blocked: claim_file_transfer"
+  ],
+  "release_gate_effect": "none",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "commit": "984f34a615c1c98ca40e378149bd05cc023b5581",
+    "tree_status": "clean"
+  },
+  "verdict": "blocked"
+}

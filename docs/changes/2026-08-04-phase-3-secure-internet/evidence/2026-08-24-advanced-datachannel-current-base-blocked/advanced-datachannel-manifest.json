@@ -1,0 +1,71 @@
+{
+  "claims": {
+    "internet_audio_product_flow": false,
+    "internet_clipboard_product_flow": false,
+    "internet_file_transfer_product_flow": false
+  },
+  "created_at": "2026-08-24T09:29:52.283247+00:00",
+  "evidence_context": {
+    "identity_signed_host": false,
+    "no_plaintext_fallback": true,
+    "no_synthetic_peer": true,
+    "public_internet_path": false,
+    "real_android_device": false,
+    "real_macos_host": false
+  },
+  "gates": {
+    "advanced_channel_backpressure": {
+      "evidence": [],
+      "requirement": "owner-scoped audio/bulk admission, bounded backlog, and stale-owner rejection",
+      "status": "open"
+    },
+    "aes_record_layer_boundary": {
+      "evidence": [],
+      "requirement": "distinct AES-256-GCM key/nonce/replay domains for control, media, audio, and bulk",
+      "status": "open"
+    },
+    "audio_product_flow": {
+      "evidence": [],
+      "requirement": "PCM audio capture/playback over vibescreen.audio.v1 with Android playback evidence",
+      "status": "open"
+    },
+    "clipboard_product_flow": {
+      "evidence": [],
+      "requirement": "explicit clipboard offer/request/content over the protected control DataChannel",
+      "status": "open"
+    },
+    "file_transfer_product_flow": {
+      "evidence": [],
+      "requirement": "approved file transfer over vibescreen.bulk.v1 with chunk/backpressure/digest evidence",
+      "status": "open"
+    },
+    "internet_transport_scope": {
+      "evidence": [],
+      "requirement": "real macOS and Android peers over a genuine public Internet WebRTC path",
+      "status": "open"
+    }
+  },
+  "kind": "phase3_advanced_datachannel_current_base_manifest",
+  "limitations": [
+    "No public Internet DataChannel audio product-flow pass is claimed.",
+    "No public Internet DataChannel clipboard product-flow pass is claimed.",
+    "No public Internet DataChannel file-transfer product-flow pass is claimed."
+  ],
+  "owner": {
+    "head_ref": "codex/phase3-advanced-datachannel-owner",
+    "pull_request": "pending",
+    "repository": "TaoSama/vibe-screen",
+    "role": "phase3_advanced_datachannel_current_base_owner"
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "commit": "984f34a615c1c98ca40e378149bd05cc023b5581",
+    "tree_status": "clean"
+  },
+  "substitutions": {
+    "ios_trusted_lan_evidence_used_for_android_internet": false,
+    "local_loopback_or_forced_local_coturn_used_as_public_internet": false,
+    "raw_channel_hook_tests_used_as_product_flow": false,
+    "usb_lan_tcp_evidence_used_for_internet": false
+  }
+}
