@@ -24,9 +24,11 @@ was rebased to 4d7e90dcce5b033ec366591816cec571382e3249. After PR #310 landed
 it was rebased to 98efe550e99ef2ce0eb8d433436453ef23548484. After PR #171
 landed it was rebased to 0ac995206916451a4ae12f7e6980432903407b7b. After PR
 #301 landed it was rebased to 7247f313e24cc465c9ddd0b60e271b361d1f9d4a.
+After PR #169 landed it was rebased to
+e9a8e447f4e8184ba0472def0d9d3c08888f907d.
 
 Focused local verification was run at PR commit
-4e40e4f8c8c8472f2a1840e7bb3a9cafcb872d56 after the latest rebase and
+4a47e7db052841715b3d49c143e3de9c02821ac6 after the latest rebase and
 canonical-query review fix. Later
 evidence-only metadata commits do not change executable sources.
 
@@ -38,7 +40,7 @@ Command:
 uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
 ```
 
-Result: passed, 4 passed in 0.09s.
+Result: passed, 4 passed in 0.10s.
 
 ## Android QR pairing and profile tests
 
@@ -63,7 +65,7 @@ cd baseline/AndroidClient
 ./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks
 ```
 
-Result: passed with Gradle BUILD SUCCESSFUL in 40s. The compile emitted existing
+Result: passed with Gradle BUILD SUCCESSFUL in 27s. The compile emitted existing
 deprecation warnings for startActivityForResult in MainActivity.kt. One earlier
 attempt failed before tests because overlapping Gradle processes in the same
 worktree raced while deleting app/build/tmp/kotlin-classes/debug; the rerun after
@@ -75,10 +77,23 @@ Command:
 
 ```bash
 cd services/authority
-go test -count=1 ./internal/authority
+go test -race -count=5 ./internal/authority
 ```
 
-Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 0.807s.
+Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 2.067s.
+
+## Signaling service verification
+
+Command:
+
+```bash
+cd services/signaling
+make verify
+```
+
+Result: passed. `make verify` completed gofmt, go vet, and
+`go test -race -count=1 ./...`; the signaling package passed in 2.632s and
+`internal/signaling` passed in 3.678s.
 
 ## Phase 3 release-gate documentation checks
 
@@ -94,15 +109,15 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
 
 Result: passed, Ran 28 tests, OK.
 
-After rebasing to 7247f313e24cc465c9ddd0b60e271b361d1f9d4a, the broader
+After rebasing to e9a8e447f4e8184ba0472def0d9d3c08888f907d, the broader
 current-base Phase 3 verification also passed as part of the PR refresh:
 
 ```bash
 make phase3-test
 ```
 
-Result: passed. `tests/phase3` ran 246 tests in 17.048s,
-`tests/phase3_webrtc` ran 55 tests in 30.808s,
+Result: passed. `tests/phase3` ran 246 tests in 20.700s,
+`tests/phase3_webrtc` ran 55 tests in 28.480s,
 `public_nat_turn_preflight.py` printed `Phase 3 public NAT/TURN preflight:
 BLOCKED`, and `release_gate_summary.py` printed
 `Phase 3 release gate summary: OPEN`.
@@ -117,9 +132,8 @@ swift build -c release
 "./.build/release/Vibe Screen" --phase3-internet-lease-self-test
 ```
 
-Result: release build passed, with the final incremental `swift build -c release`
-finishing in 0.14s after the prior full release build populated artifacts. The
-binary self-test printed Phase 3 Internet lease self-test: PASS with
+Result: release build passed in 36.27s. The binary self-test printed Phase 3
+Internet lease self-test: PASS with
 canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true,
 identityBinding=true, missingAliasFailClosed=true, legacyBindingFailClosed=true,
 missingDurableStateFailClosed=true, stateBeforeCredentials=true,
