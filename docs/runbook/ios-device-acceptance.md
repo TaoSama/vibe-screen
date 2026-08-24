@@ -92,7 +92,9 @@ Fail-closed rules:
 README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
 product flows over Internet DataChannels, and advanced real-device behavior
 open; those broader gates remain tracked in the Phase 5 verification record
-rather than closed by this device runbook.
+rather than closed by this device runbook. HDR output specifically requires the
+[HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback, Simulator
+output, Protocol field presence, and offline self-tests do not close it.
 
 ## Checklist
 
@@ -220,7 +222,7 @@ gate.
     "audio_playback": { "status": "open", "evidence": [] }
   },
   "broader_gates": {
-    "hdr_output": { "status": "open", "evidence": [] },
+    "hdr_output": { "status": "open", "evidence": [], "runbook": "docs/runbook/hdr-color-acceptance.md" },
     "advanced_adapters": { "status": "open", "evidence": [] },
     "trusted_lan_secure_records": { "status": "open", "evidence": [] }
   },

@@ -81,9 +81,12 @@ Negotiation rules:
   size, and digest. Origin/change IDs prevent bidirectional feedback loops.
 - **File transfer:** offer/accept/progress/cancel on control; data on bulk with
   transfer ID, offset, total length, and SHA-256. Paths are never trusted.
-- **HDR/color:** video negotiation adds profile, bit depth, primaries,
-  transfer, matrix, range, and static metadata, all guarded by `config_epoch`.
-  Unsupported Main10/HDR is explicitly renegotiated to SDR.
+- **HDR/color:** video negotiation carries bit depth, primaries, transfer,
+  matrix, and range as color-description fields, all guarded by `config_epoch`.
+  `CAPABILITY_COLOR_MANAGEMENT` proves description negotiation and fallback only;
+  HDR output requires `CAPABILITY_HDR_VIDEO`, an explicit decode profile, and
+  retained HDR/EDR hardware evidence. Unsupported Main10/HDR is explicitly
+  renegotiated to SDR.
 - **Custom gestures:** mappings stay on-device. The host exposes a capability-
   gated action catalog/invocation API; UI gesture definitions never enter the
   protocol.

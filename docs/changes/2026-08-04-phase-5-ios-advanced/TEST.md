@@ -48,8 +48,8 @@ a required full-Xcode GitHub gate rather than local XCTest evidence.
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
 and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
-fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
+sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
+config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
 WakeHost device-identity binding, and every advanced Envelope branch used by
 the client. Focused macOS/Android tests cover the shared HMAC golden vector,
 replay and unauthorized rejection, broadcast-target validation, and the
@@ -228,7 +228,7 @@ only.
 | VideoToolbox H.264/HEVC | open | Implementation and CI build evidence exist; hardware decode requires iPhone and iPad records. |
 | advanced adapters | open | Client/core and Mac/Android slices are offline-tested; host/product E2E remains separate. |
 | AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
-| HDR | open | SDR fallback is implemented; HDR/EDR output is not recorded. |
+| HDR | open | SDR fallback is offline-tested; HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
 | trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
@@ -280,7 +280,8 @@ The following remain unproved until their dedicated gates produce evidence:
   Android/macOS raw product-session record hooks, owner-scoped admission,
   bounded backlog, record-layer key, nonce, replay, and fixed-vector checks are
   offline evidence only;
-- HDR/EDR output (the current client deliberately advertises SDR only).
+- HDR/EDR output (the current clients deliberately advertise SDR only, and
+  fallback/readiness tests do not prove visible HDR output).
 
 ## Required iOS acceptance run
 
