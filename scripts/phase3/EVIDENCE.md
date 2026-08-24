@@ -21,6 +21,10 @@ python3 scripts/phase3/revocation_propagation_verifier.py \
   --write-summary /tmp/vibe-screen-phase3/revocation-propagation-summary.json
 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_release_gate \
   --evidence-dir /tmp/vibe-screen-phase3/public-internet-run
+PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_adaptive_media_current_base \
+  --report /tmp/vibe-screen-phase3/public-internet-run/adaptive-media-fluctuation.json \
+  --repo . \
+  --output /tmp/vibe-screen-phase3/public-internet-run/adaptive-media-current-base.json
 ```
 
 `revocation_propagation_verifier.py` validates the cross-service revocation
@@ -190,6 +194,27 @@ and writes `verdict: blocked` or `insufficient`; it never promotes readiness
 evidence into a release pass. Use `make phase3-internet-release-gate
 EVIDENCE_DIR=/tmp/vibe-screen-phase3/public-internet-run` after deriving the
 latency and soak reports.
+
+`vibescreen_evidence.phase3_adaptive_media_current_base` is the narrower
+current-base child gate for adaptive video behavior under real WebRTC Internet
+network fluctuation. It consumes an already-collected
+`adaptive-media-fluctuation.json` report and binds it to clean current `HEAD`;
+it does not start the Host, touch ADB, change network settings, or close the
+Phase 3 release gate. A pass requires public-Internet scope, controlled real
+impairment, real WebRTC statistics, retained raw Host/Android/WebRTC stats
+sources, fast-drop/slow-rise observations, bitrate/FPS changes, strictly
+increasing `config_epoch` values, `VideoConfig` ACK before keyframe/resume,
+stale generation rejection, rollback fail-closed behavior, and continuous
+WebRTC transport/session/media-channel state. Static latency fixtures, local
+loopback, deterministic `scripts/phase3/network_profile.py` output, synthetic
+media, missing raw sources, or Nubia P0110 evidence relabeled away from
+`pacific` keep the child gate blocked; transport restarts or unsafe oscillation
+fail the child gate. After collecting the real fluctuation report, run:
+
+```sh
+make phase3-adaptive-media-current-base \
+  EVIDENCE_DIR=/tmp/vibe-screen-phase3/public-internet-run
+```
 
 Use the explicit product slice to exercise the macOS product-session composition
 through real signaling/libwebrtc and, in relay mode, forced local coturn:

@@ -97,7 +97,7 @@ steps.
 | Replay | duplicate, too old, reordered media, reordered control, cross-channel/session/epoch/key, crash/restart counter safety |
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, control/media/audio/bulk channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
-| Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
+| Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate -> `VideoConfig` ACK -> keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Current-base real fluctuation claims additionally require `make phase3-adaptive-media-current-base`, which is fail-closed for static latency fixtures, local loopback, deterministic network-profile output, synthetic media, missing real WebRTC stats, missing fast-drop/slow-rise, missing bitrate/FPS/config-epoch evidence, or transport restarts. Not proved: real ScreenCaptureKit->Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
 | Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, non-authoritative Authority snapshot reconciliation, and separate provider billing reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
@@ -178,6 +178,8 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     raw-logcat.txt
     host.log
     real-media-continuity.json
+    adaptive-media-fluctuation.json
+    adaptive-media-current-base.json
     packet-capture-notes.md
     packet-capture-confidentiality.json
     privacy-manifest.json
@@ -446,6 +448,25 @@ produce `fail` only after the required runtime stages are otherwise present. The
 file is a narrow continuity preflight and always records
 `gate_can_close_phase3_release=false`; it cannot by itself close the broader
 Phase 3 release gate.
+
+
+For adaptive media under real network fluctuation, bind retained WebRTC transport
+statistics and adaptive policy events to current `HEAD` with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_adaptive_media_current_base`
+or `make phase3-adaptive-media-current-base`. The input report schema is
+`dev.vibescreen.phase3-adaptive-media-fluctuation/v1` and must record current
+clean source, exact Android identity, public-Internet WebRTC scope, controlled
+real network impairment, real WebRTC statistics, raw Host/Android/stats sources,
+fast downgrade, conservative slow upgrade, bitrate/FPS changes, strictly
+increasing video `config_epoch` values, `VideoConfig` ACK before keyframe/resume,
+stale owner or generation rejection, rollback fail-closed behavior, no unsafe
+oscillation, and no transport/session/media-channel restart. Local loopback,
+deterministic `scripts/phase3/network_profile.py` output, static latency
+fixtures, synthetic media, missing raw sources, or Nubia P0110 results relabeled
+as Xiaomi/fuxi keep the child gate blocked. A transport restart or unsafe
+oscillation is a failure. Even a pass records only
+`can_claim_current_base_adaptive_media_fluctuation=true` and keeps
+`gate_can_close_phase3_release=false`.
 
 After `real-media-continuity.json` exists, bind it to the checked-out current
 base and retained Android visible-UI evidence with
