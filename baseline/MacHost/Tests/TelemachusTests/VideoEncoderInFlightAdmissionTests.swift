@@ -171,20 +171,21 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let registry = VideoEncoderFrameRegistry()
         let owner = VideoEncoderCallbackOwner()
         var sourceFrameRefcon: UnsafeMutableRawPointer?
+        weak var retainedContext: VideoEncoder.FrameContext?
 
         XCTAssertEqual(admission.submit { lease in
-            sourceFrameRefcon = registry.register(
-                VideoEncoder.FrameContext(
-                    timestamp: 1,
-                    sessionEpoch: 2,
-                    admissionLease: lease
-                ),
-                owner: owner
+            let context = VideoEncoder.FrameContext(
+                timestamp: 1,
+                sessionEpoch: 2,
+                admissionLease: lease
             )
+            retainedContext = context
+            sourceFrameRefcon = registry.register(context, owner: owner)
             return noErr
         }, .submitted(noErr))
         XCTAssertEqual(registry.count, 1)
         XCTAssertEqual(admission.inFlightCount, 1)
+        XCTAssertNotNil(retainedContext)
 
         // Fake VTCompressionSessionCompleteFrames failure: teardown must own
         // cleanup because VideoToolbox never delivered the accepted callback.
@@ -193,6 +194,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
 
         XCTAssertEqual(registry.count, 0)
         XCTAssertEqual(admission.inFlightCount, 0)
+        XCTAssertNil(retainedContext)
         XCTAssertNil(registry.claim(sourceFrameRefcon))
     }
 

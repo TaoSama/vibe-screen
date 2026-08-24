@@ -51,6 +51,14 @@ registry 在回调或 teardown 时逐项 claim/drain；网络侧只保留一个 
 retained 路径。`ScreenCapture` 的 `lastPixelBuffer`、`encoder` 和
 `currentFrameSink` 仍存在跨线程正确性风险，但这些引用数量有界，当前证据没有把
 它们与历史持续 RSS 斜率建立因果关系，因此不把猜测性并发重构混入内存候选。
+2026-08-24 的 current-base 跟进确认：`HOST_PID` fail-closed 正式门禁目标、
+closed-socket FD cleanup/readiness、VideoToolbox in-flight admission 与 callback
+registry 均已分别由主线和已合并 PR 覆盖；本轮仅把仍未覆盖的 frame-pacer cleanup
+consolidation、frame-pacer timer/queue 锁保护与 release-focused tests 最小移植到
+当前 `origin/main`。当前环境可完成 MacHost source build 与 P0110 身份读取，但
+缺少完整 Xcode/XCTest 与 Screen Recording 授权下的当前源码 Host RSS 实测，因此
+记录为 blocked readiness；不得把该记录解读为 10-17 分钟短窗诊断通过或两小时 Host
+RSS no-growth 通过。
 
 为避免再次只凭 RSS 猜测，现提供 10-17 分钟的
 `vibescreen_evidence.host_memory_diagnostic` 作为独立短窗回归门禁。它联合
@@ -118,6 +126,11 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 - 当前短窗回归门禁仅完成离线工具与阈值验证，尚无基于本分支源码的 Xiaomi 13
   10-17 分钟短窗实测证据；正式两小时 Host RSS no-growth 门禁仍需
   `host_rss_gate` 独立输出 `pass` 方可关闭。
+- 2026-08-24 current-base 跟进重新审计了 open draft PR #195、已合并 #158 和
+  #260；#195 在旧 base 上仍有 frame-pacer lifecycle 收紧价值，但它的
+  `HOST_PID` 门禁与 closed-socket/readiness 部分已由 #158/#260/main 覆盖。本轮
+  current-base evidence 见
+  [`evidence/2026-08-24-frame-lifecycle-current-base-blocked/README.md`](evidence/2026-08-24-frame-lifecycle-current-base-blocked/README.md)。
 - 短窗诊断报告现在把 watched heap 类按 `swiftui_observation`、`autorelease_pool`
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
