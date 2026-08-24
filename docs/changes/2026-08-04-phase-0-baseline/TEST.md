@@ -348,6 +348,17 @@ available, so `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
 `input-p95-sub50` all remain open. Evidence is retained under
 [evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/](evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
 
+On 2026-08-22, a worktree refreshed on origin/main commit
+`e9a8e447f4e8184ba0472def0d9d3c08888f907d` added a fail-closed latency
+preflight target and formal `gate_artifacts` checks for each README latency
+profile: USB connection proof for `usb-glass-to-glass-sub50`, LAN and
+stream proof for `lan-glass-to-glass-sub80`, and physical input actuation proof
+for `input-p95-sub50`. The connected Nubia P0110/pacific Android 16 substitute
+was reachable and recorded under a pseudonymous device id, but the external
+camera and synchronized-clock measurement packages were still unavailable. All
+three latency gates therefore remain open. Evidence is retained under
+[evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;

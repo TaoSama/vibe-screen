@@ -43,6 +43,11 @@ RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / EP0110PZ0
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
 RECONNECT_TIMING_ARTIFACT_ARGS ?=
 RECONNECT_TIMING_NOTES_ARG ?=
+LATENCY_PREFLIGHT_INPUT ?=
+LATENCY_DEVICE_INFO ?=
+LATENCY_REPOSITORY_REVISION ?=
+LATENCY_GATE_PROFILE ?=
+LATENCY_MANIFEST ?= $(EVIDENCE_DIR)/manifest.json
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -71,7 +76,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -279,6 +284,26 @@ actionable-error-states-gate:
 		--android-session-failure-source baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionFailure.kt \
 		--repository-root . \
 		--output $(EVIDENCE_DIR)/actionable-error-states-gate.json
+
+evidence-latency-preflight:
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.latency_preflight \
+		$(if $(strip $(LATENCY_PREFLIGHT_INPUT)),--input $(LATENCY_PREFLIGHT_INPUT),) \
+		$(if $(strip $(LATENCY_DEVICE_INFO)),--device-info $(LATENCY_DEVICE_INFO),) \
+		$(if $(strip $(LATENCY_REPOSITORY_REVISION)),--repository-revision $(LATENCY_REPOSITORY_REVISION),) \
+		--repo . \
+		--output $(EVIDENCE_DIR)/latency-preflight.json; \
+		status=$$?; printf '%s\n' "$$status" > $(EVIDENCE_DIR)/latency-preflight-exit.txt; exit $$status
+
+evidence-latency-gate:
+	@test -n "$(strip $(LATENCY_GATE_PROFILE))" || (echo "error: set LATENCY_GATE_PROFILE" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.latency_evidence \
+		$(LATENCY_MANIFEST) \
+		--gate-profile $(LATENCY_GATE_PROFILE) \
+		--output $(EVIDENCE_DIR)/latency-evidence-report.json
 
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)

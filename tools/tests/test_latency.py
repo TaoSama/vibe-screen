@@ -168,6 +168,15 @@ class LatencySummaryTest(unittest.TestCase):
                 transport=TRANSPORT_USB,
             )
 
+    def test_rejects_synchronized_clock_frame_count_samples(self) -> None:
+        with self.assertRaisesRegex(LatencyInputError, "direct latency_ms values"):
+            summarize(
+                [{"start_frame": 100, "end_frame": 105, "camera_fps": 240}],
+                kind=KIND_INPUT,
+                measurement_method=METHOD_SYNCHRONIZED_CLOCK,
+                transport=TRANSPORT_USB,
+            )
+
     def test_rejects_telemetry_method_for_end_to_end_claims(self) -> None:
         for kind in (KIND_GLASS_TO_GLASS, KIND_INPUT):
             with self.subTest(kind=kind), self.assertRaisesRegex(
