@@ -72,6 +72,29 @@ diagnostics, same-revision SDR fallback, and retained artifacts. Simulator,
 unsigned archive, Android, protocol-only, macOS fallback, or SDR fallback
 substitution returns `fail` and keeps `can_close_ios_hdr_output_gate=false`.
 
+## iOS app-signing readiness
+
+The app-signing readiness gate validates a sanitized JSON summary from an
+operator-controlled Xcode archive/signing check. It is read-only and does not
+run Xcode, install an app, use Simulator output, or operate any device. It exits
+`0` only when the summary records all signing prerequisites: Team ID,
+provisioning profile UUID, unique bundle ID, non-ad-hoc codesign identity,
+registered physical-device UDID hashes, signed-app entitlements, signed artifact
+SHA-256, and retained local artifacts for the signing commands/profile output.
+
+```sh
+make ios-app-signing-readiness-gate \
+  IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
+```
+
+The target writes `ios-app-signing-readiness-gate.json` next to the input.
+`blocked` means required signing material is missing; `fail` means the evidence
+tries to use Simulator, unsigned, ad-hoc, or Android-derived material. A signing
+readiness pass can unblock the current-base signing prerequisite only after the
+same gate JSON is bound into `ios-current-base-manifest`; it still reports
+`can_close_ios_device_acceptance=false` because install, launch, decode, input,
+reconnect, and audio behavior require real iPhone and iPad runs.
+
 Codec capability evidence must record the negotiated Protocol v1 codec, the
 Host encoder capability and implementation path, the client decoder name, and
 the first decoded output frame before it is used to close a codec gate. AV1 is

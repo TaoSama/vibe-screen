@@ -17,6 +17,7 @@
     "source_docs",
     "local_environment",
     "build_evidence",
+    "signing_readiness_gate",
     "signing",
     "devices",
     "gates",
@@ -56,6 +57,28 @@
     "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "local_environment": {"type": "object"},
     "build_evidence": {"type": "object"},
+    "signing_readiness_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provided",
+        "path",
+        "kind",
+        "verdict",
+        "can_close_ios_app_signing_readiness",
+        "missing",
+        "failures"
+      ],
+      "properties": {
+        "provided": {"type": "boolean"},
+        "path": {"type": ["string", "null"]},
+        "kind": {"type": ["string", "null"]},
+        "verdict": {"type": ["string", "null"]},
+        "can_close_ios_app_signing_readiness": {"type": "boolean"},
+        "missing": {"type": "array", "items": {"type": "string"}},
+        "failures": {"type": "array", "items": {"type": "string"}}
+      }
+    },
     "signing": {
       "type": "object",
       "additionalProperties": false,

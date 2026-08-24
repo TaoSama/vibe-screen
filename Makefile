@@ -47,6 +47,8 @@ IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 IOS_HDR_EDR_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-hdr-edr-observations.json
 IOS_HDR_EDR_GATE_JSON ?= $(dir $(IOS_HDR_EDR_OBSERVATIONS_JSON))ios-hdr-edr-gate.json
+IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
+IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
@@ -91,7 +93,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -396,6 +398,14 @@ ios-hdr-edr-gate:
 		--repo . \
 		--output "$(IOS_HDR_EDR_GATE_JSON)"
 
+ios-app-signing-readiness-gate:
+	@test -f "$(IOS_APP_SIGNING_READINESS_JSON)" || (echo "error: set IOS_APP_SIGNING_READINESS_JSON to sanitized iOS app-signing readiness JSON" >&2; exit 2)
+	mkdir -p "$(dir $(IOS_APP_SIGNING_READINESS_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_app_signing_readiness \
+		--readiness "$(IOS_APP_SIGNING_READINESS_JSON)" \
+		--evidence-root "$$(dirname "$(IOS_APP_SIGNING_READINESS_JSON)")" \
+		--output "$(IOS_APP_SIGNING_READINESS_GATE_JSON)"
+
 define SOAK_RECIPE
 	mkdir -p $(EVIDENCE_DIR)/$@
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak --serial $(EVIDENCE_SERIAL) --preset $(@:soak-%=%) --interval 30s --package $(EVIDENCE_PACKAGE) $(if $(strip $(HOST_PID)),--host-pid $(HOST_PID),$(if $(strip $(EVIDENCE_HOST_PID)),--host-pid $(EVIDENCE_HOST_PID),)) --telemetry-jsonl $(EVIDENCE_DIR)/$@/host-telemetry.jsonl --require-stream-telemetry --output-jsonl $(EVIDENCE_DIR)/$@/samples.jsonl --summary-json $(EVIDENCE_DIR)/$@/summary.json
@@ -513,6 +523,7 @@ ios-current-base-manifest:
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_manifest \
 		--output $(EVIDENCE_DIR)/ios-current-base-manifest.json \
+		--signing-readiness-gate "$(IOS_APP_SIGNING_READINESS_GATE_JSON)" \
 		-- make ios-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
 
 ios-current-base-gate:
