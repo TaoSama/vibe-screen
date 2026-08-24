@@ -66,6 +66,8 @@ VIDEOTOOLBOX_RESULTS = frozenset((
     "unavailable",
 ))
 REPOSITORY_DIRTY_STATES = frozenset(("clean", "dirty"))
+TCC_STATES = frozenset(("authorized", "not_authorized", "unverified"))
+EXPECTED_HOST_BUNDLE_ID = "dev.telemachus.display"
 COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 REQUIRED_FIELDS = (
@@ -78,6 +80,8 @@ REQUIRED_FIELDS = (
     ("xcode_swift_recorded", "record Xcode and Swift versions used for local build/test evidence"),
     ("host_build_identity_recorded", "record Host app commit, binary SHA-256, bundle id, and signing identity"),
     ("signing_and_tcc_state_recorded", "record signing stability plus Screen Recording and Accessibility state"),
+    ("source_bound_host_recorded", "record installed Host source commit/tree provenance and require it to match this current-base row"),
+    ("host_self_test_provenance_recorded", "record Host self-test provenance from the same current-base source revision"),
     ("display_topology_recorded", "record built-in, external, multi-display, dummy/headless, or Screen Sharing topology"),
     ("capture_backend_recorded", "record ScreenCaptureKit, CGDisplayStream fallback, or explicit unavailable result"),
     ("video_encoder_path_recorded", "record VideoToolbox H.264/HEVC capability or explicit unavailable result"),
@@ -101,10 +105,14 @@ BLOCKING_FIELDS = frozenset((
     "host_model_recorded",
     "cpu_architecture_recorded",
     "macos_version_build_recorded",
+    "host_build_identity_recorded",
+    "signing_and_tcc_state_recorded",
     "display_topology_recorded",
     "automated_macos_checks_passed",
     "packaged_host_launch_observed",
     "protocol_v1_stream_observed",
+    "source_bound_host_recorded",
+    "host_self_test_provenance_recorded",
     "artifacts_retained",
     "claim_scoped_to_exact_row",
 ))
@@ -135,6 +143,15 @@ REQUIRED_METADATA_FIELDS = (
     ("xcode_version", "xcode_swift_recorded", "record a non-empty Xcode version"),
     ("swift_version", "xcode_swift_recorded", "record a non-empty Swift version"),
     ("host_build_identity", "host_build_identity_recorded", "record a non-empty Host build identity"),
+    ("host_bundle_id", "host_build_identity_recorded", "record the packaged Host bundle identifier"),
+    ("host_signing_identity", "host_build_identity_recorded", "record the concrete non-ad-hoc Host signing identity"),
+    ("screen_recording_tcc", "signing_and_tcc_state_recorded", "record Screen Recording TCC authorization state for the packaged Host"),
+    ("accessibility_tcc", "signing_and_tcc_state_recorded", "record Accessibility TCC authorization state for the packaged Host"),
+    ("host_source_commit", "source_bound_host_recorded", "record the source commit embedded in the installed Host bundle"),
+    ("host_source_tree", "source_bound_host_recorded", "record the source tree embedded in the installed Host bundle"),
+    ("host_source_dirty_state", "source_bound_host_recorded", "record whether the installed Host was packaged from a clean source tree"),
+    ("host_self_test_commit", "host_self_test_provenance_recorded", "record the commit used for Host self-test output"),
+    ("current_base_commit", "host_self_test_provenance_recorded", "record the origin/main commit used as the current-base comparison point"),
     ("display_topology", "display_topology_recorded", "record a concrete display topology"),
     ("capture_backend", "capture_backend_recorded", "record a non-empty capture backend or unavailable result"),
     ("screen_capturekit_result", "capture_backend_recorded", "record ScreenCaptureKit first-frame, fallback, or terminal-unavailable result"),
@@ -235,6 +252,17 @@ def _enum_value(record: dict[str, Any], field: str, allowed: frozenset[str]) -> 
     return value
 
 
+def _full_sha_or_missing(
+    missing: list[dict[str, str]], field: str, observation_field: str, value: str
+) -> None:
+    if value and COMMIT_SHA_RE.fullmatch(value) is None:
+        _append_missing_once(
+            missing,
+            observation_field,
+            f"record {field} as a 40-character hexadecimal git commit",
+        )
+
+
 def _artifact_path_report(
     artifact_paths: Sequence[str], evidence_dir: Path | None
 ) -> dict[str, Any]:
@@ -247,6 +275,7 @@ def _artifact_path_report(
             "empty_paths": [],
         }
 
+    reported_evidence_dir = str(evidence_dir)
     resolved_evidence_dir = evidence_dir.resolve()
     missing_paths: list[str] = []
     invalid_paths: list[str] = []
@@ -270,7 +299,7 @@ def _artifact_path_report(
             empty_paths.append(artifact_path)
     return {
         "enabled": True,
-        "evidence_dir": str(resolved_evidence_dir),
+        "evidence_dir": reported_evidence_dir,
         "missing_paths": missing_paths,
         "invalid_paths": invalid_paths,
         "empty_paths": empty_paths,
@@ -325,7 +354,10 @@ def _capture_backend_failures(record: dict[str, Any]) -> list[dict[str, str]]:
 def _append_missing_once(
     missing: list[dict[str, str]], field: str, requirement: str
 ) -> None:
-    if not any(item["field"] == field for item in missing):
+    if not any(
+        item["field"] == field and item["requirement"] == requirement
+        for item in missing
+    ):
         missing.append({"field": field, "requirement": requirement})
 
 
@@ -346,8 +378,15 @@ def summarize(
         if not _string_value(record, metadata_field).strip():
             _append_missing_once(missing, observation_field, requirement)
     repository_commit = _string_value(record, "repository_commit")
+    host_source_commit = _string_value(record, "host_source_commit")
+    host_source_tree = _string_value(record, "host_source_tree")
+    host_self_test_commit = _string_value(record, "host_self_test_commit")
+    current_base_commit = _string_value(record, "current_base_commit")
     repository_dirty_state = _enum_value(
         record, "repository_dirty_state", REPOSITORY_DIRTY_STATES
+    )
+    host_source_dirty_state = _enum_value(
+        record, "host_source_dirty_state", REPOSITORY_DIRTY_STATES
     )
     if repository_commit and COMMIT_SHA_RE.fullmatch(repository_commit) is None:
         _append_missing_once(
@@ -355,11 +394,67 @@ def summarize(
             "repository_commit_recorded",
             "record repository_commit as a 40-character hexadecimal git commit",
         )
+    _full_sha_or_missing(missing, "host_source_commit", "source_bound_host_recorded", host_source_commit)
+    _full_sha_or_missing(missing, "host_source_tree", "source_bound_host_recorded", host_source_tree)
+    _full_sha_or_missing(missing, "host_self_test_commit", "host_self_test_provenance_recorded", host_self_test_commit)
+    _full_sha_or_missing(missing, "current_base_commit", "host_self_test_provenance_recorded", current_base_commit)
     if repository_dirty_state == "dirty":
         _append_missing_once(
             missing,
             "repository_commit_recorded",
             "rerun the compatibility row from a clean repository state before closing it",
+        )
+    if host_source_dirty_state == "dirty":
+        _append_missing_once(
+            missing,
+            "source_bound_host_recorded",
+            "rebuild and install the Host from a clean source tree before closing the row",
+        )
+    if host_source_commit and repository_commit and host_source_commit != repository_commit:
+        _append_missing_once(
+            missing,
+            "source_bound_host_recorded",
+            "installed Host source commit must match repository_commit for this row",
+        )
+    if host_self_test_commit and repository_commit and host_self_test_commit != repository_commit:
+        _append_missing_once(
+            missing,
+            "host_self_test_provenance_recorded",
+            "Host self-test commit must match repository_commit for this row",
+        )
+    if current_base_commit and repository_commit and current_base_commit != repository_commit:
+        _append_missing_once(
+            missing,
+            "host_self_test_provenance_recorded",
+            "current_base_commit must match repository_commit for this current-base row",
+        )
+    host_bundle_id = _string_value(record, "host_bundle_id")
+    if host_bundle_id and host_bundle_id != EXPECTED_HOST_BUNDLE_ID:
+        _append_missing_once(
+            missing,
+            "host_build_identity_recorded",
+            f"Host bundle id must be {EXPECTED_HOST_BUNDLE_ID}",
+        )
+    host_signing_identity = _string_value(record, "host_signing_identity").strip().lower()
+    if host_signing_identity in {"-", "ad-hoc", "adhoc"}:
+        _append_missing_once(
+            missing,
+            "host_build_identity_recorded",
+            "Host signing identity must be a stable non-ad-hoc identity",
+        )
+    screen_recording_tcc = _enum_value(record, "screen_recording_tcc", TCC_STATES)
+    accessibility_tcc = _enum_value(record, "accessibility_tcc", TCC_STATES)
+    if screen_recording_tcc and screen_recording_tcc != "authorized":
+        _append_missing_once(
+            missing,
+            "signing_and_tcc_state_recorded",
+            "Screen Recording TCC must be authorized for the packaged Host",
+        )
+    if accessibility_tcc and accessibility_tcc != "authorized":
+        _append_missing_once(
+            missing,
+            "signing_and_tcc_state_recorded",
+            "Accessibility TCC must be authorized for the packaged Host",
         )
     if field_values["artifacts_retained"] and not artifact_paths:
         _append_missing_once(
@@ -429,6 +524,15 @@ def summarize(
             "xcode_version": _string_value(record, "xcode_version"),
             "swift_version": _string_value(record, "swift_version"),
             "host_build_identity": _string_value(record, "host_build_identity"),
+            "host_bundle_id": host_bundle_id,
+            "host_signing_identity": _string_value(record, "host_signing_identity"),
+            "screen_recording_tcc": screen_recording_tcc,
+            "accessibility_tcc": accessibility_tcc,
+            "host_source_commit": host_source_commit,
+            "host_source_tree": host_source_tree,
+            "host_source_dirty_state": host_source_dirty_state,
+            "host_self_test_commit": host_self_test_commit,
+            "current_base_commit": current_base_commit,
             "display_topology": _display_topology(record),
             "capture_backend": _enum_value(record, "capture_backend", CAPTURE_BACKENDS),
             "screen_capturekit_result": _enum_value(

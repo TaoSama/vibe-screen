@@ -667,10 +667,13 @@ make macos-hardware-compatibility-gate EVIDENCE_DIR=.build/evidence/macos-host-c
 The target consumes `macos-hardware-compatibility.json` and writes
 `macos-hardware-compatibility-gate.json`. A `pass` closes only the exact row
 recorded in the input: CPU architecture, Mac model, macOS build, display
-topology, transport, Android counterpart, Host build/signing/TCC state, capture
-backend, and retained artifacts. Missing row identity, clean 40-character
-repository commit, packaged Host launch, Protocol v1 stream, artifact retention,
-or exact-row scoping is `blocked`; missing runtime probes are `insufficient`.
+topology, transport, Android counterpart, source-bound Host build/signing/TCC
+state, capture backend, and retained artifacts. Missing row identity, clean
+40-character repository commit, stable bundle id, non-ad-hoc signing identity,
+authorized Screen Recording or Accessibility TCC state, installed Host source
+commit/tree provenance, Host self-test/current-base provenance, packaged Host
+launch, Protocol v1 stream, artifact retention, or exact-row scoping is
+`blocked`; missing runtime probes are `insufficient`.
 Marking CI-only evidence, extrapolating Apple silicon, OS-version,
 display-topology, capture-backend, or virtual-display claims across rows, or
 recording contradictory capture backend results is `failed`. The Python CLI exits

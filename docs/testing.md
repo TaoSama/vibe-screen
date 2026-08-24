@@ -188,7 +188,7 @@ general Android substitute.
 
 The macOS compatibility matrix is hardware-gated. A row can close only for the
 exact Host architecture, Mac model identifier, macOS build, display topology,
-transport, Android counterpart, Host build identity, and artifacts recorded in
+transport, Android counterpart, source-bound Host build identity, and artifacts recorded in
 that evidence bundle. CI `macos-15` build/test output, a local Apple silicon run,
 or a successful row on another display setup cannot be extrapolated to Intel, to
 the whole macOS 13+ range, or to a different built-in/external/multi-display,
@@ -209,7 +209,11 @@ The underlying Python CLI exits `0` for `pass`, `1` for `blocked` or
 `insufficient`, and `2` for `failed` invalid extrapolation claims; Make reports
 any non-pass result as a failed target while still writing the summary JSON.
 `blocked`, `insufficient`, or `failed` summaries keep the README compatibility
-matrix open for that row. If the connected Android device is the local Nubia
+matrix open for that row. The row must include the packaged Host bundle id,
+stable non-ad-hoc signing identity, authorized Screen Recording and
+Accessibility TCC state, installed Host source commit/tree provenance, Host
+self-test commit, and current-base commit; missing or mismatched values are
+blocked readiness evidence only. If the connected Android device is the local Nubia
 phone, every ADB command must name `adb -s EP0110PZ0B9110300B`, and the
 counterpart must be recorded as
 `nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B`.

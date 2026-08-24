@@ -1,0 +1,327 @@
+{
+  "artifact_file_check": {
+    "empty_paths": [],
+    "enabled": true,
+    "evidence_dir": "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked",
+    "invalid_paths": [],
+    "missing_paths": []
+  },
+  "artifact_paths": [
+    "README.md"
+  ],
+  "blocking_notes": [
+    "No identity-signed source-bound Host with authorized Screen Recording and Accessibility TCC was recorded for this current-base owner pass.",
+    "This package intentionally remains blocked and cannot close any real Host-backed Android gate."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "host_model_recorded",
+      "requirement": "record the exact Mac model identifier and marketing family when available"
+    },
+    {
+      "field": "cpu_architecture_recorded",
+      "requirement": "record whether the Host is Apple silicon or Intel"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record macOS product version and build number"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record Host app commit, binary SHA-256, bundle id, and signing identity"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record installed Host source commit/tree provenance and require it to match this current-base row"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record Host self-test provenance from the same current-base source revision"
+    },
+    {
+      "field": "display_topology_recorded",
+      "requirement": "record built-in, external, multi-display, dummy/headless, or Screen Sharing topology"
+    },
+    {
+      "field": "automated_macos_checks_passed",
+      "requirement": "run baseline macOS build, XCTest, and self-test commands for this source"
+    },
+    {
+      "field": "packaged_host_launch_observed",
+      "requirement": "launch the packaged Host on the recorded Mac row"
+    },
+    {
+      "field": "protocol_v1_stream_observed",
+      "requirement": "observe a Protocol v1 USB or trusted-LAN stream on this Host row"
+    },
+    {
+      "field": "host_model_recorded",
+      "requirement": "record a non-empty Mac model identifier"
+    },
+    {
+      "field": "cpu_architecture_recorded",
+      "requirement": "record apple_silicon or intel CPU architecture"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record a non-empty macOS product version"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record a non-empty macOS build number"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record a non-empty Host build identity"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the packaged Host bundle identifier"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the concrete non-ad-hoc Host signing identity"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source commit embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source tree embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record whether the installed Host was packaged from a clean source tree"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record the commit used for Host self-test output"
+    },
+    {
+      "field": "display_topology_recorded",
+      "requirement": "record a concrete display topology"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    }
+  ],
+  "can_close_macos_host_compatibility_row": false,
+  "invalid_claim_observations": {
+    "ci_runner_only": false,
+    "claims_display_topology_from_different_setup": false,
+    "claims_dummy_headless_from_attached_monitor": false,
+    "claims_intel_from_apple_silicon": false,
+    "claims_os_range_from_single_build": false,
+    "claims_screencapturekit_from_cgdisplaystream": false,
+    "claims_virtual_display_from_current_main_fallback": false,
+    "claims_virtual_display_from_symbol_probe": false,
+    "claims_virtual_display_without_result": false
+  },
+  "invalid_claims": [],
+  "kind": "macos_host_compatibility_matrix_row",
+  "missing_requirements": [
+    {
+      "field": "host_model_recorded",
+      "requirement": "record the exact Mac model identifier and marketing family when available"
+    },
+    {
+      "field": "cpu_architecture_recorded",
+      "requirement": "record whether the Host is Apple silicon or Intel"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record macOS product version and build number"
+    },
+    {
+      "field": "xcode_swift_recorded",
+      "requirement": "record Xcode and Swift versions used for local build/test evidence"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record Host app commit, binary SHA-256, bundle id, and signing identity"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record installed Host source commit/tree provenance and require it to match this current-base row"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record Host self-test provenance from the same current-base source revision"
+    },
+    {
+      "field": "display_topology_recorded",
+      "requirement": "record built-in, external, multi-display, dummy/headless, or Screen Sharing topology"
+    },
+    {
+      "field": "automated_macos_checks_passed",
+      "requirement": "run baseline macOS build, XCTest, and self-test commands for this source"
+    },
+    {
+      "field": "packaged_host_launch_observed",
+      "requirement": "launch the packaged Host on the recorded Mac row"
+    },
+    {
+      "field": "protocol_v1_stream_observed",
+      "requirement": "observe a Protocol v1 USB or trusted-LAN stream on this Host row"
+    },
+    {
+      "field": "display_selection_observed",
+      "requirement": "exercise display list and selected-display start on this Host row"
+    },
+    {
+      "field": "physical_display_capture_observed",
+      "requirement": "observe physical or current-main display capture on this Host row"
+    },
+    {
+      "field": "input_smoke_observed",
+      "requirement": "observe at least touch plus keyboard or scroll input through the Host path"
+    },
+    {
+      "field": "reconnect_observed",
+      "requirement": "observe a client/process reconnect while the Host PID survives"
+    },
+    {
+      "field": "host_model_recorded",
+      "requirement": "record a non-empty Mac model identifier"
+    },
+    {
+      "field": "cpu_architecture_recorded",
+      "requirement": "record apple_silicon or intel CPU architecture"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record a non-empty macOS product version"
+    },
+    {
+      "field": "macos_version_build_recorded",
+      "requirement": "record a non-empty macOS build number"
+    },
+    {
+      "field": "xcode_swift_recorded",
+      "requirement": "record a non-empty Xcode version"
+    },
+    {
+      "field": "xcode_swift_recorded",
+      "requirement": "record a non-empty Swift version"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record a non-empty Host build identity"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the packaged Host bundle identifier"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the concrete non-ad-hoc Host signing identity"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source commit embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source tree embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record whether the installed Host was packaged from a clean source tree"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record the commit used for Host self-test output"
+    },
+    {
+      "field": "display_topology_recorded",
+      "requirement": "record a concrete display topology"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    }
+  ],
+  "notes": "Current-base owner readiness evidence for the macOS Host signing/TCC/source-provenance gate.",
+  "observations": {
+    "artifacts_retained": true,
+    "automated_macos_checks_passed": false,
+    "capture_backend_recorded": true,
+    "claim_scoped_to_exact_row": true,
+    "cpu_architecture_recorded": false,
+    "display_selection_observed": false,
+    "display_topology_recorded": false,
+    "host_build_identity_recorded": false,
+    "host_model_recorded": false,
+    "host_self_test_provenance_recorded": false,
+    "implementation_path_recorded": true,
+    "input_smoke_observed": false,
+    "macos_version_build_recorded": false,
+    "mirror_or_fallback_recorded": true,
+    "owner_recorded": true,
+    "packaged_host_launch_observed": false,
+    "physical_display_capture_observed": false,
+    "protocol_v1_stream_observed": false,
+    "reconnect_observed": false,
+    "repository_commit_recorded": true,
+    "signing_and_tcc_state_recorded": false,
+    "source_bound_host_recorded": false,
+    "video_encoder_path_recorded": true,
+    "virtual_display_or_fallback_recorded": true,
+    "xcode_swift_recorded": false
+  },
+  "profile": "macos-host-compatibility-row",
+  "row_scope": {
+    "accessibility_tcc": "unverified",
+    "android_counterpart": "Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B",
+    "capture_backend": "unavailable",
+    "cgdisplaystream_result": "unavailable_terminal",
+    "compatibility_scope": "readiness only; does not close any real Host-backed Android gate",
+    "cpu_architecture": "",
+    "current_base_commit": "1bbc8f9f3d29f4e17107c325060e16cbfbe9e323",
+    "display_topology": "",
+    "host_build_identity": "",
+    "host_bundle_id": "",
+    "host_cpu_name": "",
+    "host_model_identifier": "",
+    "host_self_test_commit": "",
+    "host_signing_identity": "",
+    "host_source_commit": "",
+    "host_source_dirty_state": "",
+    "host_source_tree": "",
+    "implementation_path": "current-base macOS Host signing/TCC/source-provenance owner gate",
+    "macos_build": "",
+    "macos_version": "",
+    "mirror_result": "unavailable",
+    "owner": "codex/host-signing-tcc-current-owner",
+    "repository_commit": "1bbc8f9f3d29f4e17107c325060e16cbfbe9e323",
+    "repository_dirty_state": "clean",
+    "screen_capturekit_result": "unavailable_terminal",
+    "screen_recording_tcc": "unverified",
+    "stream_transport": "usb",
+    "swift_version": "",
+    "videotoolbox_result": "unavailable",
+    "virtual_display_result": "unavailable",
+    "xcode_version": ""
+  },
+  "run_id": "772a53b4-f1af-4074-8c9a-216864b7c66f",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

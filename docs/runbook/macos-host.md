@@ -70,8 +70,8 @@ security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current
-identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement, and
-read-only TCC state to:
+identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement,
+embedded source commit/tree/dirty state, and read-only TCC state to:
 
 ```text
 .build/dev-macos-host/host-signing-and-permissions.txt
@@ -100,22 +100,28 @@ untrusted build: it can synthesize system-wide input.
 
 ## Touch-rerun preflight
 
-Before running the opt-in Android touch-gesture rerun, install the stable local
-Host and require the preflight to pass:
+Before running any Host-backed Android gate, install the stable local Host and
+require the source-bound Host preflight to pass:
 
 ```bash
 make baseline-macos-dev-install
-make baseline-macos-touch-preflight
+make baseline-macos-host-preflight
 ```
 
-`baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
+`baseline-macos-host-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity, the designated requirement, and read-only Screen
-Recording plus Accessibility rows in the user's TCC database. It exits non-zero
-if any check is missing. When blocked, open **System Settings → Privacy &
+ad-hoc signing identity, the designated requirement, source commit/tree
+provenance embedded by `scripts/package_macos.py`, a clean current source tree,
+and read-only Screen Recording plus Accessibility rows in the user's TCC
+database. `baseline-macos-touch-preflight` is a compatibility alias for the same
+check. Both targets exit non-zero if any check is missing. When blocked, keep
+the generated report as readiness evidence, open **System Settings → Privacy &
 Security → Screen & System Audio Recording** and **Accessibility**, grant the
 installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again.
+the preflight again. A report produced without a stable signing identity, TCC
+authorization, or matching source provenance cannot close USB, LAN, Host RSS,
+native-pointer, stylus, controller, rotation, login/headless, or compatibility
+gates.
 
 ## USB quick start
 

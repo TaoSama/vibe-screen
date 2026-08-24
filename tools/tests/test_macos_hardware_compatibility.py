@@ -38,6 +38,15 @@ def complete_record() -> dict[str, object]:
         "xcode_version": "Xcode 16.4",
         "swift_version": "Swift 6.1",
         "host_build_identity": "Vibe Screen Dev, sha256 example",
+        "host_bundle_id": "dev.telemachus.display",
+        "host_signing_identity": "Vibe Screen Dev",
+        "screen_recording_tcc": "authorized",
+        "accessibility_tcc": "authorized",
+        "host_source_commit": "0123456789abcdef0123456789abcdef01234567",
+        "host_source_tree": "89abcdef0123456789abcdef0123456789abcdef",
+        "host_source_dirty_state": "clean",
+        "host_self_test_commit": "0123456789abcdef0123456789abcdef01234567",
+        "current_base_commit": "0123456789abcdef0123456789abcdef01234567",
         "display_topology": "built_in",
         "capture_backend": "screencapturekit",
         "screen_capturekit_result": "selected_display_first_frame",
@@ -142,6 +151,76 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             {
                 "field": "repository_commit_recorded",
                 "requirement": "record repository_commit as a 40-character hexadecimal git commit",
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_host_source_and_self_test_must_match_current_base_commit(self) -> None:
+        record = self.complete_record()
+        record["host_source_commit"] = "1" * 40
+        record["host_self_test_commit"] = "2" * 40
+        record["current_base_commit"] = "3" * 40
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "source_bound_host_recorded",
+                "requirement": "installed Host source commit must match repository_commit for this row",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_self_test_provenance_recorded",
+                "requirement": "Host self-test commit must match repository_commit for this row",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_self_test_provenance_recorded",
+                "requirement": "current_base_commit must match repository_commit for this current-base row",
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_signing_tcc_and_bundle_fields_fail_closed(self) -> None:
+        record = self.complete_record()
+        record["host_bundle_id"] = "dev.example.other"
+        record["host_signing_identity"] = "ad-hoc"
+        record["screen_recording_tcc"] = "not_authorized"
+        record["accessibility_tcc"] = "unverified"
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
+                "requirement": "Host bundle id must be dev.telemachus.display",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
+                "requirement": "Host signing identity must be a stable non-ad-hoc identity",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Screen Recording TCC must be authorized for the packaged Host",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Accessibility TCC must be authorized for the packaged Host",
             },
             summary["blocking_reasons"],
         )
@@ -304,6 +383,26 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertEqual(summary["artifact_file_check"]["missing_paths"], ["missing.txt"])
         self.assertEqual(summary["artifact_file_check"]["invalid_paths"], ["../escape.txt"])
         self.assertEqual(summary["artifact_file_check"]["empty_paths"], ["empty.txt"])
+
+    def test_artifact_report_preserves_relative_evidence_dir(self) -> None:
+        record = self.complete_record()
+        record["artifact_paths"] = ["README.md"]
+        with tempfile.TemporaryDirectory() as directory_name:
+            base = Path(directory_name)
+            evidence_dir = base / "relative-evidence"
+            evidence_dir.mkdir()
+            (evidence_dir / "README.md").write_text("evidence note\n", encoding="utf-8")
+            old_cwd = Path.cwd()
+            try:
+                import os
+
+                os.chdir(base)
+                summary = summarize(record, evidence_dir=Path("relative-evidence"))
+            finally:
+                os.chdir(old_cwd)
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(summary["artifact_file_check"]["evidence_dir"], "relative-evidence")
 
 
 class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
