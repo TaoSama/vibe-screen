@@ -46,6 +46,16 @@ class DeviceCoordinationLockError(ReadinessError):
     pass
 
 
+REDACTED_REQUESTED_SERIAL = "redacted-requested-serial"
+REDACTED_REPO_ROOT = "<repo-root>"
+REDACTED_ANDROID_SDK = "<android-sdk>"
+REDACTED_PYTHON = "<python3.11>"
+LOCAL_PATH_PATTERNS = (
+    (re.compile(r"/Users/[^\s\n]+/Library/Android/sdk"), REDACTED_ANDROID_SDK),
+    (re.compile(r"(?:/[^\s\n]+)*/python@3\.11/bin/python3\.11"), REDACTED_PYTHON),
+)
+
+
 @dataclass(frozen=True)
 class CommandResult:
     command: list[str]
@@ -63,6 +73,21 @@ class LockHandle:
 
 @dataclass(frozen=True)
 class DeviceIdentity:
+    serial: str
+    endpoint: str
+    manufacturer: str
+    model: str
+    device: str
+    product: str
+    android_release: str
+    sdk: str
+    build_fingerprint: str
+    abi: str
+    device_serial: str
+
+
+@dataclass(frozen=True)
+class RedactedDeviceIdentity:
     serial: str
     endpoint: str
     manufacturer: str
@@ -108,7 +133,7 @@ class HostPreflight:
 class ReadinessResult:
     created_at: str
     device_lock: LockHandle
-    device: DeviceIdentity | None
+    device: RedactedDeviceIdentity | None
     package: PackageIdentity | None
     keyboard_devices: list[InputDeviceSummary]
     host: HostPreflight
@@ -130,6 +155,17 @@ def run_command(command: Sequence[str], *, timeout: float = 15.0) -> CommandResu
     except subprocess.TimeoutExpired as error:
         raise ReadinessError(f"command timed out: {' '.join(command)}") from error
     return CommandResult(list(command), completed.returncode, completed.stdout, completed.stderr)
+
+
+def redact_evidence_text(value: str) -> str:
+    redacted = value.replace(str(REPO_ROOT), REDACTED_REPO_ROOT)
+    for pattern, replacement in LOCAL_PATH_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    redacted = re.sub(r"/Users/[^\s\n]+", "<user-home>", redacted)
+    for user in {os.environ.get("USER"), os.environ.get("LOGNAME")}:
+        if user:
+            redacted = re.sub(rf"\b{re.escape(user)}\b", "<user>", redacted)
+    return redacted
 
 
 def adb(serial: str, args: Sequence[str], *, timeout: float = 15.0) -> CommandResult:
@@ -158,7 +194,7 @@ def describe_device_locks() -> list[dict[str, Any]]:
                     "path": str(path),
                     "size_bytes": stat.st_size,
                     "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-                    "detail": path.read_text(encoding="utf-8", errors="replace").strip(),
+                    "detail": redact_evidence_text(path.read_text(encoding="utf-8", errors="replace").strip()),
                 }
             )
         except OSError as error:
@@ -186,7 +222,7 @@ def acquire_device_lock(owner: str, *, allow_existing: bool) -> LockHandle:
         handle.write(
             f"owner={owner}\n"
             f"pid={os.getpid()}\n"
-            f"worktree={Path.cwd()}\n"
+            f"worktree={REDACTED_REPO_ROOT}\n"
             f"created_at={utc_timestamp()}\n"
         )
     return LockHandle(str(lock_path), True, [])
@@ -222,6 +258,27 @@ def read_device_identity(serial: str) -> tuple[DeviceIdentity, str]:
             device_serial=adb_shell(serial, "getprop", "ro.serialno"),
         ),
         devices_text,
+    )
+
+
+def redacted_requested_serial(serial: str) -> str:
+    return REDACTED_REQUESTED_SERIAL if serial.strip() else "not provided"
+
+
+def redacted_device_identity(identity: DeviceIdentity) -> RedactedDeviceIdentity:
+    redacted_serial = f"redacted-{identity.device}-serial" if identity.device else "redacted-device-serial"
+    return RedactedDeviceIdentity(
+        serial=redacted_serial,
+        endpoint=f"redacted adb endpoint product:{identity.product} model:{identity.model} device:{identity.device}",
+        manufacturer=identity.manufacturer,
+        model=identity.model,
+        device=identity.device,
+        product=identity.product,
+        android_release=identity.android_release,
+        sdk=identity.sdk,
+        build_fingerprint="redacted-build-fingerprint",
+        abi=identity.abi,
+        device_serial=redacted_serial,
     )
 
 
@@ -364,7 +421,7 @@ def format_command_result(result: CommandResult) -> str:
         lines.append("stderr:")
         lines.append(result.stderr.rstrip())
     lines.append(f"exit_code={result.returncode}")
-    return "\n".join(lines) + "\n"
+    return redact_evidence_text("\n".join(lines) + "\n")
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -388,7 +445,7 @@ def device_info_document(
     created_at: str,
     connection: str,
     adb_version: str,
-    device: DeviceIdentity,
+    device: RedactedDeviceIdentity,
     package: PackageIdentity | None,
 ) -> dict[str, Any]:
     try:
@@ -400,7 +457,7 @@ def device_info_document(
         "kind": "android_device_info",
         "collected_at": created_at,
         "connection": connection,
-        "adb_version": adb_version,
+        "adb_version": redact_evidence_text(adb_version),
         "device": {
             "adb_serial": device.serial,
             "device_serial": device.device_serial,
@@ -438,7 +495,7 @@ def build_observations(
     notes: list[str] = []
     if device is None:
         notes.append("Android device identity was not collected.")
-    elif serial == P0110_SERIAL:
+    elif device.model.lower() == "p0110" or device.device.lower() == "pacific":
         notes.append("Observed device must be recorded as nubia P0110 / pacific / Android 16, not Xiaomi/fuxi or tablet hardware.")
     if not keyboard_devices:
         notes.append("No external Android-attached physical keyboard is visible in dumpsys input.")
@@ -585,7 +642,7 @@ def write_lock_blocked_evidence(evidence_dir: Path, *, serial: str, created_at: 
             "Physical keyboard attachment, Host listener, and stable signed/TCC readiness were not evaluated after the lock block.",
         ],
         "notes": (
-            f"Requested serial {serial}. ADB was not run because a shared Android device coordination lock already exists. "
+            f"Requested serial {redacted_requested_serial(serial)}. ADB was not run because a shared Android device coordination lock already exists. "
             "This blocked readiness record does not close the Phase 2 hardware-keyboard workflow gate."
         ),
     }
@@ -622,20 +679,21 @@ def collect_readiness(args: argparse.Namespace, *, created_at: str, run_id: str)
         devices = parse_input_devices(dumpsys_input)
         keyboard_devices = physical_keyboard_devices(devices)
         host = inspect_host(args.port, args.evidence_dir / "host-signing-and-permissions.txt")
+        redacted_device = redacted_device_identity(device)
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)
         write_text(
             args.evidence_dir / "device-lock.txt",
-            Path(lock.path).read_text(encoding="utf-8") if lock.path else "existing lock allowed\n",
+            redact_evidence_text(Path(lock.path).read_text(encoding="utf-8")) if lock.path else "existing lock allowed\n",
         )
         write_text(args.evidence_dir / "adb-devices.txt", adb_devices_text)
         write_json(
             args.evidence_dir / "device-info.json",
             device_info_document(
                 created_at=created_at,
-                connection=f"already connected to {args.serial}",
+                connection=f"already connected to {redacted_requested_serial(args.serial)}",
                 adb_version=run_command(["adb", "version"], timeout=15.0).stdout.strip(),
-                device=device,
+                device=redacted_device,
                 package=package,
             ),
         )
@@ -660,7 +718,7 @@ def collect_readiness(args: argparse.Namespace, *, created_at: str, run_id: str)
         )
         observations["run_id"] = run_id
         summary = summarize(observations, run_id=run_id)
-        result = ReadinessResult(created_at, lock, device, package, keyboard_devices, host, observations, summary)
+        result = ReadinessResult(created_at, lock, redacted_device, package, keyboard_devices, host, observations, summary)
         write_json(args.evidence_dir / "hardware-keyboard-readiness.json", asdict(result))
         write_json(args.evidence_dir / "hardware-keyboard-observations.json", observations)
         write_json(args.evidence_dir / "hardware-keyboard-summary.json", summary)

@@ -21,6 +21,11 @@ GATE_PROFILE = "phase2-hardware-keyboard-workflow"
 STATUS_PASS = "pass"
 STATUS_BLOCKED = "blocked"
 STATUS_INSUFFICIENT = "insufficient"
+EXIT_STATUS_BY_VERDICT = {
+    STATUS_PASS: 0,
+    STATUS_BLOCKED: 2,
+    STATUS_INSUFFICIENT: 1,
+}
 
 REQUIRED_FIELDS = (
     (
@@ -78,6 +83,59 @@ BLOCKING_FIELDS = {
 }
 
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
+
+CONSISTENCY_RULES = (
+    (
+        "android_keyboard_source_observed",
+        ("physical_keyboard_attached",),
+        "Android keyboard source evidence requires a named physical Android-attached keyboard",
+    ),
+    (
+        "protocol_usb_hid_modifier_capability_negotiated",
+        ("protocol_keyboard_capability_negotiated",),
+        "USB HID modifier capability evidence requires Protocol v1 keyboard capability negotiation",
+    ),
+    (
+        "android_production_forwarding_observed",
+        ("physical_keyboard_attached", "protocol_keyboard_capability_negotiated"),
+        "production keyboard forwarding requires a physical keyboard and negotiated Protocol v1 keyboard capability",
+    ),
+    (
+        "host_key_injection_observed",
+        ("android_production_forwarding_observed", "host_listener_observed", "host_stable_signed_tcc_ready"),
+        "Host key-injection logs require production forwarding plus a stable signed/TCC-ready Host listener",
+    ),
+    (
+        "key_press_release_observed",
+        ("host_key_injection_observed",),
+        "key press/release evidence requires Host key-injection logs",
+    ),
+    (
+        "shortcut_combo_observed",
+        ("host_key_injection_observed", "protocol_usb_hid_modifier_capability_negotiated"),
+        "shortcut evidence requires Host key-injection logs and negotiated USB HID modifier semantics",
+    ),
+    (
+        "modifier_release_no_leak_observed",
+        ("shortcut_combo_observed", "key_press_release_observed"),
+        "modifier cleanup evidence requires shortcut and key release observations",
+    ),
+    (
+        "visible_mac_result_observed",
+        ("host_key_injection_observed",),
+        "visible Mac keyboard result requires Host key-injection logs",
+    ),
+    (
+        "host_logs_retained",
+        ("host_key_injection_observed",),
+        "retained Host keyboard logs must correspond to observed Host key injection",
+    ),
+    (
+        "android_logs_retained",
+        ("android_production_forwarding_observed",),
+        "retained Android keyboard logs must correspond to production forwarding",
+    ),
+)
 
 
 class HardwareKeyboardEvidenceError(ValueError):
@@ -140,6 +198,23 @@ def _explicit_run_id(value: str | None) -> str | None:
     raise HardwareKeyboardEvidenceError("run_id must be a non-empty string")
 
 
+def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, Any]]:
+    inconsistencies: list[dict[str, Any]] = []
+    for observed_field, prerequisites, requirement in CONSISTENCY_RULES:
+        if not field_values[observed_field]:
+            continue
+        missing_prerequisites = [field for field in prerequisites if not field_values[field]]
+        if missing_prerequisites:
+            inconsistencies.append(
+                {
+                    "field": observed_field,
+                    "requires": missing_prerequisites,
+                    "requirement": requirement,
+                }
+            )
+    return inconsistencies
+
+
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     missing = [
@@ -150,7 +225,8 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
-    if not missing:
+    inconsistencies = _inconsistent_observations(field_values)
+    if not missing and not inconsistencies:
         verdict = STATUS_PASS
     elif blocking_reasons:
         verdict = STATUS_BLOCKED
@@ -174,6 +250,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         ),
         "observations": field_values,
         "missing_requirements": missing,
+        "inconsistent_observations": inconsistencies,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": _string_list(record, "artifact_paths"),
         "blocking_notes": _string_list(record, "blocking_notes"),
@@ -202,6 +279,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", help="output summary JSON file (default: stdout)")
     parser.add_argument("--run-id", help="identifier shared with the evidence bundle")
+    parser.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="return exit status 1 unless the evidence verdict is pass",
+    )
     return parser
 
 
@@ -224,7 +306,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (HardwareKeyboardEvidenceError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    return 0
+    if args.require_pass and summary["verdict"] != STATUS_PASS:
+        return 1
+    return EXIT_STATUS_BY_VERDICT[summary["verdict"]]
 
 
 if __name__ == "__main__":

@@ -132,6 +132,7 @@ class AcceptanceResult:
     host_log: str
     host_log_appended_bytes: int
     host_log_appended_sha256: str
+    host_stable_signed_tcc_ready: bool
     android_logcat_bytes: int
     android_logcat_sha256: str
     required_pointer_events: list[str]
@@ -244,6 +245,7 @@ def lock_blocked_result(
         host_log="host-log-appended.txt",
         host_log_appended_bytes=0,
         host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
+        host_stable_signed_tcc_ready=False,
         android_logcat_bytes=0,
         android_logcat_sha256=hashlib.sha256(b"").hexdigest(),
         required_pointer_events=list(required_events),
@@ -435,6 +437,7 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         f"External mouse devices: {len(result.external_mouse_devices)}",
         f"Observed Android pointer events: {', '.join(result.observed_android_pointer_events) or 'none'}",
         f"Observed Host pointer events: {', '.join(result.observed_host_pointer_events) or 'none'}",
+        f"Stable signed/TCC Host ready: {str(result.host_stable_signed_tcc_ready).lower()}",
         f"Visible Mac result: {result.visible_mac_result or 'not recorded'}",
         "",
         "## Artifacts",
@@ -445,6 +448,7 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         "- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.",
         "- `host-log-appended.txt`: bounded Host log window for pointer injection.",
         "",
+        "A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.",
         "This evidence must remain scoped to the exact device identity above.",
         "Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.",
     ]
@@ -492,6 +496,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--visible-result-note",
         default="",
         help="Operator note describing the visible Mac pointer movement and click result.",
+    )
+    parser.add_argument(
+        "--host-stable-signed-tcc-ready",
+        action="store_true",
+        help=(
+            "Set only after scripts/macos_dev_host.py preflight passes for a stable signed Host "
+            "with Screen Recording and Accessibility permissions."
+        ),
     )
     parser.add_argument(
         "--require-events",
@@ -563,6 +575,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 host_log="host-log-appended.txt",
                 host_log_appended_bytes=0,
                 host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
+                host_stable_signed_tcc_ready=False,
                 android_logcat_bytes=0,
                 android_logcat_sha256=hashlib.sha256(b"").hexdigest(),
                 required_pointer_events=list(args.require_events),
@@ -599,15 +612,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         observed_android = observed_android_events(android_text)
         missing_host = [name for name in args.require_events if name not in observed_host]
         missing_android = [name for name in args.require_events if name not in observed_android]
+        missing_host_ready = not args.host_stable_signed_tcc_ready
         missing_visible_result = not args.visible_result_note.strip()
         missing_reasons = []
         if missing_android:
             missing_reasons.append("missing Android native pointer log events: " + ", ".join(missing_android))
         if missing_host:
             missing_reasons.append("missing Host pointer injection events: " + ", ".join(missing_host))
+        if missing_host_ready:
+            missing_reasons.append("missing stable signed/TCC-ready Host preflight evidence")
         if missing_visible_result:
             missing_reasons.append("missing visible Mac pointer/click result note")
-        status = "passed" if not missing_reasons else "failed"
+        status = "passed" if not missing_reasons else ("blocked" if missing_host_ready else "failed")
         reason = "All required native pointer evidence was observed." if not missing_reasons else "; ".join(missing_reasons)
         result = AcceptanceResult(
             status=status,
@@ -619,6 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             host_log="host-log-appended.txt",
             host_log_appended_bytes=len(appended_log),
             host_log_appended_sha256=hashlib.sha256(appended_log).hexdigest(),
+            host_stable_signed_tcc_ready=bool(args.host_stable_signed_tcc_ready),
             android_logcat_bytes=len(android_logcat),
             android_logcat_sha256=hashlib.sha256(android_logcat).hexdigest(),
             required_pointer_events=list(args.require_events),
@@ -634,7 +651,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
         if status != "passed":
             print(reason, file=sys.stderr)
-            return 1
+            return BLOCKED_EXIT if status == "blocked" else 1
         print(reason)
         return 0
     except AcceptanceError as error:

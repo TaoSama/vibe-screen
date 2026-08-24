@@ -16,6 +16,7 @@
     "required_device_identity",
     "observations",
     "missing_requirements",
+    "inconsistent_observations",
     "blocking_reasons",
     "artifact_paths",
     "blocking_notes",
@@ -83,6 +84,19 @@
         "required": ["field", "requirement"],
         "properties": {
           "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "inconsistent_observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requires", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requires": {"type": "array", "items": {"type": "string", "minLength": 1}},
           "requirement": {"type": "string", "minLength": 1}
         }
       }

@@ -138,13 +138,19 @@ python3 scripts/android_stylus_acceptance.py \
   --output-dir "$RUN_DIR/stylus" \
   --observed-physical-drawing \
   --drawing-observation "physical stylus produced visible pressure-aware ink" \
+  --host-stable-signed-tcc-ready \
   --host-log "$RUN_DIR/host-stylus.log"
 cp "$RUN_DIR/stylus/stylus-evidence.json" "$RUN_DIR/stylus-evidence.json"
+cp "$RUN_DIR/stylus/stylus-summary.json" "$RUN_DIR/stylus-summary.json"
 ```
 
 The host log excerpt must include the stylus contact/tool/buttons/pressure/tilt
-fields required by the script. Capability-only or lock-blocked stylus records
-are useful blocked evidence but do not close the Phase 2 stylus gate.
+fields required by the script, and `--host-stable-signed-tcc-ready` may only be
+set after `scripts/macos_dev_host.py preflight` passes for the same Host build.
+Capability-only or lock-blocked stylus records are useful blocked evidence but
+do not close the Phase 2 stylus gate. The
+machine-readable owner is `stylus-summary.json`; only `verdict=pass` with
+`can_close_physical_stylus_gate=true` may close the drawing-app gate.
 
 ## Hardware keyboard workflow
 
@@ -470,7 +476,7 @@ Each run directory should include at minimum:
   `host-readiness.json`, `host-signing-and-permissions.txt`,
   `codesign-identities.txt`, and a screenshot or recording of the visible Mac
   result for passing runs;
-- `stylus-evidence.json`, `hardware-keyboard-evidence.json`,
+- `stylus-evidence.json`, `stylus-summary.json`, `hardware-keyboard-evidence.json`,
   `recovery-evidence.json`, `soak-8h/phase2-tablet-gate.json`, and
   `phase2-tablet-preflight.json`.
 

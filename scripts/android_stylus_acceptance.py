@@ -23,6 +23,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_PATH = REPOSITORY_ROOT / "tools"
+if str(TOOLS_PATH) not in sys.path:
+    sys.path.insert(0, str(TOOLS_PATH))
+
+from vibescreen_evidence.stylus import summarize as summarize_stylus
+
 
 DEFAULT_PACKAGE = "dev.telemachus.display"
 DEFAULT_OUTPUT_ROOT = Path("docs/changes/2026-08-19-physical-stylus-acceptance/evidence")
@@ -152,6 +159,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Host log excerpt captured during the physical stylus drawing run; required for pass.",
     )
     parser.add_argument(
+        "--host-stable-signed-tcc-ready",
+        action="store_true",
+        help=(
+            "Set only after scripts/macos_dev_host.py preflight passes for a stable signed Host "
+            "with Screen Recording and Accessibility permissions."
+        ),
+    )
+    parser.add_argument(
         "--observe-seconds",
         type=float,
         default=DEFAULT_OBSERVATION_SECONDS,
@@ -239,6 +254,20 @@ def collect_device_identity(adb_path: str, serial: str) -> dict[str, str]:
         if result.returncode == 0:
             identity[key] = result.stdout.strip()
     return identity
+
+
+def redacted_requested_serial(serial: str) -> str:
+    return "redacted-requested-serial" if serial.strip() else "not provided"
+
+
+def redacted_device_identity(identity: dict[str, str]) -> dict[str, str]:
+    redacted = dict(identity)
+    device = redacted.get("device", "device").strip().lower() or "device"
+    if redacted.get("serialno"):
+        redacted["serialno"] = f"redacted-{device}-serial"
+    if redacted.get("fingerprint"):
+        redacted["fingerprint"] = "redacted-build-fingerprint"
+    return redacted
 
 
 def parse_input_devices(dumpsys_input: str) -> list[InputDeviceCapability]:
@@ -445,6 +474,8 @@ def conclusion_status(
         validate_observed_drawing_inputs(args)
         if not has_required_capability:
             return "blocked_no_required_stylus_capability"
+        if not getattr(args, "host_stable_signed_tcc_ready", False):
+            return "blocked_host_stable_signed_tcc_not_ready"
         validate_android_diag_for_pass(diag_log, diag_error)
         validate_host_log_text_for_pass(host_log_excerpt)
         return "pass"
@@ -521,7 +552,7 @@ def write_evidence(
     summary = {
         "status": status,
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "device_identity": identity,
+        "device_identity": redacted_device_identity(identity),
         "existing_locks": list(existing_locks),
         "stylus_candidates": [candidate.__dict__ for candidate in candidates],
         "pass_eligible_stylus_candidates": [candidate.__dict__ for candidate in candidates if candidate.pass_eligible],
@@ -529,11 +560,13 @@ def write_evidence(
         "host_log_name": args.host_log.name if args.host_log else None,
         "host_log_appended_bytes": len(host_log_excerpt.encode("utf-8")) if host_log_excerpt else 0,
         "host_log_appended_sha256": hashlib.sha256(host_log_excerpt.encode("utf-8")).hexdigest(),
+        "host_stable_signed_tcc_ready": bool(getattr(args, "host_stable_signed_tcc_ready", False)),
         "observation_seconds": float(args.observe_seconds) if args.observed_physical_drawing else 0.0,
         "observed_physical_drawing": bool(args.observed_physical_drawing),
         "drawing_observation": args.drawing_observation.strip(),
     }
     (output_dir / "stylus-evidence.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_stylus_summary(output_dir, summary)
     (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
 
 
@@ -542,7 +575,7 @@ def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, lock
     summary = {
         "status": "blocked_device_coordination_lock",
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "requested_serial": args.serial,
+        "requested_serial": redacted_requested_serial(args.serial),
         "device_identity": {},
         "existing_locks": list(locks),
         "stylus_candidates": [],
@@ -551,12 +584,22 @@ def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, lock
         "host_log_name": args.host_log.name if args.host_log else None,
         "host_log_appended_bytes": 0,
         "host_log_appended_sha256": hashlib.sha256(b"").hexdigest(),
+        "host_stable_signed_tcc_ready": False,
         "observation_seconds": 0.0,
         "observed_physical_drawing": False,
         "drawing_observation": "",
     }
     (output_dir / "stylus-evidence.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_stylus_summary(output_dir, summary)
     (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
+
+
+def write_stylus_summary(output_dir: Path, evidence: dict[str, object]) -> None:
+    summary = summarize_stylus(evidence, source_path=output_dir / "stylus-evidence.json")
+    (output_dir / "stylus-summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def render_readme(summary: dict[str, object]) -> str:
@@ -571,6 +614,8 @@ def render_readme(summary: dict[str, object]) -> str:
         conclusion = "Blocked: Android exposes stylus-capable input hardware, but this run did not observe a physical stylus drawing in a macOS drawing app. The README gate stays open."
     elif status == "blocked_device_coordination_lock":
         conclusion = "Blocked: an Android device coordination lock existed, so this run did not execute ADB commands or observe physical stylus input. The README gate stays open."
+    elif status == "blocked_host_stable_signed_tcc_not_ready":
+        conclusion = "Blocked: physical stylus drawing requires a stable signed/TCC-ready Host preflight before Host injection evidence can close the README gate."
     else:
         conclusion = "Blocked: this device snapshot did not expose the required stylus pressure and tilt capability set, so drawing-app acceptance cannot start from this evidence."
     lines = [
@@ -580,6 +625,7 @@ def render_readme(summary: dict[str, object]) -> str:
         "",
         f"- Status: {status}",
         f"- Result: {conclusion}",
+        f"- Stable signed/TCC Host ready: {str(bool(summary.get('host_stable_signed_tcc_ready'))).lower()}",
         "",
     ]
     lines.extend(["## Device", ""])
@@ -630,6 +676,7 @@ def render_readme(summary: dict[str, object]) -> str:
         "## Evidence files",
         "",
         "- stylus-evidence.json: structured summary and status.",
+        "- stylus-summary.json: independent gate summary with can_close_physical_stylus_gate.",
         "- host-stylus.log: new Host log bytes from the passing observation window, required only for a passing physical drawing run.",
     ])
     if status != "blocked_device_coordination_lock":
@@ -641,7 +688,7 @@ def render_readme(summary: dict[str, object]) -> str:
         "",
         "## Gate rule",
         "",
-        "Do not close the physical-stylus drawing-app gate from device capability alone. A pass requires a real stylus contacting the Android device while the Protocol v1 session is active, host stylus injection logs for pressure/tilt/barrel/proximity as applicable, and a visible macOS drawing-app result.",
+        "Do not close the physical-stylus drawing-app gate from device capability alone. A pass requires a real stylus contacting the Android device while the Protocol v1 session is active, stable signed/TCC-ready Host evidence, host stylus injection logs for pressure/tilt/barrel/proximity as applicable, and a visible macOS drawing-app result.",
         "",
     ])
     return "\n".join(lines)
@@ -715,7 +762,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
     print(f"{status}: wrote {output_dir}")
-    return 0
+    if status == "pass":
+        return 0
+    if status.startswith("blocked_"):
+        return 2
+    return 1
 
 
 if __name__ == "__main__":

@@ -98,14 +98,25 @@ artifacts now normalize line-ending whitespace so checked-in snapshots remain
 compatible with `git diff --check`, while runtime log excerpts keep their
 captured bytes.
 
+The collector now also writes `stylus-summary.json`, and
+`make physical-stylus-gate` can re-derive it from an existing
+`stylus-evidence.json`. The summary is schema-backed and owns the README gate
+decision: only `verdict=pass` and `can_close_physical_stylus_gate=true` may
+close the physical-stylus drawing-app gate. Capability-only, lock-blocked,
+synthetic ADB stylus, missing Host log, missing Android diagnostic log, or
+missing stable signed/TCC-ready Host preflight evidence remains blocked;
+mislabelled Xiaomi/fuxi identity evidence remains insufficient.
+
 ## Verification
 
 ```bash
 python3 -m unittest scripts.tests.test_release_tools.AndroidStylusAcceptanceTests
+PYTHONPATH=tools python3 -m unittest tools.tests.test_stylus
 python3 scripts/android_stylus_acceptance.py \
   --serial DEVICE_SERIAL \
   --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-21-nubia-p0110-pacific-stylus-preflight-failclosed \
   --allow-existing-device-lock
+make physical-stylus-gate EVIDENCE_DIR=docs/changes/2026-08-19-physical-stylus-acceptance/evidence/<run-dir>
 cd baseline/AndroidClient
 ./gradlew --no-daemon testDebugUnitTest \
   --tests dev.telemachus.display.StreamInputDispatcherTest \

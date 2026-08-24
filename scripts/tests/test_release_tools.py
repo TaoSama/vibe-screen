@@ -270,6 +270,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
 
             diag_log = (
@@ -306,6 +307,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
             diag_log = (
                 "Stylus forwarded: transport=stream samples=1 extended=true "
@@ -336,6 +338,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
 
             with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "Android diag log"):
@@ -373,6 +376,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
 
             diag_log = (
@@ -412,6 +416,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
             diag_log = (
                 "Stylus forwarded: transport=stream samples=1 extended=true "
@@ -447,6 +452,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
             diag_log = (
                 "Stylus forwarded: transport=stream samples=1 extended=true "
@@ -482,6 +488,7 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
             diag_log = (
                 "Stylus forwarded: transport=stream samples=1 extended=true "
