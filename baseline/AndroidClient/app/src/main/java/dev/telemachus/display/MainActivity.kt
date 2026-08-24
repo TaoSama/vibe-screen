@@ -2187,7 +2187,7 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        showControlPopupMenu(popup)
+        showControlPopupMenu(popup, binding.displayCapsuleGroup)
     }
 
     /**
@@ -2622,7 +2622,7 @@ class MainActivity : AppCompatActivity() {
         }
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         popup.setOnDismissListener { revealControlBar() }
-        showControlPopupMenu(popup)
+        showControlPopupMenu(popup, binding.controlClipboardButton)
     }
 
     private fun beginSendLocalClipboard(
@@ -2907,12 +2907,12 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        showControlPopupMenu(popup)
+        showControlPopupMenu(popup, binding.controlHostActionsButton)
     }
 
-    private fun showControlPopupMenu(popup: PopupMenu) {
+    private fun showControlPopupMenu(popup: PopupMenu, anchor: View) {
         popup.gravity = Gravity.END
-        popup.show()
+        anchor.post { popup.show() }
     }
 
     private fun requestHostAction(option: HostActionOption, label: String) {

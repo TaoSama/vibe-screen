@@ -348,11 +348,11 @@ class MainActivityTerminalGuidanceContractTest {
             "The display menu must not anchor to the small icon inside the selector",
             displaysMenu.contains("PopupMenu(this, binding.controlDisplaysButton)"),
         )
-        assertTrue(displaysMenu.contains("showControlPopupMenu(popup)"))
-        assertTrue(hostActionsMenu.contains("showControlPopupMenu(popup)"))
-        assertTrue(clipboardMenu.contains("showControlPopupMenu(popup)"))
+        assertTrue(displaysMenu.contains("showControlPopupMenu(popup, binding.displayCapsuleGroup)"))
+        assertTrue(hostActionsMenu.contains("showControlPopupMenu(popup, binding.controlHostActionsButton)"))
+        assertTrue(clipboardMenu.contains("showControlPopupMenu(popup, binding.controlClipboardButton)"))
         assertTrue(compactPresenter.contains("popup.gravity=Gravity.END"))
-        assertTrue(compactPresenter.contains("popup.show()"))
+        assertTrue(compactPresenter.contains("anchor.post{popup.show()}"))
     }
 
     @Test
