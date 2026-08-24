@@ -10,6 +10,7 @@ make local, synthetic, or blocked evidence into a pass.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import re
 import sys
@@ -46,7 +47,18 @@ class GateRule:
     validate: Callable[[Mapping[str, Any], str], list[str]]
 
 
-COMMON_GATE_REQUIRED_FIELDS = ("synthetic_media", "local_loopback_only")
+COMMON_GATE_REQUIRED_FIELDS = (
+    "synthetic_media",
+    "local_loopback_only",
+    "usb_transport",
+    "trusted_lan_only",
+    "private_network_only",
+    "same_private_network",
+    "loopback",
+    "synthetic_loopback",
+    "synthetic_peer",
+)
+LOCAL_HOSTNAMES = {"localhost", "localhost.localdomain"}
 REQUIRED_NETWORK_CONDITION_FIELDS = (
     "controlled_impairment",
     "impairment_tool",
@@ -131,8 +143,26 @@ def _require_integer_at_least(value: Any, path: str, minimum: int, errors: list[
 
 
 def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
-    _require_bool(gate.get("synthetic_media", False), f"{path}.synthetic_media", False, errors)
-    _require_bool(gate.get("local_loopback_only", False), f"{path}.local_loopback_only", False, errors)
+    for field in COMMON_GATE_REQUIRED_FIELDS:
+        _require_bool(gate.get(field, False), f"{path}.{field}", False, errors)
+
+
+def _is_public_hostname_or_ip(value: str) -> bool:
+    normalized = value.strip().lower().rstrip(".")
+    if not normalized or normalized in LOCAL_HOSTNAMES or normalized.endswith(".local"):
+        return False
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return True
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
 
 
 def _validate_network_conditions(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
@@ -210,6 +240,14 @@ def _validate_direct_path(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
     _require_bool(gate.get("public_internet_path"), f"{path}.public_internet_path", True, errors)
+    _require_bool(gate.get("remote_public_route_observed"), f"{path}.remote_public_route_observed", True, errors)
+    _require_bool(gate.get("local_loopback_address", False), f"{path}.local_loopback_address", False, errors)
+    _require_bool(gate.get("usb_adb_reverse", False), f"{path}.usb_adb_reverse", False, errors)
+    host_network = _require_nonempty_string(gate.get("host_network"), f"{path}.host_network", errors)
+    device_network = _require_nonempty_string(gate.get("device_network"), f"{path}.device_network", errors)
+    _require_nonempty_string(gate.get("remote_public_asn"), f"{path}.remote_public_asn", errors)
+    if host_network and device_network and host_network == device_network:
+        errors.append(f"{path}.device_network: expected a different public network than host_network")
     if gate.get("route") != "direct":
         errors.append(f"{path}.route: expected direct")
     selected_pair = _require_nonempty_string(gate.get("selected_candidate_pair"), f"{path}.selected_candidate_pair", errors)
@@ -224,6 +262,13 @@ def _validate_turn_path(gate: Mapping[str, Any], path: str) -> list[str]:
     _require_bool(gate.get("public_internet_path"), f"{path}.public_internet_path", True, errors)
     _require_bool(gate.get("remote_turn_deployment"), f"{path}.remote_turn_deployment", True, errors)
     _require_bool(gate.get("local_coturn_only", False), f"{path}.local_coturn_only", False, errors)
+    _require_bool(gate.get("forced_local_coturn", False), f"{path}.forced_local_coturn", False, errors)
+    for field in ("turn_provider", "turn_region"):
+        _require_nonempty_string(gate.get(field), f"{path}.{field}", errors)
+    for field in ("turn_public_hostname", "turn_resolved_public_ip"):
+        value = _require_nonempty_string(gate.get(field), f"{path}.{field}", errors)
+        if value and not _is_public_hostname_or_ip(value):
+            errors.append(f"{path}.{field}: expected public hostname or IP")
     if gate.get("route") != "relay":
         errors.append(f"{path}.route: expected relay")
     selected_pair = _require_nonempty_string(gate.get("selected_candidate_pair"), f"{path}.selected_candidate_pair", errors)
@@ -317,18 +362,73 @@ def _validate_latency(gate: Mapping[str, Any], path: str) -> list[str]:
     return errors
 
 
+def _validate_record_layer(gate: Mapping[str, Any], path: str) -> list[str]:
+    errors: list[str] = []
+    _require_not_local_only(gate, path, errors)
+    _require_bool(gate.get("public_internet_path"), f"{path}.public_internet_path", True, errors)
+    _require_bool(gate.get("remote_turn_deployment"), f"{path}.remote_turn_deployment", True, errors)
+    _require_bool(gate.get("fake_webrtc_engine", False), f"{path}.fake_webrtc_engine", False, errors)
+    _require_bool(gate.get("forced_local_coturn", False), f"{path}.forced_local_coturn", False, errors)
+    if gate.get("aead") != "AES-256-GCM":
+        errors.append(f"{path}.aead: expected AES-256-GCM")
+    for field in (
+        "aad_binds_session_epoch",
+        "key_epoch_bound",
+        "directional_key_separation",
+        "channel_binding_enforced",
+        "replay_rejected",
+        "wrong_channel_rejected",
+        "packet_capture_no_plaintext",
+    ):
+        _require_bool(gate.get(field), f"{path}.{field}", True, errors)
+    for field in ("nonce_reuse_detected", "plaintext_fallback"):
+        _require_bool(gate.get(field), f"{path}.{field}", False, errors)
+    channels = _as_list(gate.get("channels"), f"{path}.channels", errors)
+    channel_set = {channel for channel in channels if isinstance(channel, str)}
+    expected_channels = {"control", "media", "audio", "bulk"}
+    if channel_set != expected_channels:
+        errors.append(f"{path}.channels: expected control, media, audio, and bulk")
+    product_flows = _as_mapping(gate.get("product_flows"), f"{path}.product_flows", errors)
+    for flow in ("audio_capture_playback", "clipboard_sync", "file_transfer"):
+        if product_flows.get(flow) != "not_claimed":
+            errors.append(f"{path}.product_flows.{flow}: expected not_claimed for transport-boundary evidence")
+    return errors
+
+
 GATE_RULES: tuple[GateRule, ...] = (
     GateRule(
         "public_internet_direct_path",
         "Direct WebRTC selected across a genuine public Internet path.",
-        COMMON_GATE_REQUIRED_FIELDS + ("route", "public_internet_path", "selected_candidate_pair"),
+        COMMON_GATE_REQUIRED_FIELDS
+        + (
+            "route",
+            "public_internet_path",
+            "selected_candidate_pair",
+            "remote_public_route_observed",
+            "local_loopback_address",
+            "usb_adb_reverse",
+            "host_network",
+            "device_network",
+            "remote_public_asn",
+        ),
         _validate_direct_path,
     ),
     GateRule(
         "remote_turn_relay_path",
         "Forced relay selected through a real remote TURN deployment.",
         COMMON_GATE_REQUIRED_FIELDS
-        + ("route", "public_internet_path", "remote_turn_deployment", "local_coturn_only", "selected_candidate_pair"),
+        + (
+            "route",
+            "public_internet_path",
+            "remote_turn_deployment",
+            "local_coturn_only",
+            "forced_local_coturn",
+            "turn_public_hostname",
+            "turn_resolved_public_ip",
+            "turn_provider",
+            "turn_region",
+            "selected_candidate_pair",
+        ),
         _validate_turn_path,
     ),
     GateRule(
@@ -383,6 +483,30 @@ GATE_RULES: tuple[GateRule, ...] = (
         "Direct and relay latency claims use external-camera measurements.",
         COMMON_GATE_REQUIRED_FIELDS + ("method", "sample_count", "direct_p95_ms", "relay_p95_ms"),
         _validate_latency,
+    ),
+    GateRule(
+        "webrtc_datachannel_record_layer",
+        "WebRTC DataChannels carry AES-256-GCM application records for control, media, audio, and bulk without closing product-flow gates.",
+        COMMON_GATE_REQUIRED_FIELDS
+        + (
+            "public_internet_path",
+            "remote_turn_deployment",
+            "fake_webrtc_engine",
+            "forced_local_coturn",
+            "aead",
+            "aad_binds_session_epoch",
+            "key_epoch_bound",
+            "directional_key_separation",
+            "channel_binding_enforced",
+            "replay_rejected",
+            "wrong_channel_rejected",
+            "packet_capture_no_plaintext",
+            "nonce_reuse_detected",
+            "plaintext_fallback",
+            "channels",
+            "product_flows",
+        ),
+        _validate_record_layer,
     ),
     GateRule(
         "two_hour_mixed_route_soak",

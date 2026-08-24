@@ -67,6 +67,15 @@ def release_manifest(*, public: bool = True, turn: bool = True, codename: str = 
             "cross_service_revocation": True,
             "packet_capture_confidentiality": True,
             "no_synthetic_media": True,
+            "usb_transport": False,
+            "trusted_lan_only": False,
+            "private_network_only": False,
+            "same_private_network": not public,
+            "loopback": not public,
+            "synthetic_loopback": False,
+            "synthetic_peer": False,
+            "forced_local_coturn": not turn,
+            "plaintext_fallback": False,
         },
     }
 
@@ -223,6 +232,105 @@ def device_info(*, codename: str = "pacific") -> dict:
     }
 
 
+def datachannel_record_layer() -> dict:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase3_datachannel_record_layer_evidence",
+        "status": "pass",
+        "network_scope": "public_internet",
+        "turn_scope": "deployed_remote_turn",
+        "synthetic_media": False,
+        "usb_transport": False,
+        "trusted_lan_only": False,
+        "private_network_only": False,
+        "same_private_network": False,
+        "loopback": False,
+        "synthetic_loopback": False,
+        "synthetic_peer": False,
+        "forced_local_coturn": False,
+        "plaintext_fallback": False,
+        "webrtc_adapter": {"fake_engine": False, "synthetic_loopback": False},
+        "record_layer": {
+            "algorithm": "AES-256-GCM",
+            "header_as_aad": True,
+            "session_epoch_bound": True,
+            "key_epoch_bound": True,
+            "directional_key_separation": True,
+            "channel_key_separation": True,
+            "replay_protection": True,
+            "wrong_channel_rejected": True,
+            "packet_capture_no_plaintext": True,
+            "nonce_reuse_detected": False,
+            "plaintext_fallback": False,
+        },
+        "routes": {
+            "direct": {
+                "route": "direct",
+                "public_internet_path": True,
+                "same_private_network": False,
+                "loopback": False,
+                "synthetic_peer": False,
+                "usb_adb_reverse": False,
+                "trusted_lan_only": False,
+            },
+            "relay": {
+                "route": "relay",
+                "public_internet_path": True,
+                "same_private_network": False,
+                "loopback": False,
+                "synthetic_peer": False,
+                "usb_adb_reverse": False,
+                "trusted_lan_only": False,
+                "forced_local_coturn": False,
+                "turn_deployment": {
+                    "provider": "fixture provider",
+                    "region": "remote-region-1",
+                    "public_hostname": "turn.example.net",
+                    "resolved_ip": "1.1.1.1",
+                },
+            },
+        },
+        "channels": {
+            "control": {
+                "label": "vibescreen.control.v1",
+                "ordered": True,
+                "reliable": True,
+                "application_records_observed": True,
+            },
+            "media": {
+                "label": "vibescreen.media.v1",
+                "ordered": False,
+                "max_retransmits": 0,
+                "application_records_observed": True,
+            },
+            "audio": {
+                "label": "vibescreen.audio.v1",
+                "ordered": False,
+                "max_retransmits": 0,
+                "capability_gated": True,
+                "application_records_observed": True,
+                "product_flow_implemented": False,
+                "phase3_scope": "transport_boundary_only",
+            },
+            "bulk": {
+                "label": "vibescreen.bulk.v1",
+                "ordered": True,
+                "reliable": True,
+                "capability_gated": True,
+                "application_records_observed": True,
+                "product_flow_implemented": False,
+                "phase3_scope": "transport_boundary_only",
+            },
+        },
+        "product_flows": {
+            "audio_capture_playback": "not_claimed",
+            "clipboard_sync": "not_claimed",
+            "file_transfer": "not_claimed",
+        },
+        "raw_sources": ["direct-session.jsonl", "relay-session.jsonl", "packet-capture-notes.md"],
+    }
+
+
 def status_pass(name: str) -> dict:
     requirements = {
         "network_handoff": (
@@ -348,6 +456,7 @@ def populate_bundle(root: Path) -> None:
     write_latency_package(root, "direct")
     write_latency_package(root, "relay")
     write_json(root / "real-media-continuity.json", real_media_report())
+    write_json(root / "datachannel-record-layer.json", datachannel_record_layer())
     write_json(root / "network-handoff.json", status_pass("network_handoff"))
     write_json(root / "revocation-evidence.json", status_pass("cross_service_revocation"))
     write_json(root / "packet-capture-confidentiality.json", status_pass("packet_capture_confidentiality"))
@@ -365,6 +474,14 @@ def populate_bundle(root: Path) -> None:
                     "same_private_network": False,
                     "no_plaintext_fallback": True,
                     "no_synthetic_media": True,
+                    "usb_transport": False,
+                    "trusted_lan_only": False,
+                    "private_network_only": False,
+                    "loopback": False,
+                    "synthetic_loopback": False,
+                    "synthetic_peer": False,
+                    "forced_local_coturn": False,
+                    "plaintext_fallback": False,
                     "selected_candidate_pair": {
                         "local_candidate_type": local_type,
                         "remote_candidate_type": remote_type,
@@ -506,6 +623,97 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
             media_gate["reasons"],
         )
 
+    def test_missing_datachannel_record_layer_blocks_release_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            (root / "datachannel-record-layer.json").unlink()
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        raw_gate = next(gate for gate in result["gates"] if gate["name"] == "raw_evidence_bundle")
+        datachannel_gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_datachannel_record_layer")
+        self.assertIn("missing or empty required artifact: datachannel-record-layer.json", raw_gate["reasons"])
+        self.assertEqual(datachannel_gate["status"], "blocked")
+
+    def test_datachannel_record_layer_requires_aes256gcm_and_replay_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = datachannel_record_layer()
+            report["record_layer"]["algorithm"] = "AES-128-GCM"
+            report["record_layer"]["nonce_reuse_detected"] = True
+            report["record_layer"]["replay_protection"] = False
+            report["record_layer"]["wrong_channel_rejected"] = False
+            write_json(root / "datachannel-record-layer.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_datachannel_record_layer")
+        self.assertIn("datachannel record_layer.algorithm must be AES-256-GCM", gate["reasons"])
+        self.assertIn("datachannel record_layer.nonce_reuse_detected must be false", gate["reasons"])
+        self.assertIn("datachannel record_layer.replay_protection must be true", gate["reasons"])
+        self.assertIn("datachannel record_layer.wrong_channel_rejected must be true", gate["reasons"])
+
+    def test_datachannel_record_layer_rejects_synthetic_media(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = datachannel_record_layer()
+            report["synthetic_media"] = True
+            write_json(root / "datachannel-record-layer.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_datachannel_record_layer")
+        self.assertIn("datachannel synthetic_media must be false", gate["reasons"])
+
+    def test_datachannel_product_flow_claims_are_not_transport_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = datachannel_record_layer()
+            report["product_flows"]["clipboard_sync"] = "pass"
+            report["channels"]["audio"]["product_flow_implemented"] = True
+            write_json(root / "datachannel-record-layer.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_datachannel_record_layer")
+        self.assertIn(
+            "datachannel product_flows.clipboard_sync must be not_claimed for transport-boundary evidence",
+            gate["reasons"],
+        )
+        self.assertIn("datachannel channels.audio.product_flow_implemented must be False", gate["reasons"])
+
+    def test_datachannel_rejects_usb_lan_loopback_and_local_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = datachannel_record_layer()
+            report["trusted_lan_only"] = True
+            report["routes"]["direct"]["same_private_network"] = True
+            report["routes"]["direct"]["usb_adb_reverse"] = True
+            report["routes"]["relay"]["forced_local_coturn"] = True
+            report["routes"]["relay"]["turn_deployment"]["public_hostname"] = "localhost"
+            report["routes"]["relay"]["turn_deployment"]["resolved_ip"] = "10.0.0.1"
+            write_json(root / "datachannel-record-layer.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_datachannel_record_layer")
+        self.assertIn("datachannel trusted_lan_only must be false", gate["reasons"])
+        self.assertIn("datachannel routes.direct.same_private_network must be false", gate["reasons"])
+        self.assertIn("datachannel routes.direct.usb_adb_reverse must be false", gate["reasons"])
+        self.assertIn("datachannel routes.relay.forced_local_coturn must be false", gate["reasons"])
+        self.assertIn("datachannel routes.relay.turn_deployment.public_hostname must be public", gate["reasons"])
+        self.assertIn("datachannel routes.relay.turn_deployment.resolved_ip must be public", gate["reasons"])
+
     def test_missing_raw_latency_samples_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             root = Path(raw_directory)
@@ -588,6 +796,14 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
                         "same_private_network": False,
                         "no_plaintext_fallback": True,
                         "no_synthetic_media": True,
+                        "usb_transport": False,
+                        "trusted_lan_only": False,
+                        "private_network_only": False,
+                        "loopback": False,
+                        "synthetic_loopback": False,
+                        "synthetic_peer": False,
+                        "forced_local_coturn": False,
+                        "plaintext_fallback": False,
                         "selected_candidate_pair": {
                             "local_candidate_type": "host",
                             "remote_candidate_type": "srflx",
@@ -619,6 +835,14 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
                         "same_private_network": False,
                         "no_plaintext_fallback": True,
                         "no_synthetic_media": True,
+                        "usb_transport": False,
+                        "trusted_lan_only": False,
+                        "private_network_only": False,
+                        "loopback": False,
+                        "synthetic_loopback": False,
+                        "synthetic_peer": False,
+                        "forced_local_coturn": False,
+                        "plaintext_fallback": False,
                         "selected_candidate_pair": {
                             "local_candidate_type": "relay",
                             "remote_candidate_type": "relay",

@@ -30,6 +30,7 @@ EXPECTED_GATE_NAMES = {
     "cross_service_revocation",
     "packet_capture_confidentiality",
     "external_camera_latency",
+    "webrtc_datachannel_record_layer",
     "two_hour_mixed_route_soak",
 }
 
@@ -40,6 +41,13 @@ def passing_manifest() -> dict[str, object]:
         "status": "pass",
         "synthetic_media": False,
         "local_loopback_only": False,
+        "usb_transport": False,
+        "trusted_lan_only": False,
+        "private_network_only": False,
+        "same_private_network": False,
+        "loopback": False,
+        "synthetic_loopback": False,
+        "synthetic_peer": False,
         "evidence_files": [evidence_file],
     }
     return {
@@ -61,6 +69,12 @@ def passing_manifest() -> dict[str, object]:
                 "route": "direct",
                 "public_internet_path": True,
                 "selected_candidate_pair": "direct(local=host,remote=srflx,protocol=udp)",
+                "remote_public_route_observed": True,
+                "local_loopback_address": False,
+                "usb_adb_reverse": False,
+                "host_network": "home ISP",
+                "device_network": "remote carrier",
+                "remote_public_asn": "AS64500",
             },
             "remote_turn_relay_path": gate_defaults
             | {
@@ -69,6 +83,11 @@ def passing_manifest() -> dict[str, object]:
                 "remote_turn_deployment": True,
                 "local_coturn_only": False,
                 "selected_candidate_pair": "relay(local=relay,remote=relay,protocol=udp)",
+                "forced_local_coturn": False,
+                "turn_public_hostname": "turn.example.net",
+                "turn_resolved_public_ip": "1.1.1.1",
+                "turn_provider": "fixture provider",
+                "turn_region": "remote-region-1",
             },
             "real_screencapturekit_to_android_media": gate_defaults
             | {
@@ -128,6 +147,29 @@ def passing_manifest() -> dict[str, object]:
                 "direct_p95_ms": 120,
                 "relay_p95_ms": 145,
             },
+            "webrtc_datachannel_record_layer": gate_defaults
+            | {
+                "public_internet_path": True,
+                "remote_turn_deployment": True,
+                "fake_webrtc_engine": False,
+                "forced_local_coturn": False,
+                "aead": "AES-256-GCM",
+                "aad_binds_session_epoch": True,
+                "key_epoch_bound": True,
+                "directional_key_separation": True,
+                "channel_binding_enforced": True,
+                "replay_rejected": True,
+                "wrong_channel_rejected": True,
+                "packet_capture_no_plaintext": True,
+                "nonce_reuse_detected": False,
+                "plaintext_fallback": False,
+                "channels": ["control", "media", "audio", "bulk"],
+                "product_flows": {
+                    "audio_capture_playback": "not_claimed",
+                    "clipboard_sync": "not_claimed",
+                    "file_transfer": "not_claimed",
+                },
+            },
             "two_hour_mixed_route_soak": gate_defaults
             | {
                 "duration_seconds": 7200,
@@ -166,6 +208,8 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn("recovery_seconds", by_gate["network_handoff_recovery"])
         self.assertIn("controlled_impairment", by_gate["network_handoff_recovery"])
         self.assertIn("no_steady_latency_growth", by_gate["two_hour_mixed_route_soak"])
+        self.assertIn("aead", by_gate["webrtc_datachannel_record_layer"])
+        self.assertIn("product_flows", by_gate["webrtc_datachannel_record_layer"])
 
     def test_complete_manifest_passes_with_existing_evidence_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -188,15 +232,26 @@ class ReleaseGateManifestTests(unittest.TestCase):
     def test_missing_local_or_synthetic_negative_fields_fail_closed(self) -> None:
         manifest = passing_manifest()
         gates = manifest["gates"]  # type: ignore[assignment]
+        negative_fields = (
+            "synthetic_media",
+            "local_loopback_only",
+            "usb_transport",
+            "trusted_lan_only",
+            "private_network_only",
+            "same_private_network",
+            "loopback",
+            "synthetic_loopback",
+            "synthetic_peer",
+        )
         for gate in gates.values():  # type: ignore[union-attr]
-            del gate["synthetic_media"]
-            del gate["local_loopback_only"]
+            for field in negative_fields:
+                del gate[field]
 
         errors = validate_manifest(manifest)
 
         for gate_name in EXPECTED_GATE_NAMES:
-            self.assertIn(f"gates.{gate_name}.synthetic_media: missing required field", errors)
-            self.assertIn(f"gates.{gate_name}.local_loopback_only: missing required field", errors)
+            for field in negative_fields:
+                self.assertIn(f"gates.{gate_name}.{field}: missing required field", errors)
 
     def test_missing_remote_turn_local_coturn_negative_field_fails_closed(self) -> None:
         manifest = passing_manifest()
@@ -228,23 +283,105 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn("gates.public_internet_direct_path.local_loopback_only: expected false", errors)
         self.assertIn("gates.public_internet_direct_path.public_internet_path: expected true", errors)
 
+    def test_usb_trusted_lan_private_network_fields_fail_closed_when_true(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["webrtc_datachannel_record_layer"]  # type: ignore[index]
+        gate["usb_transport"] = True
+        gate["trusted_lan_only"] = True
+        gate["private_network_only"] = True
+        gate["same_private_network"] = True
+        gate["loopback"] = True
+        gate["synthetic_loopback"] = True
+        gate["synthetic_peer"] = True
+
+        errors = validate_manifest(manifest)
+
+        for field in (
+            "usb_transport",
+            "trusted_lan_only",
+            "private_network_only",
+            "same_private_network",
+            "loopback",
+            "synthetic_loopback",
+            "synthetic_peer",
+        ):
+            self.assertIn(f"gates.webrtc_datachannel_record_layer.{field}: expected false", errors)
+
+    def test_direct_srflx_same_private_network_cannot_close_public_gate(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
+        gate["same_private_network"] = True
+        gate["host_network"] = "office-wifi"
+        gate["device_network"] = "office-wifi"
+        gate["remote_public_route_observed"] = False
+        gate["usb_adb_reverse"] = True
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.public_internet_direct_path.same_private_network: expected false", errors)
+        self.assertIn("gates.public_internet_direct_path.remote_public_route_observed: expected true", errors)
+        self.assertIn("gates.public_internet_direct_path.usb_adb_reverse: expected false", errors)
+        self.assertIn(
+            "gates.public_internet_direct_path.device_network: expected a different public network than host_network",
+            errors,
+        )
+
     def test_local_coturn_is_rejected_for_remote_turn_gate(self) -> None:
         manifest = passing_manifest()
         gate = manifest["gates"]["remote_turn_relay_path"]  # type: ignore[index]
         gate["remote_turn_deployment"] = False
         gate["local_coturn_only"] = True
+        gate["forced_local_coturn"] = True
+        gate["turn_public_hostname"] = "localhost"
+        gate["turn_resolved_public_ip"] = "192.168.1.10"
         gate["selected_candidate_pair"] = "direct(local=host,remote=host,protocol=udp)"
 
         errors = validate_manifest(manifest)
 
         self.assertIn("gates.remote_turn_relay_path.remote_turn_deployment: expected true", errors)
         self.assertIn("gates.remote_turn_relay_path.local_coturn_only: expected false", errors)
+        self.assertIn("gates.remote_turn_relay_path.forced_local_coturn: expected false", errors)
+        self.assertIn("gates.remote_turn_relay_path.turn_public_hostname: expected public hostname or IP", errors)
+        self.assertIn("gates.remote_turn_relay_path.turn_resolved_public_ip: expected public hostname or IP", errors)
         self.assertIn(
             "gates.remote_turn_relay_path.selected_candidate_pair: expected relay candidate pair",
             errors,
         )
         self.assertIn(
             "gates.remote_turn_relay_path.selected_candidate_pair: relay gate requires relay local and remote candidates",
+            errors,
+        )
+
+    def test_record_layer_requires_aes256gcm_channel_binding_nonce_and_replay_proof(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["webrtc_datachannel_record_layer"]  # type: ignore[index]
+        gate["aead"] = "AES-128-GCM"
+        gate["nonce_reuse_detected"] = True
+        gate["channel_binding_enforced"] = False
+        gate["replay_rejected"] = False
+        gate["channels"] = ["control", "media"]
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.webrtc_datachannel_record_layer.aead: expected AES-256-GCM", errors)
+        self.assertIn("gates.webrtc_datachannel_record_layer.nonce_reuse_detected: expected false", errors)
+        self.assertIn("gates.webrtc_datachannel_record_layer.channel_binding_enforced: expected true", errors)
+        self.assertIn("gates.webrtc_datachannel_record_layer.replay_rejected: expected true", errors)
+        self.assertIn("gates.webrtc_datachannel_record_layer.channels: expected control, media, audio, and bulk", errors)
+
+    def test_audio_clipboard_file_transfer_product_flows_fail_closed_without_real_product_evidence(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["webrtc_datachannel_record_layer"]  # type: ignore[index]
+        gate["product_flows"] = {
+            "audio_capture_playback": "pass",
+            "clipboard_sync": "not_claimed",
+            "file_transfer": "not_claimed",
+        }
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn(
+            "gates.webrtc_datachannel_record_layer.product_flows.audio_capture_playback: expected not_claimed for transport-boundary evidence",
             errors,
         )
 

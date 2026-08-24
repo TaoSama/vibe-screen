@@ -182,6 +182,7 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     adaptive-media-current-base.json
     packet-capture-notes.md
     packet-capture-confidentiality.json
+    datachannel-record-layer.json
     privacy-manifest.json
     latency/direct/manifest.json
     latency/direct/samples.csv
@@ -210,8 +211,12 @@ The manifest schema is `dev.vibescreen.phase3-release-gate-manifest/v1`. It is a
 necessary-condition verifier, not an automatic release approval: a pass requires
 the manifest to cover every open gate below with repository-relative evidence
 files, clean-source artifact hashes, truthful device identity, and real-world
-observations. Local loopback, synthetic media, blocked runs, or Nubia evidence
-claiming Xiaomi/fuxi identity fail closed.
+observations. USB, trusted-LAN-only, private-network-only, local loopback,
+synthetic loopback, synthetic peer, forced-local-coturn, synthetic media, blocked
+runs, or Nubia evidence claiming Xiaomi/fuxi identity fail closed. A
+DataChannel record-layer pass proves only the Internet DataChannel transport
+boundary; audio_capture_playback, clipboard_sync, and file_transfer must remain
+not_claimed until real public Internet product-flow evidence exists.
 
 ```json
 {
@@ -239,8 +244,21 @@ claiming Xiaomi/fuxi identity fail closed.
       "route": "direct",
       "public_internet_path": true,
       "selected_candidate_pair": "direct(...)",
+      "remote_public_route_observed": true,
+      "local_loopback_address": false,
+      "usb_adb_reverse": false,
+      "host_network": "<host public network>",
+      "device_network": "<different device public network>",
+      "remote_public_asn": "<observed remote ASN>",
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["direct-session.jsonl"]
     },
     "remote_turn_relay_path": {
@@ -249,9 +267,21 @@ claiming Xiaomi/fuxi identity fail closed.
       "public_internet_path": true,
       "remote_turn_deployment": true,
       "local_coturn_only": false,
+      "forced_local_coturn": false,
+      "turn_public_hostname": "<public TURN hostname>",
+      "turn_resolved_public_ip": "<public TURN IP>",
+      "turn_provider": "<provider>",
+      "turn_region": "<region>",
       "selected_candidate_pair": "relay(...)",
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["relay-session.jsonl"]
     },
     "real_screencapturekit_to_android_media": {
@@ -264,6 +294,13 @@ claiming Xiaomi/fuxi identity fail closed.
       "first_android_output_observed": true,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["real-media.jsonl"]
     },
     "network_handoff_recovery": {
@@ -295,6 +332,13 @@ claiming Xiaomi/fuxi identity fail closed.
       "approved_limit_seconds": 5,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["network-handoff.jsonl"]
     },
     "cross_service_revocation": {
@@ -305,6 +349,13 @@ claiming Xiaomi/fuxi identity fail closed.
       "turn_allocation_disconnected": true,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["replay-revocation.jsonl"]
     },
     "packet_capture_confidentiality": {
@@ -315,6 +366,13 @@ claiming Xiaomi/fuxi identity fail closed.
       "no_credentials": true,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["packet-capture-notes.md"]
     },
     "external_camera_latency": {
@@ -325,7 +383,47 @@ claiming Xiaomi/fuxi identity fail closed.
       "relay_p95_ms": 150,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["latency-method.md"]
+    },
+    "webrtc_datachannel_record_layer": {
+      "status": "pass",
+      "public_internet_path": true,
+      "remote_turn_deployment": true,
+      "fake_webrtc_engine": false,
+      "forced_local_coturn": false,
+      "aead": "AES-256-GCM",
+      "aad_binds_session_epoch": true,
+      "key_epoch_bound": true,
+      "directional_key_separation": true,
+      "channel_binding_enforced": true,
+      "replay_rejected": true,
+      "wrong_channel_rejected": true,
+      "packet_capture_no_plaintext": true,
+      "nonce_reuse_detected": false,
+      "plaintext_fallback": false,
+      "channels": ["control", "media", "audio", "bulk"],
+      "product_flows": {
+        "audio_capture_playback": "not_claimed",
+        "clipboard_sync": "not_claimed",
+        "file_transfer": "not_claimed"
+      },
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["datachannel-record-layer.json"]
     },
     "two_hour_mixed_route_soak": {
       "status": "pass",
@@ -348,6 +446,13 @@ claiming Xiaomi/fuxi identity fail closed.
       "no_steady_latency_growth": true,
       "synthetic_media": false,
       "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
       "evidence_files": ["soak-summary.json"]
     }
   }

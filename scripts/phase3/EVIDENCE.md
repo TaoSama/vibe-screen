@@ -188,12 +188,16 @@ real capture-to-MediaCodec continuity, visible input effects, network handoff,
 cross-service revocation, packet-capture confidentiality, and no synthetic media.
 It also requires direct and relay latency reports generated from raw
 external-camera packages, the exact-window two-hour soak report, raw session and
-telemetry logs, and privacy-reviewed packet/capture notes. If any of these are
-missing, local-only, synthetic, or marked blocked, the checker returns non-zero
-and writes `verdict: blocked` or `insufficient`; it never promotes readiness
-evidence into a release pass. Use `make phase3-internet-release-gate
-EVIDENCE_DIR=/tmp/vibe-screen-phase3/public-internet-run` after deriving the
-latency and soak reports.
+telemetry logs, privacy-reviewed packet/capture notes, and
+datachannel-record-layer.json for the control/media/audio/bulk DataChannel
+record-layer contract. That record-layer file is transport-boundary evidence
+only and must leave audio capture/playback, clipboard sync, and file transfer as
+not_claimed unless separate real public Internet product-flow evidence exists.
+If any required input is missing, USB-only, trusted-LAN-only, private-network
+only, loopback, synthetic-loopback, synthetic-peer, forced-local-coturn,
+synthetic, or marked blocked, the checker returns non-zero and writes verdict
+blocked or insufficient; it never promotes readiness evidence into a release
+pass.
 
 `vibescreen_evidence.phase3_adaptive_media_current_base` is the narrower
 current-base child gate for adaptive video behavior under real WebRTC Internet
