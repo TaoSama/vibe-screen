@@ -233,6 +233,22 @@ shows each scheduled retry delay. For display-removal window recovery, record
 the original window frame and display, remove or disable that display during the
 run, then record the restored frame on the current main display.
 
+After collecting the retained artifacts, summarize the run in
+`macos-startup-recovery-evidence.json` and run the passive gate:
+
+```bash
+make phase2-macos-startup-recovery-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The gate writes `macos-startup-recovery-gate.json`, which can be passed to the
+Phase 2 aggregate owner as `PHASE2_LOGIN_HEADLESS`. It exits nonzero and keeps
+`can_close_login_headless_gate=false` unless every integration boundary in the
+matrix above is backed by retained real-machine evidence. This is expected for
+readiness or blocked packages gathered without a rebootable Mac mini, stable
+signing/TCC grants, approved Login Item, dummy/headless or Screen Sharing
+display, client-rendered first frame, bounded recovery logs, window restoration
+artifacts, and a reachable administrator intervention path.
+
 ## Upgrade and rollback
 
 1. Stop streaming and quit Vibe Screen.
