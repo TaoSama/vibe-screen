@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,6 +15,7 @@ AUTHORITY_PRODUCTION_COMPOSE = DEPLOY / "docker-compose.authority.production.yml
 RELAY_PRODUCTION_CONFIG = DEPLOY / "config/relay.production.example.json"
 AUTHORITY_PRODUCTION_CONFIG = DEPLOY / "config/authority.production.example.json"
 COTURN_PRODUCTION_CONFIG = DEPLOY / "coturn/production.conf"
+START_COTURN = DEPLOY / "scripts/start-coturn.sh"
 
 PROHIBITED_RELAY_BUILD_MARKERS = (
     "build:",
@@ -160,6 +163,209 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("_FILE:", combined)
         self.assertIn("file: ./secrets/turn_secret.txt", combined)
         self.assertIn("file: ${VIBE_AUTHORITY_DATABASE_URL_FILE", combined)
+
+    def test_start_coturn_requires_public_runtime_inputs_for_production_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            secret = directory / "turn-secret.txt"
+            secret.write_text("x" * 32, encoding="utf-8")
+            secret.chmod(0o600)
+            base_environment = {
+                "PATH": "/usr/bin:/bin",
+                "COTURN_CONFIG_FILE": str(COTURN_PRODUCTION_CONFIG),
+                "VIBE_RELAY_TURN_SECRET_FILE": str(secret),
+            }
+
+            missing = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env=base_environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("COTURN_EXTERNAL_IP is required", missing.stderr)
+
+            private_ip = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "10.0.0.5",
+                    "COTURN_REALM": "relay.production.example.net",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(private_ip.returncode, 0)
+            self.assertIn("public side must be globally routable", private_ip.stderr)
+
+            uppercase_private_ipv6 = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "FC00::1",
+                    "COTURN_REALM": "relay.production.example.net",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(uppercase_private_ipv6.returncode, 0)
+            self.assertIn("public side must be globally routable", uppercase_private_ipv6.stderr)
+
+            test_realm = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "8.8.8.8",
+                    "COTURN_REALM": "relay.test",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(test_realm.returncode, 0)
+            self.assertIn("production public DNS hostname", test_realm.stderr)
+
+            mapped_private_ip = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "::ffff:10.0.0.5",
+                    "COTURN_REALM": "relay.production.example.net",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(mapped_private_ip.returncode, 0)
+            self.assertIn("public side must be globally routable", mapped_private_ip.stderr)
+
+            uppercase_mapped_private_ip = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "::FFFF:10.0.0.5",
+                    "COTURN_REALM": "relay.production.example.net",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(uppercase_mapped_private_ip.returncode, 0)
+            self.assertIn("public side must be globally routable", uppercase_mapped_private_ip.stderr)
+
+            dotted_placeholder_realm = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "8.8.8.8",
+                    "COTURN_REALM": "relay.example.com.",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(dotted_placeholder_realm.returncode, 0)
+            self.assertIn("production public DNS hostname", dotted_placeholder_realm.stderr)
+
+            uppercase_placeholder_realm = subprocess.run(
+                ["sh", str(START_COTURN)],
+                env={
+                    **base_environment,
+                    "COTURN_EXTERNAL_IP": "8.8.8.8",
+                    "COTURN_REALM": "RELAY.EXAMPLE.COM",
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(uppercase_placeholder_realm.returncode, 0)
+            self.assertIn("production public DNS hostname", uppercase_placeholder_realm.stderr)
+
+    def test_start_coturn_writes_runtime_config_only_after_valid_production_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            bin_directory = directory / "bin"
+            bin_directory.mkdir()
+            turnserver_log = directory / "turnserver.log"
+            fake_turnserver = bin_directory / "turnserver"
+            fake_turnserver.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$TURN_SERVER_LOG\"\n",
+                encoding="utf-8",
+            )
+            fake_turnserver.chmod(0o755)
+            secret = directory / "turn-secret.txt"
+            secret.write_text("x" * 32, encoding="utf-8")
+            secret.chmod(0o600)
+            runtime_config = directory / "runtime.conf"
+            base_environment = {
+                "PATH": f"{bin_directory}:/usr/bin:/bin",
+                "COTURN_CONFIG_FILE": str(COTURN_PRODUCTION_CONFIG),
+                "COTURN_RUNTIME_CONFIG": str(runtime_config),
+                "TURN_SERVER_LOG": str(turnserver_log),
+                "VIBE_RELAY_TURN_SECRET_FILE": str(secret),
+            }
+
+            def run_start(external_ip: str, realm: str) -> subprocess.CompletedProcess[str]:
+                runtime_config.unlink(missing_ok=True)
+                turnserver_log.unlink(missing_ok=True)
+                return subprocess.run(
+                    ["sh", str(START_COTURN)],
+                    env={
+                        **base_environment,
+                        "COTURN_EXTERNAL_IP": external_ip,
+                        "COTURN_REALM": realm,
+                    },
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+            rejected_inputs = (
+                ("/10.0.0.5", "relay.production.example.net", "public side must be globally routable"),
+                ("8.8.8.8/", "relay.production.example.net", "private side must be an IP address"),
+                ("8.8.8.8//10.0.0.5", "relay.production.example.net", "single public or public/private IP mapping"),
+                ("8.8.8.8/10.0.0.5/1", "relay.production.example.net", "single public or public/private IP mapping"),
+                ("8.8.8.8/999.999.999.999", "relay.production.example.net", "private side must be an IP address"),
+                ("::", "relay.production.example.net", "public side must be globally routable"),
+                ("224.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("240.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("255.255.255.255", "relay.production.example.net", "public side must be globally routable"),
+                ("ff02::1", "relay.production.example.net", "public side must be globally routable"),
+                ("FEC0::1", "relay.production.example.net", "public side must be globally routable"),
+                ("::ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("::0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("0:0:0:0:0:ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped public side must use dotted IPv4 notation"),
+                ("8.8.8.8/::ffff:0a00:0005", "relay.production.example.net", "IPv4-mapped private side must use dotted IPv4 notation"),
+                ("192.0.0.1", "relay.production.example.net", "public side must be globally routable"),
+                ("8.8.8.8", "relay.lan", "production public DNS hostname"),
+                ("8.8.8.8", "relay.home.arpa", "production public DNS hostname"),
+            )
+            for external_ip, realm, expected_error in rejected_inputs:
+                with self.subTest(external_ip=external_ip):
+                    result = run_start(external_ip, realm)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(expected_error, result.stderr)
+                    self.assertFalse(runtime_config.exists())
+                    self.assertFalse(turnserver_log.exists())
+
+            accepted_inputs = (
+                "8.8.8.8/10.0.0.5",
+                "::ffff:8.8.8.8",
+                "2606:4700:ffff::1",
+            )
+            for external_ip in accepted_inputs:
+                with self.subTest(external_ip=external_ip):
+                    valid = run_start(external_ip, "RELAY.PRODUCTION.INVALIDNAME.NET.")
+                    self.assertEqual(valid.returncode, 0, valid.stderr)
+                    self.assertEqual(turnserver_log.read_text(encoding="utf-8"), f"-c\n{runtime_config}\n")
+                    config_text = runtime_config.read_text(encoding="utf-8")
+                    self.assertIn("static-auth-secret=" + "x" * 32, config_text)
+                    self.assertIn(f"external-ip={external_ip.lower()}", config_text)
+                    self.assertIn("realm=relay.production.invalidname.net", config_text)
 
 
 if __name__ == "__main__":
