@@ -56,9 +56,14 @@ Keep these artifacts in that directory:
   `sysctl machdep.cpu.brand_string` or Apple chip output, and Xcode/Swift
   versions.
 - `host-build.txt`: repository commit and dirty state, Host binary SHA-256,
-  bundle id, signing identity, designated requirement, and install path.
+  bundle id, signing identity, designated requirement, install path, embedded
+  `VibeScreenSourceCommit`, embedded `VibeScreenSourceTree`, and embedded
+  `VibeScreenSourceDirty`.
 - `host-signing-and-permissions.txt`: `scripts/macos_dev_host.py preflight`
-  output or an equivalent read-only TCC/signing report.
+  output or an equivalent read-only TCC/signing report. A passing row requires
+  the stable signing identity, bundle id `dev.telemachus.display`, Screen
+  Recording authorization, Accessibility authorization, and source provenance
+  matching the clean current-base checkout.
 - `display-topology.txt`: display UUIDs, online display IDs, logical and
   physical sizes, scale, refresh rate, rotation, and which display is built-in,
   external, dummy, virtual, or Screen Sharing.
@@ -80,8 +85,14 @@ make baseline-macos-build
 make baseline-macos-test
 make baseline-macos-self-test
 make baseline-macos-app
-make baseline-macos-touch-preflight
+make baseline-macos-host-preflight
 ```
+
+`baseline-macos-touch-preflight` is retained as an alias for existing touch
+gesture workflows. Do not use ad-hoc signing, an unproven bundle id, stale app
+provenance, or a dirty source checkout to close a compatibility row. If any of
+those preconditions is missing, archive the preflight output as blocked
+readiness evidence and stop before running long device gates.
 
 Then launch the packaged Host, establish the selected USB or trusted-LAN
 Protocol v1 session, and exercise at least these runtime probes:
@@ -129,6 +140,15 @@ artifact exists:
   "xcode_version": "Xcode 16.x",
   "swift_version": "Swift 6.x",
   "host_build_identity": "Vibe Screen Dev, bundle id, SHA-256, signing identity",
+  "host_bundle_id": "dev.telemachus.display",
+  "host_signing_identity": "Vibe Screen Dev",
+  "screen_recording_tcc": "authorized",
+  "accessibility_tcc": "authorized",
+  "host_source_commit": "<40-character hexadecimal git commit from installed Host>",
+  "host_source_tree": "<40-character hexadecimal git tree from installed Host>",
+  "host_source_dirty_state": "clean",
+  "host_self_test_commit": "<40-character hexadecimal git commit>",
+  "current_base_commit": "<40-character hexadecimal origin/main commit>",
   "display_topology": "built_in",
   "capture_backend": "screencapturekit",
   "screen_capturekit_result": "selected_display_first_frame",
@@ -148,6 +168,8 @@ artifact exists:
   "xcode_swift_recorded": true,
   "host_build_identity_recorded": true,
   "signing_and_tcc_state_recorded": true,
+  "source_bound_host_recorded": true,
+  "host_self_test_provenance_recorded": true,
   "display_topology_recorded": true,
   "capture_backend_recorded": true,
   "video_encoder_path_recorded": true,
@@ -181,7 +203,9 @@ Missing observations default to `false`. If any `claims_*` or `ci_runner_only`
 field is `true`, or the capture backend contradicts the recorded first-frame or
 fallback result, the summary is `failed` because the evidence attempts to close
 a row from another environment or implementation path. Missing owner,
-implementation path, a clean 40-character repository commit, Host identity,
+implementation path, a clean 40-character repository commit, stable Host bundle
+id/signing identity, authorized Screen Recording and Accessibility TCC rows,
+source-bound installed Host provenance, Host self-test/current-base provenance,
 architecture, OS build, topology, automated macOS checks, packaged launch,
 Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`. Other
 missing runtime probes are `insufficient`. Artifact paths must be existing

@@ -1125,6 +1125,9 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('"-file-prefix-map"', package_script)
         self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
         self.assertIn('EXECUTABLE_NAME = PRODUCT_NAME', package_script)
+        self.assertIn('SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"', package_script)
+        self.assertIn('SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"', package_script)
+        self.assertIn('SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"', package_script)
         self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
         self.assertIn('SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"', package_script)
         self.assertNotIn("TELEMACHUS_SIGN_IDENTITY", package_script)
@@ -1144,6 +1147,51 @@ class PrepareReleaseTests(unittest.TestCase):
             (REPOSITORY_ROOT / "baseline/MacHost/Sources/ProtocolV1SelfTest.swift").read_text(
                 encoding="utf-8"
             ),
+        )
+
+    def test_bundled_plist_embeds_source_identity(self) -> None:
+        plist = package_macos.bundled_plist(
+            {"CFBundleIdentifier": "dev.telemachus.display"},
+            "1.2.3",
+            package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+        )
+
+        self.assertEqual(plist["CFBundleExecutable"], "Vibe Screen")
+        self.assertEqual(plist["CFBundleVersion"], "1.2.3")
+        self.assertEqual(plist["VibeScreenSourceCommit"], "a" * 40)
+        self.assertEqual(plist["VibeScreenSourceTree"], "b" * 40)
+        self.assertIs(plist["VibeScreenSourceDirty"], False)
+
+    def test_collect_source_identity_reads_commit_tree_and_dirty_state(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def fake_run(*command: str, cwd: Path | None = None) -> str:
+            calls.append(command)
+            if command == ("git", "rev-parse", "HEAD"):
+                return "a" * 40
+            if command == ("git", "rev-parse", "HEAD^{tree}"):
+                return "b" * 40
+            if command == ("git", "status", "--porcelain"):
+                return " M README.md"
+            raise AssertionError(command)
+
+        with mock.patch.object(package_macos, "run", side_effect=fake_run):
+            identity = package_macos.collect_source_identity(Path("repo"))
+
+        self.assertEqual(identity.commit, "a" * 40)
+        self.assertEqual(identity.tree, "b" * 40)
+        self.assertTrue(identity.dirty)
+        self.assertEqual(
+            calls,
+            [
+                ("git", "rev-parse", "HEAD"),
+                ("git", "rev-parse", "HEAD^{tree}"),
+                ("git", "status", "--porcelain"),
+            ],
         )
 
     def test_release_workflow_binds_tag_to_all_successful_main_gates_and_debug_audit(self) -> None:
