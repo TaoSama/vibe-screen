@@ -58,6 +58,46 @@ Simulator output, loopback transport tests, Android evidence for iOS, Protocol
 field presence, and SDR fallback tests are readiness inputs only. They do not
 prove visible HDR/EDR output.
 
+## iOS HDR/EDR current-base owner
+
+The iOS HDR output / EDR rendering gate is owned by the dedicated current-base
+verifier below. It is separate from the macOS HDR-to-SDR fallback work and from
+the broader iOS aggregate gate: the aggregate may reference this summary, but it
+must not close HDR output unless this verifier reports `pass`.
+
+```bash
+make ios-hdr-edr-gate EVIDENCE_DIR=.build/evidence/ios-hdr-edr
+```
+
+By default the target reads
+`.build/evidence/ios-hdr-edr/ios-hdr-edr-observations.json` and writes
+`ios-hdr-edr-gate.json`. If the observations file is missing, malformed, or
+does not contain every required proof point, the verifier writes a blocked
+summary and exits nonzero. That blocked output is useful readiness evidence; it
+does not close the README Phase 5 HDR gate.
+
+The observations must use `schema_version=vibescreen.evidence/v1` and
+`kind=ios_hdr_edr_readiness_observations`, then include all of these retained
+proof points:
+
+- clean current-base repository commit;
+- physical iPhone or iPad identity and an HDR-capable display;
+- measured EDR headroom or equivalent platform HDR display diagnostic;
+- `CAPABILITY_HDR_VIDEO` advertisement and accepted HDR video config;
+- 10-bit VideoToolbox decode capability with PQ or HLG transfer and BT.2020 or
+  Display P3 metadata;
+- VideoToolbox/CoreVideo output pixel format and HDR frame attachments;
+- renderer-layer evidence that EDR/HDR output is enabled;
+- visible HDR/EDR output evidence or a platform diagnostic proving it;
+- same-revision SDR-only peer fallback evidence;
+- local retained artifact paths for the logs, diagnostics, visible output, and
+  gate summary.
+
+Set the invalid-evidence flags when a run includes Simulator output, unsigned
+archives, Android evidence, SDR fallback promoted as HDR, protocol fields alone,
+or macOS fallback evidence. Any such substitution returns `fail` and keeps
+`can_close_ios_hdr_output_gate=false`.
+
 ## Android device notes
 
 When a real Android run is scheduled, every ADB command for the current shared

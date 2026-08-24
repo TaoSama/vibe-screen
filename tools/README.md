@@ -56,6 +56,22 @@ or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
 `can_close_ios_device_acceptance=false`. That nonzero result is the expected
 fail-closed readiness evidence when no iOS device run is scheduled.
 
+The iOS HDR output / EDR rendering row has a narrower dedicated owner. It
+validates retained physical-device HDR observations and returns nonzero for the
+expected no-device or SDR-only current state:
+
+```sh
+make ios-hdr-edr-gate EVIDENCE_DIR=.build/evidence/ios-hdr-edr
+```
+
+`ios-hdr-edr-gate` reads `ios-hdr-edr-observations.json` and writes
+`ios-hdr-edr-gate.json`. It passes only with a physical iPhone/iPad HDR-capable
+display, EDR headroom, `CAPABILITY_HDR_VIDEO`, accepted HDR config, 10-bit
+PQ/HLG VideoToolbox output metadata, EDR renderer enablement, visible output
+diagnostics, same-revision SDR fallback, and retained artifacts. Simulator,
+unsigned archive, Android, protocol-only, macOS fallback, or SDR fallback
+substitution returns `fail` and keeps `can_close_ios_hdr_output_gate=false`.
+
 Codec capability evidence must record the negotiated Protocol v1 codec, the
 Host encoder capability and implementation path, the client decoder name, and
 the first decoded output frame before it is used to close a codec gate. AV1 is

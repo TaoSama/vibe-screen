@@ -817,6 +817,11 @@ increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
+  current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.
+  The current iOS renderer still advertises SDR only and has no HDR/EDR output
+  pass; SDR fallback, Simulator, unsigned archive, Android, and macOS fallback
+  evidence remain readiness inputs only.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware

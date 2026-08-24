@@ -93,8 +93,10 @@ README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
 product flows over Internet DataChannels, and advanced real-device behavior
 open; those broader gates remain tracked in the Phase 5 verification record
 rather than closed by this device runbook. HDR output specifically requires the
-[HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback, Simulator
-output, Protocol field presence, and offline self-tests do not close it.
+dedicated `ios-hdr-edr-gate` in the
+[HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback,
+Simulator output, unsigned archives, Android evidence, Protocol field presence,
+ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
 
 ## Checklist
 

@@ -46,6 +46,7 @@ SOURCE_DOCS = [
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
     "docs/runbook/ios-device-acceptance.md",
+    "docs/runbook/hdr-color-acceptance.md",
 ]
 
 FORMAL_DEVICE_GATES = {
@@ -60,7 +61,7 @@ FORMAL_DEVICE_GATES = {
 }
 
 BROADER_GATES = {
-    "hdr_output": "HDR/EDR output on iOS hardware, not SDR fallback only",
+    "hdr_output": "dedicated ios-hdr-edr-gate pass for HDR/EDR output on iOS hardware, not SDR fallback only",
     "advanced_adapters": "host/product adapters for multi-client/display, audio, clipboard, files, actions, wake, and managed policy",
     "trusted_lan_secure_records": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
 }

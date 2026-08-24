@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-hdr-edr-gate.schema.json",
+  "title": "Vibe Screen iOS HDR/EDR readiness gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "verdict",
+    "can_close_ios_hdr_output_gate",
+    "owner",
+    "source",
+    "current_base",
+    "checks",
+    "retained_artifacts",
+    "missing_requirements",
+    "invalid_claims",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_hdr_edr_readiness_gate"},
+    "created_at": {"type": "string", "format": "date-time", "minLength": 1},
+    "verdict": {"enum": ["pass", "fail", "blocked"]},
+    "can_close_ios_hdr_output_gate": {"type": "boolean"},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "head_ref", "pull_request", "repository", "scope"],
+      "properties": {
+        "role": {"const": "ios_hdr_edr_current_base_owner"},
+        "head_ref": {"const": "codex/ios-hdr-edr-current-base-owner"},
+        "pull_request": {"type": ["string", "null"]},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observations"],
+      "properties": {"observations": {"type": ["string", "null"]}}
+    },
+    "current_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_current_base_recorded",
+        "runtime_class_physical_ios",
+        "device_identity_recorded",
+        "physical_ios_device",
+        "hdr_capable_display",
+        "edr_headroom_recorded",
+        "client_advertised_hdr_video",
+        "hdr_config_accepted",
+        "ten_bit_decode_capability_recorded",
+        "pq_or_hlg_transfer_recorded",
+        "bt2020_or_p3_color_metadata_recorded",
+        "videotoolbox_output_format_recorded",
+        "videotoolbox_hdr_metadata_recorded",
+        "edr_rendering_enabled",
+        "visible_hdr_output_recorded",
+        "sdr_peer_fallback_recorded",
+        "artifacts_retained"
+      ],
+      "properties": {
+        "repository_current_base_recorded": {"$ref": "#/$defs/check"},
+        "runtime_class_physical_ios": {"$ref": "#/$defs/check"},
+        "device_identity_recorded": {"$ref": "#/$defs/check"},
+        "physical_ios_device": {"$ref": "#/$defs/check"},
+        "hdr_capable_display": {"$ref": "#/$defs/check"},
+        "edr_headroom_recorded": {"$ref": "#/$defs/check"},
+        "client_advertised_hdr_video": {"$ref": "#/$defs/check"},
+        "hdr_config_accepted": {"$ref": "#/$defs/check"},
+        "ten_bit_decode_capability_recorded": {"$ref": "#/$defs/check"},
+        "pq_or_hlg_transfer_recorded": {"$ref": "#/$defs/check"},
+        "bt2020_or_p3_color_metadata_recorded": {"$ref": "#/$defs/check"},
+        "videotoolbox_output_format_recorded": {"$ref": "#/$defs/check"},
+        "videotoolbox_hdr_metadata_recorded": {"$ref": "#/$defs/check"},
+        "edr_rendering_enabled": {"$ref": "#/$defs/check"},
+        "visible_hdr_output_recorded": {"$ref": "#/$defs/check"},
+        "sdr_peer_fallback_recorded": {"$ref": "#/$defs/check"},
+        "artifacts_retained": {"$ref": "#/$defs/check"}
+      }
+    },
+    "retained_artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reason"}
+    },
+    "invalid_claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reason"}
+    },
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_close_ios_hdr_output_gate": {"const": true},
+          "missing_requirements": {"maxItems": 0},
+          "invalid_claims": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["blocked", "fail"]}}, "required": ["verdict"]},
+      "then": {"properties": {"can_close_ios_hdr_output_gate": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "expected", "evidence"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "expected": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "bytes"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "exists": {"type": ["boolean", "null"]},
+        "bytes": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1},
+        "requirement": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "anyOf": [{"required": ["requirement"]}, {"required": ["reason"]}]
+    }
+  }
+}
