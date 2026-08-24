@@ -116,6 +116,122 @@ and closure report only: missing child summaries remain blocked, and a Nubia
 P0110/pacific phone manifest stays `android_substitute` readiness rather than
 8-9 inch tablet evidence.
 
+Login-startup/headless Mac mini evidence uses a separate
+`macos-startup-recovery-evidence.json` input and the passive
+`phase2-macos-startup-recovery-gate` verifier. The minimum JSON shape is:
+
+```json
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "macos_startup_recovery_evidence",
+  "run_id": "YYYY-MM-DD-mac-mini-headless",
+  "source_commit": "<git sha>",
+  "mac_host": {
+    "model": "Mac mini",
+    "architecture": "arm64",
+    "macos_version": "<version>",
+    "macos_build": "<build>",
+    "host_bundle_identifier": "dev.telemachus.display",
+    "host_signing": "identity_signed",
+    "host_cdhash": "<cdhash>",
+    "host_binary_sha256": "<sha256>",
+    "screen_recording_permission": "granted",
+    "accessibility_permission": "granted",
+    "signing_report": "host-signing-and-permissions.txt",
+    "permission_report": "host-signing-and-permissions.txt",
+    "host_log": "telemachus.log"
+  },
+  "login_item": {
+    "status": "enabled",
+    "requires_approval": false,
+    "reboot_or_logout_login_performed": true,
+    "login_launch_observed": true,
+    "manual_launch_used": false,
+    "system_settings_artifact": "login-items.png",
+    "launch_log": "login-launch.log"
+  },
+  "automatic_startup": {
+    "auto_start_enabled": true,
+    "startup_mode": "usb",
+    "onboarding_completed": true,
+    "first_server_start_observed": true,
+    "client_render_observed": true,
+    "startup_log": "startup.log",
+    "client_render_artifact": "client-render.png"
+  },
+  "display": {
+    "topology": "dummy_or_headless",
+    "capturable_display_observed": true,
+    "first_frame_observed": true,
+    "display_uuid": "<display uuid>",
+    "claims_headless_from_attached_monitor": false,
+    "dimensions": {
+      "logical_width": 1920,
+      "logical_height": 1080,
+      "physical_width": 1920,
+      "physical_height": 1080
+    },
+    "display_report": "display.json",
+    "first_frame_artifact": "first-frame.png"
+  },
+  "unattended_recovery": {
+    "trigger": "listener_startup_failure",
+    "observed": true,
+    "retry_delays_seconds": [1, 2, 4, 8, 16, 30, 30, 30],
+    "full_speed_loop_observed": false,
+    "restart_succeeded": true,
+    "bounded_exhaustion_observed": false,
+    "logs_retained": true,
+    "recovery_log": "unattended-recovery.log"
+  },
+  "window_recovery": {
+    "move_observed": true,
+    "disconnect_or_failure_trigger_observed": true,
+    "restored_observed": true,
+    "accessibility_error_observed": false,
+    "original_frame": {"x": 100, "y": 100, "width": 800, "height": 600},
+    "restored_frame": {"x": 100, "y": 100, "width": 800, "height": 600},
+    "window_log": "window-recovery.log",
+    "before_artifact": "window-before.png",
+    "after_artifact": "window-after.png"
+  },
+  "remote_access": {
+    "method": "screen_sharing",
+    "operator_intervention_path_verified": true,
+    "filevault_or_first_login_blocker_absent": true,
+    "requires_unavailable_local_intervention": false,
+    "access_artifact": "screen-sharing-settings.png"
+  },
+  "android_device": {
+    "adb_serial": "<adb-serial>",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "device_info": "device-info.json"
+  }
+}
+```
+
+Run:
+
+```bash
+make phase2-macos-startup-recovery-gate EVIDENCE_DIR="$RUN_DIR"
+make phase2-aggregate-owner EVIDENCE_DIR="$RUN_DIR" \
+  PHASE2_LOGIN_HEADLESS="$RUN_DIR/macos-startup-recovery-gate.json"
+```
+
+The gate writes `macos-startup-recovery-gate.json`. It can close the aggregate
+`login_startup_headless` row only when it reports `verdict=pass` and
+`can_close_login_headless_gate=true`. Missing reboot/login, Login Items
+approval, identity signing, current TCC grants, capturable dummy/headless or
+Screen Sharing display, first client-rendered frame, bounded recovery logs,
+real window restoration, or operator intervention path evidence must stay
+`blocked`. Manual app launch, an attached monitor relabeled as headless, or a
+Nubia P0110/pacific Android artifact relabeled as Xiaomi/fuxi must report
+`fail`.
+
 ## Blocked evidence
 
 When no physical 8-9 inch tablet is available, create a blocked record instead

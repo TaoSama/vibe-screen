@@ -494,10 +494,15 @@ thermal/power, and eight-hour soak artifacts. These tools reject phone
 substitutes such as Nubia P0110/pacific/Android 16 for formal tablet acceptance
 and report missing evidence as blocked or insufficient. A current-base aggregate
 owner report now records one owner per open Phase 2 workstream and marks stale
-or duplicate PRs without closing any child gate. Stand-mounted charging
-stability, controlled thermal-load behavior, power stability, login startup,
-headless Mac mini acceptance, hardware-keyboard workflow acceptance, and the
-physical 8-9 inch tablet run all remain open. The latest P0110/pacific
+or duplicate PRs without closing any child gate. The login-startup/headless Mac
+mini row now has a passive current-base verifier that consumes retained real
+macOS evidence for identity signing, TCC, Login Items approval, reboot/login
+launch, capturable physical/dummy/headless or Screen Sharing display, bounded
+unattended recovery, window restoration, and operator remote-access fallback.
+It remains fail-closed until those machine-bound artifacts exist. Stand-mounted
+charging stability, controlled thermal-load behavior, power stability, login
+startup, headless Mac mini acceptance, hardware-keyboard workflow acceptance,
+and the physical 8-9 inch tablet run all remain open. The latest P0110/pacific
 hardware-keyboard current-base readiness record captures the real device
 identity and fails closed because no external Android-attached keyboard, Host
 listener, or stable signed/TCC-ready Host was available; it is not a gate pass.

@@ -1,0 +1,65 @@
+{
+  "automatic_startup": {
+    "auto_start_enabled": false,
+    "client_render_observed": false,
+    "first_server_start_observed": false,
+    "onboarding_completed": false,
+    "startup_log": "README.md",
+    "startup_mode": "usb"
+  },
+  "display": {
+    "capturable_display_observed": false,
+    "claims_headless_from_attached_monitor": false,
+    "dimensions": {},
+    "display_report": "README.md",
+    "first_frame_observed": false,
+    "topology": "dummy_or_headless"
+  },
+  "kind": "macos_startup_recovery_evidence",
+  "login_item": {
+    "launch_log": "README.md",
+    "login_launch_observed": false,
+    "manual_launch_used": false,
+    "reboot_or_logout_login_performed": false,
+    "requires_approval": true,
+    "status": "unverified"
+  },
+  "mac_host": {
+    "accessibility_permission": "unverified",
+    "architecture": "unavailable",
+    "host_bundle_identifier": "dev.telemachus.display",
+    "host_log": "README.md",
+    "host_signing": "unverified",
+    "macos_build": "unavailable",
+    "macos_version": "unavailable",
+    "model": "unavailable",
+    "screen_recording_permission": "unverified"
+  },
+  "remote_access": {
+    "access_artifact": "README.md",
+    "filevault_or_first_login_blocker_absent": false,
+    "method": "screen_sharing",
+    "operator_intervention_path_verified": false,
+    "requires_unavailable_local_intervention": false
+  },
+  "run_id": "2026-08-24-macos-headless-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_commit": "32798e81bbb84e2155905a8e08ea7cc7c1ff8e46",
+  "unattended_recovery": {
+    "bounded_exhaustion_observed": false,
+    "full_speed_loop_observed": false,
+    "logs_retained": false,
+    "observed": false,
+    "recovery_log": "README.md",
+    "restart_succeeded": false,
+    "retry_delays_seconds": [],
+    "trigger": "not_attempted_missing_rebootable_headless_mac_mini"
+  },
+  "window_recovery": {
+    "accessibility_error_observed": false,
+    "disconnect_or_failure_trigger_observed": false,
+    "move_observed": false,
+    "restored_observed": false,
+    "window_log": "README.md"
+  }
+}

@@ -515,6 +515,27 @@ inputs become blocked owner rows. The report can close README Phase 2 gates only
 when every child gate provides an explicit pass or close signal and the
 package-aware tablet gate passes with a physical 8-9 inch tablet manifest.
 
+The login-startup/headless Mac mini owner input is produced from retained real
+macOS integration evidence. It is a passive gate: it never changes Login Items,
+grants TCC, reboots the Mac, starts the Host, or touches ADB.
+
+```sh
+make phase2-macos-startup-recovery-gate EVIDENCE_DIR=.build/evidence
+make phase2-aggregate-owner EVIDENCE_DIR=.build/evidence \
+  PHASE2_LOGIN_HEADLESS=.build/evidence/macos-startup-recovery-gate.json
+```
+
+The input file is `.build/evidence/macos-startup-recovery-evidence.json`. A pass
+requires an identity-signed Host with current Screen Recording and Accessibility
+grants, login item enabled and not awaiting approval, reboot or logout/login
+launch evidence, automatic startup to a rendered client stream, capturable
+physical/dummy/headless or Screen Sharing display evidence, bounded unattended
+recovery logs, real window restore evidence, and a local or remote administrator
+path for FileVault, first-login, TCC, and display intervention. Missing hardware
+or permission prerequisites return `blocked` with
+`can_close_login_headless_gate=false`; manual launches or relabeled display or
+device identities return `fail`.
+
 For the focused hardware-keyboard workflow, collect current-base readiness with
 the exact Android serial before attempting physical input:
 
