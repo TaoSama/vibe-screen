@@ -64,6 +64,66 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
+    fun connectionGuidanceRegionsExposeGroupedScreenReaderStatus() {
+        withProductionLayout { root ->
+            val views = connectionPanelViews(root)
+            ConnectionPanelLayoutApplier.apply(
+                resources = root.resources,
+                views = views,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+
+            assertTrue(ViewCompat.isAccessibilityHeading(root.findViewById(R.id.connectionTitle)))
+            listOf(
+                R.id.connectionErrorContainer,
+                R.id.wirelessConnecting,
+                R.id.internetProfileSummary,
+                R.id.internetStateText,
+                R.id.internetErrorText,
+            ).forEach { id ->
+                val region = root.findViewById<View>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    ViewCompat.isScreenReaderFocusable(region),
+                )
+                val clickableDescendants = clickableDescendantNames(region)
+                assertTrue(
+                    "${root.resources.getResourceEntryName(id)} clickable descendants: $clickableDescendants",
+                    clickableDescendants.isEmpty(),
+                )
+            }
+            listOf(
+                R.id.wirelessFirstTime to R.id.wirelessScanButton,
+                R.id.wirelessConnected to R.id.wirelessDisconnectButton,
+                R.id.wirelessConnected to R.id.wirelessForgetButton,
+                R.id.wirelessPairedIdle to R.id.wirelessReconnectButton,
+                R.id.wirelessPairedIdle to R.id.wirelessIdleForgetButton,
+                R.id.wirelessTokenMismatch to R.id.wirelessRescanButton,
+                R.id.wirelessPermDenied to R.id.wirelessOpenSettingsButton,
+            ).forEach { (regionId, buttonId) ->
+                val region = root.findViewById<View>(regionId)
+                val button = root.findViewById<MaterialButton>(buttonId)
+                assertFalse(
+                    root.resources.getResourceEntryName(regionId),
+                    ViewCompat.isScreenReaderFocusable(region),
+                )
+                assertTrue(root.resources.getResourceEntryName(buttonId), button.isClickable)
+                assertNotEquals(
+                    root.resources.getResourceEntryName(buttonId),
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO,
+                    button.importantForAccessibility,
+                )
+                assertNotEquals(
+                    root.resources.getResourceEntryName(buttonId),
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                    button.importantForAccessibility,
+                )
+            }
+        }
+    }
+
+    @Test
     fun productionLayoutDoesNotPreRenderModeSpecificGuidance() {
         withProductionLayout { root ->
             val title = root.findViewById<TextView>(R.id.connectionTitle)
@@ -431,6 +491,23 @@ class ConnectionStateAccessibilityInstrumentedTest {
         val actionLabels = view.createAccessibilityNodeInfo().actionList.mapNotNull { it.label?.toString() }
         assertTrue("Expected accessibility action '$expectedLabel' in $actionLabels", expectedLabel in actionLabels)
     }
+
+    private fun clickableDescendantNames(view: View): List<String> {
+        val group = view as? ViewGroup ?: return emptyList()
+        return (0 until group.childCount).flatMap { index ->
+            val child = group.getChildAt(index)
+            val childName = viewName(child)
+            val self = if (child.isClickable) listOf(childName) else emptyList()
+            self + clickableDescendantNames(child)
+        }
+    }
+
+    private fun viewName(view: View): String =
+        if (view.id == View.NO_ID) {
+            view.javaClass.simpleName
+        } else {
+            view.resources.getResourceEntryName(view.id)
+        }
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 

@@ -58,6 +58,7 @@ internal object ConnectionPanelLayoutApplier {
         )
         applyColumn(views.header, layout.header, startGapPx = 0)
         applyColumn(views.actions, layout.actions, startGapPx = layout.columnGapPx)
+        ConnectionStateAccessibilityApplier.apply(views.content)
         return layout
     }
 
@@ -201,5 +202,40 @@ internal object ConnectionPanelLayoutApplier {
         params.weight = column.weight
         params.marginStart = startGapPx
         view.layoutParams = params
+    }
+}
+
+internal object ConnectionStateAccessibilityApplier {
+    private val groupedStatusRegionIds =
+        listOf(
+            R.id.connectionErrorContainer,
+            R.id.wirelessConnecting,
+            R.id.internetProfileSummary,
+            R.id.internetStateText,
+            R.id.internetErrorText,
+        )
+    private val interactiveStatusRegionIds =
+        listOf(
+            R.id.wirelessFirstTime,
+            R.id.wirelessConnected,
+            R.id.wirelessPairedIdle,
+            R.id.wirelessTokenMismatch,
+            R.id.wirelessPermDenied,
+        )
+
+    fun apply(root: View) {
+        root.findViewById<View>(R.id.connectionTitle)?.let { title ->
+            ViewCompat.setAccessibilityHeading(title, true)
+        }
+        groupedStatusRegionIds.forEach { id ->
+            root.findViewById<View>(id)?.let { region ->
+                ViewCompat.setScreenReaderFocusable(region, true)
+            }
+        }
+        interactiveStatusRegionIds.forEach { id ->
+            root.findViewById<View>(id)?.let { region ->
+                ViewCompat.setScreenReaderFocusable(region, false)
+            }
+        }
     }
 }
