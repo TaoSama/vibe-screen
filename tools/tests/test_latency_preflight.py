@@ -27,7 +27,7 @@ class LatencyPreflightReportTest(unittest.TestCase):
         )
         self.assertTrue(report["gate_profiles"][0]["missing_requirements"])
 
-    def test_ready_preflight_without_manifest_still_cannot_close_gate(self) -> None:
+    def test_formal_manifest_check_requires_manifest_path(self) -> None:
         input_document = {
             "schema_version": "vibescreen.evidence/v1",
             "gate_profiles": [
@@ -51,9 +51,20 @@ class LatencyPreflightReportTest(unittest.TestCase):
             input_document=input_document, repository_revision="fixture-revision"
         )
 
-        self.assertEqual(report["status"], "ready")
-        self.assertTrue(report["gate_profiles"][0]["can_attempt_formal_gate"])
-        self.assertFalse(report["gate_profiles"][0]["can_close_performance_gate"])
+        profile = report["gate_profiles"][0]
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(profile["can_attempt_formal_gate"])
+        self.assertFalse(profile["can_close_performance_gate"])
+        self.assertIn(
+            {
+                "field": "manifest",
+                "requirement": (
+                    "provide the formal latency manifest path so "
+                    "the formal checker can validate retained artifacts"
+                ),
+            },
+            profile["missing_requirements"],
+        )
 
     def test_passing_formal_report_can_close_selected_profile(self) -> None:
         input_document = {

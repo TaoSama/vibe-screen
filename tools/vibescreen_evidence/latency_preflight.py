@@ -396,6 +396,16 @@ def _profile_result(
     formal_report: dict[str, Any] | None = None
 
     manifest_value = item.get("manifest")
+    if normalized_checks.get("formal_manifest_retained") and manifest_value is None:
+        missing_requirements.append(
+            {
+                "field": "manifest",
+                "requirement": (
+                    "provide the formal latency manifest path so "
+                    "the formal checker can validate retained artifacts"
+                ),
+            }
+        )
     if manifest_value is not None:
         if not isinstance(manifest_value, str) or not manifest_value.strip():
             raise LatencyPreflightError(f"gate profile {profile}: manifest must be a non-empty string")

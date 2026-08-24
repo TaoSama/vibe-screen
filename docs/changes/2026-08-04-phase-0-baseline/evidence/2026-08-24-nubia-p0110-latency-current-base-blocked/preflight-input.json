@@ -1,0 +1,49 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-24-nubia-p0110-latency-current-base-blocked",
+  "gate_profiles": [
+    {
+      "profile": "usb-glass-to-glass-sub50",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": false,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "usb_transport_ready": false
+      }
+    },
+    {
+      "profile": "lan-glass-to-glass-sub80",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": false,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "lan_transport_ready": false
+      }
+    },
+    {
+      "profile": "input-p95-sub50",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": false,
+        "measurement_timebase_ready": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "physical_input_actuation_ready": false,
+        "visible_mac_input_result_ready": false
+      }
+    }
+  ],
+  "notes": [
+    "Nubia P0110/pacific/Android 16 device identity was collected with the required explicit ADB serial documented in commands.txt and committed under a stable evidence id.",
+    "No external-camera recording, annotated latency samples, synchronized-clock proof, physical input actuation record, or transport-specific active-stream artifact is available in this run."
+  ]
+}
