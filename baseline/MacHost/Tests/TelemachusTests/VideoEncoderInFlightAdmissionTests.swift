@@ -338,6 +338,170 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(admission.snapshot, .init(inFlight: 0, capacity: 1))
     }
 
+    func testWarmupPumpSubmitsOnlyWhenAdmissionCapacityIsAvailable() {
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 0.5,
+            pollInterval: 0
+        )
+        var submittedFrames: [Int] = []
+        var retainedInFlight = 0
+        var callbacks = 0
+        var maximumObservedInFlight = 0
+
+        let result = warmup.run(
+            availableCapacity: { max(0, 2 - retainedInFlight) },
+            callbackCount: { callbacks },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                retainedInFlight += 1
+                maximumObservedInFlight = max(maximumObservedInFlight, retainedInFlight)
+            },
+            completeFrames: {
+                if retainedInFlight > 0 {
+                    retainedInFlight -= 1
+                    callbacks += 1
+                }
+                return noErr
+            },
+            sleep: { _ in }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 2, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1])
+        XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
+    }
+
+    func testWarmupPumpKeepsPumpingWhenCallbacksAreSlow() {
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 0.5,
+            pollInterval: 0
+        )
+        var submittedFrames: [Int] = []
+        var retainedInFlight = 0
+        var completions = 0
+        var callbacks = 0
+        var maximumObservedInFlight = 0
+
+        let result = warmup.run(
+            availableCapacity: { max(0, 2 - retainedInFlight) },
+            callbackCount: { callbacks },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                retainedInFlight += 1
+                maximumObservedInFlight = max(maximumObservedInFlight, retainedInFlight)
+            },
+            completeFrames: {
+                completions += 1
+                if retainedInFlight > 0 {
+                    retainedInFlight -= 1
+                }
+                if completions == 3 {
+                    callbacks = 1
+                }
+                return noErr
+            },
+            sleep: { _ in }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 4, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
+        XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
+    }
+
+    func testWarmupPumpFailsClosedWhenCompletionFails() {
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 0.001,
+            pollInterval: 0
+        )
+        var submittedFrames: [Int] = []
+        var retainedInFlight = 0
+
+        let result = warmup.run(
+            availableCapacity: { max(0, 2 - retainedInFlight) },
+            callbackCount: { 0 },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                retainedInFlight += 1
+            },
+            completeFrames: { -1 },
+            sleep: { _ in }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 2, callbacks: 0, completionStatus: -1))
+        XCTAssertEqual(submittedFrames, [0, 1])
+    }
+
+    func testAtCapacityDoesNotConsumePendingKeyframeRequest() {
+        let admission = VideoEncoderInFlightAdmission(capacity: 1)
+        var acceptedLease: VideoEncoderInFlightAdmission.Lease?
+        let requests = VideoEncoderKeyframeRequests()
+        requests.request()
+
+        XCTAssertEqual(admission.submit { lease in
+            acceptedLease = lease
+            return noErr
+        }, .submitted(noErr))
+
+        XCTAssertEqual(admission.submit { _ in
+            _ = requests.consumePendingRequest()
+            return noErr
+        }, .atCapacity)
+
+        XCTAssertTrue(requests.isPending)
+        acceptedLease?.release()
+        acceptedLease = nil
+        XCTAssertEqual(admission.inFlightCount, 0)
+    }
+
+    func testSynchronousEncodeFailureRestoresConsumedKeyframeRequest() {
+        let requests = VideoEncoderKeyframeRequests()
+        requests.request()
+
+        XCTAssertTrue(requests.consumePendingRequest())
+        XCTAssertFalse(requests.isPending)
+
+        requests.restoreAfterSynchronousFailure(consumedRequest: true)
+
+        XCTAssertTrue(requests.isPending)
+        XCTAssertTrue(requests.consumePendingRequest())
+        XCTAssertFalse(requests.isPending)
+    }
+
+    func testSynchronousEncodeFailureDoesNotCreateNewKeyframeRequestWhenNoneWasConsumed() {
+        let requests = VideoEncoderKeyframeRequests()
+
+        requests.restoreAfterSynchronousFailure(consumedRequest: false)
+
+        XCTAssertFalse(requests.isPending)
+    }
+
+    func testAsynchronousEncodeFailureRequestsReplacementKeyframe() {
+        let requests = VideoEncoderKeyframeRequests()
+
+        requests.restoreAfterAsynchronousFailure(status: kVTVideoEncoderMalfunctionErr)
+
+        XCTAssertTrue(requests.isPending)
+    }
+
+    func testMissingCallbackSampleBufferRequestsReplacementKeyframe() {
+        let requests = VideoEncoderKeyframeRequests()
+
+        requests.restoreAfterMissingSampleBuffer()
+
+        XCTAssertTrue(requests.isPending)
+    }
+
+    func testAsynchronousEncodeSuccessDoesNotRequestReplacementKeyframe() {
+        let requests = VideoEncoderKeyframeRequests()
+
+        requests.restoreAfterAsynchronousFailure(status: noErr)
+
+        XCTAssertFalse(requests.isPending)
+    }
+
     func testAnnexBConverterAppendsValidLengthPrefixedNALUnits() {
         let input: [UInt8] = [
             0, 0, 0, 2, 0xAA, 0xBB,
