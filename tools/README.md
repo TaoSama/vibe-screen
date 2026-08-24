@@ -95,6 +95,33 @@ same gate JSON is bound into `ios-current-base-manifest`; it still reports
 `can_close_ios_device_acceptance=false` because install, launch, decode, input,
 reconnect, and audio behavior require real iPhone and iPad runs.
 
+## Phase 5 multi-client/display current-base gate
+
+The Phase 5 multi-client/display gate is a read-only current-base owner for the
+planned simultaneous multi-client display capability. It separates one client
+switching between multiple displays from two or more clients streaming at the
+same time. Single-client display-selection, display-switch, or iOS-only registry
+evidence cannot close this gate.
+
+```sh
+make phase5-multi-client-current-base-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The target reads `multi-client-concurrency.json` from `EVIDENCE_DIR` and writes
+`phase5-multi-client-current-base-gate.json`. Missing evidence returns
+`blocked`; single-client multi-display evidence returns `insufficient`; device
+identity relabeling, such as recording a Nubia P0110/pacific run as Xiaomi/fuxi,
+returns `fail`. A pass requires retained JSON artifact files with the expected
+Phase 5 `kind`, matching `source_revision`, and true observations for the
+artifact-specific routing, transport, display, Host, or Android-client claim.
+Those artifacts cover Host routing, transport ownership, display identity,
+macOS Host, and two Android client records, plus explicit truth fields for
+simultaneous clients, distinct session IDs/epochs, independent transport
+connections, per-client route binding, frame queue or broadcast ownership, input
+target isolation, a defined capture ownership model, Host multi-client
+advertisement, and visible distinct streams on Android clients.
+
 Codec capability evidence must record the negotiated Protocol v1 codec, the
 Host encoder capability and implementation path, the client decoder name, and
 the first decoded output frame before it is used to close a codec gate. AV1 is

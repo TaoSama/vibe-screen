@@ -827,6 +827,14 @@ increase it.
   The current iOS renderer still advertises SDR only and has no HDR/EDR output
   pass; SDR fallback, Simulator, unsigned archive, Android, and macOS fallback
   evidence remain readiness inputs only.
+- The read-only `make phase5-multi-client-current-base-gate EVIDENCE_DIR=...`
+  owner gate now keeps the planned multiple-clients/displays capability
+  fail-closed on current base. It requires retained evidence for two or more
+  simultaneous clients, distinct session/display stream ownership, transport
+  isolation, Host route binding, input target isolation, a defined capture
+  ownership model, and macOS/Android/iOS/Harmony owner status. Single-client
+  display selection or display-switch evidence remains separate and cannot
+  close this gate.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
