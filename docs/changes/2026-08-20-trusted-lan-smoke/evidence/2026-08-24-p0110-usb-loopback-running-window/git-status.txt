@@ -1,0 +1,2 @@
+## codex/trusted-lan-p0110-preflight-20260824...origin/codex/trusted-lan-p0110-preflight-20260824
+?? docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window/

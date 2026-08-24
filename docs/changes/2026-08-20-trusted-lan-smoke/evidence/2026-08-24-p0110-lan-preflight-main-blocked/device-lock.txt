@@ -1,0 +1,4 @@
+device-lock:
+acquired /tmp/vibe-screen-device-android.lock
+trusted-lan-p0110-preflight-20260824 2026-08-24T10:37:53Z pid=4398
+released /tmp/vibe-screen-device-android.lock at 2026-08-24T10:37:55Z

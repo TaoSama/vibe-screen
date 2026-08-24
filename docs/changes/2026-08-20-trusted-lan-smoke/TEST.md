@@ -81,6 +81,48 @@ upgrade, decoder output, reconnect, latency, or soak evidence was observed. The
 retained artifact bundle is
 [`evidence/2026-08-23-p0110-lan-preflight-main-blocked/README.md`](evidence/2026-08-23-p0110-lan-preflight-main-blocked/README.md).
 
+## 2026-08-24 main preflight recheck
+
+After `git fetch origin --prune`, commit
+`34b75ac7d945dfa6697ff311fd0a821fb75532ef` from `origin/main` was rechecked on
+the same Nubia P0110 / pacific / Android 16 / SDK 36 device
+(`<device-serial>`). Open PRs #286, #246, and #191 were audited as related
+trusted-LAN work: they contain blocker records and older checker/evidence
+attempts, but no current-main real LAN stream/reconnect pass that can close this
+gate.
+
+Wi-Fi was enabled with `adb -s <device-serial> shell svc wifi enable`, but
+the preflight remained blocked before Host launch or pairing: Wi-Fi was not
+associated, `wlan0` had no carrier, no IPv4 address, and no route to the Mac LAN
+candidate. Host stable signing also remained blocked because the `Vibe Screen
+Dev` codesigning identity was unavailable, so Screen Recording and
+Accessibility TCC could not be evaluated for an evidence-grade Host bundle.
+
+No trusted-LAN socket admission, secure-record negotiation, Protocol v1 LAN
+upgrade, decoder output, reconnect, latency, or soak evidence was observed. A
+blocked reconnect timing summary was retained with `can_close_timing_gate=false`
+and no required disruption marked as exercised. The retained artifact bundle is
+[`evidence/2026-08-24-p0110-lan-preflight-main-blocked/README.md`](evidence/2026-08-24-p0110-lan-preflight-main-blocked/README.md).
+
+## 2026-08-24 USB/loopback running-window observation
+
+After the blocked trusted-LAN preflight, an already-running `/Applications/Vibe
+Screen.app` instance was observed without changing device or Host state. The
+Host process `22385` was listening only on `127.0.0.1:54321`, ADB reverse still
+reported `UsbFfs tcp:54321 tcp:54321`, and the Nubia P0110 / pacific / Android
+16 / SDK 36 client process `15457` was foregrounded as
+`dev.telemachus.display/.MainActivity`. The read-only USB live-smoke collector
+returned `verdict=pass` when run with a wider current-process logcat window:
+85 positive `stream_stats` events, latest FPS about 59.86, first output frame
+observed, continuing decoder output counters, and dropped frames `0`.
+
+This is USB/loopback evidence only. It does not close the trusted-LAN stream or
+reconnect gate because no LAN listener, Wi-Fi association, `wlan0` IPv4 route,
+trusted-LAN secure-record negotiation, or LAN reconnect disruption was observed;
+the Host stable-signing preflight also remained blocked by the missing `Vibe
+Screen Dev` codesigning identity. The retained artifact bundle is
+[`evidence/2026-08-24-p0110-usb-loopback-running-window/README.md`](evidence/2026-08-24-p0110-usb-loopback-running-window/README.md).
+
 ## Fail-closed preflight
 
 Use the shared Host readiness snapshot and the machine-readable trusted-LAN
