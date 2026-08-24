@@ -123,6 +123,46 @@ authorization, or matching source provenance cannot close USB, LAN, Host RSS,
 native-pointer, stylus, controller, rotation, login/headless, or compatibility
 gates.
 
+## Shared Host readiness snapshot
+
+Before a LAN stream/reconnect, controller runtime, Host RSS, native-pointer,
+stylus, physical-keyboard, login/headless, or compatibility run consumes a
+local Host, collect the shared read-only readiness snapshot for the evidence
+directory that will own the run:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The target writes both files below without launching the Host or mutating the
+machine:
+
+```text
+<evidence-dir>/host-signing-and-permissions.txt
+<evidence-dir>/host-readiness.json
+```
+
+`host-readiness.json` records the installed bundle path, signing identity,
+codesign provenance, embedded source commit/tree/dirty state, current checkout
+commit/tree/dirty state, read-only Screen Recording and Accessibility TCC rows,
+TCP listener observation for port `54321`, and whether the bundle carries the
+virtual HID entitlement needed by controller runtime acceptance. The command is
+read-only: it does not start Vibe Screen, import certificates, change Keychain
+settings, modify `TCC.db`, request macOS privacy grants, configure ADB, or touch
+Android state.
+
+The `can_start_*` fields are prerequisite flags only. They say whether a run may
+begin collecting runtime evidence from the current Host identity; they never
+close README-facing runtime gates by themselves. The top-level `status` covers
+every reported prerequisite, so it can be `blocked` because the controller-only
+virtual HID entitlement is absent while `can_start_trusted_lan_gate` or another
+non-controller flag is still true. For each runtime attempt, use the matching
+`can_start_*` field and keep the JSON plus text report as readiness evidence.
+If that gate's prerequisite flag is false, leave the downstream runtime stages
+as not-run and fix the missing signing identity, source provenance, TCC grant,
+listener, or gate-specific entitlement before claiming LAN, reconnect, Host RSS,
+native-pointer, stylus, controller, login/headless, or compatibility acceptance.
+
 ## USB quick start
 
 1. Enable Android developer options and USB debugging, authorize the Mac, and
@@ -321,7 +361,7 @@ preflight package while the Android device is USB-attached and identified by its
 exact serial:
 
 ```sh
-make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=<evidence-dir>
 ```
 
 The preflight confirms the Nubia P0110/pacific/Android 16 identity, Android

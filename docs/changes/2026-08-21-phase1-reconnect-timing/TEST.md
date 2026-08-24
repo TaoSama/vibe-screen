@@ -38,7 +38,7 @@ Current worktree evidence is under
 [`evidence/2026-08-21-p0110-reconnect-timing-blocked`](evidence/2026-08-21-p0110-reconnect-timing-blocked/README.md).
 
 The intended Android target is Nubia P0110 / pacific / Android 16 /
-`EP0110PZ0B9110300B`. No ADB disruption command was run for this blocked record.
+`<device-serial>`. No ADB disruption command was run for this blocked record.
 The real timing run was blocked before session setup because:
 
 - `scripts/macos_dev_host.py preflight` reported the `Vibe Screen Dev` signing
@@ -47,6 +47,20 @@ The real timing run was blocked before session setup because:
 
 The generated `reconnect-timing-summary.json` reports `verdict=blocked` and
 `can_close_timing_gate=false`.
+
+Future current-base reconnect attempts must first retain the shared Host
+readiness snapshot with:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The run may proceed only for scenarios whose prerequisites are ready. For the
+trusted-LAN interruption scenario, `host-readiness.json` must report
+`can_start_trusted_lan_gate=true`; for USB reconnect scenarios it must at least
+show the source-bound stable-signed Host, TCC, and listener prerequisites ready.
+A blocked Host readiness snapshot is retained as prerequisite evidence and does
+not close the reconnect timing gate.
 
 ## Validation
 

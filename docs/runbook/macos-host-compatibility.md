@@ -59,11 +59,13 @@ Keep these artifacts in that directory:
   bundle id, signing identity, designated requirement, install path, embedded
   `VibeScreenSourceCommit`, embedded `VibeScreenSourceTree`, and embedded
   `VibeScreenSourceDirty`.
-- `host-signing-and-permissions.txt`: `scripts/macos_dev_host.py preflight`
-  output or an equivalent read-only TCC/signing report. A passing row requires
-  the stable signing identity, bundle id `dev.telemachus.display`, Screen
-  Recording authorization, Accessibility authorization, and source provenance
-  matching the clean current-base checkout.
+- `host-readiness.json` and `host-signing-and-permissions.txt`: output from
+  `make baseline-macos-host-readiness`, plus the strict
+  `scripts/macos_dev_host.py preflight` report when retained separately. A
+  passing row requires the stable signing identity, bundle id
+  `dev.telemachus.display`, Screen Recording authorization, Accessibility
+  authorization, source provenance matching the clean current-base checkout,
+  and the row-relevant `can_start_*` prerequisite in `host-readiness.json`.
 - `display-topology.txt`: display UUIDs, online display IDs, logical and
   physical sizes, scale, refresh rate, rotation, and which display is built-in,
   external, dummy, virtual, or Screen Sharing.
@@ -85,6 +87,7 @@ make baseline-macos-build
 make baseline-macos-test
 make baseline-macos-self-test
 make baseline-macos-app
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 make baseline-macos-host-preflight
 ```
 
@@ -93,6 +96,10 @@ gesture workflows. Do not use ad-hoc signing, an unproven bundle id, stale app
 provenance, or a dirty source checkout to close a compatibility row. If any of
 those preconditions is missing, archive the preflight output as blocked
 readiness evidence and stop before running long device gates.
+`baseline-macos-host-readiness` is a shared prerequisite snapshot and does not
+replace the strict preflight or the runtime probes below. Its `can_start_*`
+fields only decide whether the matching runtime run may begin;
+`can_close_runtime_gates` remains false.
 
 Then launch the packaged Host, establish the selected USB or trusted-LAN
 Protocol v1 session, and exercise at least these runtime probes:

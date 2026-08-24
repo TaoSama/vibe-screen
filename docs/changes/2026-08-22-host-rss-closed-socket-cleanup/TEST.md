@@ -41,7 +41,7 @@ connections during teardown.
 
 Read-only P0110/device state from the local environment:
 
-- ADB serial: `EP0110PZ0B9110300B`
+- ADB serial: `<device-serial>`
 - Manufacturer/model/device: `nubia` / `P0110` / `pacific`
 - Android release/SDK: `16` / `36`
 - ADB state: `device`
@@ -54,6 +54,13 @@ and formal two-hour soak would not have complete Host telemetry. This shell also
 reported `0 valid identities found` for code signing, Full Xcode was not active,
 and direct TCC database reads were denied by macOS. No short diagnostic or
 formal soak was started under those conditions.
+
+Future Host RSS runs must first retain the shared Host readiness snapshot with
+`make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>` and require
+`host-readiness.json` to report `can_start_host_rss_gate=true` before a short
+diagnostic or two-hour soak starts. This readiness artifact is a prerequisite
+only: even when ready, it does not close the Host RSS no-growth gate without a
+complete telemetry-backed run and `host_rss_gate` pass.
 
 2026-08-22T08:34:55Z refresh on PR #260 head
 `e6346fd060842844ce8bf761a80b520e83b3158b` kept the formal soak blocked:
@@ -111,16 +118,16 @@ Result: pass. The release Host target built, then Host, transport, reliability,
 Protocol v1, and video-encoder executable self-tests passed.
 
 ```sh
-make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345
+make -n soak-2h EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=.build/evidence HOST_PID=12345
 make -n host-rss-gate EVIDENCE_DIR=.build/evidence
-make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345
+make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=.build/evidence HOST_PID=12345
 ```
 
 Result: pass. The dry run includes `--host-pid 12345`, derives the exact-window
 report, and then runs `host_rss_gate`.
 
 ```sh
-make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence
+make soak-2h-host-rss-gate EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=.build/evidence
 ```
 
 Result: expected fail-fast, exit 2, before starting a two-hour run:

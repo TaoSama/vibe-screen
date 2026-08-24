@@ -28,6 +28,8 @@ use, stop and keep a blocked/readiness record instead of racing another run.
 
     security find-identity -v -p codesigning | grep "Vibe Screen Dev"
     make baseline-macos-dev-install
+    make baseline-macos-host-readiness \
+      EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<run>
     python3 scripts/macos_dev_host.py preflight \
       --install-path "/Applications/Vibe Screen.app" \
       --report docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-preflight.txt
@@ -43,12 +45,16 @@ use, stop and keep a blocked/readiness record instead of racing another run.
     adb -s <serial> reverse tcp:54321 tcp:54321
     adb -s <serial> install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 
-The Host preflight is a gate dependency, not a convenience check. It must show a
-stable non-ad-hoc signing identity, the expected bundle identifier, strict
-codesign validation, and authorized Screen Recording plus Accessibility for the
-same installed Host. If any item is blocked, keep the preflight output and do
-not claim rotated host-display acceptance. This dependency is shared with the
-Host signing/TCC preflight boundary.
+The Host readiness snapshot and strict preflight are gate dependencies, not
+convenience checks. They must show a stable non-ad-hoc signing identity, the
+expected bundle identifier, strict codesign validation, current source
+provenance, authorized Screen Recording plus Accessibility, and
+`signing_tcc_status=ready` for the same installed Host. Rotation acceptance does
+not require the virtual HID entitlement, so a controller-only
+`can_start_controller_runtime_gate=false` does not by itself block rotation. If
+any row-relevant item is blocked, keep the readiness/preflight output and do not
+claim rotated host-display acceptance. This dependency is shared with the Host
+signing/TCC preflight boundary.
 
 Before rotating any display, record a restoration plan: the original display
 identity, original macOS rotation, and the exact settings or command path that
@@ -64,8 +70,9 @@ Create one evidence directory, for example:
 
 For an existing physical display:
 
-1. Save the device identity, APK install details, ADB reverse state, Host
-   preflight report, Host PID, and a pre-rotation macOS display snapshot.
+1. Save the device identity, APK install details, ADB reverse state,
+   `host-readiness.json`, Host preflight report, Host PID, and a pre-rotation
+   macOS display snapshot.
 2. Rotate the selected physical Mac display to 90, 180, or 270 degrees through
    macOS display settings or an explicitly documented operator action.
 3. Start the matching Protocol v1 USB or LAN session and select that display in

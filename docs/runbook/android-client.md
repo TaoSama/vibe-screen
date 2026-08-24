@@ -88,7 +88,7 @@ inject input:
 test ! -e /tmp/vibe-screen-device-android.lock
 test ! -e /tmp/vibe-screen-device-soak.lock
 make evidence-usb-live-smoke \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_PACKAGE=dev.telemachus.display \
   EVIDENCE_DIR=.build/evidence/usb-live-smoke
 ```
@@ -137,7 +137,7 @@ callback, or first encoded frame is diagnostic only.
 Before starting, acquire the Android device lease and record device identity,
 Host PID, Host build/signing identity, ADB reverse state, and the private
 Android diag log path. Every ADB command for the current shared phone must use
-the explicit serial `adb -s EP0110PZ0B9110300B ...`, and evidence from that
+the explicit serial `adb -s <device-serial> ...`, and evidence from that
 phone must remain labeled Nubia P0110/pacific/Android 16.
 
 Collect one `reconnect-timing-observations.json` with separate attempts for all
@@ -267,8 +267,15 @@ pointer gate remains open without a physical mouse or equivalent Android HID
 pointer. Controller production forwarding is wired and covered offline, but
 runtime acceptance still needs a physical controller and an entitled Host; JVM
 mapper tests and constructed Protocol v1 envelopes prove serialization only.
-For the native pointer HID mouse gate, connect a real USB or Bluetooth mouse
-before starting the observation window and run:
+Before any native-pointer, stylus, hardware-keyboard, or controller runtime
+attempt, run `make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>`
+and retain `host-readiness.json` plus `host-signing-and-permissions.txt`. The
+matching per-gate `can_start_*` field is only a prerequisite to begin runtime
+collection; it does not close the gate.
+
+For the native pointer HID mouse gate, require
+`can_start_native_hid_gate=true`, connect a real USB or Bluetooth mouse before
+starting the observation window, and run:
 
 ```bash
 make native-pointer-hid-acceptance \
@@ -316,9 +323,10 @@ claiming acceptance.
 ## Physical stylus acceptance
 
 Use this gate only with a Protocol v1 USB/LAN/Internet session and a real stylus
-on the named Android device. Do not clear app data, reset permissions, change ADB
-reverse mappings, or run a long soak for this check; the stylus pass is a short
-interactive input confirmation.
+on the named Android device. First retain shared Host readiness with
+`can_start_stylus_gate=true`. Do not clear app data, reset permissions, change
+ADB reverse mappings, or run a long soak for this check; the stylus pass is a
+short interactive input confirmation.
 
 First collect the read-only device capability snapshot:
 
@@ -436,11 +444,14 @@ IPv4 address, no route to the Mac LAN address, missing LAN Host listener, Host
 stable-signing failure, and Host TCC failure as pre-session blockers. A
 pre-session connection retry or TRANSPORT_CLOSED log is not reconnect evidence:
 reconnect acceptance starts only after a real encrypted LAN stream has produced
-decoder output and then recovers with the same Host PID. Run the read-only
-trusted-LAN preflight first and retain the JSON when it reports blocked:
+decoder output and then recovers with the same Host PID. Run the shared Host
+readiness snapshot and read-only trusted-LAN preflight first, and retain both
+JSON files when either reports blocked. `host-readiness.json` must show
+`can_start_trusted_lan_gate=true` before a LAN runtime attempt begins:
 
 ```sh
-make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=<evidence-dir>
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=<evidence-dir>
 ```
 
 Collect the private log with:

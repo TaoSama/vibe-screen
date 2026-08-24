@@ -25,6 +25,13 @@ For every device run, record:
   app commit/binary SHA/signing identity, Screen Recording and Accessibility
   state, capture backend, VideoToolbox codec path, display topology, and display
   UUID/logical/physical dimensions;
+- For Host-backed LAN, reconnect, Host RSS, native-pointer, stylus, physical
+  keyboard, controller, login/headless, and compatibility runs, retain the
+  shared source-bound Host readiness artifacts from
+  `make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>`:
+  `host-readiness.json` and `host-signing-and-permissions.txt`. A blocked
+  readiness snapshot is prerequisite evidence only and cannot close the runtime
+  gate by itself;
 - APK version/signing identity and install timestamp;
 - ADB reverse mapping and host listener;
 - decoder name, first output frame, continuing frame counters, and drops;
@@ -92,7 +99,7 @@ plaintext fallback sessions cannot close the gate. If signing, Microphone/TCC,
 Host listener, Wi-Fi/route, or audio output confirmation is missing, keep the
 generated summary as `blocked` or `insufficient` instead of treating offline
 tests as a playback pass. Evidence from the local Nubia phone must use
-`adb -s EP0110PZ0B9110300B` and remain labeled
+`adb -s <device-serial>` and remain labeled
 `nubia P0110 / pacific / Android 16 / SDK 36`.
 
 For performance-gate runs, keep latency evidence in the same evidence directory
@@ -189,7 +196,7 @@ repeatable summary without changing the device or session:
 test ! -e /tmp/vibe-screen-device-android.lock
 test ! -e /tmp/vibe-screen-device-soak.lock
 make evidence-usb-live-smoke \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=.build/evidence/usb-live-smoke
 ```
 
@@ -241,9 +248,9 @@ stable non-ad-hoc signing identity, authorized Screen Recording and
 Accessibility TCC state, installed Host source commit/tree provenance, Host
 self-test commit, and current-base commit; missing or mismatched values are
 blocked readiness evidence only. If the connected Android device is the local Nubia
-phone, every ADB command must name `adb -s EP0110PZ0B9110300B`, and the
+phone, every ADB command must name `adb -s <device-serial>`, and the
 counterpart must be recorded as
-`nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B`.
+`nubia P0110 / pacific / Android 16 / SDK 36 / <device-serial>`.
 
 ### Native pointer HID mouse gate
 
@@ -372,7 +379,7 @@ collector before attempting physical key presses:
 
 ```bash
 make hardware-keyboard-readiness \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/$(date -u +%F)-p0110-hardware-keyboard-readiness
 ```
 
