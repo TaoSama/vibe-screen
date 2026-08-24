@@ -502,6 +502,34 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertFalse(requests.isPending)
     }
 
+    func testCallbackFailureRequestsReplacementKeyframeOnActiveEncoder() {
+        let encoder = VideoEncoder(width: 16, height: 16, codec: .h264)
+        let owner = VideoEncoderCallbackOwner()
+        owner.activate(encoder)
+        XCTAssertFalse(encoder.hasPendingKeyframeRequest)
+
+        VideoEncoderCallbackFailureRecovery.restoreAfterAsynchronousFailure(
+            status: kVTVideoEncoderMalfunctionErr,
+            owner: owner
+        )
+
+        XCTAssertTrue(encoder.hasPendingKeyframeRequest)
+    }
+
+    func testCallbackFailureDoesNotRequestKeyframeAfterOwnerDeactivation() {
+        let encoder = VideoEncoder(width: 16, height: 16, codec: .h264)
+        let owner = VideoEncoderCallbackOwner()
+        owner.activate(encoder)
+        owner.deactivate()
+
+        VideoEncoderCallbackFailureRecovery.restoreAfterAsynchronousFailure(
+            status: kVTVideoEncoderMalfunctionErr,
+            owner: owner
+        )
+
+        XCTAssertFalse(encoder.hasPendingKeyframeRequest)
+    }
+
     func testAnnexBConverterAppendsValidLengthPrefixedNALUnits() {
         let input: [UInt8] = [
             0, 0, 0, 2, 0xAA, 0xBB,
