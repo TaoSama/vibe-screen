@@ -1,0 +1,38 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase5_multi_client_concurrency_evidence",
+  "source_revision": "8fcec1d9",
+  "client_count": 1,
+  "stream_count": 1,
+  "artifacts": [
+    "README.md"
+  ],
+  "single_client_multiple_displays": false,
+  "simultaneous_clients": false,
+  "distinct_session_ids": false,
+  "distinct_session_epochs": false,
+  "independent_transport_connections": false,
+  "per_client_route_binding": false,
+  "per_client_frame_queue_or_broadcast_owner": false,
+  "per_client_input_target_validation": false,
+  "parallel_or_broadcast_capture_defined": false,
+  "no_single_client_display_switch_substitution": true,
+  "host_does_not_replace_old_connection": false,
+  "host_advertises_multi_client": false,
+  "android_clients_visible_distinct_streams": false,
+  "ios_owner_status_recorded": true,
+  "harmony_owner_status_recorded": true,
+  "devices": [
+    {
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "codename": "pacific",
+      "android_release": "16",
+      "sdk": 36
+    }
+  ],
+  "notes": [
+    "No two-client run was available for this current-base owner record.",
+    "Existing display-switch evidence is single-client evidence and cannot close this gate."
+  ]
+}

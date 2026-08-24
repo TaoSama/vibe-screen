@@ -285,6 +285,53 @@ manifest also records the local Xcode/iPhoneOS SDK and Swift toolchain probes so
 that an environment-only readiness improvement cannot be mistaken for signed
 iOS hardware acceptance.
 
+## Phase 5 multi-client/display current-base gate
+
+The current-base owner for planned multiple clients/displays is the read-only
+`phase5-multi-client-current-base-gate` target. It is deliberately separate
+from single-client display-selection and display-switch records: one client
+switching between physical and virtual displays is not simultaneous
+multi-client concurrency and cannot close this gate.
+
+Use it after collecting a retained evidence package:
+
+```bash
+make phase5-multi-client-current-base-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The evidence package must include `multi-client-concurrency.json` plus retained
+Host routing, transport ownership, display identity, macOS Host, and two
+Android-client artifacts. Each retained artifact must be a JSON file with the
+expected Phase 5 artifact `kind`, the shared schema version, and the same
+`source_revision` as the manifest, plus true observations for that artifact's
+routing, transport, display, Host, or Android-client claim; Android-client
+artifacts must also include the device identity they exercised. A pass requires
+at least two simultaneous clients, distinct session IDs and epochs, independent
+transport connections, per-client route binding, per-client frame queue or
+broadcast ownership, per-client input target validation, a defined
+parallel/broadcast capture model, Host `CAPABILITY_MULTI_CLIENT` advertisement,
+and visible distinct streams on the Android clients. It also requires iOS and
+HarmonyOS owner status to be recorded, so the planned cross-platform
+destination does not silently lose ownership.
+
+The gate is fail-closed:
+
+- missing `multi-client-concurrency.json` is `blocked`;
+- single-client multi-display evidence is `insufficient`;
+- device identity relabeling is `fail`;
+- only a complete package returns `pass` with
+  `can_close_phase5_multi_client_display_gate=true`.
+
+The 2026-08-24 current-base smoke record is intentionally blocked because no
+two-device or multi-client run was available. It records the current production
+boundary found in source audit: MacHost `StreamingServer` still owns a single
+active `NWConnection`, a single `ProtocolV1SessionCoordinator`, a single
+capture pipeline, and one virtual display; `ProtocolV1SessionConfiguration`
+does not advertise `.multiClient` in production. PR #201 adds an offline Host
+routing boundary, but its own record keeps production capped at one active
+client/stream and does not close multi-device or parallel-capture acceptance.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.

@@ -1,0 +1,90 @@
+{
+  "can_claim_multi_client_concurrency": false,
+  "can_close_phase5_multi_client_display_gate": false,
+  "can_use_single_client_display_evidence": false,
+  "gates": [
+    {
+      "evidence": [
+        "multi-client-concurrency.json"
+      ],
+      "name": "evidence_metadata",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [
+        "host-routing.json",
+        "transport-ownership.json",
+        "display-identity.json",
+        "macos-host.json",
+        "android-client-1.json",
+        "android-client-2.json"
+      ],
+      "name": "retained_artifacts",
+      "reasons": [
+        "required artifact not declared: host-routing.json",
+        "missing required artifact: host-routing.json",
+        "required artifact not declared: transport-ownership.json",
+        "missing required artifact: transport-ownership.json",
+        "required artifact not declared: display-identity.json",
+        "missing required artifact: display-identity.json",
+        "required artifact not declared: macos-host.json",
+        "missing required artifact: macos-host.json",
+        "required artifact not declared: android-client-1.json",
+        "missing required artifact: android-client-1.json",
+        "required artifact not declared: android-client-2.json",
+        "missing required artifact: android-client-2.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "multi-client-concurrency.json"
+      ],
+      "name": "multi_client_concurrency",
+      "reasons": [
+        "client_count must be at least 2 for multi-client evidence",
+        "stream_count must be at least 2 for multi-client/display evidence",
+        "simultaneous_clients must be true",
+        "distinct_session_ids must be true",
+        "distinct_session_epochs must be true",
+        "independent_transport_connections must be true",
+        "per_client_route_binding must be true",
+        "per_client_frame_queue_or_broadcast_owner must be true",
+        "per_client_input_target_validation must be true",
+        "parallel_or_broadcast_capture_defined must be true",
+        "host_does_not_replace_old_connection must be true",
+        "host_advertises_multi_client must be true",
+        "android_clients_visible_distinct_streams must be true"
+      ],
+      "status": "insufficient"
+    },
+    {
+      "evidence": [
+        "multi-client-concurrency.json"
+      ],
+      "name": "platform_owner_status",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [
+        "multi-client-concurrency.json"
+      ],
+      "name": "device_identity",
+      "reasons": [],
+      "status": "pass"
+    }
+  ],
+  "interpretation": "A pass requires retained evidence for at least two simultaneous clients, distinct session/display stream ownership, transport isolation, Host route binding, input target isolation, and platform owner status. Single-client display switching remains separate evidence and cannot close this gate.",
+  "kind": "phase5_multi_client_current_base_gate",
+  "reasons": [
+    "blocked: retained_artifacts",
+    "insufficient: multi_client_concurrency"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "evidence_dir": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-24-multi-client-current-base-blocked"
+  },
+  "verdict": "blocked"
+}
