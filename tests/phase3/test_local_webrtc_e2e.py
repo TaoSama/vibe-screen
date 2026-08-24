@@ -383,9 +383,40 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             self.assertEqual(selected_mac_host, mac_host)
             self.assertEqual(signaling.read_bytes(), b"signaling")
             self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[0].kwargs["timeout"], 45)
             self.assertEqual(run.call_args_list[1].args[0], ["swift", "build", "-c", "release"])
+            self.assertEqual(run.call_args_list[1].kwargs["timeout"], 600)
             self.assertEqual(outputs, ["", ""])
             self.assertEqual(locate_binaries(repo), (signaling, mac_host))
+
+    @mock.patch("scripts.phase3_webrtc.source_artifacts.repository_source_state")
+    @mock.patch("scripts.phase3_webrtc.source_artifacts.run_checked")
+    def test_build_keeps_larger_release_mac_timeout(
+        self, run: mock.Mock, source_state: mock.Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary).resolve()
+            (repo / "services/signaling").mkdir(parents=True)
+            mac_host = repo / "baseline/MacHost/.build/release/Vibe Screen"
+            mac_host.parent.mkdir(parents=True)
+            mac_host.write_bytes(b"mac-host")
+            create_test_webrtc_framework(mac_host)
+            source_state.return_value = {"source_fingerprint": "source-state"}
+
+            def create_build_outputs(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                if command[0] == "go":
+                    output = Path(command[command.index("-o") + 1])
+                    output.write_bytes(b"signaling")
+                return subprocess.CompletedProcess(command, 0, stdout="")
+
+            run.side_effect = create_build_outputs
+
+            build_binaries(repo, timeout=900)
+
+            self.assertEqual(run.call_args_list[0].kwargs["timeout"], 900)
+            self.assertEqual(run.call_args_list[1].kwargs["timeout"], 900)
 
     def test_skip_build_fails_closed_without_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

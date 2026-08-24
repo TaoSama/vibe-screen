@@ -37,6 +37,7 @@ _BUILD_OUTPUT_PREFIXES = (
     "baseline/MacHost/.build",
     "services/signaling/.build",
 )
+_MAC_RELEASE_BUILD_MIN_TIMEOUT_SECONDS = 600
 
 
 def sha256(path: Path) -> str:
@@ -1168,7 +1169,7 @@ def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]
         run_checked(
             ["swift", "build", "-c", "release"],
             cwd=mac_root,
-            timeout=max(timeout, 300),
+            timeout=max(timeout, _MAC_RELEASE_BUILD_MIN_TIMEOUT_SECONDS),
         ).stdout,
     ]
     mac_binary = repository_artifact_path(repo_root, mac_binary, "release MacHost binary")
