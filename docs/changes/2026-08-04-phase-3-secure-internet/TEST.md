@@ -494,6 +494,17 @@ named by that run:
   ready/EOF and fresh-fallback regressions passed five independent rerun rounds.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
+- Android QR pairing verifier tests cover canonical
+  `vibescreen://pair?v=1&o=` URL parsing, pre-decode rejection of non-canonical
+  payload characters, and single-use Android scanned-offer handling. macOS
+  source-level XCTest cases cover first-attempt offer consumption when a
+  bootstrap proof fails, but the archived local current-base run records those
+  XCTest filters as blocked before execution where the selected Command Line
+  Tools environment could not compile XCTest. The Android
+  profile codec also covers missing/reserved lease expiry rejection and host
+  lease signatures bound to the previously verified pairing identity. These are
+  offline parser/state-machine checks and do not prove a real camera QR scan or
+  device-to-host request/acceptance exchange;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
   SBOM and bundled WebRTC/Gson notice hashes; release packaging depends on this
   task;

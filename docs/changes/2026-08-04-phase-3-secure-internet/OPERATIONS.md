@@ -154,14 +154,18 @@ swift build -c release
 The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
 `pinned_host_id`, `pinned_device_id`, `lease_device_key_id`, `signaling_url`,
 `signaling_session_id`, `session_epoch`, `host_identity_epoch`,
-`device_identity_epoch`, `transcript_context`, `protocol_session_id`,
-`signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
-server contains exactly `urls`, `username`, and `credential`; nullable values
-must be JSON `null`. The issuer adds `expires_at`, `lease_host_key_id`, and the
-DER ECDSA `lease_signature` over the Android canonical transcript. The issuer
-verifies local host and paired-device identity bindings, reserves the exact
-Authority-supplied `session_epoch` in pairing-scoped durable Keychain state, and
-rejects any value at or below the local high-water mark before signing.
+`device_identity_epoch`, `expires_at`, `transcript_context`,
+`protocol_session_id`, `signaling_token`, `ice_servers`, and
+`allow_insecure_for_testing`. Each ICE server contains exactly `urls`,
+`username`, and `credential`; nullable values must be JSON `null`. The issuer
+adds `lease_host_key_id` and the DER ECDSA `lease_signature` over the Android
+canonical transcript. The issuer verifies local host and paired-device identity
+bindings, reserves the exact Authority-supplied `session_epoch` in
+pairing-scoped durable Keychain state, and rejects any value at or below the
+local high-water mark before signing. The unsigned `expires_at` field is an
+admission-boundary compatibility input: it must be present and bounded, but the
+issuer rewrites it to the local bounded TTL before signing, so input JSON cannot
+choose the accepted expiry.
 
 This manual issuer is an operator bridge for unsigned Authority leases. It does
 not close the Mac/Android automatic profile issuance gate or prove Android UI,

@@ -1,0 +1,186 @@
+# Local verification commands and outcomes
+
+## Repository setup
+
+```bash
+git fetch origin --prune
+git checkout -b codex/phase3-pairing-flow origin/main
+git fetch origin pull/216/head:refs/pr/216
+```
+
+Result: branch prepared in an isolated Codex worktree. PR #216 was inspected as
+the prior draft source, but this record documents a current-base slice rather
+than a direct merge.
+
+After origin/main advanced again, this branch was rebased to
+5e269a7dea2fa5dc8c29334748fc3705edd555ba, after PR #303 landed it was
+rebased again to c4b8121d9346557ba5d0db7b5c3e63400c8569d2, after PR #313
+landed it was rebased to 44feacfc296a5e0411a43b74e3c657a0ddf95e2d, and after
+PR #172 landed it was rebased to
+1230caf597f52e285d6e9e6b985aad185cb07fc8. After PR #296 landed it was rebased
+to a8720948a0e448afa0ff390f2f10c53583948f12. After PR #268 landed it was
+rebased to edd34e1d8d907c2ef4d8eb93c3663c7632b06fa7. After PR #158 landed it
+was rebased to 4d7e90dcce5b033ec366591816cec571382e3249. After PR #310 landed
+it was rebased to 98efe550e99ef2ce0eb8d433436453ef23548484. After PR #171
+landed it was rebased to 0ac995206916451a4ae12f7e6980432903407b7b. After PR
+#301 landed it was rebased to 7247f313e24cc465c9ddd0b60e271b361d1f9d4a.
+After PR #169 landed it was rebased to
+e9a8e447f4e8184ba0472def0d9d3c08888f907d.
+
+Focused local verification was run at PR commit
+4a47e7db052841715b3d49c143e3de9c02821ac6 after the latest rebase and
+canonical-query review fix. Later
+evidence-only metadata commits do not change executable sources.
+
+## Pairing fixture tests
+
+Command:
+
+```bash
+uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q
+```
+
+Result: passed, 4 passed in 0.10s.
+
+## Android QR pairing and profile tests
+
+Command:
+
+```bash
+cd baseline/AndroidClient
+./gradlew testDebugUnitTest \
+  --tests "dev.telemachus.display.internet.security.InternetPairingTest" \
+  --no-daemon
+./gradlew testDebugUnitTest \
+  --tests "dev.telemachus.display.internet.InternetSessionProfileCodecTest" \
+  --no-daemon
+```
+
+Result: the combined focused test run passed with Gradle BUILD SUCCESSFUL in 5s.
+
+Command:
+
+```bash
+cd baseline/AndroidClient
+./gradlew :app:compileDebugKotlin --no-daemon --rerun-tasks
+```
+
+Result: passed with Gradle BUILD SUCCESSFUL in 27s. The compile emitted existing
+deprecation warnings for startActivityForResult in MainActivity.kt. One earlier
+attempt failed before tests because overlapping Gradle processes in the same
+worktree raced while deleting app/build/tmp/kotlin-classes/debug; the rerun after
+stopping that worktree's Gradle daemon passed.
+
+## Authority session profile contract
+
+Command:
+
+```bash
+cd services/authority
+go test -race -count=5 ./internal/authority
+```
+
+Result: passed, ok github.com/vibe-screen/vibe-screen/services/authority/internal/authority in 2.067s.
+
+## Signaling service verification
+
+Command:
+
+```bash
+cd services/signaling
+make verify
+```
+
+Result: passed. `make verify` completed gofmt, go vet, and
+`go test -race -count=1 ./...`; the signaling package passed in 2.632s and
+`internal/signaling` passed in 3.678s.
+
+## Phase 3 release-gate documentation checks
+
+Command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.phase3.test_authority_production_gates \
+  tests.phase3.test_release_gate_summary \
+  tests.phase3.test_authority_session_profile_contract \
+  -v
+```
+
+Result: passed, Ran 28 tests, OK.
+
+After rebasing to e9a8e447f4e8184ba0472def0d9d3c08888f907d, the broader
+current-base Phase 3 verification also passed as part of the PR refresh:
+
+```bash
+make phase3-test
+```
+
+Result: passed. `tests/phase3` ran 246 tests in 20.700s,
+`tests/phase3_webrtc` ran 55 tests in 28.480s,
+`public_nat_turn_preflight.py` printed `Phase 3 public NAT/TURN preflight:
+BLOCKED`, and `release_gate_summary.py` printed
+`Phase 3 release gate summary: OPEN`.
+
+## macOS Swift build and lease self-test
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift build -c release
+"./.build/release/Vibe Screen" --phase3-internet-lease-self-test
+```
+
+Result: release build passed in 36.27s. The binary self-test printed Phase 3
+Internet lease self-test: PASS with
+canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true,
+identityBinding=true, missingAliasFailClosed=true, legacyBindingFailClosed=true,
+missingDurableStateFailClosed=true, stateBeforeCredentials=true,
+epochUnchangedOnIdentityFailure=true, durableEpochAuthority=true,
+pairingScopedEpoch=true, staleCipherFailClosed=true, and atomicEpochOpen=true.
+An intermediate run failed after the rebase because the
+self-test constructed an epoch-10 cipher without first reserving epoch 10 in the
+test lifecycle; the self-test fixture now reserves epoch 10 before advancing to
+epoch 11 and proving the old packet fails closed.
+
+## macOS XCTest
+
+Command:
+
+```bash
+cd baseline/MacHost
+swift test --filter InternetSessionLeaseIssuerTests/testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt
+swift test --filter InternetPairingTests/testBootstrapMACMutationIsRejected
+```
+
+Result: blocked before test execution by local Command Line Tools XCTest
+availability. Swift failed compiling the test target with error: no such module
+XCTest. This is an environment/toolchain failure, not a test assertion failure.
+
+## Diff hygiene
+
+Command:
+
+```bash
+git diff --check
+```
+
+Result: passed with no whitespace errors.
+
+## Evidence privacy and integrity
+
+Command:
+
+```bash
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked \
+  --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked/privacy-scan.json
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked && \
+  find . -type f ! -name SHA256SUMS -print | sort | xargs shasum -a 256 > SHA256SUMS)
+(cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-23-qr-pairing-current-base-blocked && \
+  shasum -a 256 -c SHA256SUMS)
+```
+
+Result: privacy scan passed with no violations. SHA256 verification passed for
+acceptance.json, commands.txt, privacy-scan.json, and README.md.

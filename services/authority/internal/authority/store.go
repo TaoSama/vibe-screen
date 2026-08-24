@@ -926,6 +926,7 @@ func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmi
 		"session_epoch":              request.SessionEpoch,
 		"host_identity_epoch":        request.HostIdentity.KeyEpoch,
 		"device_identity_epoch":      request.ClientIdentity.KeyEpoch,
+		"expires_at":                 uint64(admission.ExpiresAt.Unix()),
 		"transcript_context":         request.TranscriptContext,
 		"protocol_session_id":        request.ProtocolSessionID,
 		"signaling_token":            admission.ClientToken,

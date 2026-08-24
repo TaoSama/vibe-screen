@@ -202,6 +202,9 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertThrowsError(try fixture.coordinator.accept(mutated)) { error in
             XCTAssertEqual(error as? InternetPairingError, .invalidBootstrapMAC)
         }
+        XCTAssertThrowsError(try fixture.coordinator.accept(prepared.request)) { error in
+            XCTAssertEqual(error as? InternetPairingError, .offerAlreadyConsumed)
+        }
         XCTAssertTrue(fixture.store.values.isEmpty)
     }
 

@@ -502,6 +502,17 @@ production libwebrtc adapters. Control uses a reliable ordered DataChannel;
 media uses an unordered zero-retransmit channel with bounded latest-frame policy.
 Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
 relay handles only ciphertext.
+QR pairing has a current-base offline fail-closed slice: Android accepts only the
+canonical `vibescreen://pair?v=1&o=` envelope before decoding one-time material,
+macOS consumes an offer on the first redemption attempt even when the request is
+invalid, and Android refuses imported leases whose host signature is not bound to
+the previously verified pairing identity. The local lease codec also requires a
+bounded unsigned `expires_at` compatibility field and rewrites it to the issuer
+TTL before signing. The archived local current-base evidence marks the related
+macOS XCTest filters blocked where the selected Command Line Tools environment
+could not compile XCTest, so those local artifacts must not be treated as an
+executed macOS XCTest pass. This does not prove production account/session-
+authority profile issuance or a real camera QR pairing round trip.
 
 Main commit `73be8c0` hardens this slice at the source level: the Internet
 session lease issuer validates the pairing binding before reading identity
@@ -641,8 +652,12 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
-Mac/Android automatic invocation of Authority session-profile issuance, real
-encoded ScreenCaptureKit output through the device, automatic fresh-session
+The current-base QR pairing blocked record covers only offline Swift/Kotlin
+fixture and fail-closed checks; it records that no production TLS/public-Internet
+deployment or real Android camera QR scan was available in this environment.
+Mac/Android automatic invocation of Authority session-profile issuance, real QR
+scan request/acceptance, real encoded ScreenCaptureKit output through the
+device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
 features. Signaling and relay stores now use shared PostgreSQL state for

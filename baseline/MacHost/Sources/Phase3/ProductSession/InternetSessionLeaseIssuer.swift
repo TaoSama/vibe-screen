@@ -67,6 +67,7 @@ enum InternetSessionLeaseCodec {
         "lease_device_key_id", "signaling_url",
         "signaling_session_id", "session_epoch", "host_identity_epoch",
         "device_identity_epoch",
+        "expires_at",
         "transcript_context", "protocol_session_id", "signaling_token",
         "ice_servers", "allow_insecure_for_testing"
     ]
@@ -131,7 +132,7 @@ enum InternetSessionLeaseCodec {
             authoritativeSessionEpoch: try positiveEpoch(root, "session_epoch"),
             hostIdentityEpoch: try positiveEpoch(root, "host_identity_epoch"),
             deviceIdentityEpoch: try positiveEpoch(root, "device_identity_epoch"),
-            expiresAtUnixSeconds: 0,
+            expiresAtUnixSeconds: try positiveEpoch(root, "expires_at"),
             transcriptContext: try base64(root, "transcript_context", sizes: 32...32),
             protocolSessionID: try base64(root, "protocol_session_id", sizes: 1...256),
             signalingToken: signalingToken,
@@ -669,6 +670,7 @@ enum InternetSessionLeaseSelfTest {
 
             let cipherStateStore = SelfTestLeaseStateStore()
             let cipherLifecycle = SecurityLifecycle(store: cipherStateStore)
+            guard try cipherLifecycle.reserveSessionEpoch(10) == 10 else { return false }
             let stalePair = try PlatformSessionPacketCipher.selfTestPair(
                 sessionIdentifier: "lease-self-test-epoch-10",
                 sharedSecret: Data(repeating: 0x41, count: 32),
@@ -697,6 +699,7 @@ enum InternetSessionLeaseSelfTest {
                 ("https://signal.example.test", "https://other.example.test"),
                 ("\"signaling_session_id\":\"session-7\"", "\"signaling_session_id\":\"session-8\""),
                 ("\"session_epoch\":7", "\"session_epoch\":8"),
+                ("\"expires_at\":4102444800", "\"expires_at\":4102444801"),
                 ("\"device_identity_epoch\":1", "\"device_identity_epoch\":2"),
                 ("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=", "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI="),
                 ("cHJvdG9jb2wtc2Vzc2lvbi03", "b3RoZXItcHJvdG9jb2w="),
@@ -747,6 +750,14 @@ enum InternetSessionLeaseSelfTest {
                   ) != digest else { return false }
 
             guard rejects(leaseJSON.dropLast() + ",\"extra\":true}"),
+                  rejects(leaseJSON.replacingOccurrences(
+                    of: ",\"expires_at\":4102444800",
+                    with: ""
+                  )),
+                  rejects(leaseJSON.replacingOccurrences(
+                    of: "\"expires_at\":4102444800",
+                    with: "\"expires_at\":9223372036854775807"
+                  )),
                   rejects(leaseJSON.replacingOccurrences(
                     of: "\"session_epoch\":7",
                     with: "\"session_epoch\":9223372036854775807"
@@ -904,7 +915,7 @@ enum InternetSessionLeaseSelfTest {
     }
 
     private static let fixtureJSON = """
-    {"version":1,"pairing_id":"pair-1","pinned_host_id":"host-1","pinned_device_id":"device-1","lease_device_key_id":"LEASE_DEVICE_KEY_ID","signaling_url":"https://signal.example.test","signaling_session_id":"session-7","session_epoch":7,"host_identity_epoch":1,"device_identity_epoch":1,"transcript_context":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","protocol_session_id":"cHJvdG9jb2wtc2Vzc2lvbi03","signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz","ice_servers":[{"urls":["stun:stun.example.test"],"username":null,"credential":null},{"urls":["turn:turn.example.test"],"username":"turn-user","credential":"turn-password"}],"allow_insecure_for_testing":false}
+    {"version":1,"pairing_id":"pair-1","pinned_host_id":"host-1","pinned_device_id":"device-1","lease_device_key_id":"LEASE_DEVICE_KEY_ID","signaling_url":"https://signal.example.test","signaling_session_id":"session-7","session_epoch":7,"host_identity_epoch":1,"device_identity_epoch":1,"expires_at":4102444800,"transcript_context":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","protocol_session_id":"cHJvdG9jb2wtc2Vzc2lvbi03","signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz","ice_servers":[{"urls":["stun:stun.example.test"],"username":null,"credential":null},{"urls":["turn:turn.example.test"],"username":"turn-user","credential":"turn-password"}],"allow_insecure_for_testing":false}
     """
 }
 

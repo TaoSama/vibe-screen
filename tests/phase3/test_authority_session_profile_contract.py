@@ -18,7 +18,7 @@ AUTHORITY_SERVER = ROOT / "services/authority/internal/authority/server.go"
 AUTHORITY_STORE = ROOT / "services/authority/internal/authority/store.go"
 AUTHORITY_MIGRATION = ROOT / "services/authority/migrations/001_authority.sql"
 
-SIGNED_ONLY_KEYS = {"expires_at", "lease_host_key_id", "lease_signature"}
+SIGNED_ONLY_KEYS = {"lease_host_key_id", "lease_signature"}
 EXPECTED_UNSIGNED_KEYS = {
     "version",
     "pairing_id",
@@ -30,6 +30,7 @@ EXPECTED_UNSIGNED_KEYS = {
     "session_epoch",
     "host_identity_epoch",
     "device_identity_epoch",
+    "expires_at",
     "transcript_context",
     "protocol_session_id",
     "signaling_token",

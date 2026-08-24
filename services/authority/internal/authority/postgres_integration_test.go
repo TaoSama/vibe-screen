@@ -3,7 +3,9 @@ package authority
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var integrationSchemaCounter atomic.Uint64
+
 func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	t.Helper()
 	databaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
@@ -25,6 +29,7 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	migrationPath := filepath.Join("..", "..", "migrations")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	databaseURL = openIsolatedIntegrationSchema(t, ctx, databaseURL)
 	if err := ApplyMigrationPath(ctx, databaseURL, migrationPath); err != nil {
 		t.Fatal(err)
 	}
@@ -38,12 +43,46 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_session_profile_issuance,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
-		store.Close()
-		t.Fatal(err)
-	}
 	t.Cleanup(store.Close)
 	return store, cfg
+}
+
+func openIsolatedIntegrationSchema(t *testing.T, ctx context.Context, databaseURL string) string {
+	t.Helper()
+	schemaName := fmt.Sprintf("authority_test_%d_%d", time.Now().UnixNano(), integrationSchemaCounter.Add(1))
+	schemaIdentifier := pgx.Identifier{schemaName}.Sanitize()
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("connect for integration schema: %v", err)
+	}
+	if _, err := connection.Exec(ctx, "CREATE SCHEMA "+schemaIdentifier); err != nil {
+		_ = connection.Close(ctx)
+		t.Fatalf("create integration schema: %v", err)
+	}
+	if err := connection.Close(ctx); err != nil {
+		t.Fatalf("close integration schema connection: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		connection, err := pgx.Connect(cleanupCtx, databaseURL)
+		if err != nil {
+			t.Logf("connect for integration schema cleanup: %v", err)
+			return
+		}
+		defer func() { _ = connection.Close(cleanupCtx) }()
+		if _, err := connection.Exec(cleanupCtx, "DROP SCHEMA IF EXISTS "+schemaIdentifier+" CASCADE"); err != nil {
+			t.Logf("drop integration schema %s: %v", schemaName, err)
+		}
+	})
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatalf("parse integration database URL: %v", err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", schemaName)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func TestPostgresDenyWinsAndPersistsRevocation(t *testing.T) {
