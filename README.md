@@ -444,9 +444,17 @@ evidence, while the input-latency gate requires external-camera evidence or a
 documented synchronized-clock setup with a reviewable sub-5 ms total error
 budget. The gate profiles are `usb-glass-to-glass-sub50`,
 `lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
-are diagnostic only and cannot close these gates. As of the 2026-08-22 Nubia
-P0110/pacific latency preflight, the toolchain has formal manifest/checker
-coverage for external-camera packages and synchronized-clock input packages,
+are diagnostic only and cannot close these gates. As of the 2026-08-24 Nubia
+P0110/pacific reconnect timing current-base owner record, the formal
+`phase1-reconnect-within-3s` summary remains blocked before any disruption
+scenario because the Host has no TCP `54321` listener, stable Host signing is
+unavailable, and the P0110 has no Wi-Fi association or wlan0 route for the
+trusted-LAN interruption scenario. That record has `can_close_timing_gate=false`
+and does not close the three-second reconnect gate; see
+[the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
+As of the 2026-08-22 Nubia P0110/pacific latency preflight, the toolchain has
+formal manifest/checker coverage for external-camera packages and
+synchronized-clock input packages,
 with profile-specific retained-artifact checks for USB, LAN, and physical-input
 claims. No raw camera package, annotated latency samples, or synchronized-clock
 proof from a real physical-input run is available in the repository. All three

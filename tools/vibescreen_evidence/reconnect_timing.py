@@ -470,6 +470,9 @@ def summarize(
     threshold_ms = _finite_number(threshold_ms, "threshold_ms")
     if threshold_ms <= 0:
         raise ReconnectTimingEvidenceError("threshold_ms must be positive")
+    required = _required_disruptions(required_disruptions)
+    full_gate_required = DISRUPTIONS
+    full_gate_mode = tuple(required) == full_gate_required
     blocked_reasons = record.get("blocked_reasons") or record.get("blockers") or []
     if blocked_reasons:
         if not isinstance(blocked_reasons, list) or not all(isinstance(item, str) for item in blocked_reasons):
@@ -484,7 +487,6 @@ def summarize(
             _validate_attempt(record, attempt, threshold_ms=threshold_ms, base_dir=base_dir)
             for attempt in raw_attempts
         ]
-        required = _required_disruptions(required_disruptions)
         observed = {attempt["disruption"] for attempt in attempts}
         missing = [disruption for disruption in required if disruption not in observed]
         summary_reasons: list[str] = [f"missing required disruption: {item}" for item in missing]
@@ -502,17 +504,39 @@ def summarize(
             for reason in attempt.get("blocking_reasons", [])
         ]
 
-    required = _required_disruptions(required_disruptions)
     missing_required = [] if blocked_reasons and not attempts else [
         disruption for disruption in required if disruption not in {attempt["disruption"] for attempt in attempts}
     ]
+    full_gate_missing = [
+        disruption for disruption in full_gate_required if disruption not in {attempt["disruption"] for attempt in attempts}
+    ]
+    full_gate_passed_attempts = {
+        attempt["disruption"]
+        for attempt in attempts
+        if attempt["disruption"] in full_gate_required and attempt["verdict"] == "pass"
+    }
+    full_gate_failed_or_incomplete = [
+        attempt["disruption"]
+        for attempt in attempts
+        if attempt["disruption"] in full_gate_required and attempt["verdict"] != "pass"
+    ]
+    can_close_full_gate = (
+        verdict == "pass"
+        and full_gate_mode
+        and not full_gate_missing
+        and set(full_gate_required) == full_gate_passed_attempts
+        and not full_gate_failed_or_incomplete
+    )
     summary: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id or record.get("run_id") or str(uuid.uuid4()),
         "kind": "reconnect_timing_gate",
         "profile": "phase1-reconnect-within-3s",
         "verdict": verdict,
-        "can_close_timing_gate": verdict == "pass",
+        "can_close_timing_gate": can_close_full_gate,
+        "can_close_requested_scope": verdict == "pass",
+        "full_gate_required_disruptions": list(full_gate_required),
+        "full_gate_missing_disruptions": full_gate_missing,
         "threshold_ms": threshold_ms,
         "required_disruptions": list(required),
         "missing_required_disruptions": missing_required,

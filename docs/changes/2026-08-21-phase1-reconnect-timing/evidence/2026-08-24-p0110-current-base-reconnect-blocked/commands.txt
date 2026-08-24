@@ -1,0 +1,9 @@
+# Commands
+git fetch origin --prune
+git rebase origin/main
+make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked
+adb -s EP0110PZ0B9110300B reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+python3 scripts/macos_dev_host.py preflight
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked
+make evidence-reconnect-timing-blocked EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked ...

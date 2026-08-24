@@ -1,0 +1,49 @@
+{
+  "artifact_paths": [
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/adb-reverse.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/device-info.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/host-54321-listener.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/macos-dev-host-preflight.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/trusted-lan-preflight.json"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Host is not listening on 127.0.0.1:54321 in this current-base worktree",
+    "Vibe Screen Dev signing identity is unavailable in the current keychain",
+    "P0110 Wi-Fi is not associated and wlan0 has no route for trusted-LAN interruption"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Current-base blocked readiness record only. No client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Host is not listening on 127.0.0.1:54321 in this current-base worktree",
+    "Vibe Screen Dev signing identity is unavailable in the current keychain",
+    "P0110 Wi-Fi is not associated and wlan0 has no route for trusted-LAN interruption"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "2bba1ccd-9b97-49b7-9ff7-7361c31f154e",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}

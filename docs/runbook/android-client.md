@@ -163,6 +163,10 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 Use `--require-disruption` only for an incremental single-scenario readiness
 run. If Host signing, TCC, port `54321`, ADB, or LAN conditions block the run,
 write a blocked summary instead of reclassifying ordinary reconnect logs:
+The README gate closes only when the generated summary has both `verdict=pass`
+and `can_close_timing_gate=true`. Single-scenario or otherwise scoped runs can
+use `can_close_requested_scope=true` for local progress, but that field is not a
+release claim.
 
 ```bash
 make evidence-reconnect-timing-blocked \

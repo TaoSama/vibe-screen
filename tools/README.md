@@ -667,6 +667,10 @@ The summary exits `0` only for `pass`, `1` for insufficient evidence, `2` for a
 measured failure, and `3` for blocked prerequisites. During incremental real
 device work, use `--require-disruption client-kill` or another single scenario
 to validate a partial run without claiming the full three-scenario gate.
+Consumers that decide README gate status must require `can_close_timing_gate=true`.
+`verdict=pass` by itself may describe only the requested scoped scenario; those
+partial passes are reported with `can_close_requested_scope=true` and still keep
+`can_close_timing_gate=false`.
 
 When prerequisites block the run, write a blocked record instead of promoting
 older reconnect logs:
