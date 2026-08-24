@@ -3,8 +3,8 @@
   "date": "2026-08-23",
   "branch": "codex/phase3-pairing-flow",
   "base_ref": "origin/main",
-  "base_commit": "0ac995206916451a4ae12f7e6980432903407b7b",
-  "verified_source_commit": "7ad86f602fa375f0e31432499523825856964391",
+  "base_commit": "7247f313e24cc465c9ddd0b60e271b361d1f9d4a",
+  "verified_source_commit": "4e40e4f8c8c8472f2a1840e7bb3a9cafcb872d56",
   "verified_source_note": "Focused local verification was run at this PR commit after rebasing onto base_commit; later evidence-only metadata commits do not change executable sources.",
   "scope": "offline QR/manual pairing verifier and local lease fail-closed checks",
   "result": "blocked",
@@ -12,7 +12,7 @@
     {
       "command": "uvx --from pytest pytest contracts/tests/test_pairing_wire_fixtures.py -q",
       "result": "pass",
-      "summary": "4 passed in 0.33s"
+      "summary": "4 passed in 0.09s"
     },
     {
       "command": "cd baseline/MacHost && swift build -c release",
