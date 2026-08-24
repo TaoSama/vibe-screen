@@ -26,6 +26,7 @@ from .ios_current_base_manifest import (
 
 GATE_KIND = "ios_current_base_readiness_gate"
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 PASS_STATUSES = {"pass", "passed", "passed-offline"}
 OPEN_STATUSES = {"open", "blocked", "blocked-readiness", "not-evidence"}
 DEVICE_ROLES = {"iphone", "ipad"}
@@ -40,6 +41,18 @@ REQUIRED_SIGNING_FIELDS = {
     "device_udid_hashes_recorded",
     "entitlements_recorded",
     "signed_archive_sha256",
+}
+REQUIRED_SIGNING_GATE_FIELDS = {
+    "provided",
+    "path",
+    "owner",
+    "current_base",
+    "signing_summary",
+    "kind",
+    "verdict",
+    "can_close_ios_app_signing_readiness",
+    "missing",
+    "failures",
 }
 REQUIRED_DEVICE_FIELDS = {"role", "runtime_class", "install_status", "evidence"}
 REQUIRED_GATE_FIELDS = {
@@ -164,6 +177,14 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
 
     signing = _require_object(manifest.get("signing"), "signing")
     _require_fields(signing, REQUIRED_SIGNING_FIELDS, "signing")
+    signing_readiness_gate = _require_object(
+        manifest.get("signing_readiness_gate"), "signing_readiness_gate"
+    )
+    _require_fields(
+        signing_readiness_gate,
+        REQUIRED_SIGNING_GATE_FIELDS,
+        "signing_readiness_gate",
+    )
 
     devices = manifest.get("devices")
     if not isinstance(devices, list):
@@ -259,8 +280,53 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     signing_gate_owner = (
         signing_gate.get("owner") if isinstance(signing_gate.get("owner"), dict) else {}
     )
+    signing_gate_current_base = (
+        signing_gate.get("current_base")
+        if isinstance(signing_gate.get("current_base"), dict)
+        else {}
+    )
+    signing_summary = (
+        signing_gate.get("signing_summary")
+        if isinstance(signing_gate.get("signing_summary"), dict)
+        else {}
+    )
+    repository = manifest.get("repository") if isinstance(manifest.get("repository"), dict) else {}
+    gate_commit = signing_gate_current_base.get("commit")
+    repository_revision = repository.get("revision")
+    current_base_matches = (
+        isinstance(gate_commit, str)
+        and COMMIT_RE.fullmatch(gate_commit) is not None
+        and isinstance(repository_revision, str)
+        and gate_commit.lower() == repository_revision.lower()
+        and signing_gate_current_base.get("dirty") is False
+        and repository.get("dirty") is False
+    )
+    summary_sha = signing_summary.get("signed_artifact_sha256")
+    summary_complete = (
+        signing_summary.get("status") == "pass"
+        and _non_empty_string(signing_summary.get("bundle_id"))
+        and signing_summary.get("unique_bundle_id") is True
+        and signing_summary.get("team_id_recorded") is True
+        and signing_summary.get("codesign_identity_recorded") is True
+        and signing_summary.get("provisioning_profile_recorded") is True
+        and signing_summary.get("device_udid_hashes_recorded") is True
+        and signing_summary.get("entitlements_recorded") is True
+        and isinstance(summary_sha, str)
+        and HASH_RE.fullmatch(summary_sha) is not None
+    )
     archive_sha = signing.get("signed_archive_sha256")
     archive_ok = isinstance(archive_sha, str) and HASH_RE.fullmatch(archive_sha) is not None
+    signing_matches_summary = summary_complete and signing == {
+        "status": "pass",
+        "bundle_id": signing_summary.get("bundle_id"),
+        "unique_bundle_id": True,
+        "team_id_redacted": True,
+        "certificate_identity_recorded": True,
+        "provisioning_profile_recorded": True,
+        "device_udid_hashes_recorded": True,
+        "entitlements_recorded": True,
+        "signed_archive_sha256": summary_sha,
+    }
     return {
         "dedicated_signing_readiness_gate": _check(
             signing_gate.get("kind") == "ios_app_signing_readiness_gate"
@@ -285,15 +351,47 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             else _string_list(signing_gate.get("missing")),
             blocking=True,
         ),
+        "dedicated_signing_readiness_current_base": _check(
+            current_base_matches,
+            "ios-app-signing-readiness-gate.json current_base matches clean repository HEAD",
+            evidence=[str(gate_commit)]
+            if isinstance(gate_commit, str)
+            else _string_list(signing_gate.get("missing")),
+            blocking=True,
+        ),
+        "dedicated_signing_readiness_summary": _check(
+            summary_complete,
+            "ios-app-signing-readiness-gate.json carries a complete sanitized signing summary",
+            evidence=[str(signing_summary.get("status"))]
+            if signing_summary.get("status")
+            else _string_list(signing_gate.get("missing")),
+            blocking=True,
+        ),
+        "signing_matches_readiness_summary": _check(
+            signing_matches_summary,
+            "current-base signing row matches the bound signing readiness summary",
+            blocking=True,
+        ),
         "signing_status": _check(
             signing.get("status") == "pass",
             "signing.status is pass",
             evidence=[str(signing.get("status"))] if signing.get("status") else [],
             blocking=True,
         ),
+        "bundle_id_recorded": _check(
+            _non_empty_string(signing.get("bundle_id")),
+            "unique development bundle ID value is retained in the aggregate signing row",
+            evidence=[str(signing.get("bundle_id"))] if signing.get("bundle_id") else [],
+            blocking=True,
+        ),
         "unique_bundle_id": _check(
             signing.get("unique_bundle_id") is True,
             "unique development bundle ID recorded",
+            blocking=True,
+        ),
+        "team_id_redacted": _check(
+            signing.get("team_id_redacted") is True,
+            "Apple Team ID is recorded only as a redacted presence marker",
             blocking=True,
         ),
         "certificate_identity_recorded": _check(

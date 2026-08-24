@@ -98,7 +98,8 @@ tries to use Simulator, unsigned, ad-hoc, or Android-derived material. A signing
 readiness pass can unblock the current-base signing prerequisite only after the
 same gate JSON is bound into `ios-current-base-manifest`;
 `ios-current-base-gate` validates both the gate result and owner identity before
-accepting the signing summary. It still reports
+accepting the gate's sanitized `signing_summary` as the aggregate `signing` row,
+including UDID-hash and entitlements coverage. It still reports
 `can_close_ios_device_acceptance=false` because install, launch, decode, input,
 reconnect, and audio behavior require real iPhone and iPad runs.
 

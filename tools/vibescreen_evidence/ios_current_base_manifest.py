@@ -145,7 +145,7 @@ def _signing_probe() -> dict[str, Any]:
     return result
 
 
-def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
+def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return {
             "provided": False,
@@ -194,6 +194,26 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
     current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
     current_base_commit = current_base.get("commit") if isinstance(current_base, dict) else None
     current_base_dirty = current_base.get("dirty") if isinstance(current_base, dict) else None
+    repository_revision = repository.get("revision") if isinstance(repository, dict) else None
+    repository_dirty = repository.get("dirty") if isinstance(repository, dict) else None
+    signing_summary = (
+        document.get("signing_summary")
+        if isinstance(document.get("signing_summary"), dict)
+        else {}
+    )
+    summary_complete = (
+        signing_summary.get("status") == "pass"
+        and isinstance(signing_summary.get("bundle_id"), str)
+        and bool(signing_summary["bundle_id"].strip())
+        and signing_summary.get("unique_bundle_id") is True
+        and signing_summary.get("team_id_recorded") is True
+        and signing_summary.get("codesign_identity_recorded") is True
+        and signing_summary.get("provisioning_profile_recorded") is True
+        and signing_summary.get("device_udid_hashes_recorded") is True
+        and signing_summary.get("entitlements_recorded") is True
+        and isinstance(signing_summary.get("signed_artifact_sha256"), str)
+        and HASH_RE.fullmatch(signing_summary["signed_artifact_sha256"]) is not None
+    )
     can_close = (
         document.get("kind") == SIGNING_READINESS_GATE_KIND
         and document.get("verdict") == "pass"
@@ -203,7 +223,11 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
         and owner_repository == REPOSITORY_FULL_NAME
         and isinstance(current_base_commit, str)
         and COMMIT_RE.fullmatch(current_base_commit) is not None
+        and isinstance(repository_revision, str)
+        and current_base_commit.lower() == repository_revision.lower()
         and current_base_dirty is False
+        and repository_dirty is False
+        and summary_complete
     )
     missing = document.get("missing", []) if isinstance(document.get("missing"), list) else []
     failures = document.get("failures", []) if isinstance(document.get("failures"), list) else []
@@ -216,8 +240,14 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
             missing = [*missing, "ios app-signing readiness gate repository is not TaoSama/vibe-screen"]
         if not isinstance(current_base_commit, str) or COMMIT_RE.fullmatch(current_base_commit) is None:
             missing = [*missing, "ios app-signing readiness gate current-base commit is not recorded"]
+        elif not isinstance(repository_revision, str) or current_base_commit.lower() != repository_revision.lower():
+            missing = [*missing, "ios app-signing readiness gate current-base commit does not match repository HEAD"]
         if current_base_dirty is not False:
             missing = [*missing, "ios app-signing readiness gate current-base dirty state is not clean"]
+        if repository_dirty is not False:
+            missing = [*missing, "repository dirty state is not clean for iOS signing readiness"]
+        if not summary_complete:
+            missing = [*missing, "ios app-signing readiness gate signing_summary is incomplete"]
 
     return {
         "provided": True,
@@ -314,14 +344,15 @@ def build_manifest(
     repo = repo.resolve()
     owner_pr = _normalize_pr(device_acceptance_owner_pr)
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
-    signing_readiness = _load_signing_readiness_gate(signing_readiness_gate)
+    repository = repository_state(repo)
+    signing_readiness = _load_signing_readiness_gate(signing_readiness_gate, repository)
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "run_id": str(uuid.uuid4()),
         "created_at": _utc_timestamp(),
         "command": list(command),
-        "repository": repository_state(repo),
+        "repository": repository,
         "source_root": str(repo),
         "owner": {
             "aggregate": AGGREGATE_OWNER,

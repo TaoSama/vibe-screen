@@ -121,6 +121,20 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
         for field in schema["required"]:
             self.assertIn(field, result)
 
+    def test_prefixed_signed_artifact_digest_is_normalized_in_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            document = complete_document()
+            write_artifacts(evidence_root, list(document["artifacts"]))
+            signing = document["signing"]
+            assert isinstance(signing, dict)
+            signing["signed_artifact_sha256"] = "sha256:" + "A" * 64
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(result["signing_summary"]["signed_artifact_sha256"], "a" * 64)
+
     def test_missing_critical_signing_fields_block(self) -> None:
         field_expectations = {
             "team_id": "signing.team_id: must be a non-empty recorded value",

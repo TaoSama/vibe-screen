@@ -128,6 +128,15 @@ def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and SHA256_PATTERN.fullmatch(value.strip()) is not None
 
 
+def _normalized_sha256(value: Any) -> str | None:
+    if not _is_sha256(value):
+        return None
+    text = str(value).strip()
+    if text.lower().startswith("sha256:"):
+        text = text.split(":", 1)[1]
+    return text.lower()
+
+
 def _is_path_within(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
@@ -219,7 +228,7 @@ def _signing_summary(document: dict[str, Any], recorded_fields: dict[str, bool],
         and normalized_bundle_id != DEFAULT_BUNDLE_ID
         and not _contains_marker(normalized_bundle_id, BAD_MARKERS)
     )
-    signed_artifact_sha256 = signing.get("signed_artifact_sha256")
+    signed_artifact_sha256 = _normalized_sha256(signing.get("signed_artifact_sha256"))
     return {
         "status": PASS if verdict == PASS else verdict,
         "bundle_id": normalized_bundle_id,
@@ -229,9 +238,7 @@ def _signing_summary(document: dict[str, Any], recorded_fields: dict[str, bool],
         "provisioning_profile_recorded": recorded_fields["provisioning_profile"],
         "device_udid_hashes_recorded": recorded_fields["device_udid"],
         "entitlements_recorded": recorded_fields["entitlements"],
-        "signed_artifact_sha256": str(signed_artifact_sha256).strip()
-        if _is_sha256(signed_artifact_sha256)
-        else None,
+        "signed_artifact_sha256": signed_artifact_sha256,
     }
 
 
