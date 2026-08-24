@@ -8,6 +8,8 @@ EVIDENCE_HOST_PID ?= $(HOST_PID)
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
+ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST ?= $(EVIDENCE_DIR)/actionable-error-current-base.json
+ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/actionable-error-current-base-gate.json
 NATIVE_POINTER_HOST_LOG ?= $(HOME)/Library/Logs/Telemachus/telemachus.log
 NATIVE_POINTER_OBSERVE_SECONDS ?= 20
 NATIVE_POINTER_VISIBLE_RESULT_NOTE ?=
@@ -87,7 +89,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -314,6 +316,23 @@ actionable-error-states-gate:
 		--android-session-failure-source baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionFailure.kt \
 		--repository-root . \
 		--output $(EVIDENCE_DIR)/actionable-error-states-gate.json
+
+actionable-error-current-base-gate:
+	@test -f "$(ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST)" || (echo "error: set EVIDENCE_DIR or ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST to the actionable-error-current-base.json path" >&2; exit 2)
+	mkdir -p "$(dir $(ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.actionable_error_current_base \
+		--manifest "$(ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST)" \
+		--repository-root . \
+		--output "$(ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON)"
+
+actionable-error-current-base-owner-record:
+	@test -f "$(ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST)" || (echo "error: set EVIDENCE_DIR or ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST to the actionable-error-current-base.json path" >&2; exit 2)
+	mkdir -p "$(dir $(ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.actionable_error_current_base \
+		--manifest "$(ACTIONABLE_ERROR_CURRENT_BASE_MANIFEST)" \
+		--repository-root . \
+		--output "$(ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON)" \
+		--allow-blocked
 
 evidence-latency-preflight:
 	mkdir -p $(EVIDENCE_DIR)

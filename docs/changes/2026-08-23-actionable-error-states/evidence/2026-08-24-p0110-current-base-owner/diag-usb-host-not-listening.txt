@@ -1,0 +1,66 @@
+[1787554294662] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787554294662] MA: lifecycle foreground connected=false
+[1787554294702] MA: surfaceCreated
+[1787554294702] MA: surfaceChanged: 1264x2800
+[1787554319568] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787554319569] MA: lifecycle foreground connected=false
+[1787554319607] MA: surfaceCreated
+[1787554319607] MA: surfaceChanged: 1264x2800
+[1787554365494] MA: surfaceDestroyed
+[1787554365520] MA: lifecycle background connected=true; retries paused
+[1787554366762] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787554366762] MA: lifecycle foreground connected=false
+[1787554366805] MA: surfaceCreated
+[1787554366806] MA: surfaceChanged: 1264x2800
+[1787554412656] MA: surfaceDestroyed
+[1787554412681] MA: lifecycle background connected=true; retries paused
+[1787554571893] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787554571894] MA: lifecycle foreground connected=false
+[1787554571929] MA: surfaceCreated
+[1787554571930] MA: surfaceChanged: 1264x2800
+[1787554617801] MA: surfaceDestroyed
+[1787554617828] MA: lifecycle background connected=true; retries paused
+[1787555032848] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787555032848] MA: lifecycle foreground connected=false
+[1787555032883] MA: surfaceCreated
+[1787555032883] MA: surfaceChanged: 1264x2800
+[1787555078806] MA: surfaceDestroyed
+[1787555078809] MA: lifecycle background connected=true; retries paused
+[1787555383122] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787555383122] MA: lifecycle foreground connected=false
+[1787555383157] MA: surfaceCreated
+[1787555383157] MA: surfaceChanged: 1264x2800
+[1787555429041] MA: surfaceDestroyed
+[1787555429043] MA: lifecycle background connected=true; retries paused
+[1787555590117] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787555590119] MA: lifecycle foreground connected=false
+[1787555590156] MA: surfaceCreated
+[1787555590156] MA: surfaceChanged: 1264x2800
+[1787555636009] MA: surfaceDestroyed
+[1787555636012] MA: lifecycle background connected=true; retries paused
+[1787557389549] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787557389549] MA: lifecycle foreground connected=false
+[1787557389585] MA: surfaceCreated
+[1787557389586] MA: surfaceChanged: 1264x2800
+[1787557435473] MA: surfaceDestroyed
+[1787557435498] MA: lifecycle background connected=true; retries paused
+[1787557767722] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787557767723] MA: lifecycle foreground connected=false
+[1787557767759] MA: surfaceCreated
+[1787557767759] MA: surfaceChanged: 1264x2800
+[1787557813640] MA: surfaceDestroyed
+[1787557813642] MA: lifecycle background connected=true; retries paused
+[1787558344023] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787558344024] MA: lifecycle foreground connected=false
+[1787558344075] MA: surfaceCreated
+[1787558344075] MA: surfaceChanged: 1264x2800
+[1787558416929] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558418454] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558419976] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558421489] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558423004] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558424521] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558426046] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558427583] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558429116] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787558430642] MA: session ended kind=TRANSPORT_CLOSED retryable=true

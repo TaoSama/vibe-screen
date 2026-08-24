@@ -1,0 +1,273 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase1_actionable_error_current_base",
+  "run_id": "2026-08-24-p0110-current-base-owner",
+  "created_at": "2026-08-24T08:35:18Z",
+  "evidence_boundary": "Partial current-base owner record from read-only Nubia P0110 observations plus explicitly blocked states. This is not a README Phase 1 actionable-errors pass.",
+  "can_close_readme_phase1_actionable_errors_gate": false,
+  "repository": {
+    "name": "TaoSama/vibe-screen",
+    "branch": "codex/actionable-error-current-base-matrix",
+    "collected_at_commit": "b759d785898ede5bbd4370255b3d49e56457f0ef",
+    "evaluated_at_commit": "6bcf185094bb2a9c77abb7c642833b7ac03b5835",
+    "baseline": "origin/main",
+    "notes": [
+      "Device artifacts were collected before rebasing to origin/main 6bcf185094bb2a9c77abb7c642833b7ac03b5835.",
+      "The newer base does not add retained real-device actionable-error evidence for the missing states."
+    ]
+  },
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36"
+  },
+  "states": [
+    {
+      "id": "host_screen_recording_denied",
+      "status": "blocked",
+      "classification": "current_environment_blocked",
+      "owner": "macOS Host permission runbook and future TCC-denied Host log/device UI evidence",
+      "observed_on_device": false,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Stable-signed Host run with Screen Recording denied or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Screen Recording blocker",
+        "Android connection UI/log evidence showing the resulting user-facing recovery path without closing the stream gate"
+      ],
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Screen Recording/TCC state"
+      ],
+      "notes": [
+        "No TCC mutation was performed for this current-base record.",
+        "Existing offline owner rows remain documentation coverage only."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "19f99cebadc7f40940aa2b2a4ccfe2e1f5619b62e3906b7a4a7f31028c3ea5a2",
+          "kind": "repository_snapshot",
+          "description": "Current-base repository snapshot for this blocked permission owner record."
+        }
+      ]
+    },
+    {
+      "id": "accessibility_denied_or_limited",
+      "status": "blocked",
+      "classification": "current_environment_blocked",
+      "owner": "macOS Host permission runbook and future Accessibility-denied Host log/device UI evidence",
+      "observed_on_device": false,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Stable-signed Host run with Accessibility denied, limited, or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Accessibility blocker",
+        "Device-side evidence that streaming state and input/window actions remain correctly classified"
+      ],
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Accessibility/TCC state"
+      ],
+      "notes": [
+        "This record intentionally avoids TCC mutation and does not prove real Accessibility denial UI."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "19f99cebadc7f40940aa2b2a4ccfe2e1f5619b62e3906b7a4a7f31028c3ea5a2",
+          "kind": "repository_snapshot",
+          "description": "Current-base repository snapshot for this blocked permission owner record."
+        }
+      ]
+    },
+    {
+      "id": "tcp_54321_unavailable",
+      "status": "blocked",
+      "classification": "current_environment_observed",
+      "owner": "Android USB connection guidance and Host listener readiness evidence",
+      "observed_on_device": true,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Retained Host-not-listening or port-conflict evidence paired with the exact Android user-facing error UI",
+        "Proof that bounded retry does not become a successful stream without a listener",
+        "A closing run must be collected on current source after the Host/UI surface under test is selected"
+      ],
+      "blockers": [
+        "Host was not listening on TCP 54321, but the retained Android UI artifact only proves pre-session waiting guidance and retry logs, not a full per-state UI matrix pass"
+      ],
+      "notes": [
+        "The ADB reverse mapping was present before and after the observation, so this is not adb_reverse_missing evidence.",
+        "Logcat shows TRANSPORT_CLOSED and bounded reconnect_scheduled events when no Host listener accepted the protocol upgrade."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf",
+          "kind": "device_identity",
+          "description": "P0110/pacific Android 16 identity captured with explicit ADB serial."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/host-listener-before.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "kind": "host_listener",
+          "description": "lsof check before the observation found no process listening on TCP 54321."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/adb-reverse-before.txt",
+          "sha256": "efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c",
+          "kind": "adb_reverse",
+          "description": "ADB reverse mapping existed before the Host-not-listening observation."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/usb-before-connect-ui.xml",
+          "sha256": "2f70b01a764d2327a2f746fb69fc2ac84733764b2f23c53aad166ebe14c14bab",
+          "kind": "android_ui_dump",
+          "description": "Android disconnected USB surface showed Waiting for your Mac, TRY AGAIN, and connection details copy."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt",
+          "sha256": "28a784d9794554c3ff699b57f913dcb7918f273b48d033c0e71e12a21da0c476",
+          "kind": "android_logcat",
+          "description": "App-tag-filtered logcat shows TRANSPORT_CLOSED and reconnect_scheduled after protocol upgrade probe closure."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/diag-usb-host-not-listening.txt",
+          "sha256": "5532764b15fb39f4adb5432c007b7e5bd5474b0bc90326a8ae20fad5de211ce9",
+          "kind": "android_private_diag",
+          "description": "Private diagnostic log confirms foreground disconnected lifecycle and repeated TRANSPORT_CLOSED retryable session endings."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/host-listener-after.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "kind": "host_listener",
+          "description": "lsof check after the observation still found no process listening on TCP 54321."
+        }
+      ]
+    },
+    {
+      "id": "adb_reverse_missing",
+      "status": "blocked",
+      "classification": "mutation_not_performed",
+      "owner": "Android USB transport and Host ADB reverse recovery evidence",
+      "observed_on_device": false,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Controlled run that removes or omits tcp:54321 reverse mapping under a held device lease",
+        "Retained before/after adb reverse --list output and Android user-facing recovery surface",
+        "Proof that the Host recreates the reverse rule or presents a concrete manual recovery action"
+      ],
+      "blockers": [
+        "tcp:54321 reverse was present; removing it would mutate shared device transport state during this read-mostly current-base run"
+      ],
+      "notes": [
+        "The retained reverse artifacts prove this run did not exercise missing ADB reverse."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/adb-reverse-before.txt",
+          "sha256": "efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c",
+          "kind": "adb_reverse",
+          "description": "ADB reverse mapping was present before the observation, so missing-reverse was not safely induced."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/adb-reverse-after.txt",
+          "sha256": "efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c",
+          "kind": "adb_reverse",
+          "description": "ADB reverse mapping remained present after the observation."
+        }
+      ]
+    },
+    {
+      "id": "usb_disconnected",
+      "status": "not_run",
+      "classification": "unsafe_to_observe_with_adb_only",
+      "owner": "Android USB disconnected surface and Host transport recovery evidence",
+      "observed_on_device": false,
+      "can_close_state": false,
+      "closure_requirements": [
+        "External camera or independent observer record of the Android USB-disconnected UI after cable removal",
+        "Host log showing USB disconnect classification and bounded recovery",
+        "Proof the ADB serial and device identity are restored after reconnect"
+      ],
+      "blockers": [
+        "A physical USB disconnect drops the only ADB control channel, so this run could not retain reliable same-window UI/log evidence without external capture"
+      ],
+      "notes": [
+        "A black/blank Surface screenshot from the device is not used as evidence for this state."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf",
+          "kind": "device_identity",
+          "description": "Device identity retained for the current-base blocked/not-run record."
+        }
+      ]
+    },
+    {
+      "id": "lan_route_unavailable",
+      "status": "blocked",
+      "classification": "current_environment_observed",
+      "owner": "Trusted-LAN preflight and Android connection guidance evidence",
+      "observed_on_device": true,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Retained trusted-LAN preflight JSON or equivalent sanitized artifacts with no device Wi-Fi route",
+        "Android LAN user-facing recovery surface for the same attempt",
+        "Separate encrypted LAN stream/reconnect evidence before any reconnect acceptance claim"
+      ],
+      "blockers": [
+        "P0110 Wi-Fi was disconnected with no wlan0 IPv4 address and no route, so no trusted-LAN connection attempt could exercise the full UI matrix"
+      ],
+      "notes": [
+        "The raw dumpsys output contained saved SSID names and is intentionally excluded from committed evidence.",
+        "This pre-session route blocker is not encrypted-LAN reconnect evidence."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf",
+          "kind": "device_identity",
+          "description": "P0110/pacific Android 16 identity for the trusted-LAN blocker."
+        },
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/lan-route-blocked-readonly-sanitized.txt",
+          "sha256": "a2aff821261a86cba8ca3092b8c98efdca1bfbbfa1e9b948168c489827c9a7b5",
+          "kind": "lan_route_preflight",
+          "description": "Sanitized read-only LAN route blocker: Wi-Fi disconnected, wlan0 DOWN, no route."
+        }
+      ]
+    },
+    {
+      "id": "stale_epoch_or_session_errors",
+      "status": "not_run",
+      "classification": "no_protocol_v1_stream_or_epoch_fault",
+      "owner": "Protocol v1 session/epoch rejection and Android stale-delivery UI/log evidence",
+      "observed_on_device": false,
+      "can_close_state": false,
+      "closure_requirements": [
+        "Protocol v1 stream with retained accepted epoch/session identity",
+        "Injected or naturally observed stale epoch/session message after disconnect, reconnect, or display renegotiation",
+        "Android and Host logs proving stale media/input/control delivery was rejected without rendering old frames or accepting old input"
+      ],
+      "blockers": [
+        "No Protocol v1 stream or stale epoch/session fault was available in the current environment"
+      ],
+      "notes": [
+        "TRANSPORT_CLOSED retry logs from a pre-session Host-not-listening attempt are not stale epoch/session evidence."
+      ],
+      "artifacts": [
+        {
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt",
+          "sha256": "28a784d9794554c3ff699b57f913dcb7918f273b48d033c0e71e12a21da0c476",
+          "kind": "android_logcat",
+          "description": "Negative evidence boundary: pre-session TRANSPORT_CLOSED retry logs are retained but do not prove stale epoch/session rejection."
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "This manifest is the current-base owner record for the requested Phase 1 actionable-error states.",
+    "It intentionally keeps the README gate open until every state has retained real-device evidence."
+  ]
+}

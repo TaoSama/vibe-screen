@@ -430,7 +430,12 @@ Xiaomi 13/fuxi evidence. See the
   The current actionable-error owner matrix is now covered by an offline
   drift gate for Android SessionFailureKind coverage plus macOS Host
   permission/startup/capture states; this is not a replacement for retained
-  device evidence across the full state matrix.
+  device evidence across the full state matrix. A current-base P0110/pacific
+  owner record now binds the README-facing actionable-error states to a
+  fail-closed real-device evidence gate and remains blocked for Screen
+  Recording denial, Accessibility denial/limited state, ADB reverse missing,
+  USB disconnected, LAN route unavailable, TCP `54321` unavailable, and stale
+  epoch/session errors until each state has retained evidence.
 - Validate sustained operation on the active Android acceptance device. Xiaomi
   13/fuxi remains a named evidence source, while Nubia P0110/pacific and other
   qualifying Android devices may substitute for general Android
