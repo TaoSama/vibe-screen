@@ -10,7 +10,8 @@ make harmony-readiness EVIDENCE_DIR=/path/to/evidence
 python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
 # Fill every field from the exact DevEco build, signed HAP, MatePad Mini,
 # Protocol v1 Mac host, logs, metrics, and external-camera evidence.
-python3 scripts/harmony_device_gate.py /path/to/evidence/harmony-device-gates.json
+make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
 ```
 
 `make harmony-readiness` writes `/path/to/evidence/harmony-readiness.json` and
@@ -24,6 +25,14 @@ HarmonyOS gate.
 For a readiness or blocked dry run, `--allow-blocked` may validate the final
 manifest shape, but the resulting output is not acceptance evidence and must not
 close the README gate.
+Strict `make harmony-device-gate` validation also resolves every `pass` gate's
+evidence references under `EVIDENCE_DIR`; absolute paths, URLs, `..` traversal,
+directories, and missing files fail closed. Direct strict script invocations use
+the manifest directory as the evidence root. Keep all referenced logs, summaries,
+metrics, and checksums inside the evidence package before asking the gate to pass.
+`make harmony-current-base-gate` is the aggregate owner check for the current
+README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
+must stay blocked until the strict device gate and readiness preflight both pass.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
@@ -51,3 +60,5 @@ Store raw evidence under an ignored local directory or attach it to the release;
 do not commit device identifiers, pairing credentials, or private network data.
 The committed evidence summary, if any, should reference only redacted artifact
 paths or reviewed release attachments.
+The current-base owner and merge-order audit for overlapping HarmonyOS gate PRs
+is maintained in `docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md`.

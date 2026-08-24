@@ -38,6 +38,8 @@ pnpm run verify
 make doctor
 cd ../..
 make harmony-readiness EVIDENCE_DIR=.build/harmony-readiness
+# Expected to exit nonzero until a strict MatePad Mini device manifest exists.
+make harmony-current-base-gate EVIDENCE_DIR=.build/harmony-readiness
 ```
 
 `pnpm run verify` checks the real project layout, type-checks only the portable
@@ -56,6 +58,11 @@ DevEco toolchain, signed HAP/checksum/signature metadata, Protocol v1 Host build
 hash, and an attached MatePad Mini-class HDC target are all present. A passing
 readiness preflight is still not installation, streaming, secure-pairing, soak,
 or latency evidence.
+`make harmony-current-base-gate` is the read-only aggregate owner check for the
+current README Phase 4 DevEco/HAP/decode/HUKS/authenticated-transport/resume/
+MatePad surface. It consumes the readiness and strict device-gate manifests,
+fails closed without the real toolchain/device artifacts, and must not be used
+as a substitute for DevEco compilation, HAP install, or MatePad evidence.
 
 ## DevEco build and test
 

@@ -603,6 +603,40 @@ class HarmonyDeviceGateTests(unittest.TestCase):
     def test_harmony_device_manifest_passes_when_all_real_device_gates_are_present(self) -> None:
         self.assertEqual(harmony_device_gate.validate_manifest(self.passing_manifest()), [])
 
+    def test_harmony_device_manifest_requires_evidence_files_under_root(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for gate in manifest["gates"]:
+                artifact = evidence_root / gate["evidence"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                gate_id = gate["id"]
+                artifact.write_text(f"{gate_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
+
+    def test_harmony_device_manifest_rejects_missing_evidence_file_when_root_is_set(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+
+            with self.assertRaisesRegex(harmony_device_gate.ManifestError, "missing evidence artifact"):
+                harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
+
+    def test_harmony_device_manifest_rejects_evidence_references_outside_root(self) -> None:
+        blocked_references = ("/tmp/harmony.log", "../harmony.log", "https://example.test/harmony.log", ".")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for reference in blocked_references:
+                manifest = self.passing_manifest()
+                manifest["gates"][0]["evidence"] = [reference]
+                with self.subTest(reference=reference):
+                    with self.assertRaisesRegex(
+                        harmony_device_gate.ManifestError,
+                        "evidence root|got URL|escape evidence root|artifact below evidence root",
+                    ):
+                        harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
+
     def test_harmony_device_manifest_rejects_android_substitute(self) -> None:
         manifest = self.passing_manifest()
         manifest["device"] = {
@@ -628,6 +662,15 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             harmony_device_gate.validate_manifest(manifest, allow_blocked=True),
             ["deveco_sdk_and_api_checker: blocked"],
         )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.assertEqual(
+                harmony_device_gate.validate_manifest(
+                    manifest,
+                    allow_blocked=True,
+                    evidence_root=Path(temporary_directory),
+                ),
+                ["deveco_sdk_and_api_checker: blocked"],
+            )
 
     def test_harmony_device_template_is_readiness_only(self) -> None:
         manifest = harmony_device_gate.template_manifest()
@@ -640,7 +683,7 @@ class HarmonyDeviceGateTests(unittest.TestCase):
     def test_harmony_device_cli_allow_blocked_never_prints_acceptance_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             manifest_path = Path(temporary_directory) / "harmony-device-gates.json"
-            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+            manifest_path.write_text(json.dumps(harmony_device_gate.template_manifest()), encoding="utf-8")
 
             result = subprocess.run(
                 [
@@ -657,6 +700,25 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("not acceptance evidence", result.stdout)
         self.assertNotIn("passes all required real-device gates", result.stdout)
 
+    def test_harmony_device_cli_strict_mode_defaults_evidence_root_to_manifest_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-device-gates.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_device_gate.py"),
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing evidence artifact", result.stderr)
+
     def test_harmony_device_manifest_requires_signed_artifact_hashes(self) -> None:
         manifest = self.passing_manifest()
         manifest["artifact"]["hap_sha256"] = "not-a-hash"
@@ -669,6 +731,7 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
         self.assertIn("harmony-device-gate", makefile)
         self.assertIn("scripts/harmony_device_gate.py", makefile)
+        self.assertIn("--evidence-root", makefile)
         self.assertIn("$(EVIDENCE_DIR)/harmony-device-gates.json", makefile)
 
     def test_host_rss_makefile_requires_host_pid_for_two_hour_gate(self) -> None:
