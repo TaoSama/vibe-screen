@@ -20,6 +20,34 @@ final class StreamMetricsTests: XCTestCase {
         XCTAssertEqual(metrics.bitrateMbps.value, 0)
     }
 
+    func testStreamStatsTelemetryIncludesFrameLifecycleSnapshot() {
+        let attributes = StreamStatsTelemetryBuilder.attributes(
+            fps: 60,
+            mbps: 24,
+            averageFrameAgeMs: 4.5,
+            droppedFrames: 2,
+            queueDepth: 1,
+            queueCapacity: 2,
+            encoderStats: (inFlight: 1, capacity: 2, frameRegistryCount: 1),
+            frameLifecycleStats: StreamFrameLifecycleStats(
+                latestPixelBufferRetained: 1,
+                latestPixelBufferCapacity: 1,
+                fallbackCaptureActive: true,
+                encoderPresent: true
+            )
+        )
+
+        XCTAssertEqual(attributes["queue_depth"], .integer(1))
+        XCTAssertEqual(attributes["queue_capacity"], .integer(2))
+        XCTAssertEqual(attributes["encoder_in_flight"], .integer(1))
+        XCTAssertEqual(attributes["encoder_in_flight_capacity"], .integer(2))
+        XCTAssertEqual(attributes["frame_registry_count"], .integer(1))
+        XCTAssertEqual(attributes["latest_pixel_buffer_retained"], .integer(1))
+        XCTAssertEqual(attributes["latest_pixel_buffer_capacity"], .integer(1))
+        XCTAssertEqual(attributes["fallback_capture_active"], .boolean(true))
+        XCTAssertEqual(attributes["encoder_present"], .boolean(true))
+    }
+
     func testUpdateStoresLatestValues() {
         let metrics = StreamMetrics()
         metrics.update(fps: 59.9, bitrateMbps: 34.2)

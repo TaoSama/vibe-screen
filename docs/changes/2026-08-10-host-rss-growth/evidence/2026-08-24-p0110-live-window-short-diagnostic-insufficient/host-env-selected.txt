@@ -1,0 +1,6 @@
+PWD=<repo-root>
+__CFBundleIdentifier=dev.telemachus.display
+HOME=<home>
+ANDROID_HOME=<android-sdk>
+JAVA_HOME=/opt/homebrew/opt/openjdk@17
+VIBE_SCREEN_TELEMETRY_PATH=<absent>

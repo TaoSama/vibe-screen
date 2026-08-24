@@ -252,6 +252,14 @@ class ScreenCapture {
     struct EncoderStats: Equatable {
         let inFlight: Int
         let capacity: Int
+        let frameRegistryCount: Int
+    }
+
+    struct FrameLifecycleStats: Equatable {
+        let latestPixelBufferRetained: Int
+        let latestPixelBufferCapacity: Int
+        let fallbackCaptureActive: Bool
+        let encoderPresent: Bool
     }
 
     private static let liveConfigurationUpdateTimeoutSeconds: TimeInterval = 3
@@ -330,8 +338,21 @@ class ScreenCapture {
     /// short-window host memory diagnostic omits encoder fields when no encoder
     /// is active instead of emitting a meaningless zero-capacity sample.
     var encoderStats: EncoderStats? {
-        guard let snapshot = currentEncoder()?.inFlightSnapshot else { return nil }
-        return EncoderStats(inFlight: snapshot.inFlight, capacity: snapshot.capacity)
+        guard let stats = currentEncoder()?.runtimeStats else { return nil }
+        return EncoderStats(
+            inFlight: stats.inFlight,
+            capacity: stats.capacity,
+            frameRegistryCount: stats.frameRegistryCount
+        )
+    }
+
+    var frameLifecycleStats: FrameLifecycleStats {
+        FrameLifecycleStats(
+            latestPixelBufferRetained: latestPixelBuffer.retainedCount,
+            latestPixelBufferCapacity: 1,
+            fallbackCaptureActive: fallbackLifecycle.isActive,
+            encoderPresent: currentEncoder() != nil
+        )
     }
 
     private func currentEncoder() -> VideoEncoder? {

@@ -310,12 +310,26 @@ def _analyze_telemetry(
     out_of_window_records = 0
     invalid_records = 0
     required = ("queue_depth", "queue_capacity", "fps")
-    optional = ("encoder_in_flight", "encoder_in_flight_capacity")
+    numeric_optional = (
+        "encoder_in_flight",
+        "encoder_in_flight_capacity",
+        "frame_registry_count",
+        "latest_pixel_buffer_retained",
+        "latest_pixel_buffer_capacity",
+    )
+    boolean_optional = ("fallback_capture_active", "encoder_present")
+    optional = (*numeric_optional, *boolean_optional)
+    encoder_pair = {"encoder_in_flight", "encoder_in_flight_capacity"}
+    latest_pixel_buffer_pair = {
+        "latest_pixel_buffer_retained",
+        "latest_pixel_buffer_capacity",
+    }
     missing_required_fields: set[str] = set()
     missing_optional_fields: set[str] = set()
     values: dict[str, list[float]] = {
-        key: [] for key in (*required, *optional)
+        key: [] for key in (*required, *numeric_optional)
     }
+    boolean_values: dict[str, list[bool]] = {key: [] for key in boolean_optional}
     for record in records:
         if record.get("event") != "stream_stats":
             continue
@@ -357,7 +371,7 @@ def _analyze_telemetry(
             else:
                 normalized[key] = value
         present_optional_fields: set[str] = set()
-        for key in optional:
+        for key in numeric_optional:
             if key not in attributes:
                 missing_optional_fields.add(key)
                 continue
@@ -368,7 +382,30 @@ def _analyze_telemetry(
             else:
                 present_optional_fields.add(key)
                 normalized[key] = value
-        if present_optional_fields and present_optional_fields != set(optional):
+        normalized_bools: dict[str, bool] = {}
+        for key in boolean_optional:
+            if key not in attributes:
+                missing_optional_fields.add(key)
+                continue
+            value = attributes.get(key)
+            if not isinstance(value, bool):
+                missing_optional_fields.add(key)
+                invalid_fields = True
+            else:
+                present_optional_fields.add(key)
+                normalized_bools[key] = value
+        if present_optional_fields.intersection(encoder_pair) and not encoder_pair.issubset(
+            present_optional_fields
+        ):
+            invalid_fields = True
+        if present_optional_fields.intersection(
+            latest_pixel_buffer_pair
+        ) and not latest_pixel_buffer_pair.issubset(present_optional_fields):
+            invalid_fields = True
+        if (
+            "frame_registry_count" in present_optional_fields
+            and "encoder_in_flight_capacity" not in present_optional_fields
+        ):
             invalid_fields = True
         if invalid_fields:
             invalid_records += 1
@@ -381,6 +418,8 @@ def _analyze_telemetry(
         session_epochs.add(session_epoch)
         for key, value in normalized.items():
             values[key].append(value)
+        for key, value in normalized_bools.items():
+            boolean_values[key].append(value)
     stream_timestamps.sort()
 
     anomalies: list[str] = []
@@ -395,6 +434,11 @@ def _analyze_telemetry(
         or len(set(values["queue_capacity"])) != 1
     ):
         anomalies.append("network frame queue capacity was invalid or changed")
+    if values["encoder_in_flight_capacity"] and (
+        min(values["encoder_in_flight_capacity"]) <= 0
+        or len(set(values["encoder_in_flight_capacity"])) != 1
+    ):
+        anomalies.append("VideoToolbox in-flight capacity was invalid or changed")
     if (
         values["encoder_in_flight"]
         and values["encoder_in_flight_capacity"]
@@ -402,6 +446,20 @@ def _analyze_telemetry(
         > min(values["encoder_in_flight_capacity"])
     ):
         anomalies.append("VideoToolbox in-flight count exceeded its advertised capacity")
+    if (
+        values["frame_registry_count"]
+        and values["encoder_in_flight_capacity"]
+        and max(values["frame_registry_count"])
+        > min(values["encoder_in_flight_capacity"])
+    ):
+        anomalies.append("VideoToolbox frame registry count exceeded encoder capacity")
+    if (
+        values["latest_pixel_buffer_retained"]
+        and values["latest_pixel_buffer_capacity"]
+        and max(values["latest_pixel_buffer_retained"])
+        > min(values["latest_pixel_buffer_capacity"])
+    ):
+        anomalies.append("latest pixel buffer retention exceeded its advertised capacity")
     if values["fps"] and min(values["fps"]) <= 0:
         anomalies.append("stream_stats reported non-positive FPS")
     start_gap = (stream_timestamps[0] - started_at).total_seconds() if stream_timestamps else None
@@ -452,6 +510,25 @@ def _analyze_telemetry(
             if values["encoder_in_flight_capacity"]
             else None
         ),
+        "maximum_frame_registry_count": (
+            max(values["frame_registry_count"])
+            if values["frame_registry_count"]
+            else None
+        ),
+        "maximum_latest_pixel_buffer_retained": (
+            max(values["latest_pixel_buffer_retained"])
+            if values["latest_pixel_buffer_retained"]
+            else None
+        ),
+        "latest_pixel_buffer_capacity": (
+            min(values["latest_pixel_buffer_capacity"])
+            if values["latest_pixel_buffer_capacity"]
+            else None
+        ),
+        "fallback_capture_active_values": sorted(
+            set(boolean_values["fallback_capture_active"])
+        ),
+        "encoder_present_values": sorted(set(boolean_values["encoder_present"])),
         "anomalies": anomalies,
     }
 
