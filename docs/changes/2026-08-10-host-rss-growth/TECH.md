@@ -45,6 +45,15 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 不发布」契约。该证据足以定位并消除一个主要增长贡献源，但**不能替代修复后的
 两小时复测**，因此无增长门禁仍保持开放。
 
+2026-08-24 的当前源码补强继续收敛可验证面：`debugLog` 与 `TelemetryEvent`
+共用一个加锁的 `ISO8601DateFormatter`，避免推流期间每条日志和 telemetry 都构造
+新的 formatter；生产 `stream_stats` 现在同时携带 `frame_registry_count` 与
+`latest_pixel_buffer_retained`/`latest_pixel_buffer_capacity`，并报告
+`fallback_capture_active`/`encoder_present` 状态。短窗诊断现在可以直接判定
+VideoToolbox callback registry、encoder capacity 稳定性和 capture 侧最新帧缓存是否
+超过固定容量，而不是事后只凭 RSS/heap 猜测。该变更降低一个高频小对象分配源并
+补足诊断盲点，但仍需要当前源码真机短窗或正式两小时复验来证明实际 RSS 行为。
+
 最新主线也已把帧生命周期限制为常数：VideoToolbox 在途准入固定为 2，callback
 registry 在回调或 teardown 时逐项 claim/drain；网络侧只保留一个 latest mailbox
 帧、一个 pending 帧和一个在发帧。独立并发生命周期审查未发现新的稳态无界
@@ -70,17 +79,20 @@ dirty/live/fragmentation、三次 heap 类型快照及连续网络队列深度�
 `verdict` 语义如下：
 
 - `pass`：10-17 分钟窗口样本完整、所有必需内存信号落在短窗稳定阈值内、流遥测
-  与有界网络队列健康；若存在 VideoToolbox in-flight 遥测，也必须在容量内。
-  仅表示短窗回归通过，**不能替代或关闭正式两小时 `host_rss_gate`**。
+  与有界网络队列健康；若存在 VideoToolbox in-flight、callback registry 或
+  latest pixel-buffer telemetry，也必须在容量内。仅表示短窗回归通过，
+  **不能替代或关闭正式两小时 `host_rss_gate`**。
 - `fail`：窗口归因到 `retained_growth` 或 `allocator_high_water`，或生产流
-  出现队列越界、队列容量非法/变化、可选 VideoToolbox in-flight 越界、非正 FPS
-  异常。
+  出现队列越界、队列容量非法/变化、可选 VideoToolbox in-flight、callback
+  registry 或 latest pixel-buffer 越界、encoder capacity 非法/变化、非正 FPS 异常。
 - `insufficient`：采样/工具/解析/流遥测覆盖不完整，或内存信号矛盾、无法支持
   稳定或增长归因。
 
-任何工具/解析/遥测覆盖错误、session epoch 变化、队列越界或存在的编码器在途越界
-都 fail closed：`verdict` 为 `insufficient` 或 `fail`，`attribution` 保持
-`inconclusive`。退出码按 `verdict` 映射：`pass`→0、`fail`→2、`insufficient`→1。
+任何工具/解析/遥测覆盖错误、session epoch 变化、队列越界或存在的编码器在途、
+callback registry、latest pixel-buffer 越界、encoder capacity 非法/变化或诊断布尔
+状态类型错误都 fail closed：`verdict` 为
+`insufficient` 或 `fail`，`attribution` 保持 `inconclusive`。退出码按
+`verdict` 映射：`pass`→0、`fail`→2、`insufficient`→1。
 该工具不会执行内存压力、修改 TCC 或访问 Keychain。具体命令与阈值见
 [`tools/README.md`](../../../tools/README.md)。
 
@@ -135,6 +147,9 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
   `heap_class_growth` 列表中重建首末漂移。
+- 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
+  本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
+  运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。
 - 2026-08-22 对 P0110 运行态做只读前置检查时，确认当前已安装 Host 正在推流但
   未以 `VIBE_SCREEN_TELEMETRY_PATH` 启动，且本机 keychain 不暴露 `Vibe Screen Dev`
   签名 identity，不能重签并证明当前源码二进制与 TCC 授权一致。因此没有启动短窗
