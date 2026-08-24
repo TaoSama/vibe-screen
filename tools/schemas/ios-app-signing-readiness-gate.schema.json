@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-app-signing-readiness-gate.schema.json",
+  "title": "Vibe Screen iOS app-signing readiness gate result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "verdict",
+    "signing_status",
+    "can_close_ios_app_signing_readiness",
+    "can_close_ios_device_acceptance",
+    "recorded_fields",
+    "missing",
+    "failures",
+    "evidence",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_app_signing_readiness_gate"},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "signing_status": {"type": ["string", "null"]},
+    "can_close_ios_app_signing_readiness": {"type": "boolean"},
+    "can_close_ios_device_acceptance": {"const": false},
+    "recorded_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "team_id",
+        "provisioning_profile",
+        "bundle_id",
+        "codesign_identity",
+        "device_udid",
+        "entitlements",
+        "signed_artifact",
+        "artifacts"
+      ],
+      "properties": {
+        "team_id": {"type": "boolean"},
+        "provisioning_profile": {"type": "boolean"},
+        "bundle_id": {"type": "boolean"},
+        "codesign_identity": {"type": "boolean"},
+        "device_udid": {"type": "boolean"},
+        "entitlements": {"type": "boolean"},
+        "signed_artifact": {"type": "boolean"},
+        "artifacts": {"type": "boolean"}
+      }
+    },
+    "missing": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

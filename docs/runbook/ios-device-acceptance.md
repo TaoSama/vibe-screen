@@ -38,6 +38,28 @@ identity_output="$(security find-identity -p codesigning -v)"
 printf '%s\n' "$identity_output" | grep -Eq '^[[:space:]]*[1-9][0-9]* valid identities found[[:space:]]*$'
 ```
 
+Then validate the sanitized app-signing readiness summary. This is a dedicated
+fail-closed owner for the signing prerequisite only; it does not install the app
+or close any iOS device behavior gate:
+
+```bash
+make ios-app-signing-readiness-gate \
+  IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
+```
+
+The input must retain or summarize Team ID, provisioning profile UUID, unique
+bundle ID, codesign identity, registered physical-device UDID hashes, signed-app
+entitlements, and signed artifact SHA-256. Missing any one of those values
+returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived material
+returns `fail`. Pass the produced `ios-app-signing-readiness-gate.json` into the
+current-base manifest before reporting aggregate readiness:
+
+```bash
+make ios-current-base-gate \
+  EVIDENCE_DIR=.build/evidence/ios-current-base \
+  IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness-gate.json
+```
+
 ## Open gates
 
 These README Phase 5 device-acceptance gates remain open until the evidence
@@ -56,8 +78,9 @@ below passes on real iPhone and iPad hardware:
 Evidence requirements:
 
 - E1: Xcode version, selected developer directory, development team, unique
-  bundle ID, signing certificate identity, provisioning profile UUID, signed app
-  or archive SHA-256.
+  bundle ID, signing certificate identity, provisioning profile UUID, physical
+  device UDID coverage in the provisioning profile, signed-app entitlements, and
+  signed app or archive SHA-256.
 - E2: iPhone and iPad-class hardware model, OS build, app revision, host
   revision, install log, first launch, and Local Network permission result.
 - E3: Pairing link source, `SSWA`/`SSWR`, `0D`/`0D01`, Hello, negotiated

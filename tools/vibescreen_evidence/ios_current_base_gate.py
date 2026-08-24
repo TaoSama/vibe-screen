@@ -138,6 +138,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             "source_docs",
             "local_environment",
             "build_evidence",
+            "signing_readiness_gate",
             "signing",
             "devices",
             "gates",
@@ -245,9 +246,24 @@ def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str,
 
 def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     signing = manifest.get("signing") if isinstance(manifest.get("signing"), dict) else {}
+    signing_gate = (
+        manifest.get("signing_readiness_gate")
+        if isinstance(manifest.get("signing_readiness_gate"), dict)
+        else {}
+    )
     archive_sha = signing.get("signed_archive_sha256")
     archive_ok = isinstance(archive_sha, str) and HASH_RE.fullmatch(archive_sha) is not None
     return {
+        "dedicated_signing_readiness_gate": _check(
+            signing_gate.get("kind") == "ios_app_signing_readiness_gate"
+            and signing_gate.get("verdict") == "pass"
+            and signing_gate.get("can_close_ios_app_signing_readiness") is True,
+            "ios-app-signing-readiness-gate.json passes and is bound into current-base readiness",
+            evidence=[str(signing_gate.get("path"))]
+            if signing_gate.get("path")
+            else _string_list(signing_gate.get("missing")),
+            blocking=True,
+        ),
         "signing_status": _check(
             signing.get("status") == "pass",
             "signing.status is pass",

@@ -48,6 +48,7 @@ SOURCE_DOCS = [
     "docs/runbook/ios-device-acceptance.md",
     "docs/runbook/hdr-color-acceptance.md",
 ]
+SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 
 FORMAL_DEVICE_GATES = {
     "signing": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
@@ -69,6 +70,7 @@ BROADER_GATES = {
 DEFAULT_LIMITATIONS = [
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
+    "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
     "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
 ]
 
@@ -140,6 +142,53 @@ def _signing_probe() -> dict[str, Any]:
     return result
 
 
+def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {
+            "provided": False,
+            "path": None,
+            "kind": None,
+            "verdict": "blocked",
+            "can_close_ios_app_signing_readiness": False,
+            "missing": ["ios-app-signing-readiness-gate.json not provided"],
+            "failures": [],
+        }
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return {
+            "provided": True,
+            "path": str(path),
+            "kind": None,
+            "verdict": "blocked",
+            "can_close_ios_app_signing_readiness": False,
+            "missing": [f"ios app-signing readiness gate unreadable: {error}"],
+            "failures": [],
+        }
+    if not isinstance(document, dict):
+        return {
+            "provided": True,
+            "path": str(path),
+            "kind": None,
+            "verdict": "blocked",
+            "can_close_ios_app_signing_readiness": False,
+            "missing": ["ios app-signing readiness gate must be a JSON object"],
+            "failures": [],
+        }
+    return {
+        "provided": True,
+        "path": str(path),
+        "kind": document.get("kind"),
+        "verdict": document.get("verdict"),
+        "can_close_ios_app_signing_readiness": document.get(
+            "can_close_ios_app_signing_readiness"
+        )
+        is True,
+        "missing": document.get("missing", []) if isinstance(document.get("missing"), list) else [],
+        "failures": document.get("failures", []) if isinstance(document.get("failures"), list) else [],
+    }
+
+
 def collect_environment(repo: Path) -> dict[str, Any]:
     return {
         "xcode_select": _run_probe(["xcode-select", "-p"]),
@@ -192,6 +241,7 @@ def build_manifest(
     command: Sequence[str],
     repo: Path,
     device_acceptance_owner_pr: str = DEVICE_ACCEPTANCE_OWNER_PR,
+    signing_readiness_gate: Path | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
@@ -221,6 +271,7 @@ def build_manifest(
             "simulator_smoke": {"status": "open", "evidence": []},
             "unsigned_archive": {"status": "open", "evidence": []},
         },
+        "signing_readiness_gate": _load_signing_readiness_gate(signing_readiness_gate),
         "signing": {
             "status": "blocked",
             "bundle_id": None,
@@ -257,6 +308,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEVICE_ACCEPTANCE_OWNER_PR,
         help="PR owning sanitized iOS current-base acceptance evidence validation, default #290",
     )
+    parser.add_argument(
+        "--signing-readiness-gate",
+        type=Path,
+        help="optional ios-app-signing-readiness-gate.json to bind into current-base readiness",
+    )
     parser.add_argument("--notes")
     parser.add_argument(
         "command",
@@ -276,6 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             command=command,
             repo=args.repo,
             device_acceptance_owner_pr=args.device_acceptance_owner_pr,
+            signing_readiness_gate=args.signing_readiness_gate,
             notes=args.notes,
         )
         write_json(args.output, manifest)

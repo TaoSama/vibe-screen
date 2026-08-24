@@ -249,6 +249,23 @@ HDR claim.
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
 | trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
 
+The signing row is now backed by a dedicated app-signing readiness owner:
+
+```bash
+make ios-app-signing-readiness-gate \
+  IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
+```
+
+The gate is passive and fail-closed. It requires retained Team ID, provisioning
+profile UUID, unique bundle ID, non-ad-hoc codesign identity, physical-device
+UDID hashes, signed-app entitlements, signed artifact SHA-256, and signing
+artifact paths. Missing any one of those fields returns `blocked`; Simulator,
+unsigned, ad-hoc, or Android-derived material returns `fail`. A pass only
+unblocks the app-signing prerequisite for `ios-current-base-gate` when the
+resulting `ios-app-signing-readiness-gate.json` is bound into the generated
+manifest; it still cannot close install, launch, VideoToolbox, input, reconnect,
+audio, or full iOS device acceptance.
+
 2026-08-23 current-base readiness smoke on this worktree ran:
 
 ```bash

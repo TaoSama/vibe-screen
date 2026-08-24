@@ -48,9 +48,58 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
         self.assertEqual(set(manifest["source_docs"]), set(SOURCE_DOCS))
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
+        self.assertFalse(manifest["signing_readiness_gate"]["provided"])
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
         self.assertEqual(manifest["signing"]["status"], "blocked")
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
+        self.assertTrue(any("Team ID" in item for item in manifest["limitations"]))
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_binds_ios_app_signing_readiness_gate_summary(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "ios-app-signing-readiness-gate.json"
+            signing_gate.write_text(
+                json.dumps(
+                    {
+                        "kind": "ios_app_signing_readiness_gate",
+                        "verdict": "pass",
+                        "can_close_ios_app_signing_readiness": True,
+                        "missing": [],
+                        "failures": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
+        self.assertEqual(manifest["signing_readiness_gate"]["kind"], "ios_app_signing_readiness_gate")
+        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "pass")
+        self.assertTrue(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_missing_signing_readiness_gate_path_fails_closed(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "missing-ios-app-signing-readiness-gate.json"
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
+        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "blocked")
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertIn("unreadable", manifest["signing_readiness_gate"]["missing"][0])
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

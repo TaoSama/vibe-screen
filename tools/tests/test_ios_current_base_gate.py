@@ -58,6 +58,15 @@ def complete_manifest(root: Path) -> dict[str, object]:
     }
     signing = manifest["signing"]
     assert isinstance(signing, dict)
+    manifest["signing_readiness_gate"] = {
+        "provided": True,
+        "path": str(root / "ios-app-signing-readiness-gate.json"),
+        "kind": "ios_app_signing_readiness_gate",
+        "verdict": "pass",
+        "can_close_ios_app_signing_readiness": True,
+        "missing": [],
+        "failures": [],
+    }
     signing.update(
         {
             "status": "pass",
@@ -110,6 +119,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(report["can_claim_device_pass"])
         self.assertIn("blocked: xcodebuild_available", report["reasons"])
         self.assertIn("blocked: ios_sdk_available", report["reasons"])
+        self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
         self.assertIn("blocked: signing_status", report["reasons"])
         self.assertIn("blocked: iphone_physical_device", report["reasons"])
         self.assertIn("blocked: ipad_physical_device", report["reasons"])
@@ -206,6 +216,27 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("manifest schema violation", report["reasons"][0])
+
+    def test_dedicated_signing_readiness_gate_is_required_for_signing_pass(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest["signing_readiness_gate"] = {
+                "provided": True,
+                "path": "ios-app-signing-readiness-gate.json",
+                "kind": "ios_app_signing_readiness_gate",
+                "verdict": "blocked",
+                "can_close_ios_app_signing_readiness": False,
+                "missing": ["signing.device_udids missing"],
+                "failures": [],
+            }
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
 
     def test_missing_nested_evidence_contract_cannot_pass(self):
         cases = {
