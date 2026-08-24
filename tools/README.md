@@ -73,6 +73,24 @@ bundle and `make native-pointer-hid-gate` to re-check an existing bundle. The
 gate is closed only when `native-pointer-hid-summary.json` reports
 `verdict=pass` and `can_close_native_pointer_hid_gate=true`.
 
+Android Protocol v1 audio playback evidence is also fail-closed. The summary
+tool reads a retained `android-audio-playback-observations.json` and writes
+`android-audio-playback-summary.json`:
+
+```sh
+make android-audio-playback-gate EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+The target exits `0` only when the summary can close the gate. A pass requires
+the named Android device, structured device identity, USB or trusted-LAN
+transport, stable signed Host plus Microphone permission, production Protocol v1
+`CAPABILITY_AUDIO` negotiation, accepted PCM S16LE config, Host channel `3`
+packet flow, Android `AudioTrack` start/write evidence, audible or
+instrumentation-backed playback confirmation, disconnect cleanup, and non-empty
+retained artifacts under the evidence directory. Loopback, synthetic,
+Android-only, or plaintext legacy records return `blocked` or `insufficient` and keep
+`can_close_android_audio_playback_gate=false`.
+
 Run the tests without installing third-party packages:
 
 ```sh

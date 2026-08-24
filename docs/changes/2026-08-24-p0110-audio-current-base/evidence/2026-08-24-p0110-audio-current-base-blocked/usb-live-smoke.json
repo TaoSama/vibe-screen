@@ -1,0 +1,239 @@
+{
+  "adb": {
+    "reverse": {
+      "entries": [
+        "UsbFfs tcp:54321 tcp:54321"
+      ],
+      "entry": "UsbFfs tcp:54321 tcp:54321",
+      "port": 54321,
+      "present": true
+    }
+  },
+  "app": {
+    "foreground": {
+      "focus_lines": [
+        "mCurrentFocus=Window{af98a54 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
+        "mFocusedApp=ActivityRecord{166922985 u0 dev.telemachus.display/.MainActivity t605}",
+        "topResumedActivity=ActivityRecord{166922985 u0 dev.telemachus.display/.MainActivity t605}",
+        "ResumedActivity: ActivityRecord{166922985 u0 dev.telemachus.display/.MainActivity t605}"
+      ],
+      "foreground": true,
+      "foreground_component": "dev.telemachus.display/dev.telemachus.display.MainActivity",
+      "foreground_package": "dev.telemachus.display"
+    },
+    "package": {
+      "first_install_time": "2026-08-24 14:47:20",
+      "installed": true,
+      "last_update_time": "2026-08-24 15:49:23",
+      "package": "dev.telemachus.display",
+      "version_code": 100000,
+      "version_name": "0.0.0"
+    },
+    "pids": [
+      15457
+    ],
+    "running": true
+  },
+  "blocking_reasons": [
+    {
+      "field": "logs.telemetry.stream_stats",
+      "message": "no stream_stats telemetry was observed"
+    },
+    {
+      "field": "logs.telemetry.fps",
+      "message": "no stream_stats telemetry with positive numeric FPS was observed"
+    },
+    {
+      "field": "logs.decoder.decoder",
+      "message": "decoder setup was not observed"
+    },
+    {
+      "field": "logs.decoder.first_output_frame",
+      "message": "first output frame was not observed"
+    },
+    {
+      "field": "logs.decoder.counters",
+      "message": "decoder frame counters were not observed"
+    }
+  ],
+  "claims": {
+    "can_close_controller_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "can_close_latency_gate": false,
+    "can_close_native_pointer_hid_gate": false,
+    "can_close_stylus_gate": false,
+    "can_close_two_hour_soak_gate": false,
+    "device_is_fuxi": false,
+    "live_usb_stream_observed": false,
+    "readme_gate_closure": false
+  },
+  "collected_at": "2026-08-24T08:32:05.278415Z",
+  "configuration": {
+    "logcat_lines": 1500,
+    "logcat_tags": [
+      "MA",
+      "VD",
+      "StreamClient",
+      "VibeScreenTelemetry"
+    ],
+    "max_log_bytes": 262144,
+    "package": "dev.telemachus.display",
+    "port": 54321,
+    "serial": "EP0110PZ0B9110300B"
+  },
+  "device": {
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "EP0110PZ0B9110300B",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "device": "pacific",
+      "device_serial": "EP0110PZ0B9110300B",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "product": "pacific",
+      "sdk": 36
+    },
+    "label_guard": {
+      "device_is_fuxi": false,
+      "device_is_nubia_p0110_pacific": true,
+      "do_not_relabel_as": [
+        "Xiaomi 13",
+        "fuxi"
+      ],
+      "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only",
+      "recorded_as_fuxi": false
+    },
+    "state": "device"
+  },
+  "errors": [],
+  "kind": "android_usb_live_smoke",
+  "logs": {
+    "decoder": {
+      "decode_stats_count": 0,
+      "decoder": null,
+      "first_output_frame_observed": false,
+      "latest_decode_stats": null,
+      "latest_output_counter": null,
+      "latest_output_latency": null,
+      "max_reported_dropped": null,
+      "output_latency_count": 0,
+      "setup_count": 0,
+      "video_size": null
+    },
+    "diagnostic": {
+      "decoder": {
+        "decode_stats_count": 0,
+        "decoder": null,
+        "first_output_frame_observed": false,
+        "latest_decode_stats": null,
+        "latest_output_counter": null,
+        "latest_output_latency": null,
+        "max_reported_dropped": null,
+        "output_latency_count": 0,
+        "setup_count": 0,
+        "video_size": null
+      },
+      "source": "app_private_diag_log_context_only",
+      "telemetry": {
+        "connection": {
+          "closed_count": 0,
+          "latest_closed": null,
+          "latest_opened": null,
+          "opened_count": 0,
+          "reconnect_scheduled_count": 0
+        },
+        "event_counts": {},
+        "frame_drops": {
+          "event_count": 0,
+          "latest_dropped_total": null,
+          "max_dropped_total": 0
+        },
+        "malformed_lines": 0,
+        "session_epochs": [],
+        "stream_stats": {
+          "count": 0,
+          "fps_avg": null,
+          "fps_max": null,
+          "fps_min": null,
+          "latest": null,
+          "mbps_avg": null,
+          "mbps_max": null,
+          "mbps_min": null,
+          "non_positive_fps_count": 0,
+          "positive_fps_count": 0
+        },
+        "total_events": 0
+      }
+    },
+    "live_evidence": {
+      "current_pids": [
+        15457
+      ],
+      "matched_line_count": 0,
+      "source": "logcat_current_pid"
+    },
+    "sources": [
+      {
+        "available": true,
+        "bytes": 0,
+        "error": null,
+        "line_count": 0,
+        "name": "logcat",
+        "truncated": false
+      },
+      {
+        "available": true,
+        "bytes": 88704,
+        "error": null,
+        "line_count": 1261,
+        "name": "diag_log",
+        "truncated": false
+      }
+    ],
+    "telemetry": {
+      "connection": {
+        "closed_count": 0,
+        "latest_closed": null,
+        "latest_opened": null,
+        "opened_count": 0,
+        "reconnect_scheduled_count": 0
+      },
+      "event_counts": {},
+      "frame_drops": {
+        "event_count": 0,
+        "latest_dropped_total": null,
+        "max_dropped_total": 0
+      },
+      "malformed_lines": 0,
+      "session_epochs": [],
+      "stream_stats": {
+        "count": 0,
+        "fps_avg": null,
+        "fps_max": null,
+        "fps_min": null,
+        "latest": null,
+        "mbps_avg": null,
+        "mbps_max": null,
+        "mbps_min": null,
+        "non_positive_fps_count": 0,
+        "positive_fps_count": 0
+      },
+      "total_events": 0
+    }
+  },
+  "safety": {
+    "changes_adb_reverse": false,
+    "checked_device_locks": true,
+    "clears_logcat": false,
+    "existing_locks": [],
+    "injects_input": false,
+    "installs_apk": false,
+    "ran_adb": true,
+    "read_only": true,
+    "starts_android_app": false,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "insufficient"
+}

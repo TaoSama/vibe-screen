@@ -11,6 +11,8 @@ TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
 NATIVE_POINTER_HOST_LOG ?= $(HOME)/Library/Logs/Telemachus/telemachus.log
 NATIVE_POINTER_OBSERVE_SECONDS ?= 20
 NATIVE_POINTER_VISIBLE_RESULT_NOTE ?=
+ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
+ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -85,7 +87,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -299,6 +301,11 @@ native-pointer-hid-acceptance: require-evidence-serial
 native-pointer-hid-gate:
 	@test -f "$(EVIDENCE_DIR)/result.json" || (echo "error: collect $(EVIDENCE_DIR)/result.json before native-pointer-hid-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.native_pointer_hid "$(EVIDENCE_DIR)/result.json" --output "$(EVIDENCE_DIR)/native-pointer-hid-summary.json" --require-pass
+
+android-audio-playback-gate:
+	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-gate" >&2; exit 2)
+	mkdir -p "$(dir $(ANDROID_AUDIO_PLAYBACK_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.android_audio_playback "$(ANDROID_AUDIO_PLAYBACK_JSON)" --evidence-dir "$(dir $(ANDROID_AUDIO_PLAYBACK_JSON))" --output "$(ANDROID_AUDIO_PLAYBACK_GATE_JSON)" --require-pass
 
 actionable-error-states-gate:
 	mkdir -p $(EVIDENCE_DIR)
