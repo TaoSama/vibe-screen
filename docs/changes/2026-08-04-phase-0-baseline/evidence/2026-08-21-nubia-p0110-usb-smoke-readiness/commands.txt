@@ -1,0 +1,20 @@
+
+## 2026-08-20T19:30:25Z
+$ EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-usb-smoke-readiness
+$ DEVICE_SERIAL=<DEVICE_SERIAL>
+$ adb -s "$DEVICE_SERIAL" devices -l > "$EVIDENCE_DIR/adb-devices.txt" 2>&1
+
+## 2026-08-20T19:30:25Z
+$ adb -s "$DEVICE_SERIAL" get-state > "$EVIDENCE_DIR/device-get-state.txt" 2>&1
+
+## 2026-08-20T19:32:32Z
+$ adb -s "$DEVICE_SERIAL" devices -l
+
+## 2026-08-20T19:32:32Z
+$ adb -s "$DEVICE_SERIAL" get-state
+
+## 2026-08-20T19:32:32Z
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.manufacturer
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.model
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.device
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.build.version.release

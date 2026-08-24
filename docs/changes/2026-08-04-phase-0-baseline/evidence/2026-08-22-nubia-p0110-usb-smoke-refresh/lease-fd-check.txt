@@ -1,0 +1,6 @@
+owner=codex-pr169-refresh-fd-check
+pid=24861
+created_at_utc=2026-08-21T18:14:38Z
+worktree=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr169-sync-main-20260821
+serial=EP0110PZ0B9110300B
+app_pid=27526

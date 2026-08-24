@@ -1,0 +1,4 @@
+# artifact sha256
+316e78f086ec119a466ad5219d41530ad969991147400d48921e0890f6f6b4d6  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996  /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+756c540077d8dbdc963b3b8eb330632c8492c3c8968ee68bd6a524a36b3df86f  baseline/MacHost/.build/release/Vibe Screen

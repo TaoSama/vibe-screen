@@ -1,0 +1,14 @@
+Reported by the main controller on 2026-08-21 for serial EP0110PZ0B9110300B.
+
+Device identity: nubia P0110 / pacific / Android 16.
+adb reverse command: adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321 succeeded.
+adb reverse --list: UsbFfs tcp:54321 tcp:54321.
+Android launch: adb start of dev.telemachus.display/.MainActivity succeeded.
+Android PID: 11385.
+Window focus: mCurrentFocus is dev.telemachus.display.MainActivity.
+Screenshot: /tmp/vibe_screen_current.png.
+Host listener: lsof -nP -iTCP:54321 -sTCP:LISTEN remained empty.
+
+Conclusion: adb reverse and Android foreground state are cleared. The readiness
+blocker remains Host-side listener readiness and stable Vibe Screen Dev signing
+identity/TCC continuity for a source-bound Host rerun.

@@ -1,0 +1,3 @@
+lockf_v4_status=0
+checked_after_holder_pid=49848
+lock_status=released

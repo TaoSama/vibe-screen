@@ -35,6 +35,14 @@ decoder output, reconnect, or app lifecycle recovery for current-base commit
 `50694049096783466481f418c41a5eb50740e871`. It only records the current blocker
 conditions and the fail-closed evidence-tool result.
 
+Future current-base reruns must fail closed before Android launch or stream
+capture when the stable Host or listener prerequisites are not proven. Treat a
+missing `Vibe Screen Dev` identity, a failed `make baseline-macos-touch-preflight`,
+or a missing `127.0.0.1:54321` listener as a blocker. Do not continue to
+`adb reverse`, app launch, logcat sampling, or USB stream claims until those
+preconditions pass on the current worktree. The device identity remains Nubia
+P0110 / pacific / Android 16 / SDK 36 only, never Xiaomi 13/fuxi.
+
 ## Recorded Facts
 
 - Branch: `codex/nubia-p0110-usb-current-base`.
@@ -95,9 +103,21 @@ cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest
 adb -s EP0110PZ0B9110300B install -r -t \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 
-adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
-
 make baseline-macos-touch-preflight
+
+# Fail closed before adb reverse or Android launch if the stable Host or
+# listener prerequisites are missing. Stock macOS has no timeout(1), so this
+# uses a bash deadline loop.
+deadline=$((SECONDS + 30))
+while ! lsof -nP -a -iTCP@127.0.0.1:54321 -sTCP:LISTEN >/dev/null 2>&1; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "blocked: no current-base Host listener on 127.0.0.1:54321" >&2
+    exit 2
+  fi
+  sleep 1
+done
+
+adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
 
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m unittest tools.tests.test_usb_live_smoke -v

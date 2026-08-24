@@ -1,0 +1,4 @@
+$ adb -s EP0110PZ0B9110300B shell ls -la /data/tombstones
+total 11
+drwxrwxr-x  2 system system 3452 2026-01-22 15:50 .
+drwxrwx--x 63 system system 4096 2026-08-04 18:00 ..

@@ -1,0 +1,39 @@
+137:08-21 22:35:40.650 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322940650,"event":"stream_stats","session_epoch":1,"fps":60.039370078740156,"mbps":0.36703937007874016}
+151:08-21 22:35:40.667 W/CCodecBufferChannel(22447): no present fence for frame 3137
+546:08-21 22:35:41.225 D/VD      (22447): Decode stats: input=3180, output=3179, dropped=0, availBufs=10
+551:08-21 22:35:41.229 D/VD      (22447): Output #3180: decoder latency avg=4.6ms max=7.5ms over 60 samples, input bufs avail=10, dropped=0
+772:08-21 22:35:41.669 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322941668,"event":"stream_stats","session_epoch":1,"fps":59.921414538310415,"mbps":0.36631827111984283}
+776:08-21 22:35:41.671 W/CCodecBufferChannel(22447): no present fence for frame 3197
+1132:08-21 22:35:42.230 D/VD      (22447): Decode stats: input=3240, output=3239, dropped=0, availBufs=10
+1137:08-21 22:35:42.236 D/VD      (22447): Output #3240: decoder latency avg=4.9ms max=10.7ms over 60 samples, input bufs avail=10, dropped=0
+1340:08-21 22:35:42.620 D/CypressMediaAnalyticsService( 2462): submit: item: [1:codec:63:-1:dev.telemachus.display:0:22447:1:0:18:codec_name=c2.qti.hevc.decoder:is_protected=0:key_event=media_codec_performance_update:operating_rate=120:video_width=1512:video_height=982:rotation_degrees=0:frame_rate=51:low_latency_mode=1:mime=video/hevc:codeclooper_tid=22728:mediacodec_loop_tid=22727:use_surface=1:buffer_queue_name=e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1(BLAST Consumer)1:codec_start_time=1787322887430316121:color_format=2130708361:color_space=1:first_frame_latency=19517:]
+1366:08-21 22:35:42.671 W/CCodecBufferChannel(22447): no present fence for frame 3257
+1370:08-21 22:35:42.683 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322942683,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.3674009852216749}
+1668:08-21 22:35:43.230 D/VD      (22447): Decode stats: input=3300, output=3299, dropped=0, availBufs=10
+1673:08-21 22:35:43.236 D/VD      (22447): Output #3300: decoder latency avg=4.9ms max=7.4ms over 60 samples, input bufs avail=10, dropped=0
+1716:08-21 22:35:43.286 W/CCodecBufferChannel(22447): no present fence for frame 3296
+1960:08-21 22:35:43.684 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322943684,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.37062137862137867}
+2245:08-21 22:35:44.167 W/CCodecBufferChannel(22447): no present fence for frame 3349
+2304:08-21 22:35:44.231 D/VD      (22447): Decode stats: input=3360, output=3359, dropped=0, availBufs=10
+2308:08-21 22:35:44.234 D/VD      (22447): Output #3360: decoder latency avg=4.9ms max=10.0ms over 60 samples, input bufs avail=10, dropped=0
+2547:08-21 22:35:44.697 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322944697,"event":"stream_stats","session_epoch":1,"fps":60.21717670286279,"mbps":0.3681263573543929}
+2632:08-21 22:35:44.902 W/CCodecBufferChannel(22447): no present fence for frame 3392
+2871:08-21 22:35:45.225 D/VD      (22447): Decode stats: input=3420, output=3419, dropped=0, availBufs=10
+2876:08-21 22:35:45.233 D/VD      (22447): Output #3420: decoder latency avg=4.8ms max=8.3ms over 60 samples, input bufs avail=10, dropped=0
+3104:08-21 22:35:45.701 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322945699,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.37025149700598803}
+3106:08-21 22:35:45.704 W/CCodecBufferChannel(22447): no present fence for frame 3441
+3402:08-21 22:35:46.264 D/VD      (22447): Decode stats: input=3480, output=3479, dropped=0, availBufs=10
+3407:08-21 22:35:46.272 D/VD      (22447): Output #3480: decoder latency avg=4.9ms max=8.0ms over 60 samples, input bufs avail=10, dropped=0
+3634:08-21 22:35:46.700 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322946700,"event":"stream_stats","session_epoch":1,"fps":57.94205794205794,"mbps":0.3667852147852148}
+3749:08-21 22:35:46.903 W/CCodecBufferChannel(22447): no present fence for frame 3510
+3985:08-21 22:35:47.265 D/VD      (22447): Decode stats: input=3540, output=3539, dropped=0, availBufs=10
+3990:08-21 22:35:47.271 D/VD      (22447): Output #3540: decoder latency avg=4.6ms max=7.6ms over 60 samples, input bufs avail=10, dropped=0
+4157:08-21 22:35:47.621 D/CypressMediaAnalyticsService( 2462): submit: item: [1:codec:63:-1:dev.telemachus.display:0:22447:1:0:18:codec_name=c2.qti.hevc.decoder:is_protected=0:key_event=media_codec_performance_update:operating_rate=120:video_width=1512:video_height=982:rotation_degrees=0:frame_rate=51:low_latency_mode=1:mime=video/hevc:codeclooper_tid=22728:mediacodec_loop_tid=22727:use_surface=1:buffer_queue_name=e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1(BLAST Consumer)1:codec_start_time=1787322887430316121:color_format=2130708361:color_space=1:first_frame_latency=19517:]
+4184:08-21 22:35:47.670 W/CCodecBufferChannel(22447): no present fence for frame 3556
+4245:08-21 22:35:47.716 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322947716,"event":"stream_stats","session_epoch":1,"fps":60.15779092702169,"mbps":0.36776331360946746}
+4276:08-21 22:35:47.737 W/CCodecBufferChannel(22447): no present fence for frame 3561
+4568:08-21 22:35:48.261 D/VD      (22447): Decode stats: input=3600, output=3599, dropped=0, availBufs=10
+4572:08-21 22:35:48.265 D/VD      (22447): Output #3600: decoder latency avg=4.7ms max=7.5ms over 60 samples, input bufs avail=10, dropped=0
+4715:08-21 22:35:48.574 W/CCodecBufferChannel(22447): no present fence for frame 3610
+4819:08-21 22:35:48.733 I/VibeScreenTelemetry(22447): {"schema_version":1,"timestamp_ms":1787322948733,"event":"stream_stats","session_epoch":1,"fps":56.97445972495088,"mbps":0.3606601178781925}
+4989:08-21 22:35:49.057 W/CCodecBufferChannel(22447): no present fence for frame 3635
