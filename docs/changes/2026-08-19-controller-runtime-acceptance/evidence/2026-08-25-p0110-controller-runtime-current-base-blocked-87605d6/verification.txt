@@ -1,0 +1,102 @@
+Date: 2026-08-25
+Worktree: <worktree>
+Branch: codex/controller-runtime-current-base
+Base: origin/main 87605d6863e8f2372d3092f3e625459b8520124f
+
+Controller runtime readiness
+----------------------------
+Command:
+python3 scripts/controller_runtime_readiness.py --serial <device-serial> --host-log "~/Library/Logs/Telemachus/telemachus.log" --host-app "/Applications/Vibe Screen.app" --source-commit 87605d6863e8f2372d3092f3e625459b8520124f --redact-identifiers --allow-existing-device-lock --write-blocked-on-lock --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6 --run-id 2026-08-25-p0110-controller-runtime-current-base-87605d6
+
+Result: exit 2. Summary verdict is blocked. can_close_runtime_gate=false.
+The collector used adb -s <device-serial> and recorded the connected device as
+nubia P0110 / pacific / Android 16 / SDK 36. The readiness bundle is not a
+runtime pass. The raw ADB serial and local HOME/worktree path are redacted in
+committed artifacts.
+
+Blocking reasons from controller-runtime-summary.json:
+- physical_controller_attached: no physical Android controller was visible in
+  dumpsys input as SOURCE_GAMEPAD or SOURCE_JOYSTICK.
+- host_identity_signed: /Applications/Vibe Screen.app reports
+  TeamIdentifier=not set.
+- host_virtual_hid_entitlement_present: runtime entitlements did not include
+  com.apple.developer.hid.virtual.device.
+- host_virtual_gamepad_available: the scanned Host log had no controller
+  availability line.
+
+Additional missing evidence: APK identity was unavailable because dumpsys
+package dev.telemachus.display reported no installed package; no Protocol v1
+controller capability negotiation, Android production forwarding observation,
+controller lifecycle samples, Mac-side controller response, or neutral release
+on disconnect was captured.
+
+Summary regeneration
+--------------------
+Command:
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-observations.json --run-id 2026-08-25-p0110-controller-runtime-current-base-87605d6 --output /tmp/controller-runtime-summary-check.json
+cmp -s /tmp/controller-runtime-summary-check.json docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json
+
+Result: module exit 2, cmp exit 0. The regenerated blocked summary matches the
+checked-in summary exactly.
+
+Evidence-tool tests
+-------------------
+Command:
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_controller_runtime_readiness_redaction scripts.tests.test_release_tools.MacOSSigningIdentityTests
+
+Result: PASS. Ran 28 tests in 0.197s.
+
+Android focused controller tests
+--------------------------------
+Command:
+cd baseline/AndroidClient && ./gradlew --no-daemon --quiet clean testDebugUnitTest -Dkotlin.compiler.execution.strategy=in-process --tests dev.telemachus.display.ControllerInputMapperTest --tests dev.telemachus.display.ControllerSessionFeedbackTest --tests dev.telemachus.display.ControllerDeviceHotplugCoordinatorTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+
+Result: PASS. Exit code 0.
+
+MacHost build
+-------------
+Commands:
+cd baseline/MacHost && swift build
+cd baseline/MacHost && swift build -c release
+
+Result: PASS. Debug and release builds completed successfully.
+
+Protocol checks
+---------------
+Commands:
+cd contracts && go run github.com/bufbuild/buf/cmd/buf@v1.72.0 format --diff --exit-code
+cd contracts && go run github.com/bufbuild/buf/cmd/buf@v1.72.0 lint
+cd contracts && go run github.com/bufbuild/buf/cmd/buf@v1.72.0 build
+cd contracts && go run github.com/bufbuild/buf/cmd/buf@v1.72.0 breaking --against fixtures/v1.binpb
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s contracts/tests -p 'test_*.py' -v
+
+Result: PASS. Buf used the pinned v1.72.0 command and the Go toolchain switched
+from local go1.24.13 to go1.26.7 for that module requirement. Protocol unittest
+discovery ran 37 tests with 0 failures.
+
+Repository hygiene
+------------------
+Commands:
+git diff --check
+git diff --cached --check
+git diff --check origin/main...HEAD
+
+Result: PASS. No whitespace errors.
+
+Sensitive-content scan
+----------------------
+Commands:
+git diff origin/main...HEAD -- | rg -n "<raw-device-serial>|<local-home-path>"
+rg -n "<raw-device-serial>|<local-home-path>" docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6 scripts/controller_runtime_readiness.py scripts/tests/test_controller_runtime_readiness_redaction.py
+
+Result: PASS. No current PR diff, newly committed evidence, or touched tool/test
+file contains the raw device serial or local HOME path.
+
+Gate status
+-----------
+This current-base evidence is blocked readiness only. It does not close
+controller runtime acceptance. Closing the gate still requires a named physical
+Android controller, Protocol v1 controller negotiation, Android production
+forwarding logs, an identity-signed Host with the approved virtual HID
+entitlement active at runtime, Host virtual-gamepad availability, visible
+Mac-side controller response, and neutral release on disconnect.
