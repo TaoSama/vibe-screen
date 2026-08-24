@@ -597,11 +597,16 @@ upscaling, latest-proposal-wins queuing, rotation serialization, stale
 owner/generation rejection, and retry after local or peer rejection. The
 production host composition wires the
 encoder/capture application callback, but this path is verified only through
-offline build and unit/self-tests, not against real capture output. Not proved:
+offline build and unit/self-tests, not against real capture output. A dedicated
+current-base child gate now exists for retained adaptive-media fluctuation
+reports; it stays fail-closed unless the run proves public-Internet WebRTC,
+controlled real impairment, fast-drop/slow-rise, bitrate/FPS/config-epoch
+changes, `VideoConfig` ACK/keyframe resume, and transport continuity without
+static latency fixtures, local loopback, synthetic media, or relabeled device
+identity. Not proved:
 public Internet, real remote TURN (local loopback and forced local coturn are
-not public-Internet or real-deployment evidence), real
-ScreenCaptureKit-to-Android device decoder continuity, real network
-fluctuation, network handoff, and soak.
+not public-Internet or real-deployment evidence), real ScreenCaptureKit-to-Android
+device decoder continuity, real network fluctuation, network handoff, and soak.
 
 Current Phase 3 release-gate gaps are tracked as explicit open evidence rows:
 

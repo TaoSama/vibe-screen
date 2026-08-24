@@ -187,6 +187,31 @@ or excess drops produce `blocked` or `fail`. A pass closes only this child gate;
 remote TURN, handoff, revocation, latency, soak, and the broader Phase 3 release
 gate remain separate.
 
+## Phase 3 adaptive-media current-base gate
+
+Use the adaptive-media current-base gate after a separately scheduled real
+WebRTC Internet fluctuation run has produced a retained
+`adaptive-media-fluctuation.json` report. The gate is passive and fail-closed:
+it does not start the Host, touch ADB, change network settings, or close the
+Phase 3 release gate. A `pass` is only a child-gate claim for the current clean
+source revision.
+
+```sh
+make phase3-adaptive-media-current-base \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_ADAPTIVE_MEDIA_REPORT=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/adaptive-media-fluctuation.json
+```
+
+The input report must prove public-Internet WebRTC scope, controlled real
+network impairment, real WebRTC statistics, raw Host/Android/WebRTC stats
+sources, fast-drop/slow-rise adaptation, bitrate/FPS changes, increasing
+`config_epoch` values, `VideoConfig` ACK before keyframe/resume, stale
+generation rejection, rollback fail-closed behavior, and transport continuity.
+Static latency fixtures, local loopback, deterministic network-profile output,
+synthetic media, missing raw sources, or Nubia P0110 evidence relabeled away
+from `pacific` return `blocked`; transport restarts or unsafe oscillation return
+`fail`.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB
