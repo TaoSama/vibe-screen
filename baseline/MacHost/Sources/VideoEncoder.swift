@@ -172,6 +172,16 @@ final class VideoEncoderKeyframeRequests {
     var isPending: Bool { lock.withLock { $0 } }
 }
 
+enum VideoEncoderCallbackFailureRecovery {
+    static func restoreAfterAsynchronousFailure(status: OSStatus, owner: VideoEncoderCallbackOwner) {
+        owner.claimEncoder()?.keyframeRequests.restoreAfterAsynchronousFailure(status: status)
+    }
+
+    static func restoreAfterMissingSampleBuffer(owner: VideoEncoderCallbackOwner) {
+        owner.claimEncoder()?.keyframeRequests.restoreAfterMissingSampleBuffer()
+    }
+}
+
 final class VideoEncoderCallbackOwner {
     private let lock = NSLock()
     private weak var encoder: VideoEncoder?
@@ -343,6 +353,8 @@ class VideoEncoder {
 
     /// Fixed upper bound on concurrently admitted VideoToolbox frames.
     var inFlightCapacity: Int { inFlightSnapshot.capacity }
+
+    var hasPendingKeyframeRequest: Bool { keyframeRequests.isPending }
 
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
@@ -674,7 +686,7 @@ enum VideoEncoderAnnexBConverter {
     }
 }
 
-private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
+private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, infoFlags, sampleBuffer) in
     autoreleasepool {
         guard let outputCallbackRefCon else { return }
         let registry = Unmanaged<VideoEncoderFrameRegistry>
@@ -684,19 +696,24 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
             return
         }
         VideoEncoderCallbackLifecycle.process(claimedFrame) { claimedFrame in
-            let encoder = claimedFrame.owner.claimEncoder()
             guard status == noErr else {
-                encoder?.keyframeRequests.restoreAfterAsynchronousFailure(status: status)
+                VideoEncoderCallbackFailureRecovery.restoreAfterAsynchronousFailure(
+                    status: status,
+                    owner: claimedFrame.owner
+                )
                 debugLog("VideoToolbox encode callback failed: \(status)")
                 return
             }
             guard let sampleBuffer = sampleBuffer else {
-                encoder?.keyframeRequests.restoreAfterMissingSampleBuffer()
-                debugLog("VideoToolbox encode callback produced no sample buffer")
+                VideoEncoderCallbackFailureRecovery.restoreAfterMissingSampleBuffer(
+                    owner: claimedFrame.owner
+                )
+                let reason = infoFlags.contains(.frameDropped) ? "dropped frame" : "no sample buffer"
+                debugLog("VideoToolbox encode callback produced \(reason)")
                 return
             }
 
-            guard let encoder else { return }
+            guard let encoder = claimedFrame.owner.claimEncoder() else { return }
             let timestamp = claimedFrame.context.timestamp
             let sessionEpoch = claimedFrame.context.sessionEpoch
 

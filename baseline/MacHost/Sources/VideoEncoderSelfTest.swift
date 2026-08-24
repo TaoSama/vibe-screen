@@ -44,6 +44,8 @@ enum VideoEncoderSelfTest {
             return false
         }
 
+        guard runKeyframeRecoveryStateChecks() else { return false }
+
         guard let pixelBuffer = makePixelBuffer() else {
             FileHandle.standardError.write(Data("video encoder self-test: pixel buffer creation failed\n".utf8))
             return false
@@ -261,6 +263,34 @@ enum VideoEncoderSelfTest {
             && (properties[kVTCompressionPropertyKey_OutputBitDepth as String] as? NSNumber)?.intValue == 8
             && properties[kVTCompressionPropertyKey_HDRMetadataInsertionMode as String] as? String
                 == kVTHDRMetadataInsertionMode_None as String
+    }
+
+    private static func runKeyframeRecoveryStateChecks() -> Bool {
+        let keyframeRequests = VideoEncoderKeyframeRequests()
+        keyframeRequests.request()
+        guard keyframeRequests.consumePendingRequest() else {
+            FileHandle.standardError.write(Data("video encoder self-test: keyframe request was not consumed\n".utf8))
+            return false
+        }
+        guard !keyframeRequests.isPending else {
+            FileHandle.standardError.write(Data("video encoder self-test: consumed keyframe request stayed pending\n".utf8))
+            return false
+        }
+        keyframeRequests.restoreAfterSynchronousFailure(consumedRequest: true)
+        guard keyframeRequests.isPending else {
+            FileHandle.standardError.write(Data("video encoder self-test: consumed keyframe request was not restored\n".utf8))
+            return false
+        }
+        guard keyframeRequests.consumePendingRequest() else {
+            FileHandle.standardError.write(Data("video encoder self-test: restored keyframe request was not consumable\n".utf8))
+            return false
+        }
+        keyframeRequests.restoreAfterSynchronousFailure(consumedRequest: false)
+        guard !keyframeRequests.isPending else {
+            FileHandle.standardError.write(Data("video encoder self-test: unconsumed keyframe request was restored\n".utf8))
+            return false
+        }
+        return true
     }
 
     private static func makePixelBuffer() -> CVPixelBuffer? {
