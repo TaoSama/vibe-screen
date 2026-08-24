@@ -11,7 +11,7 @@ not prove macOS accepted a virtual gamepad.
 - Hold `/tmp/vibe-screen-device-android.lock` while using a shared physical
   Android device.
 - Use the intended Android serial explicitly, for example
-  `adb -s EP0110PZ0B9110300B ...`.
+  `adb -s <device-serial> ...`.
 - Attach a named physical controller to the Android device. The Android input
   snapshot must show `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` for that controller;
   synthetic ADB input is not enough.
@@ -24,7 +24,21 @@ not prove macOS accepted a virtual gamepad.
 
 ## Readiness Snapshot
 
-Before an interactive run, collect a read-only readiness bundle:
+Before an interactive run, collect the shared Host readiness snapshot in the
+same evidence directory that will own the controller run:
+
+    make baseline-macos-host-readiness \
+      EVIDENCE_DIR=docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
+
+`host-readiness.json` must report `can_start_controller_runtime_gate=true`
+before a controller runtime pass can begin. That requires the source-bound
+stable-signed Host, Screen Recording and Accessibility authorization, TCP
+`54321` listener observation, and the virtual HID entitlement. A blocked Host
+readiness snapshot is prerequisite evidence only; it does not prove macOS
+accepted a virtual gamepad.
+
+Then collect the controller-specific Android, log, and peripheral readiness
+bundle:
 
     python3 scripts/controller_runtime_readiness.py \
       --serial "$ADB_SERIAL" \
@@ -33,12 +47,13 @@ Before an interactive run, collect a read-only readiness bundle:
       --write-blocked-on-lock \
       --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 
-If no physical controller, signed Host, approved entitlement, or Host virtual
-gamepad availability is present, the summary must remain `blocked`. Do not turn
-that into a runtime pass. If /tmp/vibe-screen-device-soak.lock or
-/tmp/vibe-screen-device-android.lock already exists and you do not own it, the
-collector must not run ADB; use --write-blocked-on-lock to preserve the lock
-state as blocked readiness evidence.
+If no physical controller, signed Host, approved entitlement, Host virtual
+gamepad availability, or Host readiness JSON is present, the summary must
+remain `blocked`. Do not turn that into a runtime pass. If
+/tmp/vibe-screen-device-soak.lock or /tmp/vibe-screen-device-android.lock
+already exists and you do not own it, the collector must not run ADB; use
+--write-blocked-on-lock to preserve the lock state as blocked readiness
+evidence.
 
 ## Runtime Run
 
@@ -69,6 +84,8 @@ Keep all artifacts under one dated directory:
 
 - `README.md`: scope, source commit, device/controller/Host identity, verdict,
   and boundaries.
+- `host-readiness.json` and `host-signing-and-permissions.txt` from
+  `make baseline-macos-host-readiness`.
 - `controller-runtime-observations.json` and `controller-runtime-summary.json` from
   `PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime`.
 - `adb-devices.txt`, `device-info.json`, `dumpsys-input.txt`, `dumpsys-package.txt`,

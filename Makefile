@@ -54,7 +54,7 @@ PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
 PHASE2_SOAK_INTERVAL ?= 30s
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
-RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B
+RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / <device-serial>
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
 RECONNECT_TIMING_ARTIFACT_ARGS ?=
 RECONNECT_TIMING_NOTES_ARG ?=
@@ -93,7 +93,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -215,6 +215,13 @@ baseline-macos-dev-install:
 
 baseline-macos-host-preflight:
 	python3 scripts/macos_dev_host.py preflight
+
+baseline-macos-host-readiness:
+	mkdir -p $(EVIDENCE_DIR)
+	python3 scripts/macos_dev_host.py readiness \
+		--report $(EVIDENCE_DIR)/host-signing-and-permissions.txt \
+		--json-output $(EVIDENCE_DIR)/host-readiness.json \
+		--port $(EVIDENCE_PORT)
 
 baseline-macos-touch-preflight:
 	python3 scripts/macos_dev_host.py preflight

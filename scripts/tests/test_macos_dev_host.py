@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import plistlib
 import sqlite3
 import subprocess
@@ -218,11 +219,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="Vibe Screen Dev",
-            tcc_db=Path("TCC.db"),
-            report=report,
-            source_root=Path("."),
-            allow_source_mismatch=False,
-        )
+                tcc_db=Path("TCC.db"),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
             with (
                 mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity"),
                 mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
@@ -364,6 +365,279 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             leaf_certificate_hash="9AAE572BF6D764E3436A6109197D345B5A87998C",
         )
 
+    def test_parse_entitlement_keys_detects_true_virtual_hid_entitlement(self) -> None:
+        output = """
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.developer.hid.virtual.device</key>
+  <true/>
+  <key>com.example.disabled</key>
+  <false/>
+</dict>
+</plist>
+"""
+
+        keys = macos_dev_host.parse_entitlement_keys(output)
+
+        self.assertEqual(keys, (macos_dev_host.VIRTUAL_HID_ENTITLEMENT,))
+
+    def test_parse_entitlement_keys_ignores_missing_or_malformed_plist(self) -> None:
+        self.assertEqual(macos_dev_host.parse_entitlement_keys("no plist here"), ())
+        self.assertEqual(macos_dev_host.parse_entitlement_keys("<plist><dict><key>broken</key></dict>"), ())
+
+    def test_readiness_document_keeps_controller_blocked_without_virtual_hid_entitlement(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=self.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            errors=[],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=False,
+                keys=(),
+                raw_output="",
+            ),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertTrue(document["can_start_trusted_lan_gate"])
+        self.assertTrue(document["can_start_native_hid_gate"])
+        self.assertFalse(document["can_start_controller_runtime_gate"])
+        self.assertFalse(document["can_close_runtime_gates"])
+        self.assertIn(macos_dev_host.VIRTUAL_HID_ENTITLEMENT, "\n".join(document["blockers"]))
+
+    def test_readiness_document_reports_ready_when_shared_and_controller_prerequisites_pass(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=self.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            errors=[],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=True,
+                keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                raw_output="",
+            ),
+        )
+
+        self.assertEqual(document["status"], "ready")
+        self.assertTrue(document["can_start_trusted_lan_gate"])
+        self.assertTrue(document["can_start_controller_runtime_gate"])
+        self.assertFalse(document["can_close_runtime_gates"])
+        self.assertEqual(document["blockers"], [])
+        self.assertEqual(
+            document["safety"],
+            {
+                "read_only": True,
+                "starts_host": False,
+                "modifies_tcc": False,
+                "modifies_keychain": False,
+                "modifies_android": False,
+                "closes_runtime_gates": False,
+            },
+        )
+
+    def test_readiness_document_blocks_all_start_flags_when_signing_or_tcc_is_missing(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=None,
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.missing_permission_status("Host bundle signing was not inspected"),
+            errors=["missing signing identity", "Host bundle not found"],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=True,
+                keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                raw_output="",
+            ),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertEqual(document["signing_tcc_status"], "blocked")
+        self.assertFalse(document["can_start_host_rss_gate"])
+        self.assertFalse(document["can_start_trusted_lan_gate"])
+        self.assertFalse(document["can_start_native_hid_gate"])
+        self.assertFalse(document["can_start_stylus_gate"])
+        self.assertFalse(document["can_start_hardware_keyboard_gate"])
+        self.assertFalse(document["can_start_controller_runtime_gate"])
+        self.assertFalse(document["can_start_headless_login_gate"])
+        self.assertFalse(document["can_close_runtime_gates"])
+
+    def test_inspect_listener_reports_missing_listener_without_raising(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run",
+            side_effect=subprocess.CalledProcessError(1, ["lsof"], output=""),
+        ):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertFalse(status.observed)
+        self.assertEqual(status.port, 54321)
+        self.assertEqual(status.error, "listener not observed")
+
+    def test_inspect_listener_redacts_lsof_user_column(self) -> None:
+        output = (
+            "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            "VibeScreen  1234    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        with mock.patch.object(macos_dev_host, "run", return_value=output):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertTrue(status.observed)
+        self.assertIn("<redacted-user>", status.output)
+        self.assertNotIn("localuser", status.output)
+
+    def test_readiness_command_writes_source_bound_blocked_json_when_identity_and_bundle_are_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report = root / "host-signing-and-permissions.txt"
+            json_output = root / "host-readiness.json"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Missing Dev",
+                tcc_db=Path("TCC.db"),
+                report=report,
+                json_output=json_output,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+                port=54321,
+            )
+
+            with (
+                mock.patch.object(
+                    macos_dev_host.package_macos,
+                    "resolve_sign_identity",
+                    side_effect=SystemExit("missing identity"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "current_source_identity",
+                    return_value=macos_dev_host.package_macos.SourceIdentity(
+                        commit="c" * 40,
+                        tree="d" * 40,
+                        dirty=False,
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    side_effect=SystemExit(f"Host bundle not found: {macos_dev_host.DEFAULT_INSTALL_PATH}"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(
+                        port=54321,
+                        observed=False,
+                        output="",
+                        error="listener not observed",
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                        virtual_hid=False,
+                        keys=(),
+                        raw_output="",
+                        error="bundle missing",
+                    ),
+                ),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            self.assertEqual(result, 2)
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertEqual(document["status"], "blocked")
+            self.assertFalse(document["can_start_trusted_lan_gate"])
+            self.assertFalse(document["can_start_controller_runtime_gate"])
+            self.assertFalse(document["can_close_runtime_gates"])
+            self.assertEqual(document["host"]["current_source_commit"], "c" * 40)
+            self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
+            self.assertFalse(document["host"]["current_source_dirty"])
+            self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
+
+    def test_inspect_host_without_throwing_keeps_source_identity_when_bundle_inspection_fails(self) -> None:
+        source_identity = macos_dev_host.package_macos.SourceIdentity(
+            commit="e" * 40,
+            tree="f" * 40,
+            dirty=False,
+        )
+
+        with (
+            mock.patch.object(
+                macos_dev_host.package_macos,
+                "resolve_sign_identity",
+                side_effect=SystemExit("missing identity"),
+            ),
+            mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity),
+            mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=SystemExit("Host bundle not found"),
+            ),
+        ):
+            inspection = macos_dev_host.inspect_host_without_throwing(
+                macos_dev_host.DEFAULT_INSTALL_PATH,
+                Path("TCC.db"),
+                expected_sign_identity="Missing Dev",
+                source_root=Path("."),
+            )
+
+        self.assertIsNone(inspection.metadata)
+        self.assertEqual(inspection.source_identity, source_identity)
+        self.assertFalse(inspection.permissions.readable)
+        self.assertEqual(inspection.permissions.error, "Host bundle signing was not inspected")
+        self.assertIn("missing identity", "\n".join(inspection.errors))
+        self.assertIn("Host bundle not found", "\n".join(inspection.errors))
+
 
 class MacOSDevHostTCCTests(unittest.TestCase):
     def test_tcc_database_paths_includes_system_database_for_default_user_database(self) -> None:
@@ -371,6 +645,16 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
         self.assertEqual(paths[0], macos_dev_host.default_tcc_database().resolve())
         self.assertIn(macos_dev_host.SYSTEM_TCC_DATABASE, paths)
+
+    def test_default_tcc_database_labels_do_not_expose_local_paths(self) -> None:
+        self.assertEqual(
+            macos_dev_host.tcc_database_report_label(macos_dev_host.default_tcc_database()),
+            macos_dev_host.USER_TCC_DATABASE_LABEL,
+        )
+        self.assertEqual(
+            macos_dev_host.tcc_database_report_label(macos_dev_host.SYSTEM_TCC_DATABASE),
+            macos_dev_host.SYSTEM_TCC_DATABASE_LABEL,
+        )
 
     def test_tcc_database_paths_honors_explicit_test_database(self) -> None:
         explicit = Path("/tmp/test-tcc.db")
@@ -429,6 +713,31 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
         self.assertFalse(status.readable)
         self.assertIn("TCC database not found", status.error or "")
+
+    def test_query_tcc_rows_redacts_default_database_paths(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "query_tcc_database",
+            side_effect=lambda _bundle_id, path: macos_dev_host.PermissionStatus(
+                database_path=macos_dev_host.tcc_database_report_label(path),
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+        ):
+            status = macos_dev_host.query_tcc_rows(
+                "dev.telemachus.display",
+                macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database()),
+            )
+
+        self.assertEqual(
+            status.database_path,
+            f"{macos_dev_host.USER_TCC_DATABASE_LABEL}; {macos_dev_host.SYSTEM_TCC_DATABASE_LABEL}",
+        )
+        self.assertIn(macos_dev_host.USER_TCC_DATABASE_LABEL, status.error or "")
+        self.assertIn(macos_dev_host.SYSTEM_TCC_DATABASE_LABEL, status.error or "")
+        self.assertNotIn(str(Path.home()), status.database_path)
+        self.assertNotIn(str(Path.home()), status.error or "")
 
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

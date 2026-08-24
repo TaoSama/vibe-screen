@@ -239,7 +239,7 @@ and keep the result scoped to readiness only:
 
 ```bash
 make phase2-tablet-soak-preflight \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/YYYY-MM-DD-nubia-p0110-phase2-soak-preflight \
   PHASE2_DEVICE_CLASS=android_substitute \
   PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
@@ -337,7 +337,7 @@ trap 'rm -f "$lock"' EXIT HUP INT TERM
 If the lock already exists, stop and record a blocked evidence directory without
 running ADB. A passing run must use the actual target serial and preserve the
 observed identity as Nubia P0110 / pacific / Android 16 when using
-`EP0110PZ0B9110300B`; do not relabel this device as Xiaomi 13/fuxi or as tablet
+`<device-serial>`; do not relabel this device as Xiaomi 13/fuxi or as tablet
 hardware.
 
 Collect a fail-closed readiness bundle in
@@ -358,6 +358,12 @@ readiness. That nonzero result is expected when a physical keyboard, Host
 listener, or stable signed/TCC-ready Host is missing, and it must not be
 converted into a pass.
 
+Before either the wrapper or manual collection can proceed to interactive input,
+retain the shared Host readiness snapshot in the same run directory and require
+`host-readiness.json` to report `can_start_hardware_keyboard_gate=true`. This is
+only a prerequisite to begin the hardware-keyboard run; it does not replace the
+keyboard summary gate and cannot close the workflow by itself.
+
 If collecting the artifacts manually, the equivalent commands are:
 
 ```bash
@@ -367,6 +373,7 @@ adb -s "$ADB_SERIAL" logcat -c
 adb -s "$ADB_SERIAL" reverse tcp:54321 tcp:54321
 lsof -nP -iTCP:54321 -sTCP:LISTEN > "$RUN_DIR/host-listener.txt"
 security find-identity -v -p codesigning > "$RUN_DIR/codesign-identities.txt"
+make baseline-macos-host-readiness EVIDENCE_DIR="$RUN_DIR"
 python3 scripts/macos_dev_host.py preflight --report "$RUN_DIR/host-signing-and-permissions.txt"
 ```
 
@@ -460,8 +467,9 @@ Each run directory should include at minimum:
   `hardware-keyboard-observations.json`, `hardware-keyboard-summary.json`,
   `dumpsys-input.txt`, `dumpsys-package.txt`, `android-keyboard.log` when an
   interactive run starts, `host-keyboard.log`, `host-listener.txt`,
-  `host-signing-and-permissions.txt`, `codesign-identities.txt`, and a
-  screenshot or recording of the visible Mac result for passing runs;
+  `host-readiness.json`, `host-signing-and-permissions.txt`,
+  `codesign-identities.txt`, and a screenshot or recording of the visible Mac
+  result for passing runs;
 - `stylus-evidence.json`, `hardware-keyboard-evidence.json`,
   `recovery-evidence.json`, `soak-8h/phase2-tablet-gate.json`, and
   `phase2-tablet-preflight.json`.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import plistlib
 import re
@@ -14,6 +15,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import package_macos
 
@@ -24,10 +26,14 @@ DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
+SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
+DEFAULT_LISTENER_PORT = 54321
+VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
@@ -79,6 +85,31 @@ class PermissionStatus:
         return any(row.service in services and row.auth_value == ALLOWED_AUTH_VALUE for row in self.rows)
 
 
+@dataclass(frozen=True)
+class HostInspection:
+    metadata: SigningMetadata | None
+    source_identity: package_macos.SourceIdentity | None
+    permissions: PermissionStatus
+    errors: list[str]
+
+
+@dataclass(frozen=True)
+class ListenerStatus:
+    port: int
+    observed: bool
+    output: str
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class EntitlementStatus:
+    app_path: Path
+    virtual_hid: bool
+    keys: tuple[str, ...]
+    raw_output: str
+    error: str | None = None
+
+
 def default_tcc_database() -> Path:
     return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
 
@@ -87,6 +118,15 @@ def tcc_database_paths(database_path: Path) -> tuple[Path, ...]:
     default_database = default_tcc_database().resolve()
     resolved = database_path.resolve()
     return (resolved, SYSTEM_TCC_DATABASE) if resolved == default_database else (resolved,)
+
+
+def tcc_database_report_label(database_path: Path) -> str:
+    resolved = database_path.resolve()
+    if resolved == default_tcc_database().resolve():
+        return USER_TCC_DATABASE_LABEL
+    if resolved == SYSTEM_TCC_DATABASE.resolve():
+        return SYSTEM_TCC_DATABASE_LABEL
+    return str(database_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,6 +138,23 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    readiness = subparsers.add_parser(
+        "readiness",
+        help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
+    )
+    add_common_options(readiness, include_sign_identity=True)
+    readiness.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_LISTENER_PORT,
+        help="Host TCP listener port to inspect (default: 54321)",
+    )
+    readiness.add_argument(
+        "--json-output",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR / "host-readiness.json",
+        help="path for the structured readiness JSON report",
+    )
     return parser.parse_args()
 
 
@@ -214,6 +271,48 @@ def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
     return match.group(1).upper() if match else None
 
 
+def parse_entitlement_keys(output: str) -> tuple[str, ...]:
+    plist_start = output.find("<plist")
+    plist_end = output.find("</plist>")
+    if plist_start == -1 or plist_end == -1:
+        return ()
+    plist_xml = output[plist_start : plist_end + len("</plist>")]
+    try:
+        entitlements = plistlib.loads(plist_xml.encode("utf-8"))
+    except (plistlib.InvalidFileException, ValueError, TypeError):
+        return ()
+    if not isinstance(entitlements, dict):
+        return ()
+    return tuple(sorted(str(key) for key in entitlements.keys() if entitlements.get(key) is True))
+
+
+def redact_lsof_user_columns(output: str) -> str:
+    if "COMMAND" not in output or "USER" not in output or "NODE NAME" not in output:
+        return output
+    redacted_lines = []
+    for line in output.splitlines():
+        if line.startswith("COMMAND"):
+            redacted_lines.append(line)
+            continue
+        redacted_lines.append(re.sub(r"^(\S+\s+\d+\s+)(\S+)(\s+)", r"\1<redacted-user>\3", line))
+    return "\n".join(redacted_lines)
+
+
+def inspect_entitlements(app_path: Path) -> EntitlementStatus:
+    try:
+        output = run("/usr/bin/codesign", "-d", "--entitlements", ":-", str(app_path))
+    except subprocess.CalledProcessError as error:
+        detail = (error.stdout or str(error)).strip()
+        return EntitlementStatus(app_path, False, (), detail, detail)
+    keys = parse_entitlement_keys(output)
+    return EntitlementStatus(
+        app_path=app_path,
+        virtual_hid=VIRTUAL_HID_ENTITLEMENT in keys,
+        keys=keys,
+        raw_output=output,
+    )
+
+
 def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
     plist = read_bundle_plist(app_path)
@@ -266,8 +365,8 @@ def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> P
         status = query_tcc_database(bundle_id, database_path)
         rows.extend(status.rows)
         if status.error:
-            errors.append(f"{database_path}: {status.error}")
-    label = "; ".join(str(path) for path in paths)
+            errors.append(f"{tcc_database_report_label(database_path)}: {status.error}")
+    label = "; ".join(tcc_database_report_label(path) for path in paths)
     if rows or len(errors) < len(paths):
         return PermissionStatus(
             database_path=label,
@@ -279,8 +378,9 @@ def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> P
 
 
 def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
+    report_label = tcc_database_report_label(database_path)
     if not database_path.exists():
-        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error="TCC database not found")
+        return PermissionStatus(database_path=report_label, rows=(), readable=False, error="TCC database not found")
     try:
         connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
         try:
@@ -318,11 +418,23 @@ def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
                 )
                 for row in cursor.fetchall()
             )
-            return PermissionStatus(database_path=str(database_path), rows=rows, readable=True)
+            return PermissionStatus(database_path=report_label, rows=rows, readable=True)
         finally:
             connection.close()
     except sqlite3.Error as error:
-        return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error=str(error))
+        return PermissionStatus(database_path=report_label, rows=(), readable=False, error=str(error))
+
+
+def inspect_listener(port: int) -> ListenerStatus:
+    try:
+        output = run("/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN")
+    except subprocess.CalledProcessError as error:
+        detail = (error.stdout or "").strip()
+        return ListenerStatus(port=port, observed=False, output=detail, error="listener not observed")
+    output = redact_lsof_user_columns(output)
+    lines = [line for line in output.splitlines() if line.strip()]
+    observed = any(f":{port}" in line and "LISTEN" in line for line in lines)
+    return ListenerStatus(port=port, observed=observed, output=output, error=None if observed else "listener not observed")
 
 
 def validate_preflight(
@@ -455,6 +567,176 @@ It only uses the configured codesign identity and reads TCC.db in read-only mode
 def write_report(path: Path, report: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(report, encoding="utf-8")
+
+
+def missing_permission_status(error: str) -> PermissionStatus:
+    return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
+
+
+def inspect_host_without_throwing(
+    install_path: Path,
+    tcc_db: Path,
+    *,
+    expected_sign_identity: str | None = None,
+    source_root: Path = package_macos.REPOSITORY_ROOT,
+    allow_source_mismatch: bool = False,
+) -> HostInspection:
+    errors: list[str] = []
+    source_identity: package_macos.SourceIdentity | None
+    try:
+        source_identity = current_source_identity(source_root)
+    except SystemExit as error:
+        source_identity = None
+        errors.append(str(error))
+    if expected_sign_identity == "-":
+        errors.append(
+            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
+        )
+    else:
+        try:
+            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
+        except SystemExit as error:
+            errors.append(str(error))
+    try:
+        metadata = collect_signing_metadata(install_path)
+    except SystemExit as error:
+        return HostInspection(
+            metadata=None,
+            source_identity=source_identity,
+            permissions=missing_permission_status("Host bundle signing was not inspected"),
+            errors=[*errors, str(error)],
+        )
+    permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
+    )
+    return HostInspection(metadata, source_identity, permissions, errors)
+
+
+def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
+    return {
+        "database_path": str(permissions.database_path),
+        "readable": permissions.readable,
+        "error": permissions.error,
+        "screen_recording_granted": permissions.is_allowed(SCREEN_CAPTURE_SERVICES),
+        "accessibility_granted": permissions.is_allowed((ACCESSIBILITY_SERVICE,)),
+        "rows": [row.__dict__ for row in permissions.rows],
+    }
+
+
+def signing_record(
+    metadata: SigningMetadata | None,
+    install_path: Path,
+    source_identity: package_macos.SourceIdentity | None,
+) -> dict[str, Any]:
+    if metadata is None:
+        return {
+            "app_path": str(install_path),
+            "identifier": None,
+            "identity": None,
+            "is_ad_hoc": None,
+            "authorities": [],
+            "team_identifier": None,
+            "certificate_sha1": None,
+            "cdhash": None,
+            "binary_sha256": None,
+            "designated_requirement": None,
+            "source_commit": None,
+            "source_tree": None,
+            "source_dirty": None,
+            "current_source_commit": source_identity.commit if source_identity else None,
+            "current_source_tree": source_identity.tree if source_identity else None,
+            "current_source_dirty": source_identity.dirty if source_identity else None,
+        }
+    return {
+        "app_path": str(metadata.app_path),
+        "identifier": metadata.identifier,
+        "identity": metadata.identity_name,
+        "is_ad_hoc": metadata.is_ad_hoc,
+        "authorities": list(metadata.authorities),
+        "team_identifier": metadata.team_identifier,
+        "certificate_sha1": metadata.leaf_certificate_hash,
+        "cdhash": metadata.cdhash,
+        "binary_sha256": metadata.binary_sha256,
+        "designated_requirement": metadata.designated_requirement,
+        "source_commit": metadata.source_commit,
+        "source_tree": metadata.source_tree,
+        "source_dirty": metadata.source_dirty,
+        "current_source_commit": source_identity.commit if source_identity else None,
+        "current_source_tree": source_identity.tree if source_identity else None,
+        "current_source_dirty": source_identity.dirty if source_identity else None,
+    }
+
+
+def readiness_prerequisites_ready(errors: list[str], listener: ListenerStatus) -> bool:
+    return not errors and listener.observed
+
+
+def build_readiness_document(
+    inspection: HostInspection,
+    listener: ListenerStatus,
+    entitlements: EntitlementStatus,
+) -> dict[str, Any]:
+    shared_ready = readiness_prerequisites_ready(inspection.errors, listener)
+    controller_ready = shared_ready and entitlements.virtual_hid
+    blockers = list(inspection.errors)
+    if not listener.observed:
+        blockers.append(f"Host listener is not observed on TCP port {listener.port}")
+    if not entitlements.virtual_hid:
+        blockers.append(f"Host is missing {VIRTUAL_HID_ENTITLEMENT} entitlement")
+    return {
+        "schema_version": "vibescreen.host-readiness/v1",
+        "kind": "macos_host_shared_prerequisite_readiness",
+        "status": "ready" if not blockers else "blocked",
+        "signing_tcc_status": "ready" if not inspection.errors else "blocked",
+        "listener_status": "ready" if listener.observed else "blocked",
+        "virtual_hid_status": "ready" if entitlements.virtual_hid else "blocked",
+        "can_start_host_rss_gate": shared_ready,
+        "can_start_trusted_lan_gate": shared_ready,
+        "can_start_native_hid_gate": shared_ready,
+        "can_start_stylus_gate": shared_ready,
+        "can_start_hardware_keyboard_gate": shared_ready,
+        "can_start_controller_runtime_gate": controller_ready,
+        "can_start_headless_login_gate": shared_ready,
+        "can_close_runtime_gates": False,
+        "blockers": blockers,
+        "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
+        "permissions": permission_record(inspection.permissions),
+        "listener": {
+            "port": listener.port,
+            "observed": listener.observed,
+            "output": listener.output,
+            "error": listener.error,
+        },
+        "entitlements": {
+            "app_path": str(entitlements.app_path),
+            "virtual_hid": entitlements.virtual_hid,
+            "keys": list(entitlements.keys),
+            "error": entitlements.error,
+        },
+        "safety": {
+            "read_only": True,
+            "starts_host": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "modifies_android": False,
+            "closes_runtime_gates": False,
+        },
+    }
+
+
+def write_json_report(path: Path, document: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def metadata_and_permissions(
@@ -609,12 +891,67 @@ def preflight_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def readiness_command(args: argparse.Namespace) -> int:
+    install_path = args.install_path.resolve()
+    if not is_default_install_path(install_path):
+        raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
+    inspection = inspect_host_without_throwing(
+        install_path,
+        args.tcc_db,
+        expected_sign_identity=args.sign_identity,
+        source_root=args.source_root,
+        allow_source_mismatch=args.allow_source_mismatch,
+    )
+    listener = inspect_listener(args.port)
+    entitlements = inspect_entitlements(install_path)
+    if inspection.metadata is not None:
+        report = format_report(
+            inspection.metadata,
+            inspection.permissions,
+            inspection.errors,
+            source_identity=inspection.source_identity,
+            allow_source_mismatch=args.allow_source_mismatch,
+        )
+    else:
+        error_lines = "\n".join(f"- {error}" for error in inspection.errors) or "(none)"
+        report = f"""Host bundle
+-----------
+Path: {install_path}
+Verification: not inspected
+
+Preflight result
+----------------
+Status: FAIL
+Blocking issues:
+{error_lines}
+System permission path: {SYSTEM_SETTINGS_PATH}
+
+Keychain and TCC handling
+-------------------------
+This tool does not reset Keychain, import certificates, request passwords, update
+partition lists, modify TCC.db, or request/override macOS privacy authorization.
+It only uses the configured codesign identity and reads TCC.db in read-only mode.
+"""
+    write_report(args.report, report)
+    document = build_readiness_document(inspection, listener, entitlements)
+    write_json_report(args.json_output, document)
+    print(f"Wrote {args.report}")
+    print(f"Wrote {args.json_output}")
+    if document["status"] != "ready":
+        print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
+    print("macOS Host shared prerequisite readiness passed")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
+    if args.command == "readiness":
+        return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
 
 
