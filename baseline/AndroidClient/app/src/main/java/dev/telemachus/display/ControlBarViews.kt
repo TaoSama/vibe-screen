@@ -123,6 +123,8 @@ internal object ControlBarLayoutApplier {
         val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
         val selectorParams = views.displaySelector.layoutParams as LinearLayout.LayoutParams
         val actionsParams = views.actions.layoutParams as LinearLayout.LayoutParams
+        views.connectionStatus.minimumWidth = geometry.statusMinimumWidthPx
+        views.displaySelector.minimumWidth = geometry.selectorMinimumWidthPx
         when (mode) {
             ControlBarLayoutPolicy.Mode.COMPACT -> {
                 cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -137,8 +139,8 @@ internal object ControlBarLayoutApplier {
             ControlBarLayoutPolicy.Mode.INLINE -> {
                 cardParams.width = 0
                 views.content.orientation = LinearLayout.HORIZONTAL
-                statusParams.width = 0
-                statusParams.weight = 1f
+                statusParams.width = geometry.statusMinimumWidthPx
+                statusParams.weight = 0f
                 selectorParams.width = 0
                 selectorParams.weight = 1f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
