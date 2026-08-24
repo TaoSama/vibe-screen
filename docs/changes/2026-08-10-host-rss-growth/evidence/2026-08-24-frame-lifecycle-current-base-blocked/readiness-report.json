@@ -1,0 +1,97 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-24-frame-lifecycle-current-base-blocked",
+  "kind": "host_rss_frame_lifecycle_readiness",
+  "status": "blocked",
+  "base_revision": "fb4ba4a4801c3ab228855a2e374791558e80401e",
+  "source_readiness": {
+    "frame_pacer_teardown_unified": true,
+    "frame_pacer_drops_encode_queue_on_teardown": true,
+    "frame_pacer_clears_latest_pixel_buffer_on_teardown": true,
+    "frame_pacer_state_locked_across_async_teardown": true,
+    "frame_pacer_reschedule_generation_guarded": true,
+    "cgdisplaystream_callback_autoreleasepool": true,
+    "frame_pacer_encode_autoreleasepool": true,
+    "latest_retained_slot_release_tests_added": true,
+    "latest_retained_slot_release_outside_lock": true,
+    "encoder_registry_release_assertion_added": true,
+    "historical_host_pid_gate_already_in_main": true,
+    "historical_closed_socket_cleanup_already_in_main": true,
+    "historical_callback_registry_already_in_main": true
+  },
+  "pr_audit": {
+    "195": {
+      "state": "open",
+      "draft": true,
+      "base": "main",
+      "base_sha": "e8fbed466581c4d20e59801e7d7c0a03af04ad51",
+      "head": "codex/host-rss-no-growth-fix",
+      "head_sha": "fd602c2469d07f0aa8ef6c4cdecc13f0197a1285",
+      "current_base_sha": "fb4ba4a4801c3ab228855a2e374791558e80401e",
+      "role": "historical frame lifecycle fix; current-base successor keeps only still-relevant cleanup, timer/queue locking, and focused test deltas"
+    },
+    "158": {
+      "state": "merged",
+      "merge_commit_sha": "4d7e90dcce5b033ec366591816cec571382e3249",
+      "role": "HOST_PID passthrough and Host RSS blocked readiness evidence"
+    },
+    "260": {
+      "state": "merged",
+      "merge_commit_sha": "1db736bf0e53e63e5843acc8c9bbf6b6f11fb49e",
+      "role": "closed socket cleanup readiness and formal Host RSS Makefile entry points"
+    }
+  },
+  "blocked_checks": {
+    "xctest": {
+      "command": "xcrun --find xctest",
+      "exit_code": 72,
+      "developer_dir": "/Library/Developer/CommandLineTools",
+      "reason": "focused Swift XCTest requires a full Xcode developer dir"
+    },
+    "swift_test": {
+      "command": "swift test --package-path baseline/MacHost --scratch-path /tmp/vibe-screen-pr195-current-swift-test --filter \"VideoEncoderInFlightAdmissionTests|LatestRetainedSlotTests\"",
+      "exit_code": 1,
+      "reason": "test target compilation fails because Command Line Tools do not provide XCTest; package sources compile before the test module failure"
+    }
+  },
+  "android_device_claim_boundary": {
+    "serial": "EP0110PZ0B9110300B",
+    "expected_identity": "nubia P0110 / pacific / Android 16 / SDK 36",
+    "source": "fresh adb get-state/getprop check on 2026-08-24 in this current-base worktree",
+    "not_xiaomi_fuxi": true
+  },
+  "formal_gate": {
+    "name": "host_rss_gate",
+    "status": "blocked",
+    "can_close_host_rss_no_growth_gate": false,
+    "missing_evidence": [
+      "full Xcode/XCTest execution of focused frame lifecycle tests",
+      "stable-signed current-source Host bundle with matching binary hash",
+      "Screen Recording/Accessibility-authorized Host app session from this source revision",
+      "complete two-hour soak summary.json",
+      "complete two-hour samples.jsonl",
+      "matching host-telemetry.jsonl",
+      "host-rss-gate.json with verdict pass"
+    ]
+  },
+  "verification": {
+    "json_tool": {
+      "command": "python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-24-frame-lifecycle-current-base-blocked/readiness-report.json",
+      "exit_code": 0
+    },
+    "swift_build": {
+      "command": "swift build --package-path baseline/MacHost --scratch-path /tmp/vibe-screen-pr195-current-swift-build",
+      "exit_code": 0
+    },
+    "adb_device_identity": {
+      "command": "adb -s EP0110PZ0B9110300B get-state && adb -s EP0110PZ0B9110300B shell getprop ro.product.*",
+      "exit_code": 0,
+      "identity": "nubia P0110 / pacific / Android 16 / SDK 36"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  },
+  "claim_boundary": "This record proves source readiness only. It does not close the Phase 0 Host RSS no-growth gate."
+}

@@ -4,9 +4,15 @@ import XCTest
 final class LatestRetainedSlotTests: XCTestCase {
     private final class Payload {
         let value: Int
+        var onDeinit: (() -> Void)?
 
-        init(_ value: Int) {
+        init(_ value: Int, onDeinit: (() -> Void)? = nil) {
             self.value = value
+            self.onDeinit = onDeinit
+        }
+
+        deinit {
+            onDeinit?()
         }
     }
 
@@ -29,6 +35,49 @@ final class LatestRetainedSlotTests: XCTestCase {
 
         XCTAssertNil(slot.latest())
         XCTAssertEqual(slot.retainedCount, 0)
+    }
+
+    func testReplacingLatestValueReleasesPreviousValue() {
+        let slot = LatestRetainedSlot<Payload>()
+        let releasedPrevious = expectation(description: "previous value released")
+
+        autoreleasepool {
+            slot.store(Payload(1, onDeinit: { releasedPrevious.fulfill() }))
+            slot.store(Payload(2))
+        }
+
+        wait(for: [releasedPrevious], timeout: 1)
+        XCTAssertEqual(slot.retainedCount, 1)
+        XCTAssertEqual(slot.latest()?.value.value, 2)
+    }
+
+    func testClearReleasesLatestValue() {
+        let slot = LatestRetainedSlot<Payload>()
+        let releasedLatest = expectation(description: "latest value released")
+
+        autoreleasepool {
+            slot.store(Payload(1, onDeinit: { releasedLatest.fulfill() }))
+            slot.clear()
+        }
+
+        wait(for: [releasedLatest], timeout: 1)
+        XCTAssertNil(slot.latest())
+        XCTAssertEqual(slot.retainedCount, 0)
+    }
+
+    func testReplacingValueReleasesPreviousValueOutsideSlotLock() {
+        let slot = LatestRetainedSlot<Payload>()
+        let reenteredSlot = expectation(description: "deinit reentered slot")
+
+        slot.store(Payload(1, onDeinit: {
+            slot.store(Payload(3))
+            reenteredSlot.fulfill()
+        }))
+        slot.store(Payload(2))
+
+        wait(for: [reenteredSlot], timeout: 1)
+        XCTAssertEqual(slot.latest()?.value.value, 3)
+        XCTAssertEqual(slot.retainedCount, 1)
     }
 
     func testConcurrentStoresRemainBounded() {
