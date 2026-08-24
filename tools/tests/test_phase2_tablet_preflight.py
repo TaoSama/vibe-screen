@@ -163,6 +163,17 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertIn("soak-8h/samples.jsonl", raw_gate["evidence"])
         self.assertIn("soak-8h/host-telemetry.jsonl", raw_gate["evidence"])
 
+    def test_missing_optional_host_log_does_not_block_raw_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "host.log").unlink()
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertFalse(any("host.log" in reason for reason in result["reasons"]))
+
     def test_android_substitute_is_blocked_not_tablet_pass(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             root = Path(raw_directory)

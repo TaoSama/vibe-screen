@@ -221,6 +221,83 @@ partial success. Keep the failed evidence directory, preserve logs through the
 failure point, and record the earliest failure timestamp as `first_failure_at`
 in `summary.json` and the run README.
 
+The reproducible collection wrapper is `phase2-tablet-soak-preflight` for short
+readiness checks and `phase2-tablet-soak-run` for the formal eight-hour
+collection. Both targets require an explicit ADB serial and the declared
+physical setup. The preflight target is allowed to write blocked evidence when
+the current setup is not a physical tablet, lacks a Host PID, lacks Host JSONL
+telemetry, or is blocked by a device lock. The formal run target fails closed:
+if any precondition blocker is present, it writes `phase2-soak-readiness.json`
+and does not start the eight-hour sample loop.
+When either `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock` already exists, the wrapper writes only the
+blocked readiness record and `README.md`; it does not collect static ADB,
+logcat, or soak artifacts.
+
+For the attached Nubia P0110/pacific Android substitute, use an explicit serial
+and keep the result scoped to readiness only:
+
+```bash
+make phase2-tablet-soak-preflight \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/YYYY-MM-DD-nubia-p0110-phase2-soak-preflight \
+  PHASE2_DEVICE_CLASS=android_substitute \
+  PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
+  PHASE2_CHARGER="recorded charger for this preflight" \
+  PHASE2_CABLE_OR_DOCK="USB-C data cable" \
+  PHASE2_VIDEO_PREFERENCES="preflight only" \
+  PHASE2_HOST_IDENTITY="$(uname -a)" \
+  PHASE2_HOST_BUILD="not stable-signed formal Host for 8h gate" \
+  PHASE2_SOAK_PREFLIGHT_DURATION=2s \
+  PHASE2_SOAK_INTERVAL=1s
+```
+
+Preflight may omit APK identity; the wrapper records that as a readiness-only
+blocker instead of writing fake SHA-256 evidence. A formal eight-hour run must
+provide `PHASE2_APK_PATH` or a real 64-character hexadecimal
+`PHASE2_APK_SHA256`; otherwise the wrapper rejects the run before it can close
+the Phase 2 gate.
+
+A formal run needs a physical 8-9 inch tablet, a stand-mounted charging setup,
+the signed Host process PID, and a Host started with `VIBE_SCREEN_TELEMETRY_PATH`
+pointing at the run Host JSONL file:
+
+```bash
+PHASE2_HOST_TELEMETRY_JSONL="$RUN_DIR/soak-8h/host-telemetry.jsonl"
+mkdir -p "$(dirname "$PHASE2_HOST_TELEMETRY_JSONL")"
+osascript -e 'quit app "Vibe Screen"' || true
+launchctl setenv VIBE_SCREEN_TELEMETRY_PATH "$PHASE2_HOST_TELEMETRY_JSONL"
+open -n -a "Vibe Screen"
+
+make phase2-tablet-soak-run \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
+  EVIDENCE_DIR="$RUN_DIR" \
+  PHASE2_DEVICE_CLASS=physical_8_9_inch_tablet \
+  PHASE2_TABLET_SIZE_INCHES="8.8" \
+  PHASE2_STAND_SETUP="desktop stand, portrait" \
+  PHASE2_CHARGER="vendor USB-C charger" \
+  PHASE2_CABLE_OR_DOCK="USB-C data cable" \
+  PHASE2_VIDEO_PREFERENCES="Balanced, 60 FPS, AUTO bitrate" \
+  PHASE2_HOST_IDENTITY="Mac model and macOS version" \
+  PHASE2_HOST_BUILD="signed Host build, signing identity, and SHA" \
+  PHASE2_HOST_PID="$HOST_PID" \
+  PHASE2_HOST_TELEMETRY_JSONL="$PHASE2_HOST_TELEMETRY_JSONL" \
+  PHASE2_APK_PATH=baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+```
+
+The wrapper creates `/tmp/vibe-screen-device-soak.lock` while it owns the
+device and refuses to run ADB when either that lock or
+`/tmp/vibe-screen-device-android.lock` already exists. After the formal wrapper
+passes the precondition checks needed to start collection, it writes
+`raw-logcat.txt`, Android telemetry derivatives, before/after battery, power,
+thermal dumps, Host identity, APK hash, and the manifest. A readiness result of
+`blocked` is useful evidence of why the gate could not start, not a pass; a
+blocked run writes `phase2-soak-readiness.json` and only the artifacts collected
+before the blocker. The wrapper close contract is `phase2-soak-readiness.json` with
+`can_close_phase2_gate=true` plus `soak-8h/phase2-tablet-gate.json` reporting
+`verdict=pass`; README prose or placeholder hashes do not satisfy the formal
+gate.
+
 ## Required interruption scenarios
 
 Run these during a separate acceptance pass, or during the eight-hour run only if
@@ -375,7 +452,7 @@ Each run directory should include at minimum:
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
   `adb-power-after.txt`, thermal dumps before/after, and the corresponding
   `thermal-*.err` stderr captures;
-- `raw-logcat.txt`, `host.log`, `reconnects.log`, `frame-drops.log`, and
+- `raw-logcat.txt`, `reconnects.log`, `frame-drops.log`, and
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states;

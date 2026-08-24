@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-soak-readiness.schema.json",
+  "title": "Vibe Screen Phase 2 soak readiness v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "mode",
+    "command",
+    "output_dir",
+    "device_class",
+    "result",
+    "can_close_phase2_gate",
+    "blockers",
+    "artifacts",
+    "soak_summary_status",
+    "phase2_gate_verdict",
+    "android_log_metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase2_tablet_soak_readiness"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "mode": {"enum": ["preflight", "run"]},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "output_dir": {"type": "string", "minLength": 1},
+    "device_class": {"enum": ["physical_8_9_inch_tablet", "android_substitute"]},
+    "result": {"enum": ["blocked", "ready", "pass"]},
+    "can_close_phase2_gate": {"type": "boolean"},
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "returncode": {"type": "integer"}
+        }
+      }
+    },
+    "soak_summary_status": {"type": ["string", "null"]},
+    "phase2_gate_verdict": {"type": ["string", "null"]},
+    "android_log_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "telemetry_events": {"type": "integer", "minimum": 0},
+        "reconnect_log_lines": {"type": "integer", "minimum": 0},
+        "frame_drop_log_lines": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

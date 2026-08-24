@@ -366,6 +366,42 @@ or thermal status samples are missing:
 make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 ```
 
+For an end-to-end readiness check that gathers the same raw inputs and writes an
+explicit blocker record, use the wrapper target. After the wrapper passes the
+precondition checks needed to start collection, it writes
+`phase2-soak-readiness.json`, `README.md`, static device/Host artifacts, Android
+log derivatives, and either `soak-preflight/` or `soak-8h/` depending on mode.
+Blocked runs write readiness evidence and only the artifacts collected before
+the blocker:
+
+```sh
+make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=.build/evidence/phase2-preflight \
+  PHASE2_DEVICE_CLASS=android_substitute \
+  PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
+  PHASE2_CHARGER="recorded charger" \
+  PHASE2_CABLE_OR_DOCK="USB-C data cable" \
+  PHASE2_VIDEO_PREFERENCES="preflight only" \
+  PHASE2_HOST_IDENTITY="Mac model and macOS version" \
+  PHASE2_HOST_BUILD="not a formal signed Host run" \
+  PHASE2_SOAK_PREFLIGHT_DURATION=2s \
+  PHASE2_SOAK_INTERVAL=1s
+```
+
+If the wrapper finds `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock`, it writes only
+`phase2-soak-readiness.json` and `README.md` with `result=blocked`; it does not
+run ADB or create static, logcat, or soak artifacts. Preflight may omit APK
+identity; the wrapper records that as a readiness-only blocker instead of
+writing fake SHA-256 evidence. Formal `run` mode must use `PHASE2_APK_PATH` or a
+real 64-character hexadecimal `PHASE2_APK_SHA256`; placeholder values are
+rejected before the gate can close.
+
+Use `phase2-tablet-soak-run` only after the physical tablet, stand-mounted
+charging setup, signed Host PID, and `VIBE_SCREEN_TELEMETRY_PATH` JSONL are all
+ready. The formal target writes blocked evidence instead of starting the timer
+when any required precondition is missing.
+
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 make phase2-tablet-preflight EVIDENCE_DIR=.build/evidence
@@ -375,7 +411,9 @@ The gates consume `.build/evidence/soak-8h/exact-window-report.json`,
 `.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
 `.build/evidence/`, then write
 `.build/evidence/soak-8h/phase2-device-memory-gate.json` and
-`.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
+`.build/evidence/soak-8h/phase2-tablet-gate.json`. The wrapper closes only
+when `phase2-soak-readiness.json` reports `can_close_phase2_gate=true`. A
+`pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
 Android PSS and Host RSS growth, battery/thermal readings below the Phase 2

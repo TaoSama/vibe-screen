@@ -345,6 +345,25 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["reasons"], [])
         self.assertTrue(gate["evidence_package"]["passed"])
 
+    def test_missing_optional_host_log_does_not_block_package(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            (directory / "host.log").unlink()
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "pass")
+        self.assertNotIn(
+            "insufficient evidence package: artifact.host_log",
+            gate["reasons"],
+        )
+
     def test_android_substitute_package_stays_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)

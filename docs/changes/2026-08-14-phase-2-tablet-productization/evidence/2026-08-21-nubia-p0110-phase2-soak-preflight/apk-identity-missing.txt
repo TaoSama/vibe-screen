@@ -1,0 +1,1 @@
+APK identity was not provided; this preflight evidence is readiness-only and cannot close the Phase 2 gate.

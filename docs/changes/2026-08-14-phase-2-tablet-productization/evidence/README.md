@@ -28,7 +28,6 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── thermal-before.err       # stderr capture; use status and dump content for failure
 ├── thermal-after.err        # stderr capture; use status and dump content for failure
 ├── raw-logcat.txt
-├── host.log
 ├── reconnects.log
 ├── frame-drops.log
 ├── decoder-telemetry.jsonl
@@ -70,9 +69,12 @@ usable, not from stderr-file presence alone.
 
 After deriving the exact-window report, run `make phase2-tablet-gate` from the
 repository root. The gate consumes `phase2-tablet-manifest.json`, the eight-hour
-soak report, and this raw evidence directory before it can report `pass`. Missing
-raw artifacts, a phone substitute such as Nubia P0110/pacific/Android 16, or an
-undeclared threshold leaves the result `insufficient`.
+soak report, and this raw evidence directory before it can report `pass`. The
+wrapper-level close contract is `phase2-soak-readiness.json` with
+`can_close_phase2_gate=true`; a standalone README statement or APK placeholder
+hash is not formal pass evidence. Missing raw artifacts, a phone substitute such
+as Nubia P0110/pacific/Android 16, or an undeclared threshold leaves the result
+`insufficient`.
 
 The run `README.md` must state the real tablet model, OS build, density,
 orientation/window sizes, charger/cable/stand setup, Mac host identity, commit
@@ -131,3 +133,14 @@ The README must name the substitute device, state that it is not an 8-9 inch
 tablet, link any short readiness evidence, and include the exact rerun commands
 for the future physical-tablet pass. The blocked preflight should preserve all
 missing gates rather than editing them out.
+
+The `phase2-tablet-soak-preflight` wrapper may create readiness-only directories
+such as `YYYY-MM-DD-nubia-p0110-phase2-soak-preflight/`. These records include
+`phase2-soak-readiness.json` and may include a `soak-preflight/` subdirectory
+rather than a formal `soak-8h/` result. When the wrapper is blocked by
+`/tmp/vibe-screen-device-android.lock` or `/tmp/vibe-screen-device-soak.lock`,
+it writes only `phase2-soak-readiness.json` and `README.md`; it does not collect
+static ADB, logcat, or soak artifacts. A readiness result of `blocked` records
+why the gate could not start, such as a phone substitute, missing Host PID,
+missing Host JSONL telemetry, an existing device lock, or missing APK identity.
+It is not evidence that the eight-hour gate passed.

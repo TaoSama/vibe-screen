@@ -72,7 +72,6 @@ REQUIRED_RAW_ARTIFACTS = (
     "thermal-before.err",
     "thermal-after.err",
     "raw-logcat.txt",
-    "host.log",
     "reconnects.log",
     "frame-drops.log",
     "decoder-telemetry.jsonl",

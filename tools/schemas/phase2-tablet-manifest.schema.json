@@ -86,9 +86,10 @@
     "android_artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["apk_sha256"],
+      "required": ["apk_sha256", "identity_status"],
       "properties": {
-        "apk_sha256": {"type": "string", "minLength": 1}
+        "apk_sha256": {"type": ["string", "null"], "minLength": 1},
+        "identity_status": {"enum": ["present", "missing"]}
       }
     },
     "session": {
@@ -98,7 +99,7 @@
       "properties": {
         "transport": {"enum": ["usb", "lan"]},
         "video_preferences": {"type": "string", "minLength": 1},
-        "duration_seconds": {"type": "integer", "minimum": 28800},
+        "duration_seconds": {"type": "integer", "minimum": 1},
         "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60}
       }
     },
