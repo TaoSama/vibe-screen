@@ -64,6 +64,14 @@ internal object ControlRevealGesturePolicy {
     fun endsGesture(phase: StreamTouchPhase): Boolean = phase == StreamTouchPhase.END || phase == StreamTouchPhase.CANCEL
 }
 
+internal object DisplayMenuSelectionGuard {
+    fun acceptsSelection(
+        menuShownAtMs: Long,
+        nowMs: Long,
+        armDelayMs: Long,
+    ): Boolean = menuShownAtMs >= 0L && nowMs - menuShownAtMs >= armDelayMs
+}
+
 internal object ConnectionSecurityPresentationPolicy {
     data class Presentation(
         val labelResource: Int,

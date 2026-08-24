@@ -131,6 +131,25 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices() {
+        withLayout(
+            screenWidthDp = 1018,
+            screenHeightDp = 459,
+            dialogWidthDp = 880,
+            dialogHeightDp = 390,
+        ) { layout ->
+            renderNominalDeviceHealth(layout)
+            layout.measureAndLayout()
+
+            assertAdaptiveColumns(layout, twoColumns = true)
+            assertAllTextReadable(layout.root)
+            assertFullyVisibleInInitialViewport(layout, R.id.deviceHealthSection)
+            assertFullyVisibleInInitialViewport(layout, R.id.videoQualityGroup)
+            assertFullyVisibleInInitialViewport(layout, R.id.videoFrameRateGroup)
+        }
+    }
+
+    @Test
     fun sixHundredDpLandscapeWindowUsesTwoSettingsColumns() {
         withLayout(
             screenWidthDp = 600,
@@ -466,6 +485,20 @@ class SettingsDialogLayoutInstrumentedTest {
         val visibleBottom = visibleTop + scrollView.height - scrollView.paddingBottom
         assertTrue("last item top is above the viewport", lastItem.top >= visibleTop)
         assertTrue("last item bottom is below the viewport", lastItem.bottom <= visibleBottom)
+    }
+
+    private fun assertFullyVisibleInInitialViewport(
+        layout: MeasuredLayout,
+        viewId: Int,
+    ) {
+        val scrollView = layout.root.getChildAt(0) as ScrollView
+        val target = layout.root.findViewById<View>(viewId)
+        assertEquals("initial scroll should be at top", 0, scrollView.scrollY)
+        assertTrue("target $viewId starts above the initial viewport", target.top >= scrollView.scrollY)
+        assertTrue(
+            "target $viewId ends below the initial viewport",
+            target.bottom <= scrollView.scrollY + scrollView.height - scrollView.paddingBottom,
+        )
     }
 
     private fun layoutWidth(

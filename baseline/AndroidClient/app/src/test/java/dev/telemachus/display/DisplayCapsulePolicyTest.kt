@@ -101,6 +101,31 @@ class DisplayCapsulePolicyTest {
             DisplayCapsulePolicy.displayKind(option("external", "Studio Display")),
         )
     }
+
+    @Test
+    fun displayMenuIgnoresSelectionsBeforeItIsArmed() {
+        assertFalse(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = -1,
+                nowMs = 1_000,
+                armDelayMs = 300,
+            ),
+        )
+        assertFalse(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = 1_000,
+                nowMs = 1_299,
+                armDelayMs = 300,
+            ),
+        )
+        assertTrue(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = 1_000,
+                nowMs = 1_300,
+                armDelayMs = 300,
+            ),
+        )
+    }
 }
 
 class ControlBarLayoutPolicyTest {
