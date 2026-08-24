@@ -27,6 +27,10 @@ FAIL = "fail"
 COMPLETE = "complete"
 FAILED = "failed"
 DEFAULT_BUNDLE_ID = "dev.vibescreen.ios"
+OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
+OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
+COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 SHA256_PATTERN = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
 UDID_HASH_PATTERN = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
 TEAM_ID_PATTERN = re.compile(r"^[A-Z0-9]{10}$")
@@ -68,6 +72,11 @@ INTERPRETATION = (
     "entitlements for an iPhoneOS artifact. It is not an install, launch, "
     "VideoToolbox, input, reconnect, audio, or full iOS device-acceptance pass."
 )
+REQUIRED_ARTIFACT_MARKERS = {
+    "archive_command": ("archive", "xcodebuild"),
+    "codesign_entitlements": ("codesign", "entitlement"),
+    "provisioning_profile": ("profile", "provision"),
+}
 
 
 class IOSAppSigningReadinessError(ValueError):
@@ -179,6 +188,51 @@ def _validate_repository(document: dict[str, Any], missing: list[str]) -> None:
                 missing.append("repository.dirty: must be boolean")
         else:
             _append_missing_string(missing, repository, "repository", field)
+
+    commit = repository.get("commit")
+    if _is_non_placeholder_string(commit) and COMMIT_PATTERN.fullmatch(str(commit).strip()) is None:
+        missing.append("repository.commit: must be a 40-character current-base commit SHA")
+    if repository.get("dirty") is True:
+        missing.append("repository.dirty: must be false for current-base signing readiness")
+
+
+def _current_base(document: dict[str, Any]) -> dict[str, Any]:
+    repository = document.get("repository") if isinstance(document.get("repository"), dict) else {}
+    commit = repository.get("commit")
+    normalized_commit = None
+    if _is_non_placeholder_string(commit) and COMMIT_PATTERN.fullmatch(str(commit).strip()):
+        normalized_commit = str(commit).strip().lower()
+    branch = repository.get("branch")
+    return {
+        "commit": normalized_commit,
+        "branch": str(branch).strip() if _is_non_placeholder_string(branch) else None,
+        "dirty": repository.get("dirty") if isinstance(repository.get("dirty"), bool) else None,
+    }
+
+
+def _signing_summary(document: dict[str, Any], recorded_fields: dict[str, bool], verdict: str) -> dict[str, Any]:
+    signing = document.get("signing") if isinstance(document.get("signing"), dict) else {}
+    bundle_id = signing.get("bundle_id")
+    normalized_bundle_id = str(bundle_id).strip() if _is_non_placeholder_string(bundle_id) else None
+    unique_bundle_id = (
+        normalized_bundle_id is not None
+        and normalized_bundle_id != DEFAULT_BUNDLE_ID
+        and not _contains_marker(normalized_bundle_id, BAD_MARKERS)
+    )
+    signed_artifact_sha256 = signing.get("signed_artifact_sha256")
+    return {
+        "status": PASS if verdict == PASS else verdict,
+        "bundle_id": normalized_bundle_id,
+        "unique_bundle_id": unique_bundle_id,
+        "team_id_recorded": recorded_fields["team_id"],
+        "codesign_identity_recorded": recorded_fields["codesign_identity"],
+        "provisioning_profile_recorded": recorded_fields["provisioning_profile"],
+        "device_udid_hashes_recorded": recorded_fields["device_udid"],
+        "entitlements_recorded": recorded_fields["entitlements"],
+        "signed_artifact_sha256": str(signed_artifact_sha256).strip()
+        if _is_sha256(signed_artifact_sha256)
+        else None,
+    }
 
 
 def _validate_required_false_flags(document: dict[str, Any], missing: list[str], failures: list[str]) -> None:
@@ -372,11 +426,21 @@ def _validate_signing(
                 missing=missing,
                 failures=failures,
             )
+        joined_artifacts = "\n".join(
+            str(reference).lower() for reference in artifacts if isinstance(reference, str)
+        )
+        for label, markers in REQUIRED_ARTIFACT_MARKERS.items():
+            if not any(marker in joined_artifacts for marker in markers):
+                missing.append(
+                    f"artifacts.{label}: must retain signing-readiness evidence for {label}"
+                )
 
     return recorded
 
 
-def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
+def evaluate(
+    document: dict[str, Any], evidence_root: Path, readiness_path: Path | None = None
+) -> dict[str, Any]:
     missing: list[str] = []
     failures: list[str] = []
 
@@ -406,8 +470,20 @@ def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": GATE_KIND,
+        "owner": {
+            "role": OWNER_ROLE,
+            "head_ref": OWNER_BRANCH,
+            "repository": REPOSITORY_FULL_NAME,
+            "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+        },
+        "source": {
+            "readiness": str(readiness_path) if readiness_path is not None else None,
+            "evidence_root": str(evidence_root),
+        },
+        "current_base": _current_base(document),
         "verdict": verdict,
         "signing_status": signing_status,
+        "signing_summary": _signing_summary(document, recorded_fields, verdict),
         "can_close_ios_app_signing_readiness": verdict == PASS,
         "can_close_ios_device_acceptance": False,
         "recorded_fields": recorded_fields,
@@ -446,7 +522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         readiness_path = args.readiness.resolve()
         evidence_root = (args.evidence_root or readiness_path.parent).resolve()
-        result = evaluate(_parse_json(readiness_path), evidence_root)
+        result = evaluate(_parse_json(readiness_path), evidence_root, readiness_path)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             with args.output.open("w", encoding="utf-8") as output:

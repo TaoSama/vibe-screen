@@ -63,6 +63,9 @@
       "required": [
         "provided",
         "path",
+        "owner",
+        "current_base",
+        "signing_summary",
         "kind",
         "verdict",
         "can_close_ios_app_signing_readiness",
@@ -72,6 +75,53 @@
       "properties": {
         "provided": {"type": "boolean"},
         "path": {"type": ["string", "null"]},
+        "owner": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["role", "head_ref", "repository", "scope"],
+          "properties": {
+            "role": {"const": "ios_app_signing_readiness_current_base_owner"},
+            "head_ref": {"const": "codex/phase5-ios-signing-readiness"},
+            "repository": {"const": "TaoSama/vibe-screen"},
+            "scope": {"type": "string", "minLength": 1}
+          }
+        },
+        "current_base": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["commit", "branch", "dirty"],
+          "properties": {
+            "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+            "branch": {"type": ["string", "null"]},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "signing_summary": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "bundle_id",
+            "unique_bundle_id",
+            "team_id_recorded",
+            "codesign_identity_recorded",
+            "provisioning_profile_recorded",
+            "device_udid_hashes_recorded",
+            "entitlements_recorded",
+            "signed_artifact_sha256"
+          ],
+          "properties": {
+            "status": {"enum": ["pass", "blocked", "fail"]},
+            "bundle_id": {"type": ["string", "null"]},
+            "unique_bundle_id": {"type": "boolean"},
+            "team_id_recorded": {"type": "boolean"},
+            "codesign_identity_recorded": {"type": "boolean"},
+            "provisioning_profile_recorded": {"type": "boolean"},
+            "device_udid_hashes_recorded": {"type": "boolean"},
+            "entitlements_recorded": {"type": "boolean"},
+            "signed_artifact_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"}
+          }
+        },
         "kind": {"type": ["string", "null"]},
         "verdict": {"type": ["string", "null"]},
         "can_close_ios_app_signing_readiness": {"type": "boolean"},
@@ -89,6 +139,8 @@
         "team_id_redacted",
         "certificate_identity_recorded",
         "provisioning_profile_recorded",
+        "device_udid_hashes_recorded",
+        "entitlements_recorded",
         "signed_archive_sha256"
       ],
       "properties": {
@@ -98,6 +150,8 @@
         "team_id_redacted": {"type": "boolean"},
         "certificate_identity_recorded": {"type": "boolean"},
         "provisioning_profile_recorded": {"type": "boolean"},
+        "device_udid_hashes_recorded": {"type": "boolean"},
+        "entitlements_recorded": {"type": "boolean"},
         "signed_archive_sha256": {"type": ["string", "null"]}
       }
     },

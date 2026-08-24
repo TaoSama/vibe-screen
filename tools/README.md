@@ -74,24 +74,31 @@ substitution returns `fail` and keeps `can_close_ios_hdr_output_gate=false`.
 
 ## iOS app-signing readiness
 
-The app-signing readiness gate validates a sanitized JSON summary from an
+The app-signing readiness gate is the dedicated current-base owner for the
+Phase 5 signing prerequisite. It validates a sanitized JSON summary from an
 operator-controlled Xcode archive/signing check. It is read-only and does not
 run Xcode, install an app, use Simulator output, or operate any device. It exits
-`0` only when the summary records all signing prerequisites: Team ID,
-provisioning profile UUID, unique bundle ID, non-ad-hoc codesign identity,
-registered physical-device UDID hashes, signed-app entitlements, signed artifact
-SHA-256, and retained local artifacts for the signing commands/profile output.
+`0` only when the summary records all signing prerequisites from a clean
+current-base commit: Team ID, provisioning profile UUID, unique bundle ID,
+non-ad-hoc codesign identity, registered physical-device UDID hashes, signed-app
+entitlements, signed artifact SHA-256, and retained local artifacts for the
+archive command, codesign entitlements, and provisioning profile output.
 
 ```sh
 make ios-app-signing-readiness-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
-The target writes `ios-app-signing-readiness-gate.json` next to the input.
-`blocked` means required signing material is missing; `fail` means the evidence
+The target writes `ios-app-signing-readiness-gate.json` next to the input. The
+gate output declares `owner.role=ios_app_signing_readiness_current_base_owner`
+and records `current_base.commit`, `current_base.branch`, and
+`current_base.dirty`. `blocked` means required signing material, clean commit
+state, or required artifact categories are missing; `fail` means the evidence
 tries to use Simulator, unsigned, ad-hoc, or Android-derived material. A signing
 readiness pass can unblock the current-base signing prerequisite only after the
-same gate JSON is bound into `ios-current-base-manifest`; it still reports
+same gate JSON is bound into `ios-current-base-manifest`;
+`ios-current-base-gate` validates both the gate result and owner identity before
+accepting the signing summary. It still reports
 `can_close_ios_device_acceptance=false` because install, launch, decode, input,
 reconnect, and audio behavior require real iPhone and iPad runs.
 

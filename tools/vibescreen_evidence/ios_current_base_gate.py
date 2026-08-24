@@ -17,8 +17,11 @@ from .ios_current_base_manifest import (
     DEVICE_ACCEPTANCE_OWNER_PR,
     FORMAL_DEVICE_GATES,
     KIND as MANIFEST_KIND,
+    REPOSITORY_FULL_NAME,
     SCOPE_PRS,
     SOURCE_DOCS,
+    SIGNING_READINESS_OWNER_BRANCH,
+    SIGNING_READINESS_OWNER_ROLE,
 )
 
 GATE_KIND = "ios_current_base_readiness_gate"
@@ -34,6 +37,8 @@ REQUIRED_SIGNING_FIELDS = {
     "team_id_redacted",
     "certificate_identity_recorded",
     "provisioning_profile_recorded",
+    "device_udid_hashes_recorded",
+    "entitlements_recorded",
     "signed_archive_sha256",
 }
 REQUIRED_DEVICE_FIELDS = {"role", "runtime_class", "install_status", "evidence"}
@@ -251,6 +256,9 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if isinstance(manifest.get("signing_readiness_gate"), dict)
         else {}
     )
+    signing_gate_owner = (
+        signing_gate.get("owner") if isinstance(signing_gate.get("owner"), dict) else {}
+    )
     archive_sha = signing.get("signed_archive_sha256")
     archive_ok = isinstance(archive_sha, str) and HASH_RE.fullmatch(archive_sha) is not None
     return {
@@ -261,6 +269,19 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "ios-app-signing-readiness-gate.json passes and is bound into current-base readiness",
             evidence=[str(signing_gate.get("path"))]
             if signing_gate.get("path")
+            else _string_list(signing_gate.get("missing")),
+            blocking=True,
+        ),
+        "dedicated_signing_readiness_owner": _check(
+            signing_gate_owner.get("role") == SIGNING_READINESS_OWNER_ROLE
+            and signing_gate_owner.get("head_ref") == SIGNING_READINESS_OWNER_BRANCH
+            and signing_gate_owner.get("repository") == REPOSITORY_FULL_NAME,
+            "ios-app-signing-readiness-gate.json declares the dedicated current-base signing owner",
+            evidence=[
+                str(signing_gate_owner.get("role")),
+                str(signing_gate_owner.get("head_ref")),
+            ]
+            if signing_gate_owner
             else _string_list(signing_gate.get("missing")),
             blocking=True,
         ),
@@ -283,6 +304,16 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "provisioning_profile_recorded": _check(
             signing.get("provisioning_profile_recorded") is True,
             "redacted provisioning profile UUID recorded",
+            blocking=True,
+        ),
+        "device_udid_hashes_recorded": _check(
+            signing.get("device_udid_hashes_recorded") is True,
+            "physical-device UDID hashes recorded in the provisioning profile evidence",
+            blocking=True,
+        ),
+        "entitlements_recorded": _check(
+            signing.get("entitlements_recorded") is True,
+            "signed-app entitlements recorded",
             blocking=True,
         ),
         "signed_archive_sha256": _check(

@@ -61,6 +61,17 @@ def complete_manifest(root: Path) -> dict[str, object]:
     manifest["signing_readiness_gate"] = {
         "provided": True,
         "path": str(root / "ios-app-signing-readiness-gate.json"),
+        "owner": {
+            "role": "ios_app_signing_readiness_current_base_owner",
+            "head_ref": "codex/phase5-ios-signing-readiness",
+            "repository": "TaoSama/vibe-screen",
+            "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+        },
+        "current_base": {
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "branch": "codex/phase5-ios-signing-readiness",
+            "dirty": False,
+        },
         "kind": "ios_app_signing_readiness_gate",
         "verdict": "pass",
         "can_close_ios_app_signing_readiness": True,
@@ -74,6 +85,8 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "unique_bundle_id": True,
             "certificate_identity_recorded": True,
             "provisioning_profile_recorded": True,
+            "device_udid_hashes_recorded": True,
+            "entitlements_recorded": True,
             "signed_archive_sha256": "a" * 64,
         }
     )
@@ -224,6 +237,17 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             manifest["signing_readiness_gate"] = {
                 "provided": True,
                 "path": "ios-app-signing-readiness-gate.json",
+                "owner": {
+                    "role": "ios_app_signing_readiness_current_base_owner",
+                    "head_ref": "codex/phase5-ios-signing-readiness",
+                    "repository": "TaoSama/vibe-screen",
+                    "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+                },
+                "current_base": {
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
+                    "branch": "codex/phase5-ios-signing-readiness",
+                    "dirty": False,
+                },
                 "kind": "ios_app_signing_readiness_gate",
                 "verdict": "blocked",
                 "can_close_ios_app_signing_readiness": False,
@@ -238,9 +262,46 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
 
+    def test_dedicated_signing_readiness_owner_is_required(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            signing_gate = manifest["signing_readiness_gate"]
+            assert isinstance(signing_gate, dict)
+            signing_gate["owner"] = None
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_signing_readiness_owner", report["reasons"])
+
+    def test_signing_udid_and_entitlements_are_blocking_current_base_checks(self):
+        cases = {
+            "device_udid_hashes_recorded": "blocked: device_udid_hashes_recorded",
+            "entitlements_recorded": "blocked: entitlements_recorded",
+        }
+        for field, expected_reason in cases.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory_name:
+                root = Path(directory_name)
+                manifest = complete_manifest(root)
+                signing = manifest["signing"]
+                assert isinstance(signing, dict)
+                signing[field] = False
+                manifest_path = write_manifest(root, manifest)
+
+                report = derive_gate(manifest_path)
+
+            self.assertEqual(report["verdict"], "blocked")
+            self.assertFalse(report["can_close_ios_device_acceptance"])
+            self.assertIn(expected_reason, report["reasons"])
+
     def test_missing_nested_evidence_contract_cannot_pass(self):
         cases = {
             "signing": lambda manifest: manifest["signing"].pop("certificate_identity_recorded"),
+            "signing_udid": lambda manifest: manifest["signing"].pop("device_udid_hashes_recorded"),
+            "signing_entitlements": lambda manifest: manifest["signing"].pop("entitlements_recorded"),
             "device": lambda manifest: manifest["devices"][0].pop("runtime_class"),
             "gate": lambda manifest: manifest["gates"]["signing"].pop("status"),
         }

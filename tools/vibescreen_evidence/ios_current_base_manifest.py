@@ -49,6 +49,8 @@ SOURCE_DOCS = [
     "docs/runbook/hdr-color-acceptance.md",
 ]
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
+SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
+SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
 
 FORMAL_DEVICE_GATES = {
     "signing": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
@@ -75,6 +77,7 @@ DEFAULT_LIMITATIONS = [
 ]
 
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 def _utc_timestamp() -> str:
@@ -147,6 +150,9 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
         return {
             "provided": False,
             "path": None,
+            "owner": None,
+            "current_base": None,
+            "signing_summary": None,
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
@@ -159,6 +165,9 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
         return {
             "provided": True,
             "path": str(path),
+            "owner": None,
+            "current_base": None,
+            "signing_summary": None,
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
@@ -169,23 +178,81 @@ def _load_signing_readiness_gate(path: Path | None) -> dict[str, Any]:
         return {
             "provided": True,
             "path": str(path),
+            "owner": None,
+            "current_base": None,
+            "signing_summary": None,
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
             "missing": ["ios app-signing readiness gate must be a JSON object"],
             "failures": [],
         }
+    owner = document.get("owner") if isinstance(document.get("owner"), dict) else {}
+    owner_role = owner.get("role") if isinstance(owner, dict) else None
+    owner_head_ref = owner.get("head_ref") if isinstance(owner, dict) else None
+    owner_repository = owner.get("repository") if isinstance(owner, dict) else None
+    current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
+    current_base_commit = current_base.get("commit") if isinstance(current_base, dict) else None
+    current_base_dirty = current_base.get("dirty") if isinstance(current_base, dict) else None
+    can_close = (
+        document.get("kind") == SIGNING_READINESS_GATE_KIND
+        and document.get("verdict") == "pass"
+        and document.get("can_close_ios_app_signing_readiness") is True
+        and owner_role == SIGNING_READINESS_OWNER_ROLE
+        and owner_head_ref == SIGNING_READINESS_OWNER_BRANCH
+        and owner_repository == REPOSITORY_FULL_NAME
+        and isinstance(current_base_commit, str)
+        and COMMIT_RE.fullmatch(current_base_commit) is not None
+        and current_base_dirty is False
+    )
+    missing = document.get("missing", []) if isinstance(document.get("missing"), list) else []
+    failures = document.get("failures", []) if isinstance(document.get("failures"), list) else []
+    if document.get("kind") == SIGNING_READINESS_GATE_KIND and not can_close:
+        if owner_role != SIGNING_READINESS_OWNER_ROLE:
+            missing = [*missing, "ios app-signing readiness gate owner role is not the dedicated current-base owner"]
+        if owner_head_ref != SIGNING_READINESS_OWNER_BRANCH:
+            missing = [*missing, "ios app-signing readiness gate owner branch is not the current-base signing owner"]
+        if owner_repository != REPOSITORY_FULL_NAME:
+            missing = [*missing, "ios app-signing readiness gate repository is not TaoSama/vibe-screen"]
+        if not isinstance(current_base_commit, str) or COMMIT_RE.fullmatch(current_base_commit) is None:
+            missing = [*missing, "ios app-signing readiness gate current-base commit is not recorded"]
+        if current_base_dirty is not False:
+            missing = [*missing, "ios app-signing readiness gate current-base dirty state is not clean"]
+
     return {
         "provided": True,
         "path": str(path),
+        "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
+        "current_base": document.get("current_base")
+        if isinstance(document.get("current_base"), dict)
+        else None,
+        "signing_summary": document.get("signing_summary")
+        if isinstance(document.get("signing_summary"), dict)
+        else None,
         "kind": document.get("kind"),
         "verdict": document.get("verdict"),
-        "can_close_ios_app_signing_readiness": document.get(
-            "can_close_ios_app_signing_readiness"
-        )
-        is True,
-        "missing": document.get("missing", []) if isinstance(document.get("missing"), list) else [],
-        "failures": document.get("failures", []) if isinstance(document.get("failures"), list) else [],
+        "can_close_ios_app_signing_readiness": can_close,
+        "missing": missing,
+        "failures": failures,
+    }
+
+
+def _signing_from_readiness_gate(gate: dict[str, Any]) -> dict[str, Any]:
+    summary = gate.get("signing_summary") if isinstance(gate.get("signing_summary"), dict) else {}
+    if gate.get("can_close_ios_app_signing_readiness") is not True:
+        summary = {}
+    return {
+        "status": "pass" if gate.get("can_close_ios_app_signing_readiness") is True else "blocked",
+        "bundle_id": summary.get("bundle_id") if isinstance(summary.get("bundle_id"), str) else None,
+        "unique_bundle_id": summary.get("unique_bundle_id") is True,
+        "team_id_redacted": summary.get("team_id_recorded") is True,
+        "certificate_identity_recorded": summary.get("codesign_identity_recorded") is True,
+        "provisioning_profile_recorded": summary.get("provisioning_profile_recorded") is True,
+        "device_udid_hashes_recorded": summary.get("device_udid_hashes_recorded") is True,
+        "entitlements_recorded": summary.get("entitlements_recorded") is True,
+        "signed_archive_sha256": summary.get("signed_artifact_sha256")
+        if isinstance(summary.get("signed_artifact_sha256"), str)
+        else None,
     }
 
 
@@ -247,6 +314,7 @@ def build_manifest(
     repo = repo.resolve()
     owner_pr = _normalize_pr(device_acceptance_owner_pr)
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
+    signing_readiness = _load_signing_readiness_gate(signing_readiness_gate)
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -271,16 +339,8 @@ def build_manifest(
             "simulator_smoke": {"status": "open", "evidence": []},
             "unsigned_archive": {"status": "open", "evidence": []},
         },
-        "signing_readiness_gate": _load_signing_readiness_gate(signing_readiness_gate),
-        "signing": {
-            "status": "blocked",
-            "bundle_id": None,
-            "unique_bundle_id": False,
-            "team_id_redacted": True,
-            "certificate_identity_recorded": False,
-            "provisioning_profile_recorded": False,
-            "signed_archive_sha256": None,
-        },
+        "signing_readiness_gate": signing_readiness,
+        "signing": _signing_from_readiness_gate(signing_readiness),
         "devices": default_devices(),
         "gates": default_gates(),
         "android_evidence_used_for_ios_gates": False,

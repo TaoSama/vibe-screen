@@ -76,6 +76,34 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
             result = evaluate(complete_document(), evidence_root)
 
         self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(
+            result["owner"]["role"],
+            "ios_app_signing_readiness_current_base_owner",
+        )
+        self.assertEqual(result["owner"]["head_ref"], "codex/phase5-ios-signing-readiness")
+        self.assertEqual(result["owner"]["repository"], "TaoSama/vibe-screen")
+        self.assertEqual(
+            result["current_base"],
+            {
+                "commit": "0123456789abcdef0123456789abcdef01234567",
+                "branch": "codex/ios-signing-readiness",
+                "dirty": False,
+            },
+        )
+        self.assertEqual(
+            result["signing_summary"],
+            {
+                "status": "pass",
+                "bundle_id": "dev.example.vibescreen.acceptance",
+                "unique_bundle_id": True,
+                "team_id_recorded": True,
+                "codesign_identity_recorded": True,
+                "provisioning_profile_recorded": True,
+                "device_udid_hashes_recorded": True,
+                "entitlements_recorded": True,
+                "signed_artifact_sha256": "3" * 64,
+            },
+        )
         self.assertTrue(result["can_close_ios_app_signing_readiness"])
         self.assertFalse(result["can_close_ios_device_acceptance"])
         self.assertEqual(result["missing"], [])
@@ -145,6 +173,25 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
         self.assertIn("signing.device_udids[0]: must be a SHA-256 hash, not a raw UDID or placeholder", result["missing"])
         self.assertIn("signing.signed_artifact_sha256: must be a SHA-256 digest", result["missing"])
         self.assertIn("signing.entitlements.raw_entitlements_sha256: must be a SHA-256 digest", result["missing"])
+
+    def test_current_base_repository_must_be_clean_exact_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            document = complete_document()
+            write_artifacts(evidence_root, list(document["artifacts"]))
+            repository = document["repository"]
+            assert isinstance(repository, dict)
+            repository["commit"] = "not-a-commit"
+            repository["dirty"] = True
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertFalse(result["can_close_ios_app_signing_readiness"])
+        self.assertIn("repository.commit: must be a 40-character current-base commit SHA", result["missing"])
+        self.assertIn("repository.dirty: must be false for current-base signing readiness", result["missing"])
+        self.assertIsNone(result["current_base"]["commit"])
+        self.assertTrue(result["current_base"]["dirty"])
 
     def test_entitlement_identity_mismatch_fails(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -240,6 +287,29 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
         self.assertIn("artifacts[0]: missing retained artifact missing-profile.txt", result["missing"])
         self.assertIn("artifacts[1]: must stay within the evidence root", result["missing"])
 
+    def test_missing_required_artifact_categories_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            document = complete_document()
+            document["artifacts"] = ["logs/signing-output.txt"]
+            write_artifacts(evidence_root, list(document["artifacts"]))
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "artifacts.archive_command: must retain signing-readiness evidence for archive_command",
+            result["missing"],
+        )
+        self.assertIn(
+            "artifacts.codesign_entitlements: must retain signing-readiness evidence for codesign_entitlements",
+            result["missing"],
+        )
+        self.assertIn(
+            "artifacts.provisioning_profile: must retain signing-readiness evidence for provisioning_profile",
+            result["missing"],
+        )
+
 
 class IOSAppSigningReadinessCliTests(unittest.TestCase):
     def run_cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -265,6 +335,7 @@ class IOSAppSigningReadinessCliTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(persisted["verdict"], "pass")
+        self.assertEqual(persisted["source"]["readiness"], str(input_path.resolve()))
 
     def test_cli_returns_blocked_for_open_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
