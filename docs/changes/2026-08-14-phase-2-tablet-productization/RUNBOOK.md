@@ -287,11 +287,13 @@ make phase2-tablet-soak-run \
 
 The wrapper creates `/tmp/vibe-screen-device-soak.lock` while it owns the
 device and refuses to run ADB when either that lock or
-`/tmp/vibe-screen-device-android.lock` already exists. It writes
+`/tmp/vibe-screen-device-android.lock` already exists. After the formal wrapper
+passes the precondition checks needed to start collection, it writes
 `raw-logcat.txt`, Android telemetry derivatives, before/after battery, power,
 thermal dumps, Host identity, APK hash, and the manifest. A readiness result of
-`blocked` is useful evidence of why the gate could not start, not a pass. The
-wrapper close contract is `phase2-soak-readiness.json` with
+`blocked` is useful evidence of why the gate could not start, not a pass; a
+blocked run writes `phase2-soak-readiness.json` and only the artifacts collected
+before the blocker. The wrapper close contract is `phase2-soak-readiness.json` with
 `can_close_phase2_gate=true` plus `soak-8h/phase2-tablet-gate.json` reporting
 `verdict=pass`; README prose or placeholder hashes do not satisfy the formal
 gate.

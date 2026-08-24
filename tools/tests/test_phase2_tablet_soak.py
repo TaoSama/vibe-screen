@@ -290,6 +290,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertIn({"path": "apk-identity-missing.txt", "kind": "android_artifact_missing"}, readiness["artifacts"])
         self.assertIsNone(manifest["android_artifact"]["apk_sha256"])
         self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
+        self.assertEqual(manifest["session"]["duration_seconds"], 1)
+        self.assertEqual(manifest["memory_sampling"]["minimum_duration_seconds"], 28800)
         self.assertIn("apk-identity-missing.txt", manifest["required_artifacts"])
         self.assertNotIn("apk-sha256.txt", manifest["required_artifacts"])
         runner_class.assert_called_once()

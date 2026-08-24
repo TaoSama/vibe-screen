@@ -149,6 +149,7 @@ def build_manifest(
     video_preferences: str,
     duration_seconds: int,
     sample_interval_seconds: int,
+    minimum_duration_seconds: int = MINIMUM_DURATION_SECONDS,
     host_pid: int | None,
     host_rss_source: str,
     android_pss_source: str,
@@ -162,8 +163,12 @@ def build_manifest(
     apk_sha256: str | None,
     notes: str | None,
 ) -> dict[str, Any]:
-    if duration_seconds < MINIMUM_DURATION_SECONDS:
-        raise ManifestError("--duration-seconds must be at least 28800 for a Phase 2 8h manifest")
+    if minimum_duration_seconds <= 0:
+        raise ManifestError("--minimum-duration-seconds must be positive")
+    if duration_seconds < minimum_duration_seconds:
+        raise ManifestError(
+            f"--duration-seconds must be at least {minimum_duration_seconds} for this Phase 2 manifest"
+        )
     if sample_interval_seconds <= 0 or sample_interval_seconds > 60:
         raise ManifestError("--sample-interval-seconds must be in the range 1..60")
     if thermal_limit_status < 0:

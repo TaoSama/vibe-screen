@@ -99,7 +99,7 @@
       "properties": {
         "transport": {"enum": ["usb", "lan"]},
         "video_preferences": {"type": "string", "minLength": 1},
-        "duration_seconds": {"type": "integer", "minimum": 28800},
+        "duration_seconds": {"type": "integer", "minimum": 1},
         "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60}
       }
     },

@@ -66,6 +66,21 @@
     "Nubia P0110/pacific/Android 16 may be recorded as a general Android substitute only and must not be relabeled as Xiaomi 13/fuxi or as 8-9 inch tablet evidence.",
     "The recorded device class is not a physical 8-9 inch tablet, so this manifest cannot close the tablet hardware gate."
   ],
+  "memory_sampling": {
+    "android_pss_source": "ADB dumpsys meminfo app TOTAL PSS",
+    "host_pid": null,
+    "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+    "minimum_duration_seconds": 28800,
+    "require_host_pid": false,
+    "required_fields": [
+      "device.memory.app_total_pss_kb",
+      "host.rss_kb",
+      "device.battery.level",
+      "device.battery.status",
+      "device.thermal.status"
+    ],
+    "sample_interval_seconds": 1
+  },
   "notes": null,
   "physical_setup": {
     "ambient_temperature_celsius": null,
@@ -154,7 +169,7 @@
   "run_id": "85bf5ef0-749b-4236-8e86-2c6f2df7ed08",
   "schema_version": "vibescreen.evidence/v1",
   "session": {
-    "duration_seconds": 28800,
+    "duration_seconds": 2,
     "sample_interval_seconds": 1,
     "transport": "usb",
     "video_preferences": "preflight only"

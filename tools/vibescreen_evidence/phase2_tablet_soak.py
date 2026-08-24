@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -29,7 +30,7 @@ from . import SCHEMA_VERSION
 from .adb import ADBClient, ADBError
 from .manifest import ManifestError
 from .phase2_tablet_gate import derive_gate
-from .phase2_tablet_manifest import build_manifest
+from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS, build_manifest
 from .soak import SoakRunner, parse_duration
 from .soak_report import derive_report
 
@@ -631,6 +632,11 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         )
         if device_info is not None:
             try:
+                manifest_duration_seconds = (
+                    int(arguments.duration)
+                    if arguments.mode == "run"
+                    else max(1, int(math.ceil(arguments.preflight_duration)))
+                )
                 manifest = build_manifest(
                     command=command,
                     repo=arguments.repo,
@@ -643,8 +649,9 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     ambient_temperature_celsius=arguments.ambient_temperature_celsius,
                     transport=arguments.transport,
                     video_preferences=arguments.video_preferences,
-                    duration_seconds=int(arguments.duration),
+                    duration_seconds=manifest_duration_seconds,
                     sample_interval_seconds=int(arguments.interval),
+                    minimum_duration_seconds=MINIMUM_DURATION_SECONDS if arguments.mode == "run" else 1,
                     host_pid=arguments.host_pid,
                     host_rss_source=DEFAULT_HOST_RSS_SOURCE,
                     android_pss_source=DEFAULT_ANDROID_PSS_SOURCE,

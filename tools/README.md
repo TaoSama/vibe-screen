@@ -367,10 +367,12 @@ make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 ```
 
 For an end-to-end readiness check that gathers the same raw inputs and writes an
-explicit blocker record, use the wrapper target. When no device lock is present,
-it writes `phase2-soak-readiness.json`, `README.md`, static device/Host
-artifacts, Android log derivatives, and either `soak-preflight/` or `soak-8h/`
-depending on mode:
+explicit blocker record, use the wrapper target. After the wrapper passes the
+precondition checks needed to start collection, it writes
+`phase2-soak-readiness.json`, `README.md`, static device/Host artifacts, Android
+log derivatives, and either `soak-preflight/` or `soak-8h/` depending on mode.
+Blocked runs write readiness evidence and only the artifacts collected before
+the blocker:
 
 ```sh
 make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
