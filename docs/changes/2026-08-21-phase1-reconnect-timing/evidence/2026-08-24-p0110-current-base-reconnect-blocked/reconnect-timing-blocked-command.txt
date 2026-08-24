@@ -1,0 +1,9 @@
+mkdir -p docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.reconnect_timing \
+		--blocked \
+		--target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
+		--blocker "Host is not listening on 127.0.0.1:54321 in this current-base worktree" --blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" --blocker "P0110 Wi-Fi is not associated and wlan0 has no route for trusted-LAN interruption" \
+		--artifact "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/host-54321-listener.txt" --artifact "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/macos-dev-host-preflight.txt" --artifact "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/trusted-lan-preflight.json" --artifact "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/adb-reverse.txt" --artifact "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/device-info.json" \
+		--notes "Current-base blocked readiness record only. No client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run." \
+		--output docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/reconnect-timing-summary.json || test $? -eq 3

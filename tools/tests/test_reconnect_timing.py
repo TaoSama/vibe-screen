@@ -72,17 +72,64 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         )
 
         self.assertEqual(summary["verdict"], "pass")
+        self.assertFalse(summary["can_close_timing_gate"])
+        self.assertTrue(summary["can_close_requested_scope"])
         self.assertEqual(summary["required_disruptions"], [DISRUPTION_CLIENT_KILL])
+        self.assertEqual(
+            set(summary["full_gate_missing_disruptions"]),
+            {DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
+        )
+
+    def test_complete_gate_scope_is_reported_separately_from_requested_scope(self) -> None:
+        summary = summarize(
+            {
+                "attempts": [
+                    complete_attempt(DISRUPTION_CLIENT_KILL, "usb"),
+                    complete_attempt(DISRUPTION_ADB_REVERSE, "usb"),
+                    complete_attempt(DISRUPTION_LAN_NETWORK, "lan"),
+                ]
+            },
+            required_disruptions=[DISRUPTION_CLIENT_KILL],
+        )
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertFalse(summary["can_close_timing_gate"])
+        self.assertTrue(summary["can_close_requested_scope"])
+        self.assertEqual(summary["full_gate_missing_disruptions"], [])
 
     def test_missing_disruption_keeps_gate_insufficient(self) -> None:
         summary = summarize({"attempts": [complete_attempt(DISRUPTION_CLIENT_KILL, "usb")]})
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertFalse(summary["can_close_timing_gate"])
+        self.assertFalse(summary["can_close_requested_scope"])
         self.assertEqual(
             set(summary["missing_required_disruptions"]),
             {DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
         )
+        self.assertEqual(
+            set(summary["full_gate_missing_disruptions"]),
+            {DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
+        )
+
+    def test_full_gate_does_not_close_with_incomplete_attempt(self) -> None:
+        incomplete_lan = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
+        del incomplete_lan["events"]["first_output_frame_ms"]
+
+        summary = summarize(
+            {
+                "attempts": [
+                    complete_attempt(DISRUPTION_CLIENT_KILL, "usb"),
+                    complete_attempt(DISRUPTION_ADB_REVERSE, "usb"),
+                    incomplete_lan,
+                ]
+            }
+        )
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_timing_gate"])
+        self.assertFalse(summary["can_close_requested_scope"])
+        self.assertEqual(summary["full_gate_missing_disruptions"], [])
 
     def test_retry_logs_without_disruption_start_do_not_pass(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
@@ -183,6 +230,10 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_timing_gate"])
+        self.assertEqual(
+            set(summary["full_gate_missing_disruptions"]),
+            {DISRUPTION_CLIENT_KILL, DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
+        )
         self.assertEqual(summary["reasons"], ["Host 54321 listener unavailable"])
 
     def test_parses_android_diag_after_disruption_start(self) -> None:

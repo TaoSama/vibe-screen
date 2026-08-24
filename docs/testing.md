@@ -63,6 +63,10 @@ incremental partial run; that cannot close the full README timing gate. If Host
 signing, TCC, port `54321`, ADB, or LAN conditions block the run, write a
 blocked summary with `--blocked` or `make evidence-reconnect-timing-blocked`
 instead of upgrading an older reconnect smoke to a timing pass.
+Only a summary with `verdict=pass` and `can_close_timing_gate=true` can close
+the README gate. An incremental run may return `verdict=pass` for the requested
+scenario and `can_close_requested_scope=true`, but it must still keep
+`can_close_timing_gate=false` until all three disruption scenarios pass.
 
 For performance-gate runs, keep latency evidence in the same evidence directory
 as the device identity and soak artifacts:
