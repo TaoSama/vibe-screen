@@ -150,7 +150,7 @@ class WebRtcInternetTransportTest {
     }
 
     @Test
-    fun validatedNetworkChangesUseBoundedIceRestartBeforeFreshSession() {
+    fun validatedNetworkHandoffRequestsFreshSessionWithoutIceRestart() {
         val clock = FakeClock(10_000)
         val peer = FakePeerEngine()
         val monitor = FakeNetworkMonitor()
@@ -163,12 +163,14 @@ class WebRtcInternetTransportTest {
         monitor.available(network("cellular"))
         monitor.available(network("vpn"))
 
-        assertEquals(0, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
-        assertEquals(1, peer.iceRestarts)
+        val freshRequests = events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>()
+        assertEquals(1, freshRequests.size)
+        assertTrue(freshRequests.single().reason.contains("network changed from wifi to cellular"))
+        assertEquals(0, peer.iceRestarts)
         clock.now += 5_000
         transport.tick()
-        assertEquals(0, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
-        assertEquals(2, peer.iceRestarts)
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
@@ -222,6 +224,27 @@ class WebRtcInternetTransportTest {
 
         assertEquals(0, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
         assertEquals(1, peer.iceRestarts)
+    }
+
+    @Test
+    fun pendingFreshSessionTickRequestsFreshSessionWithoutIceRestart() {
+        val clock = FakeClock(10_000)
+        val peer = FakePeerEngine()
+        val monitor = FakeNetworkMonitor()
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer, monitor, clock, events)
+        transport.start()
+        monitor.available(network("wifi"))
+        setPrivateField(transport, "lastRecoveryRequestAtMillis", 10_000L)
+        setPrivateField(transport, "pendingFreshSessionReason", "fresh lease required")
+
+        clock.now += 5_000
+        transport.tick()
+
+        val freshRequests = events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>()
+        assertEquals(1, freshRequests.size)
+        assertEquals("fresh lease required", freshRequests.single().reason)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
@@ -390,6 +413,16 @@ class WebRtcInternetTransportTest {
 
     private fun network(id: String) =
         NetworkSnapshot(id, validated = true, metered = false, transports = setOf(NetworkTransport.WIFI))
+
+    private fun setPrivateField(
+        target: Any,
+        name: String,
+        value: Any?,
+    ) {
+        val field = target.javaClass.getDeclaredField(name)
+        field.isAccessible = true
+        field.set(target, value)
+    }
 }
 
 private class FakeClock(var now: Long) : MonotonicClock {

@@ -243,7 +243,7 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun negotiatesVideoDeliversKeyframeAndFallsBackToFreshSessionOnUnsupportedHandoff() {
+    fun negotiatesVideoDeliversKeyframeAndRequestsFreshSessionOnNetworkHandoff() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
@@ -327,7 +327,7 @@ class InternetProductSessionTest {
         assertEquals(InternetProductSessionState.RECOVERING, session.state)
         assertEquals(1, callbacks.freshReasons.size)
         assertEquals(1, callbacks.states.count { it == InternetProductSessionState.RECOVERING })
-        assertEquals(1, peer.restartCalls)
+        assertEquals(0, peer.restartCalls)
         assertFalse(session.sendTouch(ProductTouchEvent(2, 0, ProductInputPhase.ENDED, 0.5, 0.5)))
         session.close()
         session.close()

@@ -914,16 +914,23 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertFalse(harness.engine.didClose)
     }
 
-    func testNetworkChangeAttemptsBoundedICERestartBeforeFreshSession() throws {
-        let harness = try Harness()
+    func testNetworkHandoffInstallsFreshSessionWithoutICERestart() throws {
+        let harness = try Harness(engineCount: 2, replacementSessionEpoch: 2)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
         let authenticating = expectation(description: "authenticating")
-        let recovery = expectation(description: "transport recovery")
+        let recovery = expectation(description: "fresh-session recovery")
         harness.session.onStateChanged = { state in
             if state == .authenticating { authenticating.fulfill() }
-            if state == .recovering(attempt: 1) { recovery.fulfill() }
         }
         harness.session.onFreshSessionRecoveryRequired = { attempt in
-            XCTFail("Fresh session should wait for ICE restart exhaustion, got attempt \(attempt)")
+            XCTAssertEqual(attempt, 1)
+            do {
+                try harness.session.provideFreshSession(configuration: replacementConfiguration)
+                recovery.fulfill()
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
         }
 
         try harness.session.start(configuration: harness.configuration)
@@ -933,8 +940,11 @@ final class InternetProductSessionTests: XCTestCase {
         harness.engine.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-b"))
 
         wait(for: [recovery], timeout: 1)
-        XCTAssertEqual(harness.engine.restartICECount, 1)
-        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
+        XCTAssertEqual(harness.engine.restartICECount, 0)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
     }
 
     func testFreshSessionFallbackCanSynchronouslyInstallReplacementAfterICERestartUnsupported() throws {
