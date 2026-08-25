@@ -291,14 +291,14 @@ def verify_report(report: dict[str, Any]) -> VerificationResult:
     _required_bool(
         relay_admission,
         "same_allocation_retry_rejected",
-        "same allocation credential retry rejection",
+        "post-revocation same allocation credential retry rejection",
         missing,
         failures,
     )
     _optional_status(
         relay_admission,
         "same_allocation_retry_status",
-        "same allocation credential retry rejection",
+        "post-revocation same allocation credential retry rejection",
         ALLOWED_REJECTION_STATUS,
         warnings,
     )

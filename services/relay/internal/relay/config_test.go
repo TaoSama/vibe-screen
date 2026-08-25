@@ -75,12 +75,13 @@ func TestConfigRequiresProductionAuthorityFieldsTogether(t *testing.T) {
 		TurnSecret: strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
 		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32), AuthorityMode: AuthorityModeProd,
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "authority_url") || !strings.Contains(err.Error(), authorityTokenEnv) {
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "authority_url") || !strings.Contains(err.Error(), "allocation_registry_file") || !strings.Contains(err.Error(), authorityTokenEnv) {
 		t.Fatalf("expected missing authority fields, got %v", err)
 	}
 
 	cfg.AuthorityURL = "http://127.0.0.1:8091"
 	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AllocationRegistryFile = filepath.Join(t.TempDir(), "allocations.json")
 	cfg.AuthorityToken = strings.Repeat("r", 32)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid production authority config rejected: %v", err)
@@ -94,6 +95,7 @@ func TestConfigRejectsAuthorityFieldsInLocalMode(t *testing.T) {
 		MaxConcurrentSessionsPerDevice: 1, DailyBytesPerDevice: 1, MaxUsageEventBytes: 1, StateFile: filepath.Join(t.TempDir(), "state.json"),
 		TurnSecret: strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
 		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32), AuthorityURL: "http://127.0.0.1:8091",
+		AllocationRegistryFile: filepath.Join(t.TempDir(), "allocations.json"),
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "production_authority") {
 		t.Fatalf("expected local authority-field rejection, got %v", err)

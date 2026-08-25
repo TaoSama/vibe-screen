@@ -21,11 +21,14 @@ operates on reviewed structured JSON and a local active-allocation state file; i
 is not a live coturn allocation teardown proof.
 
 The current `services/relay/` binary is an experimental credential/usage control
-service, not the production shape below. A trusted control-plane bearer requests
-session-scoped credentials, usage comes from a trusted collector, quota state is
-stored in one local file, and request-rate state is process-local. Admin revocation
-blocks future credentials and rejects every subsequent usage event for that
-device, but does not terminate an active TURN allocation or prove a signed
+service, not the complete production shape below. A trusted control-plane bearer
+requests session-scoped credentials and usage comes from a trusted collector.
+Local development can store quota/revocation state in one local file; the
+production-authority path uses PostgreSQL for shared quota, revocation, active
+session, and event-idempotency state while keeping request-rate state
+process-local. Admin revocation or Authority revocation blocks future credentials
+and rejects every subsequent non-duplicate usage event for that device/session,
+but does not by itself terminate an active TURN allocation or prove a signed
 device/host authorization. Credential issuance and revoke are serialized so no
 new credential is returned after a completed revoke. The binary itself remains
 separate from the coturn data-plane process in the Compose deployment.
@@ -41,8 +44,11 @@ failures return `502` without falling back to locally minted tokens; signaling
 storage failures return `503`; authority policy rejections remain denials.
 Relay credential
 admission now delegates to the authority before TURN credential issuance when
-`services/relay/` is run in its Authority-backed production mode, and
-Authority owns coturn usage/reconciliation APIs. The repository also includes
+`services/relay/` is run in its Authority-backed production mode; relay usage
+events also delegate to Authority before non-duplicate ledger mutation; and
+Authority owns coturn usage/reconciliation APIs. Relay writes a strict
+allocation registry that maps Authority allocation IDs to TURN REST usernames so
+operator tooling can identify exact coturn sessions. The repository also includes
 `scripts/phase3/coturn_reconcile.py`, a bounded helper that submits a trusted
 structured coturn allocation snapshot to Authority, can call an external exporter
 command whose stdout is that same strict JSON, retries failures when explicitly
@@ -50,9 +56,11 @@ configured, and invokes an external disconnect executor for unauthorized,
 conflicting, or revoked active source allocations. The current-base local product
 slice adds `scripts/phase3/coturn_allocation_exporter.py` for structured collector
 adaptation, `scripts/phase3/coturn_reconciliation_loop.py` for bounded durable
-missing-allocation tracking, and `scripts/phase3/coturn_disconnect_executor.py`
-for idempotent local active-allocation state removal plus non-secret audit
-records. This still is not a production-proven coturn machine exporter,
+missing-allocation tracking, `scripts/phase3/coturn_disconnect_executor.py` for
+idempotent local active-allocation state removal plus non-secret audit records,
+and `scripts/phase3/coturn_cli_control.py` for coturn CLI `ps` export and
+`cs <session-id>` disconnect when the registry mapping is exact. This still is
+not a production-proven coturn machine exporter,
 production scheduler, or concrete data-plane disconnect implementation. Therefore
 this does not remove the public-launch prohibition below. See the service README
 for the migration procedure, API contract, and remaining infrastructure gates.
@@ -247,8 +255,12 @@ mitigation, escalation path, and rollback/feature-disable control.
 2. Invalidate each matching signaling session through the issuer endpoint,
    which forwards the revocation to the authority in `production_authority`
    mode, and verify both role tokens and any long poll fail immediately.
-3. Revoke relay credential issuance, then separately disconnect existing coturn
+3. Revoke relay credential issuance, inspect the relay allocation registry for
+   matching `allocation_id` entries, then separately disconnect existing coturn
    allocations and reconcile any ledger entry whose final usage event is rejected.
+   The local coturn CLI helper can assist an operator only when its registry and
+   coturn `ps` output identify one exact session; retain the command transcript
+   as deployment evidence.
 4. Terminate the endpoint transport; signaling invalidation alone does not stop a
    direct PeerConnection or an active TURN allocation.
 5. Confirm direct and relay reconnect rejection before and after service restart.

@@ -1,4 +1,5 @@
 import CoreMedia
+import Foundation
 import VideoToolbox
 import XCTest
 @testable import Telemachus
@@ -31,6 +32,82 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             properties[kVTCompressionPropertyKey_HDRMetadataInsertionMode as String] as? String,
             kVTHDRMetadataInsertionMode_None as String
         )
+    }
+
+    func testSettingsPropertyApplierFlushesAndRetriesTransientRejection() {
+        var statuses: [OSStatus] = [-1, -1, noErr]
+        var setAttempts = 0
+        var completionAttempts = 0
+        var sleepIntervals: [TimeInterval] = []
+
+        let status = VideoEncoderSettingsPropertyApplier.apply(
+            maximumAttempts: 5,
+            retryDelay: 0.02,
+            setProperty: {
+                setAttempts += 1
+                return statuses.removeFirst()
+            },
+            completeFrames: {
+                completionAttempts += 1
+                return noErr
+            },
+            sleep: { sleepIntervals.append($0) }
+        )
+
+        XCTAssertEqual(status, noErr)
+        XCTAssertEqual(setAttempts, 3)
+        XCTAssertEqual(completionAttempts, 2)
+        XCTAssertEqual(sleepIntervals, [0.02, 0.02])
+    }
+
+    func testSettingsPropertyApplierFailsClosedAfterBoundedRetries() {
+        var setAttempts = 0
+        var completionAttempts = 0
+        var sleepCount = 0
+
+        let status = VideoEncoderSettingsPropertyApplier.apply(
+            maximumAttempts: 4,
+            retryDelay: 0.01,
+            setProperty: {
+                setAttempts += 1
+                return -12913
+            },
+            completeFrames: {
+                completionAttempts += 1
+                return noErr
+            },
+            sleep: { _ in sleepCount += 1 }
+        )
+
+        XCTAssertEqual(status, -12913)
+        XCTAssertEqual(setAttempts, 4)
+        XCTAssertEqual(completionAttempts, 3)
+        XCTAssertEqual(sleepCount, 3)
+    }
+
+    func testSettingsPropertyApplierFailsClosedWhenFrameCompletionFails() {
+        var setAttempts = 0
+        var completionAttempts = 0
+        var sleepCount = 0
+
+        let status = VideoEncoderSettingsPropertyApplier.apply(
+            maximumAttempts: 5,
+            retryDelay: 0.01,
+            setProperty: {
+                setAttempts += 1
+                return -12913
+            },
+            completeFrames: {
+                completionAttempts += 1
+                return kVTInvalidSessionErr
+            },
+            sleep: { _ in sleepCount += 1 }
+        )
+
+        XCTAssertEqual(status, kVTInvalidSessionErr)
+        XCTAssertEqual(setAttempts, 1)
+        XCTAssertEqual(completionAttempts, 1)
+        XCTAssertEqual(sleepCount, 0)
     }
 
     private final class FakeVideoToolbox {

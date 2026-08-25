@@ -28,6 +28,34 @@ enum VideoEncoderSDRColorMetadata {
     }
 }
 
+enum VideoEncoderSettingsPropertyApplier {
+    static let maximumAttempts = 5
+    static let retryDelay: TimeInterval = 0.02
+
+    static func apply(
+        maximumAttempts: Int = Self.maximumAttempts,
+        retryDelay: TimeInterval = Self.retryDelay,
+        setProperty: () -> OSStatus,
+        completeFrames: () -> OSStatus,
+        sleep: (TimeInterval) -> Void = Thread.sleep(forTimeInterval:)
+    ) -> OSStatus {
+        precondition(maximumAttempts > 0)
+        var lastStatus: OSStatus = noErr
+
+        for attempt in 1...maximumAttempts {
+            lastStatus = setProperty()
+            if lastStatus == noErr { return noErr }
+            guard attempt < maximumAttempts else { break }
+
+            let completionStatus = completeFrames()
+            if completionStatus != noErr { return completionStatus }
+            sleep(retryDelay)
+        }
+
+        return lastStatus
+    }
+}
+
 final class VideoEncoderInFlightAdmission {
     struct Snapshot: Equatable {
         let inFlight: Int
@@ -347,6 +375,7 @@ class VideoEncoder {
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
     private let sessionLock = NSLock()
+    private var lastSettingsUpdateFailure: String?
     fileprivate let keyframeRequests = VideoEncoderKeyframeRequests()
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
     private let callbackOwner = VideoEncoderCallbackOwner()
@@ -378,6 +407,12 @@ class VideoEncoder {
 
     var hasPendingKeyframeRequest: Bool { keyframeRequests.isPending }
 
+    var settingsUpdateFailureDescription: String? {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return lastSettingsUpdateFailure
+    }
+
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height
@@ -405,9 +440,11 @@ class VideoEncoder {
 
         sessionLock.lock()
         defer { sessionLock.unlock() }
+        lastSettingsUpdateFailure = nil
         let updatedFrameRate = max(1, frameRate ?? self.frameRate)
 
         guard let session = compressionSession else {
+            lastSettingsUpdateFailure = "no active compression session"
             debugLog("VideoToolbox encoder settings rejected: no active compression session")
             return false
         }
@@ -420,7 +457,15 @@ class VideoEncoder {
 
         var appliedRollbacks: [(CFString, CFTypeRef)] = []
         func apply(_ key: CFString, value: CFTypeRef, rollbackValue: CFTypeRef) -> Bool {
-            let status = VTSessionSetProperty(session, key: key, value: value)
+            let status = VideoEncoderSettingsPropertyApplier.apply(
+                setProperty: { VTSessionSetProperty(session, key: key, value: value) },
+                completeFrames: {
+                    VTCompressionSessionCompleteFrames(
+                        session,
+                        untilPresentationTimeStamp: .invalid
+                    )
+                }
+            )
             guard status == noErr else {
                 for (rollbackKey, rollbackValue) in appliedRollbacks.reversed() {
                     let rollbackStatus = VTSessionSetProperty(
@@ -432,6 +477,7 @@ class VideoEncoder {
                         debugLog("VideoToolbox encoder settings rollback failed: \(rollbackStatus)")
                     }
                 }
+                lastSettingsUpdateFailure = "\(key) status=\(status)"
                 debugLog("VideoToolbox encoder settings rejected for \(key): \(status)")
                 return false
             }

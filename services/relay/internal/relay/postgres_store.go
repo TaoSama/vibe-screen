@@ -224,6 +224,26 @@ func (s *PostgresStore) Apply(ctx context.Context, now time.Time, event UsageEve
 	})
 }
 
+func (s *PostgresStore) Duplicate(ctx context.Context, now time.Time, event UsageEvent) (bool, error) {
+	day := now.UTC().Format(time.DateOnly)
+	payloadDigest, err := usageEventDigest(event)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrInvalidEvent, err)
+	}
+	var existing []byte
+	err = s.pool.QueryRow(ctx, "SELECT payload_sha256 FROM relay_usage_events WHERE device_id=$1 AND event_day=$2 AND event_id=$3", event.DeviceID, day, event.EventID).Scan(&existing)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, storageError("read usage event", err)
+	}
+	if !hmac.Equal(existing, payloadDigest) {
+		return false, ErrInvalidEvent
+	}
+	return true, nil
+}
+
 func (s *PostgresStore) Snapshot(ctx context.Context, now time.Time, deviceID string) (uint64, uint64, int, error) {
 	day := now.UTC().Format(time.DateOnly)
 	var ingress, egress string

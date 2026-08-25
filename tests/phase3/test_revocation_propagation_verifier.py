@@ -207,7 +207,7 @@ class RevocationPropagationVerifierTests(unittest.TestCase):
         result = verify_report(report)
 
         self.assertEqual(result.status, BLOCKED)
-        self.assertIn("same allocation credential retry rejection", result.missing)
+        self.assertIn("post-revocation same allocation credential retry rejection", result.missing)
 
 
 if __name__ == "__main__":

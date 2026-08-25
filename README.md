@@ -680,15 +680,27 @@ Phase 3 production-shaped Compose profile includes signaling, relay, and coturn
 services, but it still requires an external TLS/private-ingress layer, managed
 PostgreSQL, secret management, monitoring, and limits described in their
 runbooks; the example local profile is loopback-only.
-`scripts/phase3/coturn_allocation_exporter.py`,
+Authority-mode signaling long polls reauthorize in bounded refresh windows so a
+revoked role token fails closed before the full client poll timeout. Relay now
+sends both credential issuance and non-duplicate usage ingestion through
+Authority admission in `production_authority` mode, requires an
+`allocation_id`, and persists admitted allocations to a strict local registry
+for coturn operator tooling. `scripts/phase3/coturn_reconcile.py` provides a
+bounded operator helper that accepts a trusted structured coturn allocation
+snapshot, submits it to Authority's reconciliation API, and requires an external
+active-allocation disconnect executor for unauthorized, conflicting, or revoked
+source allocations. `scripts/phase3/coturn_allocation_exporter.py`,
 `scripts/phase3/coturn_reconciliation_loop.py`, and
-`scripts/phase3/coturn_disconnect_executor.py` now provide the current-base local
+`scripts/phase3/coturn_disconnect_executor.py` provide the current-base local
 product slice for the exporter/reconciliation/executor boundary. The exporter
 adapts a reviewed structured collector snapshot into the strict Authority
 snapshot shape, the bounded loop persists consecutive missing-allocation state,
 and the executor consumes `coturn_reconcile.py`'s active-allocation disconnect
 environment to remove an allocation from a machine-readable local state file and
-write a non-secret audit record. These are local contract and operator-slice
+write a non-secret audit record. `scripts/phase3/coturn_cli_control.py` can
+export registry-matched coturn CLI sessions and issue loopback
+`cs <session-id>` disconnect commands when an operator supplies a precise
+registry and CLI connection. These are local contract and operator-slice
 artifacts, not a deployed coturn exporter, production scheduler, live coturn
 allocation teardown, or proof of public Internet enforcement.
 `scripts/phase3/revocation_propagation_verifier.py` adds a fail-closed evidence
@@ -723,16 +735,18 @@ connection-scoped database leases so a replacement instance can reclaim a slot
 after the failed instance loses its PostgreSQL backend. Multi-instance
 throughput, cross-replica rate limiting, load-balancer behavior, and
 multi-region consistency remain unproved. Relay credential admission is wired to Authority,
-and Authority can debit accepted coturn usage into the control-plane daily-byte ledger.
+relay non-duplicate usage admission is also checked by Authority, and Authority
+can debit accepted coturn usage into the control-plane daily-byte ledger.
 The structured coturn exporter, bounded reconciliation loop, and local
 active-allocation disconnect executor are now covered as a current-base product
 slice, including stale-allocation observation, Authority-reported revoked
-allocations, and quota-closed allocation remediation contracts. Production
-deployment of those components, real coturn/provider allocation termination, and
-production end-to-end enforcement remain release gates.
+allocations, and quota-closed allocation remediation contracts. The coturn CLI
+control helper can map registry entries to exact local coturn CLI sessions, but
+production deployment of these components, real coturn/provider allocation
+termination, and production end-to-end enforcement remain release gates.
 A local revocation propagation verifier now fixes the required evidence schema
 for Authority audit visibility, signaling long-poll rejection, future and
-same-allocation relay credential rejection, active allocation disconnect, stale
+post-revocation same-allocation relay credential rejection, active allocation disconnect, stale
 credential rejection, and post-revocation traffic denial; the current blocked
 evidence still lacks the live coturn/data-plane deployment observations.
 

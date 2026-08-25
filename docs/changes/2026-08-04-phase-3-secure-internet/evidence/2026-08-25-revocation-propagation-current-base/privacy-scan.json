@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3030,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "a6e7bd7f974dd98f82cf02eb0d3c4582e2db14e2a97879d90e4acc48074f0808"
+    },
+    {
+      "bytes": 2219,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "db6f021c542cda7cfc4928c9f808a559e61d80c95b0edd2e9da8b151cb64e9b4"
+    },
+    {
+      "bytes": 1377,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "revocation-propagation-current-base-blocked.json",
+      "result": "pass",
+      "sha256": "d6cf892e97f44cce8bd0c75f6f3ee215b15c6c490391ac29c84d1267c774eb45"
+    },
+    {
+      "bytes": 467,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "revocation-propagation-current-base-summary.json",
+      "result": "pass",
+      "sha256": "6df1b0fbb02d38b9e682e768e960d1334009f02e99de99815c09ba9f3213801f"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

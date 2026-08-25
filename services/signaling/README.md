@@ -202,9 +202,10 @@ next poll. A cursor is scoped by the session bearer; changing it can only skip
 that caller's events, never read another session. One waiter per role is allowed
 by default. In `production_authority` mode every message publish is authorized
 before parsing and again immediately before commit, while every poll is
-authorized before and after its wait. A revocation that lands during a long
-poll therefore wins. Sessions and all SDP/ICE state are deleted from the active
-store at TTL.
+authorized before and during its wait. Long polls are split into bounded
+Authority refresh windows, so a revocation that lands during a long poll fails
+closed without waiting for the caller's full `wait_seconds` timeout. Sessions
+and all SDP/ICE state are deleted from the active store at TTL.
 
 ### Status codes
 
@@ -363,7 +364,8 @@ slice, not accepted production behavior:
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a session can be
   created.
-- Relay credential admission is wired to the authority, but the coturn exporter,
+- Relay credential and usage admission are wired to the authority, but the
+  coturn exporter,
   reconciliation loop, and active-allocation disconnect path are not production
   proven.
 - An active PeerConnection or TURN allocation is not actively disconnected when
