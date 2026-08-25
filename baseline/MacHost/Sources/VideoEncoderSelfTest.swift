@@ -11,6 +11,7 @@ enum VideoEncoderSelfTest {
     private static let settingsUpdateCount = 24
     private static let warmupTimeout: TimeInterval = 8
     private static let warmupPollInterval: TimeInterval = 0.05
+    private static let warmupDrainDelay: TimeInterval = 0.5
 
     private final class ResultState: @unchecked Sendable {
         private let lock = NSLock()
@@ -73,7 +74,8 @@ enum VideoEncoderSelfTest {
         let warmup = WarmupPump(
             frameCount: warmupFrameCount,
             timeout: warmupTimeout,
-            pollInterval: warmupPollInterval
+            pollInterval: warmupPollInterval,
+            drainDelay: warmupDrainDelay
         )
         let warmupResult = warmup.run(
             availableCapacity: {
@@ -221,6 +223,7 @@ enum VideoEncoderSelfTest {
         let frameCount: Int
         let timeout: TimeInterval
         let pollInterval: TimeInterval
+        let drainDelay: TimeInterval
 
         func run(
             availableCapacity: () -> Int,
@@ -228,19 +231,23 @@ enum VideoEncoderSelfTest {
             submitFrame: (Int) -> Void,
             completeFrames: () -> OSStatus,
             drainFrames: () -> Int,
-            sleep: (TimeInterval) -> Void
+            sleep: (TimeInterval) -> Void,
+            now: () -> Date = Date.init
         ) -> Result {
-            let deadline = Date().addingTimeInterval(timeout)
+            precondition(drainDelay >= 0)
+            let deadline = now().addingTimeInterval(timeout)
             var submittedFrames = 0
             var drainedFrames = 0
             var completionStatus: OSStatus = noErr
+            var capacityFullSince: Date?
 
-            while Date() < deadline, callbackCount() == 0 {
+            while now() < deadline, callbackCount() == 0 {
                 var submittedThisPass = 0
                 while submittedThisPass < frameCount, availableCapacity() > 0 {
                     submitFrame(submittedFrames)
                     submittedFrames += 1
                     submittedThisPass += 1
+                    capacityFullSince = nil
                 }
 
                 completionStatus = completeFrames()
@@ -251,17 +258,17 @@ enum VideoEncoderSelfTest {
                     break
                 }
                 if availableCapacity() == 0 {
-                    sleep(pollInterval)
-                    completionStatus = completeFrames()
-                    if completionStatus != noErr {
-                        break
+                    let currentTime = now()
+                    if capacityFullSince == nil {
+                        capacityFullSince = currentTime
                     }
-                    if callbackCount() > 0 {
-                        break
+                    if let fullSince = capacityFullSince,
+                       currentTime.timeIntervalSince(fullSince) >= drainDelay {
+                        drainedFrames += drainFrames()
+                        capacityFullSince = nil
                     }
-                }
-                if availableCapacity() == 0 {
-                    drainedFrames += drainFrames()
+                } else {
+                    capacityFullSince = nil
                 }
                 sleep(pollInterval)
             }

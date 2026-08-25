@@ -430,7 +430,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.5,
-            pollInterval: 0
+            pollInterval: 0,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var retainedInFlight = 0
@@ -470,7 +471,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.5,
-            pollInterval: 0
+            pollInterval: 0,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var retainedInFlight = 0
@@ -511,7 +513,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.5,
-            pollInterval: 0
+            pollInterval: 0,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var completedFrames = 0
@@ -555,13 +558,68 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(admission.inFlightCount, 0)
     }
 
+    func testWarmupPumpWaitsForDelayedCallbackBeforeDrainingStuckFrames() {
+        let admission = VideoEncoderInFlightAdmission(capacity: 2)
+        let videoToolbox = FakeVideoToolbox()
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 1,
+            pollInterval: 0.1,
+            drainDelay: 0.5
+        )
+        var submittedFrames: [Int] = []
+        var callbacks = 0
+        var completionCallCount = 0
+        var drainCallCount = 0
+        var maximumObservedInFlight = 0
+        var currentTime = Date(timeIntervalSinceReferenceDate: 0)
+
+        let result = warmup.run(
+            availableCapacity: {
+                let snapshot = admission.snapshot
+                return max(0, snapshot.capacity - snapshot.inFlight)
+            },
+            callbackCount: { callbacks },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
+                maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+            },
+            completeFrames: {
+                completionCallCount += 1
+                if completionCallCount == 2, videoToolbox.completeFirstFrame() {
+                    callbacks = 1
+                }
+                return noErr
+            },
+            drainFrames: {
+                drainCallCount += 1
+                return videoToolbox.drainAllFrames()
+            },
+            sleep: { interval in currentTime = currentTime.addingTimeInterval(interval) },
+            now: { currentTime }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 2, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1])
+        XCTAssertEqual(videoToolbox.submissionCount, 2)
+        XCTAssertEqual(completionCallCount, 2)
+        XCTAssertEqual(drainCallCount, 0)
+        XCTAssertEqual(admission.inFlightCount, 1)
+        XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
+
+        while videoToolbox.completeFirstFrame() {}
+        XCTAssertEqual(admission.inFlightCount, 0)
+    }
+
     func testWarmupPumpDrainsStuckWarmupFramesWhenCompletionProducesNoCallbacks() {
         let admission = VideoEncoderInFlightAdmission(capacity: 2)
         let videoToolbox = FakeVideoToolbox()
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.5,
-            pollInterval: 0
+            pollInterval: 0,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var callbacks = 0
@@ -602,7 +660,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(result, .init(submittedFrames: 4, drainedFrames: 2, callbacks: 1, completionStatus: noErr))
         XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
         XCTAssertEqual(videoToolbox.submissionCount, 4)
-        XCTAssertEqual(completionCallCount, 3)
+        XCTAssertEqual(completionCallCount, 2)
         XCTAssertEqual(drainCallCount, 1)
         XCTAssertEqual(admission.inFlightCount, 1)
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
@@ -615,7 +673,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.001,
-            pollInterval: 0
+            pollInterval: 0,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var retainedInFlight = 0
@@ -645,7 +704,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
             timeout: 0.001,
-            pollInterval: 0.001
+            pollInterval: 0.001,
+            drainDelay: 0
         )
         var submittedFrames: [Int] = []
         var retainedInFlight = 0
