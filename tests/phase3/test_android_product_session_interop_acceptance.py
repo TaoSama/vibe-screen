@@ -17,11 +17,13 @@ sys.path.insert(0, str(ROOT))
 from scripts.phase3.android_product_session_interop_acceptance import (
     DEVICE_MARKER_PREFIX,
     EVIDENCE_BOUNDARIES,
+    EXPECTED_P0110_DEVICE_IDENTITY,
     HOST_MARKER_PREFIX,
     UI_MARKER_FLAGS,
     UI_MARKER_PREFIX,
     INTERNET_LEASE_LOCK,
     MANDATORY_DEVICE_LOCKS,
+    PRODUCT_INTEROP_EVIDENCE_BOUNDARIES,
     Adb,
     AdbGateJournal,
     InteropError,
@@ -44,6 +46,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     validate_ui_marker,
     write_private,
 )
+from scripts.phase3.android_current_base_interop_gate import PRODUCT_BOUNDARY_EXPECTATIONS
 
 
 class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
@@ -423,6 +426,26 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         self.assertEqual(config["listen_address"], "192.0.2.10:18088")
         self.assertEqual(config["max_waiters_per_role"], 1)
         self.assertGreater(config["max_candidates_per_role"], 0)
+
+    def test_runner_records_exact_p0110_sdk_identity(self) -> None:
+        runner_source = ROOT / "scripts/phase3/android_product_session_interop_acceptance.py"
+        self.assertTrue(runner_source.is_file())
+        self.assertEqual(
+            EXPECTED_P0110_DEVICE_IDENTITY,
+            {
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "product": "Nubia P0110",
+                "codename": "pacific",
+                "android_version": "16",
+                "operating_system": "Android 16",
+                "sdk": 36,
+            },
+        )
+
+    def test_runner_product_boundaries_cover_current_base_gate_expectations(self) -> None:
+        for key, expected in PRODUCT_BOUNDARY_EXPECTATIONS.items():
+            self.assertEqual(PRODUCT_INTEROP_EVIDENCE_BOUNDARIES.get(key), expected)
 
     def test_ice_urls_and_turn_credentials_are_loaded_only_from_private_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
