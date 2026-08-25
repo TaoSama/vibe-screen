@@ -77,6 +77,8 @@ PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
+PHASE3_ANDROID_INTEROP_EVIDENCE ?=
+PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 HARMONY_HDC_TARGET ?=
@@ -106,7 +108,83 @@ PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachanne
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-coturn-reconciliation-product-slice phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-advanced-datachannel-current-base phase3-advanced-datachannel-blocked-baseline phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test phase0-stable-release-gate require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate phase5-multi-client-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run phase2-device-environment-summary phase2-device-environment-gate
+.PHONY: \
+	protocol \
+	protocol-tests \
+	phase3-test \
+	phase3-go-test \
+	phase3-coturn-reconciliation-product-slice \
+	phase3-authority-container-test \
+	phase3-local-synthetic-product-e2e \
+	phase3-local-synthetic-public-artifacts-check \
+	phase3-local-product-e2e \
+	phase3-real-media-continuity \
+	phase3-real-media-current-base \
+	phase3-adaptive-media-current-base \
+	phase3-advanced-datachannel-current-base \
+	phase3-advanced-datachannel-blocked-baseline \
+	phase3-internet-release-gate \
+	baseline-macos-build \
+	baseline-macos-test \
+	baseline-macos-self-test \
+	baseline-macos-app \
+	baseline-macos-dev-install \
+	baseline-macos-host-preflight \
+	baseline-macos-host-readiness \
+	baseline-macos-touch-preflight \
+	baseline-android-test \
+	baseline-android-transport-boundary \
+	baseline-android-check \
+	baseline-android-apk \
+	baseline-android-dependency-audit \
+	evidence-tools-test \
+	release-tools-test \
+	phase0-stable-release-gate \
+	require-evidence-serial \
+	require-host-pid \
+	evidence-device-info \
+	evidence-usb-live-smoke \
+	evidence-touch-rerun-preflight \
+	evidence-trusted-lan-preflight \
+	evidence-reconnect-timing-blocked \
+	evidence-latency-preflight \
+	evidence-latency-gate \
+	android-audio-playback-gate \
+	native-pointer-hid-acceptance \
+	native-pointer-hid-gate \
+	physical-stylus-acceptance \
+	physical-stylus-gate \
+	actionable-error-states-gate \
+	actionable-error-current-base-gate \
+	actionable-error-current-base-owner-record \
+	harmony-readiness \
+	harmony-device-gate \
+	harmony-current-base-gate \
+	soak-30m \
+	soak-2h \
+	soak-8h \
+	host-rss-gate \
+	soak-2h-host-rss-gate \
+	phase2-tablet-manifest \
+	phase2-device-memory-gate \
+	phase2-tablet-gate \
+	hardware-keyboard-readiness \
+	hardware-keyboard-gate \
+	phase2-tablet-preflight \
+	phase2-macos-startup-recovery-gate \
+	phase2-aggregate-owner \
+	ios-app-signing-readiness-gate \
+	ios-device-acceptance-gate \
+	ios-hdr-edr-gate \
+	ios-current-base-manifest \
+	ios-current-base-gate \
+	phase5-multi-client-current-base-gate \
+	macos-hardware-compatibility-gate \
+	phase2-tablet-soak-preflight \
+	phase2-tablet-soak-run \
+	phase2-device-environment-summary \
+	phase2-device-environment-gate \
+	phase3-android-current-base-interop-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -235,6 +313,11 @@ phase3-internet-release-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.phase3_internet_release_gate \
 		--evidence-dir "$(EVIDENCE_DIR)"
+
+phase3-android-current-base-interop-gate:
+	@test -n "$(strip $(PHASE3_ANDROID_INTEROP_EVIDENCE))" || (echo "error: set PHASE3_ANDROID_INTEROP_EVIDENCE to a Phase 3 Android interop evidence JSON" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/android_current_base_interop_gate.py --evidence "$(PHASE3_ANDROID_INTEROP_EVIDENCE)" --profile "$(PHASE3_ANDROID_INTEROP_GATE_PROFILE)" --output "$(EVIDENCE_DIR)/phase3-android-current-base-interop-gate.json"
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release

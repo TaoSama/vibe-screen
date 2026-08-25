@@ -324,6 +324,26 @@ the JSON report must remain outside Git until their explicit privacy review.
 
 The fail-closed markers prove the selected direct/relay candidate path,
 Protocol v1, AES-256-GCM control and media records, synthetic video config plus
-keyframe/delta delivery, and authenticated touch. They do not prove the product
-UI, rotation, ScreenCaptureKit, visible Mac input effects, disconnect/reconnect,
-revocation propagation, public Internet traversal, or soak.
+keyframe/delta delivery, authenticated touch, and the limited pairing/lease UI
+instrumentation assertions emitted by the runner. They do not prove full product
+UI coverage, rotation, ScreenCaptureKit, visible Mac input effects,
+disconnect/reconnect, revocation propagation, public Internet traversal, or
+soak.
+
+After a run, validate the JSON with the current-base gate. The default profile
+requires real ScreenCaptureKit/CGDisplayStream through Android MediaCodec and
+therefore blocks the synthetic-media product-interop report by design:
+
+```bash
+make phase3-android-current-base-interop-gate \
+  PHASE3_ANDROID_INTEROP_EVIDENCE=/absolute/path/to/acceptance.json
+```
+
+Use `PHASE3_ANDROID_INTEROP_GATE_PROFILE=product-interop` only to replace the
+historical 2026-08-05 synthetic-media interop record on current source. That
+profile still rejects withdrawn records, local WebRTC loopback output, stale
+commits, non-P0110 device identity, missing direct or relay route reports, and
+any claim that the synthetic-media run proved ScreenCaptureKit, Android
+MediaCodec, public Internet, handoff, latency, or soak. It also compares the
+direct and relay route-level `adb_gate` lease identity fields, so the top-level
+`same_device_lease_holder` boolean alone is never sufficient.

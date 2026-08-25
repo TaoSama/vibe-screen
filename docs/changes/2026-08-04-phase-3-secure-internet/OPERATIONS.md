@@ -349,6 +349,77 @@ Internet lock. Never include its owner token in evidence. Absence of the
 coordination locks and ownership of the Internet lock authorize a run; neither is
 evidence that any device test passed.
 
+For the current Nubia substitute path, use the same shared lease-aware
+acceptance flow as the runner. The operator must atomically create and keep a
+separate process holding `/tmp/vibe-screen-device-internet.lock`, then recheck
+that the soak and Android locks are absent and that the Internet lease still
+matches before every ADB subprocess. Use an explicit serial in every command:
+
+```bash
+test ! -e /tmp/vibe-screen-device-soak.lock
+test ! -e /tmp/vibe-screen-device-android.lock
+export ADB_ENDPOINT='<device-serial>'
+export LEASE_OWNER='<opaque-owner-value>'
+export VIBE_SCREEN_COMMIT="$(git rev-parse HEAD)"
+python3 - <<'PY' &
+import json, os, pathlib, time
+path = pathlib.Path("/tmp/vibe-screen-device-internet.lock")
+payload = json.dumps({
+    "owner": os.environ["LEASE_OWNER"],
+    "pid": os.getpid(),
+    "task": "phase3-android-internet-acceptance",
+    "commit": os.environ["VIBE_SCREEN_COMMIT"],
+}, separators=(",", ":")).encode()
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+os.write(fd, payload)
+os.fsync(fd)
+try:
+    while True:
+        time.sleep(60)
+finally:
+    os.close(fd)
+    path.unlink(missing_ok=True)
+PY
+LEASE_PID=$!
+export LEASE_PID
+trap 'kill "$LEASE_PID"; wait "$LEASE_PID" 2>/dev/null || true; rm -f /tmp/vibe-screen-device-internet.lock' EXIT
+
+check_android_internet_locks() {
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+  python3 - <<'PY'
+import json, os, pathlib
+path = pathlib.Path("/tmp/vibe-screen-device-internet.lock")
+stat = path.stat()
+assert stat.st_mode & 0o777 == 0o600
+root = json.loads(path.read_text())
+assert root["owner"] == os.environ["LEASE_OWNER"]
+assert root["task"] == "phase3-android-internet-acceptance"
+assert root["commit"] == os.environ["VIBE_SCREEN_COMMIT"]
+assert root["pid"] == int(os.environ["LEASE_PID"])
+os.kill(root["pid"], 0)
+PY
+}
+
+adb_guarded() {
+  check_android_internet_locks
+  adb -s "$ADB_ENDPOINT" "$@"
+  check_android_internet_locks
+}
+
+adb_guarded devices -l
+adb_guarded shell getprop ro.product.manufacturer
+adb_guarded shell getprop ro.product.model
+adb_guarded shell getprop ro.product.device
+adb_guarded shell getprop ro.build.version.release
+adb_guarded shell getprop ro.build.version.sdk
+```
+
+The recorded identity for that path is `nubia P0110 / pacific / Android 16 /
+SDK 36`. Do not relabel it as Xiaomi 13/fuxi evidence, and do not use a
+synthetic-media interop run to claim ScreenCaptureKit-to-Android-MediaCodec,
+public Internet, handoff, latency, or soak gates.
+
 ## Authority integration open items
 
 The signaling `production_authority` mode is implemented and covered by a

@@ -606,14 +606,14 @@ and do not close the release gate.
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
 candidate pairs. Its application record layer is wired to the Keychain-backed
-identity/session lifecycle. On 2026-08-05, source commit
-`597518f948075e396352bc353afcec01a30303f3` recorded one Nubia P0110/pacific device pass
-for the Android M144 adapter, AndroidKeyStore lifecycle, REST signaling client,
-product-session UI, and encrypted DataChannel instrumentation through direct and
-forced local coturn using synthetic Protocol v1 media. This historical result is
-limited to that dated source/device combination and must not be extrapolated to
-the current working tree or later commits. It is not real ScreenCaptureKit or
-display-capture evidence.
+identity/session lifecycle. A historical, source-bound 2026-08-05 record at
+commit `597518f948075e396352bc353afcec01a30303f3` covered one Nubia
+P0110/pacific run for the Android M144 adapter, AndroidKeyStore lifecycle, REST
+signaling client, product-session UI, and encrypted DataChannel instrumentation
+through direct and forced local coturn using synthetic Protocol v1 media. That
+record is not current-source evidence, is not the current-base replacement
+owner, and must not be extrapolated to the current working tree or later commits.
+It is not real ScreenCaptureKit, Android MediaCodec, or display-capture evidence.
 The trusted-LAN path is still separate from Internet mode. Its current
 macOS/Android peers use application records on the admitted private-network TCP
 session, while explicit legacy fallback remains plaintext and must not be
@@ -726,7 +726,10 @@ The previous curated Android interop pass remains withdrawn because its source
 commit and raw evidence were unavailable. The separate 2026-08-05
 reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
-code. Dated local readiness evidence is recorded under
+code. Current-base replacement is owned by the fail-closed Android interop gate
+in the Phase 3 test plan: it must either produce a current-source `blocked`
+result or accept fresh current-source P0110 evidence through the requested proof
+profile. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
 The current-base QR pairing blocked record covers only offline Swift/Kotlin
 fixture and fail-closed checks; it records that no production TLS/public-Internet
@@ -915,6 +918,9 @@ performance validation. When running against the connected P0110, use
 device as Nubia P0110/pacific Android evidence. Do not relabel one device as another: device-specific
 evidence and hardware-gated claims, such as native HID, stylus, thermal, panel,
 or SoC decode behavior, remain scoped to the exact device that produced them.
+For Phase 3 Android Internet replacement evidence, only a fresh current-source
+P0110 run may use that substitute path; historical synthetic-media records do not
+close current Android Internet decoding or release gates.
 As of 2026-08-10 the Xiaomi 13 has recorded verified streaming, touch, keyboard
 and mouse-wheel input, reconnect, a 30-minute soak, display-selection
 negotiation, the physical<->virtual<->physical display-switch round-trip, and
