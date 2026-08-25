@@ -50,8 +50,11 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             return synchronousStatus
         }
 
-        func completeFirstFrame() {
+        @discardableResult
+        func completeFirstFrame() -> Bool {
+            guard !acceptedLeases.isEmpty else { return false }
             acceptedLeases.removeFirst().release()
+            return true
         }
     }
 
@@ -407,6 +410,52 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
 
         XCTAssertEqual(result, .init(submittedFrames: 4, callbacks: 1, completionStatus: noErr))
         XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
+        XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
+    }
+
+    func testWarmupPumpRefillsAdmissionWindowUntilFakeVideoToolboxProducesCallback() {
+        let admission = VideoEncoderInFlightAdmission(capacity: 2)
+        let videoToolbox = FakeVideoToolbox()
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 0.5,
+            pollInterval: 0
+        )
+        var submittedFrames: [Int] = []
+        var completedFrames = 0
+        var callbacks = 0
+        var completionCallCount = 0
+        var maximumObservedInFlight = 0
+
+        let result = warmup.run(
+            availableCapacity: {
+                let snapshot = admission.snapshot
+                return max(0, snapshot.capacity - snapshot.inFlight)
+            },
+            callbackCount: { callbacks },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
+                maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+            },
+            completeFrames: {
+                completionCallCount += 1
+                if videoToolbox.completeFirstFrame() {
+                    completedFrames += 1
+                }
+                if completedFrames == 4 {
+                    callbacks = 1
+                }
+                return noErr
+            },
+            sleep: { _ in }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 4, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
+        XCTAssertEqual(videoToolbox.submissionCount, 4)
+        XCTAssertEqual(completionCallCount, 4)
+        XCTAssertEqual(admission.inFlightCount, 0)
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
     }
 
