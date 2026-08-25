@@ -478,7 +478,7 @@ soak-2h: require-evidence-serial require-host-pid
 
 host-rss-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-2h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-2h/exact-window-report.json
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --exact-window-report $(EVIDENCE_DIR)/soak-2h/exact-window-report.json --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json
 
 soak-2h-host-rss-gate: require-evidence-serial require-host-pid
 	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)" EVIDENCE_HOST_PID="$(EVIDENCE_HOST_PID)"

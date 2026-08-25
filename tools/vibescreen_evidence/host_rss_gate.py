@@ -18,6 +18,11 @@ from .soak_public_report import (
     read_json as _read_json,
     read_jsonl as _read_jsonl,
 )
+from .host_stream_telemetry_gate import (
+    evaluate_exact_window_report,
+    missing_exact_window_report_evaluation,
+    thresholds as _stream_telemetry_thresholds,
+)
 from .soak_report import (
     _parse_timestamp,
     _validate_sample_record,
@@ -60,6 +65,7 @@ def _thresholds() -> dict[str, float | int]:
         "maximum_second_half_drift_kib": MAXIMUM_SECOND_HALF_DRIFT_KIB,
         "maximum_full_window_drift_kib": MAXIMUM_FULL_WINDOW_DRIFT_KIB,
         "maximum_final_quarter_step_kib": MAXIMUM_FINAL_QUARTER_STEP_KIB,
+        **_stream_telemetry_thresholds(),
     }
 
 
@@ -228,7 +234,19 @@ def _evaluate(
     }
 
 
-def derive_gate(summary_path: Path, samples_path: Path) -> dict[str, Any]:
+def _combine_verdicts(rss_verdict: str, telemetry_verdict: str) -> str:
+    if "fail" in (rss_verdict, telemetry_verdict):
+        return "fail"
+    if "insufficient" in (rss_verdict, telemetry_verdict):
+        return "insufficient"
+    return "pass"
+
+
+def derive_gate(
+    summary_path: Path,
+    samples_path: Path,
+    exact_window_report_path: Path | None = None,
+) -> dict[str, Any]:
     summary = _read_json(summary_path, "summary")
     run_id = _validate_summary(summary)
     started = _parse_timestamp(summary.get("started_at"), "summary.started_at")
@@ -278,6 +296,22 @@ def derive_gate(summary_path: Path, samples_path: Path) -> dict[str, Any]:
             "the source soak summary is not complete and error-free",
             *evaluation["reasons"],
         ]
+    if exact_window_report_path is None:
+        telemetry_evaluation = missing_exact_window_report_evaluation()
+    else:
+        telemetry_evaluation = evaluate_exact_window_report(
+            _read_json(exact_window_report_path, "exact_window_report"),
+            run_id=run_id,
+            summary=summary,
+        )
+    evaluation["verdict"] = _combine_verdicts(
+        str(evaluation["verdict"]),
+        str(telemetry_evaluation["verdict"]),
+    )
+    evaluation["reasons"] = [
+        *evaluation["reasons"],
+        *telemetry_evaluation["reasons"],
+    ]
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": GATE_KIND,
@@ -293,6 +327,9 @@ def derive_gate(summary_path: Path, samples_path: Path) -> dict[str, Any]:
             "status": summary.get("status"),
             "error_count": len(summary.get("errors", [])),
         },
+        "telemetry_sufficiency": telemetry_evaluation["sufficiency"],
+        "telemetry_criteria": telemetry_evaluation["criteria"],
+        "telemetry_metrics": telemetry_evaluation["metrics"],
         "thresholds": _thresholds(),
         **evaluation,
         "interpretation": INTERPRETATION,
@@ -307,6 +344,9 @@ def _failure_report() -> dict[str, Any]:
         "verdict": "insufficient",
         "window": {},
         "source_summary": {},
+        "telemetry_sufficiency": {},
+        "telemetry_criteria": {},
+        "telemetry_metrics": {},
         "thresholds": _thresholds(),
         "sufficiency": {},
         "criteria": {},
@@ -330,6 +370,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--samples", type=Path, required=True)
+    parser.add_argument(
+        "--exact-window-report",
+        type=Path,
+        required=True,
+        help="soak_report output for the same exact two-hour window",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -337,7 +383,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     try:
-        report = derive_gate(arguments.summary, arguments.samples)
+        report = derive_gate(
+            arguments.summary,
+            arguments.samples,
+            arguments.exact_window_report,
+        )
         _write_json(arguments.output, report)
     except (EvidenceInputError, OSError, TypeError, ValueError):
         report = _failure_report()

@@ -1,0 +1,235 @@
+{
+  "criteria": {
+    "final_quarter_mean_step_kib": {
+      "maximum": 2048.0,
+      "measured": 666.1333333333023,
+      "passed": true
+    },
+    "full_window_endpoint_median_drift_kib": {
+      "maximum": 8192.0,
+      "measured": 18040.0,
+      "passed": false
+    },
+    "second_half_endpoint_median_drift_kib": {
+      "maximum": 4096.0,
+      "measured": 4800.0,
+      "passed": false
+    },
+    "second_half_ols_slope_ci_upper_kib_per_minute": {
+      "maximum": 40.0,
+      "measured": 110.57960320016079,
+      "passed": false
+    },
+    "second_half_theil_sen_slope_kib_per_minute": {
+      "maximum": 40.0,
+      "measured": 93.53845866501615,
+      "passed": false
+    }
+  },
+  "derivation_status": "complete",
+  "interpretation": "A pass means this two-hour evidence window did not show practically significant host RSS growth under the recorded workload. It is not proof that the process cannot leak under other workloads or longer runs.",
+  "kind": "host_rss_no_growth_gate",
+  "metrics": {
+    "final_quarter_mean_step_kib": 666.1333333333023,
+    "full_window_endpoint_median_drift_kib": 18040.0,
+    "second_half_endpoint_median_drift_kib": 4800.0,
+    "second_half_ols_slope_ci_upper_kib_per_minute": 110.57960320016079,
+    "second_half_ols_slope_kib_per_minute": 96.53300399940166,
+    "second_half_theil_sen_slope_kib_per_minute": 93.53845866501615
+  },
+  "reasons": [
+    "the source soak summary is not complete and error-free",
+    "criterion failed: second_half_ols_slope_ci_upper_kib_per_minute",
+    "criterion failed: second_half_theil_sen_slope_kib_per_minute",
+    "criterion failed: second_half_endpoint_median_drift_kib",
+    "criterion failed: full_window_endpoint_median_drift_kib",
+    "telemetry insufficient: derivation_complete",
+    "telemetry insufficient: source_summary_complete",
+    "telemetry insufficient: heartbeat_present",
+    "telemetry insufficient: accepted_heartbeat_present",
+    "telemetry insufficient: queue_metrics_present",
+    "telemetry insufficient: encoder_metrics_present",
+    "telemetry insufficient: latest_pixel_buffer_metrics_present",
+    "telemetry insufficient: capture_state_booleans_present"
+  ],
+  "run_id": "xiaomi-fuxi-8a023e3a-2h-v2",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_summary": {
+    "error_count": 960,
+    "status": "partial"
+  },
+  "sufficiency": {
+    "duration": {
+      "measured_seconds": 7200.107826,
+      "minimum_seconds": 7056.0,
+      "passed": true
+    },
+    "finish_boundary_gap": {
+      "maximum_seconds": 90.0,
+      "measured_seconds": 29.97306,
+      "passed": true
+    },
+    "maximum_internal_gap": {
+      "maximum_seconds": 90.0,
+      "measured_seconds": 30.463535,
+      "passed": true
+    },
+    "sample_count": {
+      "measured": 240,
+      "minimum": 230,
+      "passed": true
+    },
+    "second_half_sample_count": {
+      "measured": 120,
+      "minimum": 115,
+      "passed": true
+    },
+    "start_boundary_gap": {
+      "maximum_seconds": 90.0,
+      "measured_seconds": 0.0,
+      "passed": true
+    }
+  },
+  "telemetry_criteria": {
+    "all_heartbeats_accepted": {
+      "passed": false
+    },
+    "encoder_in_flight_within_capacity": {
+      "passed": false
+    },
+    "encoder_present_through_window": {
+      "passed": false
+    },
+    "frame_queue_drop_total": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "frame_registry_within_encoder_capacity": {
+      "passed": false
+    },
+    "heartbeat_window_gap_seconds": {
+      "maximum": 90.0,
+      "measured": null,
+      "passed": false
+    },
+    "latest_pixel_buffer_within_capacity": {
+      "passed": false
+    },
+    "minimum_fps_positive": {
+      "measured": 54.1,
+      "minimum": 1e-06,
+      "passed": true
+    },
+    "queue_depth_within_capacity": {
+      "passed": false
+    },
+    "stream_stats_window_gap_seconds": {
+      "maximum": 90.0,
+      "measured": 180.035705,
+      "passed": false
+    }
+  },
+  "telemetry_metrics": {
+    "accepted_heartbeat_count": 0,
+    "encoder_in_flight": null,
+    "encoder_in_flight_capacity": null,
+    "encoder_present_values": [],
+    "fallback_capture_active_values": [],
+    "fps": {
+      "count": 109,
+      "final": 60.0,
+      "first": 60.0,
+      "max": 61.0,
+      "mean": 59.93669724770643,
+      "min": 54.1
+    },
+    "frame_queue_drop_total": 0.0,
+    "frame_registry_count": null,
+    "heartbeat_count": 0,
+    "heartbeat_gaps": {
+      "count": 0,
+      "maximum_interval_seconds": null,
+      "maximum_window_gap_seconds": null
+    },
+    "latest_pixel_buffer_capacity": null,
+    "latest_pixel_buffer_retained": null,
+    "queue_capacity": null,
+    "queue_depth": null,
+    "stream_stats_count": 109,
+    "stream_stats_gaps": {
+      "count": 109,
+      "maximum_interval_seconds": 180.035705,
+      "maximum_window_gap_seconds": 180.035705
+    }
+  },
+  "telemetry_sufficiency": {
+    "accepted_heartbeat_present": {
+      "measured": 0,
+      "minimum": 1,
+      "passed": false
+    },
+    "capture_state_booleans_present": {
+      "passed": false
+    },
+    "derivation_complete": {
+      "passed": false
+    },
+    "encoder_metrics_present": {
+      "passed": false
+    },
+    "heartbeat_present": {
+      "measured": 0,
+      "minimum": 1,
+      "passed": false
+    },
+    "kind": {
+      "passed": true
+    },
+    "latest_pixel_buffer_metrics_present": {
+      "passed": false
+    },
+    "queue_metrics_present": {
+      "passed": false
+    },
+    "run_id": {
+      "passed": true
+    },
+    "schema_version": {
+      "passed": true
+    },
+    "source_summary_complete": {
+      "passed": false
+    },
+    "stream_stats_present": {
+      "measured": 109,
+      "minimum": 1,
+      "passed": true
+    },
+    "window_matches_summary": {
+      "passed": true
+    }
+  },
+  "thresholds": {
+    "maximum_boundary_gap_seconds": 90.0,
+    "maximum_final_quarter_step_kib": 2048.0,
+    "maximum_frame_queue_drop_total": 0.0,
+    "maximum_full_window_drift_kib": 8192.0,
+    "maximum_heartbeat_gap_seconds": 90.0,
+    "maximum_second_half_drift_kib": 4096.0,
+    "maximum_slope_ci_upper_kib_per_minute": 40.0,
+    "maximum_stream_telemetry_gap_seconds": 90.0,
+    "maximum_theil_sen_slope_kib_per_minute": 40.0,
+    "minimum_accepted_heartbeat_count": 1,
+    "minimum_duration_seconds": 7056.0,
+    "minimum_sample_count": 230,
+    "minimum_second_half_sample_count": 115
+  },
+  "verdict": "insufficient",
+  "window": {
+    "duration_seconds": 7200.107826,
+    "finished_at": "2026-08-09T14:31:03.881719Z",
+    "host_rss_sample_count": 240,
+    "started_at": "2026-08-09T12:31:03.773893Z"
+  }
+}

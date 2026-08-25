@@ -329,6 +329,7 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
     event_counts = Counter()
     event_timestamps: dict[str, list[datetime]] = defaultdict(list)
     stream_values: dict[str, list[float]] = defaultdict(list)
+    stream_boolean_values: dict[str, list[bool]] = defaultdict(list)
     accepted_heartbeat_count = 0
     queue_drop_values: list[float] = []
     for timestamp, record in exact_telemetry:
@@ -355,6 +356,13 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                     "avg_frame_age_ms",
                 ),
                 "dropped_frames": ("dropped_frames", "dropped"),
+                "queue_depth": ("queue_depth",),
+                "queue_capacity": ("queue_capacity",),
+                "encoder_in_flight": ("encoder_in_flight",),
+                "encoder_in_flight_capacity": ("encoder_in_flight_capacity",),
+                "frame_registry_count": ("frame_registry_count",),
+                "latest_pixel_buffer_retained": ("latest_pixel_buffer_retained",),
+                "latest_pixel_buffer_capacity": ("latest_pixel_buffer_capacity",),
             }
             for name, aliases in stream_attribute_names.items():
                 value = next(
@@ -367,6 +375,14 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                 )
                 if value is not None:
                     stream_values[name].append(value)
+            for name in ("fallback_capture_active", "encoder_present"):
+                value = attributes.get(name)
+                if isinstance(value, bool):
+                    stream_boolean_values[name].append(value)
+                elif value is not None:
+                    errors.append(
+                        f"host telemetry: stream_stats {name} must be boolean"
+                    )
 
     if not stream_values.get("fps"):
         errors.append("host telemetry: no numeric stream_stats fps in exact window")
@@ -422,6 +438,32 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                 "frame_queue_drop_total": _finite_sum(
                     queue_drop_values, "stream.frame_queue_drop_total"
                 ),
+                "queue_depth": _statistics(
+                    stream_values.get("queue_depth", []), "stream.queue_depth"
+                ),
+                "queue_capacity": _statistics(
+                    stream_values.get("queue_capacity", []), "stream.queue_capacity"
+                ),
+                "encoder_in_flight": _statistics(
+                    stream_values.get("encoder_in_flight", []),
+                    "stream.encoder_in_flight",
+                ),
+                "encoder_in_flight_capacity": _statistics(
+                    stream_values.get("encoder_in_flight_capacity", []),
+                    "stream.encoder_in_flight_capacity",
+                ),
+                "frame_registry_count": _statistics(
+                    stream_values.get("frame_registry_count", []),
+                    "stream.frame_registry_count",
+                ),
+                "latest_pixel_buffer_retained": _statistics(
+                    stream_values.get("latest_pixel_buffer_retained", []),
+                    "stream.latest_pixel_buffer_retained",
+                ),
+                "latest_pixel_buffer_capacity": _statistics(
+                    stream_values.get("latest_pixel_buffer_capacity", []),
+                    "stream.latest_pixel_buffer_capacity",
+                ),
             },
             "telemetry": {
                 "event_counts": dict(sorted(event_counts.items())),
@@ -432,6 +474,12 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                     event_timestamps.get("heartbeat_received", []), started, finished
                 ),
                 "accepted_heartbeat_count": accepted_heartbeat_count,
+                "fallback_capture_active_values": sorted(
+                    set(stream_boolean_values.get("fallback_capture_active", []))
+                ),
+                "encoder_present_values": sorted(
+                    set(stream_boolean_values.get("encoder_present", []))
+                ),
             },
             "memory_kib": {
                 "host_rss": _rss_statistics(host_rss, midpoint),
