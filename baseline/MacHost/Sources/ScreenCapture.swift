@@ -94,6 +94,46 @@ enum CaptureReconfigurationPolicy {
     }
 }
 
+enum InitialCaptureSetupPolicy {
+    static let fallbackFirstFrameTimeoutSeconds: Double = 5.0
+
+    static func shouldDeferSCStreamSetupFailureToFallback(
+        followsMainDisplay: Bool,
+        prefersCGDisplayStream: Bool
+    ) -> Bool {
+        followsMainDisplay || prefersCGDisplayStream
+    }
+
+    static func shouldRetryMissingShareableDisplay(
+        displayCount: Int,
+        followsMainDisplay: Bool,
+        prefersCGDisplayStream: Bool
+    ) -> Bool {
+        displayCount > 0 || !shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: followsMainDisplay,
+            prefersCGDisplayStream: prefersCGDisplayStream
+        )
+    }
+
+    static func shouldRetryShareableContentFailure(
+        followsMainDisplay: Bool,
+        prefersCGDisplayStream: Bool
+    ) -> Bool {
+        !shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: followsMainDisplay,
+            prefersCGDisplayStream: prefersCGDisplayStream
+        )
+    }
+
+    static func fallbackHasTimedOutBeforeFirstFrame(
+        isFallbackActive: Bool,
+        hasReceivedFirstFrame: Bool,
+        elapsedSeconds: Double
+    ) -> Bool {
+        isFallbackActive && !hasReceivedFirstFrame && elapsedSeconds > fallbackFirstFrameTimeoutSeconds
+    }
+}
+
 private final class CaptureConfigurationUpdateWaiter: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
@@ -494,8 +534,26 @@ class ScreenCapture {
         self.refreshRate = refreshRate
         self.currentFrameRate = refreshRate
         self.requestedOutputSize = outputSize
-        try await setupDisplay()
-        try await setupStream()
+        do {
+            try await setupDisplay()
+            try await setupStream()
+        } catch {
+            guard InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+                followsMainDisplay: followsMainDisplay,
+                prefersCGDisplayStream: CommandLine.arguments.contains("--prefer-cgdisplaystream")
+            ) else {
+                throw error
+            }
+            debugLog(
+                "SCStream setup unavailable before fallback-primary capture " +
+                "(\(error.localizedDescription)); deferring to CGDisplayStream fallback"
+            )
+            display = nil
+            stream = nil
+            streamOutput = nil
+            streamDelegate = nil
+            isSCStreamStarted = false
+        }
     }
 
     /// Re-point an already-streaming capture at a different macOS display in
@@ -703,6 +761,7 @@ class ScreenCapture {
                 userInfo: [NSLocalizedDescriptionKey: "Virtual display ID not set"])
         }
         var captureDisplayID = initialDisplayID
+        let prefersCGDisplayStream = CommandLine.arguments.contains("--prefer-cgdisplaystream")
 
         for attempt in 1...5 {
             let content: SCShareableContent
@@ -710,7 +769,11 @@ class ScreenCapture {
                 content = try await getShareableContentWithTimeout(seconds: 10)
             } catch {
                 debugLog("SCShareableContent attempt \(attempt) failed: \(error.localizedDescription)")
-                if attempt < 5 {
+                if attempt < 5,
+                   InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+                       followsMainDisplay: followsMainDisplay,
+                       prefersCGDisplayStream: prefersCGDisplayStream
+                   ) {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
@@ -718,6 +781,21 @@ class ScreenCapture {
             }
 
             debugLog("SCShareableContent returned \(content.displays.count) displays: \(content.displays.map { $0.displayID })")
+            if content.displays.isEmpty,
+               !InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+                   displayCount: content.displays.count,
+                   followsMainDisplay: followsMainDisplay,
+                   prefersCGDisplayStream: prefersCGDisplayStream
+               ) {
+                throw NSError(
+                    domain: "ScreenCapture",
+                    code: 16,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "SCShareableContent returned 0 displays; deferring current-display startup to CGDisplayStream fallback."
+                    ]
+                )
+            }
 
             let shareableDisplayIDs = content.displays.map { $0.displayID }
             let currentMainDisplayID = CGMainDisplayID()
@@ -1036,11 +1114,25 @@ class ScreenCapture {
             state.hasReceivedFirstFrame = false
         }
 
-        if followsMainDisplay || CommandLine.arguments.contains("--prefer-cgdisplaystream") {
+        let usesFallbackPrimaryCapture = InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: followsMainDisplay,
+            prefersCGDisplayStream: CommandLine.arguments.contains("--prefer-cgdisplaystream")
+        )
+        if usesFallbackPrimaryCapture {
             debugLog("Using CGDisplayStream with fixed-rate pacing for current-display capture")
             if attemptFallbackCapture(stopSCStream: false) {
                 startFrameMonitor()
                 return
+            }
+            guard stream != nil else {
+                throw NSError(
+                    domain: "ScreenCapture",
+                    code: 15,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "CGDisplayStream fallback is unavailable and ScreenCaptureKit did not produce a capture stream."
+                    ]
+                )
             }
             debugLog("CGDisplayStream primary capture unavailable — using SCStream")
         }
@@ -1132,14 +1224,6 @@ class ScreenCapture {
                 }
             }
 
-            let isFallback = self.fallbackLifecycle.isActive
-            guard !isFallback else {
-                if !self.followsMainDisplay {
-                    self.stopFrameMonitor()
-                }
-                return
-            }
-
             let lastTime = self.stateLock.withLock { $0.lastFrameTime }
             let elapsed: Double
             if let last = lastTime {
@@ -1151,6 +1235,24 @@ class ScreenCapture {
             }
 
             let hasHadFrames = self.stateLock.withLock { $0.hasReceivedFirstFrame }
+            let isFallback = self.fallbackLifecycle.isActive
+            if isFallback {
+                if InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+                    isFallbackActive: true,
+                    hasReceivedFirstFrame: hasHadFrames,
+                    elapsedSeconds: elapsed
+                ) {
+                    debugLog("CGDisplayStream fallback produced no first frame within 5s — terminal capture failure")
+                    self.stopFrameMonitor()
+                    self.invalidateFallbackCapture()
+                    self.cgDisplayStream?.stop()
+                    self.cgDisplayStream = nil
+                    self.reportTerminalCaptureFailure()
+                } else if !self.followsMainDisplay {
+                    self.stopFrameMonitor()
+                }
+                return
+            }
 
             if self.followsMainDisplay,
                hasHadFrames,

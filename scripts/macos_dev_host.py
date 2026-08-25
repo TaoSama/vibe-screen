@@ -39,6 +39,21 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+DEFAULT_XCTEST_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
+PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = package_macos.PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS
+DEFAULT_IDENTITY_REMEDIATION = """Required remediation
+--------------------
+1. Confirm the configured signing identity is available:
+   security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
+2. If it is missing, create a self-signed Code Signing certificate named
+   'Vibe Screen Dev' in Keychain Access, or set VIBE_SCREEN_SIGN_IDENTITY to an
+   existing stable codesigning identity.
+3. Rebuild and install the Host with make baseline-macos-dev-install, grant
+   Screen Recording and Accessibility to /Applications/Vibe Screen.app, then
+   rerun this preflight.
+Ad-hoc signing is intentionally rejected for local device reruns because it
+changes the code-signing identity that macOS TCC grants are bound to.
+"""
 
 
 @dataclass(frozen=True)
@@ -130,6 +145,19 @@ def tcc_database_report_label(database_path: Path) -> str:
     return str(database_path)
 
 
+@dataclass(frozen=True)
+class XCTestToolchainStatus:
+    developer_dir: str | None
+    swift_path: str | None
+    swift_version: str | None
+    xcodebuild_path: str | None
+    xcodebuild_version: str | None
+    xctest_path: str | None
+    xctest_framework_path: str | None
+    path_xcrun_warning: str | None
+    errors: tuple[str, ...]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
@@ -139,6 +167,16 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    xctest = subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed with actionable diagnostics unless full Xcode is selected for SwiftPM XCTest",
+    )
+    xctest.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_XCTEST_REPORT_PATH,
+        help="path for the XCTest toolchain report",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -204,7 +242,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
 
-def run(*command: str, cwd: Path | None = None) -> str:
+def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -212,8 +250,35 @@ def run(*command: str, cwd: Path | None = None) -> str:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        timeout=timeout,
     )
     return completed.stdout.strip()
+
+
+def command_text(command: tuple[str, ...] | list[str] | str) -> str:
+    return package_macos.command_text(command)
+
+
+def timeout_message(command: tuple[str, ...] | list[str] | str, timeout: float) -> str:
+    return f"timed out after {timeout:g}s while running {command_text(command)}"
+
+
+def command_status(
+    *command: str,
+    timeout: float = PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+) -> tuple[int, str]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, timeout_message(command, timeout)
+    return completed.returncode, completed.stdout.strip()
 
 
 def sha256(path: Path) -> str:
@@ -318,12 +383,37 @@ def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
     plist = read_bundle_plist(app_path)
     try:
-        run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
-        details = run("/usr/bin/codesign", "-dvvv", str(app_path))
-        requirement_output = run("/usr/bin/codesign", "-d", "-r-", str(app_path))
+        run(
+            "/usr/bin/codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        details = run(
+            "/usr/bin/codesign",
+            "-dvvv",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        requirement_output = run(
+            "/usr/bin/codesign",
+            "-d",
+            "-r-",
+            str(app_path),
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
     except subprocess.CalledProcessError as error:
         output = (error.stdout or str(error)).strip()
         raise SystemExit(f"codesign inspection failed for {app_path}: {output}") from error
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"codesign inspection timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s while running "
+            f"{command_text(error.cmd)}; refusing to treat the installed Host as verified."
+        ) from error
     fields = parse_codesign_details(details)
     requirement = parse_designated_requirement(requirement_output)
     executable_name = str(plist.get("CFBundleExecutable", EXECUTABLE_NAME))
@@ -356,6 +446,132 @@ def bool_or_none(value: object) -> bool | None:
 
 def current_source_identity(source_root: Path) -> package_macos.SourceIdentity:
     return package_macos.collect_source_identity(source_root.resolve())
+
+
+def collect_xctest_toolchain_status() -> XCTestToolchainStatus:
+    developer_dir_status, developer_dir_output = command_status("/usr/bin/xcode-select", "-p")
+    developer_dir = developer_dir_output if developer_dir_status == 0 and developer_dir_output else None
+
+    swift_status, swift_path_output = command_status("/usr/bin/xcrun", "--find", "swift")
+    swift_path = swift_path_output if swift_status == 0 and swift_path_output else None
+    swift_version_status, swift_version_output = command_status("/usr/bin/swift", "--version")
+    swift_version = swift_version_output.splitlines()[0] if swift_version_status == 0 and swift_version_output else None
+
+    xcodebuild_status, xcodebuild_path_output = command_status("/usr/bin/xcrun", "--find", "xcodebuild")
+    xcodebuild_path = xcodebuild_path_output if xcodebuild_status == 0 and xcodebuild_path_output else None
+    xcodebuild_version_status, xcodebuild_version_output = command_status("/usr/bin/xcodebuild", "-version")
+    xcodebuild_version = (
+        xcodebuild_version_output.replace("\n", "; ")
+        if xcodebuild_version_status == 0 and xcodebuild_version_output
+        else None
+    )
+    xctest_status, xctest_path_output = command_status("/usr/bin/xcrun", "--find", "xctest")
+    xctest_path = xctest_path_output if xctest_status == 0 and xctest_path_output else None
+    xctest_framework_path = find_xctest_framework_path(developer_dir)
+    path_xcrun_warning = detect_path_xcrun_wrapper()
+
+    errors: list[str] = []
+    if developer_dir is None:
+        errors.append(f"xcode-select -p failed: {developer_dir_output or 'no output'}")
+    elif developer_dir.endswith("/CommandLineTools"):
+        errors.append("active developer directory is Command Line Tools; SwiftPM XCTest for MacHost requires full Xcode")
+    elif not developer_dir.endswith("/Contents/Developer"):
+        errors.append(f"active developer directory is not a full Xcode Contents/Developer path: {developer_dir}")
+    if swift_path is None:
+        errors.append(f"xcrun --find swift failed: {swift_path_output or 'no output'}")
+    if swift_version is None:
+        errors.append(f"swift --version failed: {swift_version_output or 'no output'}")
+    if xcodebuild_path is None:
+        errors.append(f"xcrun --find xcodebuild failed: {xcodebuild_path_output or 'no output'}")
+    if xcodebuild_version is None:
+        errors.append(f"xcodebuild -version failed: {xcodebuild_version_output or 'no output'}")
+    if xctest_path is None:
+        errors.append(f"xcrun --find xctest failed: {xctest_path_output or 'no output'}")
+    if developer_dir is not None and xctest_framework_path is None:
+        errors.append(f"XCTest.framework not found under active developer directory: {developer_dir}")
+    return XCTestToolchainStatus(
+        developer_dir=developer_dir,
+        swift_path=swift_path,
+        swift_version=swift_version,
+        xcodebuild_path=xcodebuild_path,
+        xcodebuild_version=xcodebuild_version,
+        xctest_path=xctest_path,
+        xctest_framework_path=xctest_framework_path,
+        path_xcrun_warning=path_xcrun_warning,
+        errors=tuple(errors),
+    )
+
+
+def find_xctest_framework_path(developer_dir: str | None) -> str | None:
+    if developer_dir is None:
+        return None
+    candidates = (
+        Path(developer_dir) / "Platforms" / "MacOSX.platform" / "Developer" / "Library" / "Frameworks" / "XCTest.framework",
+        Path(developer_dir) / "Library" / "Developer" / "Frameworks" / "XCTest.framework",
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return str(candidate)
+    return None
+
+
+def detect_path_xcrun_wrapper() -> str | None:
+    path_value = os.environ.get("PATH", "")
+    for directory in path_value.split(os.pathsep):
+        if not directory:
+            continue
+        candidate = Path(directory) / "xcrun"
+        if not candidate.exists():
+            continue
+        resolved = candidate.resolve()
+        if resolved != Path("/usr/bin/xcrun"):
+            return f"PATH resolves xcrun to {candidate}; preflight uses /usr/bin/xcrun for deterministic diagnostics"
+        return None
+    return None
+
+
+def format_xctest_toolchain_report(status: XCTestToolchainStatus) -> str:
+    result = "PASS" if not status.errors else "FAIL"
+    error_lines = "\n".join(f"- {error}" for error in status.errors) or "(none)"
+    return f"""MacHost XCTest toolchain
+--------------------------
+Status: {result}
+Developer directory: {status.developer_dir or 'missing'}
+Swift path: {status.swift_path or 'missing'}
+Swift version: {status.swift_version or 'missing'}
+Xcodebuild path: {status.xcodebuild_path or 'missing'}
+Xcodebuild version: {status.xcodebuild_version or 'missing'}
+XCTest path: {status.xctest_path or 'missing'}
+XCTest.framework: {status.xctest_framework_path or 'missing'}
+PATH xcrun warning: {status.path_xcrun_warning or 'none'}
+
+Blocking issues:
+{error_lines}
+
+Required remediation
+--------------------
+Install full Xcode if /Applications/Xcode.app is absent, then select it before
+running MacHost XCTest:
+
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+make baseline-macos-test
+
+Command Line Tools may build the Host executable, but this repository records
+MacHost XCTest as blocked unless full Xcode is selected and xcodebuild resolves.
+"""
+
+
+def xctest_preflight_command(args: argparse.Namespace) -> int:
+    status = collect_xctest_toolchain_status()
+    report = format_xctest_toolchain_report(status)
+    write_report(args.report, report)
+    print(f"Wrote {args.report}")
+    if status.errors:
+        print(report, file=sys.stderr)
+        return 2
+    print("MacHost XCTest toolchain preflight passed")
+    return 0
 
 
 def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> PermissionStatus:
@@ -505,8 +721,9 @@ def validate_preflight(
     expected_sign_identity: str | None = None,
     source_identity: package_macos.SourceIdentity | None = None,
     allow_source_mismatch: bool = False,
+    signing_identity_errors: list[str] | None = None,
 ) -> list[str]:
-    errors: list[str] = []
+    errors: list[str] = list(signing_identity_errors or [])
     if not is_default_install_path(install_path):
         errors.append(f"Host must be installed at the stable path: {DEFAULT_INSTALL_PATH}")
     if metadata.identifier != EXPECTED_BUNDLE_ID:
@@ -547,6 +764,26 @@ def validate_preflight(
     return errors
 
 
+def validate_source_identity(metadata: SigningMetadata, expected_source: package_macos.SourceIdentity) -> list[str]:
+    errors: list[str] = []
+    if expected_source.dirty:
+        errors.append("repository source root is dirty; refusing to treat an installed Host as current-source evidence")
+    if metadata.source_commit is None or metadata.source_tree is None or metadata.source_dirty is None:
+        errors.append("installed Host does not record its source commit/tree identity")
+        return errors
+    if metadata.source_dirty:
+        errors.append("installed Host was packaged from a dirty source tree")
+    if metadata.source_commit != expected_source.commit:
+        errors.append(
+            f"installed Host source commit {metadata.source_commit} does not match current HEAD {expected_source.commit}"
+        )
+    if metadata.source_tree != expected_source.tree:
+        errors.append(
+            f"installed Host source tree {metadata.source_tree} does not match current tree {expected_source.tree}"
+        )
+    return errors
+
+
 def value_or_missing(value: int | None) -> str:
     return "missing" if value is None else str(value)
 
@@ -581,10 +818,21 @@ def format_report(
         rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
+    expected_commit = source_identity.commit if source_identity else "not checked"
+    expected_tree = source_identity.tree if source_identity else "not checked"
+    expected_dirty = str(source_identity.dirty).lower() if source_identity else "not checked"
+    source_policy = "warning-only" if allow_source_mismatch else "fail-closed"
     return f"""Host bundle
 -----------
 Path: {metadata.app_path}
 Identifier: {metadata.identifier}
+Source commit: {metadata.source_commit or 'missing'}
+Source tree: {metadata.source_tree or 'missing'}
+Source dirty: {'missing' if metadata.source_dirty is None else str(metadata.source_dirty).lower()}
+Expected source commit: {expected_commit}
+Expected source tree: {expected_tree}
+Expected source dirty: {expected_dirty}
+Source match policy: {source_policy}
 Identity: {metadata.identity_name}
 {authorities}
 TeamIdentifier: {metadata.team_identifier or 'not set'}
@@ -592,13 +840,6 @@ Certificate SHA-1: {metadata.leaf_certificate_hash or 'not available'}
 CDHash: {metadata.cdhash or 'missing'}
 Binary SHA-256: {metadata.binary_sha256}
 Designated requirement: {metadata.designated_requirement or 'missing'}
-Source commit: {metadata.source_commit or 'missing'}
-Source tree: {metadata.source_tree or 'missing'}
-Source dirty: {metadata.source_dirty if metadata.source_dirty is not None else 'missing'}
-Current source commit: {source_identity.commit if source_identity else 'not checked'}
-Current source tree: {source_identity.tree if source_identity else 'not checked'}
-Current source dirty: {source_identity.dirty if source_identity else 'not checked'}
-Source mismatch allowed: {allow_source_mismatch}
 Verification: valid on disk (codesign --verify --deep --strict)
 
 Read-only TCC capture
@@ -615,6 +856,8 @@ Status: {result}
 Blocking issues:
 {error_lines}
 System permission path: {SYSTEM_SETTINGS_PATH}
+
+{DEFAULT_IDENTITY_REMEDIATION}
 
 Keychain and TCC handling
 -------------------------
@@ -845,11 +1088,18 @@ def metadata_and_permissions(
     tcc_db: Path,
     *,
     expected_sign_identity: str | None = None,
+    signing_identity_errors: list[str] | None = None,
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
-) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
+) -> tuple[SigningMetadata, package_macos.SourceIdentity | None, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
-    source_identity = current_source_identity(source_root)
+    source_identity: package_macos.SourceIdentity | None
+    source_errors: list[str] = []
+    try:
+        source_identity = current_source_identity(source_root)
+    except SystemExit as error:
+        source_identity = None
+        source_errors.append(str(error))
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
     errors = validate_preflight(
         metadata,
@@ -858,7 +1108,9 @@ def metadata_and_permissions(
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
+        signing_identity_errors=signing_identity_errors,
     )
+    errors = [*source_errors, *errors]
     return metadata, source_identity, permissions, errors
 
 
@@ -870,6 +1122,22 @@ def refuse_ad_hoc_identity(sign_identity: str) -> None:
             "the documented 'Vibe Screen Dev' self-signed identity, then grant permissions "
             "in System Settings."
         )
+
+
+def collect_signing_identity_errors(sign_identity: str) -> list[str]:
+    if sign_identity == "-":
+        return [
+            "local device reruns require a stable signing identity; refusing --sign-identity - because ad-hoc signatures invalidate macOS privacy grants"
+        ]
+    try:
+        package_macos.resolve_sign_identity(sign_identity)
+    except SystemExit as error:
+        message = str(error).replace(
+            ", or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+            ". Ad-hoc signing is not allowed for local device reruns because it changes the code-signing identity that macOS privacy grants are bound to.",
+        )
+        return [message]
+    return []
 
 
 def package_dev_app(output_dir: Path, sign_identity: str) -> Path:
@@ -977,10 +1245,12 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
+    signing_identity_errors = collect_signing_identity_errors(args.sign_identity)
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
+        signing_identity_errors=signing_identity_errors,
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
@@ -1059,6 +1329,8 @@ def main() -> int:
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
+    if args.command == "xctest-preflight":
+        return xctest_preflight_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
