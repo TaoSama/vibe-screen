@@ -98,6 +98,9 @@ def passing_device_gates() -> dict[str, object]:
         "hevc_hardware_decode": "harmony-avcodec-preflight.json",
         "signed_release_hap": "harmony-hap-readiness.json",
         "hap_install_launch": "harmony-hap-readiness.json",
+        "hap_in_place_upgrade": "harmony-hap-readiness.json",
+        "hap_rollback_behavior": "harmony-hap-readiness.json",
+        "hap_uninstall_cleanup": "harmony-hap-readiness.json",
         "huks_backed_secure_pairing": "harmony-secure-pairing.json",
         "credential_revocation_replay": "harmony-secure-pairing.json",
         "authenticated_transport_records": "harmony-authenticated-records.json",
@@ -259,7 +262,14 @@ class HarmonyCurrentBaseGateTests(unittest.TestCase):
             gates[:] = [
                 gate
                 for gate in gates
-                if gate["id"] not in {"signed_release_hap", "hap_install_launch"}
+                if gate["id"]
+                not in {
+                    "signed_release_hap",
+                    "hap_install_launch",
+                    "hap_in_place_upgrade",
+                    "hap_rollback_behavior",
+                    "hap_uninstall_cleanup",
+                }
             ]
             readiness_path = write_json(root, "harmony-readiness.json", passing_readiness())
             device_path = write_json(root, "harmony-device-gates.json", manifest)

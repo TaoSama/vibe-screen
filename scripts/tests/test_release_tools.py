@@ -693,6 +693,20 @@ class HarmonyDeviceGateTests(unittest.TestCase):
                 ["deveco_sdk_and_api_checker: blocked"],
             )
 
+    def test_harmony_device_manifest_allows_blocked_placeholders_only_in_readiness_mode(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["toolchain"]["harmony_sdk_api"] = "blocked: HarmonyOS SDK API not recorded"
+        manifest["device"]["platform"] = "blocked: HarmonyOS NEXT device identity not verified"
+        manifest["device"]["manufacturer"] = "blocked: HDC MatePad Mini identity not recorded"
+        manifest["device"]["model"] = "blocked: MatePad Mini identity not recorded"
+        manifest["device"]["product"] = "blocked: MatePad Mini product not recorded"
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "blocked placeholder is not evidence"):
+            harmony_device_gate.validate_manifest(manifest)
+        warnings = harmony_device_gate.validate_manifest(manifest, allow_blocked=True)
+        self.assertIn("toolchain.harmony_sdk_api: blocked: HarmonyOS SDK API not recorded", warnings)
+        self.assertIn("device.platform: blocked: HarmonyOS NEXT device identity not verified", warnings)
+
     def test_harmony_device_template_is_readiness_only(self) -> None:
         manifest = harmony_device_gate.template_manifest()
 
@@ -747,6 +761,17 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         with self.assertRaisesRegex(harmony_device_gate.ManifestError, "artifact.hap_sha256"):
             harmony_device_gate.validate_manifest(manifest)
 
+    def test_harmony_device_manifest_rejects_dirty_source_outside_readiness_mode(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["repository"]["status"] = "dirty"
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "repository.status"):
+            harmony_device_gate.validate_manifest(manifest)
+        self.assertEqual(
+            harmony_device_gate.validate_manifest(manifest, allow_blocked=True),
+            ["repository.status: dirty"],
+        )
+
     def test_harmony_device_gate_make_target_uses_manifest_validator(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
@@ -770,6 +795,14 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         )
         self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
+
+    def test_harmony_hap_readiness_make_target_uses_fail_closed_collector(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("harmony-hap-readiness", makefile)
+        self.assertIn("scripts/harmony_hap_readiness.py", makefile)
+        self.assertIn("HARMONY_HDC_TARGET", makefile)
+        self.assertIn("HARMONY_HAP_READINESS_FLAGS", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):

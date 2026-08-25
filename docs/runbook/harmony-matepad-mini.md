@@ -37,6 +37,29 @@ metrics, and checksums inside the evidence package before asking the gate to pas
 README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
 must stay blocked until the strict device gate and readiness preflight both pass.
 
+Collect that dry-run evidence with the HAP lifecycle readiness collector before
+attempting a device run:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET" \
+  HARMONY_HAP_READINESS_FLAGS='--run-build --signature-certificate /path/to/release.cer --harmony-sdk-api "API 12"'
+python3 scripts/harmony_device_gate.py --allow-blocked \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+```
+
+If DevEco, OHPM/Hvigor, HDC, signing material, a signed HAP, or a MatePad Mini
+target is missing, the collector exits non-zero and writes blocked evidence.
+That is the expected fail-closed result and must not be rewritten as a pass.
+Strict validation of that blocked manifest must fail until every real-device
+gate is independently recorded:
+
+```bash
+python3 scripts/harmony_device_gate.py \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+```
+
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
 2. Run `pnpm verify` and `make release`; verify the signed HAP and
@@ -44,23 +67,42 @@ must stay blocked until the strict device gate and readiness preflight both pass
 3. Run `hdc list targets -v`; match the serial in Settings before installing.
 4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
    VibeScreen domain. Verify permission copy and denial/retry behavior.
-5. Pair with a one-time QR credential using the completed cryptographic pairing
+5. Install a higher `versionCode` build with the same signing identity and
+   confirm host/security/client-identity records survive. Attempt the documented
+   rollback path and record whether the older build is rejected, blocked, or
+   safely handles every stored record version. Uninstall the app and confirm all
+   app-owned host, security, client-identity, cache, and temporary records are
+   removed. Put these four step results in a lifecycle observation JSON with
+   non-empty evidence references for `install`, `upgrade`, `rollback`, and
+   `uninstall_cleanup` before rerunning `harmony-hap-readiness`.
+
+```json
+{
+  "steps": {
+    "install": { "status": "pass", "evidence": ["install-hdc.txt", "install-hilog.txt"], "detail": "signed HAP installed and launched" },
+    "upgrade": { "status": "pass", "evidence": ["upgrade-hdc.txt", "upgrade-state.txt"], "detail": "same signing identity upgraded in place" },
+    "rollback": { "status": "pass", "evidence": ["rollback-hdc.txt"], "detail": "older build rejected or migrated safely as documented" },
+    "uninstall_cleanup": { "status": "pass", "evidence": ["uninstall-bm-dump.txt", "cleanup-state.txt"], "detail": "app-owned persisted records removed" }
+  }
+}
+```
+6. Pair with a one-time QR credential using the completed cryptographic pairing
    flow (address-link import is not sufficient). Record HUKS key creation, the
    failed private-key export attempt, PairingOffer/Request/Result transcripts
    after redaction, Host proof verification, credential installation, expiry
    rejection, replay rejection, old-peer rejection, no-HUKS rejection, and
    Authority/Signaling admission. Then connect over LAN and verify the device
    can be revoked and cannot reuse the credential.
-6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
+7. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
-7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
+8. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
    keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
-8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
+9. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
    and wake the Mac, and restart the host. Confirm reconnect within the target
    and that no prior-epoch frame renders.
-9. Run eight hours at the target mode. Archive timestamped logs and metrics;
+10. Run eight hours at the target mode. Archive timestamped logs and metrics;
    reject any unbounded latency, queue, RSS, or thermal throttling trend.
-10. Measure glass-to-glass and input latency with an external high-frame-rate
+11. Measure glass-to-glass and input latency with an external high-frame-rate
     camera; do not compare unsynchronized host/device clocks.
 
 Store raw evidence under an ignored local directory or attach it to the release;

@@ -99,6 +99,8 @@ HARMONY_HOST_BUILD_SHA256 ?=
 HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
+HARMONY_HAP_READINESS_DIR ?= $(EVIDENCE_DIR)/harmony-hap-readiness
+HARMONY_HAP_READINESS_FLAGS ?=
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -173,6 +175,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
 	harmony-current-base-gate \
+	harmony-hap-readiness \
 	soak-30m \
 	soak-2h \
 	soak-8h \
@@ -572,6 +575,14 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
+
+harmony-hap-readiness:
+	@test -n "$(strip $(HARMONY_HAP_READINESS_DIR))" || (echo "error: set HARMONY_HAP_READINESS_DIR" >&2; exit 2)
+	mkdir -p "$(HARMONY_HAP_READINESS_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_hap_readiness.py \
+		--evidence-dir "$(HARMONY_HAP_READINESS_DIR)" \
+		$(if $(strip $(HARMONY_HDC_TARGET)),--hdc-target "$(HARMONY_HDC_TARGET)",) \
+		$(HARMONY_HAP_READINESS_FLAGS)
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)

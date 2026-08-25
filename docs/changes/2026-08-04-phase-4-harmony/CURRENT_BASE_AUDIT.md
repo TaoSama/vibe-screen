@@ -48,7 +48,7 @@ groups are closed by real evidence:
 | Owner group | Required evidence boundary |
 | --- | --- |
 | `deveco_build` | `deveco_sdk_and_api_checker` plus DevEco/Hvigor/OHPM/HDC readiness. |
-| `hap_sign_install` | `signed_release_hap` and `hap_install_launch` plus signed-HAP lifecycle artifacts. |
+| `hap_sign_install` | `signed_release_hap`, `hap_install_launch`, `hap_in_place_upgrade`, `hap_rollback_behavior`, and `hap_uninstall_cleanup` plus signed-HAP lifecycle artifacts. |
 | `hardware_decode_capability` | H.264 and HEVC hardware decode device gates plus AVCodec evidence. |
 | `huks_secure_pairing` | HUKS-backed pairing and credential revocation/replay gates. |
 | `authenticated_transport` | authenticated transport record evidence; plaintext legacy fallback is not enough. |

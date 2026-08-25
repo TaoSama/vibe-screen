@@ -814,6 +814,11 @@ increase it.
   The HUKS secure-pairing evidence verifier and blocked manifest are recorded
   under
   [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/README.md).
+  A fail-closed HAP lifecycle readiness collector now records the local DevEco
+  SDK, signing/HAP artifact state, HDC target, package pre-state, and install,
+  upgrade, rollback, and uninstall-cleanup observation references; when any of
+  those prerequisites are absent it writes blocked/insufficient evidence rather
+  than closing the HarmonyOS gate.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - Gate ownership is explicit while those records are open: the HarmonyOS client
