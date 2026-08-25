@@ -27,8 +27,8 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "remain release gates rather than shipped\nfeatures",
             "Relay credential admission is wired to Authority",
             "accepted coturn usage into the control-plane daily-byte ledger",
-            "structured\ncoturn reconcile helper can fail closed",
-            "production end-to-end enforcement\nremain release gates",
+            "structured coturn exporter, bounded reconciliation loop, and local\nactive-allocation disconnect executor",
+            "production end-to-end enforcement remain release gates",
             "revocation propagation verifier now fixes the required evidence schema",
             "same-allocation relay credential rejection",
             "current blocked\nevidence still lacks the live coturn/data-plane deployment observations",
@@ -41,10 +41,10 @@ class AuthorityProductionGateTests(unittest.TestCase):
 
         self.assertIn("Relay credential\nadmission now delegates to the authority", text)
         self.assertIn("Authority owns coturn usage/reconciliation APIs", text)
-        self.assertIn("structured reconcile\n  helper is locally tested", text)
+        self.assertIn("current-base local product\nslice adds", text)
         self.assertIn(
-            "coturn exporter, scheduled reconciliation loop,\n"
-            "  and active-allocation disconnect are not production proven",
+            "not a production-proven coturn machine exporter,\n"
+            "production scheduler, or concrete data-plane disconnect implementation",
             text,
         )
         self.assertIn("does not remove the public-launch prohibition", text)
@@ -56,15 +56,15 @@ class AuthorityProductionGateTests(unittest.TestCase):
         signaling = SIGNALING_README.read_text(encoding="utf-8")
         deploy = DEPLOY_README.read_text(encoding="utf-8")
 
-        self.assertIn("does **not** yet contain a production-proven coturn exporter", authority)
-        self.assertIn("does not prove a" + "\n" + "production disconnect mechanism", authority)
-        self.assertIn("coturn exporter, scheduled" + "\n" + "  reconciliation loop", authority)
-        self.assertIn("active-allocation disconnect executor", authority)
-        self.assertIn("production" + "\n" + "  coturn enforcement remain open", authority)
+        self.assertIn("not** a production-proven coturn" + "\n" + "exporter", authority)
+        self.assertIn("do not prove a live coturn or provider disconnect" + "\n" + "mechanism", authority)
+        self.assertIn("production deployment of the coturn exporter/reconciliation loop and live", authority)
+        self.assertIn("production active-allocation disconnect executor", authority)
+        self.assertIn("production coturn enforcement remains open", authority)
 
         self.assertIn("not authoritative until" + "\n" + "a trusted coturn collector", relay)
-        self.assertIn("contract helper only", relay)
-        self.assertIn("production exporter,\n" + "durable collector loop", relay)
+        self.assertIn("contract tests and local state transitions only", relay)
+        self.assertIn("deployments still need a production exporter", relay)
         self.assertIn("concrete coturn", relay)
         self.assertIn("allocation termination", relay)
 

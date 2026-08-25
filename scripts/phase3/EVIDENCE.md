@@ -19,6 +19,7 @@ python3 scripts/phase3/release_gate_summary.py --output /tmp/vibe-screen-phase3/
 python3 scripts/phase3/revocation_propagation_verifier.py \
   --report /tmp/vibe-screen-phase3/revocation-propagation.json \
   --write-summary /tmp/vibe-screen-phase3/revocation-propagation-summary.json
+make phase3-coturn-reconciliation-product-slice
 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_release_gate \
   --evidence-dir /tmp/vibe-screen-phase3/public-internet-run
 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_adaptive_media_current_base \
@@ -41,6 +42,18 @@ rejection, active allocation disconnect, and zero post-revocation relayed
 packets. Reports must not contain TURN passwords, bearer tokens, private keys,
 or other raw secret material. A blocked summary is evidence of the remaining
 deployment gap, not a release pass.
+
+The `phase3-coturn-reconciliation-product-slice` target compiles and tests the
+local operator slice for the coturn exporter/reconciliation/disconnect boundary.
+It covers `coturn_allocation_exporter.py` adapting a reviewed structured
+collector JSON into the strict Authority snapshot,
+`coturn_reconciliation_loop.py` keeping durable consecutive missing-allocation
+state, and `coturn_disconnect_executor.py` consuming the exact
+`coturn_reconcile.py` disconnect environment to remove a local
+active-allocation entry and write a non-secret audit record. This target is
+deliberately current-base/local: it does not start a public relay, does not
+prove a deployed exporter or scheduler, does not call a live coturn control
+socket or provider API, and cannot close the public Internet release gate.
 
 The security command without `--sut` validates only the attack-vector policy
 model. Product coverage requires an implementation adapter, for example:
