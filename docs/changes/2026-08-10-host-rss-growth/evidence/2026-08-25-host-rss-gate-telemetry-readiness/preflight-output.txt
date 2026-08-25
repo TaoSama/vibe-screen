@@ -1,0 +1,39 @@
+$ git rev-parse HEAD
+549aa048d94e5131eb9f691a49a19a427fe2fe30
+$ git rev-parse origin/main
+549aa048d94e5131eb9f691a49a19a427fe2fe30
+$ git status --short --branch
+## codex/host-rss-diagnostics-readiness
+ M Makefile
+ M tools/tests/test_host_rss_gate.py
+ M tools/tests/test_soak_report.py
+ M tools/vibescreen_evidence/host_rss_gate.py
+ M tools/vibescreen_evidence/soak_report.py
+?? docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/
+$ adb -s <redacted-p0110-serial> get-state
+device
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.manufacturer
+nubia
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.model
+P0110
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.device
+pacific
+$ adb -s <redacted-p0110-serial> shell getprop ro.build.version.release
+16
+$ adb -s <redacted-p0110-serial> shell getprop ro.build.version.sdk
+36
+$ ls -ld /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-android-test.lock
+ls: /tmp/vibe-screen-device-android.lock: No such file or directory
+ls: /tmp/vibe-screen-device-soak.lock: No such file or directory
+-rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+$ pgrep -af "Vibe Screen|Telemachus"
+10959
+22385
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+fd15e0187bee7bd83b2d3938e301c2297bad4b5d
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+4a54439022d475d4e544d43c0e5aeab921d528db

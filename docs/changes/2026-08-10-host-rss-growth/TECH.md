@@ -53,6 +53,16 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 VideoToolbox callback registry、encoder capacity 稳定性和 capture 侧最新帧缓存是否
 超过固定容量，而不是事后只凭 RSS/heap 猜测。该变更降低一个高频小对象分配源并
 补足诊断盲点，但仍需要当前源码真机短窗或正式两小时复验来证明实际 RSS 行为。
+2026-08-25 复核 current `origin/main`、open draft PR #222 与已合并 PR #329 后，
+结论保持不变：这些变更是 telemetry/readiness 与小对象分配面收敛，不是可关闭
+README Phase 0 Host RSS no-growth gate 的两小时通过证据。正式 `host_rss_gate` 现在
+除 RSS 斜率和漂移阈值外，还必须消费同一 exact window 的 `soak_report` 输出，并
+fail-closed 校验原生 `VIBE_SCREEN_TELEMETRY_PATH` telemetry 的 heartbeat、
+`stream_stats` 覆盖、queue depth/capacity、VideoToolbox in-flight/callback registry、
+latest pixel-buffer retained/capacity、frame-queue drop 和 encoder-present 状态。
+历史 2026-08-09 Xiaomi/fuxi 2h soak 用当前 gate 复核仍为 `insufficient`：RSS
+增长阈值失败，同时 legacy telemetry 缺 heartbeat 与新增生命周期字段，不能作为
+通过证据。
 
 最新主线也已把帧生命周期限制为常数：VideoToolbox 在途准入固定为 2，callback
 registry 在回调或 teardown 时逐项 claim/drain；网络侧只保留一个 latest mailbox
@@ -118,7 +128,9 @@ MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
 7056 秒、Host RSS 样本至少 230 个且后半程至少 115 个、首尾和内部采样间隔均不
 超过 90 秒，并同时满足：后半程 OLS 斜率 95% 上界与 Theil-Sen 稳健斜率均不高于
 40 KiB/min、后半程端点中位数漂移不高于 4 MiB、全窗端点中位数漂移不高于 8
-MiB、后半程最后两个四分之一窗口的均值增量不高于 2 MiB。任一输入不足均为
+MiB、后半程最后两个四分之一窗口的均值增量不高于 2 MiB；并且同一窗口的原生
+Host telemetry 必须证明流仍在活动、heartbeat 被接受、帧队列和编码器/最新帧保留
+均在固定容量内且没有 frame-queue drop。任一输入不足均为
 `insufficient`，不得宣称通过。流与客户端指标也须
 继续通过，才关闭 Phase 1 门禁。若仍增长，再检查按帧/秒累积且未逐出的集合、按
 generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 NSData
