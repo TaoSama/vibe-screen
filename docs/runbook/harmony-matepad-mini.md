@@ -8,8 +8,11 @@ before claiming the HarmonyOS gate is closed:
 ```bash
 make harmony-readiness EVIDENCE_DIR=/path/to/evidence
 python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
+python3 scripts/harmony_secure_pairing_gate.py --template > /tmp/harmony-secure-pairing.json
 # Fill every field from the exact DevEco build, signed HAP, MatePad Mini,
-# Protocol v1 Mac host, logs, metrics, and external-camera evidence.
+# Protocol v1 Mac host, HUKS run, Authority/Signaling services, logs,
+# metrics, and external-camera evidence.
+make harmony-secure-pairing-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
 ```
@@ -42,7 +45,11 @@ must stay blocked until the strict device gate and readiness preflight both pass
 4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
    VibeScreen domain. Verify permission copy and denial/retry behavior.
 5. Pair with a one-time QR credential using the completed cryptographic pairing
-   flow (address-link import is not sufficient), connect over LAN, and verify the device
+   flow (address-link import is not sufficient). Record HUKS key creation, the
+   failed private-key export attempt, PairingOffer/Request/Result transcripts
+   after redaction, Host proof verification, credential installation, expiry
+   rejection, replay rejection, old-peer rejection, no-HUKS rejection, and
+   Authority/Signaling admission. Then connect over LAN and verify the device
    can be revoked and cannot reuse the credential.
 6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.

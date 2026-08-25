@@ -697,13 +697,25 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(sessionPath, 'ProductSession', 'onResumeResult', 'this.decoder', 'resumeSessionResult');
 
   const securityPath = 'entry/src/main/ets/core/security/PairingSecurity.ts';
+  check(read(securityPath).includes("const HARMONY_HUKS_BACKEND: string = 'harmony_huks_v1'") &&
+    read(securityPath).includes("const HUKS_SIGNING_KEY_STORAGE: string = 'huks_non_exportable_p256'") &&
+    read(securityPath).includes("const HUKS_CREDENTIAL_STORAGE: string = 'asset_store_huks_bound_v1'"),
+    `${securityPath}: Harmony secure pairing must pin the HUKS-backed provider profile`);
+  requireCallInMethod(securityPath, 'PairingClient', 'begin', 'this.crypto', 'securityProfile');
+  check(methodHasDirectCall(securityPath, 'PairingClient', 'begin', 'requireHarmonyHuksProfile'),
+    `${securityPath}: PairingClient.begin() must call requireHarmonyHuksProfile()`);
   requireCallInMethod(securityPath, 'PairingClient', 'begin', 'this.crypto', 'ephemeral');
   requireCallInMethod(securityPath, 'PendingPairing', 'complete', 'this.crypto', 'verify');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'install', 'this.store', 'save');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'revoke', 'this.store', 'save');
+  check(read(securityPath).includes('value.version !== 2') && read(securityPath).includes('requireHarmonyHuksProfile(value.securityProfile)'),
+    `${securityPath}: stored credentials must reject legacy records and require a HUKS security profile`);
 
   const pairingStorePath = 'entry/src/main/ets/platform/PairingStore.ets';
   requireCallInMethod(pairingStorePath, 'PairingStore', 'save', 'this', 'upsert');
+  check(read(pairingStorePath).includes('const SECURITY_RECORD_VERSION: number = 2') &&
+    read(pairingStorePath).includes('securityProfile: { ...record.securityProfile }'),
+    `${pairingStorePath}: secure pairing records must persist the version-2 HUKS profile`);
   check(hasEnumMembers(sessionPath, 'ProductSessionState', ['CONFIGURING_VIDEO']),
     `${sessionPath}: ProductSessionState.CONFIGURING_VIDEO is required`);
 
