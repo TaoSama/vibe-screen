@@ -238,6 +238,48 @@ final class ProtocolV1FileTransferTests: XCTestCase {
         XCTAssertEqual(approvalCalls, 0)
     }
 
+    func testRemoteManagedZeroMaximumDeniesIncomingEmptyFileBeforeApproval() throws {
+        var approvalCalls = 0
+        let manager = try ProtocolV1IncomingFileTransferManager(
+            policy: .default,
+            directory: temporaryDirectory(),
+            approval: { _ in approvalCalls += 1; return true }
+        )
+        var status = VSManagedPolicyStatus()
+        status.managed = true
+        status.fileTransferAllowed = true
+        status.maximumFileBytes = 0
+
+        XCTAssertThrowsError(try manager.accept(
+            offer(payload: Data()),
+            remotePolicy: ProtocolV1RemoteManagedPolicy(status: status),
+            negotiatedPolicy: .default,
+            sessionEpoch: 7
+        )) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .policyDenied)
+        }
+        XCTAssertEqual(approvalCalls, 0)
+    }
+
+    func testRemoteManagedZeroMaximumDeniesOutgoingEmptyFile() throws {
+        let fileURL = temporaryDirectory().appendingPathComponent("empty.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: fileURL.path, contents: Data())
+        var status = VSManagedPolicyStatus()
+        status.managed = true
+        status.fileTransferAllowed = true
+        status.maximumFileBytes = 0
+
+        XCTAssertThrowsError(try ProtocolV1OutgoingFileTransfer(
+            fileURL: fileURL,
+            mimeType: "text/plain",
+            policy: .default,
+            remotePolicy: ProtocolV1RemoteManagedPolicy(status: status)
+        )) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .policyDenied)
+        }
+    }
+
     func testOutgoingTransferBuildsOfferAndBoundedChunks() throws {
         let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
         let payload = Data("hello".utf8)

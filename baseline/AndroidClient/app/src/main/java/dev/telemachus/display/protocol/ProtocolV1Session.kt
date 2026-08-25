@@ -28,6 +28,7 @@ import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
 import dev.vibescreen.protocol.v1.KeyEvent
 import dev.vibescreen.protocol.v1.ListDisplaysRequest
+import dev.vibescreen.protocol.v1.ManagedRestrictionResult
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
@@ -253,10 +254,26 @@ internal class ProtocolV1Session(
         val isVirtual: Boolean,
     )
 
+    data class RestrictionResult(
+        val restriction: String,
+        val allowed: Boolean,
+        val source: String,
+        val reason: String,
+    ) {
+        fun toProtocol(): ManagedRestrictionResult =
+            ManagedRestrictionResult
+                .newBuilder()
+                .setRestriction(restriction)
+                .setAllowed(allowed)
+                .setSource(source)
+                .setReason(reason)
+                .build()
+    }
+
     class ManagedPolicy(
         val isManaged: Boolean,
         val clipboardAllowed: Boolean,
-        val fileTransferAllowed: Boolean,
+        fileTransferAllowed: Boolean,
         val audioAllowed: Boolean,
         val wakeAllowed: Boolean,
         val customGesturesAllowed: Boolean,
@@ -264,9 +281,28 @@ internal class ProtocolV1Session(
         val maximumFileBytes: Long,
         allowedHosts: Set<String>,
         allowedHostsRestricted: Boolean? = null,
+        deniedHosts: Set<String> = emptySet(),
+        restrictionResults: List<RestrictionResult>? = null,
     ) {
         val allowedHosts = allowedHosts.mapNotNull { normalizeHost(it) }.toSet()
-        val allowedHostsRestricted = allowedHostsRestricted ?: this.allowedHosts.isNotEmpty()
+        val deniedHosts = deniedHosts.mapNotNull { normalizeHost(it) }.toSet()
+        val allowedHostsRestricted = (allowedHostsRestricted ?: false) || this.allowedHosts.isNotEmpty()
+        val fileTransferAllowed = fileTransferAllowed && maximumFileBytes > 0L
+        val restrictionResults =
+            restrictionResults ?: results(
+                source = if (isManaged) "managed_configuration" else "unmanaged",
+                reason = if (isManaged) "Local managed configuration result." else "No local managed configuration is present.",
+                clipboardAllowed = clipboardAllowed,
+                fileTransferAllowed = this.fileTransferAllowed,
+                audioAllowed = audioAllowed,
+                wakeAllowed = wakeAllowed,
+                customGesturesAllowed = customGesturesAllowed,
+                hostActionsAllowed = hostActionsAllowed,
+                maximumFileBytes = maximumFileBytes,
+                allowedHostsRestricted = this.allowedHostsRestricted,
+                allowedHosts = this.allowedHosts,
+                deniedHosts = this.deniedHosts,
+            )
 
         fun applying(remote: ManagedPolicy): ManagedPolicy {
             if (!remote.isManaged) return this
@@ -278,22 +314,43 @@ internal class ProtocolV1Session(
                     remote.allowedHostsRestricted -> remote.allowedHosts
                     else -> emptySet()
                 }
+            val effectiveDeniedHosts = this.deniedHosts + remote.deniedHosts
+            val effectiveHosts = hosts - effectiveDeniedHosts
+            val maximum = minOf(maximumFileBytes, remote.maximumFileBytes)
+            val fileTransfer = fileTransferAllowed && remote.fileTransferAllowed && maximum > 0L
             return ManagedPolicy(
                 isManaged = true,
                 clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
-                fileTransferAllowed = fileTransferAllowed && remote.fileTransferAllowed,
+                fileTransferAllowed = fileTransfer,
                 audioAllowed = audioAllowed && remote.audioAllowed,
                 wakeAllowed = wakeAllowed && remote.wakeAllowed,
                 customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
                 hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
-                maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
-                allowedHosts = hosts,
+                maximumFileBytes = maximum,
+                allowedHosts = effectiveHosts,
                 allowedHostsRestricted = restricted,
+                deniedHosts = effectiveDeniedHosts,
+                restrictionResults =
+                    results(
+                        source = "effective_deny_wins",
+                        reason = "Local and remote managed policy were combined with deny-wins semantics.",
+                        clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
+                        fileTransferAllowed = fileTransfer,
+                        audioAllowed = audioAllowed && remote.audioAllowed,
+                        wakeAllowed = wakeAllowed && remote.wakeAllowed,
+                        customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
+                        hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
+                        maximumFileBytes = maximum,
+                        allowedHostsRestricted = restricted,
+                        allowedHosts = effectiveHosts,
+                        deniedHosts = effectiveDeniedHosts,
+                    ),
             )
         }
 
         fun allowsHost(hostId: String): Boolean {
             val normalized = normalizeHost(hostId)
+            if (normalized != null && normalized in deniedHosts) return false
             return !allowedHostsRestricted || (normalized != null && normalized in allowedHosts)
         }
 
@@ -308,6 +365,8 @@ internal class ProtocolV1Session(
             maximumFileBytes: Long = this.maximumFileBytes,
             allowedHosts: Set<String> = this.allowedHosts,
             allowedHostsRestricted: Boolean = this.allowedHostsRestricted,
+            deniedHosts: Set<String> = this.deniedHosts,
+            restrictionResults: List<RestrictionResult>? = null,
         ): ManagedPolicy =
             ManagedPolicy(
                 isManaged = isManaged,
@@ -320,6 +379,8 @@ internal class ProtocolV1Session(
                 maximumFileBytes = maximumFileBytes,
                 allowedHosts = allowedHosts,
                 allowedHostsRestricted = allowedHostsRestricted,
+                deniedHosts = deniedHosts,
+                restrictionResults = restrictionResults,
             )
 
         fun toStatus(): ManagedPolicyStatus =
@@ -335,6 +396,8 @@ internal class ProtocolV1Session(
                 .setMaximumFileBytes(maximumFileBytes)
                 .addAllAllowedHosts(allowedHosts.sorted())
                 .setAllowedHostsRestricted(allowedHostsRestricted)
+                .addAllRestrictionResults(restrictionResults.map { it.toProtocol() })
+                .addAllDeniedHosts(deniedHosts.sorted())
                 .build()
 
         companion object {
@@ -356,6 +419,15 @@ internal class ProtocolV1Session(
             fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {
                 if (!status.managed) return UNMANAGED
                 val hosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val deniedHosts = status.deniedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val results = status.restrictionResultsList.map { result ->
+                    RestrictionResult(
+                        restriction = result.restriction,
+                        allowed = result.allowed,
+                        source = result.source,
+                        reason = result.reason,
+                    )
+                }
                 return ManagedPolicy(
                     isManaged = true,
                     clipboardAllowed = status.clipboardAllowed,
@@ -367,13 +439,116 @@ internal class ProtocolV1Session(
                     maximumFileBytes = status.maximumFileBytes,
                     allowedHosts = hosts,
                     allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
+                    deniedHosts = deniedHosts,
+                    restrictionResults = results.ifEmpty { null },
                 )
             }
+
+            fun hasCompleteRestrictionResults(status: ManagedPolicyStatus): Boolean {
+                if (!status.managed) return true
+                val results = status.restrictionResultsList
+                if (results.size != REQUIRED_RESTRICTIONS.size) return false
+                if (results.map { it.restriction }.toSet() != REQUIRED_RESTRICTIONS) return false
+                if (results.groupingBy { it.restriction }.eachCount().values.any { it != 1 }) return false
+                val normalizedHosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val deniedHosts = status.deniedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                return results.all { result ->
+                    result.source.isNotBlank() &&
+                        result.reason.isNotBlank() &&
+                        result.allowed ==
+                        when (result.restriction) {
+                            RESTRICTION_CLIPBOARD -> status.clipboardAllowed
+                            RESTRICTION_FILE_TRANSFER -> status.fileTransferAllowed && status.maximumFileBytes > 0L
+                            RESTRICTION_AUDIO -> status.audioAllowed
+                            RESTRICTION_WAKE -> status.wakeAllowed
+                            RESTRICTION_CUSTOM_GESTURES -> status.customGesturesAllowed
+                            RESTRICTION_HOST_ACTIONS -> status.hostActionsAllowed
+                            RESTRICTION_MAXIMUM_FILE_BYTES -> status.maximumFileBytes > 0L
+                            RESTRICTION_ALLOWED_HOSTS -> {
+                                val restricted = status.allowedHostsRestricted || normalizedHosts.isNotEmpty()
+                                !restricted || (normalizedHosts - deniedHosts).isNotEmpty()
+                            }
+                            RESTRICTION_DENIED_HOSTS -> deniedHosts.isEmpty()
+                            else -> false
+                        }
+                }
+            }
+
+            private fun results(
+                source: String,
+                reason: String,
+                clipboardAllowed: Boolean,
+                fileTransferAllowed: Boolean,
+                audioAllowed: Boolean,
+                wakeAllowed: Boolean,
+                customGesturesAllowed: Boolean,
+                hostActionsAllowed: Boolean,
+                maximumFileBytes: Long,
+                allowedHostsRestricted: Boolean,
+                allowedHosts: Set<String>,
+                deniedHosts: Set<String>,
+            ): List<RestrictionResult> =
+                listOf(
+                    RestrictionResult(RESTRICTION_CLIPBOARD, clipboardAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_FILE_TRANSFER, fileTransferAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_AUDIO, audioAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_WAKE, wakeAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_CUSTOM_GESTURES, customGesturesAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_HOST_ACTIONS, hostActionsAllowed, source, reason),
+                    RestrictionResult(
+                        RESTRICTION_MAXIMUM_FILE_BYTES,
+                        maximumFileBytes > 0L,
+                        source,
+                        "$reason maximum_file_bytes=$maximumFileBytes.",
+                    ),
+                    RestrictionResult(
+                        RESTRICTION_ALLOWED_HOSTS,
+                        !allowedHostsRestricted || (allowedHosts - deniedHosts).isNotEmpty(),
+                        source,
+                        if (allowedHostsRestricted) {
+                            "$reason allowed_hosts=${(allowedHosts - deniedHosts).sorted().joinToString(",")}."
+                        } else {
+                            "$reason allowed_hosts unrestricted."
+                        },
+                    ),
+                    RestrictionResult(
+                        RESTRICTION_DENIED_HOSTS,
+                        deniedHosts.isEmpty(),
+                        source,
+                        if (deniedHosts.isEmpty()) {
+                            "$reason denied_hosts empty."
+                        } else {
+                            "$reason denied_hosts=${deniedHosts.sorted().joinToString(",")}."
+                        },
+                    ),
+                )
 
             private fun normalizeHost(hostId: String): String? {
                 val trimmed = hostId.trim()
                 return trimmed.ifEmpty { null }?.lowercase()
             }
+
+            const val RESTRICTION_CLIPBOARD = "clipboard"
+            const val RESTRICTION_FILE_TRANSFER = "file_transfer"
+            const val RESTRICTION_AUDIO = "audio"
+            const val RESTRICTION_WAKE = "wake"
+            const val RESTRICTION_CUSTOM_GESTURES = "custom_gestures"
+            const val RESTRICTION_HOST_ACTIONS = "host_actions"
+            const val RESTRICTION_MAXIMUM_FILE_BYTES = "maximum_file_bytes"
+            const val RESTRICTION_ALLOWED_HOSTS = "allowed_hosts"
+            const val RESTRICTION_DENIED_HOSTS = "denied_hosts"
+            val REQUIRED_RESTRICTIONS =
+                setOf(
+                    RESTRICTION_CLIPBOARD,
+                    RESTRICTION_FILE_TRANSFER,
+                    RESTRICTION_AUDIO,
+                    RESTRICTION_WAKE,
+                    RESTRICTION_CUSTOM_GESTURES,
+                    RESTRICTION_HOST_ACTIONS,
+                    RESTRICTION_MAXIMUM_FILE_BYTES,
+                    RESTRICTION_ALLOWED_HOSTS,
+                    RESTRICTION_DENIED_HOSTS,
+                )
         }
     }
 
@@ -397,6 +572,7 @@ internal class ProtocolV1Session(
     private enum class State {
         AWAITING_HOST_HELLO,
         AWAITING_SESSION,
+        AWAITING_MANAGED_POLICY,
         ACTIVE,
         DISPLAY_REQUESTED,
         STREAMING,
@@ -630,8 +806,19 @@ internal class ProtocolV1Session(
                         .setMaximumVideoStreams(1)
                         .setMaximumAudioStreams(if (Capability.CAPABILITY_AUDIO in advertisedCapabilities) 1 else 0)
                         .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES)
-                        .setMaximumFileBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumFileBytes else 0L)
-                        .setMaximumFileChunkBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumChunkBytes else 0),
+                        .setMaximumFileBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
+                                fileTransferPolicy.maximumFileBytes
+                            } else {
+                                0L
+                            },
+                        ).setMaximumFileChunkBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
+                                fileTransferPolicy.maximumChunkBytes
+                            } else {
+                                0
+                            },
+                        ),
                 ).addAllVideoDecodeCapabilities(decodeCapabilities)
                 .build()
         return envelope().setClientHello(hello).build()
@@ -751,7 +938,7 @@ internal class ProtocolV1Session(
     @Synchronized
     fun ping(sequence: Long): Envelope {
         require(sequence > 0)
-        check(state >= State.ACTIVE && state != State.CLOSED)
+        check(isNegotiated())
         return envelope().setPing(Ping.newBuilder().setSequence(sequence)).build()
     }
 
@@ -1342,11 +1529,17 @@ internal class ProtocolV1Session(
         if (Capability.CAPABILITY_CLIPBOARD in baseNegotiatedCapabilities && peerHostId.isBlank()) {
             throw protocolFailure("Host id is required when clipboard capability is negotiated")
         }
-        state = State.ACTIVE
+        state =
+            if (Capability.CAPABILITY_MANAGED_CONFIGURATION in baseNegotiatedCapabilities) {
+                State.AWAITING_MANAGED_POLICY
+            } else {
+                State.ACTIVE
+            }
         val actions = mutableListOf<Action>()
-        actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
-        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities) {
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in baseNegotiatedCapabilities) {
             actions += Action.Send(envelope().setManagedPolicyStatus(managedPolicyResolver.effectivePolicy.toStatus()).build())
+        } else {
+            actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
         }
         return actions
     }
@@ -2166,9 +2359,14 @@ internal class ProtocolV1Session(
         MessageDigest.getInstance("SHA-256").digest(bytes)
 
     private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
-        if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus in state $state")
+        if (state != State.AWAITING_MANAGED_POLICY && !isNegotiated()) {
+            throw protocolFailure("ManagedPolicyStatus in state $state")
+        }
         if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in baseNegotiatedCapabilities) {
             throw protocolFailure("ManagedPolicyStatus without negotiated managed configuration")
+        }
+        if (!ManagedPolicy.hasCompleteRestrictionResults(status)) {
+            throw protocolFailure("ManagedPolicyStatus requires complete, consistent restriction_results")
         }
         managedPolicyResolver.setRemote(ManagedPolicy.fromStatus(status))
         val effective = managedPolicyResolver.effectivePolicy
@@ -2194,11 +2392,13 @@ internal class ProtocolV1Session(
         if (!effective.hostActionsAllowed) {
             availableHostActions = emptyList()
             pendingHostActionInvocations.clear()
-            return if (hadHostActionState) {
-                actions + Action.HostActionsAvailable(emptyList())
-            } else {
-                actions
+            if (hadHostActionState) {
+                actions += Action.HostActionsAvailable(emptyList())
             }
+        }
+        if (state == State.AWAITING_MANAGED_POLICY) {
+            state = State.ACTIVE
+            actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
         }
         return actions
     }
@@ -2348,7 +2548,7 @@ internal class ProtocolV1Session(
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")
         if (envelope.messageId <= lastInboundMessageId) throw protocolFailure("Non-monotonic message_id")
-        if (state >= State.ACTIVE && state != State.CLOSED) {
+        if (isNegotiated()) {
             if (envelope.sessionId != sessionId || envelope.sessionEpoch != sessionEpoch) {
                 throw protocolFailure("Wrong session_id or session_epoch")
             }
@@ -2383,7 +2583,19 @@ internal class ProtocolV1Session(
     // A session is negotiated once SessionAccepted has advanced past the
     // handshake and before it closes. Host actions may arrive across this whole
     // window, not just while streaming.
-    private fun isNegotiated(): Boolean = state >= State.ACTIVE && state != State.CLOSED
+    private fun isNegotiated(): Boolean =
+        when (state) {
+            State.ACTIVE,
+            State.DISPLAY_REQUESTED,
+            State.STREAMING,
+            State.REDISPLAY_REQUESTED,
+            -> true
+            State.AWAITING_HOST_HELLO,
+            State.AWAITING_SESSION,
+            State.AWAITING_MANAGED_POLICY,
+            State.CLOSED,
+            -> false
+        }
 
     private fun mediaFailure(message: String): ProtocolV1Failure =
         ProtocolV1Failure(
@@ -2512,7 +2724,7 @@ internal class ProtocolV1Session(
             filterTo(mutableSetOf()) { capability ->
                 when (capability) {
                     Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
-                    Capability.CAPABILITY_FILE_TRANSFER -> policy.fileTransferAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.fileTransferAllowed && policy.maximumFileBytes > 0L
                     Capability.CAPABILITY_AUDIO -> policy.audioAllowed
                     Capability.CAPABILITY_WAKE_HOST -> policy.wakeAllowed
                     Capability.CAPABILITY_HOST_ACTIONS -> policy.hostActionsAllowed

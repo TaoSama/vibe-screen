@@ -38,7 +38,7 @@ internal data class FileTransferPolicy(
             this
         } else {
             copy(
-                allowed = allowed && remote.fileTransferAllowed,
+                allowed = allowed && remote.fileTransferAllowed && remote.maximumFileBytes > 0L,
                 maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
             )
         }
@@ -256,6 +256,9 @@ internal class IncomingFileTransferManager(
         if (offer.transferId.isEmpty) throw fileTransferFailure("invalid_transfer_id", "File transfer id is missing")
         if (!isSafeFileName(offer.fileName)) throw fileTransferFailure("invalid_file_name", "Unsafe file name")
         if (offer.sha256.size() != SHA256_BYTES) throw fileTransferFailure("invalid_digest", "File digest must be SHA-256")
+        if (!effective.allowed || effective.maximumFileBytes <= 0L) {
+            throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        }
         if (offer.byteLength > effective.maximumFileBytes) {
             throw fileTransferFailure("file_too_large", "File exceeds negotiated maximum")
         }
@@ -291,7 +294,9 @@ internal class OutgoingFileTransfer(
     val offer: FileOffer
 
     init {
-        if (!effectivePolicy.allowed) throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        if (!effectivePolicy.allowed || effectivePolicy.maximumFileBytes <= 0L) {
+            throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        }
         if (!file.isFile) throw fileTransferFailure("invalid_file_name", "Outgoing file must be a regular file")
         val byteLength = file.length()
         if (byteLength < 0 || byteLength > effectivePolicy.maximumFileBytes) {
