@@ -103,7 +103,7 @@ PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachanne
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-advanced-datachannel-current-base phase3-advanced-datachannel-blocked-baseline phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate phase5-multi-client-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run phase2-device-environment-summary phase2-device-environment-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-coturn-reconciliation-product-slice phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-advanced-datachannel-current-base phase3-advanced-datachannel-blocked-baseline phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate phase5-multi-client-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run phase2-device-environment-summary phase2-device-environment-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -118,6 +118,7 @@ protocol-tests:
 phase3-test: phase3-go-test
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/release_gate_manifest.py --print-matrix >/dev/null
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/network_recovery_blocked_evidence.py --output-dir .build/phase3-network-recovery-blocked-smoke >/dev/null
+	$(MAKE) phase3-coturn-reconciliation-product-slice
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3_webrtc -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-05-nubia-p0110-internet --check
@@ -129,6 +130,10 @@ phase3-go-test:
 	$(MAKE) -C services/signaling verify
 	$(MAKE) -C services/relay verify
 	$(MAKE) -C services/authority verify
+
+phase3-coturn-reconciliation-product-slice:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/phase3/coturn_allocation_exporter.py scripts/phase3/coturn_reconciliation_loop.py scripts/phase3/coturn_disconnect_executor.py
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/phase3/test_coturn_allocation_exporter.py tests/phase3/test_coturn_reconciliation_loop.py tests/phase3/test_coturn_disconnect_executor.py -v
 
 phase3-authority-container-test:
 	deploy/phase3/scripts/test-authority-stack.sh

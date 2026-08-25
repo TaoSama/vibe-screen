@@ -1040,6 +1040,33 @@ func TestCoturnUsageOverDailyLimitRevokesAfterLedgerUpdate(t *testing.T) {
 	}
 }
 
+func TestReconcileReportsQuotaClosedAllocationsAsRevoked(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 2
+	store.dailyLimit = 40
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "device", 1, now)
+	admission := RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+	if err := store.AdmitRelay(ctx, admission, now); err != nil {
+		t.Fatal(err)
+	}
+	overage := CoturnUsage{SourceID: "node", EventID: "event-1", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 41, ObservedAt: now}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || duplicate {
+		t.Fatalf("overage usage=%v/%v", duplicate, err)
+	}
+
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 2, IngressBytes: 42},
+	}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 0 || !slices.Equal(result.RevokedAllocationIDs, []string{"allocation"}) || len(result.ConflictAllocationIDs) != 0 || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result=%+v", result)
+	}
+}
+
 func TestRelayDailyQuotaUsesUTCIngestionDayBoundary(t *testing.T) {
 	store := newMemoryStore()
 	store.allocationLimit = 2
