@@ -436,6 +436,36 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(report["verdict"], "blocked")
 
+    def test_cli_preserves_relative_manifest_source_path(self):
+        scratch_root = Path(__file__).resolve().parents[2] / ".build" / "ios-current-base-gate-test"
+        scratch_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch_root) as directory_name:
+            root = Path(directory_name)
+            manifest_path = write_manifest(root, make_manifest(root))
+            output_path = root / "ios-current-base-gate.json"
+            relative_manifest = manifest_path.relative_to(Path(__file__).resolve().parents[2])
+            relative_output = output_path.relative_to(Path(__file__).resolve().parents[2])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    MODULE,
+                    "--manifest",
+                    str(relative_manifest),
+                    "--output",
+                    str(relative_output),
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["source"]["manifest"], str(relative_manifest))
+
 
 if __name__ == "__main__":
     unittest.main()

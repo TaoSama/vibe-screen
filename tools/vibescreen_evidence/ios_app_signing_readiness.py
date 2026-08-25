@@ -350,6 +350,21 @@ def _validate_device_udids(signing: dict[str, Any], missing: list[str], failures
     return recorded
 
 
+def _has_complete_entitlements(signing: dict[str, Any]) -> bool:
+    entitlements = signing.get("entitlements")
+    if not isinstance(entitlements, dict):
+        return False
+    entitlement_text_fields = (
+        field
+        for field in REQUIRED_ENTITLEMENTS_FIELDS
+        if field != "keychain_access_groups"
+    )
+    if not all(_is_non_placeholder_string(entitlements.get(field)) for field in entitlement_text_fields):
+        return False
+    groups = entitlements.get("keychain_access_groups")
+    return isinstance(groups, list) and any(_is_non_placeholder_string(group) for group in groups)
+
+
 def _validate_signing(
     document: dict[str, Any], evidence_root: Path, missing: list[str], failures: list[str]
 ) -> dict[str, bool]:
@@ -379,30 +394,34 @@ def _validate_signing(
 
     team_id = signing.get("team_id")
     if _is_non_placeholder_string(team_id):
-        recorded["team_id"] = True
         if TEAM_ID_PATTERN.fullmatch(str(team_id).strip()) is None:
             missing.append("signing.team_id: must be a 10-character Apple Team ID")
+        else:
+            recorded["team_id"] = True
 
     profile_uuid = signing.get("provisioning_profile_uuid")
     if _is_non_placeholder_string(profile_uuid):
-        recorded["provisioning_profile"] = True
         if PROFILE_UUID_PATTERN.fullmatch(str(profile_uuid).strip()) is None:
             missing.append("signing.provisioning_profile_uuid: must be a UUID")
+        else:
+            recorded["provisioning_profile"] = True
 
     bundle_id = signing.get("bundle_id")
     if _is_non_placeholder_string(bundle_id):
-        recorded["bundle_id"] = True
         if str(bundle_id).strip() == DEFAULT_BUNDLE_ID:
             missing.append("signing.bundle_id: must be a unique non-default bundle identifier")
-        if _contains_marker(bundle_id, BAD_MARKERS):
+        elif _contains_marker(bundle_id, BAD_MARKERS):
             failures.append("signing.bundle_id: must not be Simulator, unsigned, or ad-hoc scoped")
+        else:
+            recorded["bundle_id"] = True
 
     codesign_identity = signing.get("codesign_identity")
     if _is_non_placeholder_string(codesign_identity):
-        recorded["codesign_identity"] = True
         identity = str(codesign_identity).strip().lower()
         if identity in {"-", "adhoc", "ad-hoc"} or "ad hoc" in identity or "ad-hoc" in identity:
             failures.append("signing.codesign_identity: must be a real Apple signing identity, not ad-hoc")
+        else:
+            recorded["codesign_identity"] = True
 
     if _is_sha256(signing.get("signed_artifact_sha256")):
         recorded["signed_artifact"] = True
@@ -412,13 +431,12 @@ def _validate_signing(
         failures.append("signing.signed_artifact_sha256: must not reference unsigned or Simulator artifacts")
 
     device_udids = _validate_device_udids(signing, missing, failures)
-    recorded["device_udid"] = bool(device_udids)
+    recorded["device_udid"] = bool(device_udids) and all(
+        UDID_HASH_PATTERN.fullmatch(value) is not None for value in device_udids
+    )
 
     _validate_entitlements(signing, missing, failures)
-    entitlements = signing.get("entitlements")
-    recorded["entitlements"] = isinstance(entitlements, dict) and all(
-        field in entitlements for field in REQUIRED_ENTITLEMENTS_FIELDS
-    )
+    recorded["entitlements"] = _has_complete_entitlements(signing)
 
     artifacts = document.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -528,8 +546,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         readiness_path = args.readiness.resolve()
-        evidence_root = (args.evidence_root or readiness_path.parent).resolve()
+        evidence_root_input = args.evidence_root or args.readiness.parent
+        evidence_root = evidence_root_input.resolve()
         result = evaluate(_parse_json(readiness_path), evidence_root, readiness_path)
+        result["source"] = {
+            "readiness": str(args.readiness),
+            "evidence_root": str(evidence_root_input),
+        }
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             with args.output.open("w", encoding="utf-8") as output:

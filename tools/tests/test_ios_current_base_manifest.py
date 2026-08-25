@@ -362,6 +362,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "ios-current-base-gate"])
+        self.assertEqual(manifest["source_root"], ".")
 
 
 if __name__ == "__main__":

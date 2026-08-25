@@ -634,8 +634,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         report = derive_gate(args.manifest)
+        report["source"] = {"manifest": str(args.manifest)}
     except (IOSCurrentBaseGateError, OSError, TypeError, ValueError) as error:
         report = _failure_report(args.manifest, str(error))
+        report["source"] = {"manifest": str(args.manifest)}
     try:
         write_json(args.output, report)
     except (OSError, TypeError, ValueError):

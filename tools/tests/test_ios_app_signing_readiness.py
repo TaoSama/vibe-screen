@@ -121,6 +121,34 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
         for field in schema["required"]:
             self.assertIn(field, result)
 
+    def test_blocked_readiness_fixture_matches_input_schema_shape(self) -> None:
+        document = complete_document()
+        document["status"] = "blocked"
+        document["repository"] = {"commit": None, "branch": None, "dirty": None}
+        document["xcode"] = {"version": "", "selected_developer_dir": "", "ios_sdk": ""}
+        document["signing"] = {
+            "status": "blocked",
+            "team_id": "",
+            "provisioning_profile_uuid": "",
+            "bundle_id": "",
+            "codesign_identity": "",
+            "device_udids": [],
+            "entitlements": {
+                "application_identifier": "",
+                "team_identifier": "",
+                "bundle_identifier": "",
+                "keychain_access_groups": [],
+                "raw_entitlements_sha256": "",
+            },
+            "signed_artifact_sha256": "",
+        }
+        document["artifacts"] = []
+
+        result = evaluate(document, Path.cwd())
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertFalse(result["can_close_ios_app_signing_readiness"])
+
     def test_prefixed_signed_artifact_digest_is_normalized_in_summary(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
@@ -349,7 +377,32 @@ class IOSAppSigningReadinessCliTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(persisted["verdict"], "pass")
-        self.assertEqual(persisted["source"]["readiness"], str(input_path.resolve()))
+        self.assertEqual(persisted["source"]["readiness"], str(input_path))
+
+    def test_cli_preserves_relative_source_paths_for_committable_evidence(self) -> None:
+        scratch_root = REPOSITORY_ROOT / ".build" / "ios-signing-readiness-test"
+        scratch_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch_root) as raw_directory:
+            evidence_root = Path(raw_directory)
+            document = complete_document()
+            write_artifacts(evidence_root, list(document["artifacts"]))
+            input_path = evidence_root / "ios-app-signing-readiness.json"
+            output_path = evidence_root / "ios-app-signing-readiness-gate.json"
+            input_path.write_text(json.dumps(document), encoding="utf-8")
+            relative_input = input_path.relative_to(REPOSITORY_ROOT)
+            relative_output = output_path.relative_to(REPOSITORY_ROOT)
+
+            result = self.run_cli(
+                "--readiness",
+                str(relative_input),
+                "--output",
+                str(relative_output),
+            )
+            persisted = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(persisted["source"]["readiness"], str(relative_input))
+        self.assertEqual(persisted["source"]["evidence_root"], str(relative_input.parent))
 
     def test_cli_returns_blocked_for_open_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
