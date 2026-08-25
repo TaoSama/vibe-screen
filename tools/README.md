@@ -150,6 +150,18 @@ the first decoded output frame before it is used to close a codec gate. AV1 is
 currently a planned codec only: offline fail-closed/admission tests and blocked
 runbooks do not prove an AV1 stream.
 
+Trusted-LAN smoke evidence must be checked before changing README or release
+notes based on a LAN run. A passing real-device record must include non-legacy
+encrypted LAN markers from both peers, Protocol v1 over TRANSPORT_KIND_LAN,
+HEVC decode with real output frames, and reconnect with the Host PID preserved.
+A blocked record is valid only when it names the Nubia P0110 / pacific /
+Android 16 device, records concrete Wi-Fi/route and Host signing/preflight
+blockers, and explicitly states that no real trusted-LAN stream was observed.
+
+Run the checker with:
+
+    make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/<run-dir>
+
 Native pointer HID mouse evidence is hardware-gated in the same way. The Android
 device must expose a real external mouse-like source (`MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), and the same observation
