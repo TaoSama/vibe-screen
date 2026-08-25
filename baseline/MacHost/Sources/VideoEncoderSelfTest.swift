@@ -141,9 +141,12 @@ enum VideoEncoderSelfTest {
                     frameRate: frameRate
                 )
                 if !succeeded {
+                    let detail = encoder.settingsUpdateFailureDescription
+                        .map { " (\($0))" } ?? ""
                     result.recordSettingsFailure(
                         "update #\(index + 1) rejected "
                             + "(bitrate=\(bitrateMbps)Mbps, quality=\(quality), fps=\(frameRate))"
+                            + detail
                     )
                     return
                 }
