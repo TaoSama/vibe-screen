@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-session-authority-readiness.schema.json",
+  "title": "Vibe Screen Phase 3 session-authority readiness v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "verdict",
+    "can_claim_automatic_session_authority_issuance",
+    "gate_can_close_phase3_release",
+    "source",
+    "checks",
+    "blockers",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_session_authority_readiness"},
+    "created_at": {"type": "string", "format": "date-time", "minLength": 1},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "can_claim_automatic_session_authority_issuance": {"type": "boolean"},
+    "gate_can_close_phase3_release": {"const": false},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_commit", "tree_status", "verifier_schema"],
+      "properties": {
+        "repository_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree_status": {"enum": ["clean", "dirty"]},
+        "verifier_schema": {"const": "dev.vibescreen.phase3-session-authority-readiness/v1"}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/check"},
+      "required": [
+        "product_invoked_authority_profile_issuance",
+        "no_operator_manual_profile_copy",
+        "no_manual_unsigned_lease_transfer",
+        "account_device_registration_product_driven",
+        "mac_signed_authority_epoch",
+        "android_product_import",
+        "signaling_role_authorization",
+        "turn_credential_rotation"
+      ]
+    },
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "privacy": {"$ref": "#/$defs/privacy"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {"properties": {"can_claim_automatic_session_authority_issuance": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["blocked", "fail"]}}, "required": ["verdict"]},
+      "then": {"properties": {"can_claim_automatic_session_authority_issuance": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "expected", "evidence"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "expected": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_tokens_recorded",
+        "raw_credentials_recorded",
+        "raw_device_identifiers_recorded",
+        "operator_paths_recorded"
+      ],
+      "properties": {
+        "raw_tokens_recorded": {"const": false},
+        "raw_credentials_recorded": {"const": false},
+        "raw_device_identifiers_recorded": {"const": false},
+        "operator_paths_recorded": {"const": false}
+      }
+    }
+  }
+}

@@ -122,6 +122,7 @@ phase3-test: phase3-go-test
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3_webrtc -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-05-nubia-p0110-internet --check
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/session_authority_readiness.py --report docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-authority-turn-readiness-current-base-blocked/session-authority-readiness.json --write-summary .build/phase3-session-authority-readiness-summary.json || test "$$?" = 4
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/public_nat_turn_preflight.py --relay-config deploy/phase3/config/relay.production.example.json --coturn-config deploy/phase3/coturn/production.conf --skip-dns-resolution --output .build/phase3-public-nat-turn-preflight.json --allow-blocked
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/release_gate_summary.py --output .build/phase3-release-gate-summary.json
 

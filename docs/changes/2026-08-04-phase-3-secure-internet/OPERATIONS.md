@@ -122,6 +122,17 @@ An Authority profile issued through the admin API can be used by signaling after
 successful role authorization, but that is still an operator-mediated control
 flow rather than automatic product issuance.
 
+The current-base owner for automatic session-authority issuance is
+`scripts/phase3/session_authority_readiness.py`. Treat it as the release-blocking
+contract for this gap: local Authority, Signaling, Relay, and Mac signer tests
+are not enough unless a sanitized report proves that the product flow itself
+registered the account/device, called Authority profile issuance, kept the
+unsigned lease inside product-controlled transport, had the Mac sign the exact
+Authority epoch, and had Android import the signed lease through product UI. Any
+operator profile copy, unsigned lease file handoff, or manual Android import
+keeps the result blocked. A static TURN password in product flow is a failure,
+not a readiness blocker.
+
 ## Service inventory
 
 Maintain separate ownership and deployment records for:
@@ -377,3 +388,23 @@ shipped:
   failure.
 - The signaling `max_session_ttl_seconds` and authority
   `maximum_session_ttl_seconds` must be kept consistent.
+
+## Public NAT/TURN readiness owner
+
+`scripts/phase3/public_nat_turn_preflight.py` is the current-base owner for the
+public NAT/TURN deployment readiness slice. It now requires two separate remote
+records before returning pass: sanitized connectivity evidence, plus deployment
+evidence using schema `dev.vibescreen.phase3-public-nat-turn-deployment/v1`. The
+deployment evidence must prove public STUN, UDP/TCP TURN, TLS TURN, certificate
+hostname validation, TLS 1.2 or newer, production quota enforcement, credential
+rotation with old-credential rejection after TTL, allocation/auth-failure/relay
+byte/quota monitoring, alert rules, and independent remote observers outside the
+host network.
+
+The verifier output hashes endpoint-like values and keeps raw endpoints,
+credentials, device identifiers, and operator paths out of archived evidence.
+When real public infrastructure or protected credentials are unavailable, archive
+a blocked package rather than weakening the preflight or relying on local coturn
+loopback. Local coturn, synthetic peers, self-reported JSON without an external
+canary, or a deployment record without rotation and monitoring proof cannot
+close the public NAT/TURN or Phase 3 Internet release gates.

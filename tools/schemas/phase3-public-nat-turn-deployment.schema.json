@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-public-nat-turn-deployment.schema.json",
+  "title": "Vibe Screen Phase 3 public NAT/TURN deployment evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "verdict",
+    "can_claim_public_nat_turn_ready",
+    "gate_can_close_phase3_release",
+    "source",
+    "public_endpoints",
+    "tls",
+    "credential_rotation",
+    "quotas",
+    "monitoring",
+    "remote_observers",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_public_nat_turn_deployment"},
+    "created_at": {"type": "string", "format": "date-time", "minLength": 1},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "can_claim_public_nat_turn_ready": {"type": "boolean"},
+    "gate_can_close_phase3_release": {"const": false},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_commit", "tree_status", "preflight_schema", "deployment_schema"],
+      "properties": {
+        "repository_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree_status": {"enum": ["clean", "dirty"]},
+        "preflight_schema": {"const": "dev.vibescreen.phase3-public-nat-turn-preflight/v1"},
+        "deployment_schema": {"const": "dev.vibescreen.phase3-public-nat-turn-deployment/v1"}
+      }
+    },
+    "public_endpoints": {"$ref": "#/$defs/public_endpoints"},
+    "tls": {"$ref": "#/$defs/tls"},
+    "credential_rotation": {"$ref": "#/$defs/credential_rotation"},
+    "quotas": {"$ref": "#/$defs/quotas"},
+    "monitoring": {"$ref": "#/$defs/monitoring"},
+    "remote_observers": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/remote_observer"}},
+    "privacy": {"$ref": "#/$defs/privacy"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {"properties": {"can_claim_public_nat_turn_ready": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["blocked", "fail"]}}, "required": ["verdict"]},
+      "then": {"properties": {"can_claim_public_nat_turn_ready": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "public_endpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stun", "turn", "turns"],
+      "properties": {
+        "stun": {"$ref": "#/$defs/endpoint"},
+        "turn": {"$ref": "#/$defs/endpoint"},
+        "turns": {"$ref": "#/$defs/endpoint"}
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed", "host_hash"],
+      "properties": {
+        "observed": {"type": "boolean"},
+        "host_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname_valid", "minimum_version", "certificate_expires_in_days"],
+      "properties": {
+        "hostname_valid": {"type": "boolean"},
+        "minimum_version": {"enum": ["TLS1.2", "TLS1.3", null]},
+        "certificate_expires_in_days": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "credential_rotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed", "old_credential_rejected_after_ttl", "new_credential_ttl_seconds"],
+      "properties": {
+        "observed": {"type": "boolean"},
+        "old_credential_rejected_after_ttl": {"type": "boolean"},
+        "new_credential_ttl_seconds": {"type": ["integer", "null"], "minimum": 1, "maximum": 1800}
+      }
+    },
+    "quotas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credential_requests_per_minute", "max_concurrent_sessions_per_device", "daily_bytes_per_device", "enforcement_observed"],
+      "properties": {
+        "credential_requests_per_minute": {"type": ["integer", "null"], "minimum": 1},
+        "max_concurrent_sessions_per_device": {"type": ["integer", "null"], "minimum": 1},
+        "daily_bytes_per_device": {"type": ["integer", "null"], "minimum": 1},
+        "enforcement_observed": {"type": "boolean"}
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allocation_metrics", "auth_failure_metrics", "relay_byte_metrics", "quota_decision_metrics", "alert_rules_observed"],
+      "properties": {
+        "allocation_metrics": {"type": "boolean"},
+        "auth_failure_metrics": {"type": "boolean"},
+        "relay_byte_metrics": {"type": "boolean"},
+        "quota_decision_metrics": {"type": "boolean"},
+        "alert_rules_observed": {"type": "boolean"}
+      }
+    },
+    "remote_observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outside_host_network", "observed_relay_candidate"],
+      "properties": {
+        "outside_host_network": {"type": "boolean"},
+        "observed_relay_candidate": {"type": "boolean"}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_endpoints_recorded", "sensitive_values_recorded", "raw_device_identifiers_recorded", "operator_paths_recorded"],
+      "properties": {
+        "raw_endpoints_recorded": {"const": false},
+        "sensitive_values_recorded": {"const": false},
+        "raw_device_identifiers_recorded": {"const": false},
+        "operator_paths_recorded": {"const": false}
+      }
+    }
+  }
+}
