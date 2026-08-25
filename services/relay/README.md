@@ -209,10 +209,13 @@ used as the real-time allocation security boundary; coturn's stable-device
 `user-quota` remains that boundary in the current deployment.
 For Authority-backed deployments, `scripts/phase3/coturn_reconcile.py` can submit
 a trusted structured snapshot to Authority and require an external disconnect
-executor for unauthorized, revoked, or conflicting active source allocations. It
-is a local contract helper only; deployments still need a production exporter,
-durable collector loop, provider/billing reconciliation, and concrete coturn
-allocation termination before the release gate closes.
+executor for unauthorized, revoked, or conflicting active source allocations. The
+current-base local operator slice adds a strict structured exporter adapter, a
+bounded durable reconciliation loop, and a local active-allocation state
+disconnect executor. These are contract tests and local state transitions only;
+deployments still need a production exporter, provider/billing reconciliation,
+production scheduling, and concrete coturn allocation termination before the
+release gate closes.
 
 ## Threat model
 
