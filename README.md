@@ -566,6 +566,13 @@ also requires that continuity result to match clean current `HEAD` and include a
 retained Android screenshot or recording with an operator note proving decoded
 Mac desktop content is visible in the Android UI; missing UI evidence keeps the
 gate blocked.
+The current-base advanced DataChannel owner is also fail-closed: it tracks
+audio playback, explicit clipboard transfer, and bounded file transfer over the
+Internet WebRTC control/audio/bulk DataChannels as product flows. Existing
+USB/LAN audio, clipboard, and file-transfer evidence plus raw audio/bulk
+Internet channel hook tests remain readiness only; without retained, hashed real
+macOS+Android public-Internet product-flow artifacts, this child gate stays
+blocked.
 The current-base package-level checker
 `vibescreen_evidence.phase3_internet_release_gate` now makes the Internet
 soak/latency boundary executable: it requires public-path and deployed remote
@@ -802,7 +809,8 @@ increase it.
   channels are now wired into the macOS and Android Internet product sessions
   as raw Protocol v1 records with owner-scoped admission and bounded backlog
   behavior. Audio capture/playback, clipboard/file-transfer product flows over
-  those channels, and public-network end-to-end behavior remain unproved.
+  those channels, and public-network end-to-end behavior remain unproved and are
+  now tracked by a dedicated fail-closed current-base gate.
 - The macOS Host and Android client now share a transport-neutral, bounded
   single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
   session. File offers require explicit receiver approval and default to reject;

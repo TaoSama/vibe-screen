@@ -304,6 +304,32 @@ synthetic media, missing raw sources, or Nubia P0110 evidence relabeled away
 from `pacific` return `blocked`; transport restarts or unsafe oscillation return
 `fail`.
 
+## Phase 3 advanced DataChannel current-base gate
+
+Use this gate for the dedicated current-base owner of Internet DataChannel
+audio, clipboard, and bulk file-transfer product flows:
+
+```sh
+make phase3-advanced-datachannel-current-base \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/advanced-datachannel-manifest.json
+```
+
+The target evaluates `advanced-datachannel-manifest.json` and writes
+`advanced-datachannel-current-base.json`. To create the default blocked baseline
+manifest first, run `make phase3-advanced-datachannel-blocked-baseline`. To
+pass, retained evidence must prove all of these on the clean current base: real
+macOS Host, real Android device, public Internet WebRTC route, identity-signed
+Host, no plaintext fallback, no synthetic peer, PCM audio playback over
+`vibescreen.audio.v1`, explicit clipboard transfer over the protected control
+DataChannel, verified file transfer over `vibescreen.bulk.v1`, bounded
+audio/bulk backpressure, and separate AES record domains for control, media,
+audio, and bulk. Each gate evidence entry must be a retained relative file with
+a matching SHA-256 hash and public-Internet product WebRTC metadata. USB/LAN TCP
+records, iOS trusted-LAN records, local loopback or forced local coturn, and raw
+channel hook unit tests fail closed if promoted as product-flow evidence. A pass
+is only this child gate; the public Internet release gate remains separate.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB
