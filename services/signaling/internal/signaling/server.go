@@ -397,33 +397,45 @@ func (s *Server) pollAuthorized(ctx context.Context, sessionID, token string, ro
 	if !wait || s.authority == nil {
 		return s.store.PollAuthorized(ctx, sessionID, role, after, wait)
 	}
+	type pollResult struct {
+		events []Event
+		next   uint64
+		err    error
+	}
+	pollCtx, cancelPoll := context.WithCancel(ctx)
+	defer cancelPoll()
+	result := make(chan pollResult, 1)
+	go func() {
+		events, next, err := s.store.PollAuthorized(pollCtx, sessionID, role, after, true)
+		result <- pollResult{events: events, next: next, err: err}
+	}()
+	ticker := time.NewTicker(authorityLongPollRefreshInterval)
+	defer ticker.Stop()
 	for {
-		chunkCtx, cancel := context.WithTimeout(ctx, authorityLongPollRefreshInterval)
-		events, next, err := s.store.PollAuthorized(chunkCtx, sessionID, role, after, true)
-		cancel()
-		if err != nil {
-			return nil, after, err
-		}
-		if next > after {
-			return events, next, nil
-		}
-		if err := ctx.Err(); err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				return []Event{}, after, nil
+		select {
+		case polled := <-result:
+			if polled.err != nil {
+				return nil, after, polled.err
 			}
-			return nil, after, err
-		}
-		authCtx, cancel := context.WithTimeout(ctx, authorityLongPollRefreshInterval)
-		refreshedRole, err := s.store.Authorize(authCtx, sessionID, token)
-		cancel()
-		if err != nil {
+			return polled.events, polled.next, nil
+		case <-ticker.C:
+			authCtx, cancel := context.WithTimeout(ctx, authorityLongPollRefreshInterval)
+			refreshedRole, err := s.store.Authorize(authCtx, sessionID, token)
+			cancel()
+			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return []Event{}, after, nil
+				}
+				return nil, after, err
+			}
+			if refreshedRole != role {
+				return nil, after, ErrUnauthorized
+			}
+		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return []Event{}, after, nil
 			}
-			return nil, after, err
-		}
-		if refreshedRole != role {
-			return nil, after, ErrUnauthorized
+			return nil, after, ctx.Err()
 		}
 	}
 }

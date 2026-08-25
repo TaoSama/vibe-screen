@@ -245,8 +245,10 @@ Linux host:
    account while retaining `0600` permissions. Store/rotate all secrets through
    the deployment secret manager, not source control.
 5. Create the ignored `coturn-state` directory, or set
-   `VIBE_COTURN_ALLOCATION_REGISTRY_DIR` to another host path, and make it
-   writable by relay UID/GID `65532`. Relay `/readyz` fails closed if the
+   `VIBE_COTURN_ALLOCATION_REGISTRY_DIR` to another pre-created host path, and
+   make it writable by relay UID/GID `65532`. The Compose bind mount sets
+   `create_host_path: false` so a missing directory fails startup instead of
+   being created with root ownership. Relay `/readyz` fails closed if the
    configured allocation registry cannot be read or atomically updated.
 6. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.

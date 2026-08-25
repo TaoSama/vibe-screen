@@ -151,6 +151,67 @@ class CoturnCLIControlTests(unittest.TestCase):
                 42,
             )
 
+    def test_export_fails_closed_when_bound_and_unbound_allocations_share_username(self) -> None:
+        payload = {
+            "source_id": "turn-prod-1",
+            "allocations": [
+                {
+                    "allocation_id": "allocation-bound",
+                    "device_id": "device-1",
+                    "session_id": "session-bound",
+                    "username": "1700000000:device-1",
+                    "coturn_session_id": "013000000000000002",
+                },
+                {
+                    "allocation_id": "allocation-unbound",
+                    "device_id": "device-1",
+                    "session_id": "session-unbound",
+                    "username": "1700000000:device-1",
+                },
+            ],
+        }
+        registry = control.load_registry(self.write_registry(payload))
+        sessions = control.parse_coturn_ps(PS_OUTPUT)
+        with self.assertRaisesRegex(control.CoturnControlError, "ambiguous username"):
+            control.export_snapshot(
+                registry,
+                sessions,
+                datetime(2026, 8, 21, 1, 2, 3, tzinfo=timezone.utc),
+                42,
+            )
+
+    def test_unbound_resolution_excludes_already_bound_coturn_session_ids(self) -> None:
+        payload = {
+            "source_id": "turn-prod-1",
+            "allocations": [
+                {
+                    "allocation_id": "allocation-bound",
+                    "device_id": "device-1",
+                    "session_id": "session-bound",
+                    "username": "1700000000:device-1",
+                    "coturn_session_id": "013000000000000002",
+                },
+                {
+                    "allocation_id": "allocation-unbound",
+                    "device_id": "device-3",
+                    "session_id": "session-unbound",
+                    "username": "1700000000:device-3",
+                },
+            ],
+        }
+        registry = control.load_registry(self.write_registry(payload))
+        allocation = registry.allocations[1]
+        sessions = [
+            control.CoturnSession("013000000000000002", "1700000000:device-3", 10, 20),
+        ]
+        resolved = control.resolve_session(
+            allocation,
+            sessions,
+            control._registry_username_counts(registry),
+            control._bound_session_ids(registry),
+        )
+        self.assertIsNone(resolved)
+
     def test_export_command_requires_password_from_secret_source(self) -> None:
         registry = self.write_registry(self.registry_payload())
         with mock.patch.dict(os.environ, {}, clear=True):

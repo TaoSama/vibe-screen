@@ -353,6 +353,12 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if duplicate {
+		if event.Kind == "end" {
+			if err := s.removeCompletedAllocation(event.AllocationID); err != nil {
+				s.rejectStorage(w)
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "duplicate"})
 		return
 	}
@@ -383,10 +389,25 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if event.Kind == "end" {
+		if err := s.removeCompletedAllocation(event.AllocationID); err != nil {
+			s.rejectStorage(w)
+			return
+		}
+	}
 	s.metrics.usageAccepted.Add(1)
 	s.metrics.ingressBytes.Add(event.IngressBytes)
 	s.metrics.egressBytes.Add(event.EgressBytes)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+func (s *Server) removeCompletedAllocation(allocationID string) error {
+	if s.cfg.EffectiveAuthorityMode() != AuthorityModeProd {
+		return nil
+	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	return removeAllocationRegistryEntry(s.cfg.AllocationRegistryFile, allocationID, s.cfg.AuthoritySourceID)
 }
 
 func validUsageKind(kind string) bool {

@@ -30,7 +30,7 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "structured coturn exporter, bounded reconciliation loop, and local\nactive-allocation disconnect executor",
             "production end-to-end enforcement remain release gates",
             "revocation propagation verifier now fixes the required evidence schema",
-            "same-allocation relay credential rejection",
+            "post-revocation same-allocation relay credential rejection",
             "current blocked\nevidence still lacks the live coturn/data-plane deployment observations",
         ):
             with self.subTest(phrase=phrase):

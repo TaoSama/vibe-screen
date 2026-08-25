@@ -1,8 +1,11 @@
-git fetch origin --prune
-git rebase origin/main
-gofmt -w services/signaling/internal/signaling/server.go services/signaling/internal/signaling/authority_mode_test.go services/signaling/authority_process_integration_test.go services/relay/internal/relay/*.go
+git rev-parse HEAD
+git rev-parse origin/main
+test $(git rev-parse origin/main) = c754f2dab4d3781847b40988105fcdefe1723538
+git merge-base --is-ancestor c754f2dab4d3781847b40988105fcdefe1723538 HEAD
+test -z "$(git status --short)"
+test -z "$(gofmt -l services/signaling/internal/signaling/server.go services/signaling/internal/signaling/authority_mode_test.go services/signaling/authority_process_integration_test.go services/relay/internal/relay/*.go)"
 cd services/relay && go test ./internal/relay -count=1
-cd services/signaling && go test ./internal/signaling -run "AuthorityMode(LongPollReauthorizesDuringWait|RevocationBeforePollResponseDoesNotReleaseEvent|PollAuthorizesViaAuthority)" -count=1
+cd services/signaling && go test ./internal/signaling -run "AuthorityMode(LongPollRetainsWaiterAcrossReauthorizationRefresh|LongPollReauthorizesDuringWait|RevocationBeforePollResponseDoesNotReleaseEvent|PollAuthorizesViaAuthority)" -count=1
 python3 -m unittest tests.phase3.test_coturn_cli_control -v
 python3 -m unittest tests.phase3.test_relay_production_profile_static tests.phase3.test_production_profile_static -v
 python3 -m unittest tests.phase3.test_coturn_cli_control tests.phase3.test_coturn_reconcile tests.phase3.test_revocation_propagation_verifier tests.phase3.test_authority_production_gates tests.phase3.test_relay_production_profile_static tests.phase3.test_production_profile_static -v

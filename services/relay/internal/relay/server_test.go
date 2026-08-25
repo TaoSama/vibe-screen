@@ -207,6 +207,54 @@ func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
 	}
 }
 
+func TestProductionCredentialRefreshUpdatesAllocationRegistryUsername(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	server.now = func() time.Time { return now }
+	body := `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`
+	first := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, body)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first credential status = %d: %s", first.Code, first.Body.String())
+	}
+	now = now.Add(time.Minute)
+	second := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, body)
+	if second.Code != http.StatusOK {
+		t.Fatalf("refreshed credential status = %d: %s", second.Code, second.Body.String())
+	}
+	registry, err := readAllocationRegistry(cfg.AllocationRegistryFile, cfg.AuthoritySourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Allocations) != 1 {
+		t.Fatalf("registry allocations = %#v", registry.Allocations)
+	}
+	var refreshed map[string]any
+	if err := json.Unmarshal(second.Body.Bytes(), &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	if registry.Allocations[0].Username != refreshed["username"] {
+		t.Fatalf("registry username = %q, want %q", registry.Allocations[0].Username, refreshed["username"])
+	}
+}
+
 func TestCredentialsFailClosedWhenAllocationRegistryCannotBeWritten(t *testing.T) {
 	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/readyz" {
@@ -419,6 +467,48 @@ func TestUsageDuplicateRetryAfterAuthorityRevocationDoesNotReauthorize(t *testin
 	}
 	if authorityCalls != 1 {
 		t.Fatalf("duplicate retry reauthorized %d times", authorityCalls)
+	}
+}
+
+func TestUsageEndRemovesCompletedAllocationRegistryEntry(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	credential := requestJSON(t, handler, http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`)
+	if credential.Code != http.StatusOK {
+		t.Fatalf("credential status = %d: %s", credential.Code, credential.Body.String())
+	}
+	start := `{"event_id":"usage-start","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
+	if response := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, start); response.Code != http.StatusAccepted {
+		t.Fatalf("start usage status = %d: %s", response.Code, response.Body.String())
+	}
+	end := `{"event_id":"usage-end","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"end","ingress_bytes":1,"egress_bytes":2}`
+	if response := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, end); response.Code != http.StatusAccepted {
+		t.Fatalf("end usage status = %d: %s", response.Code, response.Body.String())
+	}
+	registry, err := readAllocationRegistry(cfg.AllocationRegistryFile, cfg.AuthoritySourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Allocations) != 0 {
+		t.Fatalf("registry kept completed allocation: %#v", registry.Allocations)
 	}
 }
 

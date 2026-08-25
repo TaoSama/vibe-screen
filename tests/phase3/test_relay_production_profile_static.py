@@ -52,12 +52,18 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         compose = COMPOSE.read_text()
         self.assertNotIn("relay-data", compose)
         self.assertNotIn(":/data", compose)
-        self.assertIn(
-            "${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}:/var/lib/vibe-coturn:rw",
-            compose,
-        )
+        self.assertIn("source: ${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}", compose)
+        self.assertIn("target: /var/lib/vibe-coturn", compose)
+        self.assertIn("create_host_path: false", compose)
         self.assertIn("--healthcheck", compose)
         self.assertIn("http://127.0.0.1:8090/readyz", compose)
+
+    def test_relay_production_registry_state_is_ignored_and_precreated(self):
+        gitignore = (ROOT / "deploy" / "phase3" / ".gitignore").read_text()
+        readme = (ROOT / "deploy" / "phase3" / "README.md").read_text()
+        self.assertIn("/coturn-state/", gitignore)
+        self.assertIn("create_host_path: false", readme)
+        self.assertIn("writable by relay UID/GID `65532`", readme)
 
     def test_relay_production_profile_does_not_claim_coturn_reconcile_worker(self):
         compose = COMPOSE.read_text()

@@ -444,6 +444,7 @@ class VideoEncoder {
         let updatedFrameRate = max(1, frameRate ?? self.frameRate)
 
         guard let session = compressionSession else {
+            lastSettingsUpdateFailure = "no active compression session"
             debugLog("VideoToolbox encoder settings rejected: no active compression session")
             return false
         }

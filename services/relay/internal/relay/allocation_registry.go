@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type allocationRegistry struct {
@@ -36,14 +37,21 @@ func upsertAllocationRegistryEntry(path string, entry allocationRegistryEntry, s
 	if err != nil {
 		return err
 	}
+	registry.Allocations = pruneExpiredAllocationRegistryEntries(registry.Allocations, time.Now())
 	found := false
 	for index := range registry.Allocations {
 		current := registry.Allocations[index]
 		if current.AllocationID != entry.AllocationID {
 			continue
 		}
-		if current.DeviceID != entry.DeviceID || current.SessionID != entry.SessionID || current.Username != entry.Username {
+		if current.DeviceID != entry.DeviceID || current.SessionID != entry.SessionID {
 			return errors.New("allocation registry contains conflicting allocation identity")
+		}
+		if current.Username != entry.Username {
+			registry.Allocations[index].Username = entry.Username
+			registry.Allocations[index].CoturnSessionID = entry.CoturnSessionID
+		} else if entry.CoturnSessionID != "" {
+			registry.Allocations[index].CoturnSessionID = entry.CoturnSessionID
 		}
 		found = true
 		break
@@ -51,6 +59,28 @@ func upsertAllocationRegistryEntry(path string, entry allocationRegistryEntry, s
 	if !found {
 		registry.Allocations = append(registry.Allocations, entry)
 	}
+	return writeAllocationRegistry(path, registry)
+}
+
+func removeAllocationRegistryEntry(path string, allocationID string, sourceID string) error {
+	if path == "" {
+		return errors.New("allocation registry path is required")
+	}
+	if !validIdentifier(allocationID) || !validIdentifier(sourceID) {
+		return errors.New("allocation registry removal contains invalid identifiers")
+	}
+	registry, err := readAllocationRegistry(path, sourceID)
+	if err != nil {
+		return err
+	}
+	registry.Allocations = pruneExpiredAllocationRegistryEntries(registry.Allocations, time.Now())
+	retained := registry.Allocations[:0]
+	for _, entry := range registry.Allocations {
+		if entry.AllocationID != allocationID {
+			retained = append(retained, entry)
+		}
+	}
+	registry.Allocations = retained
 	return writeAllocationRegistry(path, registry)
 }
 
@@ -97,6 +127,17 @@ func readAllocationRegistry(path string, sourceID string) (allocationRegistry, e
 	return registry, nil
 }
 
+func pruneExpiredAllocationRegistryEntries(entries []allocationRegistryEntry, now time.Time) []allocationRegistryEntry {
+	retained := entries[:0]
+	for _, entry := range entries {
+		expiresAt, ok := turnRESTUsernameExpiry(entry.Username)
+		if !ok || expiresAt.After(now) {
+			retained = append(retained, entry)
+		}
+	}
+	return retained
+}
+
 func checkAllocationRegistryReady(path string, sourceID string) error {
 	if path == "" {
 		return errors.New("allocation registry path is required")
@@ -116,9 +157,11 @@ func checkAllocationRegistryReady(path string, sourceID string) error {
 		return fmt.Errorf("create allocation registry readiness temp file: %w", err)
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer cleanupTempFile(tempName)
 	if _, err := temp.WriteString("{}\n"); err != nil {
-		temp.Close()
+		if closeErr := temp.Close(); closeErr != nil {
+			return fmt.Errorf("close allocation registry readiness temp file after write error: %v: %w", closeErr, err)
+		}
 		return fmt.Errorf("write allocation registry readiness temp file: %w", err)
 	}
 	if err := temp.Close(); err != nil {
@@ -135,12 +178,24 @@ func validAllocationRegistryEntry(entry allocationRegistryEntry, sourceID string
 }
 
 func validTurnRESTUsername(username string, deviceID string) bool {
-	expiryRaw, principal, ok := strings.Cut(username, ":")
-	if !ok || principal != deviceID || !validIdentifier(principal) {
+	expiry, ok := turnRESTUsernameExpiry(username)
+	if !ok || !expiry.After(time.Unix(0, 0)) {
 		return false
 	}
+	_, principal, _ := strings.Cut(username, ":")
+	return principal == deviceID && validIdentifier(principal)
+}
+
+func turnRESTUsernameExpiry(username string) (time.Time, bool) {
+	expiryRaw, principal, ok := strings.Cut(username, ":")
+	if !ok || !validIdentifier(principal) {
+		return time.Time{}, false
+	}
 	expiry, err := strconv.ParseInt(expiryRaw, 10, 64)
-	return err == nil && expiry > 0
+	if err != nil || expiry <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(expiry, 0), true
 }
 
 func writeAllocationRegistry(path string, registry allocationRegistry) error {
@@ -153,15 +208,19 @@ func writeAllocationRegistry(path string, registry allocationRegistry) error {
 		return fmt.Errorf("create allocation registry temp file: %w", err)
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer cleanupTempFile(tempName)
 	encoder := json.NewEncoder(temp)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(registry); err != nil {
-		temp.Close()
+		if closeErr := temp.Close(); closeErr != nil {
+			return fmt.Errorf("close allocation registry after encode error: %v: %w", closeErr, err)
+		}
 		return fmt.Errorf("encode allocation registry: %w", err)
 	}
 	if err := temp.Sync(); err != nil {
-		temp.Close()
+		if closeErr := temp.Close(); closeErr != nil {
+			return fmt.Errorf("close allocation registry after sync error: %v: %w", closeErr, err)
+		}
 		return fmt.Errorf("sync allocation registry: %w", err)
 	}
 	if err := temp.Close(); err != nil {
@@ -174,8 +233,21 @@ func writeAllocationRegistry(path string, registry allocationRegistry) error {
 		return fmt.Errorf("chmod allocation registry: %w", err)
 	}
 	if dirHandle, err := os.Open(dir); err == nil {
-		_ = dirHandle.Sync()
-		_ = dirHandle.Close()
+		if err := dirHandle.Sync(); err != nil {
+			_ = dirHandle.Close()
+			return fmt.Errorf("sync allocation registry directory: %w", err)
+		}
+		if err := dirHandle.Close(); err != nil {
+			return fmt.Errorf("close allocation registry directory: %w", err)
+		}
+	} else {
+		return fmt.Errorf("open allocation registry directory: %w", err)
 	}
 	return nil
+}
+
+func cleanupTempFile(path string) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return
+	}
 }

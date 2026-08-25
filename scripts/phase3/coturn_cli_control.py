@@ -363,18 +363,32 @@ def _sessions_by_username(sessions: Sequence[CoturnSession]) -> dict[str, list[C
 def _registry_username_counts(registry: Registry) -> dict[str, int]:
     counts: dict[str, int] = {}
     for allocation in registry.allocations:
-        if allocation.coturn_session_id is None:
-            counts[allocation.username] = counts.get(allocation.username, 0) + 1
+        counts[allocation.username] = counts.get(allocation.username, 0) + 1
     return counts
+
+
+def _bound_session_ids(registry: Registry) -> frozenset[str]:
+    return frozenset(
+        allocation.coturn_session_id
+        for allocation in registry.allocations
+        if allocation.coturn_session_id is not None
+    )
 
 
 def resolve_session(
     allocation: RegistryAllocation,
     sessions: Sequence[CoturnSession],
     username_counts: dict[str, int],
+    bound_session_ids: frozenset[str] = frozenset(),
+    sessions_by_id: dict[str, CoturnSession] | None = None,
+    sessions_by_username: dict[str, list[CoturnSession]] | None = None,
 ) -> CoturnSession | None:
+    if sessions_by_id is None:
+        sessions_by_id = _sessions_by_id(sessions)
+    if sessions_by_username is None:
+        sessions_by_username = _sessions_by_username(sessions)
     if allocation.coturn_session_id is not None:
-        session = _sessions_by_id(sessions).get(allocation.coturn_session_id)
+        session = sessions_by_id.get(allocation.coturn_session_id)
         if session is None:
             return None
         if session.username != allocation.username:
@@ -382,7 +396,11 @@ def resolve_session(
         return session
     if username_counts.get(allocation.username, 0) > 1:
         _fail(f"registry has ambiguous username mapping for {allocation.username}")
-    candidates = _sessions_by_username(sessions).get(allocation.username, [])
+    candidates = [
+        session
+        for session in sessions_by_username.get(allocation.username, [])
+        if session.coturn_session_id not in bound_session_ids
+    ]
     if len(candidates) > 1:
         _fail(f"coturn CLI returned multiple sessions for username {allocation.username}")
     if not candidates:
@@ -397,9 +415,19 @@ def export_snapshot(
     sequence: int,
 ) -> dict[str, Any]:
     username_counts = _registry_username_counts(registry)
+    bound_session_ids = _bound_session_ids(registry)
+    sessions_by_id = _sessions_by_id(sessions)
+    sessions_by_username = _sessions_by_username(sessions)
     allocations: list[dict[str, Any]] = []
     for allocation in registry.allocations:
-        session = resolve_session(allocation, sessions, username_counts)
+        session = resolve_session(
+            allocation,
+            sessions,
+            username_counts,
+            bound_session_ids,
+            sessions_by_id,
+            sessions_by_username,
+        )
         if session is None:
             continue
         allocations.append(
@@ -472,7 +500,18 @@ def command_disconnect(args: argparse.Namespace) -> int:
         timeout_seconds=args.timeout_seconds,
     )
     sessions = _read_active_sessions(settings, run_cli_command)
-    session = resolve_session(allocation, sessions, _registry_username_counts(registry))
+    username_counts = _registry_username_counts(registry)
+    bound_session_ids = _bound_session_ids(registry)
+    sessions_by_id = _sessions_by_id(sessions)
+    sessions_by_username = _sessions_by_username(sessions)
+    session = resolve_session(
+        allocation,
+        sessions,
+        username_counts,
+        bound_session_ids,
+        sessions_by_id,
+        sessions_by_username,
+    )
     if session is None:
         print(
             json.dumps(
@@ -483,7 +522,16 @@ def command_disconnect(args: argparse.Namespace) -> int:
         return 0
     run_cli_command(settings, f"cs {session.coturn_session_id}")
     remaining_sessions = _read_active_sessions(settings, run_cli_command)
-    if resolve_session(allocation, remaining_sessions, _registry_username_counts(registry)) is not None:
+    remaining_by_id = _sessions_by_id(remaining_sessions)
+    remaining_by_username = _sessions_by_username(remaining_sessions)
+    if resolve_session(
+        allocation,
+        remaining_sessions,
+        username_counts,
+        bound_session_ids,
+        remaining_by_id,
+        remaining_by_username,
+    ) is not None:
         _fail(f"coturn session remained active after disconnect for allocation {allocation_id}")
     print(
         json.dumps(

@@ -2,7 +2,8 @@
 
 Date: 2026-08-25
 Source branch: codex/phase3-revocation-propagation-current-base
-Rebased baseline: fed8ac0c
+Rebased baseline: c754f2dab4d3781847b40988105fcdefe1723538
+Source commit: recorded by the `git rev-parse HEAD` command in `commands.txt` before checks run; the command log is intentionally pinned by the full baseline SHA and clean-worktree assertion rather than a self-referential commit literal.
 
 ## Scope
 
@@ -14,7 +15,7 @@ the local PR source tree, not a release-pass artifact.
 
 The local service tests cover Authority-backed signaling denial after session and
 device revocation, long-poll reauthorization during a pending wait, future relay
-credential rejection, same-allocation credential retry rejection, relay
+credential rejection, post-revocation same-allocation credential retry rejection, relay
 `/v1/usage` Authority admission and post-revocation rejection, restart-safe
 allocation-registry persistence, and strict coturn CLI helper mapping.
 
@@ -47,7 +48,7 @@ that proves all of the following in one auditable report without storing secrets
 - the Authority revocation audit event was inspected;
 - signaling long-poll woke and failed closed;
 - new relay credential admission was rejected;
-- same-allocation relay credential retry was rejected;
+- post-revocation same-allocation relay credential retry was rejected;
 - reuse of the already-issued TURN credential was rejected or expired before
   reuse;
 - the active allocation was disconnected by a concrete deployment executor;

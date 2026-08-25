@@ -3,5 +3,6 @@
 /config/signaling.production.json
 /secrets/*.txt
 /secrets/authority/
+/coturn-state/
 /tls/*
 !/tls/README.md

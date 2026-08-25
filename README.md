@@ -746,7 +746,7 @@ production deployment of these components, real coturn/provider allocation
 termination, and production end-to-end enforcement remain release gates.
 A local revocation propagation verifier now fixes the required evidence schema
 for Authority audit visibility, signaling long-poll rejection, future and
-same-allocation relay credential rejection, active allocation disconnect, stale
+post-revocation same-allocation relay credential rejection, active allocation disconnect, stale
 credential rejection, and post-revocation traffic denial; the current blocked
 evidence still lacks the live coturn/data-plane deployment observations.
 

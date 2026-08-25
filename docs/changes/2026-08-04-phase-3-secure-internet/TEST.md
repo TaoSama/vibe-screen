@@ -53,7 +53,7 @@ remain explicit production or end-to-end gates. When
 Authority, signaling, and relay binaries, creates authority-backed signaling
 sessions, obtains authority-admitted relay credentials, invalidates one session,
 revokes the client device at Authority, then proves signaling role access, future
-relay credential admission, exact same-allocation credential retry, relay
+relay credential admission, exact same-allocation credential retry before revoke, relay
 `/v1/usage` Authority admission, and later Authority coturn usage accounting fail
 closed. Relay unit tests separately cover exact duplicate usage retries before
 Authority admission, rejected changed-payload event ID reuse, required
@@ -83,12 +83,12 @@ allocation termination.
 The Phase 3 revocation propagation verifier now pins the evidence contract for
 Authority/signaling/relay/coturn propagation. It passes only when a report proves
 Authority audit visibility, signaling long-poll wakeup rejection, future and
-same-allocation relay credential rejection, stale issued TURN credential
+post-revocation same-allocation relay credential rejection, stale issued TURN credential
 rejection, active allocation disconnect, and zero relayed post-revocation
 packets; a missing live deployment observation returns a blocked status. The
 2026-08-25 current-base blocked record documents that the local service tests
 cover Authority-backed signaling, bounded long-poll reauthorization, future and
-same-allocation relay credential rejection, relay `/v1/usage` Authority
+post-revocation same-allocation relay credential rejection, relay `/v1/usage` Authority
 admission/revocation rejection, and strict coturn registry/CLI helper behavior,
 but not deployed coturn allocation teardown, stale credential reuse denial, or
 packet-denial behavior.

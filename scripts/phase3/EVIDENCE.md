@@ -37,7 +37,7 @@ report proves unsafe post-revocation behavior, and `2` for malformed or unsafe
 evidence. The input schema is
 `dev.vibescreen.phase3-revocation-propagation/v1`; reports must prove Authority
 audit visibility, signaling long-poll wakeup rejection, future relay credential
-rejection, same-allocation credential retry rejection, stale TURN credential
+rejection, post-revocation same-allocation credential retry rejection, stale TURN credential
 rejection, active allocation disconnect, and zero post-revocation relayed
 packets. Reports must not contain TURN passwords, bearer tokens, private keys,
 or other raw secret material. A blocked summary is evidence of the remaining
