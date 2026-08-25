@@ -49,16 +49,25 @@ make ios-app-signing-readiness-gate \
 
 The input must retain or summarize Team ID, provisioning profile UUID, unique
 bundle ID, codesign identity, registered physical-device UDID hashes, signed-app
-entitlements, and signed artifact SHA-256. Missing any one of those values
-returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived material
-returns `fail`. Pass the produced `ios-app-signing-readiness-gate.json` into the
-current-base manifest before reporting aggregate readiness:
+entitlements, signed artifact SHA-256, a clean current-base commit, and local
+artifacts for the archive command, codesign entitlements, and provisioning
+profile output. Missing any one of those values returns `blocked`; Simulator,
+unsigned, ad-hoc, or Android-derived material returns `fail`. Pass the produced
+`ios-app-signing-readiness-gate.json` into the current-base manifest before
+reporting aggregate readiness:
 
 ```bash
 make ios-current-base-gate \
   EVIDENCE_DIR=.build/evidence/ios-current-base \
   IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness-gate.json
 ```
+
+The current-base aggregate accepts this signing row only when the embedded gate
+declares `owner.role=ios_app_signing_readiness_current_base_owner`,
+`owner.head_ref=codex/phase5-ios-signing-readiness`, and
+`owner.repository=TaoSama/vibe-screen`. Its `signing_summary` is the source for
+the aggregate `signing` fields, including UDID-hash and entitlements coverage;
+hand-written manifest fields without that dedicated owner stay blocked.
 
 ## Open gates
 

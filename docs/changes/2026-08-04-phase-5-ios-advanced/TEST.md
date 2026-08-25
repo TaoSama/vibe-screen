@@ -258,13 +258,18 @@ make ios-app-signing-readiness-gate \
 
 The gate is passive and fail-closed. It requires retained Team ID, provisioning
 profile UUID, unique bundle ID, non-ad-hoc codesign identity, physical-device
-UDID hashes, signed-app entitlements, signed artifact SHA-256, and signing
-artifact paths. Missing any one of those fields returns `blocked`; Simulator,
-unsigned, ad-hoc, or Android-derived material returns `fail`. A pass only
-unblocks the app-signing prerequisite for `ios-current-base-gate` when the
-resulting `ios-app-signing-readiness-gate.json` is bound into the generated
-manifest; it still cannot close install, launch, VideoToolbox, input, reconnect,
-audio, or full iOS device acceptance.
+UDID hashes, signed-app entitlements, signed artifact SHA-256, a clean
+current-base commit, and signing artifact paths for the archive command,
+codesign entitlements, and provisioning profile output. Missing any one of
+those fields returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived
+material returns `fail`. A pass only unblocks the app-signing prerequisite for
+`ios-current-base-gate` when the resulting
+`ios-app-signing-readiness-gate.json` is bound into the generated manifest. The
+aggregate checks both `dedicated_signing_readiness_gate` and
+`dedicated_signing_readiness_owner`, then derives the signing row from the gate
+sanitized `signing_summary`; hand-written manifest signing fields without that
+owner remain blocked. It still cannot close install, launch, VideoToolbox,
+input, reconnect, audio, or full iOS device acceptance.
 
 2026-08-23 current-base readiness smoke on this worktree ran:
 

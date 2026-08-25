@@ -19,6 +19,7 @@ from vibescreen_evidence.manifest import ManifestError
 
 
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "ios-current-base-manifest.schema.json"
+CURRENT_BASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
 def make_docs(root: Path) -> None:
@@ -58,6 +59,199 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_binds_ios_app_signing_readiness_gate_summary(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "ios-app-signing-readiness-gate.json"
+            signing_gate.write_text(
+                json.dumps(
+                    {
+                        "owner": {
+                            "role": "ios_app_signing_readiness_current_base_owner",
+                            "head_ref": "codex/phase5-ios-signing-readiness",
+                            "repository": "TaoSama/vibe-screen",
+                            "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+                        },
+                        "current_base": {
+                            "commit": CURRENT_BASE_COMMIT,
+                            "branch": "codex/phase5-ios-signing-readiness",
+                            "dirty": False,
+                        },
+                        "kind": "ios_app_signing_readiness_gate",
+                        "verdict": "pass",
+                        "can_close_ios_app_signing_readiness": True,
+                        "signing_summary": {
+                            "status": "pass",
+                            "bundle_id": "dev.example.vibescreen.acceptance",
+                            "unique_bundle_id": True,
+                            "team_id_recorded": True,
+                            "codesign_identity_recorded": True,
+                            "provisioning_profile_recorded": True,
+                            "device_udid_hashes_recorded": True,
+                            "entitlements_recorded": True,
+                            "signed_artifact_sha256": "a" * 64,
+                        },
+                        "missing": [],
+                        "failures": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
+        self.assertEqual(manifest["signing_readiness_gate"]["kind"], "ios_app_signing_readiness_gate")
+        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "pass")
+        self.assertTrue(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertEqual(
+            manifest["signing_readiness_gate"]["owner"]["role"],
+            "ios_app_signing_readiness_current_base_owner",
+        )
+        self.assertEqual(
+            manifest["signing"],
+            {
+                "status": "pass",
+                "bundle_id": "dev.example.vibescreen.acceptance",
+                "unique_bundle_id": True,
+                "team_id_redacted": True,
+                "certificate_identity_recorded": True,
+                "provisioning_profile_recorded": True,
+                "device_udid_hashes_recorded": True,
+                "entitlements_recorded": True,
+                "signed_archive_sha256": "a" * 64,
+            },
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_missing_signing_readiness_gate_path_fails_closed(self, state, environment):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "missing-ios-app-signing-readiness-gate.json"
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
+        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "blocked")
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertIn("unreadable", manifest["signing_readiness_gate"]["missing"][0])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_incomplete_signing_readiness_summary_fails_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "ios-app-signing-readiness-gate.json"
+            signing_gate.write_text(
+                json.dumps(
+                    {
+                        "owner": {
+                            "role": "ios_app_signing_readiness_current_base_owner",
+                            "head_ref": "codex/phase5-ios-signing-readiness",
+                            "repository": "TaoSama/vibe-screen",
+                            "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+                        },
+                        "current_base": {
+                            "commit": CURRENT_BASE_COMMIT,
+                            "branch": "codex/phase5-ios-signing-readiness",
+                            "dirty": False,
+                        },
+                        "kind": "ios_app_signing_readiness_gate",
+                        "verdict": "pass",
+                        "can_close_ios_app_signing_readiness": True,
+                        "signing_summary": {
+                            "status": "pass",
+                            "bundle_id": "",
+                            "unique_bundle_id": True,
+                            "team_id_recorded": True,
+                            "codesign_identity_recorded": True,
+                            "provisioning_profile_recorded": True,
+                            "device_udid_hashes_recorded": True,
+                            "entitlements_recorded": True,
+                            "signed_artifact_sha256": "a" * 64,
+                        },
+                        "missing": [],
+                        "failures": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertIn(
+            "ios app-signing readiness gate signing_summary is incomplete",
+            manifest["signing_readiness_gate"]["missing"],
+        )
+        self.assertEqual(manifest["signing"]["status"], "blocked")
+        self.assertIsNone(manifest["signing"]["bundle_id"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_signing_readiness_commit_must_match_repository_head(self, state, environment):
+        state.return_value = {"revision": "f" * 40, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = root / "ios-app-signing-readiness-gate.json"
+            signing_gate.write_text(
+                json.dumps(
+                    {
+                        "owner": {
+                            "role": "ios_app_signing_readiness_current_base_owner",
+                            "head_ref": "codex/phase5-ios-signing-readiness",
+                            "repository": "TaoSama/vibe-screen",
+                            "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+                        },
+                        "current_base": {
+                            "commit": CURRENT_BASE_COMMIT,
+                            "branch": "codex/phase5-ios-signing-readiness",
+                            "dirty": False,
+                        },
+                        "kind": "ios_app_signing_readiness_gate",
+                        "verdict": "pass",
+                        "can_close_ios_app_signing_readiness": True,
+                        "signing_summary": {
+                            "status": "pass",
+                            "bundle_id": "dev.example.vibescreen.acceptance",
+                            "unique_bundle_id": True,
+                            "team_id_recorded": True,
+                            "codesign_identity_recorded": True,
+                            "provisioning_profile_recorded": True,
+                            "device_udid_hashes_recorded": True,
+                            "entitlements_recorded": True,
+                            "signed_artifact_sha256": "a" * 64,
+                        },
+                        "missing": [],
+                        "failures": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertIn(
+            "ios app-signing readiness gate current-base commit does not match repository HEAD",
+            manifest["signing_readiness_gate"]["missing"],
+        )
+        self.assertEqual(manifest["signing"]["status"], "blocked")
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_non_dedicated_signing_readiness_gate_fails_closed(self, state, environment):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         environment.return_value = {}
         with tempfile.TemporaryDirectory() as directory_name:
@@ -79,27 +273,11 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
             manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
 
-        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
-        self.assertEqual(manifest["signing_readiness_gate"]["kind"], "ios_app_signing_readiness_gate")
-        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "pass")
-        self.assertTrue(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_missing_signing_readiness_gate_path_fails_closed(self, state, environment):
-        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
-        environment.return_value = {}
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            make_docs(root)
-            signing_gate = root / "missing-ios-app-signing-readiness-gate.json"
-
-            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
-
-        self.assertTrue(manifest["signing_readiness_gate"]["provided"])
-        self.assertEqual(manifest["signing_readiness_gate"]["verdict"], "blocked")
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
-        self.assertIn("unreadable", manifest["signing_readiness_gate"]["missing"][0])
+        self.assertIn(
+            "ios app-signing readiness gate owner role is not the dedicated current-base owner",
+            manifest["signing_readiness_gate"]["missing"],
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
