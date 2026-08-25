@@ -98,6 +98,31 @@ def hardware_keyboard_summary(verdict: str = "pass") -> dict:
     }
 
 
+def stylus_summary(verdict: str = "pass") -> dict:
+    observed = verdict == "pass"
+    observations = {
+        "adb_was_run": True,
+        "device_identity_recorded": True,
+        "device_identity_matches_claim": True,
+        "pass_eligible_stylus_capability": True,
+        "physical_drawing_observed": observed,
+        "android_stylus_forwarding_observed": observed,
+        "host_stylus_injection_observed": observed,
+        "visible_drawing_result_observed": observed,
+        "android_diag_log_retained": observed,
+        "host_log_window_retained": observed,
+        "collector_reported_passed": observed,
+    }
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "physical_stylus_drawing_app",
+        "profile": "physical-stylus-drawing-app",
+        "verdict": verdict,
+        "can_close_physical_stylus_gate": observed,
+        "observations": observations,
+    }
+
+
 def populate_complete_bundle(root: Path, *, device_class: str = "physical_8_9_inch_tablet", soak_verdict: str = "pass") -> None:
     write_json(root / "phase2-tablet-manifest.json", manifest(device_class=device_class))
     write_json(root / "device-info.json", device_info())
@@ -240,6 +265,49 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "insufficient")
         keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
         self.assertEqual(keyboard["status"], "insufficient")
+
+    def test_stylus_gate_accepts_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "stylus-evidence.json").unlink()
+            write_json(root / "stylus-summary.json", stylus_summary())
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "pass")
+        stylus = next(gate for gate in result["gates"] if gate["name"] == "physical_stylus")
+        self.assertEqual(stylus["status"], "pass")
+        self.assertIn("stylus-summary.json", stylus["evidence"])
+
+    def test_stylus_gate_preserves_blocked_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "stylus-evidence.json").unlink()
+            write_json(root / "stylus-summary.json", stylus_summary("blocked"))
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        stylus = next(gate for gate in result["gates"] if gate["name"] == "physical_stylus")
+        self.assertEqual(stylus["status"], "blocked")
+
+    def test_stylus_gate_rejects_contradictory_schema_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "stylus-evidence.json").unlink()
+            summary = stylus_summary()
+            summary["can_close_physical_stylus_gate"] = False
+            summary["observations"]["host_stylus_injection_observed"] = False
+            write_json(root / "stylus-summary.json", summary)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        stylus = next(gate for gate in result["gates"] if gate["name"] == "physical_stylus")
+        self.assertEqual(stylus["status"], "insufficient")
 
     def test_soak_failure_fails_whole_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

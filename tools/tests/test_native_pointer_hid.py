@@ -31,6 +31,7 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
             "required_pointer_events": ["move", "press", "release"],
             "observed_android_pointer_events": ["move", "press", "release"],
             "observed_host_pointer_events": ["move", "press", "release"],
+            "host_stable_signed_tcc_ready": True,
             "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
             "android_logcat_bytes": 200,
             "host_log_appended_bytes": 180,
@@ -75,6 +76,48 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["observations"]["physical_mouse_attached"])
         self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
 
+    def test_p0110_identity_cannot_be_relabeled_as_xiaomi(self) -> None:
+        record = self.complete_record()
+        record["device"] = {
+            "manufacturer": "Xiaomi",
+            "model": "P0110",
+            "device": "pacific",
+            "android_release": "16",
+            "sdk": "36",
+        }
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["observations"]["device_identity_matches_claim"])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
+    def test_non_p0110_identity_cannot_close_current_p0110_gate(self) -> None:
+        record = self.complete_record()
+        record["device"] = {
+            "manufacturer": "Google",
+            "model": "Pixel 9",
+            "device": "tokay",
+            "android_release": "16",
+            "sdk": "36",
+        }
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["observations"]["device_identity_matches_claim"])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
+    def test_host_signing_tcc_is_a_blocking_prerequisite(self) -> None:
+        record = self.complete_record()
+        record["host_stable_signed_tcc_ready"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn("host_stable_signed_tcc_ready", [item["field"] for item in summary["blocking_reasons"]])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
     def test_blocked_when_device_identity_was_not_collected(self) -> None:
         record = self.complete_record()
         record["status"] = "blocked_device_coordination_lock"
@@ -107,6 +150,18 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertFalse(summary["observations"]["default_gate_events_required"])
+
+    def test_inconsistent_host_result_without_android_forwarding_is_insufficient(self) -> None:
+        record = self.complete_record()
+        record["observed_android_pointer_events"] = []
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "host_pointer_changed_injected",
+            [item["field"] for item in summary["inconsistent_observations"]],
+        )
 
     def test_summary_matches_schema_required_fields(self) -> None:
         summary = summarize(self.complete_record())
@@ -146,7 +201,7 @@ class NativePointerHIDCliTest(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2, result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["run_id"], "run-cli")
         self.assertEqual(summary["verdict"], "blocked")

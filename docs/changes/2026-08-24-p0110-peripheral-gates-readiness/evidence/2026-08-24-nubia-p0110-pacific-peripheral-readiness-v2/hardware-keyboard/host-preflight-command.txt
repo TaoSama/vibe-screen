@@ -1,0 +1,4 @@
+$ <python3.11> <repo-root>/scripts/macos_dev_host.py preflight --report docs/changes/2026-08-24-p0110-peripheral-gates-readiness/evidence/2026-08-24-nubia-p0110-pacific-peripheral-readiness-v2/hardware-keyboard/host-signing-and-permissions.txt
+stderr:
+codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.
+exit_code=1

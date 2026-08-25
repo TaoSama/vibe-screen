@@ -281,17 +281,22 @@ starting the observation window, and run:
 make native-pointer-hid-acceptance \
   EVIDENCE_SERIAL="$ADB_SERIAL" \
   NATIVE_POINTER_HOST_LOG="$HOME/Library/Logs/Telemachus/telemachus.log" \
+  NATIVE_POINTER_HOST_READY_ARG="--host-stable-signed-tcc-ready" \
   NATIVE_POINTER_VISIBLE_RESULT_NOTE="Mac cursor moved and the primary click focused <target app>" \
   EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-native-pointer-hid
 ```
 
 The script records `dumpsys input`, Android `MA` logcat for the observation
-window, and the newly appended Host log segment. A pass requires Android
+window, and the newly appended Host log segment. First run
+`python3 scripts/macos_dev_host.py preflight`; add
+`NATIVE_POINTER_HOST_READY_ARG="--host-stable-signed-tcc-ready"` only after a
+stable signed Host with Screen Recording and Accessibility permission passes
+that preflight. A pass requires Android
 `native pointer forwarded` lines for `MOVE`, `BUTTON_PRESS`, and
 `BUTTON_RELEASE` from `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`,
 plus Host `Pointer injected` lines for `changed`, `began`, and `ended`. Missing
-hardware is `blocked`; missing Android logs, Host logs, or the visible-result
-note is `failed`, not a pass.
+hardware or missing Host stable signing/TCC evidence is `blocked`; missing
+Android logs, Host logs, or the visible-result note is `failed`, not a pass.
 
 The collection target writes `native-pointer-hid-summary.json`. That summary is
 the gate owner for README updates: only `verdict=pass` and
@@ -302,6 +307,19 @@ Re-check an existing evidence bundle with:
 ```bash
 make native-pointer-hid-gate \
   EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<run-dir>
+```
+
+For physical stylus drawing-app evidence, the collector writes both
+`stylus-evidence.json` and the independent `stylus-summary.json` gate owner.
+Only `stylus-summary.json` with `verdict=pass` and
+`can_close_physical_stylus_gate=true` can close the README physical-stylus
+drawing-app gate. Capability-only, synthetic ADB stylus, lock-blocked, missing
+Host-log, or missing Android diagnostic records must remain blocked or
+insufficient. Re-check a bundle with:
+
+```bash
+make physical-stylus-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-19-physical-stylus-acceptance/evidence/<run-dir>
 ```
 
 Summarize controller runs, including blocked controller runs, with:
@@ -337,7 +355,8 @@ python3 scripts/android_stylus_acceptance.py \
 ```
 
 This records device identity, `dumpsys input`, stylus input-device candidates,
-and the app private diagnostic log when `run-as` can read it. A result of
+the app private diagnostic log when `run-as` can read it, and
+`stylus-summary.json`. A result of
 `blocked_physical_stylus_not_observed` is expected when no human has drawn with
 the pen; pressure/tilt/barrel capability in `dumpsys input` is necessary
 evidence, not acceptance. For a later pass, at least one candidate must expose
@@ -365,7 +384,9 @@ and record all of the following in the evidence directory:
   `goodix_stylus_input`; re-resolve the event path from `getevent -lp` for each
   run rather than assuming it is still `/dev/input/event7`;
 - the same script output with `--observed-physical-drawing`,
-  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`; in this mode the
+  `--drawing-observation`, `--host-log HOST_STYLUS_LOG`, and
+  `--host-stable-signed-tcc-ready` only after
+  `python3 scripts/macos_dev_host.py preflight` passes; in this mode the
   tool records the Host log cursor before the observation window and validates
   only the new Host log bytes appended while the operator draws;
 - Android diag log entries from the same connected session with

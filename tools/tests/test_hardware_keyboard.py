@@ -60,6 +60,18 @@ class HardwareKeyboardEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["blocking_reasons"], [])
         self.assertFalse(summary["can_close_hardware_keyboard_gate"])
 
+    def test_inconsistent_host_key_injection_without_tcc_ready_is_blocked(self) -> None:
+        record = self.complete_record()
+        record["host_stable_signed_tcc_ready"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "host_key_injection_observed",
+            [item["field"] for item in summary["inconsistent_observations"]],
+        )
+
     def test_pass_requires_every_observation(self) -> None:
         summary = summarize(self.complete_record())
 
@@ -137,12 +149,25 @@ class HardwareKeyboardCliTest(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2, result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["run_id"], "run-cli")
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_hardware_keyboard_gate"])
         self.assertTrue(summary["adb_input_is_not_physical_keyboard_evidence"])
+
+    def test_cli_require_pass_returns_one_for_blocked_summary(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", "run-cli", "--require-pass"],
+            input=json.dumps({"device_identity_recorded": True}),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "blocked")
 
     def test_cli_rejects_empty_run_id(self) -> None:
         result = subprocess.run(

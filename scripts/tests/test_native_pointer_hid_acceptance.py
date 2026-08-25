@@ -314,6 +314,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                         "0",
                         "--visible-result-note",
                         "Mac cursor moved and the primary click focused TextEdit.",
+                        "--host-stable-signed-tcc-ready",
                     ]
                 )
 
@@ -387,6 +388,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                         str(evidence_dir),
                         "--observe-seconds",
                         "0",
+                        "--host-stable-signed-tcc-ready",
                     ]
                 )
 

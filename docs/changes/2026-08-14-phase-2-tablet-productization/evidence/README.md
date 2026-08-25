@@ -109,6 +109,15 @@ be kept here when the Android device lock, physical keyboard, Host listener, or
 stable signed/TCC Host prerequisite is missing; blocked evidence must not run
 ADB when the shared Android lock is already held.
 
+Physical-stylus workflow evidence now follows the same split: retain
+`stylus-evidence.json` as the collector output and derive `stylus-summary.json`
+with `make physical-stylus-gate EVIDENCE_DIR="$RUN_DIR"`. A summary closes
+the drawing-app gate only when it reports `verdict=pass` and
+`can_close_physical_stylus_gate=true`. Capability snapshots, synthetic ADB
+stylus commands, blocked device-lock records, or logs without same-session
+Android forwarding plus newly appended Host `Stylus injected:` lines must remain
+blocked or insufficient.
+
 Aggregate owner records live in dated `phase2-aggregate-owner-current-base`
 directories. They consume child gate summaries and write
 `phase2-aggregate-owner.json` plus `SHA256SUMS`. The aggregate is an ownership

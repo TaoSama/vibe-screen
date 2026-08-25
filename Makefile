@@ -13,6 +13,12 @@ ACTIONABLE_ERROR_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/actionable-error-curr
 NATIVE_POINTER_HOST_LOG ?= $(HOME)/Library/Logs/Telemachus/telemachus.log
 NATIVE_POINTER_OBSERVE_SECONDS ?= 20
 NATIVE_POINTER_VISIBLE_RESULT_NOTE ?=
+NATIVE_POINTER_HOST_READY_ARG ?=
+STYLUS_HOST_LOG ?= $(HOME)/Library/Logs/Telemachus/telemachus.log
+STYLUS_OBSERVE_SECONDS ?= 20
+STYLUS_DRAWING_OBSERVATION ?=
+STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG ?=
+STYLUS_HOST_READY_ARG ?=
 ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
 ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
 PHASE2_DEVICE_CLASS ?=
@@ -94,7 +100,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate phase5-multi-client-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -306,21 +312,39 @@ native-pointer-hid-acceptance: require-evidence-serial
 		--host-log "$(NATIVE_POINTER_HOST_LOG)" \
 		--observe-seconds $(NATIVE_POINTER_OBSERVE_SECONDS) \
 		--visible-result-note "$(NATIVE_POINTER_VISIBLE_RESULT_NOTE)" \
+		$(NATIVE_POINTER_HOST_READY_ARG) \
 		--evidence-dir "$(EVIDENCE_DIR)" \
 		--write-blocked-on-lock; \
 	status=$$?; \
 	if [ -f "$(EVIDENCE_DIR)/result.json" ] && [ ! -f "$(EVIDENCE_DIR)/native-pointer-hid-summary.json" ]; then \
+		set +e; \
 		PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.native_pointer_hid \
 			"$(EVIDENCE_DIR)/result.json" \
 			--output "$(EVIDENCE_DIR)/native-pointer-hid-summary.json"; \
 		gate_status=$$?; \
-		if [ $$gate_status -ne 0 ]; then exit $$gate_status; fi; \
+		if [ $$gate_status -ne 0 ] && [ $$gate_status -ne 2 ]; then exit $$gate_status; fi; \
 	fi; \
 	exit $$status
 
 native-pointer-hid-gate:
 	@test -f "$(EVIDENCE_DIR)/result.json" || (echo "error: collect $(EVIDENCE_DIR)/result.json before native-pointer-hid-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.native_pointer_hid "$(EVIDENCE_DIR)/result.json" --output "$(EVIDENCE_DIR)/native-pointer-hid-summary.json" --require-pass
+
+physical-stylus-acceptance: require-evidence-serial
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/android_stylus_acceptance.py \
+		--serial "$(EVIDENCE_SERIAL)" \
+		--output-dir "$(EVIDENCE_DIR)" \
+		--host-log "$(STYLUS_HOST_LOG)" \
+		--observe-seconds $(STYLUS_OBSERVE_SECONDS) \
+		--drawing-observation "$(STYLUS_DRAWING_OBSERVATION)" \
+		$(STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG) \
+		$(STYLUS_HOST_READY_ARG) \
+		--write-blocked-on-lock
+
+physical-stylus-gate:
+	@test -f "$(EVIDENCE_DIR)/stylus-evidence.json" || (echo "error: collect $(EVIDENCE_DIR)/stylus-evidence.json before physical-stylus-gate" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.stylus "$(EVIDENCE_DIR)/stylus-evidence.json" --output "$(EVIDENCE_DIR)/stylus-summary.json" --require-pass
 
 android-audio-playback-gate:
 	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-gate" >&2; exit 2)
@@ -523,7 +547,7 @@ phase2-tablet-gate: phase2-device-memory-gate
 
 hardware-keyboard-gate:
 	@test -f "$(EVIDENCE_DIR)/hardware-keyboard-observations.json" || (echo "error: collect $(EVIDENCE_DIR)/hardware-keyboard-observations.json before hardware-keyboard-gate" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json --require-pass
 
 hardware-keyboard-readiness: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/hardware_keyboard_readiness.py \

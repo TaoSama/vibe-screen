@@ -36,7 +36,9 @@ DEFAULT_LANDSCAPE_SCREENSHOTS = (
     "screenshots/landscape.png",
 )
 DEFAULT_STYLUS_EVIDENCE = (
+    "stylus-summary.json",
     "stylus-evidence.json",
+    "stylus/stylus-summary.json",
     "stylus/stylus-evidence.json",
 )
 DEFAULT_KEYBOARD_EVIDENCE = (
@@ -346,14 +348,32 @@ def _stylus_gate(root: Path, explicit_path: Path | None) -> dict[str, Any]:
     if error is not None:
         return _gate("physical_stylus", MISSING, evidence=[item for item in evidence if item], reasons=[error])
     status = _status_from_json(document or {})
-    observed = bool((document or {}).get("observed_physical_drawing"))
-    if status == PASS and observed:
+    observations = (document or {}).get("observations")
+    if not isinstance(observations, dict):
+        observations = {}
+    is_stylus_summary = (document or {}).get("kind") == "physical_stylus_drawing_app"
+    if is_stylus_summary:
+        observed = all(
+            observations.get(field) is True
+            for field in (
+                "pass_eligible_stylus_capability",
+                "physical_drawing_observed",
+                "android_stylus_forwarding_observed",
+                "host_stylus_injection_observed",
+                "visible_drawing_result_observed",
+            )
+        )
+        host_confirmed = (document or {}).get("can_close_physical_stylus_gate") is True
+    else:
+        observed = bool((document or {}).get("observed_physical_drawing"))
+        host_confirmed = observed
+    if status == PASS and observed and host_confirmed:
         return _gate("physical_stylus", PASS, evidence=[item for item in evidence if item])
     return _gate(
         "physical_stylus",
         BLOCKED if status and status.startswith("blocked") else INSUFFICIENT,
         evidence=[item for item in evidence if item],
-        reasons=["stylus evidence must report pass with observed_physical_drawing=true"],
+        reasons=["stylus evidence must report pass with physical drawing, Android forwarding, Host injection, and visible drawing-app evidence"],
     )
 
 
