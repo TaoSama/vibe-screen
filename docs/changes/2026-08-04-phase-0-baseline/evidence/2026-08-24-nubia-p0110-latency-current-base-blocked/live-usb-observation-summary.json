@@ -1,0 +1,70 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "latency_readiness_live_usb_observation",
+  "collected_at": "2026-08-24T11:15:00Z",
+  "device": {
+    "evidence_device_id": "nubia-p0110-pacific-device-1",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "do_not_relabel_as": [
+      "Xiaomi 13",
+      "fuxi"
+    ]
+  },
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen",
+    "pid_observed": 22385,
+    "loopback_listener": "127.0.0.1:54321",
+    "sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "signing_summary": "ad-hoc/development identity observed; not stable release-signing evidence"
+  },
+  "android": {
+    "package": "dev.telemachus.display",
+    "foreground_pid_observed": 15457,
+    "adb_reverse": "tcp:54321 tcp:54321"
+  },
+  "live_usb_observations": {
+    "host_listener_observed": true,
+    "adb_reverse_observed": true,
+    "android_app_foreground_observed": true,
+    "private_diag_protocol_v1_upgrade_observed": true,
+    "private_diag_first_frame_observed": true,
+    "private_diag_decoder": "c2.qti.hevc.decoder",
+    "private_diag_decode_stats_count": 969,
+    "private_diag_latest_decode_stats": {
+      "input": 58140,
+      "output": 58139,
+      "dropped": 0
+    },
+    "manual_unfiltered_logcat_decoder_observed": true,
+    "tag_filtered_logcat_line_count": 0,
+    "usb_live_smoke_verdict": "insufficient",
+    "usb_live_smoke_exit": 1,
+    "usb_live_smoke_blocking_reason_summary": [
+      "no current-process VibeScreenTelemetry stream_stats in helper logcat source",
+      "no decoder setup/counters in helper tag-filtered current-process logcat source"
+    ]
+  },
+  "gate_boundary": {
+    "readme_gate_closure": false,
+    "can_close_usb_glass_to_glass_sub50": false,
+    "can_close_lan_glass_to_glass_sub80": false,
+    "can_close_input_p95_sub50": false,
+    "reason": "This is a read-only USB transport observation. It contains no external-camera recording, annotated latency samples, synchronized-clock proof, formal latency manifest, or physical-input actuation record."
+  },
+  "artifacts": [
+    "host-process.txt",
+    "host-listener.txt",
+    "host-app-sha256.txt",
+    "host-app-codesign.txt",
+    "adb-reverse.txt",
+    "android-pid.txt",
+    "android-diag-wide.txt",
+    "android-logcat-current-pid-decoder.txt",
+    "usb-live-smoke-wide.json",
+    "usb-live-smoke-wide.exit"
+  ]
+}

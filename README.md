@@ -457,14 +457,14 @@ unavailable, and the P0110 has no Wi-Fi association or wlan0 route for the
 trusted-LAN interruption scenario. That record has `can_close_timing_gate=false`
 and does not close the three-second reconnect gate; see
 [the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
-As of the 2026-08-22 Nubia P0110/pacific latency preflight, the toolchain has
+As of the 2026-08-24 Nubia P0110/pacific latency preflight, the toolchain has
 formal manifest/checker coverage for external-camera packages and
 synchronized-clock input packages,
 with profile-specific retained-artifact checks for USB, LAN, and physical-input
 claims. No raw camera package, annotated latency samples, or synchronized-clock
 proof from a real physical-input run is available in the repository. All three
 latency gates therefore remain open; see
-[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/README.md).
+[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-24-nubia-p0110-latency-current-base-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 

@@ -370,6 +370,10 @@ A reusable input template is available at
 `latency-preflight-exit.txt`. Exit `0` means the declared artifacts are ready
 for a formal checker attempt, exit `2` means the run is blocked before formal
 gate closure, and exit `1` means malformed input or evaluation failures.
+When `formal_manifest_retained` is true for a profile, the matching formal
+latency `gate_profiles[].manifest` path must also be present in `preflight-input.json`;
+otherwise the preflight stays blocked because there is no formal package for
+the checker to validate.
 This readiness record cannot close `usb-glass-to-glass-sub50`,
 `lan-glass-to-glass-sub80`, or `input-p95-sub50`; it only preserves why the
 gate is still open.
