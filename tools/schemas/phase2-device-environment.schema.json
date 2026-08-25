@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-device-environment.schema.json",
+  "title": "Vibe Screen Phase 2 device-environment gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {"verdict": {"const": "pass"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "device": {
+            "properties": {
+              "identity": {
+                "required": [
+                  "adb_serial",
+                  "manufacturer",
+                  "model",
+                  "codename",
+                  "android_release",
+                  "sdk",
+                  "build_fingerprint",
+                  "abi"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_device_environment_gate",
+    "can_close_device_environment_gates",
+    "can_close_stand_charging_gate",
+    "does_not_close_eight_hour_stream_gate",
+    "environment_gates",
+    "device",
+    "required_device_identity",
+    "observations",
+    "device_checks",
+    "thresholds",
+    "criteria",
+    "artifact_checks",
+    "missing_artifacts",
+    "missing_requirements",
+    "missing_criteria",
+    "failed_criteria",
+    "blocking_reasons",
+    "artifact_paths",
+    "blocking_notes",
+    "notes",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "phase2_device_environment_gate"},
+    "profile": {"const": "phase2-device-environment"},
+    "verdict": {"enum": ["pass", "blocked", "fail", "insufficient"]},
+    "can_close_device_environment_gate": {"type": "boolean"},
+    "can_close_device_environment_gates": {"type": "boolean"},
+    "can_close_stand_charging_gate": {"type": "boolean"},
+    "does_not_close_eight_hour_stream_gate": {"const": true},
+    "environment_gates": {"type": "array", "minItems": 3, "items": {"type": "string", "minLength": 1}},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "device_class", "tablet_size_inches"],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "properties": {
+            "adb_serial": {"type": "string", "minLength": 1},
+            "device_serial": {"type": "string", "minLength": 1},
+            "manufacturer": {"type": "string", "minLength": 1},
+            "model": {"type": "string", "minLength": 1},
+            "codename": {"type": "string", "minLength": 1},
+            "android_release": {"type": "string", "minLength": 1},
+            "sdk": {"type": "string", "minLength": 1},
+            "build_fingerprint": {"type": "string", "minLength": 1},
+            "abi": {"type": "string", "minLength": 1}
+          }
+        },
+        "device_class": {"type": ["string", "null"]},
+        "tablet_size_inches": {"type": ["number", "null"]}
+      }
+    },
+    "required_device_identity": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "android_device_lock_checked",
+        "device_identity_recorded",
+        "device_identity_matches_claim",
+        "physical_8_9_inch_tablet_observed",
+        "stand_mounted_setup_observed",
+        "eight_hour_environment_window_observed",
+        "battery_power_samples_retained",
+        "thermal_samples_retained",
+        "raw_platform_dumps_retained",
+        "controlled_thermal_load_observed",
+        "thermal_load_recovery_observed",
+        "settings_status_matches_platform",
+        "run_readme_retained"
+      ],
+      "properties": {
+        "android_device_lock_checked": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "device_identity_matches_claim": {"type": "boolean"},
+        "physical_8_9_inch_tablet_observed": {"type": "boolean"},
+        "stand_mounted_setup_observed": {"type": "boolean"},
+        "eight_hour_environment_window_observed": {"type": "boolean"},
+        "battery_power_samples_retained": {"type": "boolean"},
+        "thermal_samples_retained": {"type": "boolean"},
+        "raw_platform_dumps_retained": {"type": "boolean"},
+        "controlled_thermal_load_observed": {"type": "boolean"},
+        "thermal_load_recovery_observed": {"type": "boolean"},
+        "settings_status_matches_platform": {"type": "boolean"},
+        "run_readme_retained": {"type": "boolean"}
+      }
+    },
+    "device_checks": {"type": "object"},
+    "thresholds": {"type": "object", "additionalProperties": {"type": "number"}},
+    "criteria": {"type": "object"},
+    "artifact_checks": {"type": "object"},
+    "missing_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "missing_requirements": {"type": "array", "items": {"$ref": "#/$defs/reason"}},
+    "missing_criteria": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "failed_criteria": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_reasons": {"type": "array", "items": {"$ref": "#/$defs/reason"}},
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"},
+    "interpretation": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "requirement"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1},
+        "requirement": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

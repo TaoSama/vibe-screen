@@ -488,13 +488,17 @@ manifest to declare device identity, stand/charging setup, thresholds, memory
 sampling, and planned recovery scenarios before a future run; a package-aware
 tablet gate; an independent fail-closed device-memory verifier for Android PSS,
 Host RSS, charging/full-state, and thermal-status coverage during the 8h soak;
-and a bundle preflight that checks physical 8-9 inch tablet identity,
+an independent fail-closed device-environment verifier for stand-mounted
+charging, controlled thermal-load recovery, and power-source stability; and a
+bundle preflight that checks physical 8-9 inch tablet identity,
 portrait/landscape UI screenshots, physical stylus, hardware keyboard, recovery,
-thermal/power, and eight-hour soak artifacts. These tools reject phone
-substitutes such as Nubia P0110/pacific/Android 16 for formal tablet acceptance
-and report missing evidence as blocked or insufficient. A current-base aggregate
-owner report now records one owner per open Phase 2 workstream and marks stale
-or duplicate PRs without closing any child gate. The login-startup/headless Mac
+thermal/power, and eight-hour soak artifacts. The package-aware tablet gate now
+requires a passing device-environment summary before it can close. These tools
+reject phone substitutes such as Nubia P0110/pacific/Android 16 for formal
+tablet acceptance and report missing evidence as blocked or insufficient. A
+current-base aggregate owner report now records one owner per open Phase 2
+workstream and marks stale or duplicate PRs without closing any child gate. The
+login-startup/headless Mac
 mini row now has a passive current-base verifier that consumes retained real
 macOS evidence for identity signing, TCC, Login Items approval, reboot/login
 launch, capturable physical/dummy/headless or Screen Sharing display, bounded
@@ -503,9 +507,14 @@ It remains fail-closed until those machine-bound artifacts exist. Stand-mounted
 charging stability, controlled thermal-load behavior, power stability, login
 startup, headless Mac mini acceptance, hardware-keyboard workflow acceptance,
 and the physical 8-9 inch tablet run all remain open. The latest P0110/pacific
-hardware-keyboard current-base readiness record captures the real device
-identity and fails closed because no external Android-attached keyboard, Host
-listener, or stable signed/TCC-ready Host was available; it is not a gate pass.
+device-environment readiness record captures the real device identity and
+fail-closed battery, power, and thermal snapshots, but it is not a gate pass
+because the device is a phone substitute and no stand-mounted tablet setup,
+controlled thermal-load recovery, or eight-hour window was available. The latest
+P0110/pacific hardware-keyboard current-base readiness record captures the real
+device identity and fails closed because no external Android-attached keyboard,
+Host listener, or stable signed/TCC-ready Host was available; it is not a gate
+pass.
 See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
