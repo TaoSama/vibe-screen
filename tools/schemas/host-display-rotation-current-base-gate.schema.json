@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/host-display-rotation-current-base-gate.schema.json",
+  "title": "Vibe Screen host display rotation current-base gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "run_id",
+    "owner",
+    "source",
+    "can_close_host_display_rotation_acceptance",
+    "can_close_current_base_aggregate",
+    "can_claim_real_device_pass",
+    "checks",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "host_display_rotation_current_base_gate"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "run_id": {"type": ["string", "null"]},
+    "owner": {"type": ["object", "null"]},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest"],
+      "properties": {"manifest": {"type": "string", "minLength": 1}}
+    },
+    "can_close_host_display_rotation_acceptance": {"type": "boolean"},
+    "can_close_current_base_aggregate": {"type": "boolean"},
+    "can_claim_real_device_pass": {"type": "boolean"},
+    "checks": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

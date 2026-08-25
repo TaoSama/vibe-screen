@@ -68,12 +68,14 @@ Create one evidence directory, for example:
     RUN_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<yyyy-mm-dd-device-host-display-rotation>
     mkdir -p "$RUN_DIR"
 
-For an existing physical display:
+For an existing physical display, run the sequence once for each host-display
+rotation: 90, 180, and 270 degrees. The acceptance package must retain all
+three rotations; one rotated angle is not enough to close the gate.
 
 1. Save the device identity, APK install details, ADB reverse state,
    `host-readiness.json`, Host preflight report, Host PID, and a pre-rotation
    macOS display snapshot.
-2. Rotate the selected physical Mac display to 90, 180, or 270 degrees through
+2. Rotate the selected physical Mac display to the current target degree through
    macOS display settings or an explicitly documented operator action.
 3. Start the matching Protocol v1 USB or LAN session and select that display in
    the Android client.
@@ -81,18 +83,20 @@ For an existing physical display:
    display is rotated.
 5. Probe the four corners and center. Keep the touch matrix, Host input/capture
    log, Android logcat, stream stability counters, and proof that no session
-   teardown occurred.
+   teardown occurred. The JSON summary must also include the inverse-touch
+   mapping points in host logical-display coordinates: `top_left`, `top_right`,
+   `bottom_left`, `bottom_right`, and `center`, each marked within tolerance.
 6. Restore the original macOS display rotation and retain proof of restoration.
 
-Repeat the same sequence for a virtual display created by the Host. The virtual
-display run must identify the virtual display separately from the physical
-display and must not reuse the physical display snapshot as evidence.
+Repeat the same 90/180/270 sequence for a virtual display created by the Host.
+The virtual display run must identify the virtual display separately from the
+physical display and must not reuse the physical display snapshot as evidence.
 
 ## Evidence Summary
 
-Write $RUN_DIR/host-display-rotation.json with one runs[] entry for the
-physical display and one for the virtual display. Artifact paths are relative to
-$RUN_DIR.
+Write $RUN_DIR/host-display-rotation.json with one `runs[]` entry per
+display-kind and host-rotation pair: physical 90/180/270 plus virtual
+90/180/270. Artifact paths are relative to $RUN_DIR.
 
     {
       "schema_version": "vibescreen.evidence/v1",
@@ -131,6 +135,28 @@ $RUN_DIR.
             "no_session_teardown": true,
             "restored_original_host_rotation": true
           },
+          "inverse_touch_mapping": {
+            "coordinate_space": "host-logical-display",
+            "tolerance_px": 8,
+            "points": [
+              {
+                "name": "top_left",
+                "android_x": 16,
+                "android_y": 16,
+                "expected_host_x": 0,
+                "expected_host_y": 0,
+                "observed_host_x": 2,
+                "observed_host_y": 1,
+                "error_px": 2.2,
+                "within_tolerance": true
+              },
+              {"name": "top_right", "android_x": 1248, "android_y": 16, "expected_host_x": 1999, "expected_host_y": 0, "observed_host_x": 1997, "observed_host_y": 2, "error_px": 2.8, "within_tolerance": true},
+              {"name": "bottom_left", "android_x": 16, "android_y": 2784, "expected_host_x": 0, "expected_host_y": 1199, "observed_host_x": 1, "observed_host_y": 1196, "error_px": 3.2, "within_tolerance": true},
+              {"name": "bottom_right", "android_x": 1248, "android_y": 2784, "expected_host_x": 1999, "expected_host_y": 1199, "observed_host_x": 1998, "observed_host_y": 1197, "error_px": 2.2, "within_tolerance": true},
+              {"name": "center", "android_x": 632, "android_y": 1400, "expected_host_x": 1000, "expected_host_y": 600, "observed_host_x": 1001, "observed_host_y": 601, "error_px": 1.4, "within_tolerance": true}
+            ],
+            "all_points_within_tolerance": true
+          },
           "artifacts": {
             "device_identity": "device-and-artifact-identity.txt",
             "host_display_snapshot_before": "physical-display-before.txt",
@@ -144,19 +170,24 @@ $RUN_DIR.
       ]
     }
 
-The final file must contain both display_kind=physical and display_kind=virtual.
-Validate it with retained-artifact checks enabled:
+Repeat that entry for the remaining physical 180/270 and virtual 90/180/270
+runs. Use distinct physical versus virtual display IDs and do not reuse the
+rotated host-display snapshot, Android screenshot, or touch-matrix artifact
+between rotations of the same display kind. Validate it with retained-artifact
+checks enabled:
 
     PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
       "$RUN_DIR/host-display-rotation.json" \
       --check-artifacts \
       --output "$RUN_DIR/host-display-rotation-gate.json"
 
-The gate exits 0 only when both display kinds are present, every required probe
-is true, the device identity is explicit, the Host signing/TCC preflight is
-complete, artifact paths stay inside the evidence directory, and the retained
-files exist. It still does not prove anything beyond the captured real-device
-run named by that evidence directory.
+The gate exits 0 only when both display kinds each cover host rotations
+90/180/270, every required probe is true, the inverse-touch matrix includes the
+four corners plus center in host logical-display coordinates, the device
+identity is explicit, the Host signing/TCC preflight is complete, artifact
+paths stay inside the evidence directory, and the retained files exist. It
+still does not prove anything beyond the captured real-device run named by that
+evidence directory.
 
 ## Failure Modes
 
@@ -166,6 +197,18 @@ run named by that evidence directory.
   only; do not start partial input or display actions.
 - Only one display kind recorded: the gate must fail until both physical and
   virtual rotated host-display runs are retained.
+- Missing 90, 180, or 270 degrees for either display kind: the gate must fail
+  until the missing host-display rotation is captured on the real device.
+- Reused rotated snapshot, Android screenshot, or touch-matrix artifact across
+  rotations of the same display kind: the gate must fail until each angle has
+  retained evidence from that angle.
+- A run whose before and rotated host-display snapshots reference the same
+  artifact: the gate must fail until it records a distinct rotated-display
+  snapshot.
+- Missing structured inverse-touch point, or a point outside tolerance: the
+  gate must fail even if a free-form touch matrix artifact exists.
+- An inverse-touch point whose numeric `error_px` exceeds the run-level
+  `tolerance_px`: the gate must fail even if `within_tolerance` is marked true.
 - Client-local rotation substituted for host rotation: the gate must fail if
   host_rotation_degrees is 0 or if host_rotation_combined_with_client_transform
   is true.
@@ -176,8 +219,11 @@ run named by that evidence directory.
 
 ## Current Status
 
-The 2026-08-20 P0110/pacific record is readiness evidence only: the device lock
-was occupied, the stable Host signing/TCC preflight was blocked, and no rotated
-physical or virtual host-display run was started. The rotated host-display
-acceptance gate remains open until a fresh real-device run satisfies this
-runbook and the offline gate.
+The 2026-08-23 P0110/pacific current-base record is readiness evidence only:
+draft PR #262 owns the current-base boundary, but the local Host signing/TCC
+preflight was blocked, the Android client package was not installed on the
+device at sampling time, and no rotated physical or virtual host-display run was
+started. The evidence gate remains status=failed; the current-base aggregate
+gate remains verdict=blocked, can_close_current_base_aggregate=false, and
+can_claim_real_device_pass=false. Rotated host-display acceptance remains open
+until a fresh real-device run satisfies this runbook and the offline gates.

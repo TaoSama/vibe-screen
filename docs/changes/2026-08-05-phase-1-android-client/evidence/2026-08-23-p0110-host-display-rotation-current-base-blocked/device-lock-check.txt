@@ -1,0 +1,2 @@
+android_lock=absent
+soak_lock=absent

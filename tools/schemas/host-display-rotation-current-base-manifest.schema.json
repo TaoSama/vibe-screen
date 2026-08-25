@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/host-display-rotation-current-base-manifest.schema.json",
+  "title": "Vibe Screen host display rotation current-base manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "source_root",
+    "owner",
+    "scope_prs",
+    "source_docs",
+    "local_environment",
+    "device",
+    "host_preflight",
+    "gates",
+    "client_local_matrix_used_for_host_rotation",
+    "limitations",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "host_display_rotation_current_base_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "source_root": {"type": "string", "minLength": 1},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "aggregate_pr", "repository"],
+      "properties": {
+        "aggregate": {"const": "current-base-host-display-rotation"},
+        "aggregate_pr": {"const": "#262"},
+        "repository": {"const": "TaoSama/vibe-screen"}
+      }
+    },
+    "scope_prs": {"type": "array", "items": {"type": "string", "pattern": "^#[0-9]+$"}},
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "local_environment": {"type": "object"},
+    "device": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "runtime_class",
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "adb_serial",
+        "package_status",
+        "evidence",
+        "probes"
+      ],
+      "properties": {
+        "status": {"type": "string"},
+        "runtime_class": {"type": "string"},
+        "manufacturer": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]},
+        "codename": {"type": ["string", "null"]},
+        "android_release": {"type": ["string", "null"]},
+        "sdk": {"type": ["integer", "null"]},
+        "adb_serial": {"type": ["string", "null"]},
+        "package_status": {"type": "string"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "probes": {"type": "object"}
+      }
+    },
+    "host_preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signing_identity",
+        "bundle_identifier",
+        "screen_recording_tcc",
+        "accessibility_tcc",
+        "signing_tcc_match",
+        "rotation_restoration_plan"
+      ],
+      "properties": {
+        "signing_identity": {"$ref": "#/$defs/check_record"},
+        "bundle_identifier": {"$ref": "#/$defs/check_record"},
+        "screen_recording_tcc": {"$ref": "#/$defs/check_record"},
+        "accessibility_tcc": {"$ref": "#/$defs/check_record"},
+        "signing_tcc_match": {"$ref": "#/$defs/check_record"},
+        "rotation_restoration_plan": {"$ref": "#/$defs/check_record"}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_local_fit_fill_rotation_matrix",
+        "physical_host_display_rotation",
+        "virtual_host_display_rotation"
+      ],
+      "properties": {
+        "client_local_fit_fill_rotation_matrix": {"$ref": "#/$defs/check_record"},
+        "physical_host_display_rotation": {"$ref": "#/$defs/formal_gate_record"},
+        "virtual_host_display_rotation": {"$ref": "#/$defs/formal_gate_record"}
+      }
+    },
+    "client_local_matrix_used_for_host_rotation": {"type": "boolean"},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "check_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "properties": {
+        "status": {"type": "string"},
+        "category": {"type": "string"},
+        "requirement": {"type": "string", "minLength": 1},
+        "blocking": {"type": "boolean"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "formal_gate_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "category",
+        "requirement",
+        "blocking",
+        "evidence",
+        "notes",
+        "required_host_rotations",
+        "covered_host_rotations"
+      ],
+      "properties": {
+        "status": {"type": "string"},
+        "category": {"type": "string"},
+        "requirement": {"type": "string", "minLength": 1},
+        "blocking": {"type": "boolean"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "notes": {"type": "array", "items": {"type": "string"}},
+        "required_host_rotations": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]},
+          "const": [90, 180, 270]
+        },
+        "covered_host_rotations": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]}
+        }
+      }
+    }
+  }
+}

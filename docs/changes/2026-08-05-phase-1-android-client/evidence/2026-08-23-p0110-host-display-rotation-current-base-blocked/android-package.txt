@@ -1,0 +1,8 @@
+pm path dev.telemachus.display
+package:/data/app/~~juOE8-x4qEL4Yh61yg9w2Q==/dev.telemachus.display-gWO1Gq-KHhd3ADyllLxE9A==/base.apk
+
+broad package grep
+package:com.obric.screenrecorder
+package:dev.telemachus.display
+package:dev.telemachus.display.test
+package:com.obric.screenshot
