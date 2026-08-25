@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase0-stable-release-manifest.schema.json",
+  "title": "Vibe Screen Phase 0 stable-release closure manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "phase",
+    "source",
+    "required_gates"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "vibescreen.evidence/v1"
+    },
+    "kind": {
+      "const": "phase0_stable_release_closure"
+    },
+    "phase": {
+      "const": "phase0"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_commit",
+        "base_ref",
+        "audit_date",
+        "owner",
+        "audit_source"
+      ],
+      "properties": {
+        "base_commit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "base_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audit_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audit_source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "readme_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_phrases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "forbidden_regexes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "required_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "deferred_or_later_phase_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "phase_scope",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "phase_scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "blocked",
+              "fail",
+              "insufficient",
+              "open"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_for_stable_release",
+        "verdict",
+        "evidence_strength",
+        "evidence_paths",
+        "owner_prs",
+        "blockers"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "upstream_provenance_and_license",
+            "protocol_contract_ci",
+            "android_clean_build",
+            "macos_release_build_xcode_tests",
+            "macos_host_hardware_compatibility_matrix",
+            "android_device_usb_stream_reconnect_codec",
+            "telemetry_and_latency_archive",
+            "host_rss_2h_no_growth",
+            "native_pointer_hid_mouse",
+            "controller_runtime_acceptance",
+            "module_ownership_extraction"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_for_stable_release": {
+          "type": "boolean"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "blocked",
+            "fail",
+            "insufficient",
+            "open"
+          ]
+        },
+        "evidence_strength": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "owner_prs": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

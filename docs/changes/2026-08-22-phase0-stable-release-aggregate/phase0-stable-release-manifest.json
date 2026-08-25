@@ -1,0 +1,227 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase0_stable_release_closure",
+  "phase": "phase0",
+  "source": {
+    "base_commit": "8471dd2bb65eae6bd7ac05b3ba09ef958526265a",
+    "base_ref": "origin/main",
+    "audit_date": "2026-08-22",
+    "owner": "Vibe Screen core team",
+    "audit_source": "docs/changes/2026-08-22-open-gates-coverage-audit/README.md"
+  },
+  "readme_guard": {
+    "required_phrases": [
+      "Phase 0 remains in progress",
+      "rather than a stable release",
+      "Do not treat roadmap items below as shipped features"
+    ],
+    "forbidden_regexes": [
+      "\\bPhase\\s*0\\s+(?:is(?:\\s+now)?|now|has(?:\\s+been|\\s+reached)?|was|marked|declared|treated as|reached)\\s+(?:complete|closed|shipped|released|stable|done|production[- ]ready|generally available|GA)\\b",
+      "\\bPhase\\s*0\\s+(?:stable[- ]release|release)\\s+(?:is|now|has been|was)\\s+(?:available|ready|complete|shipped|released|stable|done|production[- ]ready|generally available|GA)\\b",
+      "\\bPhase\\s*0\\s+(?:GA|generally available|production[- ]ready)\\b"
+    ]
+  },
+  "required_gates": [
+    {
+      "id": "upstream_provenance_and_license",
+      "title": "Upstream provenance and license pin",
+      "required_for_stable_release": true,
+      "verdict": "pass",
+      "evidence_strength": "current-source",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/UPSTREAM.md",
+        "THIRD_PARTY.md"
+      ],
+      "owner_prs": [],
+      "blockers": []
+    },
+    {
+      "id": "protocol_contract_ci",
+      "title": "Protocol v1 contract and CI gates",
+      "required_for_stable_release": true,
+      "verdict": "pass",
+      "evidence_strength": "current-ci",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+      ],
+      "owner_prs": [],
+      "blockers": []
+    },
+    {
+      "id": "android_clean_build",
+      "title": "Android tests and debug APK clean build",
+      "required_for_stable_release": true,
+      "verdict": "pass",
+      "evidence_strength": "current-ci",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+      ],
+      "owner_prs": [],
+      "blockers": []
+    },
+    {
+      "id": "macos_release_build_xcode_tests",
+      "title": "macOS release build and full-Xcode unit tests",
+      "required_for_stable_release": true,
+      "verdict": "pass",
+      "evidence_strength": "current-ci",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+      ],
+      "owner_prs": [],
+      "blockers": []
+    },
+    {
+      "id": "macos_host_hardware_compatibility_matrix",
+      "title": "macOS Host hardware compatibility matrix",
+      "required_for_stable_release": true,
+      "verdict": "open",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "README.md",
+        "docs/runbook/macos-host-compatibility.md"
+      ],
+      "owner_prs": [],
+      "blockers": [
+        "No macos-hardware-compatibility-gate summary is published for the current source.",
+        "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row evidence before support claims."
+      ]
+    },
+    {
+      "id": "android_device_usb_stream_reconnect_codec",
+      "title": "Android USB stream, reconnect, stale epoch, and codec fallback",
+      "required_for_stable_release": true,
+      "verdict": "pass",
+      "evidence_strength": "real-device",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md"
+      ],
+      "owner_prs": [],
+      "blockers": []
+    },
+    {
+      "id": "telemetry_and_latency_archive",
+      "title": "Telemetry and external latency artifact archive",
+      "required_for_stable_release": true,
+      "verdict": "insufficient",
+      "evidence_strength": "partial",
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md"
+      ],
+      "owner_prs": [
+        167,
+        192
+      ],
+      "blockers": [
+        "Raw stream telemetry is archived, but no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
+      ]
+    },
+    {
+      "id": "host_rss_2h_no_growth",
+      "title": "Host RSS two-hour no-growth gate",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "historical-fail",
+      "evidence_paths": [
+        "docs/changes/2026-08-10-host-rss-growth/TECH.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md"
+      ],
+      "owner_prs": [
+        158,
+        222,
+        230,
+        237
+      ],
+      "blockers": [
+        "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
+        "No current-source host_rss_gate pass exists."
+      ]
+    },
+    {
+      "id": "native_pointer_hid_mouse",
+      "title": "Native pointer HID mouse move/click acceptance",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "docs/testing.md",
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-21-p0110-native-pointer-hid-readiness/README.md"
+      ],
+      "owner_prs": [
+        232,
+        268
+      ],
+      "blockers": [
+        "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
+        "No retained Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window exist."
+      ]
+    },
+    {
+      "id": "controller_runtime_acceptance",
+      "title": "Controller runtime acceptance",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json"
+      ],
+      "owner_prs": [
+        217,
+        220,
+        270
+      ],
+      "blockers": [
+        "No physical Android controller runtime run is recorded.",
+        "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
+      ]
+    },
+    {
+      "id": "module_ownership_extraction",
+      "title": "Phase 0 module ownership extraction",
+      "required_for_stable_release": true,
+      "verdict": "open",
+      "evidence_strength": "partial-current-source",
+      "evidence_paths": [
+        "README.md",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "owner_prs": [
+        211,
+        218,
+        221,
+        259
+      ],
+      "blockers": [
+        "Android TCP transport ownership is enforced, but StreamClient still combines transport composition and local product-session behavior.",
+        "Protocol, session, media, input, UI, decoder, and renderer boundaries are not yet all enforced by current-base module contracts."
+      ]
+    }
+  ],
+  "deferred_or_later_phase_gates": [
+    {
+      "id": "trusted_lan_current_worktree_stream_reconnect",
+      "phase_scope": "phase1_local_android",
+      "status": "open",
+      "reason": "Phase 0 PRD allows LAN to remain a buildable loopback path; README keeps current-worktree LAN evidence as an open Phase 1/local Android gate."
+    },
+    {
+      "id": "login_item_approval_and_headless_reboot",
+      "phase_scope": "phase1_phase2",
+      "status": "open",
+      "reason": "Documented as macOS/Phase 2 integration evidence, not a Phase 0 stable-release aggregate prerequisite in this manifest."
+    },
+    {
+      "id": "developer_id_signing_and_notarization",
+      "phase_scope": "release_distribution",
+      "status": "open",
+      "reason": "Current package evidence is ad-hoc signed only; this blocks distribution claims but is tracked outside the Phase 0 source-baseline aggregate."
+    }
+  ]
+}
