@@ -18,6 +18,19 @@ material and therefore cannot close the signing prerequisite. A passing evidence
 bundle must be generated from a clean current-base commit and must include only
 sanitized public summaries.
 
+Machine-readable artifacts in this directory:
+
+- `ios-app-signing-readiness.json`: sanitized blocked input fixture with the
+  current-base commit and no signing material.
+- `ios-app-signing-readiness-gate.json`: generated dedicated owner gate output
+  with `verdict=blocked`, `can_close_ios_app_signing_readiness=false`, and
+  `can_close_ios_device_acceptance=false`.
+- `ios-current-base-manifest.json` and `ios-current-base-gate.json`: generated
+  aggregate binding outputs showing the signing row and broader Phase 5 device
+  gates remain blocked.
+- `commands.txt`, `privacy-scan.json`, and `SHA256SUMS`: retained command log,
+  privacy scan, and checksum manifest for this blocked owner record.
+
 Required retained evidence remains open for:
 
 - Apple Team ID recording
@@ -47,6 +60,12 @@ declares `owner.role=ios_app_signing_readiness_current_base_owner`,
 `owner.head_ref=codex/phase5-ios-signing-readiness`,
 `owner.repository=TaoSama/vibe-screen`, and a complete sanitized
 `signing_summary` from a clean current-base commit.
+
+For this blocked record, `make ios-app-signing-readiness-gate` exits nonzero
+after writing the gate JSON because signing material is absent. The aggregate
+command also exits nonzero as expected: it consumes the dedicated owner JSON and
+keeps `can_close_ios_device_acceptance=false` and
+`can_close_current_base_aggregate=false`.
 
 ## Not proven
 

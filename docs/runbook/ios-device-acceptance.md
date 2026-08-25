@@ -68,6 +68,11 @@ declares `owner.role=ios_app_signing_readiness_current_base_owner`,
 `owner.repository=TaoSama/vibe-screen`. Its `signing_summary` is the source for
 the aggregate `signing` fields, including UDID-hash and entitlements coverage;
 hand-written manifest fields without that dedicated owner stay blocked.
+Embed the same passing `ios-app-signing-readiness-gate.json` as
+`signing_readiness_gate` in any later `acceptance.json`. The device acceptance
+gate binds the simplified signing row back to that owner output, so an ad-hoc
+signature, missing physical-device UDID hashes, missing entitlements, or a
+mismatched signed artifact digest cannot close the device gate.
 
 ## Open gates
 
@@ -226,6 +231,54 @@ gate.
     "certificate_common_name_redacted": true,
     "provisioning_profile_uuid_redacted": true,
     "archive_sha256": ""
+  },
+  "signing_readiness_gate": {
+    "schema_version": "vibescreen.evidence/v1",
+    "kind": "ios_app_signing_readiness_gate",
+    "owner": {
+      "role": "ios_app_signing_readiness_current_base_owner",
+      "head_ref": "codex/phase5-ios-signing-readiness",
+      "repository": "TaoSama/vibe-screen",
+      "scope": "Phase 5 iOS app-signing readiness prerequisite only"
+    },
+    "source": {
+      "readiness": "ios-app-signing-readiness.json",
+      "evidence_root": "."
+    },
+    "current_base": {
+      "commit": null,
+      "branch": "codex/phase5-ios-signing-readiness",
+      "dirty": false
+    },
+    "verdict": "blocked",
+    "signing_status": "blocked",
+    "signing_summary": {
+      "status": "blocked",
+      "bundle_id": null,
+      "unique_bundle_id": false,
+      "team_id_recorded": false,
+      "codesign_identity_recorded": false,
+      "provisioning_profile_recorded": false,
+      "device_udid_hashes_recorded": false,
+      "entitlements_recorded": false,
+      "signed_artifact_sha256": null
+    },
+    "can_close_ios_app_signing_readiness": false,
+    "can_close_ios_device_acceptance": false,
+    "recorded_fields": {
+      "team_id": false,
+      "provisioning_profile": false,
+      "bundle_id": false,
+      "codesign_identity": false,
+      "device_udid": false,
+      "entitlements": false,
+      "signed_artifact": false,
+      "artifacts": false
+    },
+    "missing": ["replace this object with the passing gate output before device acceptance"],
+    "failures": [],
+    "evidence": [],
+    "interpretation": "Blocked signing readiness cannot close device acceptance."
   },
   "devices": [
     {

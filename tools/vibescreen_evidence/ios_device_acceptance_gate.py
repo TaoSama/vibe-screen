@@ -69,15 +69,59 @@ ANDROID_TOKEN_PATTERN = re.compile(
     r"(?<![0-9a-z])(?:" + "|".join(ANDROID_TOKEN_MARKERS) + r")(?![0-9a-z])"
 )
 SIMULATOR_MARKERS = ("simulator", "iphonesimulator")
-UNSIGNED_MARKERS = ("unsigned", "simulator")
+UNSIGNED_MARKERS = ("unsigned", "simulator", "ad-hoc", "adhoc")
 DEFAULT_BUNDLE_ID = "dev.vibescreen.ios"
 TRUSTED_LAN_MODE = "explicit_plaintext_legacy_fallback"
 SHA256_PATTERN = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
+COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
+SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
+SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
+REQUIRED_SIGNING_READINESS_FIELDS = (
+    "schema_version",
+    "kind",
+    "owner",
+    "source",
+    "current_base",
+    "verdict",
+    "signing_status",
+    "signing_summary",
+    "can_close_ios_app_signing_readiness",
+    "can_close_ios_device_acceptance",
+    "recorded_fields",
+    "missing",
+    "failures",
+    "evidence",
+    "interpretation",
+)
+REQUIRED_SIGNING_SUMMARY_FIELDS = (
+    "status",
+    "bundle_id",
+    "unique_bundle_id",
+    "team_id_recorded",
+    "codesign_identity_recorded",
+    "provisioning_profile_recorded",
+    "device_udid_hashes_recorded",
+    "entitlements_recorded",
+    "signed_artifact_sha256",
+)
+REQUIRED_SIGNING_RECORDED_FIELDS = (
+    "team_id",
+    "provisioning_profile",
+    "bundle_id",
+    "codesign_identity",
+    "device_udid",
+    "entitlements",
+    "signed_artifact",
+    "artifacts",
+)
 INTERPRETATION = (
     "A pass means the supplied sanitized acceptance.json records complete "
-    "iPhone and iPad device evidence for the listed gates. It does not prove "
-    "HDR output, advanced host adapters, Internet audio/bulk transport, or "
-    "any behavior not represented by retained evidence artifacts."
+    "iPhone and iPad device evidence for the listed gates and embeds a passing "
+    "dedicated iOS app-signing readiness gate. It does not prove HDR output, "
+    "advanced host adapters, Internet audio/bulk transport, or any behavior not "
+    "represented by retained evidence artifacts."
 )
 
 
@@ -136,6 +180,15 @@ def _contains_marker(value: Any, markers: Sequence[str]) -> bool:
 
 def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and SHA256_PATTERN.fullmatch(value.strip()) is not None
+
+
+def _normalized_sha256(value: Any) -> str | None:
+    if not _is_sha256(value):
+        return None
+    digest = str(value).strip()
+    if digest.lower().startswith("sha256:"):
+        digest = digest.split(":", 1)[1]
+    return digest.lower()
 
 
 def _is_path_within(path: Path, root: Path) -> bool:
@@ -252,7 +305,9 @@ def _validate_signing(
     if bundle_id == DEFAULT_BUNDLE_ID:
         missing.append("signing.bundle_id: must be a unique non-default bundle identifier")
     if _contains_marker(signing.get("archive_sha256"), UNSIGNED_MARKERS):
-        failures.append("signing.archive_sha256: must not reference unsigned or Simulator artifacts")
+        failures.append(
+            "signing.archive_sha256: must not reference unsigned, Simulator, or ad-hoc artifacts"
+        )
     if not _is_sha256(signing.get("archive_sha256")):
         missing.append("signing.archive_sha256: must be a SHA-256 digest")
     for field in (
@@ -262,6 +317,166 @@ def _validate_signing(
     ):
         if signing.get(field) is not True:
             failures.append(f"signing.{field}: must be true in committed sanitized evidence")
+
+
+def _require_gate_object(
+    record: dict[str, Any], field: str, path: str, missing: list[str]
+) -> dict[str, Any] | None:
+    value = record.get(field)
+    if not isinstance(value, dict):
+        missing.append(f"{path}.{field}: must be an object")
+        return None
+    return value
+
+
+def _validate_signing_readiness_gate(
+    document: dict[str, Any], missing: list[str], failures: list[str]
+) -> None:
+    gate = _require_object(document, "signing_readiness_gate", missing)
+    if gate is None:
+        return
+
+    for field in REQUIRED_SIGNING_READINESS_FIELDS:
+        if field not in gate:
+            missing.append(f"signing_readiness_gate.{field}: must be recorded")
+
+    if gate.get("schema_version") != SCHEMA_VERSION:
+        missing.append(f"signing_readiness_gate.schema_version: must be {SCHEMA_VERSION}")
+    if gate.get("kind") != SIGNING_READINESS_GATE_KIND:
+        failures.append(
+            f"signing_readiness_gate.kind: must be {SIGNING_READINESS_GATE_KIND}"
+        )
+    if gate.get("verdict") == FAIL:
+        failures.append("signing_readiness_gate.verdict: is fail")
+    elif gate.get("verdict") != PASS:
+        missing.append("signing_readiness_gate.verdict: must be pass")
+    if gate.get("can_close_ios_app_signing_readiness") is not True:
+        missing.append(
+            "signing_readiness_gate.can_close_ios_app_signing_readiness: must be true"
+        )
+    if gate.get("can_close_ios_device_acceptance") is not False:
+        failures.append("signing_readiness_gate.can_close_ios_device_acceptance: must be false")
+
+    owner = _require_gate_object(gate, "owner", "signing_readiness_gate", missing)
+    if owner is not None:
+        expected_owner = {
+            "role": SIGNING_READINESS_OWNER_ROLE,
+            "head_ref": SIGNING_READINESS_OWNER_BRANCH,
+            "repository": REPOSITORY_FULL_NAME,
+        }
+        for field, expected in expected_owner.items():
+            if owner.get(field) != expected:
+                failures.append(f"signing_readiness_gate.owner.{field}: must be {expected}")
+        _append_missing_string(missing, owner, "signing_readiness_gate.owner", "scope")
+
+    source = _require_gate_object(gate, "source", "signing_readiness_gate", missing)
+    if source is not None:
+        readiness = source.get("readiness")
+        if readiness is not None and not _is_non_empty_string(readiness):
+            missing.append(
+                "signing_readiness_gate.source.readiness: must be null or a non-empty string"
+            )
+        _append_missing_string(
+            missing, source, "signing_readiness_gate.source", "evidence_root"
+        )
+
+    repository = document.get("repository") if isinstance(document.get("repository"), dict) else {}
+    current_base = _require_gate_object(
+        gate, "current_base", "signing_readiness_gate", missing
+    )
+    if current_base is not None:
+        commit = current_base.get("commit")
+        repository_commit = repository.get("commit")
+        if not _is_non_empty_string(commit) or COMMIT_PATTERN.fullmatch(str(commit).strip()) is None:
+            missing.append(
+                "signing_readiness_gate.current_base.commit: must be a 40-character commit SHA"
+            )
+        elif not _is_non_empty_string(repository_commit) or str(commit).strip().lower() != str(
+            repository_commit
+        ).strip().lower():
+            missing.append(
+                "signing_readiness_gate.current_base.commit: must match repository.commit"
+            )
+        _append_missing_string(missing, current_base, "signing_readiness_gate.current_base", "branch")
+        if current_base.get("dirty") is not False:
+            missing.append("signing_readiness_gate.current_base.dirty: must be false")
+        if repository.get("dirty") is not False:
+            missing.append("repository.dirty: must be false when binding signing readiness")
+
+    signing_summary = _require_gate_object(
+        gate, "signing_summary", "signing_readiness_gate", missing
+    )
+    if signing_summary is not None:
+        for field in REQUIRED_SIGNING_SUMMARY_FIELDS:
+            if field not in signing_summary:
+                missing.append(f"signing_readiness_gate.signing_summary.{field}: must be recorded")
+        if signing_summary.get("status") != PASS:
+            missing.append("signing_readiness_gate.signing_summary.status: must be pass")
+        _append_missing_string(
+            missing, signing_summary, "signing_readiness_gate.signing_summary", "bundle_id"
+        )
+        if signing_summary.get("unique_bundle_id") is not True:
+            missing.append("signing_readiness_gate.signing_summary.unique_bundle_id: must be true")
+        for field in (
+            "team_id_recorded",
+            "codesign_identity_recorded",
+            "provisioning_profile_recorded",
+            "device_udid_hashes_recorded",
+            "entitlements_recorded",
+        ):
+            if signing_summary.get(field) is not True:
+                missing.append(f"signing_readiness_gate.signing_summary.{field}: must be true")
+        if not _is_sha256(signing_summary.get("signed_artifact_sha256")):
+            missing.append(
+                "signing_readiness_gate.signing_summary.signed_artifact_sha256: must be a SHA-256 digest"
+            )
+
+    recorded_fields = _require_gate_object(
+        gate, "recorded_fields", "signing_readiness_gate", missing
+    )
+    if recorded_fields is not None:
+        for field in REQUIRED_SIGNING_RECORDED_FIELDS:
+            if recorded_fields.get(field) is not True:
+                missing.append(f"signing_readiness_gate.recorded_fields.{field}: must be true")
+
+    gate_missing = gate.get("missing")
+    if not isinstance(gate_missing, list) or gate_missing:
+        missing.append("signing_readiness_gate.missing: must be an empty array")
+    gate_failures = gate.get("failures")
+    if not isinstance(gate_failures, list) or gate_failures:
+        failures.append("signing_readiness_gate.failures: must be an empty array")
+
+    gate_evidence = gate.get("evidence")
+    if not isinstance(gate_evidence, list) or not gate_evidence:
+        missing.append("signing_readiness_gate.evidence: must include retained signing artifacts")
+    _append_missing_string(missing, gate, "signing_readiness_gate", "interpretation")
+
+    signing = document.get("signing") if isinstance(document.get("signing"), dict) else {}
+    if isinstance(signing_summary, dict) and isinstance(signing, dict):
+        expected_matches = {
+            "bundle_id": (signing.get("bundle_id"), signing_summary.get("bundle_id")),
+            "team_id_redacted": (
+                signing.get("team_id_redacted"),
+                signing_summary.get("team_id_recorded"),
+            ),
+            "certificate_common_name_redacted": (
+                signing.get("certificate_common_name_redacted"),
+                signing_summary.get("codesign_identity_recorded"),
+            ),
+            "provisioning_profile_uuid_redacted": (
+                signing.get("provisioning_profile_uuid_redacted"),
+                signing_summary.get("provisioning_profile_recorded"),
+            ),
+        }
+        for field, (actual, expected) in expected_matches.items():
+            if actual != expected:
+                missing.append(f"signing.{field}: must match signing_readiness_gate summary")
+        if _normalized_sha256(signing.get("archive_sha256")) != _normalized_sha256(
+            signing_summary.get("signed_artifact_sha256")
+        ):
+            missing.append(
+                "signing.archive_sha256: must match signing_readiness_gate signed artifact digest"
+            )
 
 
 def _validate_devices(
@@ -370,6 +585,7 @@ def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
     _validate_xcode(document, missing)
     _validate_trusted_lan(document, missing, failures)
     _validate_signing(document, missing, failures)
+    _validate_signing_readiness_gate(document, missing, failures)
     covered_devices = _validate_devices(document, missing, failures)
     completed_gates = _validate_gates(
         document=document,

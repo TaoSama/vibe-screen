@@ -18,6 +18,9 @@ from vibescreen_evidence.ios_device_acceptance_gate import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.ios_device_acceptance_gate"
 SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "ios-device-acceptance-gate.schema.json"
+INPUT_SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "ios-device-acceptance.schema.json"
+CURRENT_BASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+SIGNED_ARTIFACT_SHA256 = "a" * 64
 
 
 def write_artifacts(directory: Path, names: list[str]) -> None:
@@ -37,7 +40,11 @@ def complete_document() -> dict:
         "kind": ACCEPTANCE_KIND,
         "platform": "ios",
         "status": "complete",
-        "repository": {"commit": "abc123", "branch": "codex/ios-device-acceptance-gate", "dirty": False},
+        "repository": {
+            "commit": CURRENT_BASE_COMMIT,
+            "branch": "codex/ios-device-acceptance-gate",
+            "dirty": False,
+        },
         "host": {
             "commit": "def456",
             "macos_version": "26.4.1",
@@ -58,7 +65,59 @@ def complete_document() -> dict:
             "team_id_redacted": True,
             "certificate_common_name_redacted": True,
             "provisioning_profile_uuid_redacted": True,
-            "archive_sha256": "sha256:" + "a" * 64,
+            "archive_sha256": "sha256:" + SIGNED_ARTIFACT_SHA256,
+        },
+        "signing_readiness_gate": {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "ios_app_signing_readiness_gate",
+            "owner": {
+                "role": "ios_app_signing_readiness_current_base_owner",
+                "head_ref": "codex/phase5-ios-signing-readiness",
+                "repository": "TaoSama/vibe-screen",
+                "scope": "Phase 5 iOS app-signing readiness prerequisite only",
+            },
+            "source": {
+                "readiness": "ios-app-signing-readiness.json",
+                "evidence_root": ".",
+            },
+            "current_base": {
+                "commit": CURRENT_BASE_COMMIT,
+                "branch": "codex/phase5-ios-signing-readiness",
+                "dirty": False,
+            },
+            "verdict": "pass",
+            "signing_status": "complete",
+            "signing_summary": {
+                "status": "pass",
+                "bundle_id": "dev.example.vibescreen.acceptance",
+                "unique_bundle_id": True,
+                "team_id_recorded": True,
+                "codesign_identity_recorded": True,
+                "provisioning_profile_recorded": True,
+                "device_udid_hashes_recorded": True,
+                "entitlements_recorded": True,
+                "signed_artifact_sha256": SIGNED_ARTIFACT_SHA256,
+            },
+            "can_close_ios_app_signing_readiness": True,
+            "can_close_ios_device_acceptance": False,
+            "recorded_fields": {
+                "team_id": True,
+                "provisioning_profile": True,
+                "bundle_id": True,
+                "codesign_identity": True,
+                "device_udid": True,
+                "entitlements": True,
+                "signed_artifact": True,
+                "artifacts": True,
+            },
+            "missing": [],
+            "failures": [],
+            "evidence": [
+                "logs/xcodebuild-archive.txt",
+                "logs/codesign-entitlements.txt",
+                "logs/profile-summary.txt",
+            ],
+            "interpretation": "Fixture app-signing readiness pass.",
         },
         "devices": [
             {
@@ -111,6 +170,19 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertEqual(set(result), set(schema["properties"]))
         for field in schema["required"]:
             self.assertIn(field, result)
+
+    def test_input_schema_requires_embedded_signing_readiness_gate(self) -> None:
+        schema = json.loads(INPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self.assertIn("signing_readiness_gate", schema["required"])
+        signing_gate = schema["properties"]["signing_readiness_gate"]
+        self.assertIn("owner", signing_gate["required"])
+        self.assertIn("current_base", signing_gate["required"])
+        self.assertIn("signing_summary", signing_gate["required"])
+        self.assertIn("recorded_fields", signing_gate["required"])
+        summary = signing_gate["properties"]["signing_summary"]
+        self.assertIn("codesign_identity_recorded", summary["required"])
+        self.assertIn("device_udid_hashes_recorded", summary["required"])
+        self.assertIn("entitlements_recorded", summary["required"])
 
     def test_missing_ipad_and_open_gate_are_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -223,7 +295,7 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
             result["failures"],
         )
         self.assertIn(
-            "signing.archive_sha256: must not reference unsigned or Simulator artifacts",
+            "signing.archive_sha256: must not reference unsigned, Simulator, or ad-hoc artifacts",
             result["failures"],
         )
         self.assertIn(
@@ -250,6 +322,312 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertIn(
             "signing.archive_sha256: must be a SHA-256 digest",
             result["missing"],
+        )
+        self.assertIn(
+            "signing.archive_sha256: must match signing_readiness_gate signed artifact digest",
+            result["missing"],
+        )
+
+    def test_missing_signing_readiness_gate_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            del document["signing_readiness_gate"]
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn("signing_readiness_gate: must be an object", result["missing"])
+
+    def test_failed_signing_readiness_gate_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["verdict"] = "fail"
+            document["signing_readiness_gate"]["failures"] = [
+                "signing.codesign_identity: must be a real Apple signing identity, not ad-hoc"
+            ]
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn("signing_readiness_gate.verdict: is fail", result["failures"])
+        self.assertIn(
+            "signing_readiness_gate.failures: must be an empty array",
+            result["failures"],
+        )
+
+    def test_blocked_signing_readiness_gate_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["verdict"] = "blocked"
+            document["signing_readiness_gate"]["can_close_ios_app_signing_readiness"] = False
+            document["signing_readiness_gate"]["missing"] = [
+                "signing.device_udids: at least one physical device UDID hash is required"
+            ]
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn("signing_readiness_gate.verdict: must be pass", result["missing"])
+        self.assertIn(
+            "signing_readiness_gate.can_close_ios_app_signing_readiness: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.missing: must be an empty array",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_dedicated_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["owner"]["head_ref"] = "main"
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "signing_readiness_gate.owner.head_ref: must be codex/phase5-ios-signing-readiness",
+            result["failures"],
+        )
+
+    def test_signing_readiness_gate_requires_current_commit_match(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["current_base"]["commit"] = "b" * 40
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.current_base.commit: must match repository.commit",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_udids_entitlements_and_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            summary = document["signing_readiness_gate"]["signing_summary"]
+            summary["codesign_identity_recorded"] = False
+            summary["device_udid_hashes_recorded"] = False
+            summary["entitlements_recorded"] = False
+            recorded = document["signing_readiness_gate"]["recorded_fields"]
+            recorded["codesign_identity"] = False
+            recorded["device_udid"] = False
+            recorded["entitlements"] = False
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.codesign_identity_recorded: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.device_udid_hashes_recorded: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.entitlements_recorded: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.recorded_fields.codesign_identity: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.recorded_fields.device_udid: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.recorded_fields.entitlements: must be true",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_cannot_claim_device_acceptance(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["can_close_ios_device_acceptance"] = True
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "signing_readiness_gate.can_close_ios_device_acceptance: must be false",
+            result["failures"],
+        )
+
+    def test_signing_readiness_gate_requires_pass_summary_and_unique_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            summary = document["signing_readiness_gate"]["signing_summary"]
+            summary["status"] = "blocked"
+            summary["unique_bundle_id"] = False
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.status: must be pass",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.unique_bundle_id: must be true",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_retained_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["evidence"] = []
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.evidence: must include retained signing artifacts",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_signed_artifact_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing_readiness_gate"]["signing_summary"][
+                "signed_artifact_sha256"
+            ] = "1234"
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.signing_summary.signed_artifact_sha256: must be a SHA-256 digest",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing.archive_sha256: must match signing_readiness_gate signed artifact digest",
+            result["missing"],
+        )
+
+    def test_all_recorded_fields_are_required(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            recorded = document["signing_readiness_gate"]["recorded_fields"]
+            for field in (
+                "team_id",
+                "provisioning_profile",
+                "bundle_id",
+                "signed_artifact",
+                "artifacts",
+            ):
+                recorded[field] = False
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        for field in (
+            "team_id",
+            "provisioning_profile",
+            "bundle_id",
+            "signed_artifact",
+            "artifacts",
+        ):
+            self.assertIn(
+                f"signing_readiness_gate.recorded_fields.{field}: must be true",
+                result["missing"],
+            )
+
+    def test_signing_summary_must_match_legacy_signing_row(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing"]["bundle_id"] = "dev.example.other"
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing.bundle_id: must match signing_readiness_gate summary",
+            result["missing"],
+        )
+
+    def test_signing_archive_hash_must_match_readiness_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing"]["archive_sha256"] = "sha256:" + "b" * 64
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing.archive_sha256: must match signing_readiness_gate signed artifact digest",
+            result["missing"],
+        )
+
+    def test_ad_hoc_archive_marker_fails_in_legacy_signing_row(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_artifacts(
+                evidence_root, [f"artifacts/{name}.txt" for name in REQUIRED_GATES]
+            )
+            document = complete_document()
+            document["signing"]["archive_sha256"] = "ad-hoc-signed-app.zip"
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "signing.archive_sha256: must not reference unsigned, Simulator, or ad-hoc artifacts",
+            result["failures"],
         )
 
     def test_missing_or_escaping_artifact_is_insufficient(self) -> None:

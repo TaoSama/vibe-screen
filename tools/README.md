@@ -215,9 +215,13 @@ scheduled iPhone/iPad run. It is intentionally read-only: it does not invoke
 Xcode, start the Host, connect to LAN, use ADB, or operate a device. A `pass`
 requires both iPhone and iPad hardware records, complete signing/install,
 Protocol v1 session, H.264 and HEVC VideoToolbox, input, reconnect, and audio
-playback gates, plus retained local artifacts for every gate. Open or blocked
-readiness records return `insufficient`; Android artifacts or identities return
-`fail`.
+playback gates, plus retained local artifacts for every gate. The sanitized
+`acceptance.json` must also embed the passing
+`ios-app-signing-readiness-gate.json` from the dedicated signing owner; the
+device gate checks that owner, current-base commit, bundle ID, signed artifact
+digest, codesign identity, device UDID hashes, and entitlements match before it
+accepts the legacy signing row. Open or blocked readiness records return
+`insufficient`; Android artifacts or identities return `fail`.
 
 ```sh
 make ios-device-acceptance-gate \

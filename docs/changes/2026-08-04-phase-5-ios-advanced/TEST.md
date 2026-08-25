@@ -270,6 +270,8 @@ aggregate checks both `dedicated_signing_readiness_gate` and
 sanitized `signing_summary`; hand-written manifest signing fields without that
 owner remain blocked. It still cannot close install, launch, VideoToolbox,
 input, reconnect, audio, or full iOS device acceptance.
+The current retained blocked owner record is
+[`2026-08-25-ios-signing-current-base-owner-blocked`](evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md).
 
 2026-08-23 current-base readiness smoke on this worktree ran:
 

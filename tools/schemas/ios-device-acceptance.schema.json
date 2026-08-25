@@ -14,6 +14,7 @@
     "xcode",
     "trusted_lan",
     "signing",
+    "signing_readiness_gate",
     "devices",
     "gates",
     "android_evidence_used_for_ios_gates"
@@ -75,6 +76,119 @@
         "certificate_common_name_redacted": {"type": "boolean"},
         "provisioning_profile_uuid_redacted": {"type": "boolean"},
         "archive_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
+      }
+    },
+    "signing_readiness_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "owner",
+        "source",
+        "current_base",
+        "verdict",
+        "signing_status",
+        "signing_summary",
+        "can_close_ios_app_signing_readiness",
+        "can_close_ios_device_acceptance",
+        "recorded_fields",
+        "missing",
+        "failures",
+        "evidence",
+        "interpretation"
+      ],
+      "properties": {
+        "schema_version": {"const": "vibescreen.evidence/v1"},
+        "kind": {"const": "ios_app_signing_readiness_gate"},
+        "owner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "head_ref", "repository", "scope"],
+          "properties": {
+            "role": {"const": "ios_app_signing_readiness_current_base_owner"},
+            "head_ref": {"const": "codex/phase5-ios-signing-readiness"},
+            "repository": {"const": "TaoSama/vibe-screen"},
+            "scope": {"type": "string", "minLength": 1}
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readiness", "evidence_root"],
+          "properties": {
+            "readiness": {"type": ["string", "null"]},
+            "evidence_root": {"type": "string", "minLength": 1}
+          }
+        },
+        "current_base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit", "branch", "dirty"],
+          "properties": {
+            "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+            "branch": {"type": ["string", "null"]},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "verdict": {"enum": ["pass", "blocked", "fail"]},
+        "signing_status": {"type": ["string", "null"]},
+        "signing_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "bundle_id",
+            "unique_bundle_id",
+            "team_id_recorded",
+            "codesign_identity_recorded",
+            "provisioning_profile_recorded",
+            "device_udid_hashes_recorded",
+            "entitlements_recorded",
+            "signed_artifact_sha256"
+          ],
+          "properties": {
+            "status": {"enum": ["pass", "blocked", "fail"]},
+            "bundle_id": {"type": ["string", "null"]},
+            "unique_bundle_id": {"type": "boolean"},
+            "team_id_recorded": {"type": "boolean"},
+            "codesign_identity_recorded": {"type": "boolean"},
+            "provisioning_profile_recorded": {"type": "boolean"},
+            "device_udid_hashes_recorded": {"type": "boolean"},
+            "entitlements_recorded": {"type": "boolean"},
+            "signed_artifact_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"}
+          }
+        },
+        "can_close_ios_app_signing_readiness": {"type": "boolean"},
+        "can_close_ios_device_acceptance": {"const": false},
+        "recorded_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "team_id",
+            "provisioning_profile",
+            "bundle_id",
+            "codesign_identity",
+            "device_udid",
+            "entitlements",
+            "signed_artifact",
+            "artifacts"
+          ],
+          "properties": {
+            "team_id": {"type": "boolean"},
+            "provisioning_profile": {"type": "boolean"},
+            "bundle_id": {"type": "boolean"},
+            "codesign_identity": {"type": "boolean"},
+            "device_udid": {"type": "boolean"},
+            "entitlements": {"type": "boolean"},
+            "signed_artifact": {"type": "boolean"},
+            "artifacts": {"type": "boolean"}
+          }
+        },
+        "missing": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "interpretation": {"type": "string", "minLength": 1}
       }
     },
     "devices": {
