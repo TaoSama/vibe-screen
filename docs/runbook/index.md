@@ -11,6 +11,7 @@
 - [Phase 0 verification and device gates](../changes/2026-08-04-phase-0-baseline/TEST.md)
 - [HarmonyOS NEXT / MatePad Mini device acceptance](harmony-matepad-mini.md)
 - [iOS iPhone/iPad device acceptance](ios-device-acceptance.md)
+- [iOS app-signing readiness current-base gate](../changes/2026-08-04-phase-5-ios-advanced/TEST.md#ios-app-signing-readiness-gate)
 - [Phase 5 multi-client/display current-base gate](../changes/2026-08-04-phase-5-ios-advanced/TEST.md#phase-5-multi-clientdisplay-current-base-gate)
 - [Phase 3 Internet and Authority operations](../changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md)
 - [Phase 3 public NAT/TURN readiness](phase3-public-nat-turn-readiness.md)

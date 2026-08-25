@@ -876,6 +876,15 @@ increase it.
   The current iOS renderer still advertises SDR only and has no HDR/EDR output
   pass; SDR fallback, Simulator, unsigned archive, Android, and macOS fallback
   evidence remain readiness inputs only.
+- The iOS app-signing prerequisite now has its own dedicated fail-closed
+  current-base owner, `ios-app-signing-readiness-gate`. The retained blocked
+  owner record is
+  [2026-08-25-ios-signing-current-base-owner-blocked](docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md):
+  it requires Team ID, provisioning profile UUID, unique bundle ID, non-ad-hoc
+  codesign identity, physical-device UDID hashes, signed-app entitlements, signed
+  artifact SHA-256, and archive/profile/entitlements artifacts before the
+  aggregate signing row can unblock. It still cannot close install, launch,
+  VideoToolbox, input, reconnect, audio, HDR, or full iOS device acceptance.
 - The read-only `make phase5-multi-client-current-base-gate EVIDENCE_DIR=...`
   owner gate now keeps the planned multiple-clients/displays capability
   fail-closed on current base. It requires retained evidence for two or more

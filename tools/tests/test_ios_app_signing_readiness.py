@@ -14,6 +14,14 @@ from vibescreen_evidence.ios_app_signing_readiness import READINESS_KIND, evalua
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.ios_app_signing_readiness"
 SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "ios-app-signing-readiness-gate.schema.json"
+BLOCKED_OWNER_EVIDENCE = (
+    REPOSITORY_ROOT
+    / "docs"
+    / "changes"
+    / "2026-08-04-phase-5-ios-advanced"
+    / "evidence"
+    / "2026-08-25-ios-signing-current-base-owner-blocked"
+)
 
 
 def write_artifacts(directory: Path, names: list[str]) -> None:
@@ -148,6 +156,31 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertFalse(result["can_close_ios_app_signing_readiness"])
+
+    def test_retained_current_base_owner_record_stays_blocked(self) -> None:
+        readiness_path = BLOCKED_OWNER_EVIDENCE / "ios-app-signing-readiness.json"
+        gate_path = BLOCKED_OWNER_EVIDENCE / "ios-app-signing-readiness-gate.json"
+        document = json.loads(readiness_path.read_text(encoding="utf-8"))
+
+        result = evaluate(document, BLOCKED_OWNER_EVIDENCE, readiness_path)
+        persisted = json.loads(gate_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["verdict"], persisted["verdict"])
+        self.assertEqual(result["owner"], persisted["owner"])
+        self.assertEqual(result["current_base"], persisted["current_base"])
+        self.assertEqual(result["signing_summary"], persisted["signing_summary"])
+        self.assertEqual(result["missing"], persisted["missing"])
+        self.assertEqual(result["failures"], persisted["failures"])
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertEqual(
+            result["owner"]["role"],
+            "ios_app_signing_readiness_current_base_owner",
+        )
+        self.assertEqual(result["owner"]["head_ref"], "codex/phase5-ios-signing-readiness")
+        self.assertFalse(result["can_close_ios_app_signing_readiness"])
+        self.assertFalse(result["can_close_ios_device_acceptance"])
+        self.assertIn("signing.team_id: must be a non-empty recorded value", result["missing"])
+        self.assertEqual(result["failures"], [])
 
     def test_prefixed_signed_artifact_digest_is_normalized_in_summary(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

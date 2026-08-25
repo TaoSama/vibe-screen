@@ -1,0 +1,68 @@
+{
+  "can_close_ios_app_signing_readiness": false,
+  "can_close_ios_device_acceptance": false,
+  "current_base": {
+    "branch": "codex/phase5-ios-signing-readiness",
+    "commit": "bcba288735dbb14d0e353694c031a8fc5de93ae4",
+    "dirty": false
+  },
+  "evidence": [],
+  "failures": [],
+  "interpretation": "A pass means retained signing-readiness evidence records Team ID, provisioning profile UUID, unique bundle ID, non-ad-hoc codesign identity, registered physical-device UDID hashes, and signed-app entitlements for an iPhoneOS artifact. It is not an install, launch, VideoToolbox, input, reconnect, audio, or full iOS device-acceptance pass.",
+  "kind": "ios_app_signing_readiness_gate",
+  "missing": [
+    "status: must be complete",
+    "xcode.version: must be a non-empty recorded value",
+    "xcode.selected_developer_dir: must be a non-empty recorded value",
+    "xcode.ios_sdk: must be a non-empty recorded value",
+    "signing.team_id: must be a non-empty recorded value",
+    "signing.provisioning_profile_uuid: must be a non-empty recorded value",
+    "signing.bundle_id: must be a non-empty recorded value",
+    "signing.codesign_identity: must be a non-empty recorded value",
+    "signing.signed_artifact_sha256: must be a non-empty recorded value",
+    "signing.status: must be complete",
+    "signing.signed_artifact_sha256: must be a SHA-256 digest",
+    "signing.device_udids: must include at least one registered physical-device UDID hash",
+    "signing.entitlements.application_identifier: must be a non-empty recorded value",
+    "signing.entitlements.team_identifier: must be a non-empty recorded value",
+    "signing.entitlements.bundle_identifier: must be a non-empty recorded value",
+    "signing.entitlements.keychain_access_groups: must list at least one group",
+    "signing.entitlements.raw_entitlements_sha256: must be a non-empty recorded value",
+    "signing.entitlements.raw_entitlements_sha256: must be a SHA-256 digest",
+    "artifacts: must include retained signing command/profile/entitlements output"
+  ],
+  "owner": {
+    "head_ref": "codex/phase5-ios-signing-readiness",
+    "repository": "TaoSama/vibe-screen",
+    "role": "ios_app_signing_readiness_current_base_owner",
+    "scope": "Phase 5 iOS app-signing readiness prerequisite only"
+  },
+  "recorded_fields": {
+    "artifacts": false,
+    "bundle_id": false,
+    "codesign_identity": false,
+    "device_udid": false,
+    "entitlements": false,
+    "provisioning_profile": false,
+    "signed_artifact": false,
+    "team_id": false
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "signing_status": "blocked",
+  "signing_summary": {
+    "bundle_id": null,
+    "codesign_identity_recorded": false,
+    "device_udid_hashes_recorded": false,
+    "entitlements_recorded": false,
+    "provisioning_profile_recorded": false,
+    "signed_artifact_sha256": null,
+    "status": "blocked",
+    "team_id_recorded": false,
+    "unique_bundle_id": false
+  },
+  "source": {
+    "evidence_root": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked",
+    "readiness": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-app-signing-readiness.json"
+  },
+  "verdict": "blocked"
+}

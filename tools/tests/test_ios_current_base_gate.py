@@ -20,6 +20,14 @@ from vibescreen_evidence.ios_current_base_manifest import (
 MODULE = "vibescreen_evidence.ios_current_base_gate"
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "ios-current-base-gate.schema.json"
 CURRENT_BASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+BLOCKED_OWNER_EVIDENCE = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "changes"
+    / "2026-08-04-phase-5-ios-advanced"
+    / "evidence"
+    / "2026-08-25-ios-signing-current-base-owner-blocked"
+)
 
 
 def make_docs(root: Path) -> None:
@@ -285,6 +293,29 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+
+    def test_retained_blocked_signing_owner_record_is_consumed_but_cannot_close(self):
+        manifest_path = BLOCKED_OWNER_EVIDENCE / "ios-current-base-manifest.json"
+        gate_path = BLOCKED_OWNER_EVIDENCE / "ios-current-base-gate.json"
+
+        report = derive_gate(manifest_path)
+        persisted = json.loads(gate_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(report["verdict"], persisted["verdict"])
+        self.assertEqual(report["owner"], persisted["owner"])
+        self.assertEqual(report["reasons"], persisted["reasons"])
+        self.assertEqual(report["checks"]["signing"], persisted["checks"]["signing"])
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertFalse(report["can_close_current_base_aggregate"])
+        self.assertTrue(
+            report["checks"]["signing"]["dedicated_signing_readiness_owner"]["passed"]
+        )
+        self.assertFalse(
+            report["checks"]["signing"]["dedicated_signing_readiness_gate"]["passed"]
+        )
+        self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+        self.assertIn("blocked: signing", report["reasons"])
 
     def test_dedicated_signing_readiness_owner_is_required(self):
         with tempfile.TemporaryDirectory() as directory_name:
