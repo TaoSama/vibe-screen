@@ -23,15 +23,15 @@ HOST_REAL_MEDIA_LOG = """
 2026-08-21T08:00:02Z SCStream capture started
 2026-08-21T08:00:02Z First frame received from ScreenCaptureKit display
 2026-08-21T08:00:02Z VideoToolbox encoder configured codec=hevc size=1920x1200
-2026-08-21T08:00:02Z encoded frame media_epoch=42 config_epoch=2 keyframe=true bytes=42000
+2026-08-21T08:00:02Z VideoToolbox output frame media_epoch=42 capture_source=ScreenCaptureKit codec=hevc keyframe=true timestamp=1000 bytes=42000
 """
 
 ANDROID_REAL_MEDIA_LOG = """
 08-21 08:00:01.000 I VibeInternet: internet_stream_active session_epoch=42 route=relay
 08-21 08:00:01.010 D VD: setupDecoder: 1920x1200, decoder=c2.android.hevc.decoder
 08-21 08:00:01.011 D VD: Decoder started: c2.android.hevc.decoder
-08-21 08:00:01.020 D VD: First frame: size=42000, header=[0,0,0,1], keyframe=true, surface=true, valid=true
-08-21 08:00:01.040 D VD: First output frame! size=1920x1200, flags=0
+08-21 08:00:01.020 D VD: First frame: size=42000, header=[0,0,0,1], keyframe=true, surface=true, valid=true, session_epoch=42
+08-21 08:00:01.040 D VD: First output frame! size=1920x1200, flags=0, session_epoch=42
 08-21 08:00:03.000 D VD: Decode stats: input=120, output=120, dropped=0
 """
 
@@ -96,6 +96,8 @@ class Phase3RealMediaContinuityTest(unittest.TestCase):
             result["continuity_summary"]["media_source"],
             "real_screencapturekit_or_cgdisplaystream",
         )
+        self.assertEqual(result["continuity_summary"]["capture_sources"], ["ScreenCaptureKit"])
+        self.assertEqual(result["continuity_summary"]["shared_pipeline_epochs"], [42])
         self.assertTrue(result["continuity_summary"]["public_internet_path"])
         assert_schema_shape(self, result)
 
@@ -154,12 +156,40 @@ class Phase3RealMediaContinuityTest(unittest.TestCase):
 
     def test_session_epoch_zero_counts_as_present(self) -> None:
         result = self.evaluate_logs(
-            host_log=HOST_REAL_MEDIA_LOG.replace("media_epoch=42", "config_epoch=2"),
+            host_log=HOST_REAL_MEDIA_LOG.replace("media_epoch=42", "media_epoch=0"),
             android_log=ANDROID_REAL_MEDIA_LOG.replace("session_epoch=42", "session_epoch=0"),
         )
 
         self.assertNotIn(
             "Protocol v1 media/session epoch evidence is missing",
+            result["reasons"],
+        )
+        self.assertNotIn(
+            "Host VideoToolbox output and Android MediaCodec input/output do not share a session epoch",
+            result["reasons"],
+        )
+
+    def test_missing_capture_source_metadata_blocks_even_with_legacy_frame_marker(self) -> None:
+        host_log = HOST_REAL_MEDIA_LOG.replace(
+            "VideoToolbox output frame media_epoch=42 capture_source=ScreenCaptureKit codec=hevc keyframe=true timestamp=1000 bytes=42000",
+            "encoded frame media_epoch=42 config_epoch=2 keyframe=true bytes=42000",
+        )
+
+        result = self.evaluate_logs(host_log=host_log)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("real capture-source metadata is missing", result["reasons"])
+        self.assertEqual(result["continuity_summary"]["shared_pipeline_epochs"], [])
+
+    def test_cross_epoch_capture_encoder_decoder_chain_blocks(self) -> None:
+        android_log = ANDROID_REAL_MEDIA_LOG.replace("session_epoch=42", "session_epoch=43")
+
+        result = self.evaluate_logs(android_log=android_log)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertEqual(result["continuity_summary"]["shared_pipeline_epochs"], [])
+        self.assertIn(
+            "Host VideoToolbox output and Android MediaCodec input/output do not share a session epoch",
             result["reasons"],
         )
 

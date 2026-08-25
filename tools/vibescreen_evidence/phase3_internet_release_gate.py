@@ -383,6 +383,17 @@ def _finite_number(value: Any) -> float | None:
     return None
 
 
+def _non_negative_integer_list(value: Any) -> list[int] | None:
+    if not isinstance(value, list):
+        return None
+    result: list[int] = []
+    for item in value:
+        if not isinstance(item, int) or isinstance(item, bool) or item < 0:
+            return None
+        result.append(item)
+    return result
+
+
 def _minimum(measured: float | None, minimum: float) -> dict[str, Any]:
     return {"measured": measured, "minimum": minimum, "passed": measured is not None and measured >= minimum}
 
@@ -830,6 +841,33 @@ def _real_media_gate(root: Path, path: Path | None) -> dict[str, Any]:
     output_frames = _finite_number(summary.get("continuous_output_frames"))
     if output_frames is None or output_frames < 120:
         reasons.append("real-media continuous_output_frames must be at least 120")
+    capture_sources = summary.get("capture_sources")
+    allowed_capture_sources = {"ScreenCaptureKit", "CGDisplayStream", "SCStream"}
+    if not isinstance(capture_sources, list) or not capture_sources:
+        reasons.append("real-media continuity_summary.capture_sources must be present")
+        capture_sources = []
+    elif not all(isinstance(source, str) and source in allowed_capture_sources for source in capture_sources):
+        reasons.append("real-media continuity_summary.capture_sources must name real capture sources")
+    videotoolbox_output_epochs = _non_negative_integer_list(summary.get("videotoolbox_output_epochs"))
+    if videotoolbox_output_epochs is None:
+        reasons.append("real-media continuity_summary.videotoolbox_output_epochs must be a non-negative integer list")
+        videotoolbox_output_epochs = []
+    mediacodec_input_epochs = _non_negative_integer_list(summary.get("mediacodec_first_input_epochs"))
+    if mediacodec_input_epochs is None:
+        reasons.append("real-media continuity_summary.mediacodec_first_input_epochs must be a non-negative integer list")
+        mediacodec_input_epochs = []
+    mediacodec_output_epochs = _non_negative_integer_list(summary.get("mediacodec_first_output_epochs"))
+    if mediacodec_output_epochs is None:
+        reasons.append("real-media continuity_summary.mediacodec_first_output_epochs must be a non-negative integer list")
+        mediacodec_output_epochs = []
+    shared_pipeline_epochs = _non_negative_integer_list(summary.get("shared_pipeline_epochs"))
+    if not shared_pipeline_epochs:
+        reasons.append("real-media continuity_summary.shared_pipeline_epochs must be present")
+        shared_pipeline_epochs = []
+    else:
+        observed_shared = set(videotoolbox_output_epochs) & set(mediacodec_input_epochs) & set(mediacodec_output_epochs)
+        if not set(shared_pipeline_epochs).issubset(observed_shared):
+            reasons.append("real-media continuity_summary.shared_pipeline_epochs must be observed in VideoToolbox and MediaCodec epoch lists")
     host_observation = (document or {}).get("host_observation")
     if not isinstance(host_observation, dict):
         reasons.append("real-media host_observation is required")

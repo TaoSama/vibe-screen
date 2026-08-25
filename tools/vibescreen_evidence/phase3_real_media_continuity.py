@@ -55,6 +55,18 @@ HOST_VIDEOTOOLBOX_OUTPUT_PATTERNS = (
     re.compile(r"VideoToolbox output", re.IGNORECASE),
     re.compile(r"encoded frame", re.IGNORECASE),
 )
+HOST_VIDEOTOOLBOX_OUTPUT_EPOCH_PATTERN = re.compile(
+    r"VideoToolbox output[^\n]*(?:media|session)[-_ ]?epoch[=: ]+(\d+)",
+    re.IGNORECASE,
+)
+HOST_VIDEOTOOLBOX_OUTPUT_SOURCE_PATTERN = re.compile(
+    r"VideoToolbox output[^\n]*capture_source=(ScreenCaptureKit|CGDisplayStream|SCStream)",
+    re.IGNORECASE,
+)
+HOST_VIDEOTOOLBOX_OUTPUT_SOURCE_EPOCH_PATTERN = re.compile(
+    r"VideoToolbox output[^\n]*(?:media|session)[-_ ]?epoch[=: ]+(\d+)[^\n]*capture_source=(ScreenCaptureKit|CGDisplayStream|SCStream)",
+    re.IGNORECASE,
+)
 HOST_SESSION_PATTERNS = (
     re.compile(r"Secure Internet product session started", re.IGNORECASE),
     re.compile(r"InternetProductSession", re.IGNORECASE),
@@ -81,6 +93,12 @@ ANDROID_DECODER_CONFIGURED_PATTERNS = (
     re.compile(r"Decoder started:", re.IGNORECASE),
 )
 ANDROID_FIRST_OUTPUT_PATTERN = re.compile(r"First output frame", re.IGNORECASE)
+ANDROID_FIRST_INPUT_EPOCH_PATTERN = re.compile(
+    r"First frame:[^\n]*session_epoch=(\d+)", re.IGNORECASE
+)
+ANDROID_FIRST_OUTPUT_EPOCH_PATTERN = re.compile(
+    r"First output frame[^\n]*session_epoch=(\d+)", re.IGNORECASE
+)
 ANDROID_OUTPUT_INDEX_PATTERN = re.compile(r"Output #(\d+)", re.IGNORECASE)
 ANDROID_OUTPUT_TOTAL_PATTERN = re.compile(r"Decode stats: input=\d+, output=(\d+)", re.IGNORECASE)
 ANDROID_DROP_PATTERNS = (
@@ -187,6 +205,22 @@ def _observed_int_matches(text: str, pattern: re.Pattern[str]) -> set[int]:
     return observed
 
 
+def _observed_named_matches(text: str, pattern: re.Pattern[str]) -> list[str]:
+    observed: list[str] = []
+    for match in pattern.finditer(text):
+        value = match.group(1)
+        if value not in observed:
+            observed.append(value)
+    return observed
+
+
+def _observed_output_source_epochs(text: str) -> dict[int, str]:
+    observed: dict[int, str] = {}
+    for match in HOST_VIDEOTOOLBOX_OUTPUT_SOURCE_EPOCH_PATTERN.finditer(text):
+        observed[int(match.group(1))] = match.group(2)
+    return observed
+
+
 def _longest_contiguous_run(values: Iterable[int]) -> int:
     longest = 0
     current = 0
@@ -261,9 +295,14 @@ def _parse_device_info(path: Path | None) -> dict[str, Any] | None:
 
 def analyze_host(text: str) -> dict[str, Any]:
     media_epochs = sorted({int(value) for value in HOST_MEDIA_EPOCH_PATTERN.findall(text)})
+    videotoolbox_output_epochs = sorted(
+        {int(value) for value in HOST_VIDEOTOOLBOX_OUTPUT_EPOCH_PATTERN.findall(text)}
+    )
     synthetic_markers = _synthetic_markers(text)
     capture_started = _contains_any(text, HOST_CAPTURE_STARTED_PATTERNS)
     capture_marker_count = _count_lines(text, HOST_CAPTURE_FIRST_FRAME_PATTERNS)
+    capture_sources = _observed_named_matches(text, HOST_VIDEOTOOLBOX_OUTPUT_SOURCE_PATTERN)
+    output_source_epochs = _observed_output_source_epochs(text)
     videotoolbox_output_frame_count = _count_lines(text, HOST_VIDEOTOOLBOX_OUTPUT_PATTERNS)
     if synthetic_markers:
         media_source = "synthetic"
@@ -281,6 +320,9 @@ def analyze_host(text: str) -> dict[str, Any]:
         "videotoolbox_configured": _contains_any(text, HOST_VIDEOTOOLBOX_CONFIG_PATTERNS),
         "videotoolbox_output_observed": _contains_any(text, HOST_VIDEOTOOLBOX_OUTPUT_PATTERNS),
         "videotoolbox_output_frame_count": videotoolbox_output_frame_count,
+        "videotoolbox_output_epochs": videotoolbox_output_epochs,
+        "capture_sources": capture_sources,
+        "videotoolbox_output_source_epochs": sorted(output_source_epochs),
         "media_epochs": media_epochs,
         "screen_recording_blocked": _contains_any(text, BLOCKING_HOST_PATTERNS),
         "videotoolbox_error_lines": _matching_lines(
@@ -306,7 +348,13 @@ def analyze_android(text: str) -> dict[str, Any]:
         "route": active.group(2).lower() if active else None,
         "decoder_configured": _contains_any(text, ANDROID_DECODER_CONFIGURED_PATTERNS),
         "first_input_frame": _contains_any(text, ANDROID_FIRST_INPUT_PATTERNS),
+        "first_input_frame_epochs": sorted(
+            {int(value) for value in ANDROID_FIRST_INPUT_EPOCH_PATTERN.findall(text)}
+        ),
         "first_output_frame": bool(ANDROID_FIRST_OUTPUT_PATTERN.search(text)),
+        "first_output_frame_epochs": sorted(
+            {int(value) for value in ANDROID_FIRST_OUTPUT_EPOCH_PATTERN.findall(text)}
+        ),
         "maximum_output_frame_index": max(observed_output_indices) if observed_output_indices else 0,
         "observed_output_frame_count": observed_output_frame_count,
         "reported_output_frame_count": reported_output_frame_count,
@@ -373,6 +421,14 @@ def evaluate(
     if synthetic:
         blockers.append("synthetic media markers are present in supplied logs")
 
+    host_capture_sources = sorted(set(host["capture_sources"]))
+    host_output_epochs = set(host["videotoolbox_output_source_epochs"])
+    android_input_epochs = set(android["first_input_frame_epochs"])
+    android_output_epochs = set(android["first_output_frame_epochs"])
+    shared_pipeline_epochs = sorted(
+        host_output_epochs & android_input_epochs & android_output_epochs
+    )
+
     _append_required_stage(
         stages,
         "host_internet_product_session",
@@ -410,9 +466,23 @@ def evaluate(
     )
     _append_required_stage(
         stages,
+        "real_capture_source_metadata",
+        any(source in {"ScreenCaptureKit", "CGDisplayStream", "SCStream"} for source in host_capture_sources),
+        "real capture-source metadata is missing",
+        blockers,
+    )
+    _append_required_stage(
+        stages,
         "videotoolbox_output",
         host["videotoolbox_output_observed"],
         "VideoToolbox encoded-output evidence is missing",
+        blockers,
+    )
+    _append_required_stage(
+        stages,
+        "videotoolbox_output_epoch",
+        bool(host_output_epochs),
+        "VideoToolbox output media epoch evidence is missing",
         blockers,
     )
     _append_required_stage(
@@ -434,6 +504,13 @@ def evaluate(
         "android_first_output_frame",
         android["first_output_frame"],
         "Android MediaCodec first output frame evidence is missing",
+        blockers,
+    )
+    _append_required_stage(
+        stages,
+        "shared_pipeline_epoch",
+        bool(shared_pipeline_epochs),
+        "Host VideoToolbox output and Android MediaCodec input/output do not share a session epoch",
         blockers,
     )
     enough_output = android["observed_output_frame_count"] >= minimum_output_frames
@@ -503,10 +580,16 @@ def evaluate(
             "selected_webrtc_route": android["route"],
             "protocol_v1_media_epochs": host["media_epochs"],
             "protocol_v1_session_epoch": android["session_epoch"],
+            "capture_sources": host_capture_sources,
             "capture_frame_count": host["capture_marker_count"],
             "videotoolbox_output_frames": host["videotoolbox_output_frame_count"],
+            "videotoolbox_output_epochs": host["videotoolbox_output_epochs"],
+            "videotoolbox_output_source_epochs": host["videotoolbox_output_source_epochs"],
             "mediacodec_first_input_frame": android["first_input_frame"],
+            "mediacodec_first_input_epochs": android["first_input_frame_epochs"],
             "mediacodec_first_output_frame": android["first_output_frame"],
+            "mediacodec_first_output_epochs": android["first_output_frame_epochs"],
+            "shared_pipeline_epochs": shared_pipeline_epochs,
             "continuous_output_frames": android["observed_output_frame_count"],
             "dropped_frames": android["drop_count"],
             "decoder_error_count": len(android["decoder_error_lines"]),
