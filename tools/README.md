@@ -430,14 +430,27 @@ writes `.build/evidence/soak-2h/host-rss-gate.json`. It exits zero only when
 
 The evaluator requires an error-free source soak of at least 7,056 seconds,
 230 Host RSS samples, 115 second-half samples, samples within 90 seconds of
-both window boundaries, and no internal sampling gap above 90 seconds. A pass
-requires all of these steady-state limits:
+both window boundaries, and no internal sampling gap above 90 seconds. It also
+requires a matching exact-window report derived from native
+`VIBE_SCREEN_TELEMETRY_PATH` JSONL for the same summary window. Legacy
+log-reencoded telemetry or a missing exact-window report is descriptive only and
+cannot pass the formal Host RSS gate. A pass requires all of these steady-state
+RSS limits:
 
 - second-half OLS slope 95% upper bound no greater than 40 KiB/min;
 - second-half Theil-Sen slope no greater than 40 KiB/min;
 - second-half endpoint-median drift no greater than 4 MiB;
 - full-window endpoint-median drift no greater than 8 MiB; and
 - second-half final-quarter mean step no greater than 2 MiB.
+
+The same pass also requires continuous Host stream telemetry in the exact
+window: `stream_stats` and accepted `heartbeat_received` coverage without a
+window gap above 90 seconds, positive FPS, zero `frame_queue_drop` total, stable
+queue capacity with queue depth within that capacity, stable encoder in-flight
+capacity with in-flight count and callback registry count within capacity,
+latest pixel-buffer retention within its fixed capacity, and an encoder present
+throughout the window. Missing lifecycle telemetry makes the gate
+`insufficient`; bounded-queue or frame-retention overages make it `fail`.
 
 The command exits zero only for `pass`; invalid, incomplete, or undersampled
 evidence is `insufficient` and exits nonzero. A pass means the recorded window
