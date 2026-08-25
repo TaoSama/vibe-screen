@@ -516,6 +516,13 @@ class StreamingServer: EncodedFrameSink {
     private var lanSecureRecordSession: LANSecureRecordSession?
     private var protocolV1Framer = ProtocolV1Framer()
     private var protocolV1Session: ProtocolV1SessionCoordinator?
+    private static let protocolV1MaximumClients = 1
+    private static let protocolV1MaximumVirtualDisplays = 1
+    private static let protocolV1MaximumVideoStreamsPerClient = 1
+    private let protocolV1DisplayRouter = HostMultiClientDisplayRouter(
+        maximumClients: StreamingServer.protocolV1MaximumClients,
+        maximumStreamsPerClient: StreamingServer.protocolV1MaximumVideoStreamsPerClient
+    )
     private var protocolV1TouchAggregator = ProtocolV1TouchAggregator()
     private var lanSecureRecordFramer = LANSecureRecordStreamFramer()
     private var protocolV1IncomingFiles: ProtocolV1IncomingFileTransferManager?
@@ -788,6 +795,7 @@ class StreamingServer: EncodedFrameSink {
         codecNegotiationGeneration = nil
         connectionProtocolMode = .legacy
         stopProtocolV1Audio(reason: "connection_admitted")
+        protocolV1Session?.close()
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
@@ -884,6 +892,7 @@ class StreamingServer: EncodedFrameSink {
         inputBuffer.removeAll(keepingCapacity: true)
         connectionProtocolMode = .legacy
         stopProtocolV1Audio(reason: "connection_ended")
+        protocolV1Session?.close()
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
@@ -1489,7 +1498,17 @@ class StreamingServer: EncodedFrameSink {
     /// empty list keeps the single-display behavior (session synthesizes one).
     func setProtocolV1Displays(_ displays: [ProtocolV1DisplayInfo]) {
         performOnNetworkQueue {
-            self.protocolV1Displays = displays
+            self.protocolV1Displays = Self.cappedProtocolV1Displays(displays)
+        }
+    }
+
+    private static func cappedProtocolV1Displays(_ displays: [ProtocolV1DisplayInfo]) -> [ProtocolV1DisplayInfo] {
+        var virtualCount = 0
+        return displays.filter { display in
+            guard display.isVirtual else { return true }
+            guard virtualCount < protocolV1MaximumVirtualDisplays else { return false }
+            virtualCount += 1
+            return true
         }
     }
 
@@ -2095,7 +2114,8 @@ class StreamingServer: EncodedFrameSink {
             managedPolicy: managedPolicy,
             fileTransferAllowed: incomingFiles != nil && filePolicy.allowed,
             audioCaptureAvailable: audioStream.canAdvertiseCapture,
-            wakeHostAvailable: wakeHostAuthorizer.wakeAllowed
+            wakeHostAvailable: wakeHostAuthorizer.wakeAllowed,
+            maximumClients: Self.protocolV1MaximumClients
         )
         if activeConnectionIsWireless && lanRecordProtectionState == .encrypted {
             hostCapabilities.insert(.endToEndEncryption)
@@ -2118,6 +2138,9 @@ class StreamingServer: EncodedFrameSink {
             displayName: protocolV1DisplayName,
             displayIsVirtual: protocolV1DisplayIsVirtual,
             displays: protocolV1Displays,
+            maximumClients: Self.protocolV1MaximumClients,
+            maximumVideoStreamsPerClient: Self.protocolV1MaximumVideoStreamsPerClient,
+            displayRouter: protocolV1DisplayRouter,
             managedPolicy: managedPolicy,
             fileTransferPolicy: filePolicy
         ))
@@ -3576,6 +3599,7 @@ class StreamingServer: EncodedFrameSink {
         lanSecureRecordSession = nil
         lanSecureRecordFramer = LANSecureRecordStreamFramer()
         lanRecordProtectionState = .notApplicable
+        protocolV1Session?.close()
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()

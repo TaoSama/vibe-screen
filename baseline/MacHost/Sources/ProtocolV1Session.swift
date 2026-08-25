@@ -11,6 +11,167 @@ struct ProtocolV1DisplayInfo: Equatable {
     let isVirtual: Bool
 }
 
+struct HostClientSessionKey: Hashable, Sendable {
+    let sessionID: Data
+    let epoch: UInt64
+
+    init(sessionID: Data, epoch: UInt64) {
+        self.sessionID = sessionID
+        self.epoch = epoch
+    }
+}
+
+struct HostDisplayStreamBinding: Equatable, Sendable {
+    let displayID: String
+    let streamID: UInt64
+}
+
+enum HostDisplayRouterError: Error, Equatable {
+    case invalidSession
+    case invalidBinding
+    case clientLimitReached(Int)
+    case streamLimitReached(Int)
+    case duplicateStream(UInt64)
+    case duplicateDisplay(String)
+    case unknownSession
+}
+
+/// Host-owned routing state for Protocol v1 display streams. It is intentionally
+/// independent from Network.framework so the routing and resource-cap policy is
+/// unit-testable without a live client.
+final class HostMultiClientDisplayRouter: @unchecked Sendable {
+    let maximumClients: Int
+    let maximumStreamsPerClient: Int
+
+    private var sessions: [HostClientSessionKey: [UInt64: HostDisplayStreamBinding]] = [:]
+    private let lock = NSLock()
+
+    init(maximumClients: Int = 1, maximumStreamsPerClient: Int = 1) {
+        self.maximumClients = max(1, maximumClients)
+        self.maximumStreamsPerClient = max(1, maximumStreamsPerClient)
+    }
+
+    var activeClientCount: Int { lock.withLock { sessions.count } }
+
+    func register(_ key: HostClientSessionKey) throws {
+        try lock.withLock {
+            try registerLocked(key)
+        }
+    }
+
+    private func registerLocked(_ key: HostClientSessionKey) throws {
+        guard !key.sessionID.isEmpty, key.epoch > 0 else { throw HostDisplayRouterError.invalidSession }
+        if sessions[key] != nil { return }
+        if sessions.keys.contains(where: { $0.sessionID == key.sessionID && $0.epoch > key.epoch }) {
+            throw HostDisplayRouterError.invalidSession
+        }
+
+        let superseded = sessions.keys.filter {
+            $0.sessionID == key.sessionID && $0.epoch < key.epoch
+        }
+        for oldKey in superseded { sessions.removeValue(forKey: oldKey) }
+
+        guard sessions.count < maximumClients else {
+            throw HostDisplayRouterError.clientLimitReached(maximumClients)
+        }
+        sessions[key] = [:]
+    }
+
+    func allocateStream(for displayID: String, in key: HostClientSessionKey) throws -> UInt64 {
+        try lock.withLock {
+            try allocateStreamLocked(for: displayID, in: key)
+        }
+    }
+
+    private func allocateStreamLocked(for displayID: String, in key: HostClientSessionKey) throws -> UInt64 {
+        guard !displayID.isEmpty else { throw HostDisplayRouterError.invalidBinding }
+        guard var streams = sessions[key] else { throw HostDisplayRouterError.unknownSession }
+        if let existing = streams.values.first(where: { $0.displayID == displayID }) {
+            return existing.streamID
+        }
+        guard streams.count < maximumStreamsPerClient else {
+            throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
+        }
+        let streamID = nextStreamID(after: streams.keys)
+        streams[streamID] = HostDisplayStreamBinding(displayID: displayID, streamID: streamID)
+        sessions[key] = streams
+        return streamID
+    }
+
+    func bind(_ binding: HostDisplayStreamBinding, to key: HostClientSessionKey) throws {
+        try lock.withLock {
+            try bindLocked(binding, to: key)
+        }
+    }
+
+    private func bindLocked(_ binding: HostDisplayStreamBinding, to key: HostClientSessionKey) throws {
+        guard binding.streamID > 0, !binding.displayID.isEmpty else {
+            throw HostDisplayRouterError.invalidBinding
+        }
+        guard var streams = sessions[key] else { throw HostDisplayRouterError.unknownSession }
+        guard streams[binding.streamID] == nil else {
+            throw HostDisplayRouterError.duplicateStream(binding.streamID)
+        }
+        guard !streams.values.contains(where: { $0.displayID == binding.displayID }) else {
+            throw HostDisplayRouterError.duplicateDisplay(binding.displayID)
+        }
+        guard streams.count < maximumStreamsPerClient else {
+            throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
+        }
+        streams[binding.streamID] = binding
+        sessions[key] = streams
+    }
+
+    func rebind(streamID: UInt64, toDisplayID displayID: String, in key: HostClientSessionKey) throws {
+        try lock.withLock {
+            try rebindLocked(streamID: streamID, toDisplayID: displayID, in: key)
+        }
+    }
+
+    private func rebindLocked(streamID: UInt64, toDisplayID displayID: String, in key: HostClientSessionKey) throws {
+        guard streamID > 0, !displayID.isEmpty else { throw HostDisplayRouterError.invalidBinding }
+        guard var streams = sessions[key] else { throw HostDisplayRouterError.unknownSession }
+        if streams.values.contains(where: { $0.displayID == displayID && $0.streamID != streamID }) {
+            throw HostDisplayRouterError.duplicateDisplay(displayID)
+        }
+        if streams[streamID] == nil, streams.count >= maximumStreamsPerClient {
+            throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
+        }
+        streams[streamID] = HostDisplayStreamBinding(displayID: displayID, streamID: streamID)
+        sessions[key] = streams
+    }
+
+    func binding(streamID: UInt64, in key: HostClientSessionKey) -> HostDisplayStreamBinding? {
+        lock.withLock { sessions[key]?[streamID] }
+    }
+
+    func bindings(in key: HostClientSessionKey) -> [HostDisplayStreamBinding] {
+        lock.withLock { sessions[key]?.values.sorted { $0.streamID < $1.streamID } ?? [] }
+    }
+
+    func release(streamID: UInt64, in key: HostClientSessionKey) {
+        lock.withLock {
+            releaseLocked(streamID: streamID, in: key)
+        }
+    }
+
+    private func releaseLocked(streamID: UInt64, in key: HostClientSessionKey) {
+        guard var streams = sessions[key] else { return }
+        streams.removeValue(forKey: streamID)
+        sessions[key] = streams
+    }
+
+    func disconnect(_ key: HostClientSessionKey) {
+        lock.withLock { _ = sessions.removeValue(forKey: key) }
+    }
+
+    private func nextStreamID(after allocated: Dictionary<UInt64, HostDisplayStreamBinding>.Keys) -> UInt64 {
+        var candidate: UInt64 = 1
+        while allocated.contains(candidate) { candidate += 1 }
+        return candidate
+    }
+}
+
 struct ManagedPolicy: Equatable {
     static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
     static let defaultMaximumAudioStreams: UInt32 = 1
@@ -186,7 +347,8 @@ struct ProtocolV1SessionConfiguration {
         fileTransferAllowed: Bool = false,
         audioCaptureAvailable: Bool = false,
         wakeHostAvailable: Bool = false,
-        peripheralInputFrameworkAvailable: Bool = false
+        peripheralInputFrameworkAvailable: Bool = false,
+        maximumClients: Int = 1
     ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
@@ -211,6 +373,7 @@ struct ProtocolV1SessionConfiguration {
         }
         if audioCaptureAvailable && managedPolicy.audioAllowed { capabilities.insert(.audio) }
         if wakeHostAvailable && managedPolicy.wakeAllowed { capabilities.insert(.wakeHost) }
+        if maximumClients > 1 { capabilities.insert(.multiClient) }
         return capabilities
     }
 
@@ -234,6 +397,9 @@ struct ProtocolV1SessionConfiguration {
     /// synthesizes a single entry from the currently captured identity so the
     /// single-display path keeps ListDisplays count == 1.
     var displays: [ProtocolV1DisplayInfo] = []
+    var maximumClients: Int = 1
+    var maximumVideoStreamsPerClient: Int = 1
+    var displayRouter: HostMultiClientDisplayRouter?
     var managedPolicy: ManagedPolicy = .unmanaged
     var fileTransferPolicy: ProtocolV1FileTransferPolicy = .default
 }
@@ -338,13 +504,13 @@ enum ProtocolV1SessionAction {
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
-   case applyVideoPreferences(
-       token: UInt64,
-       bitrateKbps: UInt32,
-       framesPerSecond: UInt32,
-       qualityPreset: VSVideoQualityPreset,
-       resetQualityToAuto: Bool
-   )
+    case applyVideoPreferences(
+        token: UInt64,
+        bitrateKbps: UInt32,
+        framesPerSecond: UInt32,
+        qualityPreset: VSVideoQualityPreset,
+        resetQualityToAuto: Bool
+    )
     /// A negotiated client asked the host to run one catalog action. The action
     /// leaves the session lock as an intent so the AppDelegate can drive
     /// AppKit/Accessibility on the main actor; the host confirms the outcome
@@ -417,6 +583,8 @@ final class ProtocolV1SessionCoordinator {
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
     private var pendingWakeHostRequests: [Data: UInt64] = [:]
+    private var displayRouter: HostMultiClientDisplayRouter
+    private let sessionKey: HostClientSessionKey
 
     /// The remote peer's device identity captured from ClientHello. Every
     /// incoming clipboard offer/content must carry this exact, non-empty
@@ -442,10 +610,24 @@ final class ProtocolV1SessionCoordinator {
         self.configuration = configuration
         self.managedPolicyResolver = ManagedPolicyResolver(localPolicy: configuration.managedPolicy)
         self.negotiatedFileTransferPolicy = configuration.fileTransferPolicy
+        self.sessionKey = HostClientSessionKey(
+            sessionID: configuration.sessionID,
+            epoch: configuration.sessionEpoch
+        )
+        self.displayRouter = configuration.displayRouter ?? HostMultiClientDisplayRouter(
+            maximumClients: configuration.maximumClients,
+            maximumStreamsPerClient: configuration.maximumVideoStreamsPerClient
+        )
     }
 
     var effectiveManagedPolicy: ManagedPolicy {
         withSessionLock { managedPolicyResolver.effectivePolicy }
+    }
+
+    func close() {
+        withSessionLock {
+            closeLocked()
+        }
     }
 
     func updateDisplayGeometry(width: Int, height: Int, rotation: Int) {
@@ -685,6 +867,13 @@ final class ProtocolV1SessionCoordinator {
         streamID: UInt64,
         correlationID: UInt64
     ) -> [ProtocolV1SessionAction] {
+        if let routingFailure = routeDisplayFailure(
+            displayID: displayID,
+            streamID: streamID,
+            correlationID: correlationID
+        ) {
+            return routingFailure
+        }
         if !displayID.isEmpty { adoptDisplay(id: displayID) }
         let nextEpoch = configEpoch + 1
         var response = VSStartDisplayResponse()
@@ -719,11 +908,9 @@ final class ProtocolV1SessionCoordinator {
             hostHello.hostName = configuration.hostName
             hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
             hostHello.codecs = configuration.supportedCodecs
-            // Echo the negotiated resource limits back to the client so both
-            // sides agree on clipboard/file ceilings. HostHello carries the
-            // host's view; SessionAccepted carries the jointly negotiated
-            // value. They are identical after capability negotiation.
-            hostHello.resourceLimits = negotiatedResourceLimits()
+            // HostHello carries the host-side caps; SessionAccepted carries the
+            // jointly negotiated caps after peer limits and policy are applied.
+            hostHello.resourceLimits = hostResourceLimits()
 
             var accepted = VSSessionAccepted()
             accepted.sessionID = configuration.sessionID
@@ -875,12 +1062,16 @@ final class ProtocolV1SessionCoordinator {
                         correlationID: envelope.messageID
                     )
                 }
-                return [.selectDisplay(id: requestedID)] + renegotiateSelectedDisplayLocked(
+                let renegotiation = renegotiateSelectedDisplayLocked(
                     displayID: requestedID,
                     configEpoch: configEpoch,
                     streamID: streamID,
                     correlationID: envelope.messageID
                 )
+                guard !renegotiation.contains(where: { if case .close = $0 { true } else { false } }) else {
+                    return renegotiation
+                }
+                return [.selectDisplay(id: requestedID)] + renegotiation
             }
             guard phase == .awaitingDisplayStart else {
                 return invalidState("StartDisplay is not valid in the current state.", envelope.messageID)
@@ -1352,31 +1543,11 @@ final class ProtocolV1SessionCoordinator {
             return [.wakeHost(request: context, correlationID: envelope.messageID)]
 
         case .protocolError(let error):
-            phase = .failed
-            _ = stylusSequenceState.consumeReset()
-            resetControllerState()
-            audioState.reset()
-            pendingHostActionInvocations.removeAll()
-            pendingWakeHostRequests.removeAll()
-            clipboardCore?.reset()
-            remoteManagedClipboardAllowed = true
-            managedPolicyResolver.clearRemote()
-            negotiatedFileTransferPolicy = configuration.fileTransferPolicy
-            peerResourceLimits = VSResourceLimits()
+            closeLocked(phase: .failed)
             return [.peerError(error), .close]
 
         case .disconnectNotice:
-            phase = .closed
-            _ = stylusSequenceState.consumeReset()
-            resetControllerState()
-            audioState.reset()
-            pendingHostActionInvocations.removeAll()
-            pendingWakeHostRequests.removeAll()
-            clipboardCore?.reset()
-            remoteManagedClipboardAllowed = true
-            managedPolicyResolver.clearRemote()
-            negotiatedFileTransferPolicy = configuration.fileTransferPolicy
-            peerResourceLimits = VSResourceLimits()
+            closeLocked()
             return [.close]
 
         default:
@@ -1557,7 +1728,8 @@ final class ProtocolV1SessionCoordinator {
         }
         guard let target else { return true }
         if target.displayID.isEmpty && target.streamID == 0 { return true }
-        return target.displayID == configuration.displayID && target.streamID == streamID
+        guard target.streamID == streamID else { return false }
+        return displayRouter.binding(streamID: streamID, in: sessionKey)?.displayID == target.displayID
     }
 
     private func acceptsPeripheralKind(_ kind: String) -> Bool {
@@ -1656,6 +1828,21 @@ final class ProtocolV1SessionCoordinator {
             policy: managedPolicyResolver.effectivePolicy
         )
         remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
+        do {
+            try displayRouter.register(sessionKey)
+        } catch HostDisplayRouterError.clientLimitReached {
+            return fail(
+                code: .resourceExhausted,
+                message: "Host has reached the negotiated maximum client count.",
+                correlationID: correlationID
+            )
+        } catch {
+            return fail(
+                code: .invalidState,
+                message: "Host could not register the Protocol v1 client route.",
+                correlationID: correlationID
+            )
+        }
 
         // Capture the peer's device identity. Every incoming clipboard
         // offer/content must originate from this exact device; an empty or
@@ -1705,22 +1892,56 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func negotiatedResourceLimits() -> VSResourceLimits {
-        var limits = VSResourceLimits()
-        limits.maximumClients = 1
-        limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
-        limits.maximumVideoStreams = 1
-        limits.maximumAudioStreams = negotiatedCapabilities.contains(.audio)
-            ? ManagedPolicy.defaultMaximumAudioStreams
-            : 0
-        limits.maximumClipboardBytes = negotiatedMaximumClipboardBytes > 0
-            ? UInt64(negotiatedMaximumClipboardBytes)
-            : ManagedPolicy.defaultMaximumClipboardBytes
+        var limits = hostResourceLimits()
+        limits.maximumClients = negotiatedLimit(
+            hostLimit: limits.maximumClients,
+            peerLimit: peerResourceLimits.maximumClients
+        )
+        limits.maximumDisplays = negotiatedLimit(
+            hostLimit: limits.maximumDisplays,
+            peerLimit: peerResourceLimits.maximumDisplays
+        )
+        limits.maximumVideoStreams = negotiatedLimit(
+            hostLimit: limits.maximumVideoStreams,
+            peerLimit: peerResourceLimits.maximumVideoStreams
+        )
+        if !negotiatedCapabilities.contains(.multiClient) {
+            limits.maximumClients = 1
+        }
+        if !negotiatedCapabilities.contains(.multiDisplay) {
+            limits.maximumDisplays = 1
+            limits.maximumVideoStreams = 1
+        }
+        if !negotiatedCapabilities.contains(.audio) {
+            limits.maximumAudioStreams = 0
+        }
+        if negotiatedMaximumClipboardBytes > 0 {
+            limits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
+        }
         if negotiatedCapabilities.contains(.fileTransfer) {
             limits.maximumFileBytes = negotiatedFileTransferPolicy.maximumFileBytes
             limits.maximumFileChunkBytes = UInt32(clamping: negotiatedFileTransferPolicy.maximumChunkBytes)
         }
+        return limits
+    }
+
+    private func hostResourceLimits() -> VSResourceLimits {
+        var limits = VSResourceLimits()
+        limits.maximumClients = UInt32(clamping: displayRouter.maximumClients)
+        limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
+        limits.maximumVideoStreams = UInt32(clamping: displayRouter.maximumStreamsPerClient)
+        limits.maximumAudioStreams = ManagedPolicy.defaultMaximumAudioStreams
+        limits.maximumClipboardBytes = ManagedPolicy.defaultMaximumClipboardBytes
+        if negotiatedCapabilities.contains(.fileTransfer) {
+            limits.maximumFileBytes = configuration.fileTransferPolicy.maximumFileBytes
+            limits.maximumFileChunkBytes = UInt32(clamping: configuration.fileTransferPolicy.maximumChunkBytes)
+        }
         managedPolicyResolver.effectivePolicy.applyingResourceLimits(to: &limits)
         return limits
+    }
+
+    private func negotiatedLimit(hostLimit: UInt32, peerLimit: UInt32) -> UInt32 {
+        peerLimit == 0 ? hostLimit : min(hostLimit, peerLimit)
     }
 
     private func fileTransferPolicy(for policy: ManagedPolicy) -> ProtocolV1FileTransferPolicy {
@@ -1743,7 +1964,17 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func startDisplay(correlationID: UInt64) -> [ProtocolV1SessionAction] {
-        let streamID: UInt64 = 1
+        let streamID: UInt64
+        do {
+            streamID = try displayRouter.allocateStream(for: configuration.displayID, in: sessionKey)
+        } catch HostDisplayRouterError.streamLimitReached {
+            return resourceExhausted(
+                "Host has reached the negotiated maximum video stream count for this client.",
+                correlationID
+            )
+        } catch {
+            return invalidState("StartDisplay could not allocate a display stream.", correlationID)
+        }
         let configEpoch: UInt64 = 1
         var response = VSStartDisplayResponse()
         response.accepted = true
@@ -1761,6 +1992,30 @@ final class ProtocolV1SessionCoordinator {
             ]
         } catch {
             return serializationFailure()
+        }
+    }
+
+    private func routeDisplayFailure(
+        displayID: String,
+        streamID: UInt64,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction]? {
+        let routedDisplayID = displayID.isEmpty ? configuration.displayID : displayID
+        do {
+            try displayRouter.rebind(streamID: streamID, toDisplayID: routedDisplayID, in: sessionKey)
+            return nil
+        } catch HostDisplayRouterError.streamLimitReached {
+            return resourceExhausted(
+                "Host has reached the negotiated maximum video stream count for this client.",
+                correlationID
+            )
+        } catch HostDisplayRouterError.duplicateDisplay {
+            return invalidState(
+                "Host display routing rejected a duplicate display binding for this client.",
+                correlationID
+            )
+        } catch {
+            return invalidState("Host display routing could not update the active stream.", correlationID)
         }
     }
 
@@ -1939,6 +2194,10 @@ final class ProtocolV1SessionCoordinator {
 
     private func unsupportedCapability(_ message: String, _ correlationID: UInt64) -> [ProtocolV1SessionAction] {
         fail(code: .unsupportedCapability, message: message, correlationID: correlationID)
+    }
+
+    private func resourceExhausted(_ message: String, _ correlationID: UInt64) -> [ProtocolV1SessionAction] {
+        fail(code: .resourceExhausted, message: message, correlationID: correlationID)
     }
 
     // MARK: - Clipboard
@@ -2142,15 +2401,7 @@ final class ProtocolV1SessionCoordinator {
         error.retryable = false
         error.component = "macos-host-session"
         let sessionScoped = phase != .awaitingClientHello
-        phase = .failed
-        _ = stylusSequenceState.consumeReset()
-        resetControllerState()
-        audioState.reset()
-        pendingHostActionInvocations.removeAll()
-        pendingWakeHostRequests.removeAll()
-        clipboardCore?.reset()
-        remoteManagedClipboardAllowed = true
-        managedPolicyResolver.clearRemote()
+        closeLocked(phase: .failed)
         do {
             return [
                 .sendControl(try encode(
@@ -2182,7 +2433,12 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func serializationFailure() -> [ProtocolV1SessionAction] {
-        phase = .failed
+        closeLocked(phase: .failed)
+        return [.close]
+    }
+
+    private func closeLocked(phase nextPhase: ProtocolV1SessionPhase = .closed) {
+        phase = nextPhase
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
         audioState.reset()
@@ -2191,7 +2447,9 @@ final class ProtocolV1SessionCoordinator {
         clipboardCore?.reset()
         remoteManagedClipboardAllowed = true
         managedPolicyResolver.clearRemote()
-        return [.close]
+        negotiatedFileTransferPolicy = configuration.fileTransferPolicy
+        peerResourceLimits = VSResourceLimits()
+        displayRouter.disconnect(sessionKey)
     }
 
     private func resetControllerState() {

@@ -895,9 +895,17 @@ increase it.
   evidence owner is #199 after being rebased onto the #225 baseline; it provides
   a fail-closed evidence gate for the latest mainline instead of treating the
   offline magic-packet baseline as a hardware pass.
+- The macOS Host now has an offline-tested Protocol v1 client/display routing
+  boundary: sessions register by `session_id` plus epoch, allocate bounded
+  display `stream_id` bindings, reject stale epochs while a newer route is
+  active and over-cap clients or streams, validate targeted input against the
+  owning session route, and release routes on protocol close. Production USB/LAN
+  transport still admits one active Network.framework connection and one capture
+  pipeline, so multi-device and parallel multi-display capture acceptance remain
+  open.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
-  carries additive Protocol v1 fields and client implementations for multiple
-  clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
+  carries additive Protocol v1 fields plus client and Host-session boundaries
+  for multiple clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
 - The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
   current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.
