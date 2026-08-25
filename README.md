@@ -340,9 +340,11 @@ approval and headless reboot still require gated macOS integration evidence.
 Real CGEvent
 injection under Accessibility is now exercised on device for keyboard and
 mouse-wheel scroll (see Phase 1). The legacy compatibility session
-still has no keyboard/native-mouse entry point; keyboard and native mouse are
-provided only through the Protocol v1 session, where keyboard and scroll are
-on-device verified and native pointer move/click remain pending a physical HID
+is intentionally a touch-compatible fallback and has no keyboard/native-mouse
+entry point; keyboard and native pointer move/primary click remain Protocol
+v1-only capability-gated features, so old peers fail closed instead of receiving
+unnegotiated input bytes. Keyboard and scroll are on-device verified through
+Protocol v1, while native pointer move/click remain pending a physical HID
 mouse. A two-hour device soak has run (2026-08-09) with a stable stream, but the
 host RSS no-growth gate is still open (see Phase 0).
 

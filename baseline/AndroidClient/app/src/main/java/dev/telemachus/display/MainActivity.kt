@@ -239,6 +239,7 @@ class MainActivity : AppCompatActivity() {
     private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
+    private var unsupportedNativePointerNoticeShown = false
     private var nextNativePointerMoveDiagAtMs = 0L
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
@@ -1205,7 +1206,8 @@ class MainActivity : AppCompatActivity() {
                 else -> null
             }
         if (nativePointerInput != null) {
-            when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
+            val sessionBinding = currentSessionBinding()
+            when (ClientInputDispatch(sessionBinding).sendPointer(nativePointerInput)) {
                 ClientInputDispatchResult.SENT -> {
                     logNativePointerForwarded(event, nativePointerInput)
                     return true
@@ -1215,7 +1217,12 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
-                ClientInputDispatchResult.UNSUPPORTED -> Unit
+                ClientInputDispatchResult.UNSUPPORTED -> {
+                    if (shouldReportUnsupportedNativePointer(event, nativePointerInput, sessionBinding.capabilities)) {
+                        reportUnsupportedNativePointer(nativePointerInput, sessionBinding.capabilities)
+                        return true
+                    }
+                }
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS &&
@@ -1259,6 +1266,49 @@ class MainActivity : AppCompatActivity() {
         )
         return true
     }
+
+    private fun shouldReportUnsupportedNativePointer(
+        event: MotionEvent,
+        nativePointerInput: ClientPointerInput,
+        capabilities: ClientSessionCapabilities,
+    ): Boolean {
+        if (capabilities.nativePointer) return false
+        if (!NativeInputWire.isMouseLikeSource(event.device?.sources ?: event.source)) return false
+        if (nativePointerInput.action == ClientPointerAction.SCROLL) return false
+        val secondaryButtonEvent =
+            nativePointerInput.actionButton == MotionEvent.BUTTON_SECONDARY ||
+                nativePointerInput.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+        val secondaryButtonTransition =
+            nativePointerInput.action == ClientPointerAction.BUTTON_PRESS ||
+                nativePointerInput.action == ClientPointerAction.BUTTON_RELEASE
+        if (secondaryButtonTransition && secondaryButtonEvent) {
+            return false
+        }
+        return true
+    }
+
+    private fun reportUnsupportedNativePointer(
+        nativePointerInput: ClientPointerInput,
+        capabilities: ClientSessionCapabilities,
+    ) {
+        mainDiag(
+            "native pointer input blocked without negotiated pointer capability " +
+                "action=${nativePointerInput.action} buttonState=${nativePointerInput.buttonState}",
+        )
+        if (!unsupportedNativePointerNoticeShown) {
+            unsupportedNativePointerNoticeShown = true
+            Toast
+                .makeText(this, nativePointerUnavailableMessage(capabilities), Toast.LENGTH_LONG)
+                .show()
+        }
+    }
+
+    private fun nativePointerUnavailableMessage(capabilities: ClientSessionCapabilities): Int =
+        if (capabilities == ClientSessionCapabilities.LEGACY_TOUCH_ONLY) {
+            R.string.native_pointer_requires_touch_only_host
+        } else {
+            R.string.native_pointer_unavailable_for_session
+        }
 
     private fun logNativePointerForwarded(
         event: MotionEvent,
@@ -4289,6 +4339,7 @@ class MainActivity : AppCompatActivity() {
                     hasConnectedThisRun = true
                     isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
+                    unsupportedNativePointerNoticeShown = false
                     pendingWirelessReconnectDelayMs = null
                     initialWirelessReconnectBackoff.reset()
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)

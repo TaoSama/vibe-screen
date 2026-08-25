@@ -78,6 +78,8 @@
     <string name="video_bitrate_request_sent">Bitrate request sent to Mac</string>
     <string name="video_preferences_applied">Mac applied video settings</string>
     <string name="keyboard_requires_compatible_host">Keyboard input is unavailable: the connected Mac session supports touch only. Update both apps to a compatible negotiated session.</string>
+    <string name="native_pointer_requires_touch_only_host">Native mouse movement and primary click are unavailable: the connected Mac session supports touch only. Update both apps to a compatible negotiated session.</string>
+    <string name="native_pointer_unavailable_for_session">Native mouse movement and primary click are unavailable for this negotiated Mac session. Update both apps or reconnect with pointer support enabled.</string>
     <string name="stats_fps">FPS</string>
     <string name="stats_bitrate">BITRATE</string>
     <string name="stats_resolution">RESOLUTION</string>

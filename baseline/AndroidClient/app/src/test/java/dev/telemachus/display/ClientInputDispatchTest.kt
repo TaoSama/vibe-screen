@@ -10,36 +10,40 @@ class ClientInputDispatchTest {
         val dispatch = ClientInputDispatch(ClientSessionBinding.LEGACY_TOUCH_ONLY)
 
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.MOVE)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendController(controller()))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPeripheral(peripheral()))
     }
 
     @Test
+    fun `legacy capabilities do not write through an installed native input sink`() {
+        val received = mutableListOf<String>()
+        val dispatch =
+            ClientInputDispatch(
+                ClientSessionBinding(
+                    ClientSessionCapabilities.LEGACY_TOUCH_ONLY,
+                    recordingSink(received),
+                ),
+            )
+
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = false)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.MOVE)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendController(controller()))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPeripheral(peripheral()))
+        assertEquals(emptyList<String>(), received)
+    }
+
+    @Test
     fun `negotiated sink receives physical key and pointer sequence in order`() {
         val received = mutableListOf<String>()
-        val sink =
-            object : ClientSessionInputSink {
-                override fun sendKey(input: ClientKeyInput): Boolean {
-                    received += if (input.pressed) "key-down" else "key-up"
-                    return true
-                }
-
-                override fun sendPointer(input: ClientPointerInput): Boolean {
-                    received += input.action.name
-                    return true
-                }
-
-                override fun sendController(input: ClientControllerInput): Boolean {
-                    received += input.dispatch.delivery.name
-                    return true
-                }
-
-                override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
-                    received += input.peripheralKind
-                    return true
-                }
-            }
+        val sink = recordingSink(received)
         val dispatch = ClientInputDispatch(ClientSessionBinding(NEGOTIATED_INPUT, sink))
 
         dispatch.sendKey(key(pressed = true))
@@ -66,6 +70,29 @@ class ClientInputDispatchTest {
     private fun key(pressed: Boolean) = ClientKeyInput(usbHidUsage = 0x04, pressed, emptySet(), 0)
 
     private fun pointer(action: ClientPointerAction) = ClientPointerInput(action, 0.5f, 0.5f)
+
+    private fun recordingSink(received: MutableList<String>) =
+        object : ClientSessionInputSink {
+            override fun sendKey(input: ClientKeyInput): Boolean {
+                received += if (input.pressed) "key-down" else "key-up"
+                return true
+            }
+
+            override fun sendPointer(input: ClientPointerInput): Boolean {
+                received += input.action.name
+                return true
+            }
+
+            override fun sendController(input: ClientControllerInput): Boolean {
+                received += input.dispatch.delivery.name
+                return true
+            }
+
+            override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+                received += input.peripheralKind
+                return true
+            }
+        }
 
     private fun controller() =
         ClientControllerInput(

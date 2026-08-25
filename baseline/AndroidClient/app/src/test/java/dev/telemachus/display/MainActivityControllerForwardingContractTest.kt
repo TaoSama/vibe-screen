@@ -91,6 +91,36 @@ class MainActivityControllerForwardingContractTest {
     }
 
     @Test
+    fun unsupportedNativePointerReportsCapabilityAwareMessageBeforeLegacyGestureFallback() {
+        val source = mainActivitySource()
+        val genericMotion = extractMethod(source, "private fun handleGenericMotion")
+        val unsupportedGate = extractMethod(source, "private fun shouldReportUnsupportedNativePointer")
+        val unsupportedReporter = extractMethod(source, "private fun reportUnsupportedNativePointer")
+        val unsupportedBranch = extractCallback(genericMotion, "ClientInputDispatchResult.UNSUPPORTED ->")
+        val unsupportedReport = "reportUnsupportedNativePointer(nativePointerInput, sessionBinding.capabilities)"
+
+        assertContains(genericMotion, "val sessionBinding = currentSessionBinding()")
+        assertContains(genericMotion, "ClientInputDispatch(sessionBinding).sendPointer(nativePointerInput)")
+        assertContains(unsupportedBranch, "shouldReportUnsupportedNativePointer(event, nativePointerInput, sessionBinding.capabilities)")
+        assertImmediatelyFollowedBy(unsupportedBranch, unsupportedReport, "return true")
+        assertBefore(genericMotion, "ClientInputDispatchResult.UNSUPPORTED ->", "synthesizeLegacyRightClick(view, event)")
+        assertBefore(genericMotion, "ClientInputDispatchResult.UNSUPPORTED ->", "LegacyScrollMapper.map(")
+        assertContains(unsupportedGate, "capabilities: ClientSessionCapabilities")
+        assertContains(unsupportedGate, "if (capabilities.nativePointer) return false")
+        assertContains(unsupportedGate, "nativePointerInput.action == ClientPointerAction.SCROLL")
+        assertContains(unsupportedGate, "nativePointerInput.actionButton == MotionEvent.BUTTON_SECONDARY")
+        assertContains(unsupportedGate, "nativePointerInput.buttonState and MotionEvent.BUTTON_SECONDARY != 0")
+        assertContains(unsupportedReporter, "capabilities: ClientSessionCapabilities")
+        assertContains(unsupportedReporter, "native pointer input blocked without negotiated pointer capability")
+        assertContains(unsupportedReporter, "nativePointerUnavailableMessage(capabilities)")
+        assertContains(unsupportedReporter, "unsupportedNativePointerNoticeShown = true")
+        assertContains(source, "private fun nativePointerUnavailableMessage(capabilities: ClientSessionCapabilities): Int")
+        assertContains(source, "R.string.native_pointer_requires_touch_only_host")
+        assertContains(source, "R.string.native_pointer_unavailable_for_session")
+        assertContains(source, "private var unsupportedNativePointerNoticeShown = false")
+    }
+
+    @Test
     fun touchEventsAreDroppedBeforeAnyTransportDispatchWhenBackgrounded() {
         val source = mainActivitySource()
         val touchHandler = extractMethod(source, "private fun handleTouch")
@@ -275,6 +305,22 @@ class MainActivityControllerForwardingContractTest {
         assertTrue("Missing '$first'", firstIndex >= 0)
         assertTrue("Missing '$second'", secondIndex >= 0)
         assertTrue("Expected '$first' before '$second'", firstIndex < secondIndex)
+    }
+
+    private fun assertImmediatelyFollowedBy(
+        source: String,
+        first: String,
+        second: String,
+    ) {
+        val firstIndex = source.indexOf(first)
+        assertTrue("Missing '$first'", firstIndex >= 0)
+        val afterFirst = source.substring(firstIndex + first.length)
+        val nextCodeLine =
+            afterFirst
+                .lineSequence()
+                .map(String::trim)
+                .firstOrNull(String::isNotEmpty)
+        assertTrue("Expected '$second' immediately after '$first'", nextCodeLine == second)
     }
 
     private fun extractMethod(

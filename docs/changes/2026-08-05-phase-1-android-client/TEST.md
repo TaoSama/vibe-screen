@@ -31,9 +31,12 @@ legacy touch protocol.
 | permissions/lifecycle | Camera permission is re-evaluated after returning from Settings; background pauses input/retries and keep-awake, foreground resumes/rekeys | original camera deny/settings launch passed on device; Settings-return state machine passes on JVM; post-review device rerun pending |
 | outbound input | bounded single writer reserves recovery capacity, uses non-blocking atomic ingress under lock contention, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails closed only on true capacity saturation | contention/capacity/close-race/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
 
-No unsupported keyboard, pointer, or display-selection bytes are added to the
-legacy wire format. A compatible negotiated application session remains the
-gate for those controls.
+No unsupported keyboard, pointer, controller, peripheral, or display-selection
+bytes are added to the legacy wire format. This is an intentional compatibility
+boundary rather than a missing fallback implementation: the legacy session
+remains touch-only so old peers never receive unnegotiated native-input bytes.
+A compatible Protocol v1 negotiated application session remains the gate for
+those controls.
 
 ## Offline evidence
 
