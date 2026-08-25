@@ -19,7 +19,9 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main 32798e81bbb84e2155905a8e08ea7cc7c1ff8e46"
+CURRENT_BASE = "origin/main fed8ac0c891b610def1cb03cb8bfd5216af56784"
+REDACTED_SERIAL = "<redacted-adb-serial>"
+SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 
 
 @dataclass(frozen=True)
@@ -88,13 +90,13 @@ OWNER_PRS: dict[str, OwnerPr] = {
         "Merged baseline for Android PSS, Host RSS, charging/full-state, and thermal sample sufficiency.",
     ),
     "device_environment": OwnerPr(
-        285,
-        "Add Phase 2 device environment owner gate",
-        "codex/phase2-device-environment-owner-gate",
-        "5198f06ebbca185ec33f9ed03f8a10cb0edf7050",
-        "active_child_draft_conflicting",
+        None,
+        "Phase 2 device-environment current-base gate",
+        "codex/phase2-stability-current-base",
+        None,
+        "this_current_base_pr",
         5,
-        "Current device-environment child owner for stand charging, controlled thermal load, and power stability; supersedes #252 and folds in #255's owner mapping direction.",
+        "Current-base device-environment gate for stand charging, controlled thermal load, and power stability; supersedes #252, #255, and #285 conflicting draft direction.",
     ),
     "hardware_keyboard": OwnerPr(
         240,
@@ -108,7 +110,7 @@ OWNER_PRS: dict[str, OwnerPr] = {
     "aggregate": OwnerPr(
         None,
         "Phase 2 current-base aggregate owner",
-        "codex/phase2-current-base-aggregate-owner",
+        "codex/phase2-stability-current-base",
         None,
         "this_current_base_pr",
         7,
@@ -125,24 +127,31 @@ STALE_PRS: tuple[dict[str, Any], ...] = (
         "reason": "The old aggregate branch was draft/conflicting and based on 660dae52; this branch replays only the aggregate semantics on current base.",
     },
     {
+        "pr_number": 285,
+        "title": "Add Phase 2 device environment owner gate",
+        "status": "stale_source_superseded",
+        "replacement": "this current-base device-environment gate branch",
+        "reason": "The draft branch was conflicting; this branch replays the device-environment gate semantics on current base and adds retained blocked P0110 evidence.",
+    },
+    {
         "pr_number": 252,
         "title": "Add Phase 2 device environment gate",
         "status": "stale_duplicate",
-        "replacement": "#285",
-        "reason": "The newer #285 device-environment child owner carries the current stand/thermal/power direction and supersedes the older implementation.",
+        "replacement": "this current-base device-environment gate branch",
+        "reason": "The current-base device-environment gate supersedes the older implementation.",
     },
     {
         "pr_number": 255,
         "title": "Require Phase 2 charging gate owners",
         "status": "partially_superseded",
-        "replacement": "#285 plus this aggregate owner matrix",
-        "reason": "Its stand-charging owner-map direction is represented by #285 and this aggregate report; the old branch should not be merged as-is.",
+        "replacement": "this current-base device-environment gate plus aggregate owner matrix",
+        "reason": "Its stand-charging owner-map direction is represented by the current-base device-environment gate and aggregate report; the old branch should not be merged as-is.",
     },
 )
 
 PAIRWISE_OVERLAP_NOTES = [
-    "#252 and #285 both own device-environment style checks; #285 is the current child owner and #252 is stale.",
-    "#255 overlaps #285 on stand-charging owner mapping and tablet gate wiring; keep #255 as stale/partially superseded unless rebased deliberately.",
+    "#252 and #285 both owned older device-environment style checks; this current-base branch supersedes both.",
+    "#255 overlaps the current device-environment gate on stand-charging owner mapping and tablet gate wiring; keep #255 as stale/partially superseded unless rebased deliberately.",
     "#174 owns the eight-hour runner and remains separate from the aggregate verdict layer.",
     "#189 and #213 are already merged into current base and are consumed as baseline gates, not reimplemented here.",
     "#234 and #240 remain independent child slices for tablet UI and hardware keyboard evidence.",
@@ -312,6 +321,16 @@ def _manifest_identity(manifest: dict[str, Any] | None) -> dict[str, Any] | None
     return identity if isinstance(identity, dict) else None
 
 
+def _public_manifest_identity(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
+    identity = _manifest_identity(manifest)
+    if identity is None:
+        return None
+    return {
+        key: REDACTED_SERIAL if key in SERIAL_IDENTITY_FIELDS and value else value
+        for key, value in identity.items()
+    }
+
+
 def _tablet_gate_has_package(tablet_gate: dict[str, Any] | None) -> bool:
     if tablet_gate is None:
         return False
@@ -367,7 +386,11 @@ def _gate_status(
     if spec.input_key == "tablet_gate" and not _tablet_gate_has_package(document):
         can_close = False
         reasons.append("tablet gate is not package-aware or evidence_package did not pass")
-    if spec.gate_id in {"eight_hour_sustained_stream", "stand_mounted_charging"}:
+    if spec.gate_id in {
+        "eight_hour_sustained_stream",
+        "stand_mounted_charging",
+        "thermal_power_sampling",
+    }:
         tablet_gate = inputs.get("tablet_gate")
         if not _tablet_gate_has_package(tablet_gate):
             can_close = False
@@ -447,7 +470,7 @@ def derive_report(
         "audit_summary": {
             "single_prs_against_origin_main": (
                 "#189 and #213 are merged into current base. #174 is the current-base soak child owner. "
-                "#285 should carry the device-environment child gate; #252 and #255 are stale/duplicate inputs."
+                "this branch carries the device-environment child gate; #252, #255, and #285 are stale or superseded inputs."
             ),
             "pairwise_overlap": PAIRWISE_OVERLAP_NOTES,
             "recommendation": (
@@ -463,7 +486,7 @@ def derive_report(
         "stale_prs": list(STALE_PRS),
         "substitute_readiness": {
             "device_class": _manifest_device_class(tablet_manifest),
-            "device_identity": _manifest_identity(tablet_manifest),
+            "device_identity": _public_manifest_identity(tablet_manifest),
             "notes": _substitute_notes(tablet_manifest),
         },
         "open_reasons": open_reasons,

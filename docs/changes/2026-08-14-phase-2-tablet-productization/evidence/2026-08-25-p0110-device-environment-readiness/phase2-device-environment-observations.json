@@ -1,0 +1,77 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase2_device_environment_observations",
+  "run_id": "2026-08-25-p0110-device-environment-readiness",
+  "device": {
+    "identity": {
+      "adb_serial": "<redacted-adb-serial>",
+      "device_serial": "<redacted-adb-serial>",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "codename": "pacific",
+      "android_release": "16",
+      "sdk": "36",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "abi": "arm64-v8a"
+    },
+    "device_class": "android_substitute",
+    "tablet_size_inches": null
+  },
+  "android_device_lock_checked": true,
+  "device_identity_recorded": true,
+  "device_identity_matches_claim": true,
+  "physical_8_9_inch_tablet_observed": false,
+  "stand_mounted_setup_observed": false,
+  "eight_hour_environment_window_observed": false,
+  "battery_power_samples_retained": false,
+  "thermal_samples_retained": false,
+  "raw_platform_dumps_retained": true,
+  "controlled_thermal_load_observed": false,
+  "thermal_load_recovery_observed": false,
+  "settings_status_matches_platform": false,
+  "run_readme_retained": true,
+  "thresholds": {
+    "maximum_sample_gap_seconds": 90,
+    "maximum_thermal_status": 2,
+    "maximum_battery_temperature_celsius": 45,
+    "maximum_net_battery_drain_percent": 0,
+    "minimum_power_voltage_uv": 3500000,
+    "maximum_power_source_change_count": 0
+  },
+  "measurements": {
+    "environment_duration_seconds": 0,
+    "maximum_sample_gap_seconds": 0,
+    "unplugged_sample_count": 0,
+    "non_charging_sample_count": 0,
+    "power_source_change_count": 0,
+    "maximum_thermal_status": 0,
+    "maximum_battery_temperature_celsius": 37,
+    "net_battery_drain_percent": 0,
+    "power_voltage_now_uv_min": 4435000,
+    "charge_counter_uah_negative_drift": 0
+  },
+  "artifact_paths": [
+    "README.md",
+    "adb-devices.txt",
+    "device-info.json",
+    "device.txt",
+    "device-lock-check-exit.txt",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-before.err",
+    "thermal-after.txt",
+    "thermal-after.err",
+    "screenshots/p0110-current-screen.png"
+  ],
+  "blocking_notes": [
+    "The attached device is a nubia P0110 / pacific / Android 16 / SDK 36 phone substitute, not a physical 8-9 inch tablet.",
+    "No physical tablet stand, charger/cable-or-dock mounting observation, or all-day desk setup was available.",
+    "No eight-hour sampling window, sustained stream, Host telemetry, or soak-8h artifacts were collected.",
+    "No controlled thermal-load or post-load recovery observation was performed.",
+    "The retained battery, power, and thermal dumps are readiness-only snapshots and cannot close Phase 2 tablet gates."
+  ],
+  "notes": "Current-base readiness smoke only. adb was used with explicit serial <redacted-adb-serial> and recorded nubia P0110 / pacific / Android 16 / SDK 36. Battery/power dumps show AC powered true, Dock powered false, level 100, status FULL, and thermal status 0, but this was not a physical tablet, stand-mounted charging, controlled thermal-load, or eight-hour stability run."
+}

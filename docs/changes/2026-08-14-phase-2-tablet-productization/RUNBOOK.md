@@ -206,14 +206,20 @@ and zero missing sample gaps over the measured interval. The run README must
 include the exact collection commands, links to `samples.jsonl`,
 `summary.json`, `phase2-tablet-manifest.json`, and raw logs, plus the measured
 duration, cadence, and first-failure fields.
-After the timer completes, run `make phase2-device-memory-gate` before the
-broader `make phase2-tablet-gate`. The device-memory gate writes
+After the timer completes, run `make phase2-device-memory-gate` and
+`make phase2-device-environment-gate` before the broader
+`make phase2-tablet-gate`. The device-memory gate writes
 `soak-8h/phase2-device-memory-gate.json` and must report `pass` before the
-Phase 2 device-memory item can be marked covered. Missing Android PSS, missing
-Host RSS, missing charging/full-state samples, missing thermal status, a phone
-substitute such as Nubia P0110/pacific, or a sub-eight-hour window is
-`insufficient`, not a pass. The broader tablet gate also reads the manifest and
-raw evidence root, so missing raw battery, power, thermal, log, screenshot, or
+Phase 2 device-memory item can be marked covered. The device-environment gate
+reads `phase2-device-environment-observations.json`, writes
+`soak-8h/phase2-device-environment-summary.json`, and must report `pass` before
+stand-mounted charging, controlled thermal-load recovery, or power-source
+stability can close. Missing Android PSS, missing Host RSS, missing
+charging/full-state samples, missing thermal status, missing power-source
+measurements, missing controlled thermal-load recovery, a phone substitute such
+as Nubia P0110/pacific, or a sub-eight-hour window is not a pass. The broader
+tablet gate also reads the manifest and raw evidence root, so missing raw
+battery, power, thermal, log, screenshot, device-environment summary, or
 undeclared threshold artifacts also remain `insufficient` instead of closing
 Phase 2.
 
@@ -245,7 +251,7 @@ and keep the result scoped to readiness only:
 
 ```bash
 make phase2-tablet-soak-preflight \
-  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_SERIAL="<device-serial>" \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/YYYY-MM-DD-nubia-p0110-phase2-soak-preflight \
   PHASE2_DEVICE_CLASS=android_substitute \
   PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
@@ -342,9 +348,8 @@ trap 'rm -f "$lock"' EXIT HUP INT TERM
 
 If the lock already exists, stop and record a blocked evidence directory without
 running ADB. A passing run must use the actual target serial and preserve the
-observed identity as Nubia P0110 / pacific / Android 16 when using
-`<device-serial>`; do not relabel this device as Xiaomi 13/fuxi or as tablet
-hardware.
+observed identity as Nubia P0110 / pacific / Android 16 when using the explicit
+ADB serial; do not relabel this device as Xiaomi 13/fuxi or as tablet hardware.
 
 Collect a fail-closed readiness bundle in
 `evidence/YYYY-MM-DD-<device>-hardware-keyboard/` before starting the interactive
@@ -460,8 +465,13 @@ Each run directory should include at minimum:
   `soak-8h/host-telemetry.jsonl` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
 - `host-telemetry.jsonl`, `soak-8h/exact-window-report.json`,
-  `soak-8h/phase2-device-memory-gate.json`, and
+  `soak-8h/phase2-device-memory-gate.json`,
+  `soak-8h/phase2-device-environment-summary.json`, and
   `soak-8h/phase2-tablet-gate.json`;
+- `phase2-device-environment-observations.json` with explicit boolean
+  observations for the stand setup, eight-hour environment window, retained
+  battery/power/thermal samples, controlled thermal load, thermal recovery, and
+  sustained-use UI/platform agreement;
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
   `adb-power-after.txt`, thermal dumps before/after, and the corresponding
   `thermal-*.err` stderr captures;
@@ -483,6 +493,7 @@ Each run directory should include at minimum:
 After deriving the eight-hour gate, run:
 
 ```bash
+make phase2-device-environment-gate EVIDENCE_DIR="$RUN_DIR"
 make phase2-tablet-gate EVIDENCE_DIR="$RUN_DIR"
 make phase2-tablet-preflight EVIDENCE_DIR="$RUN_DIR"
 ```
@@ -500,7 +511,8 @@ make phase2-aggregate-owner EVIDENCE_DIR="$RUN_DIR" \
   PHASE2_TABLET_GATE="$RUN_DIR/soak-8h/phase2-tablet-gate.json" \
   PHASE2_TABLET_MANIFEST="$RUN_DIR/phase2-tablet-manifest.json" \
   PHASE2_HARDWARE_KEYBOARD="$RUN_DIR/hardware-keyboard-summary.json" \
-  PHASE2_DEVICE_MEMORY="$RUN_DIR/soak-8h/phase2-device-memory-gate.json"
+  PHASE2_DEVICE_MEMORY="$RUN_DIR/soak-8h/phase2-device-memory-gate.json" \
+  PHASE2_DEVICE_ENVIRONMENT="$RUN_DIR/soak-8h/phase2-device-environment-summary.json"
 ```
 
 Add `PHASE2_DEVICE_ENVIRONMENT`, `PHASE2_SOAK_READINESS`,

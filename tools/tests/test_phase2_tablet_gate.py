@@ -318,6 +318,61 @@ def write_evidence_artifacts(directory: Path) -> None:
     (directory / "screenshots").mkdir()
 
 
+def write_device_environment_summary(directory: Path) -> None:
+    required_paths = (
+        "README.md",
+        "device-info.json",
+        "adb-battery-before.txt",
+        "adb-battery-after.txt",
+        "adb-power-before.txt",
+        "adb-power-after.txt",
+        "thermal-before.txt",
+        "thermal-before.err",
+        "thermal-after.txt",
+        "thermal-after.err",
+        "soak-8h/samples.jsonl",
+        "soak-8h/summary.json",
+        "soak-8h/exact-window-report.json",
+        "screenshots/sustained-use-portrait.png",
+        "screenshots/sustained-use-landscape.png",
+    )
+    for relative_path in required_paths:
+        path = directory / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix == ".png":
+            path.write_bytes(b"png-placeholder\n")
+        elif not path.exists():
+            path.write_text("" if path.name.endswith(".err") else f"{relative_path}\n", encoding="utf-8")
+    manifest = json.loads((directory / "phase2-tablet-manifest.json").read_text(encoding="utf-8"))
+    artifact_checks = {
+        relative_path: {
+            "passed": True,
+            "path": str(directory / relative_path),
+            "size_bytes": (directory / relative_path).stat().st_size,
+        }
+        for relative_path in required_paths
+    }
+    summary = {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_device_environment_gate",
+        "run_id": manifest["run_id"],
+        "device": manifest["device"],
+        "verdict": "pass",
+        "can_close_device_environment_gate": True,
+        "can_close_device_environment_gates": True,
+        "can_close_stand_charging_gate": True,
+        "missing_artifacts": [],
+        "missing_requirements": [],
+        "missing_criteria": [],
+        "failed_criteria": [],
+        "blocking_reasons": [],
+        "artifact_checks": artifact_checks,
+    }
+    path = directory / "soak-8h" / "phase2-device-environment-summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+
 class Phase2TabletGateTest(unittest.TestCase):
     def test_complete_eight_hour_stable_report_passes(self):
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -335,6 +390,7 @@ class Phase2TabletGateTest(unittest.TestCase):
             report_path = write_report(directory)
             write_manifest(directory)
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             gate = derive_gate(
                 report_path,
                 manifest_path=directory / "phase2-tablet-manifest.json",
@@ -351,6 +407,7 @@ class Phase2TabletGateTest(unittest.TestCase):
             report_path = write_report(directory)
             write_manifest(directory)
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             (directory / "host.log").unlink()
             gate = derive_gate(
                 report_path,
@@ -388,6 +445,7 @@ class Phase2TabletGateTest(unittest.TestCase):
             report_path = write_report(directory)
             write_manifest(directory)
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             (directory / "adb-power-after.txt").unlink()
             gate = derive_gate(
                 report_path,
@@ -464,6 +522,7 @@ class Phase2TabletGateTest(unittest.TestCase):
                 maximum_net_battery_drain_percent=5,
             )
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             gate = derive_gate(
                 report_path,
                 manifest_path=directory / "phase2-tablet-manifest.json",
@@ -487,6 +546,7 @@ class Phase2TabletGateTest(unittest.TestCase):
             )
             write_manifest(directory)
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             gate = derive_gate(
                 report_path,
                 manifest_path=directory / "phase2-tablet-manifest.json",
@@ -587,6 +647,7 @@ class Phase2TabletGateTest(unittest.TestCase):
             report_path = write_report(directory)
             manifest_path = write_manifest(directory)
             write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
             output = directory / "gate.json"
             with redirect_stdout(io.StringIO()):
                 exit_code = main(

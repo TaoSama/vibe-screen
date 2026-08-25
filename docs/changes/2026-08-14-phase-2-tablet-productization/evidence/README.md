@@ -17,12 +17,14 @@ YYYY-MM-DD-<device>-phase2-8h/
 │   ├── host-telemetry.jsonl
 │   ├── exact-window-report.json
 │   ├── phase2-device-memory-gate.json
+│   ├── phase2-device-environment-summary.json
 │   └── phase2-tablet-gate.json
 ├── samples.csv              # optional derived conversion; keep raw JSONL
 ├── adb-battery-before.txt
 ├── adb-battery-after.txt
 ├── adb-power-before.txt
 ├── adb-power-after.txt
+├── phase2-device-environment-observations.json
 ├── thermal-before.txt
 ├── thermal-after.txt
 ├── thermal-before.err       # stderr capture; use status and dump content for failure
@@ -59,6 +61,10 @@ After the eight-hour soak and `phase2-tablet-gate` derivation, run
 `phase2-tablet-preflight.json` is the final machine-readable bundle check for
 physical-tablet identity, portrait/landscape UI, stylus, hardware keyboard,
 recovery, thermal/power, and the eight-hour soak gate.
+Create `phase2-device-environment-observations.json` before the final package
+gate. It records whether the stand-mounted setup, eight-hour environment
+window, battery/power samples, thermal samples, controlled thermal-load,
+thermal recovery, and sustained-use UI/platform match were actually observed.
 
 The artifact must validate against `tools/schemas/device-info.schema.json`;
 `device.txt` and `phase2-tablet-manifest.json` are supporting records, not substitutes for the
@@ -67,14 +73,17 @@ stderr captures created by the runbook commands on every run. Determine thermal
 collection failure from the command status and whether the corresponding dump is
 usable, not from stderr-file presence alone.
 
-After deriving the exact-window report, run `make phase2-tablet-gate` from the
-repository root. The gate consumes `phase2-tablet-manifest.json`, the eight-hour
-soak report, and this raw evidence directory before it can report `pass`. The
-wrapper-level close contract is `phase2-soak-readiness.json` with
-`can_close_phase2_gate=true`; a standalone README statement or APK placeholder
-hash is not formal pass evidence. Missing raw artifacts, a phone substitute such
-as Nubia P0110/pacific/Android 16, or an undeclared threshold leaves the result
-`insufficient`.
+After deriving the exact-window report, run `make phase2-device-environment-gate`
+and then `make phase2-tablet-gate` from the repository root. The environment
+gate writes `soak-8h/phase2-device-environment-summary.json`; the tablet gate
+requires that summary to pass before the package can close. The tablet gate also
+consumes `phase2-tablet-manifest.json`, the eight-hour soak report, and this raw
+evidence directory before it can report `pass`. The wrapper-level close contract
+is `phase2-soak-readiness.json` with `can_close_phase2_gate=true`; a standalone
+README statement or APK placeholder hash is not formal pass evidence. Missing
+raw artifacts, a missing or blocked device-environment summary, a phone
+substitute such as Nubia P0110/pacific/Android 16, or an undeclared threshold
+leaves the result `insufficient`.
 
 The run `README.md` must state the real tablet model, OS build, density,
 orientation/window sizes, charger/cable/stand setup, Mac host identity, commit
@@ -84,7 +93,10 @@ duration/cadence, and final result. A `phase2-8h` directory can close the
 eight-hour gate only when `summary.json` records `duration_seconds >= 28800`,
 `interval_seconds <= 60`, zero missing sample gaps, and
 `soak-8h/phase2-device-memory-gate.json` reports `pass` from Android PSS, Host
-RSS, charging/full-state, and thermal samples. Any app or host crash,
+RSS, charging/full-state, and thermal samples. The stand-mounted charging and
+thermal/power rows require `soak-8h/phase2-device-environment-summary.json` to
+report `pass`, `can_close_stand_charging_gate=true`, and
+`can_close_device_environment_gate=true`. Any app or host crash,
 unrecovered interruption, stale frame/input acceptance, sustained severe or
 critical thermal state, charging failure, missing Host PID/RSS, missing Android
 PSS, or untrustworthy sample/transport data must record `first_failure_at` and
@@ -121,7 +133,8 @@ blocked or insufficient.
 Aggregate owner records live in dated `phase2-aggregate-owner-current-base`
 directories. They consume child gate summaries and write
 `phase2-aggregate-owner.json` plus `SHA256SUMS`. The aggregate is an ownership
-and closure report only: missing child summaries remain blocked, and a Nubia
+and closure report only: missing child summaries remain blocked, a blocked
+device-environment summary keeps stand/thermal/power open, and a Nubia
 P0110/pacific phone manifest stays `android_substitute` readiness rather than
 8-9 inch tablet evidence.
 
@@ -250,14 +263,26 @@ of a pass-shaped directory. The minimum blocked package is:
 YYYY-MM-DD-<device>-blocked-no-physical-tablet/
 ├── README.md
 ├── device-info.json
+├── phase2-device-environment-observations.json
 ├── phase2-tablet-manifest.json    # PHASE2_DEVICE_CLASS=android_substitute
-└── phase2-tablet-preflight.json   # verdict=blocked
+├── phase2-tablet-preflight.json   # verdict=blocked
+└── soak-8h/phase2-device-environment-summary.json  # verdict=blocked
 ```
 
 The README must name the substitute device, state that it is not an 8-9 inch
 tablet, link any short readiness evidence, and include the exact rerun commands
 for the future physical-tablet pass. The blocked preflight should preserve all
 missing gates rather than editing them out.
+
+For stand/thermal/power readiness records, also run:
+
+```bash
+make phase2-device-environment-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The generated summary must keep both close booleans false unless a real physical
+tablet run supplies the declared stand setup, full eight-hour sampling window,
+and controlled thermal-load recovery evidence.
 
 The `phase2-tablet-soak-preflight` wrapper may create readiness-only directories
 such as `YYYY-MM-DD-nubia-p0110-phase2-soak-preflight/`. These records include
