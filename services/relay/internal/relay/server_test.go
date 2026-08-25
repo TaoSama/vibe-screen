@@ -19,6 +19,9 @@ import (
 type failingStore struct{}
 
 func (failingStore) Apply(context.Context, time.Time, UsageEvent) error { return ErrStorage }
+func (failingStore) Duplicate(context.Context, time.Time, UsageEvent) (bool, error) {
+	return false, ErrStorage
+}
 func (failingStore) Snapshot(context.Context, time.Time, string) (uint64, uint64, int, error) {
 	return 0, 0, 0, ErrStorage
 }
@@ -47,6 +50,15 @@ func testConfig(t *testing.T) Config {
 		EgressMicrocentsPerGibibyte: 9_000_000, StateFile: filepath.Join(t.TempDir(), "state.json"),
 		TurnSecret: "turn-secret-at-least-thirty-two-bytes-", ClientToken: testClientToken, UsageToken: testUsageToken, MetricsToken: testMetricsToken, AdminToken: testAdminToken,
 	}
+}
+
+func useProductionAuthority(t *testing.T, cfg *Config, authorityURL string) {
+	t.Helper()
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authorityURL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	cfg.AllocationRegistryFile = filepath.Join(t.TempDir(), "allocations.json")
 }
 
 func TestCredentialsUseTURNRESTAndRateLimit(t *testing.T) {
@@ -166,10 +178,7 @@ func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
 
 	cfg := testConfig(t)
 	cfg.CredentialRequestsPerMinute = 10
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -181,9 +190,43 @@ func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
 	if admitted != (relayAdmissionRequest{DeviceID: "device-1", SessionID: "session-1", AllocationID: "allocation-1", SourceID: "turn-node-1"}) {
 		t.Fatalf("authority admission = %#v", admitted)
 	}
+	registry, err := readAllocationRegistry(cfg.AllocationRegistryFile, cfg.AuthoritySourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Allocations) != 1 {
+		t.Fatalf("registry allocations = %#v", registry.Allocations)
+	}
+	entry := registry.Allocations[0]
+	if entry.AllocationID != "allocation-1" || entry.DeviceID != "device-1" || entry.SessionID != "session-1" || !strings.HasSuffix(entry.Username, ":device-1") {
+		t.Fatalf("registry entry = %#v", entry)
+	}
 	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
 	if ready.Code != http.StatusOK {
 		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
+func TestCredentialsFailClosedWhenAllocationRegistryCannotBeWritten(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	useProductionAuthority(t, &cfg, authority.URL)
+	cfg.AllocationRegistryFile = t.TempDir()
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "state storage unavailable") {
+		t.Fatalf("registry failure status = %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -193,10 +236,7 @@ func TestReadyFailsClosedWhenAuthorityUnavailable(t *testing.T) {
 	}))
 	defer authority.Close()
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -207,16 +247,31 @@ func TestReadyFailsClosedWhenAuthorityUnavailable(t *testing.T) {
 	}
 }
 
+func TestReadyFailsClosedWhenAllocationRegistryUnavailable(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}))
+	defer authority.Close()
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	cfg.AllocationRegistryFile = t.TempDir()
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
+	if ready.Code != http.StatusServiceUnavailable || !strings.Contains(ready.Body.String(), "allocation registry unavailable") {
+		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
 func TestCredentialsFailClosedWhenAuthorityIsUnavailable(t *testing.T) {
 	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	authority.Close()
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -245,10 +300,7 @@ func TestCredentialsMapAuthorityPolicyRejections(t *testing.T) {
 			}))
 			defer authority.Close()
 			cfg := testConfig(t)
-			cfg.AuthorityMode = AuthorityModeProd
-			cfg.AuthorityURL = authority.URL
-			cfg.AuthoritySourceID = "turn-node-1"
-			cfg.AuthorityToken = testAuthorityToken
+			useProductionAuthority(t, &cfg, authority.URL)
 			server, err := NewServer(cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -263,15 +315,191 @@ func TestCredentialsMapAuthorityPolicyRejections(t *testing.T) {
 
 func TestCredentialsRequireAllocationIDInProductionAuthorityMode(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = "http://127.0.0.1:1"
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, "http://127.0.0.1:1")
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "allocation_id") {
+		t.Fatalf("missing allocation status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestUsageRequiresAuthorityAdmissionInProduction(t *testing.T) {
+	var admitted relayAdmissionRequest
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&admitted); err != nil {
+			t.Fatalf("decode authority admission: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"event_id":"usage-1","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, body)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("usage status = %d: %s", response.Code, response.Body.String())
+	}
+	if admitted != (relayAdmissionRequest{DeviceID: "device-1", SessionID: "session-1", AllocationID: "allocation-1", SourceID: "turn-node-1"}) {
+		t.Fatalf("authority admission = %#v", admitted)
+	}
+}
+
+func TestUsageRejectsInvalidKindBeforeAuthorityAdmission(t *testing.T) {
+	authorityCalls := 0
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		authorityCalls++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "{\"event_id\":\"usage-1\",\"device_id\":\"device-1\",\"session_id\":\"session-1\",\"allocation_id\":\"allocation-1\",\"kind\":\"bogus\",\"ingress_bytes\":10,\"egress_bytes\":20}"
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, body)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "unsupported event kind") {
+		t.Fatalf("invalid kind status = %d: %s", response.Code, response.Body.String())
+	}
+	if authorityCalls != 0 {
+		t.Fatalf("invalid usage kind reached authority %d times", authorityCalls)
+	}
+}
+
+func TestUsageDuplicateRetryAfterAuthorityRevocationDoesNotReauthorize(t *testing.T) {
+	authorityCalls := 0
+	revoked := false
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		authorityCalls++
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if revoked {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "{\"event_id\":\"usage-1\",\"device_id\":\"device-1\",\"session_id\":\"session-1\",\"allocation_id\":\"allocation-1\",\"kind\":\"start\",\"ingress_bytes\":10,\"egress_bytes\":20}"
+	if response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, body); response.Code != http.StatusAccepted {
+		t.Fatalf("usage status = %d: %s", response.Code, response.Body.String())
+	}
+	revoked = true
+	if response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, body); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "duplicate") {
+		t.Fatalf("duplicate retry after revoke = %d: %s", response.Code, response.Body.String())
+	}
+	if authorityCalls != 1 {
+		t.Fatalf("duplicate retry reauthorized %d times", authorityCalls)
+	}
+}
+
+func TestUsageDuplicateEventIDWithChangedPayloadReturnsBadRequest(t *testing.T) {
+	authorityCalls := 0
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		authorityCalls++
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	original := `{"event_id":"usage-1","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
+	changed := `{"event_id":"usage-1","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"start","ingress_bytes":10,"egress_bytes":21}`
+
+	if response := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, original); response.Code != http.StatusAccepted {
+		t.Fatalf("initial usage status = %d: %s", response.Code, response.Body.String())
+	}
+	response := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, changed)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), ErrInvalidEvent.Error()) {
+		t.Fatalf("changed duplicate status = %d: %s", response.Code, response.Body.String())
+	}
+	if authorityCalls != 1 {
+		t.Fatalf("changed duplicate reauthorized %d times", authorityCalls)
+	}
+}
+
+func TestUsageFailsClosedAfterAuthorityRevocation(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"event_id":"usage-after-revoke","device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, body)
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), ErrDeviceRevoked.Error()) {
+		t.Fatalf("revoked usage status = %d: %s", response.Code, response.Body.String())
+	}
+	ingress, egress, sessions, err := server.store.Snapshot(context.Background(), time.Now(), "device-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ingress != 0 || egress != 0 || sessions != 0 {
+		t.Fatalf("revoked usage mutated local store: ingress=%d egress=%d sessions=%d", ingress, egress, sessions)
+	}
+}
+
+func TestUsageRequiresAllocationIDInProductionAuthorityMode(t *testing.T) {
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, "http://127.0.0.1:1")
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/usage", testUsageToken, `{"event_id":"usage-1","device_id":"device-1","session_id":"session-1","kind":"start"}`)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "allocation_id") {
 		t.Fatalf("missing allocation status = %d: %s", response.Code, response.Body.String())
 	}

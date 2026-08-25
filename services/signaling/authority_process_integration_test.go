@@ -280,6 +280,9 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	secondAllocationID := "allocation-before-device-revoke"
 	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":%q}`, clientDeviceID, secondSession.SessionID, secondAllocationID)
 	assertCredential(secondCredentialBody)
+	secondRelayUsageBody := fmt.Sprintf(`{"event_id":"relay-usage-before-device-revoke","device_id":%q,"session_id":%q,"allocation_id":%q,"kind":"start","ingress_bytes":30,"egress_bytes":40}`,
+		clientDeviceID, secondSession.SessionID, secondAllocationID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/usage", run.relayUsageToken, secondRelayUsageBody, http.StatusAccepted)
 	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
 		SourceID:     "turn-integration-1",
 		EventID:      "second-allocation-open",
@@ -317,6 +320,9 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	credentialAfterRevokeBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-revoke"}`, clientDeviceID, secondSession.SessionID)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterRevokeBody, http.StatusForbidden)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, secondCredentialBody, http.StatusForbidden)
+	secondRelayUsageAfterRevokeBody := fmt.Sprintf(`{"event_id":"relay-usage-after-device-revoke","device_id":%q,"session_id":%q,"allocation_id":%q,"kind":"update","ingress_bytes":35,"egress_bytes":45}`,
+		clientDeviceID, secondSession.SessionID, secondAllocationID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/usage", run.relayUsageToken, secondRelayUsageAfterRevokeBody, http.StatusForbidden)
 	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
 		SourceID:     "turn-integration-1",
 		EventID:      "second-allocation-after-device-revoke",
@@ -565,12 +571,13 @@ func startRelay(t *testing.T, run *authorityProcessTest) {
   "max_concurrent_sessions_per_device": 2,
   "daily_bytes_per_device": 21474836480,
   "max_usage_event_bytes": 1073741824,
-  "egress_microcents_per_gibibyte": 0,
-  "state_file": %q,
-  "authority_mode": "production_authority",
-  "authority_url": "http://%s",
-  "authority_source_id": "turn-integration-1"
-}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), run.authorityAddress)
+	  "egress_microcents_per_gibibyte": 0,
+	  "state_file": %q,
+	  "allocation_registry_file": %q,
+	  "authority_mode": "production_authority",
+	  "authority_url": "http://%s",
+	  "authority_source_id": "turn-integration-1"
+	}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), filepath.Join(t.TempDir(), "relay-allocation-registry.json"), run.authorityAddress)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}

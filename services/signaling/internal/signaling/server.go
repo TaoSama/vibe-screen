@@ -21,6 +21,7 @@ import (
 const (
 	authorityReadinessCacheTTL       = time.Second
 	authorityReadinessRefreshTimeout = 2 * time.Second
+	authorityLongPollRefreshInterval = 250 * time.Millisecond
 	storeStartupTimeout              = 10 * time.Second
 )
 
@@ -370,7 +371,7 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel = context.WithTimeout(r.Context(), time.Duration(waitSeconds)*time.Second)
 		defer cancel()
 	}
-	events, next, err := s.store.PollAuthorized(ctx, sessionID, role, after, waitSeconds > 0)
+	events, next, err := s.pollAuthorized(ctx, sessionID, token, role, after, waitSeconds > 0)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -390,6 +391,41 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 		s.metrics.pollTimeouts.Add(1)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": events, "next_cursor": next})
+}
+
+func (s *Server) pollAuthorized(ctx context.Context, sessionID, token string, role Role, after uint64, wait bool) ([]Event, uint64, error) {
+	if !wait || s.authority == nil {
+		return s.store.PollAuthorized(ctx, sessionID, role, after, wait)
+	}
+	for {
+		chunkCtx, cancel := context.WithTimeout(ctx, authorityLongPollRefreshInterval)
+		events, next, err := s.store.PollAuthorized(chunkCtx, sessionID, role, after, true)
+		cancel()
+		if err != nil {
+			return nil, after, err
+		}
+		if next > after {
+			return events, next, nil
+		}
+		if err := ctx.Err(); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return []Event{}, after, nil
+			}
+			return nil, after, err
+		}
+		authCtx, cancel := context.WithTimeout(ctx, authorityLongPollRefreshInterval)
+		refreshedRole, err := s.store.Authorize(authCtx, sessionID, token)
+		cancel()
+		if err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return []Event{}, after, nil
+			}
+			return nil, after, err
+		}
+		if refreshedRole != role {
+			return nil, after, ErrUnauthorized
+		}
+	}
 }
 
 func (s *Server) validateMessage(request MessageRequest) error {

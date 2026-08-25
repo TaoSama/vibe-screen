@@ -86,6 +86,7 @@ services:
       - relay_database_url
     volumes:
       - ./config/relay.production.json:/etc/vibe-relay/config.json:ro
+      - ${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}:/var/lib/vibe-coturn:rw
     healthcheck:
       test: ["CMD", "/vibe-relay", "--healthcheck", "http://127.0.0.1:8090/readyz"]
       interval: 10s

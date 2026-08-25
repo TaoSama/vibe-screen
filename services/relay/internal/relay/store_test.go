@@ -94,3 +94,25 @@ func TestStoreRejectsUsageAfterRevocationWithoutMutatingState(t *testing.T) {
 		t.Fatalf("state mutated after revoked usage: %d/%d", egress, sessions)
 	}
 }
+
+func TestStoreRejectsDuplicateEventIDWithDifferentPayload(t *testing.T) {
+	store, err := NewUsageStore(filepath.Join(t.TempDir(), "state.json"), 100, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+	accepted := UsageEvent{EventID: "event-1", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}
+	if err := store.Apply(ctx, now, accepted); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := accepted
+	changed.EgressBytes = 11
+	if duplicate, err := store.Duplicate(ctx, now, changed); !errors.Is(err, ErrInvalidEvent) || duplicate {
+		t.Fatalf("duplicate mismatch = %v, %v", duplicate, err)
+	}
+	if err := store.Apply(ctx, now, changed); !errors.Is(err, ErrInvalidEvent) {
+		t.Fatalf("changed duplicate apply error = %v", err)
+	}
+}

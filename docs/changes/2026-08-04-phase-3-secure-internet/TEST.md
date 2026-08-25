@@ -53,8 +53,12 @@ remain explicit production or end-to-end gates. When
 Authority, signaling, and relay binaries, creates authority-backed signaling
 sessions, obtains authority-admitted relay credentials, invalidates one session,
 revokes the client device at Authority, then proves signaling role access, future
-relay credential admission, exact same-allocation credential retry, and later
-Authority coturn usage accounting fail closed.
+relay credential admission, exact same-allocation credential retry, relay
+`/v1/usage` Authority admission, and later Authority coturn usage accounting fail
+closed. Relay unit tests separately cover exact duplicate usage retries before
+Authority admission, rejected changed-payload event ID reuse, required
+`allocation_id` in production authority mode, restart-safe registry writes,
+registry readiness failure, and usage rejection after Authority revocation.
 
 `make phase3-test` also runs static production-profile checks for the Phase 3
 relay/Authority deployment files. These checks prove only repository configuration
@@ -70,18 +74,24 @@ selection, bounded failure retry, consecutive missing-allocation tracking, and
 fail-closed disconnect execution when Authority reports unauthorized, conflicting,
 or revoked active source allocations. This local slice proves stale allocation,
 revoked device, and quota-closed allocation contracts against structured local
-state. It does not prove a production coturn exporter, production scheduler,
-provider billing reconciliation, or real data-plane allocation termination.
+state. The coturn CLI control helper tests cover strict allocation-registry
+parsing, coturn `ps` parsing, exact allocation export, ambiguous username
+failure, and loopback CLI `cs` disconnect command construction. These tests do
+not prove a production coturn exporter, production scheduler, provider billing
+reconciliation, production coturn process integration, or real data-plane
+allocation termination.
 The Phase 3 revocation propagation verifier now pins the evidence contract for
 Authority/signaling/relay/coturn propagation. It passes only when a report proves
 Authority audit visibility, signaling long-poll wakeup rejection, future and
-same-allocation relay credential rejection, active allocation disconnect, stale
-credential rejection, and zero relayed post-revocation packets; a missing live
-deployment observation returns a blocked status. The 2026-08-23 current-base
-blocked record documents that the local process integration path covers
-Authority-backed signaling, future and same-allocation relay credential
-rejection, and Authority coturn usage rejection, but not deployed coturn
-allocation teardown or packet-denial behavior.
+same-allocation relay credential rejection, stale issued TURN credential
+rejection, active allocation disconnect, and zero relayed post-revocation
+packets; a missing live deployment observation returns a blocked status. The
+2026-08-25 current-base blocked record documents that the local service tests
+cover Authority-backed signaling, bounded long-poll reauthorization, future and
+same-allocation relay credential rejection, relay `/v1/usage` Authority
+admission/revocation rejection, and strict coturn registry/CLI helper behavior,
+but not deployed coturn allocation teardown, stale credential reuse denial, or
+packet-denial behavior.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code

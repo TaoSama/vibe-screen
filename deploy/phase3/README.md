@@ -226,7 +226,10 @@ Linux host:
    Authority endpoint, and set `authority_source_id` to a stable identifier for
    this TURN source. The production example selects `storage_backend: postgres`;
    do not change it to the file backend for a multi-process or public
-   deployment.
+   deployment. Keep `allocation_registry_file` on the writable
+   `/var/lib/vibe-coturn` mount so relay can persist the Authority
+   `allocation_id` to TURN REST username mapping used by operator coturn
+   control helpers.
 2. Set `VIBE_RELAY_IMAGE_REPOSITORY` and the exact 64-character
    `VIBE_RELAY_IMAGE_SHA256`; Compose constructs a digest-only image reference
    and the production profile intentionally has no local relay build fallback.
@@ -241,15 +244,19 @@ Linux host:
    `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
    account while retaining `0600` permissions. Store/rotate all secrets through
    the deployment secret manager, not source control.
-5. Install the public certificate chain as ignored `tls/fullchain.pem` and its
+5. Create the ignored `coturn-state` directory, or set
+   `VIBE_COTURN_ALLOCATION_REGISTRY_DIR` to another host path, and make it
+   writable by relay UID/GID `65532`. Relay `/readyz` fails closed if the
+   configured allocation registry cannot be read or atomically updated.
+6. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
-6. Set `COTURN_REALM` to the certificate DNS hostname and
+7. Set `COTURN_REALM` to the certificate DNS hostname and
    `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
    the public IP on a directly addressed host.
-7. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
+8. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
    on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
    controls before these host rules.
-8. Validate the effective configuration, start, and inspect health/logs:
+9. Validate the effective configuration, start, and inspect health/logs:
 
 ```bash
 export COTURN_REALM=relay.example.com
@@ -343,14 +350,19 @@ atomically counts all session/expiry credentials under one device principal.
 `user-quota=12` is therefore a per-device allocation cap. In
 `production_authority` mode, relay also asks Authority to admit each
 `device_id/session_id/allocation_id/source_id` tuple before returning that TURN
-credential; revoked or expired Authority sessions and revoked devices fail closed
-before coturn sees a credential. Revalidate `user-quota` against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository now has a
-current-base local structured exporter adapter, bounded reconciliation loop, and
-local active-allocation state disconnect executor, but still has no
+credential and before accepting each non-duplicate relay usage event; revoked or
+expired Authority sessions, revoked devices, and conflicting allocation identity
+fail closed before coturn sees a credential or before the relay ledger advances.
+Accepted credential grants are recorded in the relay allocation registry so
+operator tooling can correlate Authority allocation IDs with coturn sessions.
+Revalidate `user-quota` against legitimate UDP/TCP/TLS ICE allocation counts
+before changing it. The repository now has a current-base local structured
+exporter adapter, bounded reconciliation loop, local active-allocation state
+disconnect executor, and coturn CLI control helper for exact registry-matched
+allocations. These helpers are not deployed by this profile: there is still no
 production-deployed coturn-to-`/v1/usage` collector, no production scheduler for
 the bounded reconciliation loop, and no concrete live coturn active-allocation
-disconnect executor.
+disconnect evidence.
 Therefore the control plane's daily-byte and per-device concurrent-session
 accounting is not authoritative for this deployment; coturn's own limits remain
 the immediate enforcement boundary.

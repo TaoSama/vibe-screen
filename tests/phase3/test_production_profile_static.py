@@ -138,6 +138,10 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertLessEqual(config["max_concurrent_sessions_per_device"], 2)
         self.assertLessEqual(config["daily_bytes_per_device"], 20 * 1024 * 1024 * 1024)
         self.assertEqual(config["state_file"], "/data/relay-state.json")
+        self.assertEqual(
+            config["allocation_registry_file"],
+            "/var/lib/vibe-coturn/allocation-registry.json",
+        )
 
     def test_authority_production_example_keeps_short_session_and_reconciliation_bounds(self) -> None:
         config = json.loads(read(AUTHORITY_PRODUCTION_CONFIG))

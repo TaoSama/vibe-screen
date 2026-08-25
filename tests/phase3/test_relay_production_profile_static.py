@@ -26,6 +26,10 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         self.assertEqual(config["storage_backend"], "postgres")
         self.assertEqual(config["maximum_database_clock_skew_seconds"], 5)
         self.assertIn("state_file", config)
+        self.assertEqual(
+            config["allocation_registry_file"],
+            "/var/lib/vibe-coturn/allocation-registry.json",
+        )
 
     def test_relay_production_compose_runs_migration_before_service(self):
         compose = COMPOSE.read_text()
@@ -48,6 +52,10 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         compose = COMPOSE.read_text()
         self.assertNotIn("relay-data", compose)
         self.assertNotIn(":/data", compose)
+        self.assertIn(
+            "${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}:/var/lib/vibe-coturn:rw",
+            compose,
+        )
         self.assertIn("--healthcheck", compose)
         self.assertIn("http://127.0.0.1:8090/readyz", compose)
 

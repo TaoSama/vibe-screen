@@ -773,6 +773,77 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 	}
 }
 
+func TestAuthorityModeLongPollReauthorizesDuringWait(t *testing.T) {
+	var revoked atomic.Bool
+	firstAuthorization := make(chan struct{})
+	var signalFirstAuthorization sync.Once
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID:   "sess-1",
+				HostToken:   "host-token-1",
+				ClientToken: "client-token-1",
+				ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+				Created:     true,
+			})
+		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
+			if revoked.Load() {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			signalFirstAuthorization.Do(func() { close(firstAuthorization) })
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("client"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+
+	createBody := `{"request_id":"req-1","account_id":"acct-1","host_device_id":"host-1","client_device_id":"client-1","session_epoch":1,"ttl_seconds":60}`
+	create := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, createBody)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", create.Code, create.Body.String())
+	}
+
+	pollResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		request := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+			"/v1/sessions/sess-1/events?after=0&wait_seconds=1", nil)
+		request.Header.Set("Authorization", "Bearer client-token-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		pollResult <- response
+	}()
+	select {
+	case <-firstAuthorization:
+	case <-time.After(time.Second):
+		t.Fatal("poll did not reach authority authorization")
+	}
+	waitForWaiter(t, memoryStoreForTest(t, service), "sess-1", RoleDevice)
+	revoked.Store(true)
+	revokedAt := time.Now()
+
+	select {
+	case response := <-pollResult:
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("revoked long poll status=%d body=%s", response.Code, response.Body.String())
+		}
+		if elapsed := time.Since(revokedAt); elapsed >= 900*time.Millisecond {
+			t.Fatalf("revoked long poll waited %s; expected bounded refresh before the full wait timeout", elapsed)
+		}
+	case <-time.After(900 * time.Millisecond):
+		t.Fatal("revoked long poll did not return before the full wait timeout")
+	}
+}
+
 func TestAuthorityModeInvalidateDelegatesToAuthority(t *testing.T) {
 	var invalidateCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
