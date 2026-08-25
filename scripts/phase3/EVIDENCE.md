@@ -15,6 +15,9 @@ python3 scripts/phase3/public_nat_turn_preflight.py \
   --skip-dns-resolution \
   --output /tmp/vibe-screen-phase3/public-nat-turn-preflight.json \
   --allow-blocked
+python3 scripts/phase3/session_authority_readiness.py \
+  --report /tmp/vibe-screen-phase3/session-authority-readiness.json \
+  --write-summary /tmp/vibe-screen-phase3/session-authority-summary.json
 python3 scripts/phase3/release_gate_summary.py --output /tmp/vibe-screen-phase3/release-gate-summary.json
 python3 scripts/phase3/revocation_propagation_verifier.py \
   --report /tmp/vibe-screen-phase3/revocation-propagation.json \
@@ -151,6 +154,19 @@ Those claims require the external SUT mode and deployed relay/Android evidence;
 the reference policy model is intentionally labelled so it cannot be mistaken
 for such evidence.
 
+`session_authority_readiness.py` is the current-base owner verifier for automatic
+account/session-authority issuance. It consumes a sanitized report using schema
+`dev.vibescreen.phase3-session-authority-readiness/v1` and returns `0` only when
+the product flow itself calls Authority profile issuance, product-driven account
+and device registration are observed, the unsigned lease never leaves that
+product flow for operator copying, the Mac signs the exact Authority-supplied
+session epoch, Android imports and verifies the signed lease through product UI,
+signaling role authorization rejects cross-role and expired sessions, and any
+TURN credential path is short-lived with rotation or expiry proof. It returns `4`
+for missing product-flow evidence and `1` for unsafe evidence such as a static
+TURN password in product flow. Reports must not include bearer tokens, signaling
+tokens, TURN passwords, private keys, device identifiers, or operator paths.
+
 `release_gate_summary.py` is the current-base aggregation gate. It inspects the
 local synthetic public artifact projection, the dated Nubia local interop record,
 and the current-main blocked real-media attempt, then writes a single summary in
@@ -164,10 +180,16 @@ the #194 public NAT/TURN gate. It fails closed unless a reviewed production rela
 config, production coturn config, runtime TURN secret, TLS certificate/key,
 globally routable `COTURN_EXTERNAL_IP`, HTTPS Authority and relay readiness
 URLs, sanitized remote connectivity evidence, and an external canary command are
-all present. The command passed through `--connectivity-command` must execute
-during the preflight and emit the same connectivity JSON on stdout; a previously
-saved JSON file is retained only as reviewed context and cannot by itself make
-the gate pass. The connectivity evidence must use schema
+all present. It also requires `--deployment-evidence` with schema
+`dev.vibescreen.phase3-public-nat-turn-deployment/v1`; that record must prove
+public STUN, UDP/TCP TURN, TLS TURN, certificate hostname and TLS-version
+inspection, quota enforcement, credential rotation with old-credential rejection
+after TTL, monitoring for allocations/auth failures/relay bytes/quota decisions,
+alert rules, and at least two remote observers outside the host network. The
+command passed through `--connectivity-command` must execute during the preflight
+and emit the same connectivity JSON on stdout; a previously saved JSON file is
+retained only as reviewed context and cannot by itself make the gate pass. The
+connectivity evidence must use schema
 `dev.vibescreen.phase3-public-nat-turn-connectivity/v1`, record
 `public_internet_path=true` and `remote_turn=true`, record
 `forced_local_coturn=false`, `loopback=false`, and `synthetic_peer=false`, and

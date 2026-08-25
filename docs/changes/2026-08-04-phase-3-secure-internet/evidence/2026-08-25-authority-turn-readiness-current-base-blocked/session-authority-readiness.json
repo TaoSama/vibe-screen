@@ -1,0 +1,67 @@
+{
+  "account_device": {
+    "account_device_binding_observed": true,
+    "account_registered_by_product_flow": false,
+    "authority_audit_event_observed": true,
+    "device_registered_by_product_flow": false
+  },
+  "android_import": {
+    "host_signature_verified": true,
+    "manual_import_ui_used": true,
+    "session_epoch_accepted": true,
+    "signed_lease_imported_by_product_flow": false
+  },
+  "authority": {
+    "profile_created_or_replayed": true,
+    "request_digest_bound": true,
+    "session_epoch_monotonic": true,
+    "session_ttl_seconds": 600,
+    "strict_replay_rejected": true,
+    "unsigned_lease_returned_to_product_flow": false
+  },
+  "mac_signer": {
+    "host_identity_bound": true,
+    "local_high_water_mark_reserved": true,
+    "mismatched_epoch_rejected": true,
+    "signature_observed_by_product_flow": false,
+    "signed_authority_supplied_epoch": true
+  },
+  "notes": [
+    "current-base control-plane contract exists, but product automatic issuance is not wired",
+    "manual operator bridge remains the only observed session profile path"
+  ],
+  "observed_at": "2026-08-25T00:00:00Z",
+  "privacy": {
+    "operator_paths_recorded": false,
+    "raw_credentials_recorded": false,
+    "raw_device_identifiers_recorded": false,
+    "raw_tokens_recorded": false
+  },
+  "product_flow": {
+    "authority_profile_endpoint_called_by_product_flow": false,
+    "manual_unsigned_lease_file_transfer": true,
+    "operator_manual_profile_copy": true,
+    "product_flow_artifact_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "user_visible_pairing_or_session_flow": false
+  },
+  "schema": "dev.vibescreen.phase3-session-authority-readiness/v1",
+  "signaling": {
+    "client_role_authorized": true,
+    "cross_role_token_rejected": true,
+    "expired_session_rejected": true,
+    "host_role_authorized": true
+  },
+  "source": {
+    "commit": "fe74b41881e0524eba501b50c532ee6aea1b6490",
+    "deployment_id": "phase3-authority-turn-readiness-current-base",
+    "profile_endpoint": "authority_admin",
+    "tree_status": "clean"
+  },
+  "turn": {
+    "authority_or_relay_issued_short_lived": true,
+    "credential_ttl_seconds": 600,
+    "present": true,
+    "rotation_or_expiry_observed": false,
+    "static_turn_password_in_product": false
+  }
+}

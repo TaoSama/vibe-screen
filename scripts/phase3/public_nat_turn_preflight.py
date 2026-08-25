@@ -16,6 +16,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import ssl
 import stat
@@ -29,6 +30,7 @@ from urllib.parse import urlparse
 
 SCHEMA = "dev.vibescreen.phase3-public-nat-turn-preflight/v1"
 CONNECTIVITY_SCHEMA = "dev.vibescreen.phase3-public-nat-turn-connectivity/v1"
+DEPLOYMENT_SCHEMA = "dev.vibescreen.phase3-public-nat-turn-deployment/v1"
 PASS_RESULT = "pass"
 BLOCKED_RESULT = "blocked"
 MINIMUM_SECRET_BYTES = 32
@@ -70,6 +72,7 @@ REQUIRED_RUNTIME_INPUTS = (
     "relay_readiness",
     "connectivity_evidence",
     "external_connectivity_canary",
+    "deployment_evidence",
 )
 BLOCKED_LIMITATION = "blocked_before_public_nat_turn_deployment_gate"
 PRIVATE_DNS_SUFFIXES = (".corp", ".internal", ".lan", ".test")
@@ -80,6 +83,31 @@ MINIMUM_USAGE_EVENT_BYTES = 1024 * 1024
 MINIMUM_COTURN_USER_QUOTA = 2
 MINIMUM_COTURN_TOTAL_QUOTA = 10
 MINIMUM_COTURN_MAX_BPS = 1_000_000
+MINIMUM_REMOTE_OBSERVER_COUNT = 2
+SENSITIVE_EVIDENCE_KEYS = frozenset(
+    {
+        "admin_token",
+        "api_key",
+        "authorization",
+        "bearer",
+        "credential",
+        "device_token",
+        "host_token",
+        "password",
+        "private_key",
+        "raw_credential",
+        "secret",
+        "shared_secret",
+        "signaling_token",
+        "token",
+        "turn_password",
+    }
+)
+SENSITIVE_EVIDENCE_SUFFIXES = ("token", "password", "secret", "credential", "private_key")
+SENSITIVE_EVIDENCE_VALUE_PATTERNS = (
+    re.compile(r"Bearer\s+[A-Za-z0-9._~+/-]+=*", re.IGNORECASE),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+)
 
 
 class PreflightError(RuntimeError):
@@ -98,6 +126,24 @@ def read_json(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PreflightError(f"{label} must be a JSON object")
     return value
+
+
+def reject_sensitive_evidence(value: Any, *, label: str, path: str = "$") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise PreflightError(f"{label} contains a non-string key")
+            normalized = key.lower().replace("-", "_")
+            if normalized in SENSITIVE_EVIDENCE_KEYS or normalized.endswith(SENSITIVE_EVIDENCE_SUFFIXES):
+                raise PreflightError(f"{label} must not contain secret-like field names")
+            reject_sensitive_evidence(child, label=label, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            reject_sensitive_evidence(child, label=label, path=f"{path}[{index}]")
+    elif isinstance(value, str):
+        for pattern in SENSITIVE_EVIDENCE_VALUE_PATTERNS:
+            if pattern.search(value):
+                raise PreflightError(f"{label} must not contain secret material")
 
 
 def write_json(path: Path, document: dict[str, Any]) -> None:
@@ -508,6 +554,125 @@ def validate_connectivity_evidence(path: Path | None, *, resolve_dns: bool) -> d
     }
 
 
+def validate_deployment_evidence(path: Path | None, *, resolve_dns: bool) -> dict[str, Any]:
+    if path is None:
+        raise PreflightError("public NAT/TURN deployment evidence must be provided")
+    evidence = read_json(path, "public NAT/TURN deployment evidence")
+    reject_sensitive_evidence(evidence, label="deployment evidence")
+    if evidence.get("schema") != DEPLOYMENT_SCHEMA:
+        raise PreflightError("deployment evidence has the wrong schema")
+    if evidence.get("result") != PASS_RESULT:
+        raise PreflightError("deployment evidence result must be pass")
+    required_booleans = {
+        "public_stun_endpoint_observed": True,
+        "public_turn_udp_tcp_observed": True,
+        "public_turn_tls_observed": True,
+        "tls_certificate_hostname_valid": True,
+        "tls_minimum_version_observed": True,
+        "credential_rotation_observed": True,
+        "old_credential_rejected_after_ttl": True,
+        "quota_enforcement_observed": True,
+        "monitoring_dashboards_observed": True,
+        "alert_rules_observed": True,
+        "remote_observer_outside_host_network": True,
+        "real_remote_peer_path": True,
+        "local_coturn_loopback": False,
+        "synthetic_peer": False,
+    }
+    for key, expected in required_booleans.items():
+        if evidence.get(key) is not expected:
+            raise PreflightError(f"deployment evidence {key} must be {expected}")
+    endpoints = evidence.get("public_endpoints")
+    if not isinstance(endpoints, dict):
+        raise PreflightError("deployment evidence public_endpoints is required")
+    stun_host = _endpoint_host(endpoints, "stun")
+    turn_host = _endpoint_host(endpoints, "turn")
+    turns_host = _endpoint_host(endpoints, "turns")
+    stun_addresses = require_public_host(stun_host, resolve=resolve_dns)
+    turn_addresses = require_public_host(turn_host, resolve=resolve_dns)
+    turns_addresses = require_public_host(turns_host, resolve=resolve_dns)
+    tls = evidence.get("tls")
+    if not isinstance(tls, dict):
+        raise PreflightError("deployment evidence tls block is required")
+    if tls.get("minimum_version") not in {"TLS1.2", "TLS1.3"}:
+        raise PreflightError("deployment evidence TLS version must be TLS1.2 or TLS1.3")
+    days = tls.get("certificate_expires_in_days")
+    if not isinstance(days, int) or isinstance(days, bool) or days < 7:
+        raise PreflightError("deployment evidence TLS certificate lifetime is too short")
+    quotas = evidence.get("quotas")
+    if not isinstance(quotas, dict):
+        raise PreflightError("deployment evidence quotas block is required")
+    if _positive_int(quotas, "credential_requests_per_minute") < MINIMUM_CREDENTIAL_REQUESTS_PER_MINUTE:
+        raise PreflightError("deployment credential request quota is too low")
+    if _positive_int(quotas, "max_concurrent_sessions_per_device") < MINIMUM_CONCURRENT_SESSIONS_PER_DEVICE:
+        raise PreflightError("deployment concurrent-session quota is too low")
+    if _positive_int(quotas, "daily_bytes_per_device") < MINIMUM_DAILY_BYTES_PER_DEVICE:
+        raise PreflightError("deployment daily byte quota is too low")
+    rotation = evidence.get("credential_rotation")
+    if not isinstance(rotation, dict):
+        raise PreflightError("deployment evidence credential_rotation block is required")
+    if _positive_int(rotation, "new_credential_ttl_seconds") > MAXIMUM_TURN_TTL_SECONDS:
+        raise PreflightError("deployment credential TTL is too high")
+    monitoring = evidence.get("monitoring")
+    if not isinstance(monitoring, dict):
+        raise PreflightError("deployment evidence monitoring block is required")
+    for key in ("allocation_metrics", "auth_failure_metrics", "relay_byte_metrics", "quota_decision_metrics"):
+        if monitoring.get(key) is not True:
+            raise PreflightError(f"deployment monitoring {key} must be true")
+    if _positive_int(monitoring, "canary_history_count") < 1:
+        raise PreflightError("deployment monitoring canary history is missing")
+    observers = evidence.get("remote_observers")
+    if not isinstance(observers, list) or len(observers) < MINIMUM_REMOTE_OBSERVER_COUNT:
+        raise PreflightError("deployment evidence must include independent remote observers")
+    for index, observer in enumerate(observers):
+        if not isinstance(observer, dict):
+            raise PreflightError("deployment remote observer entries must be objects")
+        if observer.get("outside_host_network") is not True or observer.get("observed_relay_candidate") is not True:
+            raise PreflightError(f"deployment remote observer {index} did not prove remote relay")
+    privacy = evidence.get("privacy")
+    if not isinstance(privacy, dict):
+        raise PreflightError("deployment privacy block is required")
+    for key in ("raw_endpoints_recorded", "sensitive_values_recorded", "raw_device_identifiers_recorded", "operator_paths_recorded"):
+        if privacy.get(key) is not False:
+            raise PreflightError(f"deployment privacy {key} must be false")
+    return {
+        "public_endpoint_hashes": {
+            "stun": stable_hash(stun_host),
+            "turn": stable_hash(turn_host),
+            "turns": stable_hash(turns_host),
+        },
+        "resolved_address_hashes": sorted(stable_hash(address) for address in (*stun_addresses, *turn_addresses, *turns_addresses)),
+        "tls": {
+            "minimum_version": tls.get("minimum_version"),
+            "certificate_expires_in_days": days,
+        },
+        "quotas": {
+            "credential_requests_per_minute": quotas.get("credential_requests_per_minute"),
+            "max_concurrent_sessions_per_device": quotas.get("max_concurrent_sessions_per_device"),
+            "daily_bytes_per_device": quotas.get("daily_bytes_per_device"),
+        },
+        "credential_rotation": {
+            "new_credential_ttl_seconds": rotation.get("new_credential_ttl_seconds"),
+            "old_credential_rejected_after_ttl": True,
+        },
+        "monitoring": {
+            "canary_history_count": monitoring.get("canary_history_count"),
+            "alert_rules_observed": True,
+        },
+        "remote_observer_count": len(observers),
+    }
+
+
+def _endpoint_host(endpoints: dict[str, Any], key: str) -> str:
+    value = endpoints.get(key)
+    if not isinstance(value, dict):
+        raise PreflightError(f"deployment endpoint {key} is required")
+    host = value.get("host")
+    if not isinstance(host, str) or not host.strip():
+        raise PreflightError(f"deployment endpoint {key} host is required")
+    return host
+
+
 def run_connectivity_command(command: Sequence[str] | None, *, resolve_dns: bool, timeout_seconds: float) -> dict[str, Any]:
     if not command:
         raise PreflightError("external public NAT/TURN connectivity command must be provided")
@@ -568,13 +733,15 @@ def build_report(
     relay_ready_url: str | None,
     connectivity_evidence: Path | None,
     connectivity_command: Sequence[str] | None,
-    resolve_dns: bool,
-    timeout_seconds: float,
+    deployment_evidence: Path | None = None,
+    resolve_dns: bool = True,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     checks: list[dict[str, str]] = []
     safe_relay: dict[str, Any] = {}
     safe_coturn: dict[str, Any] = {}
     safe_connectivity: dict[str, Any] = {}
+    safe_deployment: dict[str, Any] = {}
     reviewed_connectivity: dict[str, Any] | None = None
     canary_connectivity: dict[str, Any] | None = None
 
@@ -590,6 +757,7 @@ def build_report(
         ("dns_resolution", lambda: True if resolve_dns else (_raise("DNS resolution cannot be skipped for public NAT/TURN pass evidence"))),
         ("connectivity_evidence", lambda: validate_connectivity_evidence(connectivity_evidence, resolve_dns=resolve_dns)),
         ("external_connectivity_canary", lambda: run_connectivity_command(connectivity_command, resolve_dns=resolve_dns, timeout_seconds=timeout_seconds)),
+        ("deployment_evidence", lambda: validate_deployment_evidence(deployment_evidence, resolve_dns=resolve_dns)),
     ):
         check, value = _check(name, operation)
         checks.append(check)
@@ -605,6 +773,8 @@ def build_report(
                 canary_connectivity = value
                 safe_connectivity.update(value)
                 safe_connectivity["canary_evidence"] = value
+            elif name == "deployment_evidence":
+                safe_deployment = value
         elif check["result"] == PASS_RESULT and isinstance(value, str):
             if name == "turn_secret_file":
                 safe_coturn["turn_secret_sha256"] = value
@@ -633,6 +803,7 @@ def build_report(
         "relay": safe_relay,
         "coturn": safe_coturn,
         "connectivity": safe_connectivity,
+        "deployment": safe_deployment,
         "required_runtime_inputs": list(REQUIRED_RUNTIME_INPUTS),
         "privacy": {
             "raw_endpoints_recorded": False,
@@ -654,6 +825,7 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--authority-ready-url")
     parser.add_argument("--relay-ready-url")
     parser.add_argument("--connectivity-evidence", type=Path)
+    parser.add_argument("--deployment-evidence", type=Path)
     parser.add_argument(
         "--connectivity-command",
         nargs=argparse.REMAINDER,
@@ -687,6 +859,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             relay_ready_url=args.relay_ready_url,
             connectivity_evidence=args.connectivity_evidence,
             connectivity_command=args.connectivity_command,
+            deployment_evidence=args.deployment_evidence,
             resolve_dns=not args.skip_dns_resolution,
             timeout_seconds=args.timeout_seconds,
         )

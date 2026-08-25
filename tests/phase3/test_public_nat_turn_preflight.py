@@ -12,6 +12,7 @@ from unittest import mock
 from scripts.phase3.public_nat_turn_preflight import (
     BLOCKED_RESULT,
     CONNECTIVITY_SCHEMA,
+    DEPLOYMENT_SCHEMA,
     PASS_RESULT,
     SCHEMA,
     PreflightError,
@@ -22,6 +23,7 @@ from scripts.phase3.public_nat_turn_preflight import (
     require_public_host,
     read_json,
     validate_coturn_config,
+    validate_deployment_evidence,
     validate_external_ip,
 )
 
@@ -47,10 +49,10 @@ def valid_relay_config() -> dict[str, object]:
         "credential_requests_per_minute": 12,
         "max_concurrent_sessions_per_device": 2,
         "daily_bytes_per_device": 20 * 1024 * 1024 * 1024,
-            "max_usage_event_bytes": 1024 * 1024 * 1024,
-            "storage_backend": "postgres",
-            "authority_mode": "production_authority",
-            "authority_url": "https://authority.production.invalidname.net",
+        "max_usage_event_bytes": 1024 * 1024 * 1024,
+        "storage_backend": "postgres",
+        "authority_mode": "production_authority",
+        "authority_url": "https://authority.production.invalidname.net",
         "authority_source_id": "turn-prod-a",
         "maximum_database_clock_skew_seconds": 5,
         "state_file": "/data/relay-state.json",
@@ -93,6 +95,14 @@ def valid_coturn_config(extra: str = "") -> str:
     )
 
 
+def fake_private_key_fixture() -> str:
+    return "-----BEGIN " + "PRIVATE KEY-----\nredacted\n-----END " + "PRIVATE KEY-----\n"
+
+
+def fake_bearer_header_fixture() -> str:
+    return "Authorization: " + "Bearer fixture-not-a-real-token"
+
+
 def valid_connectivity_evidence() -> dict[str, object]:
     return {
         "schema": CONNECTIVITY_SCHEMA,
@@ -117,6 +127,59 @@ def valid_connectivity_evidence() -> dict[str, object]:
         "privacy": {
             "raw_endpoints_recorded": False,
             "sensitive_values_recorded": False,
+        },
+    }
+
+
+def valid_deployment_evidence() -> dict[str, object]:
+    return {
+        "schema": DEPLOYMENT_SCHEMA,
+        "result": PASS_RESULT,
+        "public_stun_endpoint_observed": True,
+        "public_turn_udp_tcp_observed": True,
+        "public_turn_tls_observed": True,
+        "tls_certificate_hostname_valid": True,
+        "tls_minimum_version_observed": True,
+        "credential_rotation_observed": True,
+        "old_credential_rejected_after_ttl": True,
+        "quota_enforcement_observed": True,
+        "monitoring_dashboards_observed": True,
+        "alert_rules_observed": True,
+        "remote_observer_outside_host_network": True,
+        "real_remote_peer_path": True,
+        "local_coturn_loopback": False,
+        "synthetic_peer": False,
+        "public_endpoints": {
+            "stun": {"host": "stun.production.invalidname.net", "port": 3478},
+            "turn": {"host": "relay.production.invalidname.net", "ports": [3478]},
+            "turns": {"host": "relay.production.invalidname.net", "port": 5349},
+        },
+        "tls": {"minimum_version": "TLS1.3", "certificate_expires_in_days": 30},
+        "quotas": {
+            "credential_requests_per_minute": 12,
+            "max_concurrent_sessions_per_device": 2,
+            "daily_bytes_per_device": 20 * 1024 * 1024 * 1024,
+        },
+        "credential_rotation": {
+            "new_credential_ttl_seconds": 600,
+            "old_credential_rejected_after_ttl": True,
+        },
+        "monitoring": {
+            "allocation_metrics": True,
+            "auth_failure_metrics": True,
+            "relay_byte_metrics": True,
+            "quota_decision_metrics": True,
+            "canary_history_count": 3,
+        },
+        "remote_observers": [
+            {"outside_host_network": True, "observed_relay_candidate": True},
+            {"outside_host_network": True, "observed_relay_candidate": True},
+        ],
+        "privacy": {
+            "raw_endpoints_recorded": False,
+            "sensitive_values_recorded": False,
+            "raw_device_identifiers_recorded": False,
+            "operator_paths_recorded": False,
         },
     }
 
@@ -291,7 +354,47 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                coturn_external_ip="8.8.8.8/10.0.0.5",
+                authority_ready_url="https://authority.production.invalidname.net/readyz",
+                relay_ready_url="https://relay.production.invalidname.net/readyz",
+                connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
+                connectivity_command=["external-canary"],
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
+                resolve_dns=True,
+                timeout_seconds=1,
+            )
+
+        self.assertEqual(report["result"], PASS_RESULT)
+        self.assertEqual(report["limitations"], [])
+        self.assertEqual(report["connectivity"]["reviewed_evidence"]["packets_received"], 5)
+        self.assertEqual(report["connectivity"]["canary_evidence"]["packets_received"], 5)
+        self.assertEqual(report["deployment"]["remote_observer_count"], 2)
+        self.assertEqual(report["deployment"]["tls"]["minimum_version"], "TLS1.3")
+        self.assertFalse(report["privacy"]["raw_endpoints_recorded"])
+        self.assertNotIn("relay.production.invalidname.net", json.dumps(report))
+
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.subprocess.run")
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.request.urlopen")
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.socket.getaddrinfo")
+    def test_missing_deployment_evidence_blocks_preflight(self, getaddrinfo, urlopen, run) -> None:
+        getaddrinfo.return_value = [(None, None, None, None, ("8.8.8.8", 0))]
+        urlopen.return_value.__enter__.return_value.status = 200
+        urlopen.return_value.__enter__.return_value.read.return_value = b'{"status":"ok"}'
+        run.return_value = subprocess.CompletedProcess(
+            ["external-canary"],
+            0,
+            stdout=json.dumps(valid_connectivity_evidence()),
+            stderr="",
+        )
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            report = build_report(
+                relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
+                coturn_config=write(directory / "production.conf", valid_coturn_config()),
+                turn_secret_file=write(directory / "turn-secret", "x" * 32),
+                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8/10.0.0.5",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -301,12 +404,63 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 timeout_seconds=1,
             )
 
-        self.assertEqual(report["result"], PASS_RESULT)
-        self.assertEqual(report["limitations"], [])
-        self.assertEqual(report["connectivity"]["reviewed_evidence"]["packets_received"], 5)
-        self.assertEqual(report["connectivity"]["canary_evidence"]["packets_received"], 5)
-        self.assertFalse(report["privacy"]["raw_endpoints_recorded"])
-        self.assertNotIn("relay.production.invalidname.net", json.dumps(report))
+        self.assertEqual(report["result"], BLOCKED_RESULT)
+        failed = {check["name"] for check in report["checks"] if check["result"] == BLOCKED_RESULT}
+        self.assertEqual(failed, {"deployment_evidence"})
+
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.subprocess.run")
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.request.urlopen")
+    @mock.patch("scripts.phase3.public_nat_turn_preflight.socket.getaddrinfo")
+    def test_deployment_rotation_monitoring_and_remote_observers_are_required(self, getaddrinfo, urlopen, run) -> None:
+        getaddrinfo.return_value = [(None, None, None, None, ("8.8.8.8", 0))]
+        urlopen.return_value.__enter__.return_value.status = 200
+        urlopen.return_value.__enter__.return_value.read.return_value = b'{"status":"ok"}'
+        run.return_value = subprocess.CompletedProcess(
+            ["external-canary"],
+            0,
+            stdout=json.dumps(valid_connectivity_evidence()),
+            stderr="",
+        )
+        deployment = valid_deployment_evidence()
+        deployment["credential_rotation_observed"] = False
+        deployment["monitoring"]["relay_byte_metrics"] = False  # type: ignore[index]
+        deployment["remote_observers"] = [deployment["remote_observers"][0]]  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            report = build_report(
+                relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
+                coturn_config=write(directory / "production.conf", valid_coturn_config()),
+                turn_secret_file=write(directory / "turn-secret", "x" * 32),
+                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                coturn_external_ip="8.8.8.8/10.0.0.5",
+                authority_ready_url="https://authority.production.invalidname.net/readyz",
+                relay_ready_url="https://relay.production.invalidname.net/readyz",
+                connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
+                connectivity_command=["external-canary"],
+                deployment_evidence=write(directory / "deployment.json", json.dumps(deployment)),
+                resolve_dns=True,
+                timeout_seconds=1,
+            )
+
+        self.assertEqual(report["result"], BLOCKED_RESULT)
+        failed = {check["name"] for check in report["checks"] if check["result"] == BLOCKED_RESULT}
+        self.assertEqual(failed, {"deployment_evidence"})
+
+    def test_deployment_evidence_rejects_secret_like_fields_before_evaluation(self) -> None:
+        deployment = valid_deployment_evidence()
+        deployment["turn_password"] = "<redacted>"
+        with tempfile.TemporaryDirectory() as directory_name:
+            path = write(Path(directory_name) / "deployment.json", json.dumps(deployment))
+            with self.assertRaisesRegex(PreflightError, "secret-like"):
+                validate_deployment_evidence(path, resolve_dns=False)
+
+        deployment = valid_deployment_evidence()
+        deployment["notes"] = fake_bearer_header_fixture()
+        with tempfile.TemporaryDirectory() as directory_name:
+            path = write(Path(directory_name) / "deployment.json", json.dumps(deployment))
+            with self.assertRaisesRegex(PreflightError, "secret material"):
+                validate_deployment_evidence(path, resolve_dns=False)
 
     @mock.patch("scripts.phase3.public_nat_turn_preflight.request.urlopen")
     @mock.patch("scripts.phase3.public_nat_turn_preflight.socket.getaddrinfo")
@@ -324,12 +478,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
                 connectivity_evidence=write(directory / "connectivity.json", json.dumps(connectivity)),
                 connectivity_command=None,
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
                 resolve_dns=True,
                 timeout_seconds=1,
             )
@@ -351,12 +506,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
                 connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
                 connectivity_command=None,
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
                 resolve_dns=True,
                 timeout_seconds=1,
             )
@@ -388,12 +544,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
                 connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
                 connectivity_command=["external-canary"],
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
                 resolve_dns=True,
                 timeout_seconds=1,
             )
@@ -422,7 +579,7 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -451,12 +608,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config("user-quota=1")),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
                 connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
                 connectivity_command=None,
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
                 resolve_dns=True,
                 timeout_seconds=1,
             )
@@ -481,12 +639,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
                 tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", "-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----\n"),
+                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://10.0.0.6/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
                 connectivity_evidence=write(directory / "connectivity.json", json.dumps(valid_connectivity_evidence())),
                 connectivity_command=None,
+                deployment_evidence=write(directory / "deployment.json", json.dumps(valid_deployment_evidence())),
                 resolve_dns=True,
                 timeout_seconds=1,
             )

@@ -13,6 +13,7 @@
 - [iOS iPhone/iPad device acceptance](ios-device-acceptance.md)
 - [Phase 5 multi-client/display current-base gate](../changes/2026-08-04-phase-5-ios-advanced/TEST.md#phase-5-multi-clientdisplay-current-base-gate)
 - [Phase 3 Internet and Authority operations](../changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md)
+- [Phase 3 public NAT/TURN readiness](phase3-public-nat-turn-readiness.md)
 
 Every runbook distinguishes exercised steps from environment-dependent or
 still-unproved behavior. Device-specific acceptance evidence remains in the

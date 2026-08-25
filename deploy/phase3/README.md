@@ -288,6 +288,7 @@ python3 ../../scripts/phase3/public_nat_turn_preflight.py \
   --authority-ready-url https://authority.example.com/readyz \
   --relay-ready-url https://relay.example.com/readyz \
   --connectivity-evidence /protected/evidence/public-nat-turn-connectivity.json \
+  --deployment-evidence /protected/evidence/public-nat-turn-deployment.json \
   --output /protected/evidence/public-nat-turn-preflight.json \
   --connectivity-command /usr/local/bin/vibe-public-turn-canary
 ```
@@ -297,7 +298,12 @@ runtime secret, TLS material, readiness probe, quota/ACL invariant, or remote
 connectivity artifact is missing. A saved `--connectivity-evidence` file is only
 reviewed context; pass evidence requires `--connectivity-command` to run an
 external observer during the preflight and emit a matching sanitized JSON record
-on stdout. Use `--allow-blocked` only to archive a readiness blocker. The
+on stdout. `--deployment-evidence` is a separate production-readiness record: it
+must prove the public STUN endpoint, UDP/TCP TURN, TLS TURN, certificate hostname
+validation, TLS 1.2 or newer, quota enforcement, credential rotation with old
+credential rejection after TTL, allocation/auth-failure/relay-byte/quota
+monitoring, alert rules, and at least two remote observers outside the host
+network. Use `--allow-blocked` only to archive a readiness blocker. The
 checked-in example config, local coturn profile, loopback runs, and synthetic
 peers are expected to remain blocked and cannot close the public Internet or
 remote TURN gates.
