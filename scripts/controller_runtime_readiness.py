@@ -172,17 +172,71 @@ def redact_evidence_text(value: str, serial: str = "") -> str:
 def redacted_device_identity(device: DeviceIdentity, serial: str) -> DeviceIdentity:
     return DeviceIdentity(
         serial=REDACTED_DEVICE_SERIAL,
-        endpoint=redact_device_serial(device.endpoint, serial),
+        endpoint=(
+            f"redacted adb endpoint product:{device.device} "
+            f"model:{device.model} device:{device.device}"
+        ),
         manufacturer=device.manufacturer,
         model=device.model,
         device=device.device,
         android_release=device.android_release,
         sdk=device.sdk,
-        fingerprint_sha256=device.fingerprint_sha256,
+        fingerprint_sha256="redacted-build-fingerprint-sha256",
         display_size=device.display_size,
         display_density=device.display_density,
         battery_summary=device.battery_summary,
         boot_completed=device.boot_completed,
+    )
+
+
+def redacted_package_identity(package: PackageIdentity) -> PackageIdentity:
+    return PackageIdentity(
+        package_name=package.package_name,
+        version_name=package.version_name,
+        version_code=package.version_code,
+        first_install_time=package.first_install_time,
+        last_update_time=package.last_update_time,
+        raw_summary="redacted package signature summary" if package.raw_summary else "",
+    )
+
+
+def redacted_controller_devices(devices: Sequence[InputDeviceSummary]) -> list[InputDeviceSummary]:
+    return [
+        InputDeviceSummary(
+            name=device.name,
+            classes=device.classes,
+            sources=device.sources,
+            is_external=device.is_external,
+            descriptor="redacted-device-descriptor" if device.descriptor else "",
+        )
+        for device in devices
+    ]
+
+
+def redacted_host_signing(host_signing: HostSigningStatus) -> HostSigningStatus:
+    team_identifier = ""
+    if host_signing.team_identifier:
+        team_identifier = (
+            "not set"
+            if host_signing.team_identifier == "not set"
+            else "redacted-team-identifier"
+        )
+    return HostSigningStatus(
+        "redacted-host-app" if host_signing.host_app else None,
+        host_signing.identity_signed,
+        host_signing.virtual_hid_entitlement_present,
+        team_identifier,
+        "redacted codesign summary" if host_signing.codesign_summary else "",
+        "redacted entitlement summary" if host_signing.entitlement_summary else "",
+    )
+
+
+def redacted_host_availability(host_availability: HostAvailabilityStatus, serial: str) -> HostAvailabilityStatus:
+    return HostAvailabilityStatus(
+        "redacted-host-log",
+        host_availability.virtual_gamepad_available,
+        redact_evidence_text(host_availability.last_controller_line, serial),
+        redact_evidence_text(host_availability.unavailable_reason, serial),
     )
 
 
@@ -662,7 +716,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--redact-identifiers",
         action="store_true",
-        help="Redact persistent device identifiers and local HOME paths in committed evidence files.",
+        help=(
+            "Redact persistent device identifiers and local HOME paths in committed evidence files, "
+            "and omit raw local inventory dumps that are not needed for gate summaries."
+        ),
     )
     parser.add_argument(
         "--allow-existing-device-lock",
@@ -712,15 +769,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         host_signing = inspect_host_signing(args.host_app)
         host_availability = inspect_host_availability(args.host_log, args.max_host_log_bytes)
         evidence_device = redacted_device_identity(device, args.serial) if args.redact_identifiers else device
+        evidence_package = redacted_package_identity(package) if args.redact_identifiers else package
+        evidence_host_signing = redacted_host_signing(host_signing) if args.redact_identifiers else host_signing
+        evidence_host_availability = (
+            redacted_host_availability(host_availability, args.serial)
+            if args.redact_identifiers
+            else host_availability
+        )
+        evidence_controller_devices = (
+            redacted_controller_devices(controller_devices)
+            if args.redact_identifiers
+            else controller_devices
+        )
         result = build_result(
             run_id=run_id,
             created_at=created_at,
             source_commit=source_commit,
             device=evidence_device,
-            package=package,
-            controller_devices=controller_devices,
-            host_signing=host_signing,
-            host_availability=host_availability,
+            package=evidence_package,
+            controller_devices=evidence_controller_devices,
+            host_signing=evidence_host_signing,
+            host_availability=evidence_host_availability,
         )
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -731,21 +800,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         observation_record["artifact_paths"] = result.summary["artifact_paths"]
         write_json(args.evidence_dir / "controller-runtime-observations.json", observation_record)
         write_json(args.evidence_dir / "controller-runtime-summary.json", result.summary)
-        safe_adb_devices_text = (
-            redact_device_serial(adb_devices_text, args.serial)
-            if args.redact_identifiers
-            else adb_devices_text
-        )
-        (args.evidence_dir / "adb-devices.txt").write_text(
-            safe_adb_devices_text, encoding="utf-8"
-        )
-        (args.evidence_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
-        (args.evidence_dir / "dumpsys-package.txt").write_text(package_raw, encoding="utf-8")
-        (args.evidence_dir / "host-controller-availability.txt").write_text(
-            (host_availability.last_controller_line or "no controller availability line found") + "\n",
-            encoding="utf-8",
-        )
-        if host_signing.codesign_summary or host_signing.entitlement_summary:
+        if not args.redact_identifiers:
+            (args.evidence_dir / "adb-devices.txt").write_text(
+                adb_devices_text, encoding="utf-8"
+            )
+            (args.evidence_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
+            (args.evidence_dir / "dumpsys-package.txt").write_text(package_raw, encoding="utf-8")
+            (args.evidence_dir / "host-controller-availability.txt").write_text(
+                (host_availability.last_controller_line or "no controller availability line found") + "\n",
+                encoding="utf-8",
+            )
+        if not args.redact_identifiers and (host_signing.codesign_summary or host_signing.entitlement_summary):
             (args.evidence_dir / "host-codesign.txt").write_text(
                 host_signing.codesign_summary
                 + "\n\n--- entitlements ---\n"
