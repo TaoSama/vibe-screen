@@ -72,16 +72,32 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         require_compact(
             screen_capture,
             """
-            newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-                frameSink?.sendFrame(
-                    data,
-                    timestamp: timestamp,
-                    isKeyframe: isKeyframe,
-                    sessionEpoch: sessionEpoch
-                )
-            }
+            newEncoder.onEncodedFrame = makeEncodedFrameHandler(frameSink: frameSink)
             """,
-            label="VideoToolbox encoded frames are forwarded with their session epoch",
+            label="VideoToolbox encoded frames use the shared frame-sink handler",
+        )
+        require_compact(
+            screen_capture,
+            """
+            self?.recordEncodedOutput(
+                byteCount: data.count,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+            """,
+            label="VideoToolbox encoded frames are marked and forwarded with their session epoch",
+        )
+        require_compact(
+            screen_capture,
+            "VideoToolbox output frame media_epoch=\(sessionEpoch)",
+            label="Host logs a real VideoToolbox output epoch marker",
         )
 
         for snippet, label in (

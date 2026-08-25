@@ -196,6 +196,11 @@ def real_media_report(*, verdict: str = "pass") -> dict:
         "continuity_summary": {
             "public_internet_path": True,
             "media_source": "real_screencapturekit_or_cgdisplaystream",
+            "capture_sources": ["ScreenCaptureKit"],
+            "videotoolbox_output_epochs": [7],
+            "mediacodec_first_input_epochs": [7],
+            "mediacodec_first_output_epochs": [7],
+            "shared_pipeline_epochs": [7],
             "mediacodec_first_input_frame": True,
             "mediacodec_first_output_frame": True,
             "continuous_output_frames": 180,
@@ -620,6 +625,50 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
         media_gate = next(gate for gate in result["gates"] if gate["name"] == "real_capture_to_mediacodec")
         self.assertIn(
             "real-media host_observation.synthetic_markers must be empty",
+            media_gate["reasons"],
+        )
+
+    def test_real_media_requires_source_metadata_and_shared_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = real_media_report()
+            report["continuity_summary"]["capture_sources"] = []
+            report["continuity_summary"]["shared_pipeline_epochs"] = []
+            write_json(root / "real-media-continuity.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        media_gate = next(gate for gate in result["gates"] if gate["name"] == "real_capture_to_mediacodec")
+        self.assertIn(
+            "real-media continuity_summary.capture_sources must be present",
+            media_gate["reasons"],
+        )
+        self.assertIn(
+            "real-media continuity_summary.shared_pipeline_epochs must be present",
+            media_gate["reasons"],
+        )
+
+    def test_real_media_rejects_invalid_source_and_unobserved_shared_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = real_media_report()
+            report["continuity_summary"]["capture_sources"] = ["synthetic-harness"]
+            report["continuity_summary"]["shared_pipeline_epochs"] = [8]
+            write_json(root / "real-media-continuity.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        media_gate = next(gate for gate in result["gates"] if gate["name"] == "real_capture_to_mediacodec")
+        self.assertIn(
+            "real-media continuity_summary.capture_sources must name real capture sources",
+            media_gate["reasons"],
+        )
+        self.assertIn(
+            "real-media continuity_summary.shared_pipeline_epochs must be observed in VideoToolbox and MediaCodec epoch lists",
             media_gate["reasons"],
         )
 

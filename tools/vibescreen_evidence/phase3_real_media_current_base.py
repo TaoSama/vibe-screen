@@ -33,8 +33,8 @@ from .phase3_real_media_continuity import (
 
 KIND = "phase3_real_media_current_base_gate"
 OWNER_ROLE = "phase3_real_media_current_base_owner"
-OWNER_BRANCH = "codex/phase3-real-media-evidence-gate"
-OWNER_PR = "#303"
+OWNER_BRANCH = "codex/phase3-g23-real-media-gate"
+OWNER_PR = "pending"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 ACCEPTED_UI_EVIDENCE_KINDS = frozenset(
     ("device_screenshot", "device_screen_recording", "external_camera_recording")
@@ -354,6 +354,17 @@ def derive_gate(
     _append_blocking_check(
         checks,
         blocked,
+        "real_capture_source_metadata",
+        any(
+            source in {"ScreenCaptureKit", "CGDisplayStream", "SCStream"}
+            for source in summary.get("capture_sources") or []
+        ),
+        "real capture-source metadata is observed",
+        evidence=[str(source) for source in summary.get("capture_sources") or []],
+    )
+    _append_blocking_check(
+        checks,
+        blocked,
         "videotoolbox_output",
         int(summary.get("videotoolbox_output_frames") or 0) > 0,
         "VideoToolbox encoded output is observed",
@@ -373,6 +384,14 @@ def derive_gate(
         bool(summary.get("protocol_v1_media_epochs"))
         or summary.get("protocol_v1_session_epoch") is not None,
         "Protocol v1 media or session epoch is observed",
+    )
+    _append_blocking_check(
+        checks,
+        blocked,
+        "shared_pipeline_epoch",
+        bool(summary.get("shared_pipeline_epochs")),
+        "Host VideoToolbox output and Android MediaCodec input/output share a session epoch",
+        evidence=[str(epoch) for epoch in summary.get("shared_pipeline_epochs") or []],
     )
     _append_blocking_check(
         checks,
@@ -465,6 +484,8 @@ def derive_gate(
             "media_source": summary.get("media_source"),
             "public_internet_path": summary.get("public_internet_path"),
             "selected_webrtc_route": summary.get("selected_webrtc_route"),
+            "capture_sources": summary.get("capture_sources") or [],
+            "shared_pipeline_epochs": summary.get("shared_pipeline_epochs") or [],
             "continuous_output_frames": summary.get("continuous_output_frames"),
             "dropped_frames": dropped_frames,
             "decoder_error_count": decoder_errors,

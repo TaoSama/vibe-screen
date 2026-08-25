@@ -554,17 +554,20 @@ For the real capture -> Android decoder continuity slice, generate
 `real-media-continuity.json` from retained Host and Android logs with
 `PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_continuity` or
 `make phase3-real-media-continuity`. The result must record `media_source`
-through observed real-capture markers, Protocol v1 `session_epoch` or media
-epoch, selected `network_path`, Host signing state, Screen Recording state,
-MediaCodec first input/output markers, continuous output-frame count, drops, and
-decoder errors. The evaluator is fail-closed: synthetic-media markers, missing
-public-Internet route evidence, missing identity-signed Host evidence, missing
-Screen Recording permission, missing capture/VideoToolbox output, or missing
-MediaCodec output produce `blocked`. Decoder/runtime errors or excess drops
-produce `fail` only after the required runtime stages are otherwise present. The
-file is a narrow continuity preflight and always records
-`gate_can_close_phase3_release=false`; it cannot by itself close the broader
-Phase 3 release gate.
+through observed real-capture markers, explicit `capture_sources` metadata from
+ScreenCaptureKit/CGDisplayStream, Protocol v1 `session_epoch` or media epoch,
+selected `network_path`, Host signing state, Screen Recording state,
+VideoToolbox output epochs, MediaCodec first input/output epochs, continuous
+output-frame count, drops, and decoder errors. The evaluator is fail-closed:
+synthetic-media markers, missing public-Internet route evidence, missing
+identity-signed Host evidence, missing Screen Recording permission, missing
+real capture-source metadata, missing capture/VideoToolbox output, missing
+VideoToolbox output epoch, missing MediaCodec output, or no shared epoch across
+Host VideoToolbox output and Android MediaCodec first input/output produce
+`blocked`. Decoder/runtime errors or excess drops produce `fail` only after the
+required runtime stages are otherwise present. The file is a narrow continuity
+preflight and always records `gate_can_close_phase3_release=false`; it cannot by
+itself close the broader Phase 3 release gate.
 
 
 For adaptive media under real network fluctuation, bind retained WebRTC transport
@@ -595,10 +598,12 @@ Android version, and SDK, and a non-empty screenshot, device recording, or
 external-camera recording plus an operator note confirming decoded Mac desktop
 content is visible in the Android UI. Missing UI evidence, stale or dirty source,
 synthetic media, local-only or forced-local-coturn routes, unsigned/ad-hoc Host
-builds, blocked TCC, missing capture/VideoToolbox/MediaCodec stages, decoder
-errors, or excess drops keep the current-base gate blocked or failed. Even a
-pass records only `release_gate_effect=child_gate_only`; it does not close the
-broader public Internet release gate.
+builds, blocked TCC, missing real capture-source metadata, missing
+capture/VideoToolbox/MediaCodec stages, no shared VideoToolbox-to-MediaCodec
+pipeline epoch, decoder errors, or excess drops keep the current-base gate
+blocked or failed. Even a pass records only
+`release_gate_effect=child_gate_only`; it does not close the broader public
+Internet release gate.
 
 For Internet DataChannel audio, clipboard, and file-transfer product-flow
 ownership, run `make phase3-advanced-datachannel-current-base` with

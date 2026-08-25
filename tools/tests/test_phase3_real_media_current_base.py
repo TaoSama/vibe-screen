@@ -77,10 +77,15 @@ def continuity_result(
             "selected_webrtc_route": route,
             "protocol_v1_media_epochs": [7],
             "protocol_v1_session_epoch": 7,
+            "capture_sources": ["ScreenCaptureKit"],
             "capture_frame_count": capture_frames,
             "videotoolbox_output_frames": videotoolbox_frames,
+            "videotoolbox_output_epochs": [7],
             "mediacodec_first_input_frame": True,
+            "mediacodec_first_input_epochs": [7],
             "mediacodec_first_output_frame": True,
+            "mediacodec_first_output_epochs": [7],
+            "shared_pipeline_epochs": [7],
             "continuous_output_frames": output_frames,
             "dropped_frames": dropped_frames,
             "decoder_error_count": decoder_errors,
@@ -216,6 +221,24 @@ class Phase3RealMediaCurrentBaseGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("blocked: no_synthetic_media", result["reasons"])
+
+    def test_missing_capture_source_metadata_blocks(self) -> None:
+        continuity = continuity_result()
+        continuity["continuity_summary"]["capture_sources"] = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.derive(Path(directory), continuity)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("blocked: real_capture_source_metadata", result["reasons"])
+
+    def test_missing_shared_pipeline_epoch_blocks(self) -> None:
+        continuity = continuity_result()
+        continuity["continuity_summary"]["shared_pipeline_epochs"] = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.derive(Path(directory), continuity)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("blocked: shared_pipeline_epoch", result["reasons"])
 
     def test_missing_device_identity_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

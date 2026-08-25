@@ -174,6 +174,8 @@ def current_base_real_media_gate(
             "media_source": "real_screencapturekit_or_cgdisplaystream",
             "public_internet_path": True,
             "selected_webrtc_route": "relay",
+            "capture_sources": ["ScreenCaptureKit"],
+            "shared_pipeline_epochs": [7],
             "continuous_output_frames": 120,
             "dropped_frames": 0,
             "decoder_error_count": 0,

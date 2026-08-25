@@ -216,17 +216,19 @@ Use the Phase 3 continuity evaluator after collecting retained Host and Android
 logs from a real Internet product-session attempt. It checks for the narrow
 ScreenCaptureKit/CGDisplayStream -> VideoToolbox -> WebRTC -> Android
 MediaCodec continuity slice: route/ICE evidence, Protocol v1 media epoch, real
-capture first frame, encoder output, decoder configuration, first decoder input,
-first decoder output, continuous output count, drops, and decoder errors.
+capture-source metadata, capture first frame, VideoToolbox output epoch,
+decoder configuration, first decoder input epoch, first decoder output epoch,
+continuous output count, drops, and decoder errors.
 
 The evaluator is passive and fail-closed. It does not start the Host, change TCC,
 touch ADB, or close the Phase 3 release gate. A `pass` only means the supplied
 logs satisfy this continuity slice; the generated JSON always keeps
 `gate_can_close_phase3_release` false. Missing public-Internet route evidence,
-identity-signed Host evidence, Screen Recording permission, real capture,
-VideoToolbox output, MediaCodec output, or synthetic-media contamination returns
-`blocked`. Runtime decoder errors or excess dropped frames return `fail` only
-after the required runtime stages are otherwise present.
+identity-signed Host evidence, Screen Recording permission, real capture-source
+metadata, real capture, VideoToolbox output, VideoToolbox output epoch,
+MediaCodec output, a shared VideoToolbox-to-MediaCodec epoch, or synthetic-media
+contamination returns `blocked`. Runtime decoder errors or excess dropped frames
+return `fail` only after the required runtime stages are otherwise present.
 
 Exit codes are `0` for `pass`, `1` for `blocked`, `2` for runtime `fail`, and
 `3` for input or invocation errors.
@@ -274,10 +276,11 @@ It requires the continuity result to be a clean current-HEAD run, plus a real
 Android device identity and a screenshot, screen recording, or external-camera
 recording of the decoded UI. Missing UI evidence, old commits, dirty source,
 local-only routes, synthetic media, missing identity signing, missing Screen
-Recording permission, missing capture/encoder/decoder stages, decoder errors,
-or excess drops produce `blocked` or `fail`. A pass closes only this child gate;
-remote TURN, handoff, revocation, latency, soak, and the broader Phase 3 release
-gate remain separate.
+Recording permission, missing real capture-source metadata, missing
+capture/encoder/decoder stages, no shared VideoToolbox-to-MediaCodec epoch,
+decoder errors, or excess drops produce `blocked` or `fail`. A pass closes only
+this child gate; remote TURN, handoff, revocation, latency, soak, and the
+broader Phase 3 release gate remain separate.
 
 ## Phase 3 adaptive-media current-base gate
 

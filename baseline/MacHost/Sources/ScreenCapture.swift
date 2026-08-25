@@ -288,7 +288,12 @@ class ScreenCapture {
         var sourceFrameCount = 0
     }
 
+    private struct EncodedOutputMarkerState {
+        var emittedSessionEpochs: Set<UInt64> = []
+    }
+
     private let latestPixelBuffer = LatestRetainedSlot<CVPixelBuffer>()
+    private let encodedOutputMarkerLock = OSAllocatedUnfairLock(initialState: EncodedOutputMarkerState())
 
     private struct KeyframeRequestState {
         var pendingEncoderCreationRequest = false
@@ -565,14 +570,7 @@ class ScreenCapture {
                 ]
             )
         }
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
+        newEncoder.onEncodedFrame = makeEncodedFrameHandler(frameSink: frameSink)
         newEncoder.requestKeyframe()
 
         stopFrameMonitor()
@@ -925,6 +923,47 @@ class ScreenCapture {
         return isFirst
     }
 
+    private func recordEncodedOutput(
+        byteCount: Int,
+        timestamp: UInt64,
+        isKeyframe: Bool,
+        sessionEpoch: UInt64
+    ) {
+        guard sessionEpoch != 0 else { return }
+        let shouldLog = encodedOutputMarkerLock.withLock { state -> Bool in
+            if state.emittedSessionEpochs.contains(sessionEpoch) { return false }
+            state.emittedSessionEpochs.insert(sessionEpoch)
+            return true
+        }
+        guard shouldLog else { return }
+
+        let captureSource = fallbackLifecycle.isActive ? "CGDisplayStream" : "ScreenCaptureKit"
+        debugLog(
+            "VideoToolbox output frame media_epoch=\(sessionEpoch) " +
+                "capture_source=\(captureSource) codec=\(codec) " +
+                "keyframe=\(isKeyframe) timestamp=\(timestamp) bytes=\(byteCount)"
+        )
+    }
+
+    private func makeEncodedFrameHandler(
+        frameSink: (any EncodedFrameSink)?
+    ) -> (Data, UInt64, Bool, UInt64) -> Void {
+        { [weak self, weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            self?.recordEncodedOutput(
+                byteCount: data.count,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+        }
+    }
+
     private func configureFrameHandler(label: String) {
         let queue = DispatchQueue(label: "encodeQueue.\(label)", qos: .userInteractive)
         configureFramePacer(on: queue)
@@ -977,14 +1016,7 @@ class ScreenCapture {
         let (width, height) = encodeSize(for: codec)
 
         let newEncoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
+        newEncoder.onEncodedFrame = makeEncodedFrameHandler(frameSink: frameSink)
         replaceEncoder(newEncoder)
 
         // Apply any keyframe request that arrived before the encoder existed
@@ -1830,14 +1862,7 @@ class ScreenCapture {
         let (width, height) = encodeSize(for: newCodec)
         let frameSink = currentFrameSink
         let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
+        newEncoder.onEncodedFrame = makeEncodedFrameHandler(frameSink: frameSink)
         newEncoder.requestKeyframe()
         replaceEncoder(newEncoder)
 
