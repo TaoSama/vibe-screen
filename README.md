@@ -33,7 +33,7 @@ platform scaffolding under active development.
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
-| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-20 Nubia P0110 preflight was blocked by device Wi-Fi and Host signing prerequisites |
+| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
@@ -885,8 +885,17 @@ decoder, or app-lifecycle behavior: the supported stable-signing Host preflight
 was blocked by a missing `Vibe Screen Dev` codesigning identity, the ad-hoc
 current app did not expose a `54321` listener, and the read-only USB smoke helper
 returned `insufficient`. That record is retained under
-[2026-08-23-nubia-p0110-usb-current-base](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/README.md)
-and does not replace the earlier passing P0110 smoke. Final tablet
+[2026-08-23-nubia-p0110-usb-current-base](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
+A 2026-08-24 follow-up on the same P0110 observed an already-running
+`/Applications/Vibe Screen.app` USB/loopback session at PR head `d2b9698f`: the
+Host listened only on `127.0.0.1:54321`, ADB reverse provided
+`UsbFfs tcp:54321 tcp:54321`, and the read-only USB smoke collector returned
+`pass` with current-process `stream_stats`, first output frame, and continuing
+decoder counters. That record is retained under
+[2026-08-24-p0110-usb-loopback-running-window](docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window/README.md)
+and is USB/loopback evidence only: it does not close trusted-LAN stream or
+reconnect, two-hour RSS, external-camera latency, native-pointer HID, stylus,
+controller, or long-soak gates. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal

@@ -1,0 +1,47 @@
+# Commands
+
+All Android commands used explicit serial `<device-serial>`.
+
+```sh
+git fetch origin --prune
+git switch -c codex/trusted-lan-p0110-preflight-20260824
+git fetch origin --prune
+git rebase origin/main
+git rev-parse origin/main
+# 34b75ac7d945dfa6697ff311fd0a821fb75532ef
+
+adb -s <device-serial> devices -l
+adb -s <device-serial> shell getprop ro.product.manufacturer
+adb -s <device-serial> shell getprop ro.product.model
+adb -s <device-serial> shell getprop ro.product.device
+adb -s <device-serial> shell getprop ro.build.version.release
+adb -s <device-serial> shell getprop ro.build.version.sdk
+adb -s <device-serial> shell svc wifi enable
+
+# Preflight JSON was collected from a clean detached copy of origin/main so the
+# repository field reflects the tested source baseline, not generated evidence
+# files in this branch.
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<clean-origin-main>/tools \
+  python3 -m vibescreen_evidence.trusted_lan_preflight \
+  --serial <device-serial> \
+  --repo <clean-origin-main> \
+  --host-port 54321 \
+  --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-lan-preflight-main-blocked/trusted-lan-preflight.json
+# exit code: 2 (blocked)
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / <device-serial>" \
+  --require-disruption client-kill \
+  --require-disruption lan-network-interrupt \
+  --blocker "P0110 Wi-Fi is not associated and wlan0 has no IPv4 route to the Mac LAN candidate" \
+  --blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" \
+  --artifact "docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-lan-preflight-main-blocked/trusted-lan-preflight.json" \
+  --notes "Blocked readiness record only; no real Protocol v1 trusted-LAN reconnect timing attempt was run." \
+  --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-lan-preflight-main-blocked/reconnect-timing-summary.json
+# exit code: 3 (blocked)
+
+cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-lan-preflight-main-blocked
+shasum -a 256 -c SHA256SUMS
+```
