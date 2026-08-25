@@ -103,7 +103,7 @@ PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachanne
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-advanced-datachannel-current-base phase3-advanced-datachannel-blocked-baseline phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-adaptive-media-current-base phase3-advanced-datachannel-current-base phase3-advanced-datachannel-blocked-baseline phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-host-readiness baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate android-audio-playback-gate native-pointer-hid-acceptance native-pointer-hid-gate physical-stylus-acceptance physical-stylus-gate actionable-error-states-gate actionable-error-current-base-gate actionable-error-current-base-owner-record harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-macos-startup-recovery-gate phase2-aggregate-owner ios-app-signing-readiness-gate ios-device-acceptance-gate ios-hdr-edr-gate ios-current-base-manifest ios-current-base-gate phase5-multi-client-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run phase2-device-environment-summary phase2-device-environment-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -563,7 +563,21 @@ phase2-device-memory-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-8h/summary.json --samples $(EVIDENCE_DIR)/soak-8h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-8h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-8h/exact-window-report.json
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_device_memory_gate --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --output $(EVIDENCE_DIR)/soak-8h/phase2-device-memory-gate.json
 
+phase2-device-environment-summary:
+	@rm -f "$(EVIDENCE_DIR)/soak-8h/phase2-device-environment-summary.json"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_device_environment $(EVIDENCE_DIR)/phase2-device-environment-observations.json --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/soak-8h/phase2-device-environment-summary.json >/dev/null; \
+	status=$$?; \
+	if [ ! -f "$(EVIDENCE_DIR)/soak-8h/phase2-device-environment-summary.json" ]; then \
+		test $$status -ne 0 && exit $$status || exit 1; \
+	fi; \
+	exit 0
+
+phase2-device-environment-gate: phase2-device-environment-summary
+	@PYTHONDONTWRITEBYTECODE=1 python3 -c 'import json, sys; summary = json.load(open(sys.argv[1], encoding="utf-8")); print(json.dumps(summary, sort_keys=True)); sys.exit(0 if summary.get("verdict") == "pass" else 1)' "$(EVIDENCE_DIR)/soak-8h/phase2-device-environment-summary.json"
+
 phase2-tablet-gate: phase2-device-memory-gate
+	$(MAKE) phase2-device-environment-summary EVIDENCE_DIR="$(EVIDENCE_DIR)"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/soak-8h/phase2-tablet-gate.json
 
 hardware-keyboard-gate:

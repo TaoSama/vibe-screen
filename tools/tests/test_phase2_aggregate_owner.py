@@ -79,17 +79,19 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
         )
         self.assertIn("android_substitute", report["substitute_readiness"]["notes"][0])
 
-    def test_device_environment_owner_is_285_and_stale_prs_are_classified(self):
+    def test_device_environment_owner_is_current_branch_and_stale_prs_are_classified(self):
         report = derive_report()
         environment = next(
             gate for gate in report["owner_matrix"] if gate["gate_id"] == "thermal_power_sampling"
         )
         stale_prs = {entry["pr_number"]: entry for entry in report["stale_prs"]}
 
-        self.assertEqual(environment["owner"]["pr_number"], 285)
-        self.assertEqual(environment["owner"]["state"], "active_child_draft_conflicting")
-        self.assertEqual(stale_prs[252]["replacement"], "#285")
-        self.assertIn("#285", stale_prs[255]["replacement"])
+        self.assertIsNone(environment["owner"]["pr_number"])
+        self.assertEqual(environment["owner"]["branch"], "codex/phase2-stability-current-base")
+        self.assertEqual(environment["owner"]["state"], "this_current_base_pr")
+        self.assertIn(285, stale_prs)
+        self.assertEqual(stale_prs[252]["replacement"], "this current-base device-environment gate branch")
+        self.assertIn("current-base device-environment gate", stale_prs[255]["replacement"])
         self.assertEqual(stale_prs[274]["status"], "stale_source_superseded")
 
     def test_all_child_pass_signals_close_aggregate(self):
@@ -121,7 +123,9 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
 
         self.assertEqual(orders, sorted(orders))
         self.assertEqual(len(orders), len(set(orders)))
-        self.assertTrue({174, 234, 240, 285}.issubset(pr_numbers))
+        self.assertTrue({174, 234, 240}.issubset(pr_numbers))
+        self.assertIn(None, pr_numbers)
+        self.assertNotIn(285, pr_numbers)
         self.assertNotIn(252, pr_numbers)
         self.assertNotIn(255, pr_numbers)
         self.assertTrue(any(item["state"] == "this_current_base_pr" for item in report["merge_plan"]))
