@@ -19,7 +19,7 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main c754f2dab4d3781847b40988105fcdefe1723538"
+CURRENT_BASE = "origin/main 806ccc24947a4e852e08bba05fb656e0e3703949"
 REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 
@@ -93,10 +93,10 @@ OWNER_PRS: dict[str, OwnerPr] = {
         338,
         "test: add Phase 2 device environment gate",
         "origin/main",
-        "c754f2dab4d3781847b40988105fcdefe1723538",
+        "806ccc24947a4e852e08bba05fb656e0e3703949",
         "merged_baseline",
         5,
-        "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; now present in latest main after #342 advanced the base.",
+        "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
     ),
     "hardware_keyboard": OwnerPr(
         None,
@@ -484,7 +484,7 @@ def derive_report(
             "single_prs_against_origin_main": (
                 "#179, #189, #213, #315, #321, #338, and #342 are merged into current base. "
                 "#174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, "
-                "and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, and #285 are stale or superseded inputs."
+                "and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, #274, and #285 are stale or superseded inputs."
             ),
             "pairwise_overlap": PAIRWISE_OVERLAP_NOTES,
             "recommendation": (

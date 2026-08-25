@@ -8,7 +8,7 @@
       "#234 remains the tablet UI child slice; hardware keyboard is owned by this dedicated current-base branch and supersedes closed #240 while preserving merged #179 tooling."
     ],
     "recommendation": "Use this aggregate owner layer to keep README Phase 2 gate status fail-closed while child PRs are rebased or merged in the recorded order.",
-    "single_prs_against_origin_main": "#179, #189, #213, #315, #321, #338, and #342 are merged into current base. #174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, and #285 are stale or superseded inputs."
+    "single_prs_against_origin_main": "#179, #189, #213, #315, #321, #338, and #342 are merged into current base. #174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, #274, and #285 are stale or superseded inputs."
   },
   "can_close_readme_phase2_gates": false,
   "input_summaries": {
@@ -72,9 +72,9 @@
     },
     {
       "branch": "origin/main",
-      "head_sha": "c754f2dab4d3781847b40988105fcdefe1723538",
+      "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
       "merge_order": 5,
-      "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; now present in latest main after #342 advanced the base.",
+      "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
       "pr_number": 338,
       "state": "merged_baseline",
       "title": "test: add Phase 2 device environment gate"
@@ -208,9 +208,9 @@
       "label": "Stand-mounted charging stability",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "c754f2dab4d3781847b40988105fcdefe1723538",
+        "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
         "merge_order": 5,
-        "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; now present in latest main after #342 advanced the base.",
+        "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
         "state": "merged_baseline",
         "title": "test: add Phase 2 device environment gate"
@@ -229,9 +229,9 @@
       "label": "Thermal and power sampling",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "c754f2dab4d3781847b40988105fcdefe1723538",
+        "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
         "merge_order": 5,
-        "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; now present in latest main after #342 advanced the base.",
+        "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
         "state": "merged_baseline",
         "title": "test: add Phase 2 device environment gate"
@@ -305,7 +305,7 @@
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main c754f2dab4d3781847b40988105fcdefe1723538",
+  "source_baseline": "origin/main 806ccc24947a4e852e08bba05fb656e0e3703949",
   "stale_prs": [
     {
       "pr_number": 240,

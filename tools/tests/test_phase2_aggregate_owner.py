@@ -93,6 +93,7 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
         self.assertEqual(stale_prs[252]["replacement"], "#338")
         self.assertIn("#338", stale_prs[255]["replacement"])
         self.assertEqual(stale_prs[274]["status"], "stale_source_superseded")
+        self.assertIn("#274", report["audit_summary"]["single_prs_against_origin_main"])
 
     def test_hardware_keyboard_owner_is_this_current_base_branch(self):
         report = derive_report()
