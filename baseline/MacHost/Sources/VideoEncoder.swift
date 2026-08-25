@@ -637,6 +637,19 @@ class VideoEncoder {
         return status
     }
 
+    @discardableResult
+    func drainPendingFramesForSelfTest() -> Int {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        // Self-test warmup may see VideoToolbox accept frames and complete
+        // successfully without invoking callbacks while the encoder starts up.
+        let drainedFrames = VideoEncoderFrameRegistry.shared.drain(owner: callbackOwner)
+        if drainedFrames > 0 {
+            keyframeRequests.request()
+        }
+        return drainedFrames
+    }
+
     func encode(
         pixelBuffer: CVPixelBuffer,
         presentationTimeStamp: CMTime,

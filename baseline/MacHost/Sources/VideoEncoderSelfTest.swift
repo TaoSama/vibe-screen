@@ -89,6 +89,7 @@ enum VideoEncoderSelfTest {
                 )
             },
             completeFrames: { encoder.completeFrames() },
+            drainFrames: { encoder.drainPendingFramesForSelfTest() },
             sleep: Thread.sleep(forTimeInterval:)
         )
 
@@ -96,6 +97,8 @@ enum VideoEncoderSelfTest {
             FileHandle.standardError.write(Data(
                 "video encoder self-test failed: warmup frame completion failed "
                     .appending("(status=\(warmupResult.completionStatus), ")
+                    .appending("submitted=\(warmupResult.submittedFrames), ")
+                    .appending("drained=\(warmupResult.drainedFrames), ")
                     .appending("callbacks=\(warmupResult.callbacks))\n")
                     .utf8
             ))
@@ -106,7 +109,9 @@ enum VideoEncoderSelfTest {
             let snapshot = result.snapshot()
             FileHandle.standardError.write(Data(
                 "video encoder self-test failed: warmup produced no encoded callbacks "
-                    .appending("(callbacks=\(snapshot.encodedFrameCount))\n")
+                    .appending("(submitted=\(warmupResult.submittedFrames), ")
+                    .appending("drained=\(warmupResult.drainedFrames), ")
+                    .appending("callbacks=\(snapshot.encodedFrameCount))\n")
                     .utf8
             ))
             return false
@@ -206,6 +211,7 @@ enum VideoEncoderSelfTest {
     struct WarmupPump {
         struct Result: Equatable {
             let submittedFrames: Int
+            let drainedFrames: Int
             let callbacks: Int
             let completionStatus: OSStatus
 
@@ -221,16 +227,20 @@ enum VideoEncoderSelfTest {
             callbackCount: () -> Int,
             submitFrame: (Int) -> Void,
             completeFrames: () -> OSStatus,
+            drainFrames: () -> Int,
             sleep: (TimeInterval) -> Void
         ) -> Result {
             let deadline = Date().addingTimeInterval(timeout)
             var submittedFrames = 0
+            var drainedFrames = 0
             var completionStatus: OSStatus = noErr
 
             while Date() < deadline, callbackCount() == 0 {
-                while submittedFrames < frameCount, availableCapacity() > 0 {
+                var submittedThisPass = 0
+                while submittedThisPass < frameCount, availableCapacity() > 0 {
                     submitFrame(submittedFrames)
                     submittedFrames += 1
+                    submittedThisPass += 1
                 }
 
                 completionStatus = completeFrames()
@@ -240,11 +250,25 @@ enum VideoEncoderSelfTest {
                 if callbackCount() > 0 {
                     break
                 }
+                if availableCapacity() == 0 {
+                    sleep(pollInterval)
+                    completionStatus = completeFrames()
+                    if completionStatus != noErr {
+                        break
+                    }
+                    if callbackCount() > 0 {
+                        break
+                    }
+                }
+                if availableCapacity() == 0 {
+                    drainedFrames += drainFrames()
+                }
                 sleep(pollInterval)
             }
 
             return Result(
                 submittedFrames: submittedFrames,
+                drainedFrames: drainedFrames,
                 callbacks: callbackCount(),
                 completionStatus: completionStatus
             )
