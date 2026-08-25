@@ -131,7 +131,7 @@ parameters. Cover at least:
 | Bandwidth step | 20→3→12 Mbps | fast downgrade, conservative upgrade |
 | NAT restricted | no viable direct pair | authenticated TURN fallback |
 | UDP blocked | TCP/TLS relay only | connects or reports explicit unsupported route |
-| Path handoff | Wi-Fi→cellular→Wi-Fi/VPN | ICE restart, new epoch, no stale media/input |
+| Path handoff | Wi-Fi→cellular→Wi-Fi/VPN | fresh session, new epoch, no stale media/input |
 | Relay loss | kill selected TURN path | bounded failover/recovery, no plaintext fallback |
 
 Simulation proves policy and transport behavior, not physical glass-to-glass
@@ -897,6 +897,22 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `cd services/authority && go test -count=1 ./...`,
   `cd services/signaling && go test -count=1 ./...`, and
   `python3 -m unittest tests.phase3.test_authority_session_profile_contract -v`.
+
+- A 2026-08-25 current-base product slice makes validated network handoff request
+  fresh-session recovery immediately instead of first attempting ICE restart,
+  while ordinary disconnect recovery keeps its bounded ICE-restart path. Focused
+  macOS and Android unit coverage exercises direct handoff-to-fresh-session
+  behavior, old transport closure/owner invalidation, replacement session epoch
+  installation, and the existing unsupported-ICE fallback. Local direct and
+  forced-local-coturn product E2E remain synthetic only;
+  `--phase3-internet-self-test` now reports
+  `networkHandoffFreshSession=true` for the offline transport contract. The
+  blocked readiness record is archived under
+  `evidence/2026-08-25-network-handoff-fresh-session-current-base-blocked/`.
+  No Android device, real ScreenCaptureKit media, Android MediaCodec decode,
+  public Internet path, remote TURN route, controlled network handoff, packet
+  capture, latency, or soak run was executed for this product slice; all
+  corresponding release gates remain open.
   This is unit/contract evidence only. It does not prove Mac/Android automatic
   profile invocation, Android UI import, public Internet, real ScreenCaptureKit
   capture, Android MediaCodec decode, active disconnect, handoff, latency, or

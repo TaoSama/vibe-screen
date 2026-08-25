@@ -2,6 +2,7 @@ import Foundation
 
 enum NetworkRecoveryAction: Equatable {
     case restartICE
+    case freshSession(String)
     case fail(String)
 }
 
@@ -30,21 +31,29 @@ struct NetworkRecoveryStateMachine {
 
     mutating func connectivityLost() -> NetworkRecoveryAction {
         guard attempt < policy.maximumAttempts else {
-            return .fail("ICE recovery exhausted after \(attempt) attempts.")
+            return .fail("Network recovery exhausted after \(attempt) attempts.")
         }
         attempt += 1
         return .restartICE
     }
 
-    mutating func pathChanged(_ path: InternetNetworkPath) -> NetworkRecoveryAction? {
+    mutating func pathChanged(
+        _ path: InternetNetworkPath,
+        requiresFreshSession: Bool = false
+    ) -> NetworkRecoveryAction? {
         defer { lastPath = path }
         guard path.isSatisfied else { return nil }
         guard let previous = lastPath else { return nil }
         guard previous.fingerprint != path.fingerprint else { return nil }
         guard attempt < policy.maximumAttempts else {
-            return .fail("ICE recovery exhausted after \(attempt) attempts.")
+            return .fail("Network recovery exhausted after \(attempt) attempts.")
         }
         attempt += 1
+        if requiresFreshSession {
+            return .freshSession(
+                "Network path changed from \(previous.fingerprint) to \(path.fingerprint); fresh signaling session required."
+            )
+        }
         return .restartICE
     }
 }

@@ -183,6 +183,7 @@ class WebRtcInternetTransport(
     override fun onAvailable(network: NetworkSnapshot) {
         var stateEvent: InternetTransportEvent.StateChanged? = null
         var restartReason: String? = null
+        var freshSessionReason: String? = null
         synchronized(lock) {
             if (closed) return
             if (!network.validated) {
@@ -202,11 +203,14 @@ class WebRtcInternetTransport(
                 restartReason = "validated network became available"
             } else if (previousNetworkId != null && previousNetworkId != network.id && state.isConnected()) {
                 stateEvent = transitionLocked(InternetTransportState.RECOVERING)
-                restartReason = "network changed from $previousNetworkId to ${network.id}"
+                nextRecoveryAtMillis = null
+                pendingFreshSessionReason = null
+                freshSessionReason = "network changed from $previousNetworkId to ${network.id}; fresh signaling session required"
             }
         }
         stateEvent?.let(eventSink)
         restartReason?.let { attemptIceRestart(it) }
+        freshSessionReason?.let { requestFreshSession(it, force = true) }
     }
 
     override fun onLost(networkId: String) {
@@ -224,13 +228,14 @@ class WebRtcInternetTransport(
     /** Drives delayed ICE recovery from the owner's existing timer/heartbeat; it creates no hidden thread. */
     fun tick() {
         var restartReason: String? = null
+        var freshSessionReason: String? = null
         synchronized(lock) {
             if (closed || activeNetwork == null) return
             val now = clock.nowMillis()
             val pendingReason = pendingFreshSessionReason
             if (pendingReason != null && recoveryCooldownElapsedLocked(now)) {
                 pendingFreshSessionReason = null
-                restartReason = pendingReason
+                freshSessionReason = pendingReason
             } else {
                 val recoveryAt = nextRecoveryAtMillis
                 if (recoveryAt != null && now >= recoveryAt) {
@@ -240,6 +245,7 @@ class WebRtcInternetTransport(
             }
         }
         restartReason?.let { attemptIceRestart(it) }
+        freshSessionReason?.let { requestFreshSession(it, force = true) }
     }
 
     override fun close() {

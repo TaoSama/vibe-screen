@@ -554,7 +554,8 @@ final class InternetProductSession: EncodedFrameSink {
         let transport = WebRTCInternetTransport(
             engine: engineFactory(),
             packetCipher: securitySession.packetCipher,
-            limits: configuration.limits
+            limits: configuration.limits,
+            networkHandoffRecoveryStrategy: .freshSession
         )
         self.transport = nil
         retiredTransport?.close()
