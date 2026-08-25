@@ -184,7 +184,9 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-tablet-soak-run \
 	phase2-device-environment-summary \
 	phase2-device-environment-gate \
-	phase3-android-current-base-interop-gate
+	phase3-android-current-base-interop-gate \
+	host-display-rotation-current-base-manifest \
+	host-display-rotation-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -711,6 +713,14 @@ phase5-multi-client-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase5_multi_client_current_base_gate \
 		--evidence-dir "$(EVIDENCE_DIR)" \
 		--output "$(PHASE5_MULTI_CLIENT_GATE_JSON)"
+
+host-display-rotation-current-base-manifest:
+	@mkdir -p $(EVIDENCE_DIR)
+	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_current_base_manifest --output $(EVIDENCE_DIR)/host-display-rotation-current-base-manifest.json $(if $(strip $(EVIDENCE_SERIAL)),--adb-serial $(EVIDENCE_SERIAL),) -- make host-display-rotation-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR) $(if $(strip $(EVIDENCE_SERIAL)),EVIDENCE_SERIAL=$(EVIDENCE_SERIAL),)
+
+host-display-rotation-current-base-gate:
+	@test -f "$(EVIDENCE_DIR)/host-display-rotation-current-base-manifest.json" || $(MAKE) host-display-rotation-current-base-manifest EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)"
+	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_current_base_gate --manifest $(EVIDENCE_DIR)/host-display-rotation-current-base-manifest.json --output $(EVIDENCE_DIR)/host-display-rotation-current-base-gate.json
 
 phase2-tablet-preflight:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_preflight --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/phase2-tablet-preflight.json

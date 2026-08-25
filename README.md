@@ -372,7 +372,10 @@ viewport matrix, including inverse touch mapping at the corners and center,
 with host rotation fixed at zero. Rotated physical/virtual host-display
 acceptance remains separate and now has a focused offline evidence-summary
 gate documented in the Phase 1 test record; that gate still requires a fresh
-real-device host-rotation pass before the acceptance item can close. The
+real-device host-rotation pass for physical and virtual displays at
+90/180/270 degrees before the acceptance item can close. The current-base owner
+record keeps the aggregate gate blocked until retained real-device evidence
+satisfies those criteria. The
 host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it
@@ -930,7 +933,7 @@ client-invoked focused-window migration/return with disconnect recovery. A
 client-local Fit/Fill and four-direction rotation/input matrix is also verified
 with host rotation zero; rotated host-display acceptance remains open, with the
 recording checklist and offline evidence-summary gate in the Phase 1 test
-record. A
+record and current-base owner tooling. A
 post-fix 30-minute preference run completed 60/60 connected samples with no
 reconnect or sample error; it is a short regression run, not a replacement for
 the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the

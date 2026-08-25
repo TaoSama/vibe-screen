@@ -1,0 +1,85 @@
+Repository and PR state
+
+  git status --short --branch
+  git rev-parse HEAD
+  git rev-parse origin/main
+  git rev-list --left-right --count HEAD...origin/main
+  git remote get-url origin
+  git ls-remote origin refs/heads/codex/rotated-host-display-readiness
+  gh pr view 262 --json number,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,title,url,mergeCommit
+  gh pr view 272 --json number,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,title,url,mergeCommit
+  gh pr view 243 --json number,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,title,url,mergeCommit
+
+Device lock check before any adb command
+
+  Check the shared Android coordination locks and continue only if no holder is
+  present.
+
+Read-only Android sampling. Every adb command used the explicit serial
+<redacted-adb-serial>:
+
+  adb -s <redacted-adb-serial> get-state
+  adb devices -l
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
+  adb -s <redacted-adb-serial> shell pm list packages | grep -Ei 'telemachus|vibe|screen'
+
+Host preflight and local display probes
+
+  security find-identity -v -p codesigning
+  python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
+  codesign -dv --verbose=4 "/Applications/Vibe Screen.app"
+  system_profiler SPDisplaysDataType
+
+Offline evidence gates
+
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
+    docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/host-display-rotation.json \
+    --check-artifacts \
+    --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/host-display-rotation-gate.json
+
+  make host-display-rotation-current-base-manifest \
+    EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked \
+    EVIDENCE_SERIAL=<redacted-adb-serial>
+
+  make host-display-rotation-current-base-gate \
+    EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked \
+    EVIDENCE_SERIAL=<redacted-adb-serial>
+
+Refresh after rebasing this owner change onto current origin/main
+c93a05069ede078a181e343497214d8bf9021853:
+
+  RUN_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked
+  make host-display-rotation-current-base-manifest EVIDENCE_DIR="$RUN_DIR" EVIDENCE_SERIAL=<redacted-adb-serial> > "$RUN_DIR/host-display-rotation-current-base-manifest.stdout" 2> "$RUN_DIR/host-display-rotation-current-base-manifest.stderr"
+  make host-display-rotation-current-base-gate EVIDENCE_DIR="$RUN_DIR" EVIDENCE_SERIAL=<redacted-adb-serial> > "$RUN_DIR/host-display-rotation-current-base-gate.stdout" 2> "$RUN_DIR/host-display-rotation-current-base-gate.stderr"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate "$RUN_DIR/host-display-rotation.json" --check-artifacts --output "$RUN_DIR/host-display-rotation-gate.json" > "$RUN_DIR/host-display-rotation-gate.stdout" 2> "$RUN_DIR/host-display-rotation-gate.stderr"
+
+Refresh read-only P0110 state after the c93a0506 rebase. Every adb command used
+the explicit serial <redacted-adb-serial>:
+
+  Check the shared Android coordination locks.
+  adb -s <redacted-adb-serial> get-state
+  adb devices -l
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
+  adb -s <redacted-adb-serial> shell pm path dev.telemachus.display
+  adb -s <redacted-adb-serial> shell pm list packages | grep -Ei 'telemachus|vibe|screen'
+
+Expected result
+
+  host-display-rotation-gate.json: status=failed
+  host-display-rotation-current-base-gate.json: verdict=blocked
+  make host-display-rotation-current-base-gate: exits non-zero for blocked verdict
+  can_close_current_base_aggregate=false
+  can_claim_real_device_pass=false
+
+No install, launch, ADB reverse mutation, host display rotation, or input
+injection was performed.
