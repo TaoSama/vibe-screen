@@ -8,7 +8,7 @@
       "#234 remains the tablet UI child slice; hardware keyboard is owned by this dedicated current-base branch and supersedes closed #240 while preserving merged #179 tooling."
     ],
     "recommendation": "Use this aggregate owner layer to keep README Phase 2 gate status fail-closed while child PRs are rebased or merged in the recorded order.",
-    "single_prs_against_origin_main": "#179, #189, #213, #315, #321, #338, and #342 are merged into current base. #174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, #274, and #285 are stale or superseded inputs."
+    "single_prs_against_origin_main": "#179, #189, #213, #315, #321, #338, #342, and #343 are merged into current base. #174 is the current-base soak child owner. #287 remains a peripheral-gates draft outside this hardware-keyboard owner, and this branch carries the hardware-keyboard current-base owner; #240, #252, #255, #274, and #285 are stale or superseded inputs."
   },
   "can_close_readme_phase2_gates": false,
   "input_summaries": {
@@ -72,7 +72,7 @@
     },
     {
       "branch": "origin/main",
-      "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
+      "head_sha": "8db0a387a0fa566c93d1331234563393c2621d47",
       "merge_order": 5,
       "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
       "pr_number": 338,
@@ -208,7 +208,7 @@
       "label": "Stand-mounted charging stability",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
+        "head_sha": "8db0a387a0fa566c93d1331234563393c2621d47",
         "merge_order": 5,
         "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
@@ -229,7 +229,7 @@
       "label": "Thermal and power sampling",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
+        "head_sha": "8db0a387a0fa566c93d1331234563393c2621d47",
         "merge_order": 5,
         "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
@@ -305,7 +305,7 @@
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main 993855de0a8ebbad64916b16098dddee6f0d2bab",
+  "source_baseline": "origin/main 8db0a387a0fa566c93d1331234563393c2621d47",
   "stale_prs": [
     {
       "pr_number": 240,
