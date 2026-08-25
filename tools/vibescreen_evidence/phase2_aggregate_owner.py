@@ -19,7 +19,7 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main 806ccc24947a4e852e08bba05fb656e0e3703949"
+CURRENT_BASE = "origin/main 993855de0a8ebbad64916b16098dddee6f0d2bab"
 REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 
@@ -93,7 +93,7 @@ OWNER_PRS: dict[str, OwnerPr] = {
         338,
         "test: add Phase 2 device environment gate",
         "origin/main",
-        "806ccc24947a4e852e08bba05fb656e0e3703949",
+        "993855de0a8ebbad64916b16098dddee6f0d2bab",
         "merged_baseline",
         5,
         "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",

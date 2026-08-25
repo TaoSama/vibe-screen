@@ -72,7 +72,7 @@
     },
     {
       "branch": "origin/main",
-      "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
+      "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
       "merge_order": 5,
       "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
       "pr_number": 338,
@@ -208,7 +208,7 @@
       "label": "Stand-mounted charging stability",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
+        "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
         "merge_order": 5,
         "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
@@ -229,7 +229,7 @@
       "label": "Thermal and power sampling",
       "owner": {
         "branch": "origin/main",
-        "head_sha": "806ccc24947a4e852e08bba05fb656e0e3703949",
+        "head_sha": "993855de0a8ebbad64916b16098dddee6f0d2bab",
         "merge_order": 5,
         "note": "Merged current-base device-environment gate for stand charging, controlled thermal load, and power stability; retained in latest main.",
         "pr_number": 338,
@@ -305,7 +305,7 @@
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main 806ccc24947a4e852e08bba05fb656e0e3703949",
+  "source_baseline": "origin/main 993855de0a8ebbad64916b16098dddee6f0d2bab",
   "stale_prs": [
     {
       "pr_number": 240,
