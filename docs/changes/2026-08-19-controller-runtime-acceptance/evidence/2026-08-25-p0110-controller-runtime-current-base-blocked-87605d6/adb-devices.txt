@@ -1,0 +1,3 @@
+List of devices attached
+<device-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:22
+127.0.0.1:15555        device product:sdk_phone64_arm64 model:Android_SDK_built_for_arm64 device:emu64a transport_id:18

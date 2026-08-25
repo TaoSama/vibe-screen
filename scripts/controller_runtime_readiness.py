@@ -37,6 +37,7 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
+REDACTED_DEVICE_SERIAL = "<device-serial>"
 
 
 class ReadinessError(Exception):
@@ -111,6 +112,7 @@ class HostAvailabilityStatus:
 @dataclass(frozen=True)
 class ReadinessResult:
     created_at: str
+    source_commit: str
     device: DeviceIdentity
     package: PackageIdentity
     controller_devices: list[InputDeviceSummary]
@@ -148,6 +150,59 @@ def adb_shell(serial: str, *args: str, timeout: float = 15.0) -> str:
 
 def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def redact_home_path(value: str) -> str:
+    home = str(Path.home())
+    if not home:
+        return value
+    return value.replace(home, "~")
+
+
+def redact_device_serial(value: str, serial: str) -> str:
+    if not serial:
+        return value
+    return value.replace(serial, REDACTED_DEVICE_SERIAL)
+
+
+def redact_evidence_text(value: str, serial: str = "") -> str:
+    return redact_device_serial(redact_home_path(value), serial)
+
+
+def redacted_device_identity(device: DeviceIdentity, serial: str) -> DeviceIdentity:
+    return DeviceIdentity(
+        serial=REDACTED_DEVICE_SERIAL,
+        endpoint=redact_device_serial(device.endpoint, serial),
+        manufacturer=device.manufacturer,
+        model=device.model,
+        device=device.device,
+        android_release=device.android_release,
+        sdk=device.sdk,
+        fingerprint_sha256=device.fingerprint_sha256,
+        display_size=device.display_size,
+        display_density=device.display_density,
+        battery_summary=device.battery_summary,
+        boot_completed=device.boot_completed,
+    )
+
+
+def redacted_locks(locks: Sequence[dict[str, Any]], serial: str) -> list[dict[str, Any]]:
+    sanitized = []
+    for lock in locks:
+        sanitized.append(
+            {key: redact_evidence_text(str(value), serial) for key, value in lock.items()}
+        )
+    return sanitized
+
+
+def read_source_commit() -> str:
+    result = run_command(["git", "rev-parse", "HEAD"], timeout=10.0)
+    if result.returncode != 0:
+        raise ReadinessError(
+            "failed to read source commit with git rev-parse HEAD: "
+            f"{result.stderr.strip()}"
+        )
+    return result.stdout.strip()
 
 
 def describe_device_locks() -> list[dict[str, Any]]:
@@ -325,7 +380,7 @@ def inspect_host_signing(host_app: Path | None) -> HostSigningStatus:
         return HostSigningStatus(None, False, False, "", "host app path not provided", "host app path not provided")
     if not host_app.exists():
         return HostSigningStatus(
-            str(host_app),
+            redact_home_path(str(host_app)),
             False,
             False,
             "",
@@ -341,12 +396,12 @@ def inspect_host_signing(host_app: Path | None) -> HostSigningStatus:
     entitlement_text = entitlements.stdout + entitlements.stderr
     entitlement_present = virtual_hid_entitlement_present(entitlement_text)
     return HostSigningStatus(
-        str(host_app),
+        redact_home_path(str(host_app)),
         identity_signed,
         entitlement_present,
         team_identifier,
-        codesign_text.strip(),
-        entitlement_text.strip(),
+        redact_home_path(codesign_text.strip()),
+        redact_home_path(entitlement_text.strip()),
     )
 
 
@@ -386,7 +441,7 @@ def inspect_host_availability(host_log: Path, max_bytes: int) -> HostAvailabilit
         last_line = line.strip()
         available = match.group("status") == "available"
         unavailable_reason = "" if available else (match.group("reason") or "unavailable").strip()
-    return HostAvailabilityStatus(str(host_log), available, last_line, unavailable_reason)
+    return HostAvailabilityStatus(redact_home_path(str(host_log)), available, last_line, unavailable_reason)
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -402,6 +457,7 @@ def build_result(
     controller_devices: list[InputDeviceSummary],
     host_signing: HostSigningStatus,
     host_availability: HostAvailabilityStatus,
+    source_commit: str = "",
 ) -> ReadinessResult:
     observations = {
         "device_identity_recorded": True,
@@ -444,6 +500,7 @@ def build_result(
     summary = summarize(record, run_id=run_id)
     return ReadinessResult(
         created_at,
+        source_commit,
         device,
         package,
         controller_devices,
@@ -461,10 +518,11 @@ def write_readme(path: Path, result: ReadinessResult) -> None:
         "",
         f"Created: {result.created_at}",
         f"Run ID: {summary['run_id']}",
+        f"Source commit: {result.source_commit}",
         (
             f"Device: {result.device.manufacturer} {result.device.model} / "
             f"{result.device.device} / Android {result.device.android_release} / "
-            f"serial {result.device.serial}"
+            f"SDK {result.device.sdk} / serial {result.device.serial}"
         ),
         (
             f"APK: {result.package.package_name} {result.package.version_name or 'unknown'} "
@@ -499,10 +557,14 @@ def write_lock_blocked_evidence(
     *,
     requested_serial: str,
     created_at: str,
+    source_commit: str,
     run_id: str,
     locks: Sequence[dict[str, Any]],
+    redact_identifiers: bool = False,
 ) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    safe_locks = redacted_locks(locks, requested_serial) if redact_identifiers else list(locks)
+    safe_serial = REDACTED_DEVICE_SERIAL if redact_identifiers else requested_serial
     observations = {
         "notes": (
             "ADB was not run because a shared Android device coordination lock already exists. "
@@ -522,20 +584,22 @@ def write_lock_blocked_evidence(
         evidence_dir / "controller-runtime-readiness.json",
         {
             "created_at": created_at,
-            "requested_serial": requested_serial,
+            "source_commit": source_commit,
+            "requested_serial": safe_serial,
             "lock_blocked": True,
-            "existing_locks": list(locks),
+            "existing_locks": safe_locks,
             "observations": observations,
             "summary": summary,
         },
     )
-    write_json(evidence_dir / "device-locks.json", list(locks))
+    write_json(evidence_dir / "device-locks.json", safe_locks)
     lines = [
         "# Controller runtime readiness: blocked",
         "",
         f"Created: {created_at}",
         f"Run ID: {run_id}",
-        f"Requested serial: {requested_serial}",
+        f"Source commit: {source_commit}",
+        f"Requested serial: {safe_serial}",
         "",
         "## Blocking condition",
         "",
@@ -592,6 +656,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--run-id", help="Identifier shared with the evidence manifest.")
     parser.add_argument(
+        "--source-commit",
+        help="Git commit recorded as the source under test. Defaults to the current HEAD.",
+    )
+    parser.add_argument(
+        "--redact-identifiers",
+        action="store_true",
+        help="Redact persistent device identifiers and local HOME paths in committed evidence files.",
+    )
+    parser.add_argument(
         "--allow-existing-device-lock",
         action="store_true",
         help="Continue despite a shared Android device coordination lock. Use only when you own that lock.",
@@ -611,6 +684,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     created_at = utc_timestamp()
     run_id = args.run_id or created_at.replace(":", "").replace("-", "")
     try:
+        source_commit = args.source_commit or read_source_commit()
         try:
             enforce_device_lock_policy(args.allow_existing_device_lock)
         except DeviceCoordinationLockError as error:
@@ -621,8 +695,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.evidence_dir,
                 requested_serial=args.serial,
                 created_at=created_at,
+                source_commit=source_commit,
                 run_id=run_id,
                 locks=locks,
+                redact_identifiers=args.redact_identifiers,
             )
             print(str(error), file=sys.stderr)
             print("controller runtime readiness: blocked")
@@ -635,10 +711,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         controller_devices = physical_controller_devices(input_devices)
         host_signing = inspect_host_signing(args.host_app)
         host_availability = inspect_host_availability(args.host_log, args.max_host_log_bytes)
+        evidence_device = redacted_device_identity(device, args.serial) if args.redact_identifiers else device
         result = build_result(
             run_id=run_id,
             created_at=created_at,
-            device=device,
+            source_commit=source_commit,
+            device=evidence_device,
             package=package,
             controller_devices=controller_devices,
             host_signing=host_signing,
@@ -647,13 +725,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)
         write_json(args.evidence_dir / "controller-runtime-readiness.json", asdict(result))
-        write_json(args.evidence_dir / "device-info.json", asdict(device))
+        write_json(args.evidence_dir / "device-info.json", asdict(result.device))
         observation_record = dict(result.observations)
         observation_record["notes"] = result.summary["notes"]
         observation_record["artifact_paths"] = result.summary["artifact_paths"]
         write_json(args.evidence_dir / "controller-runtime-observations.json", observation_record)
         write_json(args.evidence_dir / "controller-runtime-summary.json", result.summary)
-        (args.evidence_dir / "adb-devices.txt").write_text(adb_devices_text, encoding="utf-8")
+        safe_adb_devices_text = (
+            redact_device_serial(adb_devices_text, args.serial)
+            if args.redact_identifiers
+            else adb_devices_text
+        )
+        (args.evidence_dir / "adb-devices.txt").write_text(
+            safe_adb_devices_text, encoding="utf-8"
+        )
         (args.evidence_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
         (args.evidence_dir / "dumpsys-package.txt").write_text(package_raw, encoding="utf-8")
         (args.evidence_dir / "host-controller-availability.txt").write_text(
