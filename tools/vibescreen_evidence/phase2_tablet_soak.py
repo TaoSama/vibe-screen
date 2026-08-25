@@ -30,7 +30,7 @@ from . import SCHEMA_VERSION
 from .adb import ADBClient, ADBError
 from .manifest import ManifestError
 from .phase2_tablet_gate import derive_gate
-from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS, build_manifest
+from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS, _gate_owners, build_manifest
 from .soak import SoakRunner, parse_duration
 from .soak_report import derive_report
 
@@ -660,6 +660,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
                     maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,
                     recovery_scenarios=[item.strip() for item in arguments.recovery_scenarios.split(",") if item.strip()],
+                    gate_owners=_gate_owners(arguments.gate_owners),
                     host_identity=arguments.host_identity,
                     host_build=arguments.host_build,
                     apk_sha256=apk_sha256,
@@ -797,6 +798,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--battery-temperature-limit-celsius", type=float)
     parser.add_argument("--maximum-net-battery-drain-percent", type=int)
     parser.add_argument("--recovery-scenarios", default="")
+    parser.add_argument(
+        "--gate-owners",
+        required=True,
+        help=(
+            "comma-separated gate=owner entries for stand_mounted_charging, "
+            "thermal_power_sampling, posture_and_mount, and "
+            "eight_hour_sustained_stream"
+        ),
+    )
     parser.add_argument("--notes")
     parser.add_argument("--allow-existing-device-lock", action="store_true")
     return parser

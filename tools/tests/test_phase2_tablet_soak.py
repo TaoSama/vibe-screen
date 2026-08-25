@@ -25,6 +25,12 @@ from vibescreen_evidence.phase2_tablet_soak import (
 
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "phase2-soak-readiness.schema.json"
 REPO_ROOT = Path(__file__).parents[2]
+GATE_OWNERS = (
+    "stand_mounted_charging=phase2-device-environment,"
+    "thermal_power_sampling=phase2-device-environment,"
+    "posture_and_mount=phase2-device-environment,"
+    "eight_hour_sustained_stream=phase2-tablet-gate"
+)
 
 
 def make_args(directory: Path, **overrides):
@@ -56,6 +62,7 @@ def make_args(directory: Path, **overrides):
         "battery_temperature_limit_celsius": None,
         "maximum_net_battery_drain_percent": None,
         "recovery_scenarios": "",
+        "gate_owners": GATE_OWNERS,
         "host_identity": "test host",
         "host_build": "test host build",
         "notes": None,
@@ -375,6 +382,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
                     "test host",
                     "--host-build",
                     "test host build",
+                    "--gate-owners",
+                    GATE_OWNERS,
                     "--allow-existing-device-lock",
                 ])
 
@@ -414,6 +423,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         directory,
                         mode="run",
                         device_class="physical_8_9_inch_tablet",
+                        tablet_size_inches="8.8",
                         host_pid=123,
                         host_telemetry_jsonl=telemetry,
                         apk_sha256="a" * 64,
@@ -467,6 +477,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         directory,
                         mode="run",
                         device_class="physical_8_9_inch_tablet",
+                        tablet_size_inches="8.8",
                         host_pid=123,
                         host_telemetry_jsonl=telemetry,
                         apk_sha256="a" * 64,
@@ -528,6 +539,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         "test host",
                         "--host-build",
                         "signed host",
+                        "--gate-owners",
+                        GATE_OWNERS,
                     ])
 
         self.assertEqual(raised.exception.code, 2)
@@ -558,6 +571,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         "test host",
                         "--host-build",
                         "signed host",
+                        "--gate-owners",
+                        GATE_OWNERS,
                     ])
 
         self.assertEqual(raised.exception.code, 2)
