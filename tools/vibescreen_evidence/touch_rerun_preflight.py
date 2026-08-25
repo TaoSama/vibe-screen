@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import multiprocessing
 import plistlib
 import re
 import sqlite3
@@ -73,6 +74,34 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _public_path(path: Path) -> str:
+    try:
+        resolved_path = path.resolve()
+    except OSError:
+        resolved_path = path
+    try:
+        if resolved_path == USER_TCC_DB.resolve():
+            return "<user-tcc-db>"
+    except OSError:
+        pass
+    try:
+        if resolved_path == SYSTEM_TCC_DB.resolve():
+            return "<system-tcc-db>"
+    except OSError:
+        pass
+    try:
+        relative_path = resolved_path.relative_to(Path.home().resolve())
+    except (OSError, ValueError):
+        return str(path)
+    return str(Path("<user-home>") / relative_path)
+
+
+def _public_android_device(android: dict[str, Any] | None) -> dict[str, Any] | None:
+    if android is None:
+        return None
+    return {key: value for key, value in android.items() if key not in {"adb_serial", "device_serial"}}
+
+
 def _bundle_identifier(bundle_path: Path) -> str:
     info_path = bundle_path / "Contents/Info.plist"
     try:
@@ -113,9 +142,54 @@ def collect_host_bundle(bundle_path: Path) -> dict[str, Any]:
     }
 
 
-def _query_tcc_db(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, Any]]:
+def _query_tcc_db(db_path: Path, bundle_identifier: str, *, timeout_seconds: float = 5.0) -> dict[str, dict[str, Any]]:
+    import queue
+
     if not db_path.exists():
         return {}
+    context = _tcc_query_context()
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(target=_query_tcc_db_worker, args=(result_queue, db_path, bundle_identifier))
+    try:
+        process.start()
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(1.0)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            raise TouchRerunPreflightError(f"TCC database query timed out after {timeout_seconds:g}s")
+        try:
+            status, payload = result_queue.get(timeout=1.0)
+        except queue.Empty as error:
+            exitcode = process.exitcode if process.exitcode is not None else "unknown"
+            raise TouchRerunPreflightError(
+                f"TCC database query exited without a result (exit {exitcode})"
+            ) from error
+        if status == "ok":
+            return payload
+        raise TouchRerunPreflightError(str(payload))
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _tcc_query_context() -> multiprocessing.context.BaseContext:
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context()
+
+
+def _query_tcc_db_worker(result_queue: Any, db_path: Path, bundle_identifier: str) -> None:
+    try:
+        result_queue.put(("ok", _query_tcc_db_direct(db_path, bundle_identifier)))
+    except Exception as error:
+        result_queue.put(("error", repr(error)))
+
+
+def _query_tcc_db_direct(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, Any]]:
     try:
         connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except sqlite3.Error as error:
@@ -144,7 +218,7 @@ def _query_tcc_db(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, 
             "auth_reason": auth_reason,
             "last_modified": last_modified,
             "authorized": auth_value == AUTHORIZED_TCC_VALUE,
-            "db_path": str(db_path),
+            "db_path": _public_path(db_path),
         }
         for service, client, client_type, auth_value, auth_reason, last_modified in rows
     }
@@ -157,9 +231,9 @@ def collect_tcc(db_paths: Sequence[Path], bundle_identifier: str) -> dict[str, A
     inspected: list[str] = []
     missing: list[str] = []
     for db_path in db_paths:
-        inspected.append(str(db_path))
+        inspected.append(_public_path(db_path))
         if not db_path.exists():
-            missing.append(str(db_path))
+            missing.append(_public_path(db_path))
             continue
         for service, row in _query_tcc_db(db_path, bundle_identifier).items():
             current = by_service.get(service)
@@ -188,6 +262,11 @@ def _blockers(
     tcc: dict[str, Any],
     android: dict[str, Any] | None,
     expected_host_sha256: str | None,
+    expected_android_manufacturer: str | None = None,
+    expected_android_model: str | None = None,
+    expected_android_device: str | None = None,
+    expected_android_release: str | None = None,
+    expected_android_sdk: int | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     if expected_host_sha256 and host["binary_sha256"] != expected_host_sha256.lower():
@@ -202,6 +281,23 @@ def _blockers(
         blockers.append("Accessibility is not authorized for the Host bundle identifier")
     if android is None:
         blockers.append("no explicit Android device serial was recorded")
+    else:
+        expected_fields: list[tuple[str, str | int | None]] = [
+            ("manufacturer", expected_android_manufacturer),
+            ("model", expected_android_model),
+            ("device", expected_android_device),
+            ("android_release", expected_android_release),
+            ("sdk", expected_android_sdk),
+        ]
+        for field, expected in expected_fields:
+            if expected is None:
+                continue
+            actual = android.get(field)
+            if actual != expected:
+                blockers.append(
+                    f"Android device {field} does not match expected value "
+                    f"{expected!r} (actual {actual!r})"
+                )
     return blockers
 
 
@@ -213,6 +309,11 @@ def build_document(
     adb_path: str,
     adb_timeout: float,
     expected_host_sha256: str | None,
+    expected_android_manufacturer: str | None = None,
+    expected_android_model: str | None = None,
+    expected_android_device: str | None = None,
+    expected_android_release: str | None = None,
+    expected_android_sdk: int | None = None,
 ) -> dict[str, Any]:
     host = collect_host_bundle(bundle_path)
     tcc = collect_tcc(tcc_dbs, host["identifier"])
@@ -222,6 +323,11 @@ def build_document(
         tcc=tcc,
         android=android,
         expected_host_sha256=expected_host_sha256,
+        expected_android_manufacturer=expected_android_manufacturer,
+        expected_android_model=expected_android_model,
+        expected_android_device=expected_android_device,
+        expected_android_release=expected_android_release,
+        expected_android_sdk=expected_android_sdk,
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -231,8 +337,53 @@ def build_document(
         "blockers": blockers,
         "host": host,
         "tcc": tcc,
-        "android_device": android,
+        "android_device": _public_android_device(android),
         "expected_host_sha256": expected_host_sha256,
+        "expected_android_device": {
+            "manufacturer": expected_android_manufacturer,
+            "model": expected_android_model,
+            "device": expected_android_device,
+            "android_release": expected_android_release,
+            "sdk": expected_android_sdk,
+        },
+        "safety": {
+            "read_only": True,
+            "starts_host": False,
+            "runs_instrumentation": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "modifies_android_app_data": False,
+        },
+    }
+
+
+def build_blocked_error_document(
+    error: Exception,
+    *,
+    expected_host_sha256: str | None = None,
+    expected_android_manufacturer: str | None = None,
+    expected_android_model: str | None = None,
+    expected_android_device: str | None = None,
+    expected_android_release: str | None = None,
+    expected_android_sdk: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "touch_fixed_binary_rerun_preflight",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "result": "blocked",
+        "blockers": [f"preflight collection failed: {error}"],
+        "host": None,
+        "tcc": None,
+        "android_device": None,
+        "expected_host_sha256": expected_host_sha256,
+        "expected_android_device": {
+            "manufacturer": expected_android_manufacturer,
+            "model": expected_android_model,
+            "device": expected_android_device,
+            "android_release": expected_android_release,
+            "sdk": expected_android_sdk,
+        },
         "safety": {
             "read_only": True,
             "starts_host": False,
@@ -271,6 +422,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--expected-host-sha256")
+    parser.add_argument("--expected-android-manufacturer")
+    parser.add_argument("--expected-android-model")
+    parser.add_argument("--expected-android-device")
+    parser.add_argument("--expected-android-release")
+    parser.add_argument("--expected-android-sdk", type=int)
     parser.add_argument("--output", type=Path, help="JSON output file (default: stdout)")
     return parser
 
@@ -291,9 +447,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             adb_path=arguments.adb,
             adb_timeout=arguments.adb_timeout,
             expected_host_sha256=expected.lower() if expected else None,
+            expected_android_manufacturer=arguments.expected_android_manufacturer,
+            expected_android_model=arguments.expected_android_model,
+            expected_android_device=arguments.expected_android_device,
+            expected_android_release=arguments.expected_android_release,
+            expected_android_sdk=arguments.expected_android_sdk,
         )
         write_json(arguments.output, document)
-    except (ADBError, OSError, TouchRerunPreflightError, ValueError) as error:
+    except Exception as error:
+        if arguments.output is not None:
+            write_json(
+                arguments.output,
+                build_blocked_error_document(
+                    error,
+                    expected_host_sha256=expected.lower() if expected else None,
+                    expected_android_manufacturer=arguments.expected_android_manufacturer,
+                    expected_android_model=arguments.expected_android_model,
+                    expected_android_device=arguments.expected_android_device,
+                    expected_android_release=arguments.expected_android_release,
+                    expected_android_sdk=arguments.expected_android_sdk,
+                ),
+            )
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

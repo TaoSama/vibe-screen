@@ -1,0 +1,180 @@
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z VideoToolbox encoder configured (H.264, 20Mbps, 60fps, MEDIUM)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:50:36Z Failed to set activation policy to regular
+2026-08-20T22:50:36Z Connection mode changed to: usb
+2026-08-20T22:50:36Z checkPermissions — macOS 26.4.1
+2026-08-20T22:50:36Z Screen recording permission granted (CGPreflight)
+2026-08-20T22:50:36Z SCShareableContent verification OK — 0 displays found
+2026-08-20T22:50:37Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:50:37Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:50:37Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:50:37Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:50:37Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:50:37Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:37Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:50:38Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:38Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:50:40Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:40Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:50:41Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:41Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:50:42Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:42Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:50:42Z Scheduling unattended host recovery in 1s
+2026-08-20T22:50:43Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:50:43Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:50:44Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:50:44Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:50:44Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:50:44Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:44Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:50:45Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:45Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:50:46Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:46Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:50:47Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:47Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:50:48Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:48Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:50:48Z Scheduling unattended host recovery in 2s
+2026-08-20T22:50:51Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:50:51Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:50:52Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:50:52Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:50:52Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:50:52Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:52Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:50:53Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:53Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:50:54Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:54Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:50:55Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:55Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:50:56Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:56Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:50:56Z Scheduling unattended host recovery in 4s
+2026-08-20T22:51:01Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:51:01Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:51:01Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:51:01Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:51:01Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:51:01Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:01Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:51:02Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:02Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:51:03Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:03Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:51:05Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:05Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:51:06Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:06Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:51:06Z Scheduling unattended host recovery in 8s
+2026-08-20T22:51:14Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:51:14Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:51:15Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:51:15Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:51:15Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:51:15Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:15Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:51:17Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:17Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:51:18Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:18Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:51:19Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:19Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:51:20Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:20Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:51:21Z Scheduling unattended host recovery in 16s
+2026-08-20T22:51:38Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:51:38Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:51:39Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:51:39Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:51:39Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:51:39Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:39Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:51:41Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:41Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:51:42Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:42Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:51:43Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:43Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:51:44Z SCShareableContent returned 0 displays: []
+2026-08-20T22:51:44Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:51:44Z Scheduling unattended host recovery in 30s
+2026-08-20T22:52:16Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:52:16Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:52:17Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:52:17Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:52:17Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:52:17Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:17Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:52:19Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:19Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:52:20Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:20Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:52:21Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:21Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:52:22Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:22Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:52:22Z Scheduling unattended host recovery in 30s
+2026-08-20T22:52:55Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:52:55Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:52:55Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:52:56Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:52:56Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:52:56Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:56Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:52:57Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:57Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:52:58Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:58Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:52:59Z SCShareableContent returned 0 displays: []
+2026-08-20T22:52:59Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:53:00Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:01Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:53:01Z Scheduling unattended host recovery in 30s
+2026-08-20T22:53:32Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:53:32Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:53:33Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:53:33Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:53:33Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:53:33Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:33Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:53:35Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:35Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:53:37Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:37Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:53:38Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:38Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:53:39Z SCShareableContent returned 0 displays: []
+2026-08-20T22:53:39Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:53:39Z Unattended recovery stopped after 8 attempt(s)
