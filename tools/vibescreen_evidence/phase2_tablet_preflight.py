@@ -102,13 +102,19 @@ KEYBOARD_SUMMARY_PASS_FIELDS = (
     "protocol_keyboard_capability_negotiated",
     "protocol_usb_hid_modifier_capability_negotiated",
     "android_production_forwarding_observed",
-    "host_key_injection_observed",
+    "android_focus_ime_boundary_observed",
+    "selected_display_stream_observed",
     "key_press_release_observed",
+    "modifier_press_release_observed",
     "shortcut_combo_observed",
     "modifier_release_no_leak_observed",
     "visible_mac_result_observed",
     "host_logs_retained",
     "android_logs_retained",
+)
+KEYBOARD_HOST_CONFIRMATION_FIELDS = (
+    "host_key_injection_observed",
+    "host_ack_cgevent_log_observed",
 )
 
 
@@ -390,6 +396,9 @@ def _keyboard_gate(root: Path, explicit_path: Path | None) -> dict[str, Any]:
     is_hardware_keyboard_summary = (document or {}).get("kind") == "phase2_hardware_keyboard_workflow"
     if is_hardware_keyboard_summary:
         observed = all(observations.get(field) is True for field in KEYBOARD_SUMMARY_PASS_FIELDS)
+        observed = observed and any(
+            observations.get(field) is True for field in KEYBOARD_HOST_CONFIRMATION_FIELDS
+        )
         host_confirmed = (document or {}).get("can_close_hardware_keyboard_gate") is True
     else:
         observed = bool((document or {}).get("observed_physical_keyboard"))
@@ -401,7 +410,7 @@ def _keyboard_gate(root: Path, explicit_path: Path | None) -> dict[str, Any]:
         BLOCKED if status and status.startswith("blocked") else INSUFFICIENT,
         evidence=[item for item in evidence if item],
         reasons=[
-            "hardware keyboard evidence must report pass with physical keyboard and Host key-injection evidence"
+            "hardware keyboard evidence must report pass with physical keyboard and Host key-injection or acknowledgement/CGEvent evidence"
         ],
     )
 

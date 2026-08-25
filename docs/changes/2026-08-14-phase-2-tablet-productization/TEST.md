@@ -410,3 +410,51 @@ The generated `phase2-aggregate-owner.json` records `verdict=blocked` and
 `can_close_readme_phase2_gates=false`. It consumes existing P0110 substitute
 readiness inputs only as blocked evidence; P0110/pacific remains an Android
 phone substitute and cannot close the physical 8-9 inch tablet gate.
+
+## 2026-08-24 hardware-keyboard current-base owner
+
+This follow-up refreshes the dedicated hardware-keyboard owner on current
+`origin/main` (`942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0`) without claiming a
+workflow pass. The audit result is: #179 is merged and provides the baseline
+hardware-keyboard evidence gate; #240 is closed and superseded by this
+current-base owner; #287 remains a peripheral-gates draft outside this keyboard
+workflow; #315 is merged and owns reconnect timing; #321 is merged and provides
+the actionable-error baseline consumed by this owner.
+
+The evidence contract now requires explicit observations for the active selected
+display stream, Android foreground/focus and IME boundary, Host key-injection
+or acknowledgement/CGEvent logs, and modifier press/release semantics in addition to the existing
+physical keyboard, Protocol v1 keyboard capability, shortcut, cleanup, retained
+logs, and visible Mac-result requirements. `adb shell input keyevent`, emulator
+input, and offline mapper tests remain readiness only. The dedicated runbook is
+[`../../runbook/hardware-keyboard-workflow.md`](../../runbook/hardware-keyboard-workflow.md).
+
+Fresh P0110/pacific readiness evidence is under
+[`evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
+The collector used the explicit local ADB serial, redacted it to
+`<device-serial>` in committed artifacts, and recorded the device as nubia
+P0110 / pacific / Android 16 / SDK 36. It exited `2` with
+`verdict=blocked` and `can_close_hardware_keyboard_gate=false`: no external
+Android-attached hardware keyboard was visible in `dumpsys input`, and the Host
+preflight failed stable signed/TCC readiness because the `Vibe Screen Dev`
+signing identity was unavailable. A Host listener was present on TCP `54321`,
+but listener presence alone does not close the Host path.
+
+The current-base aggregate owner evidence is under
+[`evidence/2026-08-24-phase2-hardware-keyboard-current-base-owner`](evidence/2026-08-24-phase2-hardware-keyboard-current-base-owner/README.md).
+It consumes the new hardware-keyboard blocked summary and records
+`verdict=blocked` with `can_close_readme_phase2_gates=false`; no README gate is
+closed by this update.
+
+Validation performed for this tooling/readiness update:
+
+- `make hardware-keyboard-readiness EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base` (exit `2`, expected blocked readiness)
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base`
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-24-phase2-hardware-keyboard-current-base-owner PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/hardware_keyboard_readiness.py`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest scripts.tests.test_hardware_keyboard_readiness scripts.tests.test_hardware_keyboard_readiness_redaction tools.tests.test_hardware_keyboard tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make evidence-tools-test`
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.AndroidKeyInputMapperTest --tests dev.telemachus.display.NativeInputWireTest --tests dev.telemachus.display.NativeInputSessionStateTest --tests dev.telemachus.display.ClientInputDispatchTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest`
+- `cd baseline/MacHost && swift build`
+- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-24 evidence directories
+- `git diff --check`

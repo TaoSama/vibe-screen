@@ -78,10 +78,14 @@ def hardware_keyboard_summary(verdict: str = "pass") -> dict:
         "protocol_keyboard_capability_negotiated": observed,
         "protocol_usb_hid_modifier_capability_negotiated": observed,
         "android_production_forwarding_observed": observed,
+        "android_focus_ime_boundary_observed": observed,
+        "selected_display_stream_observed": observed,
         "host_listener_observed": True,
         "host_stable_signed_tcc_ready": True,
         "host_key_injection_observed": observed,
+        "host_ack_cgevent_log_observed": observed,
         "key_press_release_observed": observed,
+        "modifier_press_release_observed": observed,
         "shortcut_combo_observed": observed,
         "modifier_release_no_leak_observed": observed,
         "visible_mac_result_observed": observed,
@@ -235,6 +239,21 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "pass")
         keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
         self.assertEqual(keyboard["status"], "pass")
+
+    def test_hardware_keyboard_gate_accepts_ack_cgevent_only_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "hardware-keyboard-evidence.json").unlink()
+            summary = hardware_keyboard_summary()
+            summary["observations"]["host_key_injection_observed"] = False
+            write_json(root / "hardware-keyboard-summary.json", summary)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "pass")
+        keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
+        self.assertEqual(keyboard["status"], "pass")
         self.assertIn("hardware-keyboard-summary.json", keyboard["evidence"])
 
     def test_hardware_keyboard_gate_preserves_blocked_schema_summary(self) -> None:
@@ -308,6 +327,21 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "insufficient")
         stylus = next(gate for gate in result["gates"] if gate["name"] == "physical_stylus")
         self.assertEqual(stylus["status"], "insufficient")
+
+    def test_hardware_keyboard_gate_requires_current_schema_pass_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "hardware-keyboard-evidence.json").unlink()
+            summary = hardware_keyboard_summary()
+            summary["observations"].pop("android_focus_ime_boundary_observed")
+            write_json(root / "hardware-keyboard-summary.json", summary)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        keyboard = next(gate for gate in result["gates"] if gate["name"] == "hardware_keyboard")
+        self.assertEqual(keyboard["status"], "insufficient")
 
     def test_soak_failure_fails_whole_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

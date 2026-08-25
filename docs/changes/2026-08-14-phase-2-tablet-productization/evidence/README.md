@@ -107,9 +107,10 @@ test, or short soak belongs in its own evidence record but does not close the
 Hardware-keyboard workflow evidence uses a focused gate summary alongside any
 tablet or substitute-device records. A passing directory must include
 `hardware-keyboard-observations.json`, `hardware-keyboard-summary.json`,
-`dumpsys-input.txt`, Android production forwarding logs, Host `Key injected:`
-logs, Host listener/signing/TCC preflight records, and a screenshot or recording
-of the visible Mac result. Generate the summary with:
+`dumpsys-input.txt`, Android production forwarding logs, active selected-display
+stream proof, focus/IME boundary proof, Host `Key injected:` or CGEvent
+acknowledgement logs, Host listener/signing/TCC preflight records, and a
+screenshot or recording of the visible Mac result. Generate the summary with:
 
 ```bash
 make hardware-keyboard-gate EVIDENCE_DIR="$RUN_DIR"

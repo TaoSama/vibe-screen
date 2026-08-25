@@ -36,6 +36,13 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
+REDACTED_DEVICE_SERIAL = "<device-serial>"
+REDACTED_ADB_ENDPOINT = "<adb-endpoint>"
+REDACTED_DEVICE_LOCK_PATH = "<device-lock>"
+REDACTED_REPO_ROOT_PATH = "<repo-root>"
+REDACTED_ANDROID_SDK_PATH = "<android-sdk>"
+REDACTED_HOME_PATH = "<home>"
+REDACTED_PYTHON_EXECUTABLE = "<python3.11>"
 
 
 class ReadinessError(Exception):
@@ -46,13 +53,9 @@ class DeviceCoordinationLockError(ReadinessError):
     pass
 
 
-REDACTED_REQUESTED_SERIAL = "redacted-requested-serial"
-REDACTED_REPO_ROOT = "<repo-root>"
-REDACTED_ANDROID_SDK = "<android-sdk>"
-REDACTED_PYTHON = "<python3.11>"
 LOCAL_PATH_PATTERNS = (
-    (re.compile(r"/Users/[^\s\n]+/Library/Android/sdk"), REDACTED_ANDROID_SDK),
-    (re.compile(r"(?:/[^\s\n]+)*/python@3\.11/bin/python3\.11"), REDACTED_PYTHON),
+    (re.compile(r"/Users/[^\s\n]+/Library/Android/sdk"), REDACTED_ANDROID_SDK_PATH),
+    (re.compile(r"(?:/[^\s\n]+)*/python@3\.11/bin/python3\.11"), REDACTED_PYTHON_EXECUTABLE),
 )
 
 
@@ -158,7 +161,7 @@ def run_command(command: Sequence[str], *, timeout: float = 15.0) -> CommandResu
 
 
 def redact_evidence_text(value: str) -> str:
-    redacted = value.replace(str(REPO_ROOT), REDACTED_REPO_ROOT)
+    redacted = value.replace(str(REPO_ROOT), REDACTED_REPO_ROOT_PATH)
     for pattern, replacement in LOCAL_PATH_PATTERNS:
         redacted = pattern.sub(replacement, redacted)
     redacted = re.sub(r"/Users/[^\s\n]+", "<user-home>", redacted)
@@ -222,7 +225,7 @@ def acquire_device_lock(owner: str, *, allow_existing: bool) -> LockHandle:
         handle.write(
             f"owner={owner}\n"
             f"pid={os.getpid()}\n"
-            f"worktree={REDACTED_REPO_ROOT}\n"
+            f"worktree={redact_local_paths(str(Path.cwd()))}\n"
             f"created_at={utc_timestamp()}\n"
         )
     return LockHandle(str(lock_path), True, [])
@@ -258,27 +261,6 @@ def read_device_identity(serial: str) -> tuple[DeviceIdentity, str]:
             device_serial=adb_shell(serial, "getprop", "ro.serialno"),
         ),
         devices_text,
-    )
-
-
-def redacted_requested_serial(serial: str) -> str:
-    return REDACTED_REQUESTED_SERIAL if serial.strip() else "not provided"
-
-
-def redacted_device_identity(identity: DeviceIdentity) -> RedactedDeviceIdentity:
-    redacted_serial = f"redacted-{identity.device}-serial" if identity.device else "redacted-device-serial"
-    return RedactedDeviceIdentity(
-        serial=redacted_serial,
-        endpoint=f"redacted adb endpoint product:{identity.product} model:{identity.model} device:{identity.device}",
-        manufacturer=identity.manufacturer,
-        model=identity.model,
-        device=identity.device,
-        product=identity.product,
-        android_release=identity.android_release,
-        sdk=identity.sdk,
-        build_fingerprint="redacted-build-fingerprint",
-        abi=identity.abi,
-        device_serial=redacted_serial,
     )
 
 
@@ -384,25 +366,19 @@ def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) ->
         return False
     if serial != P0110_SERIAL:
         return all((device.manufacturer, device.model, device.device, device.android_release, device.sdk))
-    return (
-        device.manufacturer.lower() == "nubia"
-        and device.model == "P0110"
-        and device.device == "pacific"
-        and device.android_release == "16"
-        and device.sdk == "36"
-    )
+    return is_nubia_p0110_android16(device)
 
 
-def inspect_host(port: int, preflight_report: Path) -> HostPreflight:
+def inspect_host(port: int, preflight_report: Path, *serials: str) -> HostPreflight:
     listener = run_command(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"], timeout=10.0)
     identities = run_command(["security", "find-identity", "-v", "-p", "codesigning"], timeout=15.0)
     preflight = run_command(
         [sys.executable, str(REPO_ROOT / "scripts" / "macos_dev_host.py"), "preflight", "--report", str(preflight_report)],
         timeout=30.0,
     )
-    listener_output = format_command_result(listener)
-    identities_output = format_command_result(identities)
-    preflight_output = format_command_result(preflight)
+    listener_output = format_command_result(listener, *serials)
+    identities_output = format_command_result(identities, *serials)
+    preflight_output = format_command_result(preflight, *serials)
     return HostPreflight(
         listener_observed=listener.returncode == 0 and bool(listener.stdout.strip()),
         signing_tcc_ready=preflight.returncode == 0,
@@ -413,13 +389,13 @@ def inspect_host(port: int, preflight_report: Path) -> HostPreflight:
     )
 
 
-def format_command_result(result: CommandResult) -> str:
-    lines = [f"$ {' '.join(result.command)}"]
+def format_command_result(result: CommandResult, *serials: str) -> str:
+    lines = [f"$ {redact_text(' '.join(result.command), *serials)}"]
     if result.stdout.strip():
-        lines.append(result.stdout.rstrip())
+        lines.append(redact_text(result.stdout.rstrip(), *serials))
     if result.stderr.strip():
         lines.append("stderr:")
-        lines.append(result.stderr.rstrip())
+        lines.append(redact_text(result.stderr.rstrip(), *serials))
     lines.append(f"exit_code={result.returncode}")
     return redact_evidence_text("\n".join(lines) + "\n")
 
@@ -438,6 +414,116 @@ def write_text(path: Path, value: str) -> None:
     if normalized:
         normalized += "\n"
     path.write_text(normalized, encoding="utf-8")
+
+
+def redact_local_paths(value: str) -> str:
+    redacted = value
+    python_candidates = {sys.executable}
+    try:
+        python_candidates.add(str(Path(sys.executable).resolve()))
+    except OSError:
+        pass
+    for python_path in sorted((path for path in python_candidates if path), key=len, reverse=True):
+        redacted = redacted.replace(python_path, REDACTED_PYTHON_EXECUTABLE)
+    for lock_path in DEVICE_LOCKS:
+        redacted = redacted.replace(str(lock_path), REDACTED_DEVICE_LOCK_PATH)
+    android_sdk_candidates = (
+        os.environ.get("ANDROID_HOME"),
+        os.environ.get("ANDROID_SDK_ROOT"),
+        str(Path.home() / "Library" / "Android" / "sdk"),
+    )
+    for android_sdk in android_sdk_candidates:
+        if android_sdk:
+            redacted = redacted.replace(android_sdk, REDACTED_ANDROID_SDK_PATH)
+    repo_root = str(REPO_ROOT)
+    if repo_root:
+        redacted = redacted.replace(repo_root, REDACTED_REPO_ROOT_PATH)
+    home = str(Path.home())
+    if home:
+        redacted = redacted.replace(home, REDACTED_HOME_PATH)
+    return redacted
+
+
+def redact_text(value: str, *serials: str) -> str:
+    redacted = value
+    for serial in sorted(
+        {serial for serial in serials if serial and serial != REDACTED_DEVICE_SERIAL},
+        key=len,
+        reverse=True,
+    ):
+        redacted = redacted.replace(serial, REDACTED_DEVICE_SERIAL)
+    return redact_lsof_user_columns(redact_local_paths(redacted))
+
+
+def redact_adb_devices_text(value: str, *serials: str) -> str:
+    lines: list[str] = []
+    for line in redact_text(value, *serials).splitlines():
+        match = re.match(r"^(\S+)(\s+(?:device|offline|unauthorized)\b.*)$", line)
+        if match and match.group(1) != REDACTED_DEVICE_SERIAL:
+            line = REDACTED_ADB_ENDPOINT + match.group(2)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def redact_lsof_user_columns(value: str) -> str:
+    lines: list[str] = []
+    lsof_table = False
+    for line in value.splitlines():
+        if re.match(r"^COMMAND\s+PID\s+USER\s+FD\s+TYPE", line):
+            lsof_table = True
+            lines.append(line)
+            continue
+        if lsof_table and line and not line.startswith(("$ ", "stderr:", "exit_code=")):
+            columns = line.split(maxsplit=8)
+            if len(columns) >= 9:
+                columns[2] = "<user>"
+                line = " ".join(columns)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def redacted_lock_descriptions(locks: Sequence[dict[str, Any]], *serials: str) -> list[dict[str, Any]]:
+    redacted_locks: list[dict[str, Any]] = []
+    for lock in locks:
+        redacted: dict[str, Any] = {}
+        for key, value in lock.items():
+            redacted[key] = redact_text(value, *serials) if isinstance(value, str) else value
+        redacted_locks.append(redacted)
+    return redacted_locks
+
+
+def redacted_lock_handle(lock: LockHandle, *serials: str) -> LockHandle:
+    return LockHandle(
+        redact_text(lock.path, *serials) if lock.path else None,
+        lock.acquired,
+        redacted_lock_descriptions(lock.existing_locks, *serials),
+    )
+
+
+def redacted_device_identity(device: DeviceIdentity) -> RedactedDeviceIdentity:
+    return RedactedDeviceIdentity(
+        serial=REDACTED_DEVICE_SERIAL if device.serial else "",
+        endpoint=redact_text(device.endpoint, device.serial, device.device_serial),
+        manufacturer=device.manufacturer,
+        model=device.model,
+        device=device.device,
+        product=device.product,
+        android_release=device.android_release,
+        sdk=device.sdk,
+        build_fingerprint=device.build_fingerprint,
+        abi=device.abi,
+        device_serial=REDACTED_DEVICE_SERIAL if device.device_serial else "",
+    )
+
+
+def is_nubia_p0110_android16(device: DeviceIdentity) -> bool:
+    return (
+        device.manufacturer.lower() == "nubia"
+        and device.model == "P0110"
+        and device.device == "pacific"
+        and device.android_release == "16"
+        and device.sdk == "36"
+    )
 
 
 def device_info_document(
@@ -495,8 +581,8 @@ def build_observations(
     notes: list[str] = []
     if device is None:
         notes.append("Android device identity was not collected.")
-    elif device.model.lower() == "p0110" or device.device.lower() == "pacific":
-        notes.append("Observed device must be recorded as nubia P0110 / pacific / Android 16, not Xiaomi/fuxi or tablet hardware.")
+    elif is_nubia_p0110_android16(device):
+        notes.append("Observed device must be recorded as nubia P0110 / pacific / Android 16, not another device identity or tablet hardware.")
     if not keyboard_devices:
         notes.append("No external Android-attached physical keyboard is visible in dumpsys input.")
     if not host.listener_observed:
@@ -505,7 +591,8 @@ def build_observations(
         notes.append("Stable signed Host Screen Recording/Accessibility readiness was not established by macOS Host preflight.")
     notes.append(
         "This readiness collector does not synthesize key events; a pass still requires physical key presses, "
-        "Android production forwarding logs, Host Key injected logs, modifier cleanup evidence, and a visible Mac-side result."
+        "an active selected-display stream, Android production forwarding/focus-boundary logs, Host key-injection "
+        "or acknowledgement/CGEvent logs, modifier press/release and cleanup evidence, and a visible Mac-side result."
     )
 
     return {
@@ -519,10 +606,14 @@ def build_observations(
         "protocol_keyboard_capability_negotiated": False,
         "protocol_usb_hid_modifier_capability_negotiated": False,
         "android_production_forwarding_observed": False,
+        "android_focus_ime_boundary_observed": False,
+        "selected_display_stream_observed": False,
         "host_listener_observed": host.listener_observed,
         "host_stable_signed_tcc_ready": host.signing_tcc_ready,
         "host_key_injection_observed": False,
+        "host_ack_cgevent_log_observed": False,
         "key_press_release_observed": False,
+        "modifier_press_release_observed": False,
         "shortcut_combo_observed": False,
         "modifier_release_no_leak_observed": False,
         "visible_mac_result_observed": False,
@@ -621,10 +712,14 @@ def write_lock_blocked_evidence(evidence_dir: Path, *, serial: str, created_at: 
         "protocol_keyboard_capability_negotiated": False,
         "protocol_usb_hid_modifier_capability_negotiated": False,
         "android_production_forwarding_observed": False,
+        "android_focus_ime_boundary_observed": False,
+        "selected_display_stream_observed": False,
         "host_listener_observed": False,
         "host_stable_signed_tcc_ready": False,
         "host_key_injection_observed": False,
+        "host_ack_cgevent_log_observed": False,
         "key_press_release_observed": False,
+        "modifier_press_release_observed": False,
         "shortcut_combo_observed": False,
         "modifier_release_no_leak_observed": False,
         "visible_mac_result_observed": False,
@@ -642,7 +737,7 @@ def write_lock_blocked_evidence(evidence_dir: Path, *, serial: str, created_at: 
             "Physical keyboard attachment, Host listener, and stable signed/TCC readiness were not evaluated after the lock block.",
         ],
         "notes": (
-            f"Requested serial {redacted_requested_serial(serial)}. ADB was not run because a shared Android device coordination lock already exists. "
+            f"Requested serial {REDACTED_DEVICE_SERIAL}. ADB was not run because a shared Android device coordination lock already exists. "
             "This blocked readiness record does not close the Phase 2 hardware-keyboard workflow gate."
         ),
     }
@@ -650,7 +745,7 @@ def write_lock_blocked_evidence(evidence_dir: Path, *, serial: str, created_at: 
     host = HostPreflight(False, False, "not evaluated because device lock existed\n", "not evaluated because device lock existed\n", "not evaluated because device lock existed\n", 2)
     result = ReadinessResult(
         created_at=created_at,
-        device_lock=LockHandle(None, False, list(locks)),
+        device_lock=LockHandle(None, False, redacted_lock_descriptions(locks, serial)),
         device=None,
         package=None,
         keyboard_devices=[],
@@ -659,7 +754,7 @@ def write_lock_blocked_evidence(evidence_dir: Path, *, serial: str, created_at: 
         summary=summary,
     )
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    write_json(evidence_dir / "device-locks.json", list(locks))
+    write_json(evidence_dir / "device-locks.json", redacted_lock_descriptions(locks, serial))
     write_json(evidence_dir / "hardware-keyboard-readiness.json", asdict(result))
     write_json(evidence_dir / "hardware-keyboard-observations.json", observations)
     write_json(evidence_dir / "hardware-keyboard-summary.json", summary)
@@ -678,31 +773,40 @@ def collect_readiness(args: argparse.Namespace, *, created_at: str, run_id: str)
         package, package_text = read_package_identity(args.serial, args.package)
         devices = parse_input_devices(dumpsys_input)
         keyboard_devices = physical_keyboard_devices(devices)
-        host = inspect_host(args.port, args.evidence_dir / "host-signing-and-permissions.txt")
-        redacted_device = redacted_device_identity(device)
+        host = inspect_host(args.port, args.evidence_dir / "host-signing-and-permissions.txt", device.serial, device.device_serial)
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)
         write_text(
             args.evidence_dir / "device-lock.txt",
             redact_evidence_text(Path(lock.path).read_text(encoding="utf-8")) if lock.path else "existing lock allowed\n",
         )
-        write_text(args.evidence_dir / "adb-devices.txt", adb_devices_text)
+        public_device = redacted_device_identity(device)
+        write_text(args.evidence_dir / "adb-devices.txt", redact_adb_devices_text(adb_devices_text, device.serial, device.device_serial))
         write_json(
             args.evidence_dir / "device-info.json",
             device_info_document(
                 created_at=created_at,
-                connection=f"already connected to {redacted_requested_serial(args.serial)}",
-                adb_version=run_command(["adb", "version"], timeout=15.0).stdout.strip(),
-                device=redacted_device,
+                connection=redact_text(f"already connected to {args.serial}", device.serial, device.device_serial),
+                adb_version=redact_text(run_command(["adb", "version"], timeout=15.0).stdout.strip()),
+                device=public_device,
                 package=package,
             ),
         )
-        write_text(args.evidence_dir / "dumpsys-input.txt", dumpsys_input)
-        write_text(args.evidence_dir / "dumpsys-package.txt", package_text)
+        write_text(args.evidence_dir / "dumpsys-input.txt", redact_text(dumpsys_input, device.serial, device.device_serial))
+        write_text(args.evidence_dir / "dumpsys-package.txt", redact_text(package_text, device.serial, device.device_serial))
         write_text(args.evidence_dir / "host-listener.txt", host.listener_output)
         write_text(args.evidence_dir / "codesign-identities.txt", host.codesign_identities_output)
         write_text(args.evidence_dir / "host-preflight-command.txt", host.preflight_output)
-        if not (args.evidence_dir / "host-signing-and-permissions.txt").exists():
+        if (args.evidence_dir / "host-signing-and-permissions.txt").exists():
+            write_text(
+                args.evidence_dir / "host-signing-and-permissions.txt",
+                redact_text(
+                    (args.evidence_dir / "host-signing-and-permissions.txt").read_text(encoding="utf-8", errors="replace"),
+                    device.serial,
+                    device.device_serial,
+                ),
+            )
+        else:
             write_text(
                 args.evidence_dir / "host-signing-and-permissions.txt",
                 "macOS Host preflight did not write a report. See host-preflight-command.txt for command output.\n",
@@ -718,7 +822,7 @@ def collect_readiness(args: argparse.Namespace, *, created_at: str, run_id: str)
         )
         observations["run_id"] = run_id
         summary = summarize(observations, run_id=run_id)
-        result = ReadinessResult(created_at, lock, redacted_device, package, keyboard_devices, host, observations, summary)
+        result = ReadinessResult(created_at, redacted_lock_handle(lock, device.serial, device.device_serial), public_device, package, keyboard_devices, host, observations, summary)
         write_json(args.evidence_dir / "hardware-keyboard-readiness.json", asdict(result))
         write_json(args.evidence_dir / "hardware-keyboard-observations.json", observations)
         write_json(args.evidence_dir / "hardware-keyboard-summary.json", summary)

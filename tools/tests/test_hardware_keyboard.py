@@ -72,12 +72,89 @@ class HardwareKeyboardEvidenceTest(unittest.TestCase):
             [item["field"] for item in summary["inconsistent_observations"]],
         )
 
+    def test_insufficient_when_focus_or_stream_evidence_is_missing(self) -> None:
+        record = self.complete_record()
+        record["android_focus_ime_boundary_observed"] = False
+        record["selected_display_stream_observed"] = False
+        record["host_ack_cgevent_log_observed"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertEqual(summary["blocking_reasons"], [])
+        self.assertEqual(
+            {item["field"] for item in summary["missing_requirements"]},
+            {
+                "android_focus_ime_boundary_observed",
+                "selected_display_stream_observed",
+            },
+        )
+
+    def test_inconsistent_new_observations_report_missing_prerequisites(self) -> None:
+        record = self.complete_record()
+        record["physical_keyboard_attached"] = False
+        record["android_production_forwarding_observed"] = False
+        record["protocol_keyboard_capability_negotiated"] = False
+        record["host_key_injection_observed"] = False
+        record["protocol_usb_hid_modifier_capability_negotiated"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertEqual(
+            {item["field"] for item in summary["inconsistent_observations"]},
+            {
+                "android_keyboard_source_observed",
+                "android_focus_ime_boundary_observed",
+                "selected_display_stream_observed",
+                "host_ack_cgevent_log_observed",
+                "modifier_press_release_observed",
+                "shortcut_combo_observed",
+                "android_logs_retained",
+            },
+        )
+
     def test_pass_requires_every_observation(self) -> None:
         summary = summarize(self.complete_record())
 
         self.assertEqual(summary["verdict"], "pass")
         self.assertTrue(summary["can_close_hardware_keyboard_gate"])
         self.assertEqual(summary["missing_requirements"], [])
+
+    def test_pass_allows_ack_cgevent_logs_without_key_injected_line(self) -> None:
+        record = self.complete_record()
+        record["host_key_injection_observed"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertTrue(summary["can_close_hardware_keyboard_gate"])
+        self.assertEqual(summary["missing_requirements"], [])
+        self.assertEqual(summary["inconsistent_observations"], [])
+
+    def test_missing_both_host_confirmation_paths_is_insufficient(self) -> None:
+        record = self.complete_record()
+        record["host_key_injection_observed"] = False
+        record["host_ack_cgevent_log_observed"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_hardware_keyboard_gate"])
+        self.assertEqual(
+            [item["field"] for item in summary["missing_requirements"]],
+            ["host_key_injection_observed|host_ack_cgevent_log_observed"],
+        )
+        self.assertEqual(
+            {item["field"] for item in summary["inconsistent_observations"]},
+            {
+                "key_press_release_observed",
+                "modifier_press_release_observed",
+                "shortcut_combo_observed",
+                "visible_mac_result_observed",
+                "host_logs_retained",
+            },
+        )
 
     def test_run_id_can_come_from_input_record(self) -> None:
         record = self.complete_record()

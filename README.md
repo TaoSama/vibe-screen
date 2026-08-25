@@ -503,18 +503,23 @@ mini row now has a passive current-base verifier that consumes retained real
 macOS evidence for identity signing, TCC, Login Items approval, reboot/login
 launch, capturable physical/dummy/headless or Screen Sharing display, bounded
 unattended recovery, window restoration, and operator remote-access fallback.
-It remains fail-closed until those machine-bound artifacts exist. Stand-mounted
-charging stability, controlled thermal-load behavior, power stability, login
-startup, headless Mac mini acceptance, hardware-keyboard workflow acceptance,
-and the physical 8-9 inch tablet run all remain open. The latest P0110/pacific
-device-environment readiness record captures the real device identity and
-fail-closed battery, power, and thermal snapshots, but it is not a gate pass
-because the device is a phone substitute and no stand-mounted tablet setup,
-controlled thermal-load recovery, or eight-hour window was available. The latest
-P0110/pacific hardware-keyboard current-base readiness record captures the real
-device identity and fails closed because no external Android-attached keyboard,
-Host listener, or stable signed/TCC-ready Host was available; it is not a gate
-pass.
+It remains fail-closed until those machine-bound artifacts exist. The
+hardware-keyboard workflow has a dedicated current-base owner and a
+schema-backed fail-closed summary that requires real external, non-virtual
+Android hardware keyboard input, an active selected-display stream, Protocol v1
+keyboard and USB HID modifier negotiation, focus/IME boundary evidence, retained
+Host key-injection or acknowledgement/CGEvent logs, modifier cleanup, and a
+visible Mac result. Stand-mounted charging stability, controlled thermal-load behavior,
+power stability, login startup, headless Mac mini acceptance, hardware-keyboard
+workflow acceptance, and the physical 8-9 inch tablet run all remain open. The
+latest P0110/pacific device-environment readiness record captures the real
+device identity and fail-closed battery, power, and thermal snapshots, but it is
+not a gate pass because the device is a phone substitute and no stand-mounted
+tablet setup, controlled thermal-load recovery, or eight-hour window was
+available. The latest P0110/pacific hardware-keyboard current-base readiness
+record captures the real device identity and fails closed because no external
+Android-attached keyboard or stable signed/TCC-ready Host was available; a Host
+listener alone is not enough, and this is not a gate pass.
 See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 

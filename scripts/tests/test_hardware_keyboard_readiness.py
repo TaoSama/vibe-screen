@@ -75,6 +75,37 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
         self.assertTrue(readiness.device_identity_matches_claim(readiness.P0110_SERIAL, matching))
         self.assertFalse(readiness.device_identity_matches_claim(readiness.P0110_SERIAL, mislabeled))
 
+    def test_non_p0110_identity_requires_recorded_public_fields(self) -> None:
+        complete = readiness.DeviceIdentity(
+            serial="other-adb-serial",
+            endpoint="other-adb-serial device product:smalltab model:SmallTab device:smalltab",
+            manufacturer="Example",
+            model="SmallTab",
+            device="smalltab",
+            product="smalltab",
+            android_release="14",
+            sdk="34",
+            build_fingerprint="example/smalltab/fingerprint",
+            abi="arm64-v8a",
+            device_serial="other-adb-serial",
+        )
+        incomplete = readiness.DeviceIdentity(
+            serial="other-adb-serial",
+            endpoint="other-adb-serial device product:smalltab model:SmallTab device:smalltab",
+            manufacturer="Example",
+            model="",
+            device="smalltab",
+            product="smalltab",
+            android_release="14",
+            sdk="34",
+            build_fingerprint="example/smalltab/fingerprint",
+            abi="arm64-v8a",
+            device_serial="other-adb-serial",
+        )
+
+        self.assertTrue(readiness.device_identity_matches_claim("other-adb-serial", complete))
+        self.assertFalse(readiness.device_identity_matches_claim("other-adb-serial", incomplete))
+
     def test_package_identity_accepts_zero_version_code(self) -> None:
         package = readiness.PackageIdentity(
             package_name="dev.telemachus.display",
@@ -169,7 +200,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
             self.assertFalse(summary["can_close_hardware_keyboard_gate"])
             readiness_record = json.loads((evidence_dir / "hardware-keyboard-readiness.json").read_text(encoding="utf-8"))
             self.assertFalse(readiness_record["device_lock"]["acquired"])
-            self.assertEqual(readiness_record["device_lock"]["existing_locks"][0]["path"], str(lock))
+            self.assertEqual(readiness_record["device_lock"]["existing_locks"][0]["path"], readiness.REDACTED_DEVICE_LOCK_PATH)
 
     def test_main_collects_blocked_readiness_when_no_external_keyboard(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -225,6 +256,23 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
             self.assertFalse(summary["observations"]["host_listener_observed"])
             self.assertFalse(summary["observations"]["host_stable_signed_tcc_ready"])
             self.assertFalse(lock.exists())
+
+    def test_input_device_parser_rejects_builtin_non_virtual_keyboard(self) -> None:
+        dumpsys_input = """
+Event Hub State:
+  Devices:
+    3: gpio-keys
+      Classes: KEYBOARD
+      Descriptor: built-in-descriptor
+Input Reader State (Nums of device: 1):
+  Device 3: gpio-keys
+    IsExternal: false
+    Sources: KEYBOARD
+"""
+
+        keyboards = readiness.physical_keyboard_devices(readiness.parse_input_devices(dumpsys_input))
+
+        self.assertEqual(keyboards, [])
 
 
 def subprocess_completed(command, *, stdout: str = "", stderr: str = "", returncode: int = 0):

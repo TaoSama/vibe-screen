@@ -38,10 +38,13 @@ REQUIRED_FIELDS = (
     ),
     (
         "device_identity_matches_claim",
-        "label the evidence with the observed device identity, without relabeling P0110/pacific as Xiaomi/fuxi",
+        "label the evidence with the observed device identity, without relabeling P0110/pacific as another device",
     ),
     ("apk_identity_recorded", "record APK version/signing identity and install timestamp"),
-    ("physical_keyboard_attached", "attach and name a real external or hardware Android keyboard"),
+    (
+        "physical_keyboard_attached",
+        "attach and name a real external, non-virtual Android hardware keyboard",
+    ),
     (
         "android_keyboard_source_observed",
         "observe a physical keyboard input source in Android input/log evidence",
@@ -58,13 +61,29 @@ REQUIRED_FIELDS = (
         "android_production_forwarding_observed",
         "observe MainActivity/StreamClient production keyboard forwarding, not only adb input dispatch",
     ),
+    (
+        "android_focus_ime_boundary_observed",
+        "prove the Android Activity foreground/focus path accepts the hardware keyboard while IME or system-key boundaries do not masquerade as forwarded keys",
+    ),
+    (
+        "selected_display_stream_observed",
+        "prove the Protocol v1 session was actively streaming the selected display while the keyboard workflow ran",
+    ),
     ("host_listener_observed", "record the macOS Host listener for the transport under test"),
     (
         "host_stable_signed_tcc_ready",
         "run a stable signed Host with Screen Recording and Accessibility permission ready",
     ),
     ("host_key_injection_observed", "retain Host 'Key injected:' CGEvent logs for the keyboard events"),
+    (
+        "host_ack_cgevent_log_observed",
+        "retain Host-side admission/acknowledgement logs and CGEvent injection logs for every claimed key and shortcut event",
+    ),
     ("key_press_release_observed", "prove key-down and key-up semantics for the same HID usage"),
+    (
+        "modifier_press_release_observed",
+        "prove modifier key press and release semantics, not only a shortcut side effect",
+    ),
     ("shortcut_combo_observed", "prove at least one shortcut/modifier combination reaches the Host"),
     (
         "modifier_release_no_leak_observed",
@@ -83,6 +102,14 @@ BLOCKING_FIELDS = {
 }
 
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
+HOST_CONFIRMATION_FIELDS = (
+    "host_key_injection_observed",
+    "host_ack_cgevent_log_observed",
+)
+HOST_CONFIRMATION_REQUIREMENT = (
+    "retain Host-side `Key injected:` CGEvent logs or Host acknowledgement/CGEvent logs "
+    "for every claimed key and shortcut event"
+)
 
 CONSISTENCY_RULES = (
     (
@@ -101,34 +128,29 @@ CONSISTENCY_RULES = (
         "production keyboard forwarding requires a physical keyboard and negotiated Protocol v1 keyboard capability",
     ),
     (
+        "android_focus_ime_boundary_observed",
+        ("physical_keyboard_attached", "android_production_forwarding_observed"),
+        "Android focus and IME-boundary evidence requires a physical keyboard and production forwarding logs",
+    ),
+    (
+        "selected_display_stream_observed",
+        ("protocol_keyboard_capability_negotiated",),
+        "selected-display stream evidence requires Protocol v1 keyboard capability negotiation",
+    ),
+    (
         "host_key_injection_observed",
         ("android_production_forwarding_observed", "host_listener_observed", "host_stable_signed_tcc_ready"),
         "Host key-injection logs require production forwarding plus a stable signed/TCC-ready Host listener",
     ),
     (
-        "key_press_release_observed",
-        ("host_key_injection_observed",),
-        "key press/release evidence requires Host key-injection logs",
-    ),
-    (
-        "shortcut_combo_observed",
-        ("host_key_injection_observed", "protocol_usb_hid_modifier_capability_negotiated"),
-        "shortcut evidence requires Host key-injection logs and negotiated USB HID modifier semantics",
+        "host_ack_cgevent_log_observed",
+        ("android_production_forwarding_observed", "host_listener_observed", "host_stable_signed_tcc_ready"),
+        "Host acknowledgement/CGEvent logs require production forwarding plus a stable signed/TCC-ready Host listener",
     ),
     (
         "modifier_release_no_leak_observed",
         ("shortcut_combo_observed", "key_press_release_observed"),
         "modifier cleanup evidence requires shortcut and key release observations",
-    ),
-    (
-        "visible_mac_result_observed",
-        ("host_key_injection_observed",),
-        "visible Mac keyboard result requires Host key-injection logs",
-    ),
-    (
-        "host_logs_retained",
-        ("host_key_injection_observed",),
-        "retained Host keyboard logs must correspond to observed Host key injection",
     ),
     (
         "android_logs_retained",
@@ -212,16 +234,61 @@ def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, 
                     "requirement": requirement,
                 }
             )
+    host_confirmed = any(field_values[field] for field in HOST_CONFIRMATION_FIELDS)
+    for observed_field, requirement in (
+        ("key_press_release_observed", "key press/release evidence requires Host key-injection or acknowledgement/CGEvent logs"),
+        (
+            "modifier_press_release_observed",
+            "modifier press/release evidence requires Host key-injection or acknowledgement/CGEvent logs and negotiated USB HID modifier semantics",
+        ),
+        (
+            "shortcut_combo_observed",
+            "shortcut evidence requires Host key-injection or acknowledgement/CGEvent logs and negotiated USB HID modifier semantics",
+        ),
+        ("visible_mac_result_observed", "visible Mac keyboard result requires Host key-injection or acknowledgement/CGEvent logs"),
+        ("host_logs_retained", "retained Host keyboard logs must correspond to Host key-injection or acknowledgement/CGEvent evidence"),
+    ):
+        if field_values[observed_field] and not host_confirmed:
+            inconsistencies.append(
+                {
+                    "field": observed_field,
+                    "requires": list(HOST_CONFIRMATION_FIELDS),
+                    "requirement": requirement,
+                }
+            )
+    for observed_field, requirement in (
+        ("modifier_press_release_observed", "modifier press/release evidence requires negotiated USB HID modifier semantics"),
+        ("shortcut_combo_observed", "shortcut evidence requires negotiated USB HID modifier semantics"),
+    ):
+        if (
+            field_values[observed_field]
+            and not field_values["protocol_usb_hid_modifier_capability_negotiated"]
+        ):
+            inconsistencies.append(
+                {
+                    "field": observed_field,
+                    "requires": ["protocol_usb_hid_modifier_capability_negotiated"],
+                    "requirement": requirement,
+                }
+            )
     return inconsistencies
 
 
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
+    host_confirmed = any(field_values[field] for field in HOST_CONFIRMATION_FIELDS)
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
-        if not field_values[field]
+        if field not in HOST_CONFIRMATION_FIELDS and not field_values[field]
     ]
+    if not host_confirmed:
+        missing.append(
+            {
+                "field": "|".join(HOST_CONFIRMATION_FIELDS),
+                "requirement": HOST_CONFIRMATION_REQUIREMENT,
+            }
+        )
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
@@ -246,7 +313,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "adb_input_is_not_physical_keyboard_evidence": True,
         "required_device_identity": (
             "Record the actual Android device identity; Nubia P0110/pacific/Android 16 "
-            "evidence must not be relabeled as Xiaomi 13/fuxi."
+            "evidence must not be relabeled as another device."
         ),
         "observations": field_values,
         "missing_requirements": missing,
