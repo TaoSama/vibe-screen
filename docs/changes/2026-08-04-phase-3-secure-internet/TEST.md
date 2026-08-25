@@ -63,13 +63,15 @@ secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
 or prove public reachability. The same target validates the structured coturn
-snapshot reconciliation helper: strict JSON input, optional external exporter
+snapshot reconciliation helper and the current-base exporter/reconciliation-loop/
+disconnect-executor product slice: strict JSON input, optional external exporter
 stdout validation, loopback-only plaintext Authority URLs, exact token-source
-selection, bounded failure retry, and fail-closed external disconnect execution
-when Authority reports unauthorized, conflicting, or revoked active source
-allocations. That helper test does not prove a production coturn exporter,
-production scheduler, provider billing reconciliation, or real data-plane
-allocation termination.
+selection, bounded failure retry, consecutive missing-allocation tracking, and
+fail-closed disconnect execution when Authority reports unauthorized, conflicting,
+or revoked active source allocations. This local slice proves stale allocation,
+revoked device, and quota-closed allocation contracts against structured local
+state. It does not prove a production coturn exporter, production scheduler,
+provider billing reconciliation, or real data-plane allocation termination.
 The Phase 3 revocation propagation verifier now pins the evidence contract for
 Authority/signaling/relay/coturn propagation. It passes only when a report proves
 Authority audit visibility, signaling long-poll wakeup rejection, future and
@@ -740,6 +742,14 @@ named by that run:
   when no disconnect executor exists or when the executor fails. This is a local
   contract test, not production coturn exporter, production scheduler, provider
   billing reconciliation, or data-plane disconnect evidence.
+- The 2026-08-25 current-base coturn reconciliation product-slice tests add
+  strict structured exporter adaptation, bounded durable reconciliation-loop
+  state for stale ledger allocations, local active-allocation disconnect audit
+  handling, and the Authority quota-closed allocation handoff that reports the
+  allocation as `revoked_allocation_ids` for remediation. This remains local
+  structured-state evidence only; no Android device, public Internet path, live
+  coturn control socket, provider API, packet capture, latency, or soak evidence
+  was collected.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until

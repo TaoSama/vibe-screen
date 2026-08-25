@@ -10,12 +10,15 @@ local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
-multi-instance operation is not proved, no authoritative usage exporter or
-active-allocation disconnect executor is bundled, Mac/Android automatic
-invocation of Authority profile issuance is not wired, the bundled coturn
-deployment does not run a usage exporter, reconciliation scheduler, or concrete
-data-plane disconnect executor, and no integrated implementation has run on a
-public host in this environment.
+multi-instance operation is not proved, no authoritative production usage
+exporter or live active-allocation disconnect executor is deployed, Mac/Android
+automatic invocation of Authority profile issuance is not wired, the bundled coturn
+deployment does not run a production-scheduled usage exporter/reconciliation
+worker or concrete data-plane disconnect executor, and no integrated
+implementation has run on a public host in this environment. The repository now
+contains a current-base local operator slice for those boundaries, but it
+operates on reviewed structured JSON and a local active-allocation state file; it
+is not a live coturn allocation teardown proof.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -44,14 +47,15 @@ Authority owns coturn usage/reconciliation APIs. The repository also includes
 structured coturn allocation snapshot to Authority, can call an external exporter
 command whose stdout is that same strict JSON, retries failures when explicitly
 configured, and invokes an external disconnect executor for unauthorized,
-conflicting, or revoked active source allocations. The helper is not a
-production-proven coturn machine exporter, production scheduler, or concrete
-data-plane disconnect implementation. Therefore this does not remove the public-launch prohibition
-below. See the service README for the migration
-procedure, API contract, and remaining infrastructure gates.
-The structured reconcile
-  helper is locally tested, but the coturn exporter, scheduled reconciliation loop,
-  and active-allocation disconnect are not production proven.
+conflicting, or revoked active source allocations. The current-base local product
+slice adds `scripts/phase3/coturn_allocation_exporter.py` for structured collector
+adaptation, `scripts/phase3/coturn_reconciliation_loop.py` for bounded durable
+missing-allocation tracking, and `scripts/phase3/coturn_disconnect_executor.py`
+for idempotent local active-allocation state removal plus non-secret audit
+records. This still is not a production-proven coturn machine exporter,
+production scheduler, or concrete data-plane disconnect implementation. Therefore
+this does not remove the public-launch prohibition below. See the service README
+for the migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
@@ -336,11 +340,10 @@ shipped:
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a profile or
   signaling admission can be created.
-- Relay credential admission is wired to the authority; the structured reconcile
-  helper is locally tested and can invoke external exporter and disconnect
-  commands, but a real coturn exporter is not implemented, no production
-  scheduler is shipped, and no concrete active-allocation disconnect executor is
-  bundled or production-proven.
+- Relay credential admission is wired to the authority; the structured exporter,
+  bounded reconciliation loop, and local active-allocation disconnect executor are
+  locally tested as a current-base operator slice. A real coturn/provider exporter,
+  production scheduler, and concrete live allocation termination remain unproved.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
