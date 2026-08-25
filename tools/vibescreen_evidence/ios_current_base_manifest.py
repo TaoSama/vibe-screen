@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -425,6 +426,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             device_acceptance_owner_pr=args.device_acceptance_owner_pr,
             signing_readiness_gate=args.signing_readiness_gate,
             notes=args.notes,
+        )
+        manifest["source_root"] = os.path.relpath(
+            args.repo.resolve(),
+            args.output.resolve().parent,
         )
         write_json(args.output, manifest)
     except (ManifestError, OSError, TypeError, ValueError) as error:
