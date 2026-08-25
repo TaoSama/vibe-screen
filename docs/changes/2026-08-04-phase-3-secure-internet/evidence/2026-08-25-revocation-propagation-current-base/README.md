@@ -2,7 +2,7 @@
 
 Date: 2026-08-25
 Source branch: codex/phase3-revocation-propagation-current-base
-Rebased baseline: c754f2dab4d3781847b40988105fcdefe1723538
+Rebased baseline: 1f19da57ea112a24239b724da9303d3a307c17fa
 Source commit: recorded by the `git rev-parse HEAD` command in `commands.txt` before checks run; the command log is intentionally pinned by the full baseline SHA and clean-worktree assertion rather than a self-referential commit literal.
 
 ## Scope

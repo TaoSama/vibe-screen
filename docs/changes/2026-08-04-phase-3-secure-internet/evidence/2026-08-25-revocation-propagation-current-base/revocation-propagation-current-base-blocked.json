@@ -2,7 +2,7 @@
   "schema": "dev.vibescreen.phase3-revocation-propagation/v1",
   "observed_at": "2026-08-25T00:00:00Z",
   "source": {
-    "commit": "fed8ac0c",
+    "commit": "ad2c52c10ac41a8ee58087ad92401b54f29013c0",
     "topology": "blocked",
     "authority_url_kind": "local-service-tests",
     "coturn_source_id": "turn-node-1",

@@ -1,7 +1,7 @@
 git rev-parse HEAD
 git rev-parse origin/main
-test $(git rev-parse origin/main) = c754f2dab4d3781847b40988105fcdefe1723538
-git merge-base --is-ancestor c754f2dab4d3781847b40988105fcdefe1723538 HEAD
+test $(git rev-parse origin/main) = 1f19da57ea112a24239b724da9303d3a307c17fa
+git merge-base --is-ancestor 1f19da57ea112a24239b724da9303d3a307c17fa HEAD
 test -z "$(git status --short)"
 test -z "$(gofmt -l services/signaling/internal/signaling/server.go services/signaling/internal/signaling/authority_mode_test.go services/signaling/authority_process_integration_test.go services/relay/internal/relay/*.go)"
 cd services/relay && go test ./internal/relay -count=1
