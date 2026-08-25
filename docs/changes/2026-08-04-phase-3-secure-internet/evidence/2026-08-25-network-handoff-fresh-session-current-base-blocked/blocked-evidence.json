@@ -1,0 +1,53 @@
+{
+  "adb_command_required_for_future_run": "adb -s <device-serial> ...",
+  "blocked_before_adb": true,
+  "blocked_gates": [
+    "public_internet_direct_path",
+    "remote_turn_relay_path",
+    "real_screencapturekit_to_android_media",
+    "network_handoff_recovery",
+    "cross_service_revocation",
+    "packet_capture_confidentiality",
+    "external_camera_latency",
+    "two_hour_mixed_route_soak"
+  ],
+  "blockers": [
+    "missing_internet_device_lease",
+    "no_controlled_network_impairment_harness",
+    "no_public_internet_or_remote_turn_route",
+    "no_real_handoff_or_two_hour_soak_window",
+    "no_real_android_device_network_handoff",
+    "no_automatic_authority_product_profile_invocation",
+    "no_real_screencapturekit_to_android_media",
+    "no_two_hour_mixed_route_soak_window"
+  ],
+  "claims": {
+    "phase3_release_gate_closed": false,
+    "public_internet": false,
+    "real_network_handoff": false,
+    "real_screencapturekit_to_android_media": false,
+    "remote_turn": false,
+    "two_hour_soak": false
+  },
+  "device": {
+    "adb_serial_used": false,
+    "api_level": 36,
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "os_version": "Android 16"
+  },
+  "readiness_improvements": [
+    "release-gate manifest validator requires real controlled impairment metadata for handoff and mixed-route soak claims",
+    "network-handoff release claims require fresh-session or ICE-restart timeline fields, old-session closure, epoch advance, stale-epoch rejection, and stream resume timing",
+    "deterministic network-profile output is scoped as contract simulation and cannot close real Internet, ICE, TURN, latency, or soak gates"
+  ],
+  "recorded_at": "2026-08-25T02:59:34.532444+00:00",
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-network-recovery-blocked/v1",
+  "source": {
+    "commit": "11b88de6287ee409f965d2693bd6939f2394e716",
+    "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tree_status": "clean"
+  }
+}

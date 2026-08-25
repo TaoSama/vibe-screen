@@ -104,12 +104,13 @@ def write_text(path: Path, content: str) -> None:
 
 
 def blocked_release_manifest(args: argparse.Namespace, source: dict[str, Any]) -> dict[str, Any]:
+    blockers = list(dict.fromkeys(args.blocker))
     gate_defaults = {
         "status": "blocked",
         "synthetic_media": True,
         "local_loopback_only": True,
         "evidence_files": ["blocked-evidence.json", "README.md"],
-        "blockers": list(args.blocker),
+        "blockers": blockers,
     }
     return {
         "schema": RELEASE_GATE_SCHEMA,
@@ -134,6 +135,7 @@ def blocked_release_manifest(args: argparse.Namespace, source: dict[str, Any]) -
 def build_evidence(args: argparse.Namespace, source: dict[str, Any]) -> dict[str, Any]:
     if not args.blocker:
         raise BlockedEvidenceError("at least one blocker is required")
+    blockers = list(dict.fromkeys(args.blocker))
     adb_command = f"adb -s {args.device_serial} ..." if args.device_serial else "adb -s <device-serial> ..."
     return {
         "schema": SCHEMA,
@@ -151,7 +153,7 @@ def build_evidence(args: argparse.Namespace, source: dict[str, Any]) -> dict[str
         "blocked_before_adb": True,
         "adb_command_required_for_future_run": adb_command,
         "blocked_gates": list(BLOCKED_GATES),
-        "blockers": list(args.blocker),
+        "blockers": blockers,
         "readiness_improvements": [
             "release-gate manifest validator requires real controlled impairment metadata for handoff and mixed-route soak claims",
             "network-handoff release claims require fresh-session or ICE-restart timeline fields, old-session closure, epoch advance, stale-epoch rejection, and stream resume timing",

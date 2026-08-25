@@ -201,6 +201,7 @@ final class WebRTCInternetTransport {
     private let limits: InternetTransportLimits
     private let adaptivePolicy: AdaptiveMediaPolicy
     private let recoveryStrategy: InternetRecoveryStrategy
+    private let networkHandoffRecoveryStrategy: InternetRecoveryStrategy
     private let lock = NSLock()
     private let sendGate = NSRecursiveLock()
     private let engineLifecycleGate = NSRecursiveLock()
@@ -220,6 +221,7 @@ final class WebRTCInternetTransport {
         recoveryPolicy: NetworkRecoveryPolicy = .standard,
         adaptivePolicy: AdaptiveMediaPolicy = AdaptiveMediaPolicy(),
         recoveryStrategy: InternetRecoveryStrategy = .restartICE,
+        networkHandoffRecoveryStrategy: InternetRecoveryStrategy = .restartICE,
         beforeEngineStart: (() -> Void)? = nil,
         beforeControlSend: (() -> Void)? = nil,
         beforeMediaRecordSend: (() -> Void)? = nil,
@@ -248,6 +250,7 @@ final class WebRTCInternetTransport {
         self.limits = limits
         self.adaptivePolicy = adaptivePolicy
         self.recoveryStrategy = recoveryStrategy
+        self.networkHandoffRecoveryStrategy = networkHandoffRecoveryStrategy
         self.beforeEngineStart = beforeEngineStart
         self.beforeControlSend = beforeControlSend
         self.beforeMediaRecordSend = beforeMediaRecordSend
@@ -1347,7 +1350,10 @@ final class WebRTCInternetTransport {
                     state.recovery.observePath(path)
                     return nil
                 }
-                return state.recovery.pathChanged(path)
+                return state.recovery.pathChanged(
+                    path,
+                    requiresFreshSession: networkHandoffRecoveryStrategy == .freshSession
+                )
             }
             return prepareRecoveryActionWithinSendGate(action)
         }
@@ -1418,6 +1424,8 @@ final class WebRTCInternetTransport {
         switch action {
         case .restartICE:
             return prepareICERestartWithinSendGate().map(PreparedRecovery.iceRestart)
+        case .freshSession(let reason):
+            return prepareFreshSessionRecoveryWithinSendGate(reason: reason)
         case .fail(let reason):
             return prepareFreshSessionRecoveryWithinSendGate(reason: reason)
         case nil:
