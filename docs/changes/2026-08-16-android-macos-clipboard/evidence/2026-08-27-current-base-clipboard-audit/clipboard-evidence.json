@@ -11,11 +11,12 @@
   "target_device_tests_run": false,
   "local_android_lock_preflight": "no android device lock present",
   "local_codesigning_preflight": "0 valid identities found",
-  "related_open_prs": [
+  "related_prs": [
     {
       "number": 157,
       "url": "https://github.com/TaoSama/vibe-screen/pull/157",
-      "status": "open_draft",
+      "status": "closed_unmerged_draft",
+      "closed_at": "2026-08-24T06:26:26Z",
       "note": "runbook/evidence branch; not a merged E2E pass"
     }
   ],
@@ -26,7 +27,7 @@
       "summary": "PR metadata was available locally through GitHub CLI"
     },
     {
-      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest",
+      "command": "(cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest)",
       "result": "pass",
       "summary": "BUILD SUCCESSFUL"
     },
@@ -36,12 +37,12 @@
       "summary": "Ran 16 tests OK"
     },
     {
-      "command": "cd baseline/MacHost && swift build -c release && \".build/release/Vibe Screen\" --protocol-v1-self-test",
+      "command": "(cd baseline/MacHost && swift build -c release && \".build/release/Vibe Screen\" --protocol-v1-self-test)",
       "result": "pass",
       "summary": "Build complete; Protocol v1 self-test PASS"
     },
     {
-      "command": "cd baseline/MacHost && swift test --filter Clipboard",
+      "command": "(cd baseline/MacHost && swift test --filter Clipboard)",
       "result": "blocked",
       "summary": "Command Line Tools environment lacks XCTest; xcrun --find xcodebuild exits 72"
     },

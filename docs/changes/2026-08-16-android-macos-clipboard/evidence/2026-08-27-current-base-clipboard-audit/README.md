@@ -14,9 +14,9 @@ ClipboardManager <-> macOS NSPasteboard USB/LAN E2E device gate.
 - Refresh base `origin/main`: `74a539c033b67733af72e651f81d6364603a8a07`
 - Final PR head: use the GitHub PR checks/status for the latest pushed head;
   this audit does not hard-code the moving PR branch tip.
-- Open related PR: [#157](https://github.com/TaoSama/vibe-screen/pull/157)
-  remains a draft runbook/evidence PR and should not be treated as a completed
-  implementation or E2E pass.
+- Related PR: [#157](https://github.com/TaoSama/vibe-screen/pull/157)
+  was a draft runbook/evidence PR, closed unmerged on 2026-08-24. It should
+  not be treated as a completed implementation or E2E pass.
 
 ## Implementation Audit
 
