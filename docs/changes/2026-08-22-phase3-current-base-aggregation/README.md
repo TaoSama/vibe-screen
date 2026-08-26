@@ -4,8 +4,8 @@ Status: docs-only current-base audit; not Phase 3 Internet release evidence
 
 Owner: Vibe Screen core team
 
-Current base audited: `f46163524fe757e7021a4333b3370af00ec651f1`
-(`origin/main`, 2026-08-26)
+Current base audited: `74a539c033b67733af72e651f81d6364603a8a07`
+(`origin/main`, 2026-08-27)
 
 ## Purpose
 
@@ -27,7 +27,7 @@ capture confidentiality, external-camera latency, or a two-hour mixed-route soak
 
 | Evidence | Source binding | Current-base status | Boundary |
 | --- | --- | --- | --- |
-| Current `origin/main` | `f46163524fe757e7021a4333b3370af00ec651f1` | Source contains the local Phase 3 product slice, production WebRTC adapters, application-record protection, local Authority/signaling/relay scaffolding, signaling multi-node waiter recovery, coturn reconciliation product-slice code, network handoff fresh-session code, revocation propagation gates, real-media/adaptive/DataChannel readiness gates, and the generated current-base release-gate summary. | No current public Internet release pass is recorded. Current evidence remains local, synthetic, historical, or blocked unless a named gate says otherwise. |
+| Current `origin/main` | `74a539c033b67733af72e651f81d6364603a8a07` | Source contains the local Phase 3 product slice, production WebRTC adapters, application-record protection, local Authority/signaling/relay scaffolding, signaling multi-node waiter recovery, the production PostgreSQL signaling store slice, coturn reconciliation product-slice code, network handoff fresh-session code, revocation propagation gates, real-media/adaptive/DataChannel readiness gates, the generated current-base release-gate summary, and later non-Phase 3 current-base owners such as WakeHost and the touch-rerun evidence gate. | No current public Internet release pass is recorded. Current evidence remains local, synthetic, historical, or blocked unless a named gate says otherwise. |
 | Executable aggregate gate summary | Merged PR #258, commit `4b0c1eaad` | Current-base aggregate summary/checker is already on `main` and intentionally keeps public Internet release gates open. | It is fail-closed release-state tooling, not release evidence. Future child gates should feed or supersede it instead of duplicating aggregate ownership. |
 | Open gates coverage audit | Merged PR #241, commit `4dc84505e` | Docs-only audit baseline is on `main`; it inventories missing evidence and duplicate/stale PR clusters. | It does not generate pass/fail release state. |
 | Local readiness record | `docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md`, commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee` | Useful regression baseline for protocol, security/service/static tests, local Authority container, relay coturn scripts, and direct plus forced-local-coturn synthetic product E2E. | Local loopback only; no Android UI, real screen capture, public Internet path, real remote TURN, packet capture, handoff, revocation propagation, latency, or soak. |
@@ -71,7 +71,7 @@ required target device and production-shaped services:
 
 ## Pull request disposition matrix
 
-| PR | Current status on 2026-08-26 | Disposition | Reason |
+| PR | Current status on 2026-08-27 | Disposition | Reason |
 | --- | --- | --- | --- |
 | #164 Add Phase 3 release gate manifest verifier | Open draft; conflicting with current `main`. | Supersede or close after any unique assertions are checked against the merged gate tooling. | Older aggregate-gate shape overlaps the merged release summary and newer child gates. |
 | #171 Harden network recovery gate evidence | Merged. | Treat as current-base network recovery evidence-tooling context. | It is a fail-closed gate/preflight slice, not real handoff evidence. |
@@ -83,13 +83,13 @@ required target device and production-shaped services:
 | #200 Phase 3 authority session profile issuance | Closed; successor merged through #311 and later Authority/TURN readiness work. | Do not revive as-is. | Current `main` has the current-base issuance/readiness verifier path, but automatic product-flow issuance remains blocked. |
 | #212 Add Phase 3 Internet latency gate verifier | Open draft; conflicting. | Rebase only if it still contains unique latency assertions not covered by the newer latency readiness gate on `main`; otherwise supersede/close. | Current `main` has latency preflight/readiness records, but no real external-camera Internet latency pass. |
 | #214 Add Phase 3 public Internet soak gate | Open draft; conflicting. | Rebase only if it still owns unique soak manifest/checker semantics; otherwise supersede into the merged release-gate package. | The release gate remains open because no two-hour mixed-route soak exists. |
-| #215 Add production Postgres signaling store slice | Open draft; conflicting. | Supersede by merged signaling multi-node work after checking for any unique PRD/TEST/static assertions. | #223 and later mainline service changes are the current signaling baseline. |
+| #215 Add production Postgres signaling store slice | Merged. | Treat as current production PostgreSQL signaling-store context. | Current `main` includes the production store slice, while public ingress, load-balancer behavior, remote services, and mixed-route release evidence remain open. |
 | #216 Harden Phase 3 QR pairing verification | Closed; successor status is on `main`. | Do not revive as-is. | QR/lease hardening moved through later current-base work. |
 | #223 Add signaling multi-node waiter lease recovery | Merged. | Treat as current signaling multi-node context. | Still does not prove public ingress, multi-instance throughput, load balancer behavior, or multi-region consistency. |
 | #224 Add bounded network handoff recovery | Merged. | Treat as the runtime handoff-recovery baseline. | Real public handoff remains open until device/public-route evidence exists. |
 | #228 Add coturn production reconciliation slice | Closed; successor merged through #341. | Do not revive as-is. | Current `main` owns coturn reconciliation product-slice code and readiness evidence. |
 | #241 Add open gates coverage audit | Merged. | Treat as docs-only context. | Useful coverage inventory, not executable release-state tooling. |
-| #248 Add current-base aggregation plan | This PR. Draft docs-only branch now rebased on current `origin/main`. | It has no executable code value after #258 and the child gates merged; merge only if this human cleanup audit is wanted, otherwise close. | The remaining value is a stale-PR disposition record. It must not duplicate the executable aggregate gate. |
+| #248 Add current-base aggregation plan | This PR. Docs-only branch now rebased on current `origin/main`. | It has no executable code value after #258 and the child gates merged; merge only if this human cleanup audit is wanted, otherwise close. | The remaining value is a stale-PR disposition record. It must not duplicate the executable aggregate gate. |
 | #254 Add Phase 3 production enforcement gate | Open draft; conflicting. | Keep or refresh as a child production-enforcement gate only if it still contains unique checks. | Its blocked observations remain useful but do not prove deployed public services, remote TURN, active coturn disconnect, or mixed-route soak. |
 | #258 Add Phase 3 current-base release gate summary | Merged. | Use the `main` implementation as the executable aggregate owner. | It generates current-base release-gate status and keeps public Internet gates open. |
 | #303 Phase 3 real-media current-base gate | Merged. | Treat as current-base child real-media gate context. | It does not replace real capture-to-Android decoder evidence. |
@@ -109,7 +109,7 @@ required target device and production-shaped services:
    `vibescreen_evidence.phase3_internet_release_gate` on `main` as the executable
    aggregate source of truth.
 2. Close or supersede stale broad PRs after unique-diff checks: #164, #188, #194,
-   #212, #214, #215, and #254. Do not close them merely because this audit says
+   #212, #214, and #254. Do not close them merely because this audit says
    they are stale; verify any unique assertion first.
 3. Do not reopen #190, #200, #216, or #228 as-is; use their merged successors on
    `main` for future work.
