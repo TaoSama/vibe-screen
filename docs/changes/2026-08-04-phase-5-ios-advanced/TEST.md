@@ -443,6 +443,62 @@ does not advertise `.multiClient` in production. PR #201 adds an offline Host
 routing boundary, but its own record keeps production capped at one active
 client/stream and does not close multi-device or parallel-capture acceptance.
 
+## MacHost multi-client/display routing boundary
+
+On 2026-08-21 the Host Protocol v1 session layer gained an offline-tested
+multi-client/display routing boundary. The shared `HostMultiClientDisplayRouter`
+keys clients by `session_id` and `session_epoch`, enforces configured
+`maximum_clients` and per-client video-stream limits, allocates display-bound
+`stream_id` values, rejects stale lower epochs while a newer route is active,
+and releases routes when a session closes. The session coordinator now validates
+touch, pointer, scroll, keyboard, controller, and host-action targets against
+the route owned by the same client session before any input action reaches the
+Host injection layer.
+
+Local validation from the repository root:
+
+```bash
+swift build --package-path baseline/MacHost
+make baseline-macos-self-test
+make protocol
+git diff --check
+```
+
+Observed result:
+
+```text
+Build complete!
+Host self-test: PASS (display identity/catalog, input/window geometry, startup/recovery policy, callback generation, fallback replacement, ADB device selection)
+Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true, malformedTouchRejected=true, portConflict=true, codecNegotiations=1, protocolV1Lifecycle=true, protocolV1ReadyLifecycle=true, protocolV1PreReadyStops=true, fileApprovalDispatch=true, error=none)
+Reliability self-test: PASS (queue, epoch, heartbeat/backoff, codec, JSONL)
+Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client routing, epoch, targeted input, heartbeat, graceful disconnect, error, media)
+video encoder self-test passed (encoded callbacks: 1)
+```
+
+`make protocol` also passed the Buf format/lint/build/breaking checks and the
+37 Python protocol fixture/security tests. `git diff --check` reported no
+whitespace errors.
+
+Additional XCTest coverage was added for the same boundary: router stream/client
+caps, stale-epoch rejection, disconnect cleanup, HostHello versus
+SessionAccepted resource-limit reporting, `CAPABILITY_MULTI_CLIENT` negotiation,
+duplicate-display rebind error mapping, and cross-client touch/keyboard target
+rejection. On this local machine
+`swift test --package-path baseline/MacHost --filter ProtocolV1SessionTests/testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits`
+still fails before executing tests because the selected Command Line Tools
+SwiftPM environment cannot import `XCTest`. Full-Xcode CI remains responsible
+for running that XCTest target.
+
+This record is blocked for real acceptance. No two-device Host run was executed,
+no Android device command was needed, and no device evidence is claimed. The
+production `StreamingServer` still intentionally configures one active client,
+one virtual display, and one video stream per client; it continues to replace an
+old Network.framework connection when a new one is admitted. `ScreenCapture`,
+`VirtualDisplayManager`, AppDelegate display state, and frame queues remain
+single-instance. Therefore this closes only the offline Protocol v1 Host routing
+boundary and does not close multi-device, parallel capture, or multi-virtual-
+display acceptance.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.
