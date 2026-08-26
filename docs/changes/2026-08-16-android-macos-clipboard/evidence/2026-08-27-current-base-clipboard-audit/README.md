@@ -68,10 +68,9 @@ Commands were run from this worktree on 2026-08-27 after rebasing onto current
 `origin/main`.
 
 ```bash
-cd baseline/AndroidClient
-./gradlew --no-daemon testDebugUnitTest \
+(cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
   --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
-  --tests dev.telemachus.display.ClipboardApprovalStateTest
+  --tests dev.telemachus.display.ClipboardApprovalStateTest)
 ```
 
 Result: `BUILD SUCCESSFUL`.
@@ -86,9 +85,7 @@ Result: `Ran 16 tests ... OK`, including
 `test_clipboard_fixtures_cover_offer_request_and_content`.
 
 ```bash
-cd baseline/MacHost
-swift build -c release
-.build/release/Vibe\ Screen --protocol-v1-self-test
+(cd baseline/MacHost && swift build -c release && ".build/release/Vibe Screen" --protocol-v1-self-test)
 ```
 
 Result: release build completed, and Protocol v1 self-test reported `PASS`.
@@ -96,8 +93,7 @@ Result: release build completed, and Protocol v1 self-test reported `PASS`.
 ```bash
 xcode-select -p
 xcrun --find xcodebuild
-cd baseline/MacHost
-swift test --filter Clipboard
+(cd baseline/MacHost && swift test --filter Clipboard)
 ```
 
 Result: blocked before test execution because this host is using

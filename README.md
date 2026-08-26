@@ -452,7 +452,7 @@ environment. The real Android ClipboardManager <-> macOS NSPasteboard USB/LAN
 E2E gate remains open pending a signed Host/device run; see the
 [clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
 and the current-main audit evidence under
-[2026-08-25-current-base-clipboard-audit](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-25-current-base-clipboard-audit/README.md).
+[2026-08-27-current-base-clipboard-audit](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-current-base-clipboard-audit/README.md).
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
