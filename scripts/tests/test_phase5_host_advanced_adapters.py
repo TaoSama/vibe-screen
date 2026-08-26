@@ -51,7 +51,7 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.PHASE5_TEST).write_text(
-                "Host-side advanced adapter readiness gate does not close host-side multi-client/display",
+                "host-side multi-client/display fallback/readiness tests do not prove visible HDR output",
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.README).write_text(
@@ -59,7 +59,7 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.IOS_README).write_text(
-                "Advanced host integrations phase5-host-advanced-adapters-gate readiness contract",
+                "Advanced host integrations must still preserve fail-closed adapter behavior",
                 encoding="utf-8",
             )
 

@@ -392,6 +392,8 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         and not blocking
         and not disallowed
     )
+    if document.get("kind") != NATIVE_INPUT_GATE_KIND:
+        missing.append("ios native-input gate kind is not ios_native_input_behavior")
     if document.get("kind") == NATIVE_INPUT_GATE_KIND and not can_close:
         if owner.get("role") != NATIVE_INPUT_OWNER_ROLE:
             missing.append("ios native-input gate owner role is not the dedicated current-base owner")

@@ -214,6 +214,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             "local_environment",
             "build_evidence",
             "signing_readiness_gate",
+            "native_input_gate",
             "signing",
             "videotoolbox_readiness_gates",
             "devices",

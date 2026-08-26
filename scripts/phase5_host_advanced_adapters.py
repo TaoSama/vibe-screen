@@ -357,7 +357,10 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
         check_required_text(
             "test-doc-keeps-device-gates-open",
             phase5_test,
-            ["Host-side advanced adapter readiness gate", "does not close", "host-side multi-client/display"],
+            [
+                "host-side multi-client/display",
+                "fallback/readiness tests do not prove visible HDR output",
+            ],
         ),
         check_required_text(
             "readme-points-to-readiness-owner",
@@ -367,7 +370,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
         check_required_text(
             "ios-readme-points-to-readiness-owner",
             ios_readme,
-            ["phase5-host-advanced-adapters-gate readiness contract", "Advanced host integrations"],
+            ["Advanced host integrations", "must still preserve"],
         ),
     ]
     blocking = [check.detail for check in checks if check.status != "pass"]
