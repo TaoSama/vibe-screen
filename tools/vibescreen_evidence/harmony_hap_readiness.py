@@ -45,6 +45,20 @@ DEFAULT_SHA256SUMS = DEFAULT_APP_DIR / "dist" / DEFAULT_VERSION / "SHA256SUMS"
 LIFECYCLE_STEPS = ("install", "upgrade", "rollback", "uninstall_cleanup")
 VALID_STEP_STATUS = {"pass", "blocked", "fail", "insufficient"}
 PUBLIC_SIGNING_EXTENSIONS = {".cer", ".crt", ".csr", ".p7b"}
+USER_HOME_PATH_PATTERN = "/" + "Users/" + r"[^\s'\"]+"
+TCC_DB_PATTERN = "TCC" + r"\." + "db"
+PRIVATE_KEY_BEGIN_PATTERN = "-----BEGIN [A-Z ]*" + "PRIVATE" + " KEY-----"
+PRIVATE_KEY_END_PATTERN = "-----END [A-Z ]*" + "PRIVATE" + " KEY-----"
+SENSITIVE_PUBLIC_TEXT = re.compile(
+    "|".join(
+        (
+            USER_HOME_PATH_PATTERN,
+            TCC_DB_PATTERN,
+            PRIVATE_KEY_BEGIN_PATTERN,
+            PRIVATE_KEY_END_PATTERN,
+        )
+    )
+)
 
 
 class ReadinessError(Exception):
@@ -182,6 +196,13 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sanitize_public_text(value: str) -> str:
+    if not value:
+        return ""
+    text = value.replace(str(REPO_ROOT), "<repo>").replace(str(Path.home()), "<home>")
+    return SENSITIVE_PUBLIC_TEXT.sub("<redacted>", text)
+
+
 def display_path(path: Path | str) -> str:
     value = Path(path)
     if not str(path):
@@ -194,12 +215,9 @@ def display_path(path: Path | str) -> str:
         return str(resolved.relative_to(REPO_ROOT))
     except ValueError:
         pass
-    try:
-        return "~/" + str(resolved.relative_to(Path.home()))
-    except ValueError:
-        if value.is_absolute() or resolved.is_absolute():
-            return f"<external>/{resolved.name or value.name}"
-        return str(path)
+    if value.is_absolute() or resolved.is_absolute():
+        return f"<external>/{resolved.name or value.name}"
+    return sanitize_public_text(str(path))
 
 
 def redact_hdc_target(target: str) -> str:
@@ -233,7 +251,7 @@ def hdc_target_list_evidence(result: CommandResult, detail: str) -> str:
     if result.returncode != 0:
         lines.append(f"# hdc list targets failed with exit {result.returncode}")
     if detail:
-        lines.append(f"# {detail}")
+        lines.append(f"# {sanitize_public_text(detail)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -296,7 +314,7 @@ def command_version(name: str, command: Sequence[str]) -> ToolStatus:
     if path is None:
         return ToolStatus(name, "", False, "", None)
     result = run_command([path, *command[1:]], timeout=15.0)
-    version = (result.stdout or result.stderr).strip()
+    version = sanitize_public_text((result.stdout or result.stderr).strip())
     return ToolStatus(name, display_path(path), result.returncode == 0, version, result.returncode)
 
 
@@ -310,7 +328,7 @@ def project_compatible_sdk(app_dir: Path) -> str:
 
 def detect_harmony_sdk(explicit_path: str, explicit_api: str) -> tuple[str, str]:
     if explicit_path or explicit_api:
-        return explicit_path, explicit_api
+        return display_path(Path(explicit_path)) if explicit_path else "", sanitize_public_text(explicit_api)
     candidates = [
         Path(value)
         for key in ("HARMONYOS_SDK_HOME", "OHOS_SDK_HOME", "DEVECO_SDK_HOME", "HOS_SDK_HOME")
@@ -453,7 +471,7 @@ def collect_device(hdc: ToolStatus, requested_target: str, package_name: str, hd
                 else:
                     os_build = value
         package_result = hdc_shell(hdc_command, target, ["bm", "dump", "-n", package_name])
-        package_prestate = (package_result.stdout + package_result.stderr).strip()
+        package_prestate = sanitize_public_text((package_result.stdout + package_result.stderr).strip())
         prestate_recorded = bool(package_prestate)
     recorded_target = target if selected else ""
     serial_hash = hashlib.sha256(recorded_target.encode("utf-8")).hexdigest() if recorded_target else ""
@@ -472,7 +490,19 @@ def collect_device(hdc: ToolStatus, requested_target: str, package_name: str, hd
     )
 
 
-def load_lifecycle(path: Path | None) -> list[LifecycleStep]:
+def evidence_path_is_local(root: Path, value: str) -> bool:
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return False
+    try:
+        resolved = (root / candidate).resolve()
+        resolved.relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return resolved.is_file()
+
+
+def load_lifecycle(path: Path | None, evidence_root: Path | None = None) -> list[LifecycleStep]:
     if path is None:
         return [
             LifecycleStep(step, "insufficient", [], "no lifecycle observation manifest supplied")
@@ -498,8 +528,20 @@ def load_lifecycle(path: Path | None) -> list[LifecycleStep]:
             or not all(isinstance(item, str) and item.strip() for item in evidence)
         ):
             raise ReadinessError(f"{step}.evidence must be a non-empty string array")
-        result.append(LifecycleStep(step, status, evidence, str(raw.get("detail", ""))))
+        if status == "pass" and evidence_root is not None:
+            missing = [item for item in evidence if not evidence_path_is_local(evidence_root, item)]
+            if missing:
+                raise ReadinessError(
+                    f"{step}.evidence pass entries must be existing files under the evidence directory: {missing[0]}"
+                )
+        result.append(LifecycleStep(step, status, evidence, sanitize_public_text(str(raw.get("detail", "")))))
     return result
+
+
+def device_is_harmony_matepad_mini(device: DeviceState) -> bool:
+    device_identity = " ".join([device.manufacturer, device.model, device.product]).lower()
+    os_build = device.os_build.lower()
+    return "matepad" in device_identity and "mini" in device_identity and "harmony" in os_build
 
 
 def build_observations(
@@ -512,15 +554,14 @@ def build_observations(
     build_result: CommandResult | None,
 ) -> list[Observation]:
     release_build_status = build_result_status(build_result)
-    device_identity = " ".join([device.manufacturer, device.model, device.product]).lower()
-    matepad_identity_recorded = "matepad" in device_identity and "mini" in device_identity
+    matepad_identity_recorded = device_is_harmony_matepad_mini(device)
     observations = [
         Observation(
             "repository_clean",
             "pass" if repository.status == "clean" else "blocked",
             "clean git source state",
             [repository.commit] if repository.status == "clean" else [],
-            repository.porcelain.strip(),
+            sanitize_public_text(repository.porcelain.strip()),
         ),
         Observation(
             "deveco_studio_available",
@@ -536,42 +577,42 @@ def build_observations(
             "pass" if harmony_sdk_api_is_supported(toolchain.harmony_sdk_api) else "blocked",
             "HarmonyOS SDK API 12+ version recorded",
             [toolchain.harmony_sdk_api] if harmony_sdk_api_is_supported(toolchain.harmony_sdk_api) else [],
-            f"project compatibleSdkVersion={toolchain.project_compatible_sdk}",
+            sanitize_public_text(f"project compatibleSdkVersion={toolchain.project_compatible_sdk}"),
         ),
         Observation(
             "ohpm_available",
             "pass" if toolchain.ohpm.available else "blocked",
             "DevEco-managed ohpm is executable",
             [toolchain.ohpm.version] if toolchain.ohpm.available else [],
-            toolchain.ohpm.path or "ohpm not found",
+            sanitize_public_text(toolchain.ohpm.path or "ohpm not found"),
         ),
         Observation(
             "hvigor_available",
             "pass" if toolchain.hvigor.available else "blocked",
             "DevEco-managed hvigor/hvigorw is executable",
             [toolchain.hvigor.version] if toolchain.hvigor.available else [],
-            toolchain.hvigor.path or "hvigor not found",
+            sanitize_public_text(toolchain.hvigor.path or "hvigor not found"),
         ),
         Observation(
             "hdc_available",
             "pass" if toolchain.hdc.available else "blocked",
             "Harmony Device Connector is executable",
             [toolchain.hdc.version] if toolchain.hdc.available else [],
-            toolchain.hdc.path or "hdc not found",
+            sanitize_public_text(toolchain.hdc.path or "hdc not found"),
         ),
         Observation(
             "release_build_completed",
             release_build_status,
             "make release completed in apps/harmony",
             ["build-release.txt"] if release_build_status == "pass" else [],
-            "build not requested" if build_result is None else (build_result.stdout + build_result.stderr).strip(),
+            "build not requested" if build_result is None else sanitize_public_text((build_result.stdout + build_result.stderr).strip()),
         ),
         Observation(
             "signing_config_present",
             "pass" if signing.signing_config_present else "blocked",
             "non-empty Harmony signingConfigs present",
             [signing.build_profile] if signing.signing_config_present else [],
-            signing.detail,
+            sanitize_public_text(signing.detail),
         ),
         Observation(
             "signed_hap_present",
@@ -601,7 +642,7 @@ def build_observations(
             "pass" if device.target_selected else "blocked",
             "exactly one HarmonyOS target selected or --hdc-target matched",
             [device.hdc_target] if device.target_selected else [],
-            device.list_targets.strip(),
+            sanitize_public_text(device.list_targets.strip()),
         ),
         Observation(
             "matepad_mini_identity_recorded",
@@ -612,7 +653,7 @@ def build_observations(
             else [],
             "HDC target unavailable"
             if not device.target_selected
-            else f"recorded identity: {device.manufacturer} {device.model} {device.product}".strip(),
+            else sanitize_public_text(f"recorded identity: {device.manufacturer} {device.model} {device.product}".strip()),
         ),
         Observation(
             "package_prestate_recorded",
@@ -669,8 +710,7 @@ def device_gate_manifest(result: ReadinessResult, package_name: str) -> dict[str
     artifact = result.artifact
     signing = result.signing
     device = result.device
-    device_identity = " ".join([device.manufacturer, device.model, device.product]).lower()
-    matepad_identity_recorded = "matepad" in device_identity and "mini" in device_identity
+    matepad_identity_recorded = device_is_harmony_matepad_mini(device)
     gate_evidence = {
         "deveco_sdk_and_api_checker": (
             "pass"
@@ -790,9 +830,14 @@ def write_evidence_files(evidence_dir: Path, result: ReadinessResult, manifest: 
     write_json(evidence_dir / "harmony-hap-readiness-summary.json", result.summary)
     write_json(evidence_dir / "harmony-device-gates.json", manifest)
     (evidence_dir / "hdc-targets.txt").write_text(result.device.list_targets or "hdc target list unavailable\n", encoding="utf-8")
-    (evidence_dir / "package-prestate.txt").write_text(result.device.package_prestate or "package pre-state unavailable\n", encoding="utf-8")
+    (evidence_dir / "package-prestate.txt").write_text(
+        sanitize_public_text(result.device.package_prestate) or "package pre-state unavailable\n",
+        encoding="utf-8",
+    )
     if build_result is not None:
-        (evidence_dir / "build-release.txt").write_text(build_result.stdout + build_result.stderr, encoding="utf-8")
+        (evidence_dir / "build-release.txt").write_text(
+            sanitize_public_text(build_result.stdout + build_result.stderr), encoding="utf-8"
+        )
     write_readme(evidence_dir / "README.md", result)
 
 
@@ -830,7 +875,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         signing = collect_signing(app_dir, args.signature_certificate, args.signature_certificate_sha256)
         artifact = inspect_hap(hap_path, sha256sums_path)
         device = collect_device(toolchain.hdc, args.hdc_target, args.package, hdc_executable())
-        lifecycle = load_lifecycle(args.lifecycle_observations)
+        lifecycle = load_lifecycle(args.lifecycle_observations, args.evidence_dir)
         observations = build_observations(repository, toolchain, signing, artifact, device, lifecycle, build_result)
         summary = summarize(observations, run_id)
         result = ReadinessResult(

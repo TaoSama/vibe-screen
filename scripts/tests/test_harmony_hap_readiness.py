@@ -101,6 +101,24 @@ class HarmonyHapReadinessTests(unittest.TestCase):
         self.assertTrue(readiness.harmony_sdk_api_is_supported("API 12"))
         self.assertTrue(readiness.harmony_sdk_api_is_supported("5.0.0(12)"))
 
+    def test_public_text_sanitizer_redacts_local_paths_and_private_key_markers(self) -> None:
+        user_path = "/" + "Users/example/Library/Application Support/" + "TCC" + "." + "db"
+        private_key_marker = "-----BEGIN " + "PRIVATE" + " KEY----- secret -----END " + "PRIVATE" + " KEY-----"
+        text = readiness.sanitize_public_text(
+            f"see {user_path} and {private_key_marker}"
+        )
+
+        self.assertNotIn("/" + "Users/", text)
+        self.assertNotIn("TCC" + "." + "db", text)
+        self.assertNotIn("PRIVATE" + " KEY", text)
+        self.assertIn("<redacted>", text)
+
+    def test_explicit_harmony_sdk_path_is_recorded_without_absolute_user_path(self) -> None:
+        sdk_path, sdk_api = readiness.detect_harmony_sdk("/" + "Users/example/Harmony/Sdk", "API 12")
+
+        self.assertEqual(sdk_path, "<external>/Sdk")
+        self.assertEqual(sdk_api, "API 12")
+
     def test_summary_blocks_when_deveco_hdc_and_hap_are_missing(self) -> None:
         blocked_toolchain = readiness.ToolchainState("", "", "", "", "5.0.0(12)", self.tool_status("ohpm", False), self.tool_status("hvigor", False), self.tool_status("hdc", False))
         observations = readiness.build_observations(
@@ -253,6 +271,80 @@ class HarmonyHapReadinessTests(unittest.TestCase):
 
             with self.assertRaisesRegex(readiness.ReadinessError, "install.evidence"):
                 readiness.load_lifecycle(path)
+
+    def test_pass_lifecycle_observations_require_local_evidence_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            evidence_dir = root / "evidence"
+            evidence_dir.mkdir()
+            (evidence_dir / "install-hilog.txt").write_text("ok", encoding="utf-8")
+            path = root / "lifecycle.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "steps": {
+                            "install": {"status": "pass", "evidence": ["install-hilog.txt"]},
+                            "upgrade": {"status": "pass", "evidence": ["../upgrade.txt"]},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(readiness.ReadinessError, "upgrade.evidence pass entries"):
+                readiness.load_lifecycle(path, evidence_dir)
+
+    def test_pass_lifecycle_observations_accept_existing_evidence_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for step in readiness.LIFECYCLE_STEPS:
+                (root / f"{step}.txt").write_text("observed", encoding="utf-8")
+            path = root / "lifecycle.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "steps": {
+                            step: {"status": "pass", "evidence": [f"{step}.txt"]}
+                            for step in readiness.LIFECYCLE_STEPS
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                [step.status for step in readiness.load_lifecycle(path, root)],
+                ["pass"] * len(readiness.LIFECYCLE_STEPS),
+            )
+
+    def test_matepad_identity_requires_harmony_os_build(self) -> None:
+        android_matepad = readiness.DeviceState(
+            "redacted-target",
+            True,
+            "redacted-target device",
+            "Huawei",
+            "MatePad Mini",
+            "MatePad Mini",
+            "Android 16",
+            "f" * 64,
+            "bundleName: dev.vibescreen.harmony",
+            True,
+        )
+
+        observations = readiness.build_observations(
+            self.repository(),
+            self.toolchain(),
+            self.signing(),
+            self.artifact(),
+            android_matepad,
+            self.lifecycle("insufficient"),
+            readiness.CommandResult(["make", "release"], 0, "ok", ""),
+        )
+
+        self.assertIn(
+            "matepad_mini_identity_recorded",
+            {item["field"] for item in readiness.summarize(observations, "run")["missing_requirements"]},
+        )
 
     def test_generated_device_manifest_is_allow_blocked_valid_and_requires_new_lifecycle_gates(self) -> None:
         observations = readiness.build_observations(
