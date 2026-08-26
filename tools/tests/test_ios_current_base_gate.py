@@ -534,7 +534,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: signing", report["reasons"])
         retained_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertIn(
-            "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
+            "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
             retained_manifest["limitations"],
         )
 
