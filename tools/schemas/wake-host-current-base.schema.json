@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/wake-host-current-base.schema.json",
+  "title": "Vibe Screen WakeHost current-base gate summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "owner_pr",
+    "baseline_pr",
+    "current_main_sha",
+    "verdict",
+    "can_close_wake_host_current_base_gate",
+    "can_claim_sleeping_mac_wake",
+    "requires_real_sleeping_mac",
+    "requires_network_wol_delivery",
+    "offline_baseline_only_is_not_acceptance",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "failure_reasons",
+    "artifact_paths",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "wake_host_current_base_gate"},
+    "profile": {"const": "phase5-wake-host-current-base"},
+    "owner_pr": {"const": 199},
+    "baseline_pr": {"const": 225},
+    "current_main_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "can_close_wake_host_current_base_gate": {"type": "boolean"},
+    "can_claim_sleeping_mac_wake": {"type": "boolean"},
+    "requires_real_sleeping_mac": {"const": true},
+    "requires_network_wol_delivery": {"const": true},
+    "offline_baseline_only_is_not_acceptance": {"const": true},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_main_verified",
+        "magic_packet_path_baseline_merged",
+        "paired_authorization_offline_passed",
+        "device_identity_recorded",
+        "identity_signed_host_tcc_ready",
+        "wake_for_network_access_enabled",
+        "host_sleep_state_recorded",
+        "router_broadcast_or_directed_wol_verified",
+        "magic_packet_emitted_after_authorization",
+        "network_packet_capture_retained",
+        "mac_woke_from_sleep_observed",
+        "post_wake_host_available_observed",
+        "negative_unpaired_rejected",
+        "negative_expired_authorization_rejected",
+        "negative_replayed_nonce_rejected",
+        "negative_wrong_key_or_signature_rejected",
+        "host_logs_retained",
+        "client_logs_retained",
+        "wake_attempt_failed_observed"
+      ],
+      "properties": {
+        "current_main_verified": {"type": "boolean"},
+        "magic_packet_path_baseline_merged": {"type": "boolean"},
+        "paired_authorization_offline_passed": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "identity_signed_host_tcc_ready": {"type": "boolean"},
+        "wake_for_network_access_enabled": {"type": "boolean"},
+        "host_sleep_state_recorded": {"type": "boolean"},
+        "router_broadcast_or_directed_wol_verified": {"type": "boolean"},
+        "magic_packet_emitted_after_authorization": {"type": "boolean"},
+        "network_packet_capture_retained": {"type": "boolean"},
+        "mac_woke_from_sleep_observed": {"type": "boolean"},
+        "post_wake_host_available_observed": {"type": "boolean"},
+        "negative_unpaired_rejected": {"type": "boolean"},
+        "negative_expired_authorization_rejected": {"type": "boolean"},
+        "negative_replayed_nonce_rejected": {"type": "boolean"},
+        "negative_wrong_key_or_signature_rejected": {"type": "boolean"},
+        "host_logs_retained": {"type": "boolean"},
+        "client_logs_retained": {"type": "boolean"},
+        "wake_attempt_failed_observed": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "failure_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}

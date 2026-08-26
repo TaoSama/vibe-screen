@@ -882,7 +882,10 @@ increase it.
   and validates key ID, nonce, expiry, signature, session device identity, and
   broadcast target before sending. This is offline and loopback test evidence
   only: sleeping-Mac wake, router broadcast behavior, NIC firmware settings, and
-  cross-subnet delivery remain real-device gates.
+  cross-subnet delivery remain real-device gates. The current-base WakeHost
+  evidence owner is #199 after being rebased onto the #225 baseline; it provides
+  a fail-closed evidence gate for the latest mainline instead of treating the
+  offline magic-packet baseline as a hardware pass.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
