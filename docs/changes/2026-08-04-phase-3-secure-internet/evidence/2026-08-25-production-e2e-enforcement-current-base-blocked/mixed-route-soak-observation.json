@@ -12,7 +12,7 @@
   "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
   "schema": "dev.vibescreen.phase3-production-mixed-route-soak-observation/v1",
   "source": {
-    "commit": "408c17e3b0652e1fc89018d5ddd97689082b47d2"
+    "commit": "358e2514b3ad09c51c7474cb75eeee7dbad74f15"
   },
   "synthetic_peer": false,
   "turn_route_minutes": 0
