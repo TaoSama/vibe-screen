@@ -865,6 +865,17 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
 
 class MacOSDevHostTCCTests(unittest.TestCase):
+    def test_run_best_effort_reports_missing_command_without_throwing(self) -> None:
+        with mock.patch.object(
+            macos_dev_host.subprocess,
+            "run",
+            side_effect=FileNotFoundError("missing executable"),
+        ):
+            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
+
+        self.assertEqual(exit_code, 127)
+        self.assertIn("command not found: /usr/bin/defaults", output)
+
     def test_tcc_database_paths_includes_system_database_for_default_user_database(self) -> None:
         paths = macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database())
 

@@ -253,7 +253,6 @@ def validate_manifest(
                     evidence_root,
                     f"gates[{index}].evidence[{evidence_index}]",
                 )
-
     missing = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in by_id]
     if missing:
         raise ManifestError("missing required gates: " + ", ".join(missing))

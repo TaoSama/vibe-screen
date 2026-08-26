@@ -23,6 +23,9 @@ MARKER_BY_GATE = {
     "deveco_sdk_and_api_checker": "harmony-readiness.json",
     "signed_release_hap": "harmony-hap-readiness.json",
     "hap_install_launch": "harmony-hap-readiness.json",
+    "hap_in_place_upgrade": "harmony-hap-readiness.json",
+    "hap_rollback_behavior": "harmony-hap-readiness.json",
+    "hap_uninstall_cleanup": "harmony-hap-readiness.json",
     "permission_denial_retry": "permission-denial-retry.log",
     "huks_backed_secure_pairing": "harmony-secure-pairing.json",
     "authenticated_transport_records": "harmony-authenticated-records.json",
@@ -309,7 +312,7 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
             directory = Path(directory_name)
             manifest = passing_device_manifest()
             for gate in manifest["gates"]:
-                gate["evidence"] = [f"artifact://release/harmony/{gate['id']}"]
+                gate["evidence"] = [f"artifact://release/harmony/{MARKER_BY_GATE[gate['id']]}"]
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
 

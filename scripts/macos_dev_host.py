@@ -231,6 +231,8 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
+    except FileNotFoundError:
+        return 127, f"command not found: {command[0]}"
     return completed.returncode, completed.stdout.strip()
 
 
@@ -1306,16 +1308,24 @@ def metadata_and_permissions(
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
+    errors: list[str] = []
+    if expected_sign_identity:
+        try:
+            package_macos.resolve_sign_identity(expected_sign_identity)
+        except SystemExit as error:
+            errors.append(str(error))
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
     )
     return metadata, source_identity, permissions, errors
 

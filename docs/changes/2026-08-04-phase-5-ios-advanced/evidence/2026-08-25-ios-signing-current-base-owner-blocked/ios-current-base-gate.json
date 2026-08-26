@@ -233,6 +233,52 @@
         "passed": true
       }
     },
+    "native_input": {
+      "dedicated_native_input_artifacts": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "native-input gate retains sanitized input artifacts",
+        "passed": false
+      },
+      "dedicated_native_input_current_base": {
+        "blocking": true,
+        "evidence": [
+          "ios-native-input-gate.json not provided"
+        ],
+        "expected": "ios-native-input-gate.json current_base matches clean repository HEAD",
+        "passed": false
+      },
+      "dedicated_native_input_gate": {
+        "blocking": true,
+        "evidence": [
+          "ios-native-input-gate.json not provided"
+        ],
+        "expected": "ios-native-input-gate.json passes and is bound into current-base readiness",
+        "passed": false
+      },
+      "dedicated_native_input_observations": {
+        "blocking": true,
+        "evidence": [
+          "ios-native-input-gate.json not provided"
+        ],
+        "expected": "native-input gate observations prove all required input behaviors and no disallowed substitution",
+        "passed": false
+      },
+      "dedicated_native_input_owner": {
+        "blocking": true,
+        "evidence": [
+          "ios-native-input-gate.json not provided"
+        ],
+        "expected": "ios-native-input-gate.json declares the dedicated current-base native-input owner",
+        "passed": false
+      },
+      "dedicated_native_input_policy": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "native-input gate keeps iOS hardware/accessory policy explicit and rejects substitutions",
+        "passed": true
+      }
+    },
     "signing": {
       "bundle_id_recorded": {
         "blocking": true,
@@ -400,6 +446,11 @@
     "blocked: device_udid_hashes_recorded",
     "blocked: entitlements_recorded",
     "blocked: signed_archive_sha256",
+    "blocked: dedicated_native_input_gate",
+    "blocked: dedicated_native_input_owner",
+    "blocked: dedicated_native_input_current_base",
+    "blocked: dedicated_native_input_observations",
+    "blocked: dedicated_native_input_artifacts",
     "blocked: ipad_physical_device",
     "blocked: ipad_install",
     "blocked: iphone_physical_device",

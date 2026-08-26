@@ -56,6 +56,76 @@ def make_videotoolbox_readiness_summary(
     return summary
 
 
+def make_native_input_summary(**overrides: object) -> dict[str, object]:
+    observations = {
+        "ios_device_lock_acquired": True,
+        "device_identity_recorded": True,
+        "device_is_iphone_or_ipad": True,
+        "iphone_native_input_observed": True,
+        "ipad_native_input_observed": True,
+        "app_revision_recorded": True,
+        "signed_app_installed": True,
+        "local_network_permission_recorded": True,
+        "baseline_machost_listener_observed": True,
+        "protocol_session_negotiated": True,
+        "input_capabilities_negotiated": True,
+        "display_stream_binding_recorded": True,
+        "touch_tap_observed": True,
+        "touch_drag_observed": True,
+        "hardware_keyboard_attached": True,
+        "keyboard_press_release_observed": True,
+        "keyboard_modifier_observed": True,
+        "keyboard_modifier_release_no_leak_observed": True,
+        "hover_pointer_accessory_attached": True,
+        "hover_pointer_move_observed": True,
+        "host_input_acknowledgements_retained": True,
+        "ios_logs_retained": True,
+        "host_logs_retained": True,
+        "android_evidence_used_for_ios_input": False,
+        "simulator_evidence_used_for_ios_input": False,
+        "offline_tests_used_as_device_evidence": False,
+    }
+    summary: dict[str, object] = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": "native-input-fixture",
+        "kind": "ios_native_input_behavior",
+        "profile": "ios-native-input-behavior",
+        "gate_owner": "phase5-ios-native-input-behavior",
+        "owner": {
+            "role": "ios_native_input_behavior_current_base_owner",
+            "head_ref": "codex/ios-native-input-readiness-gate",
+            "pull_request": "#257",
+            "repository": "TaoSama/vibe-screen",
+            "scope": "README Phase 5 iOS native-input behavior gate",
+        },
+        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
+        "verdict": "pass",
+        "can_close_ios_native_input_gate": True,
+        "requires_real_ios_device": True,
+        "requires_signed_app": True,
+        "requires_physical_keyboard": True,
+        "requires_hover_or_pointer_accessory": True,
+        "android_evidence_is_not_ios_input_evidence": True,
+        "simulator_is_not_ios_input_evidence": True,
+        "offline_tests_are_readiness_only": True,
+        "observations": observations,
+        "missing_requirements": [],
+        "blocking_reasons": [],
+        "disallowed_evidence": [],
+        "artifact_paths": ["ios-native-input-host.log", "ios-native-input-device.log"],
+        "blocking_notes": [],
+        "notes": "fixture",
+    }
+    summary.update(overrides)
+    return summary
+
+
+def write_native_input_summary(root: Path, **overrides: object) -> Path:
+    path = root / "ios-native-input-gate.json"
+    path.write_text(json.dumps(make_native_input_summary(**overrides)), encoding="utf-8")
+    return path
+
+
 def write_videotoolbox_readiness_summary(
     root: Path, runtime_class: str, **overrides: object
 ) -> Path:
@@ -98,6 +168,9 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             self.assertEqual(gate["owner_pr"], GATE_OWNERS[name])
         self.assertFalse(manifest["signing_readiness_gate"]["provided"])
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertFalse(manifest["native_input_gate"]["provided"])
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
         self.assertEqual(
             {gate["runtime_class"] for gate in manifest["videotoolbox_readiness_gates"]},
             {"physical_iphone", "physical_ipad"},
@@ -305,6 +378,79 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             manifest["signing_readiness_gate"]["missing"],
         )
         self.assertEqual(manifest["signing"]["status"], "blocked")
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_binds_ios_native_input_gate_summary(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = write_native_input_summary(root)
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertTrue(manifest["native_input_gate"]["provided"])
+        self.assertEqual(manifest["native_input_gate"]["kind"], "ios_native_input_behavior")
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "pass")
+        self.assertTrue(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertEqual(
+            manifest["native_input_gate"]["owner"]["role"],
+            "ios_native_input_behavior_current_base_owner",
+        )
+        self.assertEqual(
+            manifest["native_input_gate"]["artifact_paths"],
+            ["ios-native-input-host.log", "ios-native-input-device.log"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_commit_must_match_repository_head(self, state, environment):
+        state.return_value = {"revision": "f" * 40, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = write_native_input_summary(root)
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertIn(
+            {
+                "field": "current_base.commit",
+                "requirement": "native-input gate current-base commit does not match repository HEAD",
+            },
+            manifest["native_input_gate"]["blocking_reasons"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_rejects_android_substitution(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            summary = make_native_input_summary()
+            observations = summary["observations"]
+            assert isinstance(observations, dict)
+            observations["android_evidence_used_for_ios_input"] = True
+            summary["disallowed_evidence"] = [
+                {
+                    "field": "android_evidence_used_for_ios_input",
+                    "reason": "Android evidence cannot close iOS native-input behavior",
+                }
+            ]
+            native_input_gate = root / "ios-native-input-gate.json"
+            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
+        self.assertTrue(manifest["native_input_gate"]["blocking_reasons"])
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -557,12 +703,25 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             make_docs(root)
             output = root / "ios-current-base-manifest.json"
 
-            exit_code = main(["--repo", str(root), "--output", str(output), "--", "make", "ios-current-base-gate"])
+            native_input_gate = write_native_input_summary(root)
+
+            exit_code = main([
+                "--repo",
+                str(root),
+                "--output",
+                str(output),
+                "--native-input-gate",
+                str(native_input_gate),
+                "--",
+                "make",
+                "ios-current-base-gate",
+            ])
             manifest = json.loads(output.read_text(encoding="utf-8"))
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "ios-current-base-gate"])
         self.assertEqual(manifest["source_root"], ".")
+        self.assertTrue(manifest["native_input_gate"]["provided"])
 
 
 if __name__ == "__main__":
