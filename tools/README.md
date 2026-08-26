@@ -150,6 +150,18 @@ the first decoded output frame before it is used to close a codec gate. AV1 is
 currently a planned codec only: offline fail-closed/admission tests and blocked
 runbooks do not prove an AV1 stream.
 
+Trusted-LAN smoke evidence must be checked before changing README or release
+notes based on a LAN run. A passing real-device record must include non-legacy
+encrypted LAN markers from both peers, Protocol v1 over TRANSPORT_KIND_LAN,
+HEVC decode with real output frames, and reconnect with the Host PID preserved.
+A blocked record is valid only when it names the Nubia P0110 / pacific /
+Android 16 / SDK 36 device, records concrete Wi-Fi/route and Host signing/preflight
+blockers, and explicitly states that no real trusted-LAN stream was observed.
+
+Run the checker with:
+
+    make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/<run-dir>
+
 Native pointer HID mouse evidence is hardware-gated in the same way. The Android
 device must expose a real external mouse-like source (`MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), and the same observation
@@ -706,6 +718,43 @@ signed/TCC-ready Host, active selected-display stream, production Protocol v1
 forwarding plus focus/IME boundary logs, Host `Key injected:` or
 acknowledgement/CGEvent logs, modifier press/release and cleanup proof, or
 visible Mac-side result are missing.
+
+## Phase 3 Internet Soak Gate
+
+The Phase 3 Internet soak gate composes separately collected production evidence
+instead of running the public service by itself. First write a manifest from the
+reviewed production inputs:
+
+```sh
+make phase3-internet-soak-manifest PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak \
+  PHASE3_INTERNET_TURN_URIS="turns:relay.prod.your-domain.com:5349?transport=tcp" \
+  PHASE3_INTERNET_SIGNALING_ORIGIN=https://signaling.prod.your-domain.com \
+  PHASE3_INTERNET_RELAY_ORIGIN=https://relay.prod.your-domain.com \
+  PHASE3_INTERNET_AUTHORITY_SOURCE_ID=turn-prod-1 \
+  PHASE3_INTERNET_REMOTE_PEER=peer.prod.your-domain.com \
+  PHASE3_INTERNET_TLS_CERTIFICATE_SHA256=... \
+  PHASE3_INTERNET_DEPLOYMENT_READINESS=authority-readyz,relay-readyz,coturn-tls \
+  PHASE3_INTERNET_PLANNED_HANDOFFS=wifi-to-cellular \
+  PHASE3_INTERNET_HOST_BUILD="Vibe Screen release build and SHA" \
+  PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256=...
+```
+
+Then evaluate the gate after placing privacy-reviewed summaries in that same
+directory:
+
+```sh
+make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak
+```
+
+The default filenames are `remote-turn-verifier.json`, `media-continuity.json`,
+`network-handoff.json`, `revocation-propagation.json`, and
+`soak-exact-window-report.json`. The gate passes only with public remote TURN
+packet exchange, real ScreenCaptureKit-to-Android decode continuity, fresh-session
+handoff recovery, revocation propagation through active coturn allocation
+disconnect and post-revocation packet denial, and a clean two-hour mixed
+direct/relay soak. Missing reports are `blocked`; observed plaintext fallback or
+secret-like fields in report inputs are `fail`. Set
+`PHASE3_INTERNET_ALLOW_BLOCKED=1` only to archive a blocked record.
 
 ### Short Host memory regression gate
 

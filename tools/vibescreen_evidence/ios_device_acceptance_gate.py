@@ -77,6 +77,9 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
 SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
+VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
+VIDEOTOOLBOX_READINESS_FIELD = "videotoolbox_readiness_gates"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 REQUIRED_SIGNING_READINESS_FIELDS = (
     "schema_version",
@@ -116,11 +119,16 @@ REQUIRED_SIGNING_RECORDED_FIELDS = (
     "signed_artifact",
     "artifacts",
 )
+REQUIRED_VIDEOTOOLBOX_RUNTIMES = {
+    "physical_iphone": "iphone",
+    "physical_ipad": "ipad",
+}
 INTERPRETATION = (
     "A pass means the supplied sanitized acceptance.json records complete "
     "iPhone and iPad device evidence for the listed gates and embeds a passing "
-    "dedicated iOS app-signing readiness gate. It does not prove HDR output, "
-    "advanced host adapters, Internet audio/bulk transport, or any behavior not "
+    "dedicated iOS app-signing readiness gate plus physical iPhone/iPad "
+    "VideoToolbox readiness summaries. It does not prove HDR output, advanced "
+    "host adapters, Internet audio/bulk transport, or any behavior not "
     "represented by retained evidence artifacts."
 )
 
@@ -479,6 +487,97 @@ def _validate_signing_readiness_gate(
             )
 
 
+def _as_string_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {value for value in values if _is_non_empty_string(value)}
+
+
+def _validate_videotoolbox_readiness_gates(
+    document: dict[str, Any], evidence_root: Path, missing: list[str], failures: list[str]
+) -> set[str]:
+    gates = document.get(VIDEOTOOLBOX_READINESS_FIELD)
+    if not isinstance(gates, list) or not gates:
+        missing.append(f"{VIDEOTOOLBOX_READINESS_FIELD}: must include physical iPhone and iPad readiness summaries")
+        return set()
+
+    covered_runtimes: set[str] = set()
+    artifact_paths: set[str] = set()
+    for index, gate in enumerate(gates):
+        path = f"{VIDEOTOOLBOX_READINESS_FIELD}[{index}]"
+        if not isinstance(gate, dict):
+            missing.append(f"{path}: must be an object")
+            continue
+        if gate.get("schema_version") != SCHEMA_VERSION:
+            missing.append(f"{path}.schema_version: must be {SCHEMA_VERSION}")
+        if gate.get("kind") != VIDEOTOOLBOX_READINESS_KIND:
+            failures.append(f"{path}.kind: must be {VIDEOTOOLBOX_READINESS_KIND}")
+        if gate.get("profile") != VIDEOTOOLBOX_READINESS_PROFILE:
+            failures.append(f"{path}.profile: must be {VIDEOTOOLBOX_READINESS_PROFILE}")
+        runtime_class = gate.get("runtime_class")
+        if runtime_class not in REQUIRED_VIDEOTOOLBOX_RUNTIMES:
+            missing.append(f"{path}.runtime_class: must be physical_iphone or physical_ipad")
+        else:
+            covered_runtimes.add(str(runtime_class))
+        if gate.get("verdict") != PASS:
+            missing.append(f"{path}.verdict: must be pass")
+        if gate.get("can_close_device_family_videotoolbox_gate") is not True:
+            missing.append(
+                f"{path}.can_close_device_family_videotoolbox_gate: must be true"
+            )
+        if gate.get("can_close_phase5_hardware_videotoolbox_gate") is not False:
+            failures.append(
+                f"{path}.can_close_phase5_hardware_videotoolbox_gate: must remain false"
+            )
+
+        paths = _as_string_set(gate.get("artifact_paths"))
+        if not paths:
+            missing.append(f"{path}.artifact_paths: must include retained iOS VideoToolbox artifacts")
+        for artifact_index, reference in enumerate(gate.get("artifact_paths", [])):
+            _validate_artifact_reference(
+                reference=reference,
+                evidence_root=evidence_root,
+                path=f"{path}.artifact_paths[{artifact_index}]",
+                missing=missing,
+                failures=failures,
+            )
+        artifact_paths.update(paths)
+
+        checks = gate.get("artifact_checks")
+        if not isinstance(checks, list) or not checks:
+            missing.append(f"{path}.artifact_checks: must include retained artifact checks")
+        else:
+            for check_index, check in enumerate(checks):
+                check_path = f"{path}.artifact_checks[{check_index}]"
+                if not isinstance(check, dict):
+                    missing.append(f"{check_path}: must be an object")
+                    continue
+                for field in ("exists", "non_empty", "under_evidence_dir", "valid_ios_videotoolbox_source"):
+                    if check.get(field) is not True:
+                        missing.append(f"{check_path}.{field}: must be true")
+
+    for runtime_class in REQUIRED_VIDEOTOOLBOX_RUNTIMES:
+        if runtime_class not in covered_runtimes:
+            missing.append(f"{VIDEOTOOLBOX_READINESS_FIELD}: missing {runtime_class} summary")
+    return artifact_paths
+
+
+def _validate_videotoolbox_gate_links(
+    document: dict[str, Any], readiness_artifacts: set[str], missing: list[str]
+) -> None:
+    gates = document.get("gates")
+    if not isinstance(gates, dict):
+        return
+    for name in ("videotoolbox_h264", "videotoolbox_hevc"):
+        gate = gates.get(name)
+        evidence = gate.get("evidence") if isinstance(gate, dict) else None
+        gate_artifacts = _as_string_set(evidence)
+        if not gate_artifacts.intersection(readiness_artifacts):
+            missing.append(
+                f"gates.{name}.evidence: must reference retained artifacts from videotoolbox_readiness_gates"
+            )
+
+
 def _validate_devices(
     document: dict[str, Any], missing: list[str], failures: list[str]
 ) -> list[str]:
@@ -586,6 +685,9 @@ def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
     _validate_trusted_lan(document, missing, failures)
     _validate_signing(document, missing, failures)
     _validate_signing_readiness_gate(document, missing, failures)
+    videotoolbox_artifacts = _validate_videotoolbox_readiness_gates(
+        document, evidence_root, missing, failures
+    )
     covered_devices = _validate_devices(document, missing, failures)
     completed_gates = _validate_gates(
         document=document,
@@ -593,6 +695,7 @@ def evaluate(document: dict[str, Any], evidence_root: Path) -> dict[str, Any]:
         missing=missing,
         failures=failures,
     )
+    _validate_videotoolbox_gate_links(document, videotoolbox_artifacts, missing)
 
     verdict = PASS
     if failures:

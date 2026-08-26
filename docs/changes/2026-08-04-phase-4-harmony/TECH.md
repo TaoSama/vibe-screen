@@ -163,6 +163,40 @@ record layer, production Authority/Signaling deployment, and compatible Mac Host
 remain required. Existing TCP stays plaintext, and unauthenticated DeviceRevoked
 is deliberately not admitted.
 
+## Authenticated transport contract
+
+Harmony now has a portable record-layer verifier in
+apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts. It is
+transport-neutral TypeScript-compatible ArkTS and takes its SHA-256, HKDF, and
+AES-256-GCM primitives through an injected provider so the production build can
+later bind the same state machine to HUKS-backed non-exportable keys. The Node
+test provider is only a local verifier; it is not production cryptography.
+
+The verifier mirrors the macOS/Android LAN record contract:
+
+- secure-record negotiation uses VSLS request and VSLR response frames, version
+  1, one uncompressed P-256 public key, and mutually exclusive encrypted versus
+  explicit legacy-fallback response flags;
+- session_id is hashed to 16 bytes inside each record header, session_epoch is
+  part of the authenticated header, and key epoch starts at 1 then advances
+  exactly one step per rotation;
+- the 51-byte record header is VSCR, version, session hash, session epoch, key
+  epoch, sender, channel, and nonce, and is always AES-256-GCM AAD;
+- nonce format is channel as big-endian UInt32 plus sequence as big-endian
+  UInt64, reserved from a monotonic per channel/sender/key-epoch counter;
+- control and bulk reject any non-increasing sequence, while media and audio use
+  the same 64-bit replay window as the Host and Android layers;
+- malformed records, wrong channel/sender/session/key epoch, stale session
+  epoch, wrong key, tamper, replay, non-positive nonce sequence, and closed
+  cipher state fail closed before dispatch.
+
+This is still not production authenticated Harmony transport. HarmonyTransport
+continues to offer the plaintext 0x0d Protocol v1 upgrade and five-byte frame
+format. Closing the gate requires a HUKS-backed provider, secure-pairing
+controller/UI exchange, socket wrapping that refuses implicit plaintext, Host
+interop logs, and MatePad Mini evidence proving encrypted control/media records
+on the wire.
+
 Alias operations are serialized. Existing records use `asset.update`; missing
 records use `asset.add`, so an update failure never deletes the prior host or
 identity. Client identity creation treats an add conflict as another creator's

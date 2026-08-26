@@ -58,6 +58,9 @@ IOS_HDR_EDR_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-hdr-edr-observations.json
 IOS_HDR_EDR_GATE_JSON ?= $(dir $(IOS_HDR_EDR_OBSERVATIONS_JSON))ios-hdr-edr-gate.json
 IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
+IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-videotoolbox-observations.json
+IOS_VIDEOTOOLBOX_READINESS_JSON ?= $(dir $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON))ios-videotoolbox-readiness.json
+IOS_VIDEOTOOLBOX_READINESS_JSONS ?= $(IOS_VIDEOTOOLBOX_READINESS_JSON)
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
@@ -85,6 +88,26 @@ LATENCY_MANIFEST ?= $(EVIDENCE_DIR)/manifest.json
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
+PHASE3_INTERNET_SOAK_DIR ?= .build/phase3-internet-soak
+PHASE3_INTERNET_TURN_URI ?=
+PHASE3_INTERNET_TURN_URIS ?= $(PHASE3_INTERNET_TURN_URI)
+PHASE3_INTERNET_SIGNALING_ORIGIN ?=
+PHASE3_INTERNET_RELAY_ORIGIN ?=
+PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
+PHASE3_INTERNET_REMOTE_PEER ?=
+PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
+PHASE3_INTERNET_TURN_SECRET_SOURCE ?= secret_manager
+PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
+PHASE3_INTERNET_PLANNED_HANDOFFS ?=
+PHASE3_INTERNET_HOST_BUILD ?=
+PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
+PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
+PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
+PHASE3_INTERNET_ALLOW_BLOCKED ?=
+PHASE3_INTERNET_BLOCKED_REASON ?= missing public deployment, TLS/secret material, remote peer, media continuity, handoff, revocation, or two-hour mixed-route soak evidence
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_ANDROID_INTEROP_EVIDENCE ?=
 PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
@@ -136,6 +159,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase3-advanced-datachannel-current-base \
 	phase3-advanced-datachannel-blocked-baseline \
 	phase3-internet-release-gate \
+	phase3-internet-soak-manifest \
+	phase3-internet-soak-gate \
 	baseline-macos-build \
 	baseline-macos-test \
 	baseline-macos-self-test \
@@ -159,6 +184,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
+	trusted-lan-smoke-evidence-check \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
@@ -191,6 +217,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	ios-app-signing-readiness-gate \
 	ios-device-acceptance-gate \
 	ios-hdr-edr-gate \
+	ios-videotoolbox-readiness \
 	ios-current-base-manifest \
 	ios-current-base-gate \
 	phase5-multi-client-current-base-gate \
@@ -336,6 +363,47 @@ phase3-android-current-base-interop-gate:
 	@test -n "$(strip $(PHASE3_ANDROID_INTEROP_EVIDENCE))" || (echo "error: set PHASE3_ANDROID_INTEROP_EVIDENCE to a Phase 3 Android interop evidence JSON" >&2; exit 2)
 	mkdir -p "$(EVIDENCE_DIR)"
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/android_current_base_interop_gate.py --evidence "$(PHASE3_ANDROID_INTEROP_EVIDENCE)" --profile "$(PHASE3_ANDROID_INTEROP_GATE_PROFILE)" --output "$(EVIDENCE_DIR)/phase3-android-current-base-interop-gate.json"
+
+phase3-internet-soak-manifest:
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_URIS))" || (echo "error: set PHASE3_INTERNET_TURN_URIS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_REMOTE_PEER))" || (echo "error: set PHASE3_INTERNET_REMOTE_PEER" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256))" || (echo "error: set PHASE3_INTERNET_TLS_CERTIFICATE_SHA256" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_DEPLOYMENT_READINESS))" || (echo "error: set PHASE3_INTERNET_DEPLOYMENT_READINESS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_PLANNED_HANDOFFS))" || (echo "error: set PHASE3_INTERNET_PLANNED_HANDOFFS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_HOST_BUILD))" || (echo "error: set PHASE3_INTERNET_HOST_BUILD" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256))" || (echo "error: set PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256" >&2; exit 2)
+	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak manifest \
+		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json" \
+		--repo . \
+		$(foreach uri,$(PHASE3_INTERNET_TURN_URIS),--turn-uri "$(uri)" ) \
+		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
+		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
+		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
+		--remote-peer "$(PHASE3_INTERNET_REMOTE_PEER)" \
+		--tls-certificate-sha256 "$(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256)" \
+		--turn-secret-source "$(PHASE3_INTERNET_TURN_SECRET_SOURCE)" \
+		--deployment-readiness "$(PHASE3_INTERNET_DEPLOYMENT_READINESS)" \
+		--planned-handoffs "$(PHASE3_INTERNET_PLANNED_HANDOFFS)" \
+		--host-build "$(PHASE3_INTERNET_HOST_BUILD)" \
+		--android-artifact-sha256 "$(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256)" \
+		-- make phase3-internet-soak-gate
+
+phase3-internet-soak-gate:
+	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
+		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json" \
+		$(if $(wildcard $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json),--manifest "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json",) \
+		$(if $(wildcard $(PHASE3_INTERNET_REMOTE_TURN_REPORT)),--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)),--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)),--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_REVOCATION_REPORT)),--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_SOAK_REPORT)),--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)",) \
+		--blocked-reason "$(PHASE3_INTERNET_BLOCKED_REASON)" \
+		$(if $(strip $(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
@@ -556,6 +624,10 @@ evidence-latency-gate:
 		--gate-profile $(LATENCY_GATE_PROFILE) \
 		--output $(EVIDENCE_DIR)/latency-evidence-report.json
 
+trusted-lan-smoke-evidence-check:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a trusted-LAN smoke evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_smoke --evidence-dir "$(EVIDENCE_DIR)" --output "$(EVIDENCE_DIR)/trusted-lan-smoke-verdict.json"
+
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
@@ -737,6 +809,11 @@ hardware-keyboard-gate:
 	@test -f "$(EVIDENCE_DIR)/hardware-keyboard-observations.json" || (echo "error: collect $(EVIDENCE_DIR)/hardware-keyboard-observations.json before hardware-keyboard-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json --require-pass
 
+ios-videotoolbox-readiness:
+	@test -f "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" || (echo "error: collect $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON) before ios-videotoolbox-readiness" >&2; exit 2)
+	mkdir -p "$(dir $(IOS_VIDEOTOOLBOX_READINESS_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_videotoolbox_readiness "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" --output "$(IOS_VIDEOTOOLBOX_READINESS_JSON)" --evidence-dir "$(EVIDENCE_DIR)" --require-pass
+
 hardware-keyboard-readiness: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/hardware_keyboard_readiness.py \
 		--serial "$(EVIDENCE_SERIAL)" \
@@ -750,6 +827,7 @@ ios-current-base-manifest:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_manifest \
 		--output $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--signing-readiness-gate "$(IOS_APP_SIGNING_READINESS_GATE_JSON)" \
+		$(foreach gate,$(IOS_VIDEOTOOLBOX_READINESS_JSONS),--videotoolbox-readiness-gate "$(gate)" ) \
 		-- make ios-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
 
 ios-current-base-gate:

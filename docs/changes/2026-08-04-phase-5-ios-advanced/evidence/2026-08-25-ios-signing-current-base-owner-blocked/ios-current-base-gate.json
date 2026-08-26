@@ -299,6 +299,36 @@
         "expected": "unique development bundle ID recorded",
         "passed": false
       }
+    },
+    "videotoolbox_readiness": {
+      "physical_ipad_videotoolbox_readiness": {
+        "blocking": true,
+        "evidence": [
+          "retain physical iPad VideoToolbox hardware decode artifacts"
+        ],
+        "expected": "physical_ipad VideoToolbox readiness summary is a physical-device pass with retained artifacts",
+        "passed": false
+      },
+      "physical_iphone_videotoolbox_readiness": {
+        "blocking": true,
+        "evidence": [
+          "retain physical iPhone VideoToolbox hardware decode artifacts"
+        ],
+        "expected": "physical_iphone VideoToolbox readiness summary is a physical-device pass with retained artifacts",
+        "passed": false
+      },
+      "videotoolbox_h264_links_to_readiness": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "videotoolbox_h264 evidence references retained VideoToolbox readiness artifacts",
+        "passed": false
+      },
+      "videotoolbox_hevc_links_to_readiness": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "videotoolbox_hevc evidence references retained VideoToolbox readiness artifacts",
+        "passed": false
+      }
     }
   },
   "derivation_status": "complete",
@@ -330,6 +360,10 @@
     "blocked: ipad_install",
     "blocked: iphone_physical_device",
     "blocked: iphone_install",
+    "blocked: physical_iphone_videotoolbox_readiness",
+    "blocked: physical_ipad_videotoolbox_readiness",
+    "blocked: videotoolbox_h264_links_to_readiness",
+    "blocked: videotoolbox_hevc_links_to_readiness",
     "blocked: signing",
     "blocked: device_install",
     "blocked: protocol_session",

@@ -121,7 +121,9 @@ public final class IncomingFileTransferManager: @unchecked Sendable {
     }
 
     public func accept(_ offer: VSFileOffer, managedPolicy: ManagedPolicy) throws -> VSFileAccept {
-        guard managedPolicy.fileTransferAllowed else { throw FileTransferError.policyDenied }
+        guard managedPolicy.fileTransferAllowed && managedPolicy.maximumFileBytes > 0 else {
+            throw FileTransferError.policyDenied
+        }
         guard !offer.transferID.isEmpty else { throw FileTransferError.invalidTransferID }
         guard Self.isSafeFileName(offer.fileName) else { throw FileTransferError.invalidFileName }
         guard offer.sha256.count == SHA256.byteCount else { throw FileTransferError.invalidDigest }
@@ -240,7 +242,9 @@ public final class OutgoingFileTransfer: @unchecked Sendable {
         policy: FileTransferPolicy,
         managedPolicy: ManagedPolicy
     ) throws {
-        guard managedPolicy.fileTransferAllowed else { throw FileTransferError.policyDenied }
+        guard managedPolicy.fileTransferAllowed && managedPolicy.maximumFileBytes > 0 else {
+            throw FileTransferError.policyDenied
+        }
         let values: URLResourceValues
         do { values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]) }
         catch { throw FileTransferError.ioFailure(error.localizedDescription) }
