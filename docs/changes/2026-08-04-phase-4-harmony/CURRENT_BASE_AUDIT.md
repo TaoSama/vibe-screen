@@ -31,7 +31,7 @@ creating a second final-owner path.
 | #202 | draft; conflicts with current main | Focused authenticated-record support | Needs refresh before feeding the aggregate owner; not a final closure owner. |
 | #203 | draft; conflicts with current main | Focused AVCodec hardware-decode support | Needs real DevEco/HAP/MatePad decode evidence before it can close decode gates. |
 | #204 | draft; conflicts with current main | Focused HUKS secure-pairing support | Needs real HUKS runtime and Host/Authority compatibility evidence. |
-| #205 | draft; conflicts with current main | Focused Host resume interop support | Needs resume-capable Host plus HarmonyOS device evidence; also introduces `resume_capable_host_interop` expected by this aggregate gate. |
+| #205 | open; rebased onto current main | Focused Host resume interop support | Provides the fail-closed Host resume interop preflight and blocked readiness boundary; still needs resume-capable Host plus HarmonyOS device evidence before it can close the gate. |
 | #206 | draft; conflicts with current main | Focused HAP lifecycle support | Needs DevEco build, signed HAP, install, launch, upgrade, rollback, and cleanup evidence. |
 | #210 | draft; behind current main | Support controller-status guard | Keep as docs/static guard input; controller device behavior remains MatePad acceptance evidence. |
 
