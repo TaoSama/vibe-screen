@@ -60,6 +60,30 @@ The self-test decodes the shared
 `contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
 codec, in addition to its protocol/session/media checks.
 
+The app target also carries an AVFoundation playback verifier that can be run
+only through an iOS Simulator or signed device launch because it exercises
+`AVAudioSession`, `AVAudioEngine`, and `AVAudioPlayerNode`:
+
+```bash
+xcodebuild -project apps/ios/VibeScreen.xcodeproj \
+  -scheme VibeScreen \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  test \
+  -only-testing:VibeScreenAppTests/VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts
+```
+
+The verifier launches the app with `--audio-playback-self-test`, builds a
+synthetic PCM S16LE stream, starts playback-only AVAudioSession/AVAudioEngine,
+schedules buffers through AVAudioPlayerNode, observes the bounded playback queue,
+forces an overrun/drop, waits for played-buffer and queue-empty counters to
+advance before stopping, restarts on a newer config epoch, and first exposes
+an `AUDIO_PLAYBACK_SELF_TEST=RUNNING` UI line before replacing it with a
+terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` or `AUDIO_PLAYBACK_SELF_TEST=FAIL`
+line; a 15-second app-side timeout turns stalled playback completion into a
+terminal `FAIL` result. This is an executable playback-path check, not
+audible-device evidence; an iPhone/iPad run with external audible confirmation
+is still required before closing the Phase 5 audio gate.
+
 Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 
 ```bash
@@ -217,7 +241,9 @@ currently no key migration step.
 - **No advanced controls:** inspect the negotiated capability intersection;
   unsupported or policy-denied features intentionally stay off.
 - **Audio silent:** only PCM S16LE is accepted; verify sample rate, channels,
-  frame count, session epoch, and config epoch.
+  frame count, session epoch, config epoch, the playback self-test result,
+  played/queued/queue-empty/overrun counters, any late-completion diagnostics,
+  and iPhone/iPad output route.
 - **File rejected:** verify basename safety, declared size, negotiated chunk
   limit, sequential offsets, and chunk/final SHA-256.
 
@@ -232,9 +258,11 @@ currently no key migration step.
   multi-client admission and virtual-display allocation remain host work;
 - touch, hardware-keyboard capture, and hover-pointer input are exposed in the
   app, but have no signed iPhone/iPad or physical-accessory evidence yet;
-- PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
-  fallback, gestures, WOL, and managed restrictions are implemented, but have
-  no iOS-device evidence in this environment;
+- PCM S16LE playback has deterministic core queue coverage and an iOS app
+  AVAudioEngine playback verifier, but audible iPhone/iPad output remains open
+  without signed-device and external capture evidence; explicit text clipboard,
+  bounded file transfer, SDR fallback, gestures, WOL, and managed restrictions
+  are implemented, but have no iOS-device evidence in this environment;
 - no AAC/Opus, background audio, zero-copy HDR/EDR output, arbitrary clipboard
   MIME UI, Internet transport, or public-network E2EE;
 - frame rendering currently creates a Core Image display image per decoded

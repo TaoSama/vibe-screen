@@ -93,10 +93,52 @@ admission/revocation rejection, and strict coturn registry/CLI helper behavior,
 but not deployed coturn allocation teardown, stale credential reuse denial, or
 packet-denial behavior.
 
+The production end-to-end enforcement release gate has its own aggregate owner
+contract:
+
+    make phase3-production-e2e-enforcement \
+      EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-production-e2e-enforcement-current-base-blocked
+
+This gate accepts only a reviewed production-e2e-enforcement.json manifest that
+binds release, Authority, signaling, coturn data-plane, and evidence-review
+owners to one source revision. It fails when authority/signaling/coturn policy
+values disagree. It returns blocked rather than pass when real deployed
+secret-manager configuration, public route evidence, remote TURN observation,
+ScreenCaptureKit-to-Android MediaCodec data-plane evidence, active coturn
+disconnect proof, or a 120-minute mixed-route production soak is missing. Local
+loopback, forced local coturn, and synthetic Protocol v1 peers are hard failures
+when presented as public production E2E.
+
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
 is added, add deterministic Make targets rather than relying on undocumented IDE
 steps.
+
+## Public Internet soak gate
+
+The complete Internet soak gate is evaluated by
+`python3 -m vibescreen_evidence.phase3_internet_soak gate` or the Make target
+`phase3-internet-soak-gate`. It is a composition verifier, not a runner. It
+consumes these privacy-reviewed inputs from one evidence directory:
+
+- `phase3-internet-soak-manifest.json`, created before the run from production
+  TURN/signaling/relay/Authority/TLS/secret-source/remote-peer inputs;
+- `remote-turn-verifier.json`, proving public remote TURN packet exchange;
+- `media-continuity.json`, proving real ScreenCaptureKit-to-Android decoder
+  continuity;
+- `network-handoff.json`, proving fresh-session handoff recovery, stale media
+  rejection, and no plaintext fallback;
+- `revocation-propagation.json`, proving active coturn allocation disconnect,
+  stale credential rejection, and zero post-revocation relayed packets;
+- `soak-exact-window-report.json`, proving a clean two-hour mixed direct/relay
+  window with route samples, nonce-reuse absence, and RSS, queue, loss, RTT, FPS,
+  bitrate, relay-byte, ICE-restart, drop, thermal, and battery metric families.
+
+Exit code `0` means `pass`. Exit code `3` means blocked evidence unless
+`--allow-blocked` is set for archiving a blocked result. Exit code `2` means a
+complete input proves unsafe behavior, such as plaintext fallback or raw secret
+material in a report. Local loopback, forced local coturn, synthetic Protocol v1,
+or partial Android UI evidence must not be renamed into any of these files.
 
 ## Test matrix
 

@@ -37,6 +37,7 @@ REQUIRED_GATE_IDS = (
     "resume_host_restart",
     "resume_capable_host_interop",
     "no_old_epoch_render",
+    "ui_device_identity_record",
     "input_touch_keyboard_pointer_stylus",
     "eight_hour_soak",
     "external_latency",
@@ -118,7 +119,10 @@ def _validate_evidence_reference(reference: str, root: Path, path: str) -> None:
         raise ManifestError(f"{path}: must stay within evidence root")
     if not resolved_path.exists():
         raise ManifestError(f"{path}: missing evidence artifact {reference}")
-    if not resolved_path.is_file():
+    if reference.endswith("/"):
+        if not resolved_path.is_dir():
+            raise ManifestError(f"{path}: expected evidence artifact directory {reference}")
+    elif not resolved_path.is_file():
         raise ManifestError(f"{path}: expected evidence artifact file {reference}")
 
 
@@ -137,7 +141,10 @@ def validate_manifest(
     _hex(repository["commit"], "repository.commit", HEX_40, allow_placeholder=allow_blocked)
     _hex(repository["tree"], "repository.tree", HEX_40, allow_placeholder=allow_blocked)
     if repository["status"] != "clean":
-        raise ManifestError("repository.status: expected clean")
+        if allow_blocked:
+            warnings.append(f"repository.status: {repository['status']}")
+        else:
+            raise ManifestError("repository.status: expected clean")
 
     toolchain = _mapping(document.get("toolchain"), "toolchain")
     _require_keys(toolchain, REQUIRED_TOOLCHAIN_KEYS, "toolchain")

@@ -494,6 +494,62 @@ test('resume result advances epoch and rejected or malformed results fail closed
   assert.throws(() => unexpectedPayload.receive(pingEnvelope, 11n), /Only ResumeSessionResult/);
 });
 
+test('resumed sessions reject prior epoch control and media before reopening input', () => {
+  const negotiated = [Capability.TOUCH, Capability.SESSION_RESUME];
+  const original = createStreamingSessionWithCapabilities(negotiated, negotiated);
+  const snapshot = original.resumableSnapshot(19n);
+  assert.equal(snapshot.sessionEpoch, 7n);
+
+  const resumed = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  confirmRequest(resumed, resumed.start(10n, snapshot)[0], 19n);
+  const acceptedResume = new ProtobufWriter().bool(1, true).uint64(2, 8n);
+  const resumeEnvelope = sessionEnvelope(16n, 27, acceptedResume, 8n, 19n);
+  const resumeActions = resumed.receive(resumeEnvelope, 11n);
+  assert.equal(resumed.epoch(), 8n);
+  assert.deepEqual(resumeActions.map((action) => action.kind), ['heartbeat', 'send']);
+
+  const oldControl = sessionEnvelope(17n, 24, new ProtobufWriter().uint64(1, 7n), 7n, 0n);
+  assert.throws(() => resumed.receive(oldControl, 12n), /another session epoch/);
+
+  confirmRequest(resumed, resumeActions[1], 20n);
+  const displaysPayload = new ProtocolDecoder().envelope(fixture('list_displays_response.binpb')).payload;
+  const displays = resumed.receive(sessionEnvelope(21n, 41, new ProtobufWriter().raw(displaysPayload), 8n, 20n), 13n);
+  confirmRequest(resumed, displays[0], 22n);
+  const startPayload = new ProtocolDecoder().envelope(fixture('start_display_response.binpb')).payload;
+  resumed.receive(sessionEnvelope(23n, 43, new ProtobufWriter().raw(startPayload), 8n, 22n), 14n);
+  const videoPayload = new ProtocolDecoder().envelope(fixture('video_config.binpb')).payload;
+  const configure = resumed.receive(sessionEnvelope(24n, 50, new ProtobufWriter().raw(videoPayload), 8n, 22n), 15n)[0];
+  finishVideoConfiguration(resumed, configure);
+  assert.equal(resumed.state(), ProductSessionState.STREAMING);
+
+  const parser = new MediaPacketParser();
+  const packet = parser.parse(fixture('media_packet.bin'));
+  assert.deepEqual(resumed.acceptMedia({ ...packet, header: { ...packet.header, sessionEpoch: 7n, frameId: 1002n } }), []);
+  assert.equal(resumed.acceptMedia({ ...packet, header: { ...packet.header, sessionEpoch: 8n, frameId: 1002n } })[0].kind, 'media');
+});
+
+test('resume rejection closes transport scope so host restart uses a fresh ClientHello', () => {
+  const negotiated = [Capability.TOUCH, Capability.SESSION_RESUME];
+  const original = createStreamingSessionWithCapabilities(negotiated, negotiated);
+  const snapshot = original.resumableSnapshot(19n);
+
+  const recovering = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  confirmRequest(recovering, recovering.start(10n, snapshot)[0], 19n);
+  const rejection = new ProtobufWriter().string(3, 'host_restarted');
+  assert.deepEqual(recovering.receive(sessionEnvelope(16n, 27, rejection, 7n, 19n), 11n), [
+    { kind: 'disconnect', reason: 'resume_rejected:host_restarted', retryable: true }
+  ]);
+  assert.equal(recovering.state(), ProductSessionState.CLOSED);
+
+  const fresh = recovering.start(12n)[0];
+  assert.equal(fresh.intent.kind, 'clientHello');
+  assert.equal(recovering.epoch(), 0n);
+  const decodedFresh = new ProtocolDecoder().envelope(encodeAction(recovering, fresh, 1n));
+  assert.equal(decodedFresh.payloadField, 20);
+  assert.equal(decodedFresh.sessionId.length, 0);
+  assert.equal(decodedFresh.sessionEpoch, 0n);
+});
+
 test('pairing request/result is single-use and credential replay/revoke is durable', async () => {
   const digest = (_value) => new Uint8Array(32);
   const devicePublic = new Uint8Array(65).fill(7); devicePublic[0] = 4;
@@ -671,6 +727,11 @@ function controlEnvelope(messageId, payloadField, payload, sessionScoped = true,
   const envelope = new ProtobufWriter().uint32(1, 1).uint64(2, messageId).uint64(3, correlationId);
   if (sessionScoped) envelope.bytesField(4, sessionId).uint64(5, 7n);
   return envelope.message(payloadField, payload).finish();
+}
+
+function sessionEnvelope(messageId, payloadField, payload, sessionEpoch, correlationId = 1n) {
+  return new ProtobufWriter().uint32(1, 1).uint64(2, messageId).uint64(3, correlationId)
+    .bytesField(4, sessionId).uint64(5, sessionEpoch).message(payloadField, payload).finish();
 }
 
 function touchOnlyStreamingSession() {

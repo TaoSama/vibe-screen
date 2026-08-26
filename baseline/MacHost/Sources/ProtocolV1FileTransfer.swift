@@ -38,7 +38,7 @@ struct ProtocolV1FileTransferPolicy: Equatable {
     func applying(remote: ProtocolV1RemoteManagedPolicy) -> ProtocolV1FileTransferPolicy {
         guard remote.managed else { return self }
         return ProtocolV1FileTransferPolicy(
-            allowed: allowed && remote.fileTransferAllowed,
+            allowed: allowed && remote.fileTransferAllowed && remote.maximumFileBytes > 0,
             maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
             maximumChunkBytes: maximumChunkBytes,
             maximumConcurrentTransfers: maximumConcurrentTransfers,

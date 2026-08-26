@@ -42,6 +42,20 @@ SCOPE_PRS = [
     "#279",
     "#282",
 ]
+GATE_OWNERS = {
+    "signing": "#290",
+    "device_install": "#290",
+    "protocol_session": "#290",
+    "videotoolbox_h264": "#251",
+    "videotoolbox_hevc": "#251",
+    "input": "#257",
+    "reconnect": "#238",
+    "audio_playback": "#209",
+    "hdr_output": "#196",
+    "advanced_adapters": "#253",
+    "host_advanced_adapters": "#253",
+    "trusted_lan_secure_records": "#208",
+}
 SOURCE_DOCS = [
     "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
@@ -52,6 +66,9 @@ SOURCE_DOCS = [
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
 SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
+VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
+VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
 
 FORMAL_DEVICE_GATES = {
     "signing": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
@@ -66,7 +83,8 @@ FORMAL_DEVICE_GATES = {
 
 BROADER_GATES = {
     "hdr_output": "dedicated ios-hdr-edr-gate pass for HDR/EDR output on iOS hardware, not SDR fallback only",
-    "advanced_adapters": "host/product adapters for multi-client/display, audio, clipboard, files, actions, wake, and managed policy",
+    "advanced_adapters": "iOS app/product adapters for multi-client/display, audio, clipboard, files, HDR/color, actions, wake, and managed policy",
+    "host_advanced_adapters": "MacHost advanced adapters for multi-client/display streams, audio capture, clipboard/file handlers, HDR/color retry, host actions, wake helper, and managed policy",
     "trusted_lan_secure_records": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
 }
 
@@ -74,7 +92,8 @@ DEFAULT_LIMITATIONS = [
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
     "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
-    "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
+    "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
+    "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
 ]
 
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -287,6 +306,170 @@ def _signing_from_readiness_gate(gate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def default_videotoolbox_readiness_gates() -> list[dict[str, Any]]:
+    common = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": VIDEOTOOLBOX_READINESS_KIND,
+        "profile": VIDEOTOOLBOX_READINESS_PROFILE,
+        "verdict": "blocked",
+        "can_close_device_family_videotoolbox_gate": False,
+        "can_close_phase5_hardware_videotoolbox_gate": False,
+        "artifact_paths": [],
+        "artifact_checks": [],
+    }
+    return [
+        {
+            **common,
+            "runtime_class": "physical_iphone",
+            "blocking_reasons": [
+                {
+                    "field": "artifact_paths",
+                    "requirement": "retain physical iPhone VideoToolbox hardware decode artifacts",
+                }
+            ],
+        },
+        {
+            **common,
+            "runtime_class": "physical_ipad",
+            "blocking_reasons": [
+                {
+                    "field": "artifact_paths",
+                    "requirement": "retain physical iPad VideoToolbox hardware decode artifacts",
+                }
+            ],
+        },
+    ]
+
+
+def _blocked_videotoolbox_readiness_gate(
+    *,
+    path: Path | None,
+    runtime_class: str | None,
+    artifact_paths: Any = None,
+    artifact_checks: Any = None,
+    reasons: Sequence[str],
+) -> dict[str, Any]:
+    safe_artifact_paths = (
+        artifact_paths
+        if isinstance(artifact_paths, list)
+        and all(isinstance(artifact, str) and artifact.strip() for artifact in artifact_paths)
+        else []
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": VIDEOTOOLBOX_READINESS_KIND,
+        "profile": VIDEOTOOLBOX_READINESS_PROFILE,
+        "runtime_class": runtime_class if runtime_class in VIDEOTOOLBOX_RUNTIME_CLASSES else "physical_iphone",
+        "verdict": "blocked",
+        "can_close_device_family_videotoolbox_gate": False,
+        "can_close_phase5_hardware_videotoolbox_gate": False,
+        "artifact_paths": safe_artifact_paths,
+        "artifact_checks": artifact_checks if isinstance(artifact_checks, list) else [],
+        "blocking_reasons": [
+            {"field": "videotoolbox_readiness_gate", "requirement": reason}
+            for reason in reasons
+        ],
+    }
+
+
+def _load_videotoolbox_readiness_gate(path: Path) -> dict[str, Any]:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return _blocked_videotoolbox_readiness_gate(
+            path=path,
+            runtime_class=None,
+            reasons=["ios videotoolbox readiness gate is unreadable"],
+        )
+    except UnicodeDecodeError:
+        return _blocked_videotoolbox_readiness_gate(
+            path=path,
+            runtime_class=None,
+            reasons=["ios videotoolbox readiness gate must be UTF-8 JSON"],
+        )
+    except json.JSONDecodeError:
+        return _blocked_videotoolbox_readiness_gate(
+            path=path,
+            runtime_class=None,
+            reasons=["ios videotoolbox readiness gate must be valid JSON"],
+        )
+    if not isinstance(document, dict):
+        return _blocked_videotoolbox_readiness_gate(
+            path=path,
+            runtime_class=None,
+            reasons=["ios videotoolbox readiness gate must be a JSON object"],
+        )
+
+    runtime_class = document.get("runtime_class")
+    missing: list[str] = []
+    if document.get("schema_version") != SCHEMA_VERSION:
+        missing.append("schema_version must match current evidence schema")
+    if document.get("kind") != VIDEOTOOLBOX_READINESS_KIND:
+        missing.append("kind must be ios_hardware_videotoolbox_readiness")
+    if document.get("profile") != VIDEOTOOLBOX_READINESS_PROFILE:
+        missing.append("profile must be ios-hardware-videotoolbox-readiness")
+    if runtime_class not in VIDEOTOOLBOX_RUNTIME_CLASSES:
+        missing.append("runtime_class must be physical_iphone or physical_ipad")
+    if document.get("verdict") != "pass":
+        missing.append("verdict must be pass")
+    if document.get("can_close_device_family_videotoolbox_gate") is not True:
+        missing.append("can_close_device_family_videotoolbox_gate must be true")
+    if document.get("can_close_phase5_hardware_videotoolbox_gate") is not False:
+        missing.append("can_close_phase5_hardware_videotoolbox_gate must remain false")
+    artifact_paths = document.get("artifact_paths")
+    if (
+        not isinstance(artifact_paths, list)
+        or not artifact_paths
+        or not all(isinstance(artifact, str) and artifact.strip() for artifact in artifact_paths)
+    ):
+        missing.append("artifact_paths must retain sanitized VideoToolbox artifacts")
+    artifact_checks = document.get("artifact_checks")
+    if not isinstance(artifact_checks, list) or not artifact_checks:
+        missing.append("artifact_checks must retain artifact validation results")
+    else:
+        required_flags = ("exists", "non_empty", "under_evidence_dir", "valid_ios_videotoolbox_source")
+        for check in artifact_checks:
+            if not isinstance(check, dict) or not all(check.get(flag) is True for flag in required_flags):
+                missing.append("artifact_checks must all pass")
+                break
+
+    if missing:
+        return _blocked_videotoolbox_readiness_gate(
+            path=path,
+            runtime_class=runtime_class if isinstance(runtime_class, str) else None,
+            artifact_paths=document.get("artifact_paths"),
+            artifact_checks=document.get("artifact_checks"),
+            reasons=missing,
+        )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": VIDEOTOOLBOX_READINESS_KIND,
+        "profile": VIDEOTOOLBOX_READINESS_PROFILE,
+        "runtime_class": runtime_class,
+        "verdict": "pass",
+        "can_close_device_family_videotoolbox_gate": True,
+        "can_close_phase5_hardware_videotoolbox_gate": False,
+        "artifact_paths": artifact_paths,
+        "artifact_checks": artifact_checks,
+        "blocking_reasons": [],
+    }
+
+
+def _merge_videotoolbox_readiness_gates(paths: Sequence[Path] | None) -> list[dict[str, Any]]:
+    defaults = {gate["runtime_class"]: gate for gate in default_videotoolbox_readiness_gates()}
+    if not paths:
+        return [defaults[runtime] for runtime in VIDEOTOOLBOX_RUNTIME_CLASSES]
+
+    merged = dict(defaults)
+    for path in paths:
+        gate = _load_videotoolbox_readiness_gate(path)
+        runtime_class = gate.get("runtime_class")
+        if runtime_class in VIDEOTOOLBOX_RUNTIME_CLASSES:
+            merged[runtime_class] = gate
+    return [merged[runtime] for runtime in VIDEOTOOLBOX_RUNTIME_CLASSES]
+
+
 def collect_environment(repo: Path) -> dict[str, Any]:
     return {
         "xcode_select": _run_probe(["xcode-select", "-p"]),
@@ -301,6 +484,7 @@ def _gate_record(name: str, requirement: str, *, category: str, blocking: bool) 
     return {
         "status": "open",
         "category": category,
+        "owner_pr": GATE_OWNERS[name],
         "requirement": requirement,
         "blocking": blocking,
         "evidence": [],
@@ -340,6 +524,7 @@ def build_manifest(
     repo: Path,
     device_acceptance_owner_pr: str = DEVICE_ACCEPTANCE_OWNER_PR,
     signing_readiness_gate: Path | None = None,
+    videotoolbox_readiness_gates: Sequence[Path] | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
@@ -373,6 +558,7 @@ def build_manifest(
         },
         "signing_readiness_gate": signing_readiness,
         "signing": _signing_from_readiness_gate(signing_readiness),
+        "videotoolbox_readiness_gates": _merge_videotoolbox_readiness_gates(videotoolbox_readiness_gates),
         "devices": default_devices(),
         "gates": default_gates(),
         "android_evidence_used_for_ios_gates": False,
@@ -405,6 +591,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="optional ios-app-signing-readiness-gate.json to bind into current-base readiness",
     )
+    parser.add_argument(
+        "--videotoolbox-readiness-gate",
+        type=Path,
+        action="append",
+        help="optional ios-videotoolbox-readiness.json to bind; pass once per device family",
+    )
     parser.add_argument("--notes")
     parser.add_argument(
         "command",
@@ -425,6 +617,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo=args.repo,
             device_acceptance_owner_pr=args.device_acceptance_owner_pr,
             signing_readiness_gate=args.signing_readiness_gate,
+            videotoolbox_readiness_gates=args.videotoolbox_readiness_gate,
             notes=args.notes,
         )
         manifest["source_root"] = os.path.relpath(

@@ -540,6 +540,7 @@ class StreamingServer: EncodedFrameSink {
     private let wakeHostAuthorizer: any WakeHostAuthorizing
     private let wakeHostPacketSender: any WakeHostPacketSending
     private var acceptedConnectionObserverForSelfTest: ((NWConnection) -> Void)?
+    private let managedConfigurationProvider: ManagedConfigurationProvider
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
     var currentLANRecordProtectionState: LANRecordProtectionState {
@@ -557,7 +558,8 @@ class StreamingServer: EncodedFrameSink {
         protocolUpgradeGraceMillisecondsOverride: Int? = nil,
         wakeHostAuthorizer: any WakeHostAuthorizing = DenyWakeHostAuthorizer(),
         wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender(),
-        audioStream: MacHostAudioStream = MacHostAudioStream()
+        audioStream: MacHostAudioStream = MacHostAudioStream(),
+        managedConfigurationProvider: ManagedConfigurationProvider = ManagedConfigurationProvider()
     ) {
         self.port = port
         self.mode = mode
@@ -566,6 +568,7 @@ class StreamingServer: EncodedFrameSink {
         self.wakeHostAuthorizer = wakeHostAuthorizer
         self.wakeHostPacketSender = wakeHostPacketSender
         self.audioStream = audioStream
+        self.managedConfigurationProvider = managedConfigurationProvider
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -2094,7 +2097,7 @@ class StreamingServer: EncodedFrameSink {
         }
         protocolV1IncomingFiles = incomingFiles
         protocolV1RemoteManagedPolicy = .unmanaged
-        let managedPolicy = ManagedPolicy.unmanaged
+        let managedPolicy = managedConfigurationProvider.loadPolicy()
         var hostCapabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: touchEnabled,
             controllerAvailable: controllerAvailable,

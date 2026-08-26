@@ -107,10 +107,11 @@ def passing_device_gates() -> dict[str, object]:
         "resume_host_restart": "harmony-host-interop-preflight.json",
         "no_old_epoch_render": "harmony-host-interop-preflight.json",
         "resume_capable_host_interop": "harmony-host-interop-preflight.json",
-        "permission_denial_retry": "harmony-matepad-acceptance.json",
-        "input_touch_keyboard_pointer_stylus": "harmony-matepad-acceptance.json",
-        "eight_hour_soak": "harmony-matepad-acceptance.json",
-        "external_latency": "harmony-matepad-acceptance.json",
+        "permission_denial_retry": "permission-denial-retry.log",
+        "ui_device_identity_record": "ui-tree.xml",
+        "input_touch_keyboard_pointer_stylus": "input-observations.json",
+        "eight_hour_soak": "soak-summary.json",
+        "external_latency": "latency-report.json",
     }
     gates = []
     for gate_id in gate_ids:
@@ -317,6 +318,38 @@ class HarmonyCurrentBaseGateTests(unittest.TestCase):
         evidence = report["checks"]["owner_gates"]["hardware_decode_capability"]["evidence"]
         self.assertIn("h264_hardware_decode:missing-evidence-marker:harmony-avcodec-preflight.json", evidence)
 
+    def test_matepad_owner_accepts_raw_artifact_markers_without_self_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            device_gates = passing_device_gates()
+            write_referenced_evidence(root, device_gates)
+            readiness_path = write_json(root, "harmony-readiness.json", passing_readiness())
+            device_path = write_json(root, "harmony-device-gates.json", device_gates)
+
+            report = derive_gate(readiness_path, device_path)
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertTrue(report["checks"]["owner_gates"]["matepad_acceptance"]["passed"])
+
+    def test_failed_device_gate_reports_fail_verdict(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            device_gates = passing_device_gates()
+            write_referenced_evidence(root, device_gates)
+            gates = device_gates["gates"]
+            assert isinstance(gates, list)
+            for gate in gates:
+                if gate["id"] == "external_latency":
+                    gate["status"] = "fail"
+            readiness_path = write_json(root, "harmony-readiness.json", passing_readiness())
+            device_path = write_json(root, "harmony-device-gates.json", device_gates)
+
+            report = derive_gate(readiness_path, device_path)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("fail: device_gate.external_latency", report["reasons"])
+        self.assertFalse(report["can_claim_harmony_device_pass"])
+
     def test_android_substitution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -386,6 +419,7 @@ class HarmonyCurrentBaseGateTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                cwd=Path(__file__).parents[1],
                 check=False,
             )
             report = json.loads(output_path.read_text(encoding="utf-8"))

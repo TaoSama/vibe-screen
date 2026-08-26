@@ -31,12 +31,11 @@ class FileTransferSessionTest {
     @Test
     fun managedPolicyAndPeerLimitsResolveDenyWins() {
         val remoteStatus =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(5)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 5,
+            ).toStatus()
         val peerLimits =
             ResourceLimits
                 .newBuilder()
@@ -203,12 +202,11 @@ class FileTransferSessionTest {
         assertEquals(0, approvalCalls)
 
         val denied =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(10)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 10,
+            ).toStatus()
         assertFileTransferFailure("policy_denied") {
             manager.accept(
                 offer(payload = "hi".toByteArray()),
@@ -218,6 +216,55 @@ class FileTransferSessionTest {
             )
         }
         assertEquals(0, approvalCalls)
+    }
+
+    @Test
+    fun incomingManagerRejectsEmptyFileWhenRemoteManagedMaximumIsZeroBeforeApproval() {
+        var approvalCalls = 0
+        val manager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(),
+            directory = temporaryDirectory(),
+        ) {
+            approvalCalls += 1
+            true
+        }
+        val zeroMaximum =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 0,
+            ).toStatus()
+
+        assertFileTransferFailure("policy_denied") {
+            manager.accept(
+                offer(payload = ByteArray(0)),
+                remotePolicy = RemoteManagedPolicy(zeroMaximum),
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            )
+        }
+        assertEquals(0, approvalCalls)
+    }
+
+    @Test
+    fun outgoingTransferRejectsEmptyFileWhenRemoteManagedMaximumIsZero() {
+        val file = File(temporaryDirectory(), "empty.txt")
+        file.writeBytes(ByteArray(0))
+        val zeroMaximum =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 0,
+            ).toStatus()
+
+        assertFileTransferFailure("policy_denied") {
+            OutgoingFileTransfer(
+                file = file,
+                mimeType = "text/plain",
+                policy = FileTransferPolicy(),
+                remotePolicy = RemoteManagedPolicy(zeroMaximum),
+            )
+        }
     }
 
     @Test

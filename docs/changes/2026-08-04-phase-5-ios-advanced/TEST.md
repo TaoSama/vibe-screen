@@ -1,11 +1,62 @@
 # Phase 5 verification record
 
-Date: 2026-08-05
+Date: 2026-08-05; updated 2026-08-27 for iOS PCM playback verifier
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
 
 ## Passed
+
+2026-08-27 local Command Line Tools run from rebased branch
+local branch `codex/pr209-current-base-20260827` verified the core
+playback queue policy used by the iOS AVFoundation adapter against current
+`origin/main` `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0` at source commit
+`839f1fc9520c8ea6ca18e6782aa3fa0f6458e838`:
+
+```bash
+swift build --package-path apps/ios --configuration release
+apps/ios/.build/release/vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
+make protocol
+plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
+xmllint --noout apps/ios/VibeScreen.xcodeproj/xcshareddata/xcschemes/VibeScreen.xcscheme
+swiftc -frontend -parse apps/ios/VibeScreenApp/*.swift
+git diff --check
+```
+
+Observed local result:
+
+```text
+swift build: Build complete!
+vibescreen-ios-selftest: PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+verify-generated-protocol.sh: generated macOS and iOS Protocol v1 bindings are current
+make protocol: Ran 37 tests ... OK
+project.pbxproj: OK
+xmllint: exit 0
+swiftc parse app sources: exit 0
+git diff --check: exit 0
+```
+
+An initial `make protocol` attempt failed before completing because the system
+temporary volume had no free space for Python/Go temporary directories. After
+cleaning only this worktree's regenerable SwiftPM build products and rerunning
+with `TMPDIR=$PWD/.build/tmp`, the same command passed. The host still cannot
+run XCTest or the app-level AVFoundation verifier because only Command Line
+Tools are selected:
+
+```text
+swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
+
+xcodebuild -version
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+
+xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+```
+
+The blocked environment record is retained at
+`docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked/`.
 
 ```bash
 swift package --package-path apps/ios resolve
@@ -46,31 +97,35 @@ Command Line Tools installation cannot import XCTest; this suite is therefore
 a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
-stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
-config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-WakeHost device-identity binding, and every advanced Envelope branch used by
-the client. Focused macOS/Android tests cover the shared HMAC golden vector,
-replay and unauthorized rejection, broadcast-target validation, and the
-Android Protocol v1 action path to a captured magic-packet sender.
+stream limits/routes, PCM validation and reorder, bounded playback queue
+policy, overrun/drop accounting, queue-empty accounting, late-completion
+accounting, stop/restart reset, clipboard explicit-action and feedback/digest
+rejection, managed deny-wins policy, safe filenames, sequential chunks, file
+limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR config-epoch fallback,
+gesture persistence/catalog enforcement, the 102-byte WOL vector, WakeHost
+device-identity binding, and every advanced Envelope branch used by the client.
+Focused macOS/Android tests cover the shared HMAC golden vector, replay and
+unauthorized rejection, broadcast-target validation, and the Android Protocol v1
+action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
 
-On 2026-08-21, the same portable self-test also covered the iOS trusted-LAN
-secure-record contract: directional host/device keys for control, video, audio,
-and bulk; `VSCR` session-epoch/header authentication; nonce and replay
-rejection; explicit legacy-fallback negotiation rules; and rejection of records
-whose authenticated channel does not match the inner Protocol v1 frame channel.
-The local command completed with:
-
-```text
-RUN: trusted-LAN startup codecs
-RUN: owner/media/heartbeat generation gates
-PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
-```
+The app target adds a focused `AVAudioSession`/`AVAudioEngine` verifier through
+`VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts`. The
+test launches the app with `--audio-playback-self-test`, configures PCM S16LE,
+schedules synthetic audio through `AVAudioPlayerNode`, observes bounded queue
+overrun/drop behavior, waits for played-buffer and queue-empty counters to
+advance, stops, restarts on a newer config epoch, waits for playback completion
+again, observes the initial `AUDIO_PLAYBACK_SELF_TEST=RUNNING` diagnostic line,
+and waits for terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` in the UI. The app-side
+15-second timeout reports stalled playback completion as terminal `FAIL`; this
+closes only the executable playback-path check when run by full Xcode on a
+Simulator or signed device; it does not prove audible iPhone/iPad output
+without external audio confirmation. Late-completion accounting remains covered
+by the offline queue tests and is
+reported by the app verifier as diagnostic telemetry.
 
 Project metadata also passes:
 
@@ -94,72 +149,42 @@ Run the release-build, real two-process loopback from the repository root:
 
 ```bash
 apps/ios/Scripts/run_machost_loopback.py
-apps/ios/Scripts/run_machost_loopback.py --legacy-plaintext
 ```
 
 The harness starts the production `Vibe Screen` executable with its bounded iOS
-loopback adapter on an OS-assigned `127.0.0.1` port, then starts the iOS Core
-transport/session executable as a separate process. The default path completes
-authenticated `SSWA`/`SSWR` admission, negotiates `VSLS`/`VSLR` secure
-records, sends the `0D`/`0D01` Protocol v1 upgrade inside AES-256-GCM
-records, and continues with encrypted Protocol v1 TCP frames. The explicit
-`--legacy-plaintext` path covers only old-peer compatibility and reports that
-state separately. The client uses the production
+loopback adapter on `127.0.0.1:54321` and explicit plaintext legacy fallback,
+then starts the iOS Core transport/session executable as a separate process. The
+client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs
 a normal lifecycle and a separate invalid-target case. The covered boundary is:
 
 ```text
-SSWA/SSWR authentication -> VSLS/VSLR secure records
--> encrypted 0D/0D01 upgrade -> ClientHello/HostHello
+SSWA/SSWR authentication -> explicit plaintext legacy fallback
+-> 0D/0D01 upgrade -> ClientHello/HostHello
 -> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
 -> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
 -> DisconnectNotice
 
 invalid display+stream target -> ProtocolError(INVALID_STATE)
-
---legacy-plaintext repeats the same lifecycle and invalid-target checks without
-VSLS/VSLR and reports explicitLegacyFallback=true.
 ```
 
-Observed result on 2026-08-21 is recorded under
-`evidence/2026-08-21-ios-trusted-lan-secure-records`. The secure run reports:
+Observed result on the host recorded above:
 
 ```text
-iOS Core MacHost loopback: PASS (... encryptedRecords=true,
-explicitLegacyFallback=false, hello=true, displays=true, videoAck=true,
-media=true, pong=true, targetedTouch=true, disconnect=true)
+iOS Core MacHost loopback: PASS (auth=SSWA/SSWR, upgrade=0D/0D01,
+hello=true, displays=true, videoAck=true, media=true, pong=true,
+targetedTouch=true, disconnect=true)
 iOS Core MacHost loopback: PASS (scenario=invalid-target,
-encryptedRecords=true, explicitLegacyFallback=false,
 protocolError=invalidState)
-MacHost loopback: PASS (... encryptedRecords:true,
-explicitLegacyFallback:false,...)
+MacHost loopback: PASS (external lifecycle + invalid-target
+production-process integration)
 ```
 
 This proves the iOS Core trusted-LAN transport, FIFO control writer, and
-main-session composition against the baseline MacHost's secure trusted-LAN
-record path. The iOS record tests also consume
-`contracts/fixtures/security/v1/channel-records.json` to authenticate shared
-fixed vectors across host/device directions and control/video/audio/bulk
-channels, reject wrong-channel, replay, tamper, and wrong-session opens, and
-exercise strict control/bulk ordering plus bounded media/audio reordering. This
-does not exercise `StreamViewModel`, the decoder, or UI; boot the iOS
-application; use an iOS device; prove hardware VideoToolbox behavior; or prove
-real-network LAN behavior.
-
-Local 2026-08-21 command status:
-
-```text
-swift build --package-path apps/ios -c debug: pass
-swift run --package-path apps/ios -c release vibescreen-ios-selftest: pass
-python3 -m unittest apps/ios/Scripts/tests/test_run_machost_loopback.py: pass, 5 tests
-python3 -m py_compile apps/ios/Scripts/run_machost_loopback.py apps/ios/Scripts/tests/test_run_machost_loopback.py: pass
-swift build --package-path apps/ios -c release --product vibescreen-mac-host-loopback: pass
-swift build --package-path baseline/MacHost -c release --product "Vibe Screen": pass
-apps/ios/Scripts/run_machost_loopback.py --skip-build --startup-timeout 30 --test-timeout 30: pass, encryptedRecords:true, explicitLegacyFallback:false
-apps/ios/Scripts/run_machost_loopback.py --skip-build --legacy-plaintext --startup-timeout 30 --test-timeout 30: pass, encryptedRecords:false, explicitLegacyFallback:true
-swift test --package-path apps/ios -c debug: blocked locally because selected Command Line Tools cannot import XCTest
-git diff --check: pass
-```
+main-session composition against the baseline MacHost's explicit legacy
+fallback. It does not exercise `StreamViewModel`, the decoder, or UI; boot the
+iOS application; use an iOS device; prove hardware VideoToolbox behavior; or
+prove the macOS/Android secure-record LAN path.
 
 ## iOS SDK build evidence
 
@@ -290,7 +315,7 @@ HDR claim.
 | HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
-| trusted LAN secure records | open | Current iOS Core loopback covers secure records plus explicit legacy fallback; signed iOS app/device and real-network LAN evidence are not recorded. |
+| trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
 
 The signing row is now backed by a dedicated app-signing readiness owner:
 
@@ -396,22 +421,24 @@ The following remain unproved until their dedicated gates produce evidence:
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
   and disconnect/reconnect (the macOS Core loopback proves only the transport
   and Protocol v1 boundary listed above);
-- iOS app/device trusted-LAN encrypted-session behavior; the current secure
-  loopback is two-process Core evidence only and is not UI, device, hardware
-  decode, or real-network LAN evidence;
+- iOS trusted-LAN encrypted-session behavior; the current loopback exercises
+  explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
+  LAN evidence;
 - cross-client golden bytes against the Android application;
-- AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection. The WakeHost current-base
-  evidence owner is #199 after rebasing onto #225 and must use
+- AVAudioEngine path execution beyond the launch-argument verifier, audible
+  iPhone/iPad output, UIPasteboard prompts/writes, security-scoped file
+  picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware paths,
+  and managed App Configuration injection. The WakeHost current-base evidence
+  owner is #199 after rebasing onto #225 and must use
   `make wake-host-current-base-gate` to keep this gate blocked until hardware
   evidence exists;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
-- audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
-  real-network E2E behavior. The Android/macOS/iOS record-layer key, nonce,
-  replay, and fixed-vector checks are offline evidence; the iOS secure-record
-  loopback is two-process Core evidence only;
+- audio capture/playback, clipboard, and file-transfer product flows over
+  audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
+  Android/macOS raw product-session record hooks, owner-scoped admission,
+  bounded backlog, record-layer key, nonce, replay, and fixed-vector checks are
+  offline evidence only;
 - HDR/EDR output (the current clients deliberately advertise SDR only, and
   fallback/readiness tests do not prove visible HDR output).
 
