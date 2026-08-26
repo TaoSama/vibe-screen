@@ -79,16 +79,18 @@ Additional current-base successor checks:
 
 | Check | Result | Notes |
 | --- | --- | --- |
-| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Verifies the evidence package is explicitly blocked, cannot close stream/reconnect gates, and retains the Nubia P0110/pacific/Android 16 identity boundary. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Verifies the evidence package is explicitly blocked, cannot close stream/reconnect gates, and retains the Nubia P0110/pacific/Android 16 / SDK 36 identity boundary. |
 
 ## 2026-08-27 current-base rebase verification
 
 After `git fetch origin --prune`, this PR was rebased onto `origin/main`
-revision `1abc03b02acb03f2b3a9f92d96d6ea6ff6265d8e`. The retained
+revision `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0`. The retained
 2026-08-22 P0110 evidence bundle remains historical blocked evidence only. The
 current blocker facts are covered by the later 2026-08-24 main record below,
 and no fresh trusted-LAN stream, reconnect, latency, soak, or Host RSS no-growth
 evidence was collected for this rebase.
+The fail-closed checker now requires the Device label to carry SDK 36 so future
+P0110 blocked or passing records match the current Android identity contract.
 
 Focused current-base checks were rerun on the rebased branch:
 
@@ -96,7 +98,7 @@ Focused current-base checks were rerun on the rebased branch:
 | --- | --- | --- |
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_smoke -v` | PASS, 12 tests | Covers blocked/pass/insufficient classification, Nubia identity enforcement, serial and pairing-token rejection, legacy plaintext rejection, and contradictory encryption telemetry rejection. |
 | `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Confirms the retained artifact package still cannot close trusted-LAN stream or reconnect gates. |
-| `make evidence-tools-test` | PASS, 838 tests | Keeps the evidence tooling suite green on the rebased branch. |
+| `make evidence-tools-test` | PASS, 851 tests | Keeps the evidence tooling suite green on the rebased branch. |
 | `make protocol` | PASS, 37 tests | Covers current Protocol v1 schema, fixtures, TCP framing, and security contract checks. |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest` | PASS | Focused Android LAN secure-record, token admission, and handshake unit tests. |
 | `git diff --check` | PASS | No whitespace errors in the PR diff. |

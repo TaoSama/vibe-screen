@@ -53,7 +53,7 @@ claim is made by this record.
 
 ## Boundary
 
-This evidence keeps the real device identity as Nubia P0110/pacific/Android 16.
+This evidence keeps the real device identity as Nubia P0110/pacific/Android 16 / SDK 36.
 It must not be relabeled as Xiaomi 13/fuxi evidence. The current-worktree
 trusted-LAN stream and reconnect gates remain open until a later run records the
 required non-legacy encrypted LAN markers, HEVC output frames, and Host-PID-

@@ -18,7 +18,7 @@ STATUS_INSUFFICIENT = "insufficient"
 GATE_PROFILE = "trusted-lan-current-worktree-smoke"
 TEXT_SUFFIXES = {".err", ".exit", ".json", ".jsonl", ".log", ".md", ".txt", ".xml"}
 DERIVED_OUTPUT_FILES = {"trusted-lan-smoke-verdict.json"}
-EXPECTED_DEVICE_MARKERS = ("nubia", "p0110", "pacific", "android 16")
+EXPECTED_DEVICE_MARKERS = ("nubia", "p0110", "pacific", "android 16", "sdk 36")
 FORBIDDEN_DEVICE_CLAIM_RE = re.compile(r"\b(xiaomi\s*13|fuxi)\b", re.IGNORECASE)
 DEVICE_LABEL_RE = re.compile(r"^(?:device|target device|observed device)\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 BLOCKED_HEADING_RE = re.compile(r"^# .*\bblocked\b", re.IGNORECASE | re.MULTILINE)
@@ -143,7 +143,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
     )
     if not valid_device_label:
         errors.append(
-            "README.md must include a Device label for Nubia P0110/pacific/Android 16"
+            "README.md must include a Device label for Nubia P0110/pacific/Android 16/SDK 36"
         )
     if not _contains_any(lowered, LOCK_MARKERS):
         errors.append("evidence must record /tmp/vibe-screen-device-android.lock acquisition or equivalent lock observation")
@@ -192,7 +192,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
         "can_close_trusted_lan_stream_gate": verdict == STATUS_PASS,
         "can_close_trusted_lan_reconnect_gate": verdict == STATUS_PASS,
         "device_identity_requirement": (
-            "Nubia P0110/pacific/Android 16 evidence must remain labeled as "
+            "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as "
             "Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi."
         ),
         "errors": errors,
@@ -228,7 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "can_close_trusted_lan_stream_gate": False,
             "can_close_trusted_lan_reconnect_gate": False,
             "device_identity_requirement": (
-                "Nubia P0110/pacific/Android 16 evidence must remain labeled as "
+                "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as "
                 "Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi."
             ),
             "errors": [str(error)],

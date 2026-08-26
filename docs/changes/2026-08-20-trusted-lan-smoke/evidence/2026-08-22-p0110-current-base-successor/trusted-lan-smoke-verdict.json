@@ -1,7 +1,7 @@
 {
   "can_close_trusted_lan_reconnect_gate": false,
   "can_close_trusted_lan_stream_gate": false,
-  "device_identity_requirement": "Nubia P0110/pacific/Android 16 evidence must remain labeled as Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi.",
+  "device_identity_requirement": "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi.",
   "errors": [],
   "evidence_dir": "docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor",
   "files_checked": [

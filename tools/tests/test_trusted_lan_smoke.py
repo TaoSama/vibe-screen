@@ -17,7 +17,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "wlan0 reported NO-CARRIER state DOWN and Wifi is not connected.\n"
                 "Host preflight failed because the Vibe Screen Dev codesign identity is missing.\n"
@@ -37,7 +37,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Protocol v1 over TRANSPORT_KIND_LAN and reconnect succeeded.\n"
                 "Decoder: HEVC. First output frame and continuing frame counters observed.\n"
@@ -55,7 +55,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Trusted LAN secure records negotiated.\n"
                 "Wireless connected (trusted LAN encrypted records).\n"
@@ -77,7 +77,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16, also fuxi.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36, also fuxi.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
                 "No real trusted-LAN stream was observed.\n",
@@ -98,7 +98,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             (root / "README.md").write_text(
                 "# Trusted-LAN smoke - BLOCKED\n\n"
                 "Device: this is not the target device.\n"
-                "The words nubia P0110 pacific Android 16 only appear in a warning.\n"
+                "The words nubia P0110 pacific Android 16 SDK 36 only appear in a warning.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
                 "No real trusted-LAN stream was observed.\n",
@@ -109,7 +109,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
-            "README.md must include a Device label for Nubia P0110/pacific/Android 16",
+            "README.md must include a Device label for Nubia P0110/pacific/Android 16/SDK 36",
             report["errors"],
         )
 
@@ -118,7 +118,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
                 "No real trusted-LAN stream was observed.\n",
                 encoding="utf-8",
@@ -137,7 +137,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "adb -s EP0000REDACTED0000 was used.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
@@ -166,7 +166,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Trusted LAN secure records negotiated.\n"
                 "Wireless connected (trusted LAN encrypted records).\n"
@@ -187,7 +187,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Trusted LAN secure records negotiated.\n"
                 "Wireless connected (trusted LAN encrypted records).\n"
@@ -216,7 +216,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev codesign identity is present and valid.\n"
                 "No real trusted-LAN stream was observed.\n",
@@ -236,7 +236,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "No blocked network ports were observed.\n"
                 "Trusted LAN secure records negotiated.\n"
@@ -260,7 +260,7 @@ class TrustedLANSmokeCliTest(unittest.TestCase):
             output = root / "verdict.json"
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16.\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
                 "No real trusted-LAN stream was observed.\n",

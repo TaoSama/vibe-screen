@@ -155,7 +155,7 @@ notes based on a LAN run. A passing real-device record must include non-legacy
 encrypted LAN markers from both peers, Protocol v1 over TRANSPORT_KIND_LAN,
 HEVC decode with real output frames, and reconnect with the Host PID preserved.
 A blocked record is valid only when it names the Nubia P0110 / pacific /
-Android 16 device, records concrete Wi-Fi/route and Host signing/preflight
+Android 16 / SDK 36 device, records concrete Wi-Fi/route and Host signing/preflight
 blockers, and explicitly states that no real trusted-LAN stream was observed.
 
 Run the checker with:
