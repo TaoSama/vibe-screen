@@ -37,6 +37,16 @@ SUPPORTED_REMOTE_ACCESS = {
     "mdm",
 }
 P0110_IDENTITY_MARKERS = {"nubia", "p0110", "pacific"}
+REQUIRED_PASS_ARTIFACT_FIELDS = {
+    "host_identity_permissions": ("signing_report", "permission_report", "host_log"),
+    "login_item_registration_and_launch": ("system_settings_artifact", "launch_log"),
+    "automatic_startup_streaming": ("startup_log", "client_render_artifact"),
+    "headless_or_dummy_display_capture": ("display_report", "first_frame_artifact"),
+    "unattended_listener_recovery": ("recovery_log",),
+    "window_restore_on_disconnect_or_failure": ("window_log", "before_artifact", "after_artifact"),
+    "remote_admin_access_boundary": ("access_artifact",),
+    "android_reconnect_render": ("device_info", "reconnect_log", "client_render_artifact"),
+}
 
 
 class StartupRecoveryGateError(ValueError):
@@ -79,13 +89,21 @@ def _artifact(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
-def _gate(name: str, status: str, *, evidence: Sequence[str] = (), reasons: Sequence[str] = ()) -> dict[str, Any]:
+def _gate(
+    name: str,
+    status: str,
+    *,
+    evidence: Sequence[str] = (),
+    reasons: Sequence[str] = (),
+    missing_artifacts: Sequence[str] = (),
+) -> dict[str, Any]:
     return {
         "name": name,
         "status": status,
         "passed": status == PASS,
         "evidence": list(evidence),
         "reasons": list(reasons),
+        "_missing_artifacts": list(missing_artifacts),
     }
 
 
@@ -108,6 +126,19 @@ def _artifact_evidence(section: Mapping[str, Any], *fields: str) -> list[str]:
         if _artifact(value):
             evidence.append(str(value))
     return evidence
+
+
+def _missing_artifact_fields(section: Mapping[str, Any], fields: Sequence[str]) -> list[str]:
+    return [field for field in fields if not _artifact(section.get(field))]
+
+
+def _gate_evidence(
+    gate_name: str,
+    section: Mapping[str, Any],
+    *fields: str,
+) -> tuple[list[str], list[str]]:
+    required_fields = REQUIRED_PASS_ARTIFACT_FIELDS.get(gate_name, ())
+    return _artifact_evidence(section, *fields), _missing_artifact_fields(section, required_fields)
 
 
 def _artifact_path(root: Path, relative_path: str) -> Path | None:
@@ -134,17 +165,22 @@ def _artifact_is_non_empty(root: Path, relative_path: str) -> bool:
 
 
 def _validate_gate_artifacts(gate: dict[str, Any], root: Path | None) -> dict[str, Any]:
-    if root is None:
-        return gate
+    public_gate = {key: value for key, value in gate.items() if key != "_missing_artifacts"}
     reasons = list(gate["reasons"])
-    for relative in gate["evidence"]:
-        if not _artifact_is_non_empty(root, relative):
-            reasons.append(f"evidence artifact {relative!r} must exist under the evidence root and be non-empty")
+    if gate["status"] == PASS:
+        if root is None:
+            reasons.append("evidence_root is required for a passing gate")
+        for field in gate.get("_missing_artifacts", []):
+            reasons.append(f"evidence artifact field {field!r} is required for a passing gate")
+        if root is not None:
+            for relative in gate["evidence"]:
+                if not _artifact_is_non_empty(root, relative):
+                    reasons.append(f"evidence artifact {relative!r} must exist under the evidence root and be non-empty")
     if reasons and gate["status"] == PASS:
         status = BLOCKED
     else:
         status = gate["status"]
-    return {**gate, "status": status, "passed": status == PASS, "reasons": reasons}
+    return {**public_gate, "status": status, "passed": status == PASS, "reasons": reasons}
 
 
 def _status_for_missing_or_failed(reasons: Sequence[str], *, failed: bool = False) -> str:
@@ -170,11 +206,19 @@ def _host_identity_gate(document: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("mac_host.screen_recording_permission must be granted")
     if _string(host.get("accessibility_permission")) != "granted":
         reasons.append("mac_host.accessibility_permission must be granted for window recovery")
+    evidence, missing_artifacts = _gate_evidence(
+        "host_identity_permissions",
+        host,
+        "signing_report",
+        "permission_report",
+        "host_log",
+    )
     return _gate(
         "host_identity_permissions",
         _status_for_missing_or_failed(reasons),
-        evidence=_artifact_evidence(host, "signing_report", "permission_report", "host_log"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -190,11 +234,18 @@ def _login_item_gate(document: Mapping[str, Any]) -> dict[str, Any]:
     if login.get("manual_launch_used") is True:
         reasons.append("manual Finder/Dock launch cannot be counted as login-startup evidence")
     failed = login.get("manual_launch_used") is True
+    evidence, missing_artifacts = _gate_evidence(
+        "login_item_registration_and_launch",
+        login,
+        "system_settings_artifact",
+        "launch_log",
+    )
     return _gate(
         "login_item_registration_and_launch",
         _status_for_missing_or_failed(reasons, failed=failed),
-        evidence=_artifact_evidence(login, "system_settings_artifact", "launch_log"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -207,11 +258,18 @@ def _automatic_startup_gate(document: Mapping[str, Any]) -> dict[str, Any]:
     _require_true(startup.get("onboarding_completed"), "automatic_startup.onboarding_completed", reasons)
     _require_true(startup.get("first_server_start_observed"), "automatic_startup.first_server_start_observed", reasons)
     _require_true(startup.get("client_render_observed"), "automatic_startup.client_render_observed", reasons)
+    evidence, missing_artifacts = _gate_evidence(
+        "automatic_startup_streaming",
+        startup,
+        "startup_log",
+        "client_render_artifact",
+    )
     return _gate(
         "automatic_startup_streaming",
         _status_for_missing_or_failed(reasons),
-        evidence=_artifact_evidence(startup, "startup_log", "client_render_artifact"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -236,11 +294,18 @@ def _display_gate(document: Mapping[str, Any]) -> dict[str, Any]:
     if headless_topology and display.get("claims_headless_from_attached_monitor") is True:
         reasons.append("an attached monitor cannot be relabeled as dummy/headless evidence")
     failed = display.get("claims_headless_from_attached_monitor") is True
+    evidence, missing_artifacts = _gate_evidence(
+        "headless_or_dummy_display_capture",
+        display,
+        "display_report",
+        "first_frame_artifact",
+    )
     return _gate(
         "headless_or_dummy_display_capture",
         _status_for_missing_or_failed(reasons, failed=failed),
-        evidence=_artifact_evidence(display, "display_report", "first_frame_artifact"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -258,11 +323,17 @@ def _unattended_recovery_gate(document: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("unattended_recovery must record restart_succeeded or bounded_exhaustion_observed")
     _require_true(recovery.get("logs_retained"), "unattended_recovery.logs_retained", reasons)
     failed = recovery.get("full_speed_loop_observed") is True
+    evidence, missing_artifacts = _gate_evidence(
+        "unattended_listener_recovery",
+        recovery,
+        "recovery_log",
+    )
     return _gate(
         "unattended_listener_recovery",
         _status_for_missing_or_failed(reasons, failed=failed),
-        evidence=_artifact_evidence(recovery, "recovery_log"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -279,11 +350,19 @@ def _window_recovery_gate(document: Mapping[str, Any]) -> dict[str, Any]:
     if window.get("accessibility_error_observed") is True:
         reasons.append("window recovery cannot pass with Accessibility errors")
     failed = window.get("accessibility_error_observed") is True
+    evidence, missing_artifacts = _gate_evidence(
+        "window_restore_on_disconnect_or_failure",
+        window,
+        "window_log",
+        "before_artifact",
+        "after_artifact",
+    )
     return _gate(
         "window_restore_on_disconnect_or_failure",
         _status_for_missing_or_failed(reasons, failed=failed),
-        evidence=_artifact_evidence(window, "window_log", "before_artifact", "after_artifact"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -295,11 +374,17 @@ def _remote_access_gate(document: Mapping[str, Any]) -> dict[str, Any]:
     _require_true(remote.get("operator_intervention_path_verified"), "remote_access.operator_intervention_path_verified", reasons)
     _require_true(remote.get("filevault_or_first_login_blocker_absent"), "remote_access.filevault_or_first_login_blocker_absent", reasons)
     _require_false(remote.get("requires_unavailable_local_intervention"), "remote_access.requires_unavailable_local_intervention", reasons)
+    evidence, missing_artifacts = _gate_evidence(
+        "remote_admin_access_boundary",
+        remote,
+        "access_artifact",
+    )
     return _gate(
         "remote_admin_access_boundary",
         _status_for_missing_or_failed(reasons),
-        evidence=_artifact_evidence(remote, "access_artifact"),
+        evidence=evidence,
         reasons=reasons,
+        missing_artifacts=missing_artifacts,
     )
 
 
@@ -333,6 +418,37 @@ def _android_identity_gate(document: Mapping[str, Any]) -> dict[str, Any] | None
     )
 
 
+def _android_reconnect_gate(document: Mapping[str, Any]) -> dict[str, Any]:
+    reconnect = _mapping(document.get("android_reconnect"))
+    reasons: list[str] = []
+    if _string(reconnect.get("trigger")) is None:
+        reasons.append("android_reconnect.trigger is required")
+    _require_true(reconnect.get("disconnect_observed"), "android_reconnect.disconnect_observed", reasons)
+    _require_true(reconnect.get("reconnect_attempt_observed"), "android_reconnect.reconnect_attempt_observed", reasons)
+    _require_true(reconnect.get("reconnect_succeeded"), "android_reconnect.reconnect_succeeded", reasons)
+    _require_true(reconnect.get("client_render_after_reconnect_observed"), "android_reconnect.client_render_after_reconnect_observed", reasons)
+
+    android = _mapping(document.get("android_device"))
+    for field in ("manufacturer", "model", "codename", "android_release", "sdk"):
+        if _string(android.get(field)) is None:
+            reasons.append(f"android_device.{field} is required for Android reconnect evidence")
+
+    evidence, missing_artifacts = _gate_evidence(
+        "android_reconnect_render",
+        {**android, **reconnect},
+        "device_info",
+        "reconnect_log",
+        "client_render_artifact",
+    )
+    return _gate(
+        "android_reconnect_render",
+        _status_for_missing_or_failed(reasons),
+        evidence=evidence,
+        reasons=reasons,
+        missing_artifacts=missing_artifacts,
+    )
+
+
 def derive_gate(evidence: Mapping[str, Any], *, evidence_root: Path | None = None) -> dict[str, Any]:
     gates = [
         _host_identity_gate(evidence),
@@ -342,6 +458,7 @@ def derive_gate(evidence: Mapping[str, Any], *, evidence_root: Path | None = Non
         _unattended_recovery_gate(evidence),
         _window_recovery_gate(evidence),
         _remote_access_gate(evidence),
+        _android_reconnect_gate(evidence),
     ]
     android_gate = _android_identity_gate(evidence)
     if android_gate is not None:
@@ -390,6 +507,7 @@ def derive_gate(evidence: Mapping[str, Any], *, evidence_root: Path | None = Non
             "bounded unattended recovery logs for the declared failure trigger",
             "real window move and restore after disconnect or failure",
             "remote or local administrator path for FileVault, first-login, TCC, and display intervention",
+            "Android disconnect, reconnect, and post-reconnect rendered-frame evidence",
         ],
         "checks": gates,
         "open_reasons": open_reasons,
