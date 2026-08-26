@@ -12,8 +12,8 @@ ClipboardManager <-> macOS NSPasteboard USB/LAN E2E device gate.
 
 - Branch: `codex/clipboard-protocol-v1-e2e`
 - Refresh base `origin/main`: `f46163524fe757e7021a4333b3370af00ec651f1`
-- Final PR head: recorded in the PR body and GitHub checks after the final
-  current-base push
+- Final PR head: use the GitHub PR checks/status for the latest pushed head;
+  this audit does not hard-code the moving PR branch tip.
 - Open related PR: [#157](https://github.com/TaoSama/vibe-screen/pull/157)
   remains a draft runbook/evidence PR and should not be treated as a completed
   implementation or E2E pass.
@@ -74,7 +74,7 @@ cd baseline/AndroidClient
   --tests dev.telemachus.display.ClipboardApprovalStateTest
 ```
 
-Result: `BUILD SUCCESSFUL in 16s`.
+Result: `BUILD SUCCESSFUL`.
 
 ```bash
 mkdir -p .tmp
@@ -82,7 +82,7 @@ TMPDIR="$PWD/.tmp" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   contracts.tests.test_protocol_fixtures -v
 ```
 
-Result: `Ran 16 tests in 108.612s OK`, including
+Result: `Ran 16 tests ... OK`, including
 `test_clipboard_fixtures_cover_offer_request_and_content`.
 
 ```bash
@@ -91,8 +91,7 @@ swift build -c release
 .build/release/Vibe\ Screen --protocol-v1-self-test
 ```
 
-Result: release build completed in 3.41s and Protocol v1 self-test reported
-`PASS`.
+Result: release build completed, and Protocol v1 self-test reported `PASS`.
 
 ```bash
 xcode-select -p

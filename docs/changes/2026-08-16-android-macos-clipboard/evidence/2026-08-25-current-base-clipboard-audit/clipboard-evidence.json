@@ -1,7 +1,7 @@
 {
   "date": "2026-08-26",
   "branch": "codex/clipboard-protocol-v1-e2e",
-  "head_sha": "recorded in PR body after final current-base push",
+  "head_sha": "latest pushed PR head recorded by GitHub checks",
   "origin_main_sha": "f46163524fe757e7021a4333b3370af00ec651f1",
   "scope": "source audit and offline verification for Android <-> macOS Protocol v1 clipboard",
   "implementation_status": "present_on_main",
@@ -21,23 +21,23 @@
   "verification": [
     {
       "command": "gh pr view 231 --repo TaoSama/vibe-screen --json url,state,isDraft,headRefOid,baseRefOid",
-      "result": "blocked",
-      "summary": "GitHub CLI auth is unavailable in this resumed environment; PR metadata was read through the GitHub connector instead"
+      "result": "pass",
+      "summary": "PR metadata was available locally through GitHub CLI"
     },
     {
       "command": "baseline/AndroidClient ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest",
       "result": "pass",
-      "summary": "BUILD SUCCESSFUL in 16s"
+      "summary": "BUILD SUCCESSFUL"
     },
     {
       "command": "mkdir -p .tmp && TMPDIR=\"$PWD/.tmp\" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v",
       "result": "pass",
-      "summary": "Ran 16 tests in 108.612s OK"
+      "summary": "Ran 16 tests OK"
     },
     {
       "command": "baseline/MacHost swift build -c release && .build/release/Vibe\\ Screen --protocol-v1-self-test",
       "result": "pass",
-      "summary": "Build complete in 3.41s; Protocol v1 self-test PASS"
+      "summary": "Build complete; Protocol v1 self-test PASS"
     },
     {
       "command": "baseline/MacHost swift test --filter Clipboard",
