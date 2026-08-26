@@ -3,6 +3,8 @@
 Date: 2026-08-21
 Workspace: independent Codex worktree
 Base: `origin/main` at `8aad98f14b3be5bf14478c3d29d04e6d3f78c919`
+Current-base refresh: 2026-08-27, `origin/main` at
+`74a539c033b67733af72e651f81d6364603a8a07`
 
 ## Scope
 
@@ -85,3 +87,14 @@ hardware VideoToolbox behavior:
 Android evidence is not iOS evidence. If Android diagnostics are collected for
 adjacent LAN work, use an explicit ADB target serial locally and record the
 device as Nubia P0110 / pacific / Android 16 / SDK 36.
+
+## Current-base refresh
+
+On 2026-08-27, the PR branch was rebased to current `origin/main` and the
+focused local gate above was repeated. The secure run again reported
+`encryptedRecords=true` and `explicitLegacyFallback=false`; the explicit legacy
+run again reported `encryptedRecords=false` and `explicitLegacyFallback=true`.
+The local `swift test --package-path apps/ios -c debug --filter
+LANSecureRecordTests` command remained blocked before test execution because
+the selected Command Line Tools SwiftPM environment could not import `XCTest`;
+CI with full Xcode remains the XCTest authority.

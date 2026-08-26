@@ -74,7 +74,7 @@ DEFAULT_LIMITATIONS = [
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
     "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
-    "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
+    "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
 ]
 
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
