@@ -321,6 +321,14 @@ func testNativeInputAndBoundedReconnect() throws {
         ReconnectFailure.classify(TCPTransportError.authenticationRequired) == .permanent,
         "authentication failure was retryable"
     )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: true) == .transientTransport,
+        "resumable disconnect notice was not retryable"
+    )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: false) == .permanent,
+        "terminal disconnect notice was retryable"
+    )
 }
 
 @MainActor

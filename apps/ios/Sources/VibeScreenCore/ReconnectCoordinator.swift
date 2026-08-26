@@ -32,6 +32,10 @@ public enum ReconnectFailure: Equatable, Sendable {
         }
         return .permanent
     }
+
+    public static func fromDisconnectNotice(mayResume: Bool) -> ReconnectFailure {
+        mayResume ? .transientTransport : .permanent
+    }
 }
 
 public struct ReconnectCoordinator: Sendable {
