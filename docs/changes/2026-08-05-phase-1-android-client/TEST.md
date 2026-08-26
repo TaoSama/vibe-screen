@@ -27,7 +27,7 @@ legacy touch protocol.
 | tap/drag/right click/scroll/pinch | existing touch path retained; secondary mouse button and wheel adapt to touch gestures | injected tap/long swipe produced touch packets; Mac result and two-finger checks pending |
 | keyboard/shortcuts | common Android keys map to protocol-neutral USB HID events | HID mapping/gate passed on device; forwarding blocked by legacy host |
 | external mouse/keyboard | wheel and secondary-button adapters; physical keys captured and gated | physical peripherals pending; native pointer/keyboard protocol required |
-| reconnect/errors | per-session generation gates all client/decoder callbacks; typed retryability preserves failure reasons and stops protocol-error loops; wireless post-connect startup has exactly-once socket/stream ownership | stale/no-display endpoint and synthetic cold reconnect passed on device; stale-generation, ready-session, invalid-local-credential, and post-auth startup-failure paths pass on JVM |
+| reconnect/errors | per-session generation gates all client/decoder callbacks; typed retryability preserves failure reasons and stops protocol-error loops; wireless post-connect startup has exactly-once socket/stream ownership | stale/no-display endpoint and synthetic cold reconnect passed on device; stale-generation, ready-session, invalid-local-auth, and post-auth startup-failure paths pass on JVM |
 | permissions/lifecycle | Camera permission is re-evaluated after returning from Settings; background pauses input/retries and keep-awake, foreground resumes/rekeys | original camera deny/settings launch passed on device; Settings-return state machine passes on JVM; post-review device rerun pending |
 | outbound input | bounded single writer reserves recovery capacity, uses non-blocking atomic ingress under lock contention, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails closed only on true capacity saturation | contention/capacity/close-race/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
 
@@ -67,7 +67,7 @@ Results:
 - final clean-rebuild APK SHA-256:
   `66eaa6f7175d102dad55a94f1c983aaff3ffbcc32365c581c222e7ec46b7ed71`.
 
-The same APK was installed on Xiaomi 13 `bac5b092` at
+The same APK was installed on Xiaomi 13 `<redacted-xiaomi-serial>` at
 `2026-08-10 22:00:21 +08:00`; the final-build device rerun is recorded below.
 
 ## Nubia P0110 device run
@@ -408,7 +408,7 @@ item/headless reboot, or the host-RSS no-growth gate.
 
 The final clean APK
 `66eaa6f7175d102dad55a94f1c983aaff3ffbcc32365c581c222e7ec46b7ed71`
-was then installed on `bac5b092`. With the Host pinned to that serial and
+was then installed on `<redacted-xiaomi-serial>`. With the Host pinned to that serial and
 configured for `extended`, a clean Host/client launch created virtual display
 38 and advertised it first: `selected=38`, `2000x1200`, `config epoch=1`.
 The control hierarchy showed `Vibe Screen Virtu…` plus an enabled `Window
@@ -418,8 +418,8 @@ and force-stopping Android again produced `Restored 1 moved window(s)` before
 the next cold launch returned directly to display 38 at about 60 FPS.
 
 Two connected fuxi devices can otherwise fight over the Host's single-client
-listener. The rerun isolated `bac5b092`, stopped the client on `8a023e3a`, and
-set `Telemachus_adbDeviceSerial=bac5b092`; without that isolation, each new
+listener. The rerun isolated `<redacted-xiaomi-serial>`, stopped the client on `<redacted-xiaomi-serial-2>`, and
+set `Telemachus_adbDeviceSerial=<redacted-xiaomi-serial>`; without that isolation, each new
 connection correctly cancels the previous one and resembles a reconnect loop.
 
 Evidence:
@@ -533,7 +533,7 @@ record and does not close the physical HID mouse gate.
 - [`evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/`](evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/)
 
 After the Android UI task reported releasing the shared P0110 lock, a short
-manual preflight used the required `adb -s EP0110PZ0B9110300B` endpoint to
+manual preflight used the required `adb -s <redacted-pacific-serial>` endpoint to
 read the device as Nubia P0110 / `pacific` / Android 16 / SDK 36 and inspect
 `dumpsys input`. That input inventory still exposed no `MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. When the formal collector
@@ -546,7 +546,7 @@ synthetic ADB pointer input was used or counted as HID confirmation.
 - [`evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/`](evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/)
 
 A later 2026-08-22 refresh found no shared Android device lock, reached the
-P0110 with `adb -s EP0110PZ0B9110300B`, and recorded the device identity as
+P0110 with `adb -s <redacted-pacific-serial>`, and recorded the device identity as
 Nubia P0110 / `pacific` / Android 16 / SDK 36. The retained `dumpsys input`
 inventory still had no external `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or
 `TRACKBALL` source, so the collector wrote a `blocked` bundle with
@@ -585,7 +585,7 @@ Evidence:
 ## P0110 rotated host-display preflight follow-up
 
 On 2026-08-22, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
-serial EP0110PZ0B9110300B) was checked again after the branch was rebased to
+serial <redacted-pacific-serial>) was checked again after the branch was rebased to
 origin/main cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b. The initial Android
 coordination lock path existed as an empty stale marker with no lsof holder, so
 the run recorded that state, acquired a non-blocking fcntl exclusive lock on the
@@ -615,7 +615,7 @@ Evidence:
 
 On 2026-08-23, a controller-side read-only Android visual/UI sampling run found
 the connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
-EP0110PZ0B9110300B) online with both dev.telemachus.display and
+<redacted-pacific-serial>) online with both dev.telemachus.display and
 dev.telemachus.display.test installed, but the foreground Activity was the
 system permission controller:
 
@@ -642,7 +642,7 @@ Evidence:
 ## P0110 Android visual/UI E2E test-entry confirmation handled
 
 On 2026-08-23, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
-serial EP0110PZ0B9110300B) was sampled again from the same system
+serial <redacted-pacific-serial>) was sampled again from the same system
 permission-controller confirmation page. The main Android coordination lock and
 soak lock were absent, so this task created the configured Android coordination
 lock before issuing explicit serial-targeted ADB commands, then released the
@@ -674,7 +674,7 @@ Evidence:
 
 On 2026-08-23 08:09 +08, a controller-side read-only Android state sample found
 the same Nubia P0110 (pacific, Android 16 / SDK 36, serial
-EP0110PZ0B9110300B) online with the foreground Activity at the Nubia launcher:
+<redacted-pacific-serial>) online with the foreground Activity at the Nubia launcher:
 
 ```text
 com.android.launcher3/com.obric.feature.ObricLauncher
@@ -703,7 +703,7 @@ Evidence:
 On 2026-08-23, the native pointer HID gate owner was refreshed on
 `origin/main` commit `3d23de133adc4414b4c70430c619fadbe7d90207` using the
 connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
-EP0110PZ0B9110300B). The Android coordination lock was absent, so the collector
+<redacted-pacific-serial>). The Android coordination lock was absent, so the collector
 was allowed to run serial-scoped ADB reads against that device.
 
 The run did not find any external Android input device with `MOUSE`,
@@ -747,3 +747,35 @@ only; the rotated host-display acceptance gate is still open.
 Evidence:
 
 - [`evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/)
+
+
+## P0110 native pointer HID deviceId gate refresh
+
+On 2026-08-27, the native pointer HID gate owner was refreshed again from
+current `origin/main` commit `3b2ba11e832a3618eaedfc67f92414b161423a00` plus
+the deviceId hardening branch. The connected device was recorded as nubia P0110
+/ pacific / Android 16 / SDK 36 with the Android serial redacted in retained
+evidence. The collector used the required serial-scoped ADB endpoint, captured
+the real device identity and `dumpsys input`, and found no external input
+device with a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source.
+
+The collector therefore wrote `status=blocked` and returned `exit_code=2`; the
+independent gate summary reports `verdict=blocked` and
+`can_close_native_pointer_hid_gate=false`. Re-running the summary through
+`make native-pointer-hid-gate` with `--require-pass` is expected to return
+non-zero for this blocked bundle; Make may print `Error 1` for the Python gate
+process while the outer recorded make target exits non-zero. That is the
+fail-closed result for missing hardware, not a successful device confirmation.
+
+This refresh also tightens synthetic-input exclusion. Android forwarding logs
+now include the originating `deviceId`, the collector only recognizes native
+pointer forwarding lines with a positive `deviceId`, and the summary gate
+requires each required event (`move`, `press`, and `release`) to match a
+positive device id from the external mouse-like `dumpsys input` inventory.
+Synthetic ADB pointer/touch events, including virtual-device events such as
+`deviceId=-1`, cannot satisfy `android_forwarding_device_ids_match_external_mouse`
+and cannot close the native mouse pointer move/click gate.
+
+Evidence:
+
+- [`evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/`](evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/)

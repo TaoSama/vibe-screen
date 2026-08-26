@@ -372,9 +372,15 @@ stable signed Host with Screen Recording and Accessibility permission passes
 that preflight. A pass requires Android
 `native pointer forwarded` lines for `MOVE`, `BUTTON_PRESS`, and
 `BUTTON_RELEASE` from `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`,
-plus Host `Pointer injected` lines for `changed`, `began`, and `ended`. Missing
-hardware or missing Host stable signing/TCC evidence is `blocked`; missing
-Android logs, Host logs, or the visible-result note is `failed`, not a pass.
+and each line must include a positive `deviceId` that matches an external
+mouse-like device from the retained `dumpsys input` snapshot. Virtual or
+synthetic input events such as `deviceId=-1` are intentionally ignored for gate
+closure. A pass also requires Host `Pointer injected` lines for `changed`,
+`began`, and `ended`. Missing hardware or missing Host stable signing/TCC
+evidence is `blocked`; missing Android logs, Host logs, mismatched forwarding
+`deviceId`, or the visible-result note is `failed`, not a pass. A blocked bundle
+rerun through `make native-pointer-hid-gate` with require-pass semantics is
+expected to return non-zero, with Make printing the child gate error.
 
 The collection target writes `native-pointer-hid-summary.json`. That summary is
 the gate owner for README updates: only `verdict=pass` and
@@ -560,5 +566,5 @@ adb -s DEVICE_SERIAL exec-out run-as dev.telemachus.display sh -c \
   'cat files/diag.log.old 2>/dev/null; cat files/diag.log 2>/dev/null'
 ```
 
-Never include pairing tokens, personal screen content, Wi-Fi credentials, or
-public addresses in committed evidence.
+Never include pairing material, personal screen content, Wi-Fi configuration
+values, or public addresses in committed evidence.

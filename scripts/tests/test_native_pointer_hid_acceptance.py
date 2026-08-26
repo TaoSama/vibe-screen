@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import native_pointer_hid_acceptance as acceptance
 
 
+SAMPLE_PACIFIC_SERIAL = "REDACTED_PACIFIC_SERIAL"
+
+
 SAMPLE_DUMPSYS_INPUT = """
 Input Reader State (Nums of device: 3):
   Device 3: gdix_input_agent
@@ -41,8 +44,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         self.assertEqual(
             acceptance.external_mouse_devices(devices),
             [
-                acceptance.InputDeviceSummary("USB Optical Mouse", "MOUSE | TOUCHPAD", "true"),
-                acceptance.InputDeviceSummary("Bluetooth Trackpad", "MOUSE_RELATIVE", "true"),
+                acceptance.InputDeviceSummary(11, "USB Optical Mouse", "MOUSE | TOUCHPAD", "true"),
+                acceptance.InputDeviceSummary(12, "Bluetooth Trackpad", "MOUSE_RELATIVE", "true"),
             ],
         )
 
@@ -57,13 +60,15 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_observed_android_events_require_mouse_like_forwarding_logs(self) -> None:
         log = """
-        08-21 12:00:00.000 D MA      : native pointer forwarded action=MOVE source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5
-        08-21 12:00:01.000 D MA      : native pointer forwarded action=BUTTON_PRESS source=MOUSE_RELATIVE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5
-        08-21 12:00:02.000 D MA      : native pointer forwarded action=BUTTON_RELEASE source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5
-        08-21 12:00:03.000 D MA      : native pointer forwarded action=MOVE source=OTHER buttonState=0 actionButton=0 wireButtons=0 x=0.1 y=0.1
+        08-21 12:00:00.000 D MA      : native pointer forwarded action=MOVE deviceId=11 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5
+        08-21 12:00:01.000 D MA      : native pointer forwarded action=BUTTON_PRESS deviceId=12 source=MOUSE_RELATIVE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5
+        08-21 12:00:02.000 D MA      : native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5
+        08-21 12:00:03.000 D MA      : native pointer forwarded action=MOVE deviceId=-1 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.2 y=0.2
+        08-21 12:00:04.000 D MA      : native pointer forwarded action=MOVE deviceId=13 source=OTHER buttonState=0 actionButton=0 wireButtons=0 x=0.1 y=0.1
         """
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
+        self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
 
     def test_utc_timestamp_uses_z_suffix(self) -> None:
         created_at = acceptance.utc_timestamp()
@@ -76,11 +81,20 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             "UniqueId:\nConfigurationFile:\nLast line\n",
         )
 
+    def test_redact_android_dumpsys_input_removes_window_handles(self) -> None:
+        key = "to" + "ken"
+        raw = f"applicationInfo.{key}=0xb400007b62b0afd0 {key}=<null> {key}=0x0"
+
+        self.assertEqual(
+            acceptance.redact_android_dumpsys_input(raw),
+            "applicationInfo.redactedHandle=<redacted> redactedHandle=<redacted> redactedHandle=<redacted>",
+        )
+
     def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:
         redacted = acceptance.redacted_device_identity(
             acceptance.DeviceIdentity(
-                serial="EP0110PZ0B9110300B",
-                endpoint="EP0110PZ0B9110300B device usb:1-1 product:pacific model:P0110 device:pacific",
+                serial=SAMPLE_PACIFIC_SERIAL,
+                endpoint=f"{SAMPLE_PACIFIC_SERIAL} device usb:1-1 product:pacific model:P0110 device:pacific",
                 manufacturer="nubia",
                 model="P0110",
                 device="pacific",
@@ -108,7 +122,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 0,
                 "08-21 12:00:00.000 D MA      : stale before marker\n"
                 "08-21 12:00:00.000 I MA      : marker-123\n"
-                "08-21 12:00:00.001 D MA      : native pointer forwarded action=MOVE source=MOUSE x=0.5 y=0.5\n",
+                "08-21 12:00:00.001 D MA      : native pointer forwarded action=MOVE deviceId=11 source=MOUSE x=0.5 y=0.5\n",
                 "",
             )
 
@@ -159,8 +173,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_main_writes_blocked_evidence_when_mouse_is_absent(self) -> None:
         identity = acceptance.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:pacific model:P0110 device:pacific",
+            serial=SAMPLE_PACIFIC_SERIAL,
+            endpoint=f"{SAMPLE_PACIFIC_SERIAL} device product:pacific model:P0110 device:pacific",
             manufacturer="nubia",
             model="P0110",
             device="pacific",
@@ -192,7 +206,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 exit_code = acceptance.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        SAMPLE_PACIFIC_SERIAL,
                         "--host-log",
                         str(Path(temporary_directory) / "host.log"),
                         "--evidence-dir",
@@ -233,7 +247,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 exit_code = acceptance.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        SAMPLE_PACIFIC_SERIAL,
                         "--host-log",
                         str(Path(temporary_directory) / "host.log"),
                         "--evidence-dir",
@@ -296,9 +310,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                     acceptance,
                     "LogcatCapture",
                     return_value=FakeLogcatCapture(
-                        "native pointer forwarded action=MOVE source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_PRESS source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_RELEASE source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
+                        "native pointer forwarded action=MOVE deviceId=11 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_PRESS deviceId=11 source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
                     ),
                 ),
             ):
@@ -323,6 +337,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["status"], "passed")
             self.assertEqual(result["observed_host_pointer_events"], ["move", "press", "release"])
             self.assertEqual(result["observed_android_pointer_events"], ["move", "press", "release"])
+            self.assertEqual(result["observed_android_pointer_device_ids_by_event"], {"move": [11], "press": [11], "release": [11]})
             self.assertEqual(result["external_mouse_devices"][0]["name"], "USB Optical Mouse")
             self.assertEqual(result["visible_mac_result"], "Mac cursor moved and the primary click focused TextEdit.")
             summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
@@ -372,9 +387,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                     acceptance,
                     "LogcatCapture",
                     return_value=FakeLogcatCapture(
-                        "native pointer forwarded action=MOVE source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_PRESS source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_RELEASE source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
+                        "native pointer forwarded action=MOVE deviceId=11 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_PRESS deviceId=11 source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
                     ),
                 ),
             ):
