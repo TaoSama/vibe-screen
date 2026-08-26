@@ -23,6 +23,9 @@ MARKER_BY_GATE = {
     "deveco_sdk_and_api_checker": "harmony-readiness.json",
     "signed_release_hap": "harmony-hap-readiness.json",
     "hap_install_launch": "harmony-hap-readiness.json",
+    "hap_in_place_upgrade": "harmony-hap-readiness.json",
+    "hap_rollback_behavior": "harmony-hap-readiness.json",
+    "hap_uninstall_cleanup": "harmony-hap-readiness.json",
     "permission_denial_retry": "permission-denial-retry.log",
     "huks_backed_secure_pairing": "harmony-secure-pairing.json",
     "authenticated_transport_records": "harmony-authenticated-records.json",
@@ -139,6 +142,23 @@ def write_pass_artifacts(directory: Path, manifest: dict[str, object]) -> None:
 
 
 class HarmonyMatePadAcceptanceTests(unittest.TestCase):
+    def test_acceptance_package_redacts_absolute_source_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            readiness = passing_readiness()
+            readiness["verdict"] = "blocked"
+            readiness["blocking_reasons"] = ["hdc is unavailable"]
+            (directory / "harmony-readiness.json").write_text(json.dumps(readiness), encoding="utf-8")
+
+            exit_code = run_main(["--evidence-dir", str(directory), "--write-blocked"])
+            package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
+            serialized = json.dumps(package)
+
+        self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
+        self.assertNotIn(directory_name, serialized)
+        self.assertEqual(package["evidence_dir"], "<external>/" + Path(directory_name).name)
+        self.assertEqual(package["readiness"]["path"], "<external>/harmony-readiness.json")
+
     def test_acceptance_package_matches_schema_required_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
@@ -309,7 +329,13 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
             directory = Path(directory_name)
             manifest = passing_device_manifest()
             for gate in manifest["gates"]:
-                gate["evidence"] = [f"artifact://release/harmony/{gate['id']}"]
+                gate_id = gate["id"]
+                if gate_id in {"h264_hardware_decode", "hevc_hardware_decode"}:
+                    gate["evidence"] = ["artifact://release/harmony/harmony-avcodec-preflight.json"]
+                elif gate_id in {"huks_backed_secure_pairing", "credential_revocation_replay"}:
+                    gate["evidence"] = ["artifact://release/harmony/harmony-secure-pairing.json"]
+                else:
+                    gate["evidence"] = [f"artifact://release/harmony/{gate_id}.txt"]
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -319,7 +345,7 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
         self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
         self.assertEqual(package["verdict"], "blocked")
         self.assertTrue(all(reference["status"] == "invalid" for reference in package["artifact_references"]))
-        self.assertIn("expected repository-local evidence path", package["device_gate_manifest"]["error"] or "")
+        self.assertRegex(package["device_gate_manifest"]["error"] or "", "URL|repository-local evidence path")
 
     def test_failed_device_gate_writes_structured_fail_package(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

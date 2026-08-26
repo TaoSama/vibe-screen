@@ -109,6 +109,10 @@ HARMONY_HOST_BUILD_SHA256 ?=
 HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
+HARMONY_HAP_READINESS_DIR ?= $(EVIDENCE_DIR)
+HARMONY_HAP_READINESS_FLAGS ?=
+HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop.json
+HARMONY_HOST_INTEROP_RUN_ID ?= harmony-host-interop-preflight
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -181,11 +185,15 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	actionable-error-current-base-gate \
 	actionable-error-current-base-owner-record \
 	harmony-readiness \
+	harmony-hap-readiness \
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
+	harmony-host-interop-preflight \
+	harmony-host-interop-gate \
 	harmony-avcodec-preflight \
 	harmony-avcodec-validate \
 	harmony-current-base-gate \
+	harmony-matepad-acceptance \
 	soak-30m \
 	soak-2h \
 	soak-8h \
@@ -595,6 +603,14 @@ harmony-readiness:
 		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
 		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",)
 
+harmony-hap-readiness:
+	@test -n "$(strip $(HARMONY_HAP_READINESS_DIR))" || (echo "error: set HARMONY_HAP_READINESS_DIR to a HarmonyOS HAP readiness evidence directory" >&2; exit 2)
+	mkdir -p "$(HARMONY_HAP_READINESS_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_hap_readiness.py \
+		--evidence-dir "$(HARMONY_HAP_READINESS_DIR)" \
+		$(if $(strip $(HARMONY_HDC_TARGET)),--hdc-target "$(HARMONY_HDC_TARGET)",) \
+		$(HARMONY_HAP_READINESS_FLAGS)
+
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py --evidence-root "$(EVIDENCE_DIR)" "$(EVIDENCE_DIR)/harmony-device-gates.json"
@@ -602,6 +618,19 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
+
+harmony-host-interop-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		--run-id "$(HARMONY_HOST_INTEROP_RUN_ID)"
+
+harmony-host-interop-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a redacted HarmonyOS Host interop manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-root "$(EVIDENCE_DIR)" \
+		"$(HARMONY_HOST_INTEROP_JSON)"
 
 harmony-avcodec-preflight:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
@@ -614,6 +643,7 @@ harmony-avcodec-preflight:
 harmony-avcodec-validate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+		--evidence-root "$(EVIDENCE_DIR)" \
 		--validate "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json"
 
 harmony-current-base-gate:
@@ -624,6 +654,12 @@ harmony-current-base-gate:
 		--device-gates "$(HARMONY_DEVICE_GATES_JSON)" \
 		--evidence-root "$(EVIDENCE_DIR)" \
 		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
+
+harmony-matepad-acceptance:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS MatePad Mini acceptance evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_matepad_acceptance.py \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		$(if $(strip $(HARMONY_MATEPAD_ACCEPTANCE_WRITE_BLOCKED)),--write-blocked,)
 
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)

@@ -575,10 +575,15 @@ Input Reader State:
 
 class HarmonyDeviceGateTests(unittest.TestCase):
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
+        evidence = f"evidence/{gate_id}.txt"
+        if gate_id in {"h264_hardware_decode", "hevc_hardware_decode"}:
+            evidence = "evidence/harmony-avcodec-preflight.json"
+        elif gate_id in {"huks_backed_secure_pairing", "credential_revocation_replay"}:
+            evidence = "evidence/harmony-secure-pairing.json"
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [f"evidence/{gate_id}.txt"],
+            "evidence": [evidence],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
@@ -1365,7 +1370,7 @@ class PrepareReleaseTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(f"vibe-screen-{VERSION}-notices.zip", result.stderr)
 
-    def test_release_scan_distinguishes_compiled_literals_from_credentials(self) -> None:
+    def test_release_scan_distinguishes_compiled_literals_from_sensitive_values(self) -> None:
         compiled_literals = (
             b"token=\x00\x01"
             b'\x00"signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz"'

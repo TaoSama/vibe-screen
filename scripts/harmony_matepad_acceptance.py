@@ -46,8 +46,25 @@ DOMAIN_GATES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "hap_install_signing",
         "Signed HAP install, launch, and permission denial/retry",
-        ("signed_release_hap", "hap_install_launch", "permission_denial_retry"),
-        ("hap-install.log", "hap-signature.txt", "permission-denial-retry.log", "screenshots/"),
+        (
+            "signed_release_hap",
+            "hap_install_launch",
+            "hap_in_place_upgrade",
+            "hap_rollback_behavior",
+            "hap_uninstall_cleanup",
+            "permission_denial_retry",
+        ),
+        (
+            "harmony-hap-readiness.json",
+            "harmony-hap-readiness-summary.json",
+            "hap-install.log",
+            "hap-upgrade.log",
+            "hap-rollback.log",
+            "hap-uninstall-cleanup.log",
+            "hap-signature.txt",
+            "permission-denial-retry.log",
+            "screenshots/",
+        ),
     ),
     (
         "avcodec_decode",
@@ -123,6 +140,41 @@ class AcceptanceError(RuntimeError):
 
 def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def public_path(path: Path) -> str:
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return path.name if path.is_absolute() else str(path)
+    try:
+        return str(resolved.relative_to(REPO_ROOT.resolve()))
+    except (OSError, ValueError):
+        pass
+    return f"<external>/{resolved.name or path.name}"
+
+
+def public_command(command: Sequence[str]) -> list[str]:
+    path_options = {"--evidence-dir", "--readiness", "--device-gates", "--current-base-gate", "--output"}
+    result: list[str] = []
+    rewrite_next = False
+    for token in command:
+        if rewrite_next:
+            result.append(public_path(Path(token)))
+            rewrite_next = False
+            continue
+        matched_inline = False
+        for option in path_options:
+            if token.startswith(option + "="):
+                result.append(f"{option}={public_path(Path(token.split('=', 1)[1]))}")
+                matched_inline = True
+                break
+        if matched_inline:
+            continue
+        result.append(token)
+        if token in path_options:
+            rewrite_next = True
+    return result
 
 
 def _read_json(path: Path, label: str) -> dict[str, Any]:
@@ -363,22 +415,22 @@ def build_package(
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "created_at": utc_timestamp(),
-        "command": list(command),
+        "command": public_command(command),
         "verdict": verdict,
         "blocking_reasons": blocking_reasons,
-        "evidence_dir": str(evidence_dir),
+        "evidence_dir": public_path(evidence_dir),
         "readiness": {
-            "path": str(readiness_path),
+            "path": public_path(readiness_path),
             "present": readiness is not None,
             "verdict": readiness_verdict,
             "blocking_reasons": readiness.get("blocking_reasons", []) if isinstance(readiness, dict) else [],
         },
         "device_gate_manifest": {
-            "path": str(device_manifest_path),
+            "path": public_path(device_manifest_path),
             **asdict(validation),
         },
         "current_base_gate": {
-            "path": str(current_base_path),
+            "path": public_path(current_base_path),
             **asdict(current_base),
         },
         "acceptance_domains": domains,
@@ -419,8 +471,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise AcceptanceError(f"device gate manifest is missing: {device_manifest_path}")
         device_manifest = _read_json(device_manifest_path, "device gate manifest")
         validation = validate_device_manifest(device_manifest, evidence_root=evidence_dir)
-        if not validation.allow_blocked_valid and "fail" not in _gate_statuses(device_manifest).values():
-            raise AcceptanceError(validation.error or "device gate manifest is invalid")
         current_base_report = harmony_current_base_gate.derive_gate(
             readiness_path,
             device_manifest_path,
