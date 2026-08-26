@@ -74,11 +74,13 @@ The verifier launches the app with `--audio-playback-self-test`, builds a
 synthetic PCM S16LE stream, starts playback-only AVAudioSession/AVAudioEngine,
 schedules buffers through AVAudioPlayerNode, observes the bounded playback queue,
 forces an overrun/drop, waits for played-buffer and queue-empty counters to
-advance before stopping, restarts on a newer config epoch, and reports a
-single `AUDIO_PLAYBACK_SELF_TEST=PASS` line in the UI. This is an executable
-playback-path check, not audible-device evidence; an iPhone/iPad run with
-external audible confirmation is still required before closing the Phase 5 audio
-gate.
+advance before stopping, restarts on a newer config epoch, and first exposes
+an `AUDIO_PLAYBACK_SELF_TEST=RUNNING` UI line before replacing it with a
+terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` or `AUDIO_PLAYBACK_SELF_TEST=FAIL`
+line; a 15-second app-side timeout turns stalled playback completion into a
+terminal `FAIL` result. This is an executable playback-path check, not
+audible-device evidence; an iPhone/iPad run with external audible confirmation
+is still required before closing the Phase 5 audio gate.
 
 Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 
