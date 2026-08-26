@@ -99,6 +99,8 @@ PHASE3_HOST_SIGNING ?= unknown
 PHASE3_SCREEN_RECORDING ?= unknown
 PHASE3_MINIMUM_OUTPUT_FRAMES ?= 120
 PHASE3_MAXIMUM_DROPPED_FRAMES ?= 0
+WAKE_HOST_CURRENT_BASE_JSON ?= $(EVIDENCE_DIR)/wake-host-current-base-observations.json
+WAKE_HOST_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/wake-host-current-base-gate.json
 PHASE3_REAL_MEDIA_CONTINUITY_JSON ?= $(EVIDENCE_DIR)/real-media-continuity.json
 PHASE3_ADAPTIVE_MEDIA_REPORT ?= $(EVIDENCE_DIR)/adaptive-media-fluctuation.json
 PHASE3_ADAPTIVE_MEDIA_CURRENT_BASE_JSON ?= $(EVIDENCE_DIR)/adaptive-media-current-base.json
@@ -189,7 +191,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-device-environment-gate \
 	phase3-android-current-base-interop-gate \
 	host-display-rotation-current-base-manifest \
-	host-display-rotation-current-base-gate
+	host-display-rotation-current-base-gate \
+	wake-host-current-base-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -738,6 +741,13 @@ host-display-rotation-current-base-manifest:
 host-display-rotation-current-base-gate:
 	@test -f "$(EVIDENCE_DIR)/host-display-rotation-current-base-manifest.json" || $(MAKE) host-display-rotation-current-base-manifest EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)"
 	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_current_base_gate --manifest $(EVIDENCE_DIR)/host-display-rotation-current-base-manifest.json --output $(EVIDENCE_DIR)/host-display-rotation-current-base-gate.json
+
+wake-host-current-base-gate:
+	mkdir -p "$(EVIDENCE_DIR)"
+	@test -f "$(WAKE_HOST_CURRENT_BASE_JSON)" || printf '%s\n' '{"blocking_notes": ["No explicit WakeHost current-base evidence was supplied."], "notes": "Default current-base WakeHost summary is intentionally empty and blocked until retained hardware WOL evidence is attached."}' > "$(WAKE_HOST_CURRENT_BASE_JSON)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base \
+		"$(WAKE_HOST_CURRENT_BASE_JSON)" \
+		--output "$(WAKE_HOST_CURRENT_BASE_GATE_JSON)"
 
 phase2-tablet-preflight:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_preflight --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/phase2-tablet-preflight.json

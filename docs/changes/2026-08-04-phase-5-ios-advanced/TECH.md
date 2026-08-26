@@ -97,8 +97,10 @@ Negotiation rules:
   shared secret source, while USB/default sessions remain deny-only. A request
   that passes the proof, replay, device-identity, and broadcast-target gates is
   converted to a standard UDP Wake-on-LAN magic packet. Wake-on-LAN remains
-  transport behavior, not authentication, and sleeping-host/router/firmware
-  behavior is still a real-device acceptance gate.
+  transport behavior, not authentication. #199 owns the current-base evidence
+  gate for this area after being rebased onto the merged #225 baseline, and
+  sleeping-host/router/firmware behavior is still a real-device acceptance
+  gate.
 - **Managed devices:** Apple MDM configuration is read locally. The protocol
   carries product restrictions/results, not vendor-specific MDM payloads.
 
@@ -159,7 +161,10 @@ Negotiation rules:
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
   action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
-  produces the standard 102-byte packet only after local authorization/policy.
+  produces the standard 102-byte packet only after local HMAC authorization,
+  nonce replay, device-identity, and broadcast-target checks pass. The
+  current-base closure gate remains blocked without real sleeping Mac and WOL
+  network evidence.
 
 ## Host and security TODO
 
