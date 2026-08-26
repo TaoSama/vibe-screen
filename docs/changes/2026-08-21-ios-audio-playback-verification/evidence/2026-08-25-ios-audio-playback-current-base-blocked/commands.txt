@@ -1,11 +1,8 @@
-$ git fetch origin --prune
-exit 0
-
 $ git rebase origin/main
-Successfully rebased and updated refs/heads/codex/ios-audio-pcm-verifier.
+Successfully rebased and updated refs/heads/codex/pr209-current-base-20260827.
 
 $ git rev-parse origin/main
-f46163524fe757e7021a4333b3370af00ec651f1
+74a539c033b67733af72e651f81d6364603a8a07
 
 $ xcode-select -p
 /Library/Developer/CommandLineTools
@@ -20,7 +17,7 @@ $ xcrun xctrace list devices
 xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
 
 $ TMPDIR=$PWD/.build/tmp swift build --package-path apps/ios --configuration release
-Build complete! (63.78s)
+Build complete! (260.77s)
 
 $ TMPDIR=$PWD/.build/tmp apps/ios/.build/release/vibescreen-ios-selftest
 RUN: framing
@@ -37,7 +34,7 @@ $ TMPDIR=$PWD/.build/tmp apps/ios/Scripts/verify-generated-protocol.sh
 generated macOS and iOS Protocol v1 bindings are current
 
 $ TMPDIR=$PWD/.build/tmp make protocol
-Ran 37 tests in 111.148s
+Ran 37 tests in 114.188s
 OK
 
 $ plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
@@ -52,10 +49,20 @@ exit 0
 $ git diff --check
 exit 0
 
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_ios_device_acceptance_gate tools.tests.test_ios_app_signing_readiness tools.tests.test_ios_current_base_manifest tools.tests.test_ios_current_base_gate tools.tests.test_ios_hdr_edr_gate -v
+Ran 83 tests in 1.109s
+OK
+
+$ python3 -m json.tool docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked/acceptance.json
+exit 0
+
+$ cd docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked && shasum -a 256 -c SHA256SUMS
+README.md: OK
+acceptance.json: OK
+commands.txt: OK
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked --output .build/pr209-ios-audio-privacy-scan.json
+exit 0
+
 $ swift test --package-path apps/ios --configuration release
 error: no such module 'XCTest'
-
-$ make protocol
-initial attempt failed before completing when Python and Go could not create
-temporary directories under the system temp volume: No space left on device.
-Rerun with TMPDIR=$PWD/.build/tmp passed as shown above.

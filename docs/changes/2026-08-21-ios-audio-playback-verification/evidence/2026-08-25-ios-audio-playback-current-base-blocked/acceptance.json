@@ -4,9 +4,9 @@
   "platform": "ios",
   "status": "blocked",
   "repository": {
-    "base_commit": "f46163524",
+    "base_commit": "74a539c0",
     "branch": "codex/ios-audio-pcm-verifier",
-    "dirty_at_capture": true
+    "dirty_at_capture": false
   },
   "environment": {
     "selected_developer_dir": "/Library/Developer/CommandLineTools",
@@ -37,6 +37,10 @@
     "swift_parse_app_sources": "pass",
     "git_diff_check": "pass",
     "swift_test_release": "blocked: Command Line Tools cannot import XCTest",
+    "ios_gate_unittest_bundle": "pass: 83 tests",
+    "evidence_json_tool": "pass",
+    "evidence_sha256": "pass",
+    "evidence_privacy_scan": "pass",
     "xcodebuild_version": "blocked: full Xcode is not selected",
     "xctrace_devices": "blocked: xctrace is unavailable without full Xcode"
   },
@@ -67,8 +71,8 @@
   },
   "android_evidence_used_for_ios_gates": false,
   "notes": [
-    "Current-base verification reran after rebasing onto origin/main f46163524.",
-    "A system temporary-volume no-space failure was mitigated by rerunning make protocol with TMPDIR=$PWD/.build/tmp.",
+    "Current-base verification reran after rebasing onto origin/main 74a539c0.",
+    "The verification commands used TMPDIR=$PWD/.build/tmp for SwiftPM, SwiftProtobuf, Go, and Python temporary files.",
     "This record does not claim real audible iPhone/iPad playback."
   ]
 }

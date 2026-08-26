@@ -1,9 +1,9 @@
 # iOS audio playback blocked evidence
 
-Date: 2026-08-26
+Date: 2026-08-27
 Repository: `TaoSama/vibe-screen`
 Branch: `codex/ios-audio-pcm-verifier`
-Current base: `origin/main` at `f46163524`
+Current base: `origin/main` at `74a539c0`
 
 ## Status
 
@@ -34,7 +34,7 @@ Therefore this evidence does not claim real audible iPhone/iPad playback.
 
 ```text
 $ TMPDIR=$PWD/.build/tmp swift build --package-path apps/ios --configuration release
-Build complete!
+Build complete! (260.77s)
 
 $ TMPDIR=$PWD/.build/tmp apps/ios/.build/release/vibescreen-ios-selftest
 RUN: framing
@@ -51,7 +51,7 @@ $ TMPDIR=$PWD/.build/tmp apps/ios/Scripts/verify-generated-protocol.sh
 generated macOS and iOS Protocol v1 bindings are current
 
 $ TMPDIR=$PWD/.build/tmp make protocol
-Ran 37 tests in 111.148s
+Ran 37 tests in 114.188s
 OK
 
 $ plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
@@ -65,11 +65,17 @@ exit 0
 
 $ git diff --check
 exit 0
+
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_ios_device_acceptance_gate tools.tests.test_ios_app_signing_readiness tools.tests.test_ios_current_base_manifest tools.tests.test_ios_current_base_gate tools.tests.test_ios_hdr_edr_gate -v
+Ran 83 tests in 1.109s
+OK
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked --output .build/pr209-ios-audio-privacy-scan.json
+exit 0
 ```
 
-An earlier `make protocol` attempt failed before completing because the system
-temporary volume could not create Python/Go temporary directories (`No space
-left on device`). Rerunning with the worktree-local `TMPDIR` above passed.
+The 2026-08-27 current-base rerun used the worktree-local `TMPDIR` above for
+SwiftPM, SwiftProtobuf, Go, and Python temporary files.
 
 ## Local environment commands
 

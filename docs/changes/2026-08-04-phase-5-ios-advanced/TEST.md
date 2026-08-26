@@ -1,16 +1,16 @@
 # Phase 5 verification record
 
-Date: 2026-08-05; updated 2026-08-25 for iOS PCM playback verifier
+Date: 2026-08-05; updated 2026-08-27 for iOS PCM playback verifier
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
 
 ## Passed
 
-2026-08-25 local Command Line Tools run from rebased branch
+2026-08-27 local Command Line Tools run from rebased branch
 `codex/ios-audio-pcm-verifier` added and verified the core playback queue
 policy used by the iOS AVFoundation adapter against current `origin/main`
-`f46163524`:
+`74a539c0`:
 
 ```bash
 swift build --package-path apps/ios --configuration release
