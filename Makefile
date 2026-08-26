@@ -161,6 +161,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
+	trusted-lan-smoke-evidence-check \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
@@ -557,6 +558,10 @@ evidence-latency-gate:
 		$(LATENCY_MANIFEST) \
 		--gate-profile $(LATENCY_GATE_PROFILE) \
 		--output $(EVIDENCE_DIR)/latency-evidence-report.json
+
+trusted-lan-smoke-evidence-check:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a trusted-LAN smoke evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_smoke --evidence-dir "$(EVIDENCE_DIR)" --output "$(EVIDENCE_DIR)/trusted-lan-smoke-verdict.json"
 
 harmony-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)
