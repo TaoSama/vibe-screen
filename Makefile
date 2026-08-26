@@ -86,6 +86,13 @@ LATENCY_DEVICE_INFO ?=
 LATENCY_REPOSITORY_REVISION ?=
 LATENCY_GATE_PROFILE ?=
 LATENCY_MANIFEST ?= $(EVIDENCE_DIR)/manifest.json
+REAL_DEVICE_GATE_DIR ?= $(EVIDENCE_DIR)/real-device-gate
+REAL_DEVICE_GATE_EXTRA_ARGS ?=
+REAL_DEVICE_EXPECTED_MANUFACTURER ?= nubia
+REAL_DEVICE_EXPECTED_MODEL ?= P0110
+REAL_DEVICE_EXPECTED_DEVICE ?= pacific
+REAL_DEVICE_EXPECTED_ANDROID_RELEASE ?= 16
+REAL_DEVICE_EXPECTED_SDK ?= 36
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -185,6 +192,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-usb-live-smoke \
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
+	evidence-real-device-gate-preflight \
 	evidence-trusted-lan-preflight \
 	trusted-lan-smoke-evidence-check \
 	evidence-reconnect-timing-blocked \
@@ -653,6 +661,20 @@ harmony-readiness:
 		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
 		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
 		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",)
+
+evidence-real-device-gate-preflight: require-evidence-serial
+	mkdir -p $(REAL_DEVICE_GATE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.real_device_gate \
+		--serial $(EVIDENCE_SERIAL) \
+		$(if $(strip $(REAL_DEVICE_EXPECTED_MANUFACTURER)),--expected-manufacturer $(REAL_DEVICE_EXPECTED_MANUFACTURER),) \
+		$(if $(strip $(REAL_DEVICE_EXPECTED_MODEL)),--expected-model $(REAL_DEVICE_EXPECTED_MODEL),) \
+		$(if $(strip $(REAL_DEVICE_EXPECTED_DEVICE)),--expected-device $(REAL_DEVICE_EXPECTED_DEVICE),) \
+		$(if $(strip $(REAL_DEVICE_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(REAL_DEVICE_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(REAL_DEVICE_EXPECTED_SDK)),--expected-sdk $(REAL_DEVICE_EXPECTED_SDK),) \
+		--evidence-dir $(REAL_DEVICE_GATE_DIR) \
+		--output $(REAL_DEVICE_GATE_DIR)/real-device-gate.json \
+		$(REAL_DEVICE_GATE_EXTRA_ARGS)
 
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)

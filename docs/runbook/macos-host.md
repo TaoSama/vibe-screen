@@ -173,6 +173,23 @@ If that gate's prerequisite flag is false, leave the downstream runtime stages
 as not-run and fix the missing signing identity, source provenance, TCC grant,
 listener, or gate-specific entitlement before claiming LAN, reconnect, Host RSS,
 native-pointer, stylus, controller, login/headless, or compatibility acceptance.
+
+For Android acceptance runs, archive the unified session readiness record before
+starting soak, latency, reconnect, or input work:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  REAL_DEVICE_GATE_DIR=<evidence-dir>
+```
+
+That runner wraps this Host preflight with the Android device identity, ADB
+reverse state, foreground app state, Host TCP listener, and stream telemetry
+checks. It writes `<evidence-dir>/real-device-gate.json` and reports
+`result=blocked` if the stable signing identity, Screen Recording, Accessibility,
+listener, or fresh structured stream telemetry is missing. It does not launch
+the Host or modify macOS privacy state.
+
 ## USB quick start
 
 1. Enable Android developer options and USB debugging, authorize the Mac, and
