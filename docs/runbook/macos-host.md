@@ -104,7 +104,7 @@ Vibe Screen. The app rechecks permission while it is running, but a relaunch is
 the most reliable path after a new grant. Never grant Accessibility to an
 untrusted build: it can synthesize system-wide input.
 
-## Touch-rerun preflight
+## Host-backed device gate preflight
 
 Before running any Host-backed Android gate, install the stable local Host and
 require the source-bound Host preflight to pass:
@@ -420,6 +420,16 @@ Loopback-only TCP 54321 listeners are not LAN evidence.
 - After a macOS update, assume the private virtual-display API may have changed
   until verified on that exact release.
 
+`CGPreflightScreenCaptureAccess()` reporting granted is necessary but not
+sufficient for ScreenCaptureKit. If logs show `Screen recording permission
+granted (CGPreflight)` followed by `SCShareableContent verification OK — 0
+displays found` or `SCShareableContent returned 0 displays`, record the run as a
+ScreenCaptureKit display-inventory blocker and do not claim that the Host is
+listening unless `lsof -nP -iTCP:54321 -sTCP:LISTEN` proves it. Current Main
+Display startup attempts the existing `CGDisplayStream` fallback when
+ScreenCaptureKit cannot enumerate displays, but a pass still requires a real
+listener and rising frame evidence.
+
 ### Touch, native input, or window migration does nothing
 
 Recheck Accessibility permission. Remove and re-add the current app if it was
@@ -482,13 +492,32 @@ other environment details may be sensitive.
 A release build needs Swift 6-compatible Apple tools. XCTest additionally
 requires full Xcode to be selected with `xcode-select`; Command Line Tools
 alone can build the executable but cannot run this package's XCTest suite.
+Run the XCTest toolchain preflight before `swift test` when recording local
+MacHost test evidence. It writes `.build/dev-macos-host/xctest-toolchain.txt`
+and fails closed with the selected developer directory, Swift path/version, and
+`xcodebuild` status when the machine is still using Command Line Tools.
 
 ```bash
 make baseline-macos-build
 make baseline-macos-self-test
+make baseline-macos-xctest-preflight
 make baseline-macos-test
 make baseline-macos-app
 ```
+
+If the preflight reports `/Library/Developer/CommandLineTools`, install full
+Xcode if needed and switch the active developer directory before rerunning the
+test gate:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+make baseline-macos-test
+```
+
+Do not record `make baseline-macos-test` as failed product behavior when this
+preflight blocks first; record it as an XCTest toolchain blocker and keep the
+affected README gate open until the full-Xcode run executes.
 
 `make baseline-macos-app` creates a stable-signed local `.app` by default,
 versioned ZIP, and SHA-256 file under `.build/release-artifacts/`. Set

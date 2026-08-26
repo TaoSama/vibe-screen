@@ -76,6 +76,7 @@ TOUCH_RERUN_EXPECTED_ANDROID_MODEL ?=
 TOUCH_RERUN_EXPECTED_ANDROID_DEVICE ?=
 TOUCH_RERUN_EXPECTED_ANDROID_RELEASE ?=
 TOUCH_RERUN_EXPECTED_ANDROID_SDK ?=
+TOUCH_RERUN_REQUIRE_CURRENT_SOURCE ?= 1
 TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
 TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
 TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
@@ -348,16 +349,20 @@ phase3-android-current-base-interop-gate:
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
 
-baseline-macos-test:
+baseline-macos-xctest-preflight:
+	python3 scripts/macos_dev_host.py xctest-preflight
+
+baseline-macos-test: baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build
-	"baseline/MacHost/.build/release/Vibe Screen" --host-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --transport-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --reliability-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --protocol-v1-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --video-encoder-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --phase3-real-media-self-test
+	@host_bin="$$(cd baseline/MacHost && swift build -c release --show-bin-path)/Vibe Screen"; \
+		"$$host_bin" --host-self-test; \
+		"$$host_bin" --transport-self-test; \
+		"$$host_bin" --reliability-self-test; \
+		"$$host_bin" --protocol-v1-self-test; \
+		"$$host_bin" --video-encoder-self-test; \
+		"$$host_bin" --phase3-real-media-self-test
 
 baseline-macos-app:
 	python3 scripts/package_macos.py
@@ -375,8 +380,7 @@ baseline-macos-host-readiness:
 		--json-output $(EVIDENCE_DIR)/host-readiness.json \
 		--port $(EVIDENCE_PORT)
 
-baseline-macos-touch-preflight:
-	python3 scripts/macos_dev_host.py preflight
+baseline-macos-touch-preflight: baseline-macos-host-preflight
 
 baseline-android-test:
 	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
@@ -436,7 +440,6 @@ evidence-usb-smoke-preflight: require-evidence-serial
 		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
 
 evidence-touch-rerun-preflight: require-evidence-serial
-	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.touch_rerun_preflight \
 		--serial $(EVIDENCE_SERIAL) \
@@ -446,6 +449,7 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		$(if $(filter 1 true yes,$(TOUCH_RERUN_REQUIRE_CURRENT_SOURCE)),--source-root . --require-current-source,) \
 		--output $(TOUCH_RERUN_PREFLIGHT)
 
 evidence-touch-rerun-summary:

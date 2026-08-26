@@ -277,7 +277,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
 
-    def test_preflight_command_does_not_require_identity_in_keychain(self) -> None:
+    def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"
             args = mock.Mock(
@@ -340,10 +340,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 result = macos_dev_host.preflight_command(args)
             report_text = report.read_text(encoding="utf-8")
 
-            self.assertEqual(result, 0)
-            self.assertIn("Status: PASS", report_text)
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("missing identity", report_text)
             self.assertIn("Identity: Missing Dev", report_text)
-        resolve_mock.assert_not_called()
+        resolve_mock.assert_called_once_with("Missing Dev")
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
 

@@ -1078,6 +1078,18 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 "Vibe Screen Dev",
             )
 
+    def test_named_identity_lookup_timeout_fails_closed(self) -> None:
+        with mock.patch.object(
+            package_macos.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(
+                ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
+                30,
+            ),
+        ):
+            with self.assertRaisesRegex(SystemExit, "security find-identity -v -p codesigning timed out"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
     def test_identity_lookup_requires_an_exact_name(self) -> None:
         lookup = subprocess.CompletedProcess(
             args=("security", "find-identity"),
@@ -1434,7 +1446,7 @@ class PrepareReleaseTests(unittest.TestCase):
     def test_collect_source_identity_reads_commit_tree_and_dirty_state(self) -> None:
         calls: list[tuple[str, ...]] = []
 
-        def fake_run(*command: str, cwd: Path | None = None) -> str:
+        def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
             calls.append(command)
             if command == ("git", "rev-parse", "HEAD"):
                 return "a" * 40
@@ -1546,6 +1558,18 @@ class PrepareReleaseTests(unittest.TestCase):
         runner = PHASE3_RUNNER.read_text(encoding="utf-8")
         self.assertNotIn("print(peer_output", runner)
         self.assertIn("print_success_summary(arguments.mode, arguments.slice)", runner)
+
+    def test_baseline_macos_test_fails_closed_before_swiftpm_xctest(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
+        self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
+        self.assertIn("swift build -c release --show-bin-path", makefile)
+        self.assertNotIn(
+            '"baseline/MacHost/.build/release/Vibe Screen" --host-self-test',
+            makefile,
+        )
 
     def test_phase0_macos_job_gates_local_synthetic_product_direct_and_forced_relay_e2e(
         self,

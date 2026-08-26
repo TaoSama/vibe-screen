@@ -49,7 +49,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         self.assertIn("enum InternetProductSessionRealMediaSelfTest", self_test)
         self.assertIn("does not claim device decoder continuity", self_test)
         self.assertIn(
-            '"baseline/MacHost/.build/release/Vibe Screen" --phase3-real-media-self-test',
+            '"$$host_bin" --phase3-real-media-self-test',
             makefile,
         )
 
