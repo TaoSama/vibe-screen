@@ -577,6 +577,26 @@ class ReleaseGateManifestTests(unittest.TestCase):
             errors,
         )
 
+    def test_evidence_files_must_not_escape_evidence_root_through_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "evidence"
+            outside = Path(directory) / "outside"
+            root.mkdir()
+            outside.mkdir()
+            (outside / "private.log").write_text("private evidence\n", encoding="utf-8")
+            (root / "leaked.log").symlink_to(outside / "private.log")
+
+            manifest = passing_manifest()
+            gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
+            gate["evidence_files"] = ["leaked.log"]
+
+            errors = validate_manifest(manifest, evidence_root=root)
+
+        self.assertIn(
+            "gates.public_internet_direct_path.evidence_files[0]: expected file under evidence root",
+            errors,
+        )
+
     def test_cli_prints_matrix_and_validates_manifest(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):
