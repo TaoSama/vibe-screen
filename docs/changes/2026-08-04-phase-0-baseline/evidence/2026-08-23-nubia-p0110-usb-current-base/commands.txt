@@ -1,0 +1,29 @@
+# command ledger
+2026-08-22T18:41:30Z
+/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen
+## codex/nubia-p0110-usb-current-base
+?? docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/
+50694049096783466481f418c41a5eb50740e871
+50694049096783466481f418c41a5eb50740e871
+existing locks before run:
+-rw-r--r--@ 1 luwentao  wheel  0 Aug 22 23:45 /tmp/vibe-screen-device-android.lock
+processes before run:
+luwentao         17935   0.0  0.0 443070096  23216   ??  S     3:20PM   0:00.24 .build/release/Vibe Screen --help
+luwentao         92943   0.0  0.1 446346960  30512   ??  S    Fri03PM  75:40.25 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+listeners before run:
+mkdir -p docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial EP0110PZ0B9110300B --package dev.telemachus.display --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/device-info.json
+## start active usb validation 2026-08-22T18:42:17Z
+$ adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+$ adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
+$ VIBE_SCREEN_TELEMETRY_PATH=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen/docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/host-telemetry.jsonl baseline/MacHost/.build/release/Vibe\ Screen
+$ open .build/current-usb-host-app/Vibe\ Screen.app
+## independent follow-up checks 2026-08-22T18:50:00Z
+$ make baseline-macos-touch-preflight > baseline-macos-touch-preflight.txt 2>&1
+$ echo $? > baseline-macos-touch-preflight.exit
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_usb_live_smoke -v > test-usb-live-smoke.txt 2>&1
+$ echo $? > test-usb-live-smoke.exit
+## documentation and hash finalization 2026-08-22T18:55:00Z
+$ write acceptance.json with result=insufficient and explicit non-claims
+$ write README.md with current-base insufficient verdict and boundaries
+$ (cd docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS)

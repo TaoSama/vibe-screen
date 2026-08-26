@@ -1,0 +1,85 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "nubia_p0110_usb_smoke_refresh",
+  "result": "pass",
+  "scope": "20_second_current_window_usb_stream_refresh_only",
+  "collected_at_local": "2026-08-22T02:11:21+08:00",
+  "repository_head_at_collection": "321eb3918026184a1b26ba8509ddee5f2d99878f",
+  "base_commit": "baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38",
+  "installed_binary_provenance_revalidated": false,
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36
+  },
+  "coordination": {
+    "mandatory_locks_absent_before_adb": true,
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "lock_owner": "codex-pr169-refresh-clean-window",
+    "lock_acquired_at_utc": "2026-08-21T18:11:21Z",
+    "lock_released_at_utc": "2026-08-21T18:11:44Z",
+    "stale_test_lock_present": true,
+    "stale_test_lock_path": "/tmp/vibe-screen-device-android-test.lock",
+    "stale_test_lock_lsof_holder_observed": false
+  },
+  "preconditions": {
+    "adb_reverse_54321": true,
+    "adb_reverse_entry": "UsbFfs tcp:54321 tcp:54321",
+    "host_pid": 92943,
+    "host_listener": "127.0.0.1:54321",
+    "host_listener_observed": true
+  },
+  "android_app": {
+    "package": "dev.telemachus.display",
+    "activity": "dev.telemachus.display/.MainActivity",
+    "pid": 27526,
+    "foreground_observed": true
+  },
+  "connection": {
+    "host_side_adb_pid": 11477,
+    "host_pid": 92943,
+    "endpoint": "127.0.0.1:58371->127.0.0.1:54321",
+    "host_loopback_established_observed": true,
+    "device_socket_inode_match_observed": true,
+    "device_socket_inode": 165563190
+  },
+  "stream_telemetry": {
+    "observation_window_seconds": 20,
+    "logcat_cleared_before_window": true,
+    "pid_scoped_logcat": true,
+    "session_epoch": 2,
+    "stream_stats_count": 20,
+    "fps_min": 39.14044512663085,
+    "fps_max": 60.69651741293532,
+    "mbps_min": 0.27145970836531086,
+    "mbps_max": 0.3710567164179105,
+    "decode_stats_count": 19,
+    "decoder_input_min": 20100,
+    "decoder_input_max": 21180,
+    "decoder_output_min": 20099,
+    "decoder_output_max": 21179,
+    "decoder_dropped_frames": 0,
+    "fatal_or_androidruntime_crash_observed": false,
+    "tombstones_empty": true
+  },
+  "claims": {
+    "p0110_usb_short_stream_refresh_passed": true,
+    "usb_connection_observed": true,
+    "stream_stats_observed": true,
+    "current_window_crash_free": true,
+    "current_head_binary_provenance_passed": false,
+    "ui_foreground_observed": true,
+    "input_passed": false,
+    "latency_passed": false,
+    "long_soak_passed": false,
+    "host_rss_no_growth_passed": false,
+    "native_pointer_hid_passed": false,
+    "physical_stylus_passed": false,
+    "controller_runtime_passed": false,
+    "lan_passed": false,
+    "internet_passed": false
+  }
+}

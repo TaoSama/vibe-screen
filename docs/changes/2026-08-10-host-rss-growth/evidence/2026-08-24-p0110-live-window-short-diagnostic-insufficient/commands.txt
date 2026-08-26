@@ -1,0 +1,12 @@
+started_at=2026-08-24T11:11:11Z
+host_pid=22385
+adb_serial=<device-serial>
+finished_at=2026-08-24T11:21:31Z
+host_memory_diagnostic_exit=1
+host_log_telemetry_exit=0
+live_fact_capture_at=2026-08-24T11:27:51Z
+command: ps -p 22385 -o pid,etime,command
+command: lsof -nP -a -p 22385 -iTCP:54321 -sTCP:LISTEN | awk ...
+command: ps eww -p 22385 | tr space newline | selected env keys
+command: shasum -a 256 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+command: adb -s <device-serial> get-state / getprop identity / reverse --list / pidof / dumpsys window focus

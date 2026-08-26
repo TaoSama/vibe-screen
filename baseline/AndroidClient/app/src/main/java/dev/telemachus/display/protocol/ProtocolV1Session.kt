@@ -5,8 +5,11 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
 import dev.telemachus.display.WakeHostPolicy
+import dev.telemachus.display.WakeHostProof
 import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.AudioConfig
+import dev.vibescreen.protocol.v1.AudioConfigResult
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
@@ -25,9 +28,11 @@ import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
 import dev.vibescreen.protocol.v1.KeyEvent
 import dev.vibescreen.protocol.v1.ListDisplaysRequest
+import dev.vibescreen.protocol.v1.ManagedRestrictionResult
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
+import dev.vibescreen.protocol.v1.PeripheralEvent
 import dev.vibescreen.protocol.v1.PointerEvent
 import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.ProtocolError
@@ -79,6 +84,7 @@ internal class ProtocolV1Session(
     private val transport: TransportKind,
     private val codecs: List<Codec>,
     private val advertiseController: Boolean = false,
+    private val advertisePeripheralInputFramework: Boolean = false,
     localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
     private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
     private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
@@ -90,6 +96,21 @@ internal class ProtocolV1Session(
         data class DisplaysAvailable(
             val displays: List<DisplayOption>,
             val selectedId: String,
+        ) : Action()
+
+        data class DisplaySelectionPending(
+            val selectedId: String,
+            val pendingId: String,
+        ) : Action()
+
+        data class DisplaySelectionConfirmed(
+            val selectedId: String,
+        ) : Action()
+
+        data class DisplaySelectionRejected(
+            val selectedId: String,
+            val rejectedId: String,
+            val reason: String,
         ) : Action()
 
         data class VideoConfigurationRequested(
@@ -113,6 +134,14 @@ internal class ProtocolV1Session(
             val configEpoch: Long,
             val reason: String,
         ) : Action()
+
+        data class AudioConfigurationRequested(
+            val config: AudioConfig,
+            val sessionEpoch: Long,
+            val correlationId: Long,
+        ) : Action()
+
+        data class AudioStopped(val reason: String) : Action()
 
         data class DisplayGeometryChanged(
             val width: Int,
@@ -225,10 +254,26 @@ internal class ProtocolV1Session(
         val isVirtual: Boolean,
     )
 
+    data class RestrictionResult(
+        val restriction: String,
+        val allowed: Boolean,
+        val source: String,
+        val reason: String,
+    ) {
+        fun toProtocol(): ManagedRestrictionResult =
+            ManagedRestrictionResult
+                .newBuilder()
+                .setRestriction(restriction)
+                .setAllowed(allowed)
+                .setSource(source)
+                .setReason(reason)
+                .build()
+    }
+
     class ManagedPolicy(
         val isManaged: Boolean,
         val clipboardAllowed: Boolean,
-        val fileTransferAllowed: Boolean,
+        fileTransferAllowed: Boolean,
         val audioAllowed: Boolean,
         val wakeAllowed: Boolean,
         val customGesturesAllowed: Boolean,
@@ -236,9 +281,28 @@ internal class ProtocolV1Session(
         val maximumFileBytes: Long,
         allowedHosts: Set<String>,
         allowedHostsRestricted: Boolean? = null,
+        deniedHosts: Set<String> = emptySet(),
+        restrictionResults: List<RestrictionResult>? = null,
     ) {
         val allowedHosts = allowedHosts.mapNotNull { normalizeHost(it) }.toSet()
-        val allowedHostsRestricted = allowedHostsRestricted ?: this.allowedHosts.isNotEmpty()
+        val deniedHosts = deniedHosts.mapNotNull { normalizeHost(it) }.toSet()
+        val allowedHostsRestricted = (allowedHostsRestricted ?: false) || this.allowedHosts.isNotEmpty()
+        val fileTransferAllowed = fileTransferAllowed && maximumFileBytes > 0L
+        val restrictionResults =
+            restrictionResults ?: results(
+                source = if (isManaged) "managed_configuration" else "unmanaged",
+                reason = if (isManaged) "Local managed configuration result." else "No local managed configuration is present.",
+                clipboardAllowed = clipboardAllowed,
+                fileTransferAllowed = this.fileTransferAllowed,
+                audioAllowed = audioAllowed,
+                wakeAllowed = wakeAllowed,
+                customGesturesAllowed = customGesturesAllowed,
+                hostActionsAllowed = hostActionsAllowed,
+                maximumFileBytes = maximumFileBytes,
+                allowedHostsRestricted = this.allowedHostsRestricted,
+                allowedHosts = this.allowedHosts,
+                deniedHosts = this.deniedHosts,
+            )
 
         fun applying(remote: ManagedPolicy): ManagedPolicy {
             if (!remote.isManaged) return this
@@ -250,22 +314,43 @@ internal class ProtocolV1Session(
                     remote.allowedHostsRestricted -> remote.allowedHosts
                     else -> emptySet()
                 }
+            val effectiveDeniedHosts = this.deniedHosts + remote.deniedHosts
+            val effectiveHosts = hosts - effectiveDeniedHosts
+            val maximum = minOf(maximumFileBytes, remote.maximumFileBytes)
+            val fileTransfer = fileTransferAllowed && remote.fileTransferAllowed && maximum > 0L
             return ManagedPolicy(
                 isManaged = true,
                 clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
-                fileTransferAllowed = fileTransferAllowed && remote.fileTransferAllowed,
+                fileTransferAllowed = fileTransfer,
                 audioAllowed = audioAllowed && remote.audioAllowed,
                 wakeAllowed = wakeAllowed && remote.wakeAllowed,
                 customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
                 hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
-                maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
-                allowedHosts = hosts,
+                maximumFileBytes = maximum,
+                allowedHosts = effectiveHosts,
                 allowedHostsRestricted = restricted,
+                deniedHosts = effectiveDeniedHosts,
+                restrictionResults =
+                    results(
+                        source = "effective_deny_wins",
+                        reason = "Local and remote managed policy were combined with deny-wins semantics.",
+                        clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
+                        fileTransferAllowed = fileTransfer,
+                        audioAllowed = audioAllowed && remote.audioAllowed,
+                        wakeAllowed = wakeAllowed && remote.wakeAllowed,
+                        customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
+                        hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
+                        maximumFileBytes = maximum,
+                        allowedHostsRestricted = restricted,
+                        allowedHosts = effectiveHosts,
+                        deniedHosts = effectiveDeniedHosts,
+                    ),
             )
         }
 
         fun allowsHost(hostId: String): Boolean {
             val normalized = normalizeHost(hostId)
+            if (normalized != null && normalized in deniedHosts) return false
             return !allowedHostsRestricted || (normalized != null && normalized in allowedHosts)
         }
 
@@ -280,6 +365,8 @@ internal class ProtocolV1Session(
             maximumFileBytes: Long = this.maximumFileBytes,
             allowedHosts: Set<String> = this.allowedHosts,
             allowedHostsRestricted: Boolean = this.allowedHostsRestricted,
+            deniedHosts: Set<String> = this.deniedHosts,
+            restrictionResults: List<RestrictionResult>? = null,
         ): ManagedPolicy =
             ManagedPolicy(
                 isManaged = isManaged,
@@ -292,6 +379,8 @@ internal class ProtocolV1Session(
                 maximumFileBytes = maximumFileBytes,
                 allowedHosts = allowedHosts,
                 allowedHostsRestricted = allowedHostsRestricted,
+                deniedHosts = deniedHosts,
+                restrictionResults = restrictionResults,
             )
 
         fun toStatus(): ManagedPolicyStatus =
@@ -307,6 +396,8 @@ internal class ProtocolV1Session(
                 .setMaximumFileBytes(maximumFileBytes)
                 .addAllAllowedHosts(allowedHosts.sorted())
                 .setAllowedHostsRestricted(allowedHostsRestricted)
+                .addAllRestrictionResults(restrictionResults.map { it.toProtocol() })
+                .addAllDeniedHosts(deniedHosts.sorted())
                 .build()
 
         companion object {
@@ -328,6 +419,15 @@ internal class ProtocolV1Session(
             fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {
                 if (!status.managed) return UNMANAGED
                 val hosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val deniedHosts = status.deniedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val results = status.restrictionResultsList.map { result ->
+                    RestrictionResult(
+                        restriction = result.restriction,
+                        allowed = result.allowed,
+                        source = result.source,
+                        reason = result.reason,
+                    )
+                }
                 return ManagedPolicy(
                     isManaged = true,
                     clipboardAllowed = status.clipboardAllowed,
@@ -339,13 +439,116 @@ internal class ProtocolV1Session(
                     maximumFileBytes = status.maximumFileBytes,
                     allowedHosts = hosts,
                     allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
+                    deniedHosts = deniedHosts,
+                    restrictionResults = results.ifEmpty { null },
                 )
             }
+
+            fun hasCompleteRestrictionResults(status: ManagedPolicyStatus): Boolean {
+                if (!status.managed) return true
+                val results = status.restrictionResultsList
+                if (results.size != REQUIRED_RESTRICTIONS.size) return false
+                if (results.map { it.restriction }.toSet() != REQUIRED_RESTRICTIONS) return false
+                if (results.groupingBy { it.restriction }.eachCount().values.any { it != 1 }) return false
+                val normalizedHosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                val deniedHosts = status.deniedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                return results.all { result ->
+                    result.source.isNotBlank() &&
+                        result.reason.isNotBlank() &&
+                        result.allowed ==
+                        when (result.restriction) {
+                            RESTRICTION_CLIPBOARD -> status.clipboardAllowed
+                            RESTRICTION_FILE_TRANSFER -> status.fileTransferAllowed && status.maximumFileBytes > 0L
+                            RESTRICTION_AUDIO -> status.audioAllowed
+                            RESTRICTION_WAKE -> status.wakeAllowed
+                            RESTRICTION_CUSTOM_GESTURES -> status.customGesturesAllowed
+                            RESTRICTION_HOST_ACTIONS -> status.hostActionsAllowed
+                            RESTRICTION_MAXIMUM_FILE_BYTES -> status.maximumFileBytes > 0L
+                            RESTRICTION_ALLOWED_HOSTS -> {
+                                val restricted = status.allowedHostsRestricted || normalizedHosts.isNotEmpty()
+                                !restricted || (normalizedHosts - deniedHosts).isNotEmpty()
+                            }
+                            RESTRICTION_DENIED_HOSTS -> deniedHosts.isEmpty()
+                            else -> false
+                        }
+                }
+            }
+
+            private fun results(
+                source: String,
+                reason: String,
+                clipboardAllowed: Boolean,
+                fileTransferAllowed: Boolean,
+                audioAllowed: Boolean,
+                wakeAllowed: Boolean,
+                customGesturesAllowed: Boolean,
+                hostActionsAllowed: Boolean,
+                maximumFileBytes: Long,
+                allowedHostsRestricted: Boolean,
+                allowedHosts: Set<String>,
+                deniedHosts: Set<String>,
+            ): List<RestrictionResult> =
+                listOf(
+                    RestrictionResult(RESTRICTION_CLIPBOARD, clipboardAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_FILE_TRANSFER, fileTransferAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_AUDIO, audioAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_WAKE, wakeAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_CUSTOM_GESTURES, customGesturesAllowed, source, reason),
+                    RestrictionResult(RESTRICTION_HOST_ACTIONS, hostActionsAllowed, source, reason),
+                    RestrictionResult(
+                        RESTRICTION_MAXIMUM_FILE_BYTES,
+                        maximumFileBytes > 0L,
+                        source,
+                        "$reason maximum_file_bytes=$maximumFileBytes.",
+                    ),
+                    RestrictionResult(
+                        RESTRICTION_ALLOWED_HOSTS,
+                        !allowedHostsRestricted || (allowedHosts - deniedHosts).isNotEmpty(),
+                        source,
+                        if (allowedHostsRestricted) {
+                            "$reason allowed_hosts=${(allowedHosts - deniedHosts).sorted().joinToString(",")}."
+                        } else {
+                            "$reason allowed_hosts unrestricted."
+                        },
+                    ),
+                    RestrictionResult(
+                        RESTRICTION_DENIED_HOSTS,
+                        deniedHosts.isEmpty(),
+                        source,
+                        if (deniedHosts.isEmpty()) {
+                            "$reason denied_hosts empty."
+                        } else {
+                            "$reason denied_hosts=${deniedHosts.sorted().joinToString(",")}."
+                        },
+                    ),
+                )
 
             private fun normalizeHost(hostId: String): String? {
                 val trimmed = hostId.trim()
                 return trimmed.ifEmpty { null }?.lowercase()
             }
+
+            const val RESTRICTION_CLIPBOARD = "clipboard"
+            const val RESTRICTION_FILE_TRANSFER = "file_transfer"
+            const val RESTRICTION_AUDIO = "audio"
+            const val RESTRICTION_WAKE = "wake"
+            const val RESTRICTION_CUSTOM_GESTURES = "custom_gestures"
+            const val RESTRICTION_HOST_ACTIONS = "host_actions"
+            const val RESTRICTION_MAXIMUM_FILE_BYTES = "maximum_file_bytes"
+            const val RESTRICTION_ALLOWED_HOSTS = "allowed_hosts"
+            const val RESTRICTION_DENIED_HOSTS = "denied_hosts"
+            val REQUIRED_RESTRICTIONS =
+                setOf(
+                    RESTRICTION_CLIPBOARD,
+                    RESTRICTION_FILE_TRANSFER,
+                    RESTRICTION_AUDIO,
+                    RESTRICTION_WAKE,
+                    RESTRICTION_CUSTOM_GESTURES,
+                    RESTRICTION_HOST_ACTIONS,
+                    RESTRICTION_MAXIMUM_FILE_BYTES,
+                    RESTRICTION_ALLOWED_HOSTS,
+                    RESTRICTION_DENIED_HOSTS,
+                )
         }
     }
 
@@ -369,6 +572,7 @@ internal class ProtocolV1Session(
     private enum class State {
         AWAITING_HOST_HELLO,
         AWAITING_SESSION,
+        AWAITING_MANAGED_POLICY,
         ACTIVE,
         DISPLAY_REQUESTED,
         STREAMING,
@@ -387,6 +591,8 @@ internal class ProtocolV1Session(
     private var configEpoch = 0L
     private var retiredConfigEpoch = 0L
     private var configuredCodec = Codec.CODEC_UNSPECIFIED
+    private var audioStreamId = 0L
+    private var audioConfigEpoch = 0L
     private var pendingVideoConfiguration: PendingVideoConfiguration? = null
     // Latest client video-preferences intent that arrived while a
     // reconfiguration was still in flight (state != STREAMING). Only the newest
@@ -402,6 +608,11 @@ internal class ProtocolV1Session(
     private var displayHeight = 0
     private var displayGeometryPublished = false
     private var availableDisplays = emptyList<DisplayOption>()
+    private var pendingDisplaySelectionIdValue: String? = null
+    private var pendingDisplaySelectionCommitId: String? = null
+    private var pendingDisplaySelectionStreamId: Long = 0L
+    private var pendingDisplaySelectionWidth: Int = 0
+    private var pendingDisplaySelectionHeight: Int = 0
     private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
@@ -447,6 +658,7 @@ internal class ProtocolV1Session(
         buildSet {
             addAll(BASE_ADVERTISED_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
+            if (advertisePeripheralInputFramework) add(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK)
             if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
             if (wakeHostPolicy.wakeAllowed) {
                 add(Capability.CAPABILITY_WAKE_HOST)
@@ -472,6 +684,11 @@ internal class ProtocolV1Session(
     val selectedDisplayId: String
         @Synchronized
         get() = displayId
+
+    /** Display id requested by the client and awaiting host/decoder acceptance, if any. */
+    val pendingDisplaySelectionId: String?
+        @Synchronized
+        get() = pendingDisplaySelectionIdValue
 
     val isStreaming: Boolean
         @Synchronized
@@ -502,6 +719,10 @@ internal class ProtocolV1Session(
     val canSendController: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities
+
+    val canSendPeripheral: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -544,6 +765,13 @@ internal class ProtocolV1Session(
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities
 
+    val canReceiveAudio: Boolean
+        @Synchronized
+        get() =
+            (state == State.STREAMING || state == State.REDISPLAY_REQUESTED) &&
+                Capability.CAPABILITY_AUDIO in negotiatedCapabilities &&
+                audioStreamId > 0L
+
     enum class MediaDisposition {
         ACCEPT,
         DROP_PENDING_CONFIGURATION,
@@ -576,9 +804,21 @@ internal class ProtocolV1Session(
                         .setMaximumClients(1)
                         .setMaximumDisplays(1)
                         .setMaximumVideoStreams(1)
+                        .setMaximumAudioStreams(if (Capability.CAPABILITY_AUDIO in advertisedCapabilities) 1 else 0)
                         .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES)
-                        .setMaximumFileBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumFileBytes else 0L)
-                        .setMaximumFileChunkBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumChunkBytes else 0),
+                        .setMaximumFileBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
+                                fileTransferPolicy.maximumFileBytes
+                            } else {
+                                0L
+                            },
+                        ).setMaximumFileChunkBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
+                                fileTransferPolicy.maximumChunkBytes
+                            } else {
+                                0
+                            },
+                        ),
                 ).addAllVideoDecodeCapabilities(decodeCapabilities)
                 .build()
         return envelope().setClientHello(hello).build()
@@ -602,6 +842,7 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.LIST_DISPLAYS_RESPONSE -> onDisplays(envelope)
             Envelope.PayloadCase.START_DISPLAY_RESPONSE -> onStartDisplay(envelope)
             Envelope.PayloadCase.VIDEO_CONFIG -> onVideoConfig(envelope)
+            Envelope.PayloadCase.AUDIO_CONFIG -> onAudioConfig(envelope)
             Envelope.PayloadCase.DISPLAY_CHANGED -> onDisplayChanged(envelope)
             Envelope.PayloadCase.PING ->
                 listOf(
@@ -627,12 +868,18 @@ internal class ProtocolV1Session(
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
                 videoPreferencesRequestInFlight = false
+                pendingDisplaySelectionIdValue = null
+                pendingDisplaySelectionCommitId = null
+                pendingDisplaySelectionStreamId = 0L
+                pendingDisplaySelectionWidth = 0
+                pendingDisplaySelectionHeight = 0
                 availableHostActions = emptyList()
                 pendingHostActionInvocations.clear()
                 pendingWakeHostRequests.clear()
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
+                clearAudioState()
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -645,6 +892,12 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.CLIPBOARD_REQUEST -> onClipboardRequest(envelope)
             Envelope.PayloadCase.CLIPBOARD_CONTENT -> onClipboardContent(envelope)
             Envelope.PayloadCase.PROTOCOL_ERROR -> {
+                pendingDisplaySelectionIdValue = null
+                pendingDisplaySelectionCommitId = null
+                pendingDisplaySelectionStreamId = 0L
+                pendingDisplaySelectionWidth = 0
+                pendingDisplaySelectionHeight = 0
+                clearAudioState()
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
@@ -662,8 +915,11 @@ internal class ProtocolV1Session(
 
     private fun onInputAck(envelope: Envelope): List<Action> {
         if (!isNegotiated()) throw protocolFailure("InputAck arrived before session negotiation")
-        if (Capability.CAPABILITY_CONTROLLER !in negotiatedCapabilities) {
-            throw protocolFailure("InputAck arrived without negotiated controller input")
+        val expectsInputAck =
+            Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities ||
+                Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities
+        if (!expectsInputAck) {
+            throw protocolFailure("InputAck arrived without negotiated acknowledged input")
         }
         val acknowledgement = envelope.inputAck
         if (acknowledgement.inputId <= 0L) throw protocolFailure("InputAck input_id must be positive")
@@ -682,7 +938,7 @@ internal class ProtocolV1Session(
     @Synchronized
     fun ping(sequence: Long): Envelope {
         require(sequence > 0)
-        check(state >= State.ACTIVE && state != State.CLOSED)
+        check(isNegotiated())
         return envelope().setPing(Ping.newBuilder().setSequence(sequence)).build()
     }
 
@@ -697,27 +953,30 @@ internal class ProtocolV1Session(
     /**
      * Ask the host to switch the captured display at runtime. Valid only while
      * streaming, when display selection was negotiated, and for a known display
-     * other than the current one. Returns the StartDisplay request to send, or
-     * null when the request is not applicable.
+     * other than the current one. Returns state/update actions to publish, or
+     * an empty list when the request is not applicable.
      */
     @Synchronized
-    fun selectDisplay(targetDisplayId: String): Envelope? {
-        if (state != State.STREAMING) return null
-        if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return null
-        if (targetDisplayId.isBlank() || targetDisplayId == displayId) return null
-        if (availableDisplays.none { it.id == targetDisplayId }) return null
+    fun selectDisplay(targetDisplayId: String): List<Action> {
+        if (state != State.STREAMING) return emptyList()
+        if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return emptyList()
+        if (targetDisplayId.isBlank() || targetDisplayId == displayId) return emptyList()
+        val targetDisplay = availableDisplays.firstOrNull { it.id == targetDisplayId } ?: return emptyList()
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
-        // Adopt the requested id up front so the StartDisplayResponse and later
-        // DisplayChanged for the new display validate against the selection.
-        displayId = targetDisplayId
+        pendingDisplaySelectionIdValue = targetDisplayId
+        pendingDisplaySelectionWidth = targetDisplay.width
+        pendingDisplaySelectionHeight = targetDisplay.height
         val request =
             StartDisplayRequest
                 .newBuilder()
                 .setMode(dev.vibescreen.protocol.v1.DisplayMode.DISPLAY_MODE_EXISTING)
                 .setSourceDisplayId(targetDisplayId)
                 .build()
-        return envelope().setStartDisplayRequest(request).build()
+        return listOf(
+            Action.DisplaySelectionPending(selectedId = displayId, pendingId = targetDisplayId),
+            Action.Send(envelope().setStartDisplayRequest(request).build()),
+        )
     }
 
     /**
@@ -884,6 +1143,7 @@ internal class ProtocolV1Session(
         requestId: ByteString,
         targetMacAddress: ByteString,
         secureOnPassword: ByteString = ByteString.EMPTY,
+        authorizationSecret: ByteArray? = null,
     ): Envelope? {
         if (state != State.STREAMING) return null
         if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
@@ -894,6 +1154,28 @@ internal class ProtocolV1Session(
             pendingWakeHostRequests.removeFirst()
         }
         pendingWakeHostRequests.addLast(requestId)
+        val keyId = authorizationSecret?.let(WakeHostProof::keyId).orEmpty()
+        val issuedAtUnixSeconds = if (authorizationSecret != null) System.currentTimeMillis() / 1_000L else 0L
+        val expiresAtUnixSeconds = if (authorizationSecret != null) issuedAtUnixSeconds + WAKE_HOST_AUTHORIZATION_LIFETIME_SECONDS else 0L
+        val nonce =
+            authorizationSecret?.let {
+                ByteString.copyFrom(ByteArray(WakeHostProof.MINIMUM_NONCE_BYTES).also(secureRandom::nextBytes))
+            } ?: ByteString.EMPTY
+        val signature =
+            authorizationSecret?.let { secret ->
+                WakeHostProof.signature(
+                    requestId = requestId,
+                    targetMacAddress = targetMacAddress,
+                    secureOnPassword = secureOnPassword,
+                    hostId = peerHostId,
+                    deviceId = deviceId,
+                    keyId = keyId,
+                    issuedAtUnixSeconds = issuedAtUnixSeconds,
+                    expiresAtUnixSeconds = expiresAtUnixSeconds,
+                    nonce = nonce,
+                    secret = secret,
+                )
+            } ?: ByteString.EMPTY
         val request =
             WakeHostRequest
                 .newBuilder()
@@ -902,6 +1184,11 @@ internal class ProtocolV1Session(
                 .setSecureOnPassword(secureOnPassword)
                 .setHostId(peerHostId)
                 .setDeviceId(deviceId)
+                .setKeyId(keyId)
+                .setIssuedAtUnixSeconds(issuedAtUnixSeconds)
+                .setExpiresAtUnixSeconds(expiresAtUnixSeconds)
+                .setNonce(nonce)
+                .setSignature(signature)
                 .build()
         return envelope().setWakeHostRequest(request).build()
     }
@@ -1083,8 +1370,40 @@ internal class ProtocolV1Session(
     }
 
     @Synchronized
+    fun peripheral(
+        inputId: Long,
+        peripheralKind: String,
+        payload: ByteArray,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities) {
+            "Peripheral input framework was not negotiated"
+        }
+        require(inputId > 0) { "inputId must be positive" }
+        require(peripheralKind.isNotEmpty()) { "peripheralKind must not be empty" }
+        val kindBytes = peripheralKind.toByteArray(StandardCharsets.UTF_8)
+        require(kindBytes.size <= MAX_PERIPHERAL_KIND_BYTES) {
+            "peripheralKind must encode to 1-$MAX_PERIPHERAL_KIND_BYTES UTF-8 bytes"
+        }
+        require(payload.size <= MAX_PERIPHERAL_PAYLOAD_BYTES) {
+            "peripheral payload must not exceed $MAX_PERIPHERAL_PAYLOAD_BYTES bytes"
+        }
+        val event =
+            PeripheralEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setPeripheralKind(peripheralKind)
+                .setPayload(ByteString.copyFrom(payload))
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setPeripheralEvent(event).build()
+    }
+
+    @Synchronized
     fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader): MediaDisposition {
-        if (header.sessionEpoch != sessionEpoch || header.streamId != streamId) {
+        val pendingStreamId = pendingDisplaySelectionStreamId
+        val expectedPendingStream = pendingStreamId > 0L && header.streamId == pendingStreamId
+        if (header.sessionEpoch != sessionEpoch || (header.streamId != streamId && !expectedPendingStream)) {
             throw mediaFailure("Stale or cross-stream media header")
         }
         if (header.fragmentCount != 1 || header.fragmentIndex != 0) {
@@ -1210,11 +1529,17 @@ internal class ProtocolV1Session(
         if (Capability.CAPABILITY_CLIPBOARD in baseNegotiatedCapabilities && peerHostId.isBlank()) {
             throw protocolFailure("Host id is required when clipboard capability is negotiated")
         }
-        state = State.ACTIVE
+        state =
+            if (Capability.CAPABILITY_MANAGED_CONFIGURATION in baseNegotiatedCapabilities) {
+                State.AWAITING_MANAGED_POLICY
+            } else {
+                State.ACTIVE
+            }
         val actions = mutableListOf<Action>()
-        actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
-        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities) {
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in baseNegotiatedCapabilities) {
             actions += Action.Send(envelope().setManagedPolicyStatus(managedPolicyResolver.effectivePolicy.toStatus()).build())
+        } else {
+            actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
         }
         return actions
     }
@@ -1249,11 +1574,47 @@ internal class ProtocolV1Session(
             throw protocolFailure("StartDisplayResponse in state $state")
         }
         val response = envelope.startDisplayResponse
-        if (!response.accepted || response.streamId <= 0) {
+        val runtimeDisplaySelection = state == State.REDISPLAY_REQUESTED && pendingDisplaySelectionIdValue != null
+        val expectedDisplayId = pendingDisplaySelectionIdValue ?: displayId
+        if (!response.accepted) {
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
+            if (runtimeDisplaySelection && streamId > 0L && configEpoch > 0L) {
+                state = State.STREAMING
+                displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+                return listOf(
+                    Action.DisplaySelectionRejected(
+                        selectedId = displayId,
+                        rejectedId = expectedDisplayId,
+                        reason = response.rejectionReason.ifBlank { "display_selection_rejected" },
+                    ),
+                )
+            }
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
         }
-        streamId = response.streamId
-        if (response.hasDisplay()) updateDisplayDescriptor(response.display, expectedDisplayId = displayId)
+        if (response.streamId <= 0) {
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
+            throw protocolFailure("Display start rejected: ${response.rejectionReason}")
+        }
+        if (runtimeDisplaySelection) {
+            pendingDisplaySelectionStreamId = response.streamId
+        } else {
+            streamId = response.streamId
+        }
+        if (response.hasDisplay()) {
+            try {
+                updateDisplayDescriptor(
+                    display = response.display,
+                    expectedDisplayId = expectedDisplayId,
+                    commitDisplayId = !runtimeDisplaySelection,
+                )
+            } catch (failure: ProtocolV1Failure) {
+                clearPendingDisplaySelectionState(clearQueuedVideoPreferences = runtimeDisplaySelection)
+                throw failure
+            }
+        }
+        if (runtimeDisplaySelection) {
+            pendingDisplaySelectionCommitId = expectedDisplayId
+        }
         return emptyList()
     }
 
@@ -1266,6 +1627,7 @@ internal class ProtocolV1Session(
         }
         val config = envelope.videoConfig
         if (pendingVideoConfiguration != null) {
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             return listOf(
                 Action.Send(
                     videoConfigResult(
@@ -1276,10 +1638,12 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, "video_configuration_pending")
         }
+        val expectedConfigStreamId =
+            pendingDisplaySelectionStreamId.takeIf { state == State.REDISPLAY_REQUESTED && it > 0L } ?: streamId
         val protocolAccepted =
-            config.streamId == streamId &&
+            config.streamId == expectedConfigStreamId &&
                 config.configEpoch > configEpoch &&
                 config.encodedSize.width in 16..8192 &&
                 config.encodedSize.height in 16..8192 &&
@@ -1290,6 +1654,7 @@ internal class ProtocolV1Session(
                 config.codec in hostCodecs
         if (!protocolAccepted) {
             videoPreferencesRequestInFlight = false
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             return listOf(
                 Action.Send(
                     videoConfigResult(
@@ -1300,7 +1665,7 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, "unsupported_video_config")
         }
         val colorDecision =
             VideoColorNegotiation.evaluate(
@@ -1314,6 +1679,7 @@ internal class ProtocolV1Session(
             )
         if (colorDecision is VideoColorDecision.Fallback || colorDecision is VideoColorDecision.Rejected) {
             videoPreferencesRequestInFlight = false
+            val rejectedDisplaySelectionId = clearPendingDisplaySelection()
             val selectedColor = (colorDecision as? VideoColorDecision.Fallback)?.selectedColor
             val reason =
                 when (colorDecision) {
@@ -1332,7 +1698,7 @@ internal class ProtocolV1Session(
                         correlationId = envelope.messageId,
                     ),
                 ),
-            )
+            ).withDisplaySelectionRejected(rejectedDisplaySelectionId, reason)
         }
         val configurationToken = nextVideoConfigurationToken++
         pendingVideoConfiguration =
@@ -1388,18 +1754,43 @@ internal class ProtocolV1Session(
                     rejectionReason = if (accepted) "" else rejectionReason.ifBlank { "decoder_configuration_failure" },
                     correlationId = pending.correlationId,
                 ),
-            )
+        )
         if (!accepted) {
             videoPreferencesRequestInFlight = false
-            return listOf(
-                result,
-                Action.VideoConfigurationRejected(
-                    configEpoch = pending.configEpoch,
-                    reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
-                ),
-            )
+            val failedDisplaySelectionId = pendingDisplaySelectionCommitId
+            clearPendingDisplaySelectionState(clearQueuedVideoPreferences = failedDisplaySelectionId != null)
+            if (failedDisplaySelectionId != null) {
+                state = State.STREAMING
+                displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+            }
+            return buildList {
+                add(result)
+                if (failedDisplaySelectionId != null) {
+                    add(
+                        Action.DisplaySelectionRejected(
+                            selectedId = displayId,
+                            rejectedId = failedDisplaySelectionId,
+                            reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
+                        ),
+                    )
+                }
+                add(
+                    Action.VideoConfigurationRejected(
+                        configEpoch = pending.configEpoch,
+                        reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
+                    ),
+                )
+            }
         }
 
+        val committedDisplaySelectionId = pendingDisplaySelectionCommitId
+        if (committedDisplaySelectionId != null) {
+            displayId = committedDisplaySelectionId
+            streamId = pendingDisplaySelectionStreamId
+            displayWidth = pendingDisplaySelectionWidth
+            displayHeight = pendingDisplaySelectionHeight
+        }
+        clearPendingDisplaySelectionState(clearQueuedVideoPreferences = false)
         retiredConfigEpoch = configEpoch
         configEpoch = pending.configEpoch
         configuredCodec = pending.codec
@@ -1414,6 +1805,12 @@ internal class ProtocolV1Session(
                 Action.Send(requestKeyframe("decoder_configuration_committed")),
                 Action.VideoConfigurationCommitted(configEpoch, appliesClientVideoPreferences),
             )
+        if (committedDisplaySelectionId != null) {
+            actions += Action.DisplaySelectionConfirmed(committedDisplaySelectionId)
+            if (availableDisplays.any { it.id == committedDisplaySelectionId }) {
+                actions += Action.DisplaysAvailable(availableDisplays, committedDisplaySelectionId)
+            }
+        }
         if (!displayGeometryPublished) {
             actions +=
                 Action.DisplayGeometryChanged(
@@ -1457,9 +1854,58 @@ internal class ProtocolV1Session(
         )
     }
 
+    private fun onAudioConfig(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("AudioConfig in state $state")
+        if (Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) {
+            throw protocolFailure("AudioConfig without negotiated audio")
+        }
+        if (state != State.STREAMING) throw protocolFailure("AudioConfig arrived before video streaming")
+        val config = envelope.audioConfig
+        if (config.streamId <= 0L || config.configEpoch <= 0L || config.configEpoch <= audioConfigEpoch) {
+            return listOf(
+                Action.Send(
+                    audioConfigResult(
+                        streamId = config.streamId,
+                        configEpoch = config.configEpoch,
+                        accepted = false,
+                        rejectionReason = "invalid_audio_config_epoch",
+                        correlationId = envelope.messageId,
+                    ),
+                ),
+            )
+        }
+        return listOf(Action.AudioConfigurationRequested(config, sessionEpoch, envelope.messageId))
+    }
+
+    @Synchronized
+    fun completeAudioConfiguration(
+        config: AudioConfig,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) return null
+        if (config.streamId <= 0L || config.configEpoch <= 0L || config.configEpoch <= audioConfigEpoch) return null
+        if (accepted) {
+            audioStreamId = config.streamId
+            audioConfigEpoch = config.configEpoch
+        } else {
+            clearAudioState()
+        }
+        return audioConfigResult(
+            streamId = config.streamId,
+            configEpoch = config.configEpoch,
+            accepted = accepted,
+            rejectionReason = if (accepted) "" else rejectionReason.ifBlank { "audio_configuration_rejected" },
+            correlationId = correlationId,
+        )
+    }
+
     private fun updateDisplayDescriptor(
         display: dev.vibescreen.protocol.v1.DisplayDescriptor,
         expectedDisplayId: String?,
+        commitDisplayId: Boolean = true,
     ) {
         if (display.displayId.isBlank() ||
             (expectedDisplayId != null && display.displayId != expectedDisplayId) ||
@@ -1469,10 +1915,49 @@ internal class ProtocolV1Session(
         ) {
             throw protocolFailure("Invalid display descriptor")
         }
-        displayId = display.displayId
-        displayWidth = display.logicalSize.width
-        displayHeight = display.logicalSize.height
+        if (commitDisplayId) {
+            displayId = display.displayId
+            displayWidth = display.logicalSize.width
+            displayHeight = display.logicalSize.height
+        } else {
+            pendingDisplaySelectionWidth = display.logicalSize.width
+            pendingDisplaySelectionHeight = display.logicalSize.height
+        }
     }
+
+    private fun clearPendingDisplaySelection(): String? {
+        val rejectedDisplaySelectionId = pendingDisplaySelectionCommitId ?: pendingDisplaySelectionIdValue
+        clearPendingDisplaySelectionState(clearQueuedVideoPreferences = rejectedDisplaySelectionId != null)
+        if (rejectedDisplaySelectionId != null) {
+            state = State.STREAMING
+            displayGeometryPublished = displayWidth > 0 && displayHeight > 0
+        }
+        return rejectedDisplaySelectionId
+    }
+
+    private fun clearPendingDisplaySelectionState(clearQueuedVideoPreferences: Boolean) {
+        pendingDisplaySelectionIdValue = null
+        pendingDisplaySelectionCommitId = null
+        pendingDisplaySelectionStreamId = 0L
+        pendingDisplaySelectionWidth = 0
+        pendingDisplaySelectionHeight = 0
+        if (clearQueuedVideoPreferences) pendingVideoPreferences = null
+    }
+
+    private fun List<Action>.withDisplaySelectionRejected(
+        rejectedDisplaySelectionId: String?,
+        reason: String,
+    ): List<Action> =
+        if (rejectedDisplaySelectionId == null) {
+            this
+        } else {
+            this +
+                Action.DisplaySelectionRejected(
+                    selectedId = displayId,
+                    rejectedId = rejectedDisplaySelectionId,
+                    reason = reason,
+                )
+        }
     private fun onHostActionCatalog(envelope: Envelope): List<Action> {
         // The host advertises actions after SessionAccepted, before StartDisplay,
         // so the catalog arrives while the session is negotiated but not yet
@@ -1808,6 +2293,9 @@ internal class ProtocolV1Session(
         if (request.hostId.isBlank() || request.hostId != peerHostId) {
             throw protocolFailure("WakeHostRequest targets a different host")
         }
+        if (request.deviceId.isBlank() || request.deviceId != deviceId) {
+            throw protocolFailure("WakeHostRequest device identity does not match this session")
+        }
         return listOf(Action.WakeHost(request.toContext(), envelope.messageId))
     }
 
@@ -1871,9 +2359,14 @@ internal class ProtocolV1Session(
         MessageDigest.getInstance("SHA-256").digest(bytes)
 
     private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
-        if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus in state $state")
+        if (state != State.AWAITING_MANAGED_POLICY && !isNegotiated()) {
+            throw protocolFailure("ManagedPolicyStatus in state $state")
+        }
         if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in baseNegotiatedCapabilities) {
             throw protocolFailure("ManagedPolicyStatus without negotiated managed configuration")
+        }
+        if (!ManagedPolicy.hasCompleteRestrictionResults(status)) {
+            throw protocolFailure("ManagedPolicyStatus requires complete, consistent restriction_results")
         }
         managedPolicyResolver.setRemote(ManagedPolicy.fromStatus(status))
         val effective = managedPolicyResolver.effectivePolicy
@@ -1889,17 +2382,25 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities ||
                 availableHostActions.isNotEmpty() ||
                 pendingHostActionInvocations.isNotEmpty()
+        val hadAudioState = Capability.CAPABILITY_AUDIO in negotiatedCapabilities && audioStreamId > 0L
         negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
+        val actions = mutableListOf<Action>(Action.ManagedPolicyReceived(status))
+        if (hadAudioState && Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) {
+            clearAudioState()
+            actions += Action.AudioStopped("managed_policy_audio_denied")
+        }
         if (!effective.hostActionsAllowed) {
             availableHostActions = emptyList()
             pendingHostActionInvocations.clear()
-            return if (hadHostActionState) {
-                listOf(Action.ManagedPolicyReceived(status), Action.HostActionsAvailable(emptyList()))
-            } else {
-                listOf(Action.ManagedPolicyReceived(status))
+            if (hadHostActionState) {
+                actions += Action.HostActionsAvailable(emptyList())
             }
         }
-        return listOf(Action.ManagedPolicyReceived(status))
+        if (state == State.AWAITING_MANAGED_POLICY) {
+            state = State.ACTIVE
+            actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
+        }
+        return actions
     }
 
     private fun onFileOffer(envelope: Envelope): List<Action> {
@@ -2022,10 +2523,32 @@ internal class ProtocolV1Session(
                     },
             ).build()
 
+    private fun audioConfigResult(
+        streamId: Long,
+        configEpoch: Long,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope =
+        envelope(correlationId = correlationId)
+            .setAudioConfigResult(
+                AudioConfigResult
+                    .newBuilder()
+                    .setStreamId(streamId)
+                    .setConfigEpoch(configEpoch)
+                    .setAccepted(accepted)
+                    .setRejectionReason(rejectionReason),
+            ).build()
+
+    private fun clearAudioState() {
+        audioStreamId = 0L
+        audioConfigEpoch = 0L
+    }
+
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")
         if (envelope.messageId <= lastInboundMessageId) throw protocolFailure("Non-monotonic message_id")
-        if (state >= State.ACTIVE && state != State.CLOSED) {
+        if (isNegotiated()) {
             if (envelope.sessionId != sessionId || envelope.sessionEpoch != sessionEpoch) {
                 throw protocolFailure("Wrong session_id or session_epoch")
             }
@@ -2060,7 +2583,19 @@ internal class ProtocolV1Session(
     // A session is negotiated once SessionAccepted has advanced past the
     // handshake and before it closes. Host actions may arrive across this whole
     // window, not just while streaming.
-    private fun isNegotiated(): Boolean = state >= State.ACTIVE && state != State.CLOSED
+    private fun isNegotiated(): Boolean =
+        when (state) {
+            State.ACTIVE,
+            State.DISPLAY_REQUESTED,
+            State.STREAMING,
+            State.REDISPLAY_REQUESTED,
+            -> true
+            State.AWAITING_HOST_HELLO,
+            State.AWAITING_SESSION,
+            State.AWAITING_MANAGED_POLICY,
+            State.CLOSED,
+            -> false
+        }
 
     private fun mediaFailure(message: String): ProtocolV1Failure =
         ProtocolV1Failure(
@@ -2120,6 +2655,8 @@ internal class ProtocolV1Session(
 
     companion object {
         private const val STYLUS_BUTTON_MASK = 0b11
+        const val MAX_PERIPHERAL_KIND_BYTES = 128
+        const val MAX_PERIPHERAL_PAYLOAD_BYTES = 64 * 1024
         const val VERSION = 1
         private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
         private val BASE_ADVERTISED_CAPABILITIES =
@@ -2135,6 +2672,7 @@ internal class ProtocolV1Session(
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_AUDIO,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
 
@@ -2172,6 +2710,7 @@ internal class ProtocolV1Session(
         private const val MAX_HOST_ACTIONS = 8
         private const val MAX_PENDING_HOST_ACTIONS = 16
         private const val MAX_PENDING_WAKE_HOST_REQUESTS = 16
+        private const val WAKE_HOST_AUTHORIZATION_LIFETIME_SECONDS = 60L
 
         // Clipboard transfer limits and wire constants.
         const val LOCAL_MAX_CLIPBOARD_BYTES: Long = 1024L * 1024L
@@ -2185,7 +2724,7 @@ internal class ProtocolV1Session(
             filterTo(mutableSetOf()) { capability ->
                 when (capability) {
                     Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
-                    Capability.CAPABILITY_FILE_TRANSFER -> policy.fileTransferAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.fileTransferAllowed && policy.maximumFileBytes > 0L
                     Capability.CAPABILITY_AUDIO -> policy.audioAllowed
                     Capability.CAPABILITY_WAKE_HOST -> policy.wakeAllowed
                     Capability.CAPABILITY_HOST_ACTIONS -> policy.hostActionsAllowed

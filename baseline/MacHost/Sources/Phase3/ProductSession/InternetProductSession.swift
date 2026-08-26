@@ -22,6 +22,8 @@ struct FreshSessionRecoveryBudget {
 
 final class InternetProductSession: EncodedFrameSink {
     private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
+    private static let rawBulkAdmissionTransferID = Data("internet-bulk-v1".utf8)
+    private static let freshSessionRecoveryTimeoutMilliseconds: UInt32 = 120_000
 
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
@@ -99,6 +101,8 @@ final class InternetProductSession: EncodedFrameSink {
         InternetAdaptiveRequestToken,
         InternetProductVideoConfiguration
     ) -> Void)?
+    var onAudioRecordReceived: ((Data) -> Void)?
+    var onBulkRecordReceived: ((Data) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -135,8 +139,11 @@ final class InternetProductSession: EncodedFrameSink {
     private var committedVideoConfiguration: InternetProductVideoConfiguration?
     private var pendingRuntimeVideoConfiguration: PendingRuntimeVideoConfiguration?
     private var deferredRotationDegrees: Int?
+    private var transportRecoveryResumeState: InternetProductSessionState?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
+    private var advancedChannelGate: AdvancedChannelSecurityGate?
+    private var advancedChannelGateInitializationError: AdvancedChannelSecurityError?
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
@@ -179,6 +186,7 @@ final class InternetProductSession: EncodedFrameSink {
             }
             try configuration.validate()
             try startFreshSession(configuration)
+            freshSessionRecoveryBudget.reset()
         }
     }
 
@@ -197,6 +205,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             configuration = nil
@@ -227,6 +236,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             let changed = state != .revoked
@@ -295,6 +305,20 @@ final class InternetProductSession: EncodedFrameSink {
         } else if scheduling.1 {
             queue.async { [weak self] in self?.drainLatestFrame(generation: scheduling.0) }
         }
+    }
+
+    @discardableResult
+    func sendAudioRecord(_ payload: Data) -> Bool {
+        let streamID = performSync { codec?.video.streamID ?? 0 }
+        return sendAdvancedRecord(
+            payload,
+            binding: .audio(displayID: "internet-display", streamID: streamID)
+        )
+    }
+
+    @discardableResult
+    func sendBulkRecord(_ payload: Data, transferID: Data) -> Bool {
+        sendAdvancedRecord(payload, binding: .bulk(transferID: transferID))
     }
 
     func snapshotState() -> InternetProductSessionState {
@@ -483,6 +507,7 @@ final class InternetProductSession: EncodedFrameSink {
         stopHeartbeat()
         stopNegotiationDeadline()
         terminalProtocolFailureGeneration = nil
+        let retiredTransport = transport
         guard advanceSessionGeneration() else {
             throw InternetProductSessionError.securityFailure(
                 "Internet product session generation was exhausted."
@@ -492,6 +517,7 @@ final class InternetProductSession: EncodedFrameSink {
         resetQueuedWork(
             generation: generation,
             sessionEpoch: configuration.authoritativeSessionEpoch,
+            sessionIdentifier: configuration.transport.sessionIdentifier,
             limits: configuration.limits
         )
         let securitySession: InternetProductSecuritySession
@@ -529,8 +555,10 @@ final class InternetProductSession: EncodedFrameSink {
             engine: engineFactory(),
             packetCipher: securitySession.packetCipher,
             limits: configuration.limits,
-            recoveryStrategy: .freshSession
+            networkHandoffRecoveryStrategy: .freshSession
         )
+        self.transport = nil
+        retiredTransport?.close()
         installCallbacks(on: transport, generation: generation)
         self.configuration = configuration
         self.codec = codec
@@ -540,6 +568,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
@@ -586,6 +615,12 @@ final class InternetProductSession: EncodedFrameSink {
                 )),
                 generation: generation
             )
+        }
+        transport.onAudioRecordReceived = { [weak self] data in
+            self?.queue.async { self?.handleAudioRecord(data, generation: generation) }
+        }
+        transport.onBulkRecordReceived = { [weak self] data in
+            self?.queue.async { self?.handleBulkRecord(data, generation: generation) }
         }
         transport.onKeyframeRequired = { [weak self] in
             self?.queue.async {
@@ -643,20 +678,18 @@ final class InternetProductSession: EncodedFrameSink {
                 return
             }
             activePath = path
+            if case .recovering = state {
+                finishTransportRecovery(path: path)
+                return
+            }
             if isStreaming {
                 setState(.streaming(path))
                 onKeyframeRequired?()
             } else if state == .connecting {
                 setState(.authenticating)
             }
-        case .recovering:
-            // Fresh-session recovery is driven solely by
-            // onFreshSessionRecoveryRequired, which publishes the session's
-            // .recovering state through beginFreshSessionRecovery. Reacting to
-            // the transport's own .recovering here would publish the state
-            // twice and race the synchronous fresh-session install performed
-            // inside the recovering-state callback.
-            break
+        case .recovering(let attempt):
+            beginTransportRecovery(attempt: attempt, generation: generation)
         case .failed(let reason): fail(.securityFailure(reason))
         case .closed:
             if state != .revoked { setState(.closed) }
@@ -786,9 +819,13 @@ final class InternetProductSession: EncodedFrameSink {
                     codec: &codec
                 )
 
-            case .disconnectNotice:
+            case .disconnectNotice(let notice):
                 self.codec = codec
-                beginFreshSessionRecovery(attempt: 1, generation: generation)
+                if notice.mayResume {
+                    beginFreshSessionRecovery(attempt: 1, generation: generation)
+                } else {
+                    close()
+                }
 
             default:
                 let payloadName: String
@@ -1116,6 +1153,140 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    private func sendAdvancedRecord(_ payload: Data, binding: AdvancedChannelBinding) -> Bool {
+        do {
+            return try performSync {
+                guard isStreaming, let transport else { return false }
+                let admission = try reserveAdvancedRecord(payloadBytes: payload.count, binding: binding)
+                let result: Result<Void, InternetTransportError>
+                switch binding {
+                case .audio:
+                    result = transport.sendAudioRecord(payload)
+                case .bulk:
+                    result = transport.sendBulkRecord(payload)
+                }
+                switch result {
+                case .success:
+                    try finishAdvancedAdmission(admission)
+                    return true
+                case .failure(let error):
+                    try finishAdvancedAdmission(admission)
+                    fail(.transportFailure(error))
+                    return false
+                }
+            }
+        } catch let error as InternetProductSessionError {
+            performSync { fail(error) }
+            return false
+        } catch let error as AdvancedChannelSecurityError {
+            performSync { fail(advancedChannelFailure(error, binding: binding, actualBytes: payload.count)) }
+            return false
+        } catch {
+            performSync { fail(.securityFailure(error.localizedDescription)) }
+            return false
+        }
+    }
+
+    private func handleAudioRecord(_ payload: Data, generation: UInt64) {
+        guard sessionGeneration == generation, isStreaming else { return }
+        handleAdvancedRecord(payload, binding: .audio(displayID: "internet-display", streamID: codec?.video.streamID ?? 0)) {
+            onAudioRecordReceived?($0)
+        }
+    }
+
+    private func handleBulkRecord(_ payload: Data, generation: UInt64) {
+        guard sessionGeneration == generation, isStreaming else { return }
+        handleAdvancedRecord(payload, binding: .bulk(transferID: Self.rawBulkAdmissionTransferID)) {
+            onBulkRecordReceived?($0)
+        }
+    }
+
+    private func handleAdvancedRecord(
+        _ payload: Data,
+        binding: AdvancedChannelBinding,
+        deliver: (Data) -> Void
+    ) {
+        do {
+            let admission = try reserveAdvancedRecord(payloadBytes: payload.count, binding: binding)
+            defer { try? finishAdvancedAdmission(admission) }
+            deliver(payload)
+        } catch let error as AdvancedChannelSecurityError {
+            fail(advancedChannelFailure(error, binding: binding, actualBytes: payload.count))
+        } catch {
+            fail(.securityFailure(error.localizedDescription))
+        }
+    }
+
+    private func reserveAdvancedRecord(
+        payloadBytes: Int,
+        binding: AdvancedChannelBinding
+    ) throws -> AdvancedChannelAdmission {
+        guard let configuration else {
+            throw AdvancedChannelSecurityError.staleOwner
+        }
+        guard let gate = advancedChannelGate else {
+            throw advancedChannelGateInitializationError ?? AdvancedChannelSecurityError.staleOwner
+        }
+        return try gate.reserve(
+            payloadBytes: payloadBytes,
+            binding: binding,
+            owner: advancedChannelOwner(
+                generation: sessionGeneration,
+                sessionEpoch: currentSessionEpoch,
+                sessionIdentifier: configuration.transport.sessionIdentifier
+            )
+        )
+    }
+
+    private func finishAdvancedAdmission(_ admission: AdvancedChannelAdmission) throws {
+        try advancedChannelGate?.finish(admission)
+    }
+
+    private func advancedChannelOwner(
+        generation: UInt64,
+        sessionEpoch: UInt64,
+        sessionIdentifier: String
+    ) -> AdvancedChannelOwner {
+        AdvancedChannelOwner(
+            sessionIdentifier: sessionIdentifier,
+            sessionEpoch: sessionEpoch,
+            generation: generation
+        )
+    }
+
+    private func advancedChannelFailure(
+        _ error: AdvancedChannelSecurityError,
+        binding: AdvancedChannelBinding,
+        actualBytes: Int
+    ) -> InternetProductSessionError {
+        let transportChannel: InternetTransportChannel = {
+            switch binding {
+            case .audio: return .audio
+            case .bulk: return .bulk
+            }
+        }()
+        switch error {
+        case .emptyPayload:
+            return .transportFailure(.emptyPayload(channel: transportChannel))
+        case .payloadTooLarge(let maximum):
+            return .transportFailure(.payloadTooLarge(
+                channel: transportChannel,
+                actual: actualBytes,
+                maximum: maximum
+            ))
+        case .backlogExceeded(let maximum):
+            switch binding {
+            case .audio:
+                return .securityFailure("Advanced Internet audio channel backlog exceeded \(maximum) bytes.")
+            case .bulk:
+                return .transportFailure(.bulkBacklogExceeded(maximumBytes: maximum))
+            }
+        case .invalidOwner, .invalidLimits, .invalidBinding,
+             .staleOwner, .unknownAdmission, .sequenceExhausted:
+            return .securityFailure("Advanced Internet channel admission failed: \(error)")
+        }
+    }
+
     private func beginTerminalProtocolFailure(
         _ payload: Data,
         failure: InternetProductSessionError,
@@ -1242,8 +1413,10 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        configuration = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -1251,12 +1424,43 @@ final class InternetProductSession: EncodedFrameSink {
         if stateChanged { onStateChanged?(recoveringState) }
         guard sessionGeneration == recoveryGeneration,
               state == recoveringState else { return }
+        scheduleFreshSessionRecoveryDeadline(generation: recoveryGeneration)
         onFreshSessionRecoveryRequired?(sessionAttempt)
+    }
+
+    private func beginTransportRecovery(attempt: Int, generation: UInt64) {
+        guard generation == sessionGeneration,
+              terminalProtocolFailureGeneration == nil,
+              attempt > 0 else { return }
+        stopHeartbeat()
+        stopNegotiationDeadline()
+        if transportRecoveryResumeState == nil {
+            transportRecoveryResumeState = state
+        }
+        setState(.recovering(attempt: attempt))
+    }
+
+    private func finishTransportRecovery(path: InternetPathKind) {
+        let resumeState = transportRecoveryResumeState
+        transportRecoveryResumeState = nil
+        switch resumeState {
+        case .streaming:
+            setState(.streaming(path))
+            startHeartbeat()
+            onKeyframeRequired?()
+        case .awaitingVideoConfiguration:
+            setState(.awaitingVideoConfiguration)
+        case .connecting, .authenticating, .recovering, nil:
+            setState(.authenticating)
+        case .idle, .failed, .revoked, .closed:
+            break
+        }
     }
 
     private func resetQueuedWork(
         generation: UInt64,
         sessionEpoch: UInt64 = 0,
+        sessionIdentifier: String? = nil,
         limits: InternetTransportLimits?
     ) {
         withFrameAdmissionLock { state in
@@ -1275,6 +1479,40 @@ final class InternetProductSession: EncodedFrameSink {
                 maximumMessageBytes: limits?.maximumControlMessageBytes ?? 0,
                 accepting: limits != nil
             )
+        }
+        if let limits, sessionEpoch > 0, let sessionIdentifier {
+            let maximumBulkRecordBytes = max(
+                1,
+                min(
+                    InternetBulkRecordContract.maximumPlaintextRecordBytes,
+                    limits.maximumBufferedBulkBytes
+                )
+            )
+            do {
+                advancedChannelGate = try AdvancedChannelSecurityGate(
+                    owner: advancedChannelOwner(
+                        generation: generation,
+                        sessionEpoch: sessionEpoch,
+                        sessionIdentifier: sessionIdentifier
+                    ),
+                    limits: .init(
+                        maximumAudioRecordBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                        maximumAudioBacklogBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                        maximumBulkRecordBytes: maximumBulkRecordBytes,
+                        maximumBulkBacklogBytes: limits.maximumBufferedBulkBytes
+                    )
+                )
+                advancedChannelGateInitializationError = nil
+            } catch let error as AdvancedChannelSecurityError {
+                advancedChannelGate = nil
+                advancedChannelGateInitializationError = error
+            } catch {
+                advancedChannelGate = nil
+                advancedChannelGateInitializationError = .invalidLimits
+            }
+        } else {
+            advancedChannelGate = nil
+            advancedChannelGateInitializationError = nil
         }
     }
 
@@ -1428,6 +1666,23 @@ final class InternetProductSession: EncodedFrameSink {
         timer.resume()
     }
 
+    private func scheduleFreshSessionRecoveryDeadline(generation: UInt64) {
+        stopNegotiationDeadline()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(
+            Int(Self.freshSessionRecoveryTimeoutMilliseconds)
+        ))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.sessionGeneration == generation else { return }
+            guard case .recovering = self.state else { return }
+            self.fail(.securityFailure(
+                "fresh-session recovery timed out before replacement credentials were supplied"
+            ))
+        }
+        negotiationTimer = timer
+        timer.resume()
+    }
+
     private func stopNegotiationDeadline() {
         negotiationTimer?.cancel()
         negotiationTimer = nil
@@ -1449,6 +1704,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         // Close the retired transport before publishing the terminal state so

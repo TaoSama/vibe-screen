@@ -337,6 +337,23 @@
                     android:visibility="gone"
                     app:tint="#FFFFFF" />
 
+                <!-- File transfer collapses unless Protocol v1 negotiated the
+                     file-transfer capability, so unsupported sessions expose no
+                     dead tap area. -->
+                <ImageButton
+                    android:id="@+id/controlFileTransferButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginStart="@dimen/control_bar_button_margin"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_file_transfer"
+                    android:src="@drawable/ic_file_transfer"
+                    android:scaleType="centerInside"
+                    android:padding="12dp"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF" />
+
                 <ImageButton
                     android:id="@+id/controlSettingsButton"
                     android:layout_width="@dimen/control_bar_button_size"
@@ -371,7 +388,9 @@
         android:layout_width="56dp"
         android:layout_height="56dp"
         android:layout_margin="24dp"
+        android:contentDescription="@string/display_settings"
         android:elevation="8dp"
+        android:focusable="true"
         android:visibility="gone"
         app:cardCornerRadius="28dp"
         app:cardBackgroundColor="#CC000000"
@@ -382,7 +401,7 @@
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:layout_gravity="center"
-            android:contentDescription="@string/display_settings"
+            android:importantForAccessibility="no"
             android:src="@drawable/ic_settings"
             app:tint="#FFFFFF" />
     </androidx.cardview.widget.CardView>
@@ -522,7 +541,7 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMinTextSize="12sp"
                     app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
@@ -541,7 +560,7 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMinTextSize="12sp"
                     app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
@@ -560,7 +579,7 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMinTextSize="12sp"
                     app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
@@ -591,6 +610,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/connection_issue"
+                    android:accessibilityLiveRegion="polite"
                     android:textColor="@color/warning"
                     android:textSize="14sp"
                     android:textStyle="bold"
@@ -601,6 +621,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text=""
+                    android:accessibilityLiveRegion="polite"
                     android:textColor="#D8DEE4"
                     android:textSize="13sp"
                     android:lineSpacingExtra="2dp" />
@@ -1184,7 +1205,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         app:autoSizeMaxTextSize="14sp"
-                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeMinTextSize="12sp"
                         app:autoSizeTextType="uniform"
                         android:text="@string/internet_prefer_direct"
                         android:textColor="@color/internet_route_text"
@@ -1201,7 +1222,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         app:autoSizeMaxTextSize="14sp"
-                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeMinTextSize="12sp"
                         app:autoSizeTextType="uniform"
                         android:text="@string/internet_force_turn"
                         android:textColor="@color/internet_route_text"

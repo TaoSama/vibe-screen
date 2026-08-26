@@ -1,0 +1,127 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "version_name": "0.1.0"
+  },
+  "device": {
+    "hdc_target": "recorded hdc list targets -v target",
+    "manufacturer": "Huawei",
+    "model": "MatePad Mini",
+    "os_build": "recorded Settings build",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "flows": [
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "host_hello_session_display_video",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "control_channel_after_resume",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "media_channel_after_resume",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "background_foreground_resume",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "wifi_loss_restore_resume",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "bounded_reconnect",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "host_restart_fresh_session",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "resume_result_success_reported",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "resume_result_failure_reported",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "old_epoch_control_rejected",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted log, trace, or artifact reference"
+      ],
+      "id": "old_epoch_media_rejected",
+      "status": "blocked"
+    }
+  ],
+  "host": {
+    "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "commit": "0000000000000000000000000000000000000000",
+    "protocol": "Protocol v1",
+    "resume_registry": "resume-capable"
+  },
+  "notes": [
+    "Do not commit raw serials, credentials, IP addresses, or screen content."
+  ],
+  "reconnect": {
+    "maximum_attempts": 8,
+    "maximum_delay_ms": 8000,
+    "maximum_observed_recovery_ms": 3000
+  },
+  "repository": {
+    "commit": "0000000000000000000000000000000000000000",
+    "status": "clean",
+    "tree": "0000000000000000000000000000000000000000"
+  },
+  "schema": "dev.vibescreen.harmony-host-interop/v1",
+  "toolchain": {
+    "deveco_studio_version": "recorded from DevEco Studio",
+    "harmony_sdk_api": "API 12",
+    "hdc_version": "recorded hdc -v",
+    "hvigor_version": "recorded hvigor --version",
+    "ohpm_version": "recorded ohpm --version"
+  },
+  "transport": {
+    "encrypted_records": true,
+    "mode": "trusted_lan"
+  }
+}

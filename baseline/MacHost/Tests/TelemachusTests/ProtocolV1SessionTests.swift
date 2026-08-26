@@ -16,6 +16,15 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.hdrVideo)
         )
+        XCTAssertFalse(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.peripheralInputFramework)
+        )
+        XCTAssertTrue(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ).contains(.hdrVideo)
+        )
     }
 
     func testProductionHostCapabilitiesIncludeWakeHostOnlyWhenAvailable() {
@@ -26,6 +35,33 @@ final class ProtocolV1SessionTests: XCTestCase {
             touchEnabled: true,
             wakeHostAvailable: true
         ).contains(.wakeHost))
+    }
+
+    func testProductionHostCapabilitiesIncludeAudioOnlyWhenCaptureIsAvailableAndPolicyAllows() {
+        XCTAssertFalse(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.audio)
+        )
+        XCTAssertTrue(ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            audioCaptureAvailable: true
+        ).contains(.audio))
+
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        )
+        XCTAssertFalse(ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            managedPolicy: policy,
+            audioCaptureAvailable: true
+        ).contains(.audio))
     }
 
     func testManagedPolicyAppliesDenyWinsAndAllowedHosts() {
@@ -40,16 +76,17 @@ final class ProtocolV1SessionTests: XCTestCase {
             maximumFileBytes: 4_096,
             allowedHosts: ["host", "other"]
         )
-        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
-        remoteStatus.managed = true
-        remoteStatus.clipboardAllowed = false
-        remoteStatus.fileTransferAllowed = true
-        remoteStatus.audioAllowed = false
-        remoteStatus.wakeAllowed = true
-        remoteStatus.customGesturesAllowed = true
-        remoteStatus.hostActionsAllowed = false
-        remoteStatus.maximumFileBytes = 1_024
-        remoteStatus.allowedHosts = ["host"]
+        let remoteStatus = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: false,
+            maximumFileBytes: 1_024,
+            allowedHosts: ["host"]
+        ).protocolStatus
 
         let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
 
@@ -63,6 +100,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(effective.allowedHosts, ["host"])
         XCTAssertTrue(effective.allows(hostID: "host"))
         XCTAssertFalse(effective.allows(hostID: "other"))
+        XCTAssertEqual(Set(effective.restrictionResults.map(\.source)), ["effective_deny_wins"])
     }
 
     func testDisjointAllowedHostsDenyAllHosts() {
@@ -77,9 +115,17 @@ final class ProtocolV1SessionTests: XCTestCase {
             maximumFileBytes: 4_096,
             allowedHosts: ["local-host"]
         )
-        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
-        remoteStatus.managed = true
-        remoteStatus.allowedHosts = ["remote-host"]
+        let remoteStatus = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["remote-host"]
+        ).protocolStatus
 
         let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
 
@@ -430,7 +476,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions, .managedConfiguration, .fileTransfer]
         _ = session.handleControl(try hello.serializedData())
         let responses = try controlEnvelopes(session.completeCodecNegotiation())
-        XCTAssertEqual(responses.count, 4)
+        XCTAssertEqual(responses.count, 3)
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -438,24 +484,27 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 1 * 1_024 * 1_024)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 2_048)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 64 * 1_024)
-        guard case .managedPolicyStatus(let localStatus)? = responses[3].payload else {
+        guard case .managedPolicyStatus(let localStatus)? = responses[2].payload else {
             return XCTFail("Expected ManagedPolicyStatus")
         }
         XCTAssertTrue(localStatus.managed)
         XCTAssertTrue(localStatus.hostActionsAllowed)
         XCTAssertEqual(localStatus.maximumFileBytes, 2_048)
         XCTAssertEqual(localStatus.allowedHosts, ["host"])
+        XCTAssertEqual(Set(localStatus.restrictionResults.map(\.restriction)), ManagedPolicy.requiredRestrictionNames)
+        XCTAssertTrue(localStatus.restrictionResults.allSatisfy { $0.source == "managed_configuration" })
 
-        var remote = VSManagedPolicyStatus()
-        remote.managed = true
-        remote.clipboardAllowed = true
-        remote.fileTransferAllowed = true
-        remote.audioAllowed = true
-        remote.wakeAllowed = true
-        remote.customGesturesAllowed = true
-        remote.hostActionsAllowed = false
-        remote.maximumFileBytes = 4_096
-        remote.allowedHosts = ["host"]
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: false,
+            maximumFileBytes: 4_096,
+            allowedHosts: ["host"]
+        ).protocolStatus
         let remotePolicyActions = session.handleControl(try envelope(
             id: 2,
             payload: .managedPolicyStatus(remote)
@@ -466,6 +515,8 @@ final class ProtocolV1SessionTests: XCTestCase {
         }
         XCTAssertTrue(effectiveRemotePolicy.managed)
         XCTAssertFalse(effectiveRemotePolicy.hostActionsAllowed)
+        XCTAssertEqual(Set(effectiveRemotePolicy.restrictionResults.map(\.source)), ["effective_deny_wins"])
+        XCTAssertFalse(try controlEnvelopes(remotePolicyActions).contains { if case .hostActionCatalog = $0.payload { true } else { false } })
 
         _ = session.handleControl(try envelope(id: 3, payload: .listDisplaysRequest(VSListDisplaysRequest())).serializedData())
         _ = session.handleControl(try envelope(id: 4, payload: .startDisplayRequest(existingDisplayRequest())).serializedData())
@@ -483,6 +534,82 @@ final class ProtocolV1SessionTests: XCTestCase {
         )).code, .unsupportedCapability)
     }
 
+    func testManagedConfigurationBlocksOrdinaryRequestsUntilRemotePolicyStatus() throws {
+        let session = makeSession(fileTransferAvailable: true)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .fileTransfer, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 3)
+        XCTAssertFalse(responses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+        XCTAssertEqual(session.phase, .awaitingManagedPolicy)
+
+        let listRejected = session.handleControl(try envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest())
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: listRejected).code, .invalidState)
+        XCTAssertTrue(listRejected.containsClose)
+
+        let startRejected = makeSession(fileTransferAvailable: true)
+        _ = startRejected.handleControl(try hello.serializedData())
+        _ = startRejected.completeCodecNegotiation()
+        let startActions = startRejected.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: startActions).code, .invalidState)
+        XCTAssertTrue(startActions.containsClose)
+
+        let fileRejected = makeSession(fileTransferAvailable: true)
+        _ = fileRejected.handleControl(try hello.serializedData())
+        _ = fileRejected.completeCodecNegotiation()
+        var offer = VSFileOffer()
+        offer.transferID = Data([1, 2, 3, 4])
+        offer.fileName = "hello.txt"
+        offer.mimeType = "text/plain"
+        offer.byteLength = 0
+        offer.sha256 = Data(repeating: 0, count: 32)
+        let fileActions = fileRejected.handleControl(try envelope(
+            id: 2,
+            payload: .fileOffer(offer)
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: fileActions).code, .invalidState)
+        XCTAssertTrue(fileActions.containsClose)
+    }
+
+    func testManagedConfigurationAdvertisesHostActionCatalogAfterRemotePolicyStatusAllowsIt() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 3)
+        XCTAssertFalse(responses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ).protocolStatus
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+        let catalogEnvelopes = try controlEnvelopes(actions)
+        guard case .hostActionCatalog(let catalog)? = catalogEnvelopes.first?.payload else {
+            return XCTFail("Expected HostActionCatalog after valid remote policy")
+        }
+        XCTAssertEqual(catalog.actions.map(\.actionID), ["move-window", "return-windows"])
+        XCTAssertEqual(session.phase, .awaitingDisplayStart)
+    }
+
     func testManagedPolicyAllowedHostsFailsClosed() throws {
         let session = makeSession()
         var hello = clientHello()
@@ -490,15 +617,80 @@ final class ProtocolV1SessionTests: XCTestCase {
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
 
-        var remote = ManagedPolicy.unmanaged.protocolStatus
-        remote.managed = true
-        remote.allowedHosts = ["different-host"]
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["different-host"]
+        ).protocolStatus
         let actions = session.handleControl(try envelope(
             id: 2,
             payload: .managedPolicyStatus(remote)
         ).serializedData())
 
         XCTAssertEqual(try protocolError(from: actions).code, .unauthorized)
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testManagedPolicyStatusWithoutRestrictionResultsFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        var remote = VSManagedPolicyStatus()
+        remote.managed = true
+        remote.clipboardAllowed = true
+        remote.fileTransferAllowed = true
+        remote.audioAllowed = true
+        remote.wakeAllowed = true
+        remote.customGesturesAllowed = true
+        remote.hostActionsAllowed = true
+        remote.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .malformedMessage)
+        XCTAssertTrue(error.message.contains("restriction_results"))
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testManagedPolicyStatusWithMismatchedRestrictionResultFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        var remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ).protocolStatus
+        remote.restrictionResults[0].allowed = true
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .malformedMessage)
+        XCTAssertTrue(error.message.contains("restriction_results"))
         XCTAssertTrue(actions.containsClose)
     }
 
@@ -629,6 +821,156 @@ final class ProtocolV1SessionTests: XCTestCase {
         let error = try protocolError(from: session.handleControl(try hello.serializedData()))
         XCTAssertEqual(error.code, .unsupportedCapability)
         XCTAssertEqual(error.message, "Host and client have no common locally encodable SDR video codec.")
+    }
+
+    func testHDRColorConfigRequiresHostAndClientCapability() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = [hdrDecodeCapability(codec: .hevc)]
+
+        let helloActions = session.handleControl(try hello.serializedData())
+        XCTAssertTrue(containsCodecNegotiated(helloActions, codec: .hevc))
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        XCTAssertEqual(config.colorDescription, hdrColor())
+    }
+
+    func testHDRPreferredColorFallsBackBeforeAdvertisingConfigWhenClientLacksHDR() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+        hello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+
+        _ = session.handleControl(try hello.serializedData())
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        assertLegacySDR(config.colorDescription)
+    }
+
+    func testHDRPreferredColorFallsBackBeforeAdvertisingConfigWhenDecodeProfileIsSDROnly() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+
+        _ = session.handleControl(try hello.serializedData())
+        let helloResponses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .sessionAccepted(let accepted)? = helloResponses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.hdrVideo))
+
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(config.configEpoch, 1)
+        assertLegacySDR(config.colorDescription)
+    }
+
+    func testHDRClientRejectionRenegotiatesSDRWithNewMediaEpoch() throws {
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                hdrVideoAvailable: true
+            ),
+            preferredColorDescription: hdrColor()
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay, .hdrVideo]
+        hello.clientHello.videoDecodeCapabilities = [hdrDecodeCapability(codec: .hevc)]
+
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        let startResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData()))
+        guard case .videoConfig(let firstConfig)? = startResponses[1].payload else {
+            return XCTFail("Expected first VideoConfig")
+        }
+        XCTAssertEqual(firstConfig.colorDescription, hdrColor())
+
+        var rejection = VSVideoConfigResult()
+        rejection.configEpoch = firstConfig.configEpoch
+        rejection.streamID = firstConfig.streamID
+        rejection.accepted = false
+        rejection.rejectionReason = HostVideoColorNegotiator.unsupportedHDRFallbackReason
+        rejection.selectedColorDescription = HostVideoColorNegotiator.legacySDRColor
+
+        let fallbackResponses = try controlEnvelopes(session.handleControl(try envelope(
+            id: 3,
+            payload: .videoConfigResult(rejection)
+        ).serializedData()))
+        guard case .videoConfig(let fallbackConfig)? = fallbackResponses.first?.payload else {
+            return XCTFail("Expected fallback VideoConfig")
+        }
+        XCTAssertEqual(fallbackConfig.configEpoch, firstConfig.configEpoch + 1)
+        assertLegacySDR(fallbackConfig.colorDescription)
+
+        var accepted = VSVideoConfigResult()
+        accepted.configEpoch = fallbackConfig.configEpoch
+        accepted.streamID = fallbackConfig.streamID
+        accepted.accepted = true
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .videoConfigResult(accepted)
+        ).serializedData())
+
+        let media = try XCTUnwrap(session.makeMediaFrame(
+            payload: Data([0, 0, 0, 1, 0x26]),
+            timestamp: 99,
+            keyframe: true
+        ))
+        let (header, _) = try decodeMedia(media)
+        XCTAssertEqual(header.configEpoch, fallbackConfig.configEpoch)
+        XCTAssertEqual(header.streamID, fallbackConfig.streamID)
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -1032,6 +1374,36 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(rejectedScroll.containsClose)
     }
 
+    func testKeyTargetAcceptsActiveOrEmptyAndRejectsWrongTarget() throws {
+        let emptyTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        var key = keyEvent(inputID: 4)
+        key.target = VSInputTarget()
+        XCTAssertTrue(emptyTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        ).containsKey)
+
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        let activeTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        key = keyEvent(inputID: 4)
+        key.target = activeTarget
+        XCTAssertTrue(activeTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        ).containsKey)
+
+        var wrongTarget = activeTarget
+        wrongTarget.streamID = 2
+        let wrongTargetSession = try readyKeyboardSession(standardModifierByte: true)
+        key = keyEvent(inputID: 4)
+        key.target = wrongTarget
+        let rejected = wrongTargetSession.handleControl(
+            try envelope(id: 4, payload: .keyEvent(key)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
+        XCTAssertTrue(rejected.containsClose)
+    }
+
     func testPointerRejectsUnsupportedButtonMaskBits() throws {
         let session = try readyPointerSession()
         var pointer = pointerEvent()
@@ -1324,6 +1696,25 @@ final class ProtocolV1SessionTests: XCTestCase {
             )).code,
             .invalidState
         )
+
+        request.hostID = "host"
+        request.deviceID = ""
+        let missingDeviceSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: missingDeviceSession.handleControl(
+                try envelope(id: 7, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        request.deviceID = "other-device"
+        let deviceMismatchSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: deviceMismatchSession.handleControl(
+                try envelope(id: 8, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
     }
 
     func testWakeHostCompletionEchoesRequestAndCorrelation() throws {
@@ -1414,6 +1805,143 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(capabilities.contains(.wakeHost))
     }
 
+    func testAudioNegotiationRequestsConfigurationAfterVideoReady() throws {
+        let session = makeAudioSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .audio]
+        hello.clientHello.resourceLimits.maximumAudioStreams = 1
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .hostHello(let hostHello)? = responses[0].payload,
+              case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected HostHello + SessionAccepted")
+        }
+        XCTAssertTrue(hostHello.capabilities.contains(.audio))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.audio))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumAudioStreams, 1)
+
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest())
+        ).serializedData())
+        let startActions = session.handleControl(try envelope(
+            id: 3,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .videoConfig(let videoConfig)? = try controlEnvelopes(startActions).last?.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = videoConfig.configEpoch
+        videoResult.streamID = videoConfig.streamID
+        videoResult.accepted = true
+        let readyActions = session.handleControl(try envelope(
+            id: 4,
+            payload: .videoConfigResult(videoResult)
+        ).serializedData())
+
+        let readyEnvelopes = try controlEnvelopes(readyActions)
+        guard case .audioConfig(let audioConfig)? = readyEnvelopes.first?.payload else {
+            return XCTFail("Expected AudioConfig before media ready actions")
+        }
+        XCTAssertEqual(audioConfig.streamID, 2)
+        XCTAssertEqual(audioConfig.configEpoch, 1)
+        XCTAssertEqual(audioConfig.codec, .pcmS16Le)
+        XCTAssertEqual(audioConfig.sampleRateHz, 48_000)
+        XCTAssertEqual(audioConfig.channelCount, 2)
+        XCTAssertEqual(audioConfig.framesPerPacket, 480)
+        XCTAssertTrue(readyActions.containsConnectionReady)
+    }
+
+    func testAudioConfigResultStartsAudioAndRejectsStaleEpochs() throws {
+        let session = try readyAudioPendingSession()
+
+        var accepted = VSAudioConfigResult()
+        accepted.streamID = 2
+        accepted.configEpoch = 1
+        accepted.accepted = true
+        let acceptedActions = session.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(accepted)
+        ).serializedData())
+
+        guard case .startAudio(let config)? = acceptedActions.first else {
+            return XCTFail("Expected startAudio")
+        }
+        XCTAssertEqual(config.streamID, 2)
+        XCTAssertEqual(config.configEpoch, 1)
+
+        let stale = try readyAudioPendingSession()
+        var staleResult = VSAudioConfigResult()
+        staleResult.streamID = 2
+        staleResult.configEpoch = 2
+        staleResult.accepted = true
+        let staleActions = stale.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(staleResult)
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: staleActions).code, .invalidState)
+        XCTAssertTrue(staleActions.containsClose)
+    }
+
+    func testRejectedAudioConfigDoesNotRepeatOnVideoRenegotiation() throws {
+        let session = try readyAudioPendingSession()
+
+        var rejected = VSAudioConfigResult()
+        rejected.streamID = 2
+        rejected.configEpoch = 1
+        rejected.accepted = false
+        rejected.rejectionReason = "audio_track_create_failed"
+        let rejectedActions = session.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(rejected)
+        ).serializedData())
+        XCTAssertTrue(rejectedActions.containsAudioStop(reason: "audio_track_create_failed"))
+
+        let reconfigure = session.handleControl(try envelope(
+            id: 6,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .videoConfig(let videoConfig)? = try controlEnvelopes(reconfigure).last?.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = videoConfig.configEpoch
+        videoResult.streamID = videoConfig.streamID
+        videoResult.accepted = true
+        let readyAgain = session.handleControl(try envelope(
+            id: 7,
+            payload: .videoConfigResult(videoResult)
+        ).serializedData())
+        XCTAssertFalse(try controlEnvelopes(readyAgain).contains {
+            if case .audioConfig = $0.payload { return true }
+            return false
+        })
+    }
+
+    func testManagedPolicyDenyStopsConfiguredAudio() throws {
+        let session = try readyAudioStreamingSession(managed: true)
+
+        var remote = ManagedPolicy.unmanaged.protocolStatus
+        remote.managed = true
+        remote.clipboardAllowed = true
+        remote.fileTransferAllowed = true
+        remote.audioAllowed = false
+        remote.wakeAllowed = true
+        remote.customGesturesAllowed = true
+        remote.hostActionsAllowed = true
+        remote.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
+        remote.allowedHosts = ["host"]
+        let actions = session.handleControl(try envelope(
+            id: 6,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        XCTAssertTrue(actions.containsAudioStop(reason: "managed_policy_audio_denied"))
+    }
+
     func testProductionHostCapabilitiesIncludeControllerOnlyWhenAvailable() {
         let withoutController = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: true,
@@ -1443,6 +1971,77 @@ final class ProtocolV1SessionTests: XCTestCase {
             try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
         )
         XCTAssertEqual(try protocolError(from: actions).code, .unsupportedCapability)
+    }
+
+    func testPeripheralEventRequiresNegotiatedCapability() throws {
+        let session = try readySession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(peripheralEvent())).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: actions).code, .unsupportedCapability)
+    }
+
+    func testPeripheralEventFailsClosedAfterNegotiation() throws {
+        let session = try readyPeripheralSession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(peripheralEvent())).serializedData()
+        )
+
+        XCTAssertFalse(actions.contains { action in
+            if case .touch = action { return true }
+            if case .stylus = action { return true }
+            if case .pointer = action { return true }
+            if case .scroll = action { return true }
+            if case .key = action { return true }
+            if case .controller = action { return true }
+            return false
+        })
+        let acknowledgementEnvelope = try XCTUnwrap(controlEnvelopes(actions).first)
+        guard case .inputAck(let acknowledgement)? = acknowledgementEnvelope.payload else {
+            return XCTFail("Expected PeripheralEvent InputAck")
+        }
+        XCTAssertEqual(acknowledgement.inputID, 1)
+        XCTAssertFalse(acknowledgement.accepted)
+        XCTAssertEqual(acknowledgement.rejectionReason, "unsupported_peripheral_kind")
+        XCTAssertEqual(acknowledgementEnvelope.correlationID, 4)
+        XCTAssertEqual(acknowledgementEnvelope.sessionID, sessionID)
+        XCTAssertEqual(acknowledgementEnvelope.sessionEpoch, sessionEpoch)
+    }
+
+    func testPeripheralEventRejectsOversizedPayloadBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var event = peripheralEvent()
+        event.payload = Data(repeating: 0xAA, count: 64 * 1_024 + 1)
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+    }
+
+    func testPeripheralEventRejectsOversizedKindBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var event = peripheralEvent()
+        event.peripheralKind = String(repeating: "a", count: 129)
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+    }
+
+    func testPeripheralEventRejectsInactiveTargetBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var target = VSInputTarget()
+        target.displayID = "other-display"
+        target.streamID = 1
+        var event = peripheralEvent()
+        event.target = target
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
     }
 
     func testControllerLifecycleRoutesConnectedStateDisconnected() throws {
@@ -1919,7 +2518,9 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     private func makeSession(
         managedPolicy: ManagedPolicy = .unmanaged,
-        fileTransferAvailable: Bool = false
+        fileTransferAvailable: Bool = false,
+        hostCapabilities: Set<VSCapability>? = nil,
+        preferredColorDescription: VSColorDescription = HostVideoColorNegotiator.legacySDRColor
     ) -> ProtocolV1SessionCoordinator {
         var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -1929,7 +2530,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+            hostCapabilities: hostCapabilities ?? ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 managedPolicy: managedPolicy,
                 fileTransferAllowed: fileTransferAvailable && managedPolicy.fileTransferAllowed
@@ -1943,6 +2544,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             displayIsVirtual: true
         )
         configuration.managedPolicy = managedPolicy
+        configuration.preferredColorDescription = preferredColorDescription
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -1958,6 +2560,29 @@ final class ProtocolV1SessionTests: XCTestCase {
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 controllerAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        ))
+    }
+
+    private func makePeripheralSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                peripheralInputFrameworkAvailable: true
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -1990,6 +2615,32 @@ final class ProtocolV1SessionTests: XCTestCase {
             displayName: "Display",
             displayIsVirtual: true
         ))
+    }
+
+    private func makeAudioSession(managedPolicy: ManagedPolicy = .unmanaged) -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                managedPolicy: managedPolicy,
+                audioCaptureAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        )
+        configuration.managedPolicy = managedPolicy
+        return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
     private func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
@@ -2058,6 +2709,22 @@ final class ProtocolV1SessionTests: XCTestCase {
         return capability
     }
 
+    private func hdrDecodeCapability(codec: VSCodec) -> VSVideoDecodeCapability {
+        var capability = sdrDecodeCapability(codec: codec)
+        capability.bitDepths = [8, 10]
+        capability.transferFunctions = [.bt709, .srgb, .pq]
+        return capability
+    }
+
+    private func hdrColor() -> VSColorDescription {
+        var color = VSColorDescription()
+        color.primaries = .bt2020
+        color.transferFunction = .pq
+        color.matrixCoefficients = .bt2020NonConstant
+        color.bitDepth = 10
+        return color
+    }
+
     private func containsCodecNegotiated(
         _ actions: [ProtocolV1SessionAction],
         codec: StreamCodec
@@ -2109,7 +2776,20 @@ final class ProtocolV1SessionTests: XCTestCase {
         request.requestID = Data([0x31])
         request.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
         request.hostID = hostID
+        request.deviceID = "device"
         return request
+    }
+
+    private func peripheralEvent() -> VSPeripheralEvent {
+        var target = VSInputTarget()
+        target.displayID = "active-display"
+        target.streamID = 1
+        var event = VSPeripheralEvent()
+        event.inputID = 1
+        event.peripheralKind = "generic-placeholder"
+        event.payload = Data([0x01, 0x02])
+        event.target = target
+        return event
     }
 
     private func touchEvent() -> VSTouchEvent {
@@ -2142,6 +2822,15 @@ final class ProtocolV1SessionTests: XCTestCase {
         scroll.deltaX = 1
         scroll.deltaY = -2
         return scroll
+    }
+
+    private func keyEvent(inputID: UInt64) -> VSKeyEvent {
+        var key = VSKeyEvent()
+        key.inputID = inputID
+        key.usbHidUsage = 0x04
+        key.pressed = true
+        key.modifierMask = 0
+        return key
     }
 
     private func stylusEvent() -> VSStylusEvent {
@@ -2195,6 +2884,56 @@ final class ProtocolV1SessionTests: XCTestCase {
         result.streamID = 1
         result.accepted = true
         _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyAudioPendingSession(managed: Bool = false) throws -> ProtocolV1SessionCoordinator {
+        let policy = managed ? ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ) : .unmanaged
+        let session = makeAudioSession(managedPolicy: policy)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .audio]
+        if managed { hello.clientHello.capabilities.append(.managedConfiguration) }
+        hello.clientHello.resourceLimits.maximumAudioStreams = 1
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        var nextID: UInt64 = 2
+        if managed {
+            _ = session.handleControl(try envelope(
+                id: nextID,
+                payload: .managedPolicyStatus(policy.protocolStatus)
+            ).serializedData())
+            nextID += 1
+        }
+        _ = session.handleControl(try envelope(
+            id: nextID,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        nextID += 1
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = 1
+        videoResult.streamID = 1
+        videoResult.accepted = true
+        _ = session.handleControl(try envelope(id: nextID, payload: .videoConfigResult(videoResult)).serializedData())
+        return session
+    }
+
+    private func readyAudioStreamingSession(managed: Bool = false) throws -> ProtocolV1SessionCoordinator {
+        let session = try readyAudioPendingSession(managed: managed)
+        var audioResult = VSAudioConfigResult()
+        audioResult.streamID = 2
+        audioResult.configEpoch = 1
+        audioResult.accepted = true
+        _ = session.handleControl(try envelope(id: 5, payload: .audioConfigResult(audioResult)).serializedData())
         return session
     }
 
@@ -2350,6 +3089,24 @@ final class ProtocolV1SessionTests: XCTestCase {
         return session
     }
 
+    private func readyPeripheralSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makePeripheralSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .peripheralInputFramework]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
     private func controllerSessionAwaitingVideoReconfiguration() throws
         -> ProtocolV1SessionCoordinator {
         let session = try readyControllerSession()
@@ -2415,10 +3172,17 @@ final class ProtocolV1SessionTests: XCTestCase {
 private extension Array where Element == ProtocolV1SessionAction {
     var containsConnectionReady: Bool { contains { if case .connectionReady = $0 { true } else { false } } }
     var containsTouch: Bool { contains { if case .touch = $0 { true } else { false } } }
+    var containsKey: Bool { contains { if case .key = $0 { true } else { false } } }
     var containsPointer: Bool { contains { if case .pointer = $0 { true } else { false } } }
     var containsScroll: Bool { contains { if case .scroll = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }
     var containsClose: Bool { contains { if case .close = $0 { true } else { false } } }
+    func containsAudioStop(reason expectedReason: String) -> Bool {
+        contains {
+            if case .stopAudio(let reason) = $0 { return reason == expectedReason }
+            return false
+        }
+    }
     var containsPeerErrorAndClose: Bool {
         contains { if case .peerError = $0 { true } else { false } } &&
             contains { if case .close = $0 { true } else { false } }

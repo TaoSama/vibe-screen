@@ -35,6 +35,13 @@ extension StreamViewModel {
         guard let payload = envelope.payload else { return }
         switch payload {
         case .hostHello(let hello):
+            guard managedConfiguration.policy.allows(host: hello.hostID) else {
+                terminateSession(
+                    message: "此主机不在组织允许列表中",
+                    failure: .permanent
+                )
+                return
+            }
             pendingHostHello = hello
         case .sessionAccepted(let accepted):
             try acceptSession(accepted)
@@ -54,7 +61,7 @@ extension StreamViewModel {
         case .disconnectNotice(let notice):
             terminateSession(
                 message: "Mac 已断开会话：\(notice.reasonCode)",
-                failure: .permanent
+                failure: ReconnectFailure.fromDisconnectNotice(mayResume: notice.mayResume)
             )
         case .videoConfig(let config):
             handleVideoConfig(config)
@@ -112,15 +119,36 @@ extension StreamViewModel {
             }
         case .managedPolicyStatus(let status):
             if negotiatedCapabilities.contains(.managedConfiguration) {
+                guard ManagedPolicy.validateRestrictionResults(status) else {
+                    terminateSession(
+                        message: "ManagedPolicyStatus requires complete, consistent restriction_results.",
+                        failure: .permanent
+                    )
+                    return
+                }
                 managedConfiguration.applyRemote(status)
+                if let hostID = pendingHostHello?.hostID, !managedConfiguration.policy.allows(host: hostID) {
+                    terminateSession(
+                        message: "Managed policy does not allow this host.",
+                        failure: .permanent
+                    )
+                    return
+                }
+                let completedInitialPolicyHandshake = try controlValidator.completeManagedPolicyStatus()
+                let policyCapabilities = Set(advertisedCapabilities(policy: managedConfiguration.policy))
+                negotiatedCapabilities = negotiatedCapabilities.intersection(policyCapabilities)
                 enforceCurrentPolicy()
+                if completedInitialPolicyHandshake {
+                    requestDisplayList()
+                }
             }
         case .clientHello, .resumeSessionRequest, .resumeSessionResult,
              .pairingOffer, .pairingRequest, .pairingResult, .deviceRevoked,
              .keyRotationRequest, .keyRotationResult, .deviceRevocation, .trafficKeyUpdate,
              .trafficKeyAck, .listDisplaysRequest, .startDisplayRequest, .stopDisplay,
              .displayChanged, .videoConfigResult, .requestKeyframe,
-             .touchEvent, .stylusEvent, .controllerEvent, .pointerEvent, .scrollEvent, .keyEvent,
+             .touchEvent, .stylusEvent, .controllerEvent, .peripheralEvent,
+             .pointerEvent, .scrollEvent, .keyEvent,
              .inputAck, .streamStats,
              .transportStats, .encryptedControlPacket,
              .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
@@ -162,8 +190,10 @@ extension StreamViewModel {
         )
         startHeartbeat()
         sendManagedPolicyStatus()
-        sendInBackground { factory in
-            factory.listDisplays(sessionID: self.state.sessionID, sessionEpoch: self.state.sessionEpoch)
+        if negotiatedCapabilities.contains(.managedConfiguration) {
+            try controlValidator.awaitManagedPolicyStatus()
+        } else {
+            requestDisplayList()
         }
     }
 
@@ -541,6 +571,12 @@ extension StreamViewModel {
         }
     }
 
+    func requestDisplayList() {
+        sendInBackground { factory in
+            factory.listDisplays(sessionID: self.state.sessionID, sessionEpoch: self.state.sessionEpoch)
+        }
+    }
+
     func sendManagedPolicyStatus() {
         guard negotiatedCapabilities.contains(.managedConfiguration) else { return }
         let policy = managedConfiguration.policy
@@ -560,7 +596,7 @@ extension StreamViewModel {
             audioSession.failClosed()
         }
         if !policy.clipboardAllowed { clipboard.rejectPending() }
-        if !policy.fileTransferAllowed {
+        if !policy.fileTransferAllowed || policy.maximumFileBytes == 0 {
             let identifiers = Set(pendingFileOffers.keys).union(outgoingFiles.keys)
             for identifier in identifiers { cancelLocalFileTransfer(transferID: identifier) }
         }
@@ -597,7 +633,7 @@ extension StreamViewModel {
         if policy.hostActionsAllowed { values.insert(.hostActions) }
         if policy.audioAllowed { values.insert(.audio) }
         if policy.clipboardAllowed { values.insert(.clipboard) }
-        if policy.fileTransferAllowed { values.insert(.fileTransfer) }
+        if policy.fileTransferAllowed && policy.maximumFileBytes > 0 { values.insert(.fileTransfer) }
         if policy.wakeAllowed { values.insert(.wakeHost) }
         return values.sorted { $0.rawValue < $1.rawValue }
     }
@@ -609,7 +645,7 @@ extension StreamViewModel {
         limits.maximumVideoStreams = UInt32(Self.maximumDisplayStreams)
         limits.maximumAudioStreams = policy.audioAllowed ? 1 : 0
         limits.maximumClipboardBytes = policy.clipboardAllowed ? 1_024 * 1_024 : 0
-        limits.maximumFileBytes = policy.fileTransferAllowed ? policy.maximumFileBytes : 0
+        limits.maximumFileBytes = policy.fileTransferAllowed && policy.maximumFileBytes > 0 ? policy.maximumFileBytes : 0
         limits.maximumFileChunkBytes = 64 * 1_024
         return limits
     }

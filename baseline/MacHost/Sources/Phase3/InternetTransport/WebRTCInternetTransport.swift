@@ -145,6 +145,12 @@ final class WebRTCInternetTransport {
         let invalidatedControlCompletions: [ControlTransmissionCompletion]
     }
 
+    private enum PreparedRecovery {
+        case iceRestart(RecoveryTransition)
+        case freshSession(RecoveryTransition)
+        case failure(FailureTransition)
+    }
+
     private struct MutableState {
         var transportState: InternetTransportState = .idle
         var activePath: InternetPathKind?
@@ -195,6 +201,7 @@ final class WebRTCInternetTransport {
     private let limits: InternetTransportLimits
     private let adaptivePolicy: AdaptiveMediaPolicy
     private let recoveryStrategy: InternetRecoveryStrategy
+    private let networkHandoffRecoveryStrategy: InternetRecoveryStrategy
     private let lock = NSLock()
     private let sendGate = NSRecursiveLock()
     private let engineLifecycleGate = NSRecursiveLock()
@@ -214,6 +221,7 @@ final class WebRTCInternetTransport {
         recoveryPolicy: NetworkRecoveryPolicy = .standard,
         adaptivePolicy: AdaptiveMediaPolicy = AdaptiveMediaPolicy(),
         recoveryStrategy: InternetRecoveryStrategy = .restartICE,
+        networkHandoffRecoveryStrategy: InternetRecoveryStrategy = .restartICE,
         beforeEngineStart: (() -> Void)? = nil,
         beforeControlSend: (() -> Void)? = nil,
         beforeMediaRecordSend: (() -> Void)? = nil,
@@ -242,6 +250,7 @@ final class WebRTCInternetTransport {
         self.limits = limits
         self.adaptivePolicy = adaptivePolicy
         self.recoveryStrategy = recoveryStrategy
+        self.networkHandoffRecoveryStrategy = networkHandoffRecoveryStrategy
         self.beforeEngineStart = beforeEngineStart
         self.beforeControlSend = beforeControlSend
         self.beforeMediaRecordSend = beforeMediaRecordSend
@@ -1335,33 +1344,20 @@ final class WebRTCInternetTransport {
     }
 
     private func handleNetworkPath(_ path: InternetNetworkPath) {
-        var failureTransition: FailureTransition?
-        let transition = withSendGate { () -> RecoveryTransition? in
+        let recovery = withSendGate { () -> PreparedRecovery? in
             let action = withLock { state -> NetworkRecoveryAction? in
                 guard isConnected(state.transportState) else {
                     state.recovery.observePath(path)
                     return nil
                 }
-                return state.recovery.pathChanged(path)
-            }
-            switch action {
-            case .restartICE:
-                return prepareICERestartWithinSendGate()
-            case .fail(let reason):
-                failureTransition = prepareFailureWithinSendGate(
-                    .engineSendFailed(reason),
-                    reportError: false
+                return state.recovery.pathChanged(
+                    path,
+                    requiresFreshSession: networkHandoffRecoveryStrategy == .freshSession
                 )
-                return nil
-            case nil:
-                return nil
             }
+            return prepareRecoveryActionWithinSendGate(action)
         }
-        if let failureTransition {
-            performFailureTransition(failureTransition)
-        } else {
-            performPreparedICERestart(transition)
-        }
+        performPreparedRecovery(recovery)
     }
 
     private func handleEngineConnecting() {
@@ -1407,8 +1403,7 @@ final class WebRTCInternetTransport {
     }
 
     private func recoverConnectivity() {
-        var failureTransition: FailureTransition?
-        let transition = withSendGate { () -> RecoveryTransition? in
+        let recovery = withSendGate { () -> PreparedRecovery? in
             let action: NetworkRecoveryAction? = withLock {
                 if isConnected($0.transportState) || $0.transportState == .connecting {
                     return $0.recovery.connectivityLost()
@@ -1418,23 +1413,23 @@ final class WebRTCInternetTransport {
                 $0.recoveryAttemptAwaitingOutcome = false
                 return $0.recovery.connectivityLost()
             }
-            switch action {
-            case .restartICE:
-                return prepareICERestartWithinSendGate()
-            case .fail(let reason):
-                failureTransition = prepareFailureWithinSendGate(
-                    .engineSendFailed(reason),
-                    reportError: false
-                )
-                return nil
-            case nil:
-                return nil
-            }
+            return prepareRecoveryActionWithinSendGate(action)
         }
-        if let failureTransition {
-            performFailureTransition(failureTransition)
-        } else {
-            performPreparedICERestart(transition)
+        performPreparedRecovery(recovery)
+    }
+
+    private func prepareRecoveryActionWithinSendGate(
+        _ action: NetworkRecoveryAction?
+    ) -> PreparedRecovery? {
+        switch action {
+        case .restartICE:
+            return prepareICERestartWithinSendGate().map(PreparedRecovery.iceRestart)
+        case .freshSession(let reason):
+            return prepareFreshSessionRecoveryWithinSendGate(reason: reason)
+        case .fail(let reason):
+            return prepareFreshSessionRecoveryWithinSendGate(reason: reason)
+        case nil:
+            return nil
         }
     }
 
@@ -1475,6 +1470,70 @@ final class WebRTCInternetTransport {
                 invalidatedControlCompletions: invalidatedCompletions
             )
         }
+    }
+
+    private func prepareFreshSessionRecoveryWithinSendGate(reason: String) -> PreparedRecovery? {
+        guard onFreshSessionRecoveryRequired != nil else {
+            return prepareFailureWithinSendGate(
+                .engineSendFailed(reason),
+                reportError: false
+            ).map(PreparedRecovery.failure)
+        }
+        return withLock { state -> PreparedRecovery? in
+            let canRecover: Bool
+            if isConnected(state.transportState) {
+                canRecover = true
+            } else if state.transportState == .connecting {
+                canRecover = true
+            } else if case .recovering = state.transportState {
+                canRecover = true
+            } else {
+                canRecover = false
+            }
+            guard canRecover else { return nil }
+            let invalidatedCompletions = invalidatePipeline(state: &state)
+            state.activePath = nil
+            state.waitingForKeyframe = true
+            state.recoveryAttemptAwaitingOutcome = false
+            let attempt = max(state.recovery.attempt, 1)
+            let recoveringState = InternetTransportState.recovering(attempt: attempt)
+            let changed = state.transportState != recoveringState
+            state.transportState = recoveringState
+            return .freshSession(RecoveryTransition(
+                attempt: attempt,
+                changed: changed,
+                generation: state.pipelineGeneration,
+                recoveringState: recoveringState,
+                invalidatedControlCompletions: invalidatedCompletions
+            ))
+        }
+    }
+
+    private func performPreparedRecovery(_ recovery: PreparedRecovery?) {
+        switch recovery {
+        case .iceRestart(let transition):
+            performPreparedICERestart(transition)
+        case .freshSession(let transition):
+            performPreparedFreshSessionRecovery(transition)
+        case .failure(let transition):
+            performFailureTransition(transition)
+        case nil:
+            break
+        }
+    }
+
+    private func performPreparedFreshSessionRecovery(_ transition: RecoveryTransition) {
+        completeControlTransmissions(
+            transition.invalidatedControlCompletions,
+            with: .notConnected
+        )
+        duringRecoveryDecision?()
+        guard isCurrentRecovery(transition) else { return }
+        duringMediaRecoveryTransition?()
+        guard isCurrentRecovery(transition) else { return }
+        if transition.changed { onStateChanged?(.recovering(attempt: transition.attempt)) }
+        guard isCurrentRecovery(transition), let onFreshSessionRecoveryRequired else { return }
+        onFreshSessionRecoveryRequired(transition.attempt)
     }
 
     private func performPreparedICERestart(_ transition: RecoveryTransition?) {

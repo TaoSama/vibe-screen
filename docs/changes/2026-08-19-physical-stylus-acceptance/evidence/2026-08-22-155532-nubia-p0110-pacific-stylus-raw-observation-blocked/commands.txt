@@ -1,0 +1,32 @@
+Purpose: fail-closed physical stylus drawing-app observation attempt while another Android-device lease was present.
+Target serial: EP0110PZ0B9110300B.
+Required evidence identity for any later device run: Nubia P0110 / pacific / Android 16 / SDK 36.
+
+Repository setup:
+  git fetch origin --prune
+  git worktree add "$WORKTREE_DIR/vibe-screen-stylus-acceptance" -b codex/physical-stylus-nubia-evidence origin/main
+
+Coordination preflight:
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+
+Observed lock:
+  /tmp/vibe-screen-device-android.lock
+  pid=57257
+  agent=root
+  task=android-ui-ux-nubia-audit
+  created=2026-08-22T15:37:19+08:00
+
+Fail-closed evidence command:
+  python3 scripts/android_stylus_acceptance.py \
+    --serial EP0110PZ0B9110300B \
+    --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-155532-nubia-p0110-pacific-stylus-raw-observation-blocked \
+    --write-blocked-on-lock
+
+Result:
+  blocked_device_coordination_lock: wrote docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-155532-nubia-p0110-pacific-stylus-raw-observation-blocked
+
+No physical stylus observation window was started, no ADB command was executed by
+the evidence script, no Host stylus log cursor was captured, and no macOS
+drawing-app screenshot was produced. This run cannot close the README physical-
+stylus drawing-app gate.

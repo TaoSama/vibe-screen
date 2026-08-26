@@ -1,0 +1,16 @@
+{
+  "failures": [],
+  "missing": [
+    "authority revocation audit event",
+    "stale TURN credential reuse rejection",
+    "active coturn allocation disconnect",
+    "pre-revocation data-plane traffic",
+    "post-revocation data-plane traffic denial",
+    "post-revocation relayed packet count"
+  ],
+  "schema": "dev.vibescreen.phase3-revocation-propagation/v1",
+  "status": "blocked",
+  "warnings": [
+    "stale TURN credential rejection status not recorded"
+  ]
+}

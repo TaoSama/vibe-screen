@@ -1,0 +1,11 @@
+Read-only trusted-LAN preflight excerpt, sanitized for saved Wi-Fi identifiers.
+
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B
+Observed state: Wi-Fi enabled but disconnected. No wlan0 IPv4 address and no route table entries were present.
+
+Retained raw command facts:
+- dumpsys wifi: mWifiInfo SSID: <unknown ssid>, BSSID: <none>, IP: null, Supplicant state: DISCONNECTED
+- ip addr show wlan0: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> state DOWN
+- ip route: no output
+
+Privacy note: the original read-only dumpsys excerpt contained saved SSID names from the phone and is intentionally not committed. This sanitized file preserves only the LAN-route blocker needed by the current-base actionable-error owner gate.

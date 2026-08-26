@@ -1,0 +1,206 @@
+package dev.telemachus.display
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+class StreamClientOwnershipBoundaryContractTest {
+    @Test
+    fun `current base keeps StreamClient delegated ownership boundaries installed`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+
+        REQUIRED_BOUNDARY_OWNERS.forEach { owner ->
+            assertTrue("Missing extracted owner source `$owner`", source(owner).isNotBlank())
+        }
+        REQUIRED_OWNER_TESTS.forEach { test ->
+            assertTrue("Missing focused owner test `$test`", source(test).isNotBlank())
+        }
+        REQUIRED_STREAM_CLIENT_DELEGATIONS.forEach { delegation ->
+            assertTrue("StreamClient no longer delegates through `$delegation`", streamClient.contains(delegation))
+        }
+    }
+
+    @Test
+    fun `stream client does not reclaim extracted owner internals`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+
+        FORBIDDEN_STREAM_CLIENT_RECLAIMED_INTERNALS.forEach { reference ->
+            assertFalse("StreamClient must not reclaim extracted owner internal `$reference`", streamClient.contains(reference))
+        }
+    }
+
+    @Test
+    fun `extracted owners stay out of android ui transport socket and decoder layers`() {
+        BOUNDARY_OWNER_RULES.forEach { rule ->
+            val ownerSource = source(rule.path)
+            rule.forbiddenReferences.forEach { reference ->
+                assertFalse("${rule.name} must not depend on `$reference`", ownerSource.contains(reference))
+            }
+        }
+    }
+
+    @Test
+    fun `phase zero docs identify current base ownership gate without closing open module work`() {
+        val readme = repositorySource(REPOSITORY_README)
+        val audit = repositorySource(OPEN_GATES_AUDIT)
+        val phaseZeroTech = repositorySource(PHASE_ZERO_TECH)
+
+        val phaseZeroStatus = readme.normalizedWhitespace()
+        listOf(
+            "standalone JVM transport",
+            "local product-session lifecycle state",
+            "Protocol v1",
+            "action dispatch",
+            "input envelope routing",
+            "media-frame routing",
+        ).forEach { phrase ->
+            assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
+        }
+        assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
+        assertTrue(audit.contains("#259"))
+        assertTrue(audit.contains("current-base owner gate"))
+        assertTrue(audit.contains("Module extraction draft PRs [#211]"))
+        assertTrue(audit.contains("superseded by [#259]"))
+        assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
+        assertTrue(phaseZeroTech.contains("Protocol, session, decoder,"))
+    }
+
+    private fun source(relativePath: String): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            listOf(relativePath, "baseline/AndroidClient/$relativePath")
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("$relativePath not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun repositorySource(relativePath: String): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            if (current.resolve("docs/changes/2026-08-04-phase-0-baseline/TECH.md").isFile &&
+                current.resolve("baseline/AndroidClient").isDirectory
+            ) {
+                return current.resolve(relativePath).readText()
+            }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("repository root not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun String.normalizedWhitespace(): String =
+        split(32.toChar(), 9.toChar(), 10.toChar(), 13.toChar())
+            .filter(String::isNotEmpty)
+            .joinToString(" ")
+
+    private data class BoundaryOwnerRule(
+        val name: String,
+        val path: String,
+        val forbiddenReferences: List<String>,
+    )
+
+    private companion object {
+        const val REPOSITORY_README = "README.md"
+        const val OPEN_GATES_AUDIT = "docs/changes/2026-08-22-open-gates-coverage-audit/README.md"
+        const val PHASE_ZERO_TECH = "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+
+        const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"
+        const val PRODUCTION_INPUT_DISPATCHER = "app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt"
+        const val PRODUCTION_LOCAL_SESSION_STATE =
+            "app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt"
+        const val PRODUCTION_PROTOCOL_ACTION_DISPATCHER =
+            "app/src/main/java/dev/telemachus/display/StreamProtocolActionDispatcher.kt"
+        const val PRODUCTION_MEDIA_FRAME_ROUTER =
+            "app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt"
+
+        val REQUIRED_BOUNDARY_OWNERS =
+            listOf(
+                PRODUCTION_LOCAL_SESSION_STATE,
+                PRODUCTION_INPUT_DISPATCHER,
+                PRODUCTION_PROTOCOL_ACTION_DISPATCHER,
+                PRODUCTION_MEDIA_FRAME_ROUTER,
+            )
+
+        val REQUIRED_OWNER_TESTS =
+            listOf(
+                "app/src/test/java/dev/telemachus/display/StreamClientLocalSessionStateTest.kt",
+                "app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
+                "app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
+                "app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
+                "app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
+            )
+
+        val REQUIRED_STREAM_CLIENT_DELEGATIONS =
+            listOf(
+                "private val localSessionState = StreamClientLocalSessionState",
+                "private val inputDispatcher =",
+                "private val protocolActionDispatcher =",
+                "StreamProtocolActionDispatcher(StreamProtocolActionSink())",
+                "private val mediaFrameRouter =",
+                "mediaFrameRouter.receiveLegacyFrame(",
+                "mediaFrameRouter.receiveProtocolFrame(",
+            )
+
+        val FORBIDDEN_STREAM_CLIENT_RECLAIMED_INTERNALS =
+            listOf(
+                "val reconnectBackoff",
+                "var isConnected",
+                "@Volatile private var sessionReady",
+                "private val bufferPool",
+                "private val poolLock",
+                "private fun acquireBuffer",
+                "private fun updateStats",
+                "private fun checkKeyframeFreshness",
+                "internal fun isSyncFrame",
+                "NativeInputReleaseBatch.build(",
+                "ProtocolV1Framing.decodeVideo(",
+            )
+
+        val OWNER_LAYER_FORBIDDEN_REFERENCES =
+            listOf(
+                "import android.",
+                "import androidx.",
+                "MainActivity",
+                "StreamTransportOwner",
+                "SocketStreamTransportConnection",
+                "java.net.Socket",
+                "VideoDecoder",
+                "MediaCodec",
+            )
+
+        val BOUNDARY_OWNER_RULES =
+            listOf(
+                BoundaryOwnerRule(
+                    name = "StreamClientLocalSessionState",
+                    path = PRODUCTION_LOCAL_SESSION_STATE,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf(
+                            "ProtocolV1Session",
+                            "OutboundCommandScheduler",
+                            "StreamOutboundCommand",
+                            "DataInputStream",
+                            "DataOutputStream",
+                        ),
+                ),
+                BoundaryOwnerRule(
+                    name = "StreamInputDispatcher",
+                    path = PRODUCTION_INPUT_DISPATCHER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf("DataInputStream", "DataOutputStream"),
+                ),
+                BoundaryOwnerRule(
+                    name = "StreamProtocolActionDispatcher",
+                    path = PRODUCTION_PROTOCOL_ACTION_DISPATCHER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES,
+                ),
+                BoundaryOwnerRule(
+                    name = "StreamMediaFrameRouter",
+                    path = PRODUCTION_MEDIA_FRAME_ROUTER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES,
+                ),
+            )
+    }
+}

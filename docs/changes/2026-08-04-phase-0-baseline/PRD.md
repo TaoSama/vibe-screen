@@ -13,6 +13,11 @@ platform-specific architecture.
 Phase 0 is complete only when the imported code, protocol contract, module
 boundaries, reliability behavior, and Xiaomi 13 (2211133C) evidence all agree. A local
 build alone is not completion.
+The stable-release aggregate owner is
+[`../2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json`](../2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json);
+README status must not move from development preview to complete/stable until
+that manifest evaluates to `can_mark_phase0_stable_release=true` with
+`make phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1`.
 
 ## Scope
 

@@ -1,0 +1,17 @@
+
+dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest:
+Error in realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest):
+java.lang.IllegalStateException: Timed out waiting for real Host display-selection state. Last=last: selected= label=Display selectorVisible=false selectorEnabled=false displays=
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.waitForSnapshot(RealHostDisplaySelectionInstrumentedTest.kt:90)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:42)
+
+
+Time: 76.182
+There was 1 failure:
+1) realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest)
+java.lang.IllegalStateException: Timed out waiting for real Host display-selection state. Last=last: selected= label=Display selectorVisible=false selectorEnabled=false displays=
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.waitForSnapshot(RealHostDisplaySelectionInstrumentedTest.kt:90)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:42)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1

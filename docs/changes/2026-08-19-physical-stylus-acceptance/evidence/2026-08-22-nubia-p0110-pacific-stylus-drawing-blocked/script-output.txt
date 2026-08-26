@@ -1,0 +1,2 @@
+$ python3 scripts/android_stylus_acceptance.py --serial EP0110PZ0B9110300B --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-nubia-p0110-pacific-stylus-drawing-blocked --allow-existing-device-lock
+blocked_physical_stylus_not_observed: wrote docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-nubia-p0110-pacific-stylus-drawing-blocked

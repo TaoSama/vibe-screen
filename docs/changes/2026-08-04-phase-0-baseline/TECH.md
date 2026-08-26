@@ -117,11 +117,16 @@ ListDisplays -> StartDisplay -> VideoConfig -> VideoConfigResult`. Media remains
 blocked until the client accepts the configuration. Touch and heartbeat use
 control envelopes, host epochs are propagated into decoder frames, and stale
 session/config/stream/frame identifiers fail closed. The production baseline
-advertises only capabilities actually connected to product behavior: touch on
-the validated input path. Telemetry is emitted by local reliability reporting,
-not negotiated as a production Protocol v1 peer capability. Keyboard and
-pointer capabilities remain unadvertised until their UI and injection paths are
-complete.
+advertises only capabilities actually connected to product behavior. Keyboard,
+pointer, controller, and peripheral inputs can leave the Android client or reach
+the Host only after upgrading into a Protocol v1 main session and negotiating
+the matching capability; the explicit legacy fallback stays touch-compatible
+only and does not grow keyboard or native-pointer wire types. Keyboard and
+scroll input are verified on device through Protocol v1. Native pointer
+move/click is wired through the same negotiated pointer path, but still requires
+physical Android HID-mouse evidence before its gate can close. Telemetry is
+emitted by local reliability reporting, not negotiated as a production Protocol
+v1 peer capability.
 
 ## Transport and backpressure
 

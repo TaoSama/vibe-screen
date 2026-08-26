@@ -1,0 +1,6 @@
+requested_at_utc=2026-08-20T19:33:53Z
+lock_path=/tmp/vibe-screen-device-android.lock
+holder_pid=49848
+lockf_status=acquired_interactive
+cleanup_evidence=final-lock-status-v4.txt
+cleanup_holder_pid=49848

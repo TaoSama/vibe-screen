@@ -4,18 +4,26 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.hardware.input.InputManager
 import android.media.MediaFormat
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -42,10 +50,13 @@ import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.protobuf.ByteString
 import dev.telemachus.display.databinding.ActivityMainBinding
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
+import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.TouchSampleMapper
+import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.internet.AndroidNetworkMonitor
 import dev.telemachus.display.internet.InternetDecoderConfigurationResult
 import dev.telemachus.display.internet.InternetProductSession
@@ -54,9 +65,11 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
+import dev.telemachus.display.internet.ProductControllerEvent
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductStylusEvent
 import dev.vibescreen.protocol.v1.InputPhase
@@ -76,10 +89,17 @@ import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.IOException
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -175,10 +195,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingInternetPairing: PendingInternetPairing? = null
     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
     @Volatile private var internetGeneration = 0L
-    private val nextInternetInputId = AtomicLong(0)
+    private val internetInputIds = SessionInputIdSequence()
     private val nextStreamStylusTrackingId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
-    private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
+    private val internetStylusInputIds = StylusInputIdTracker(internetInputIds::next)
     private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
     private val internetStylusGestureRouter = StylusGestureRouter()
     private val streamStylusGestureRouter = StylusGestureRouter()
@@ -200,8 +220,26 @@ class MainActivity : AppCompatActivity() {
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
+    private val internetControllerSessionState = ControllerSessionState()
+    private val controllerHotplugCoordinator = ControllerDeviceHotplugCoordinator()
+    private val controllerDeviceListener =
+        object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) {
+                synchronizeControllerDevices("device added $deviceId")
+            }
+
+            override fun onInputDeviceChanged(deviceId: Int) {
+                synchronizeControllerDevices("device changed $deviceId")
+            }
+
+            override fun onInputDeviceRemoved(deviceId: Int) {
+                synchronizeControllerDevices("device removed $deviceId")
+            }
+        }
+    private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
+    private var unsupportedNativePointerNoticeShown = false
     private var nextNativePointerMoveDiagAtMs = 0L
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
@@ -249,6 +287,7 @@ class MainActivity : AppCompatActivity() {
     private var lastAppliedVideoPreferenceConfigEpoch = 0L
     private val controlBarHandler = Handler(Looper.getMainLooper())
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
+    private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
@@ -261,8 +300,18 @@ class MainActivity : AppCompatActivity() {
         AccessibilityManager.TouchExplorationStateChangeListener(::reconcileTouchExplorationState)
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
+    private var pendingDisplaySelectionId: String? = null
     private var availableHostActions = emptyList<HostActionOption>()
+    private val threeFingerGestureClassifier = ThreeFingerGestureClassifier()
+    private var customGestureTouchSequenceActive = false
+    private var customGestureActionCommitted = false
+    private var customGestureBypassUntilSequenceEnd = false
+    private val customGesturePendingTouchEvents = mutableListOf<TouchForwardingPayload>()
+    private var managedCustomGesturesAllowed = true
+    private var managedHostActionsAllowed = true
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
+    private var pendingOutgoingFileTransfer: File? = null
+    private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -357,6 +406,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isInForeground = true
+        inputManager.registerInputDeviceListener(controllerDeviceListener, inputHandler)
         deviceHealthMonitor.start()
         accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
@@ -370,6 +420,7 @@ class MainActivity : AppCompatActivity() {
             setStreamingWindowState(true)
             streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
             internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
+            synchronizeControllerDevices("foreground")
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingWirelessReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
@@ -379,9 +430,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        inputManager.unregisterInputDeviceListener(controllerDeviceListener)
         deviceHealthMonitor.stop()
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
+        resetCustomGestureTouchState()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
         applyStreamingWindowState(connected = isConnected, foreground = false)
@@ -478,12 +531,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        if (!isInForeground || event.isSystemKey()) return super.dispatchKeyEvent(event)
         ControllerInputMapper.keyChange(event)?.let { change ->
-            val dispatch = streamControllerSessionState.applyKey(change)
-            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
-            if (ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) return true
+            val active = canSendControllerInput()
+            if (active) {
+                controllerHotplugCoordinator.rememberObservedController(event.deviceId, change.controllerId)
+                val state = activeControllerSessionState()
+                val dispatch = state.applyKey(change)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
+                if (ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)) return true
+            }
         }
+        if (!isConnected) return super.dispatchKeyEvent(event)
         val clientEvent =
             AndroidKeyInputMapper.map(
                 keyCode = event.keyCode,
@@ -677,6 +736,8 @@ class MainActivity : AppCompatActivity() {
         } else if (requestCode == REQ_INTERNET_SCAN && resultCode == RESULT_OK) {
             val value = data?.getStringExtra(QRScannerActivity.EXTRA_URL) ?: return
             beginInternetPairing(value)
+        } else if (requestCode == REQ_FILE_TRANSFER_OPEN) {
+            handleFileTransferPickerResult(resultCode, data)
         }
     }
 
@@ -917,6 +978,9 @@ class MainActivity : AppCompatActivity() {
         applyConnectionPanelLayout()
         applyControlBarLayout()
         applyStatusOverlayLayout()
+        if (!isConnected) {
+            applyDisconnectedSettingsEntryPolicy()
+        }
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
@@ -1073,19 +1137,29 @@ class MainActivity : AppCompatActivity() {
         if (!isInForeground) return false
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             val session = internetSession ?: return false
+            val active = canSendControllerInput(session)
+            if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->
+                controllerHotplugCoordinator.rememberObservedController(event.deviceId, snapshot.controllerId)
+                val dispatch = internetControllerSessionState.applyMotion(snapshot)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
+                return ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)
+            }
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
-        ControllerInputMapper.snapshot(event)?.let { snapshot ->
+        val active = canSendControllerInput()
+        if (active) ControllerInputMapper.snapshot(event)?.let { snapshot ->
+            controllerHotplugCoordinator.rememberObservedController(event.deviceId, snapshot.controllerId)
             val dispatch = streamControllerSessionState.applyMotion(snapshot)
             if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
-            return ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)
+            return ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)
         }
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
         if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
             val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
             if (samples.isNotEmpty() && client.sendMotionStylus(samples)) {
+                mainDiagStylusForwarded("stream", event, samples, extended = true)
                 trackStreamStylus(samples)
                 return true
             }
@@ -1132,7 +1206,8 @@ class MainActivity : AppCompatActivity() {
                 else -> null
             }
         if (nativePointerInput != null) {
-            when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
+            val sessionBinding = currentSessionBinding()
+            when (ClientInputDispatch(sessionBinding).sendPointer(nativePointerInput)) {
                 ClientInputDispatchResult.SENT -> {
                     logNativePointerForwarded(event, nativePointerInput)
                     return true
@@ -1142,7 +1217,12 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
-                ClientInputDispatchResult.UNSUPPORTED -> Unit
+                ClientInputDispatchResult.UNSUPPORTED -> {
+                    if (shouldReportUnsupportedNativePointer(event, nativePointerInput, sessionBinding.capabilities)) {
+                        reportUnsupportedNativePointer(nativePointerInput, sessionBinding.capabilities)
+                        return true
+                    }
+                }
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS &&
@@ -1186,6 +1266,49 @@ class MainActivity : AppCompatActivity() {
         )
         return true
     }
+
+    private fun shouldReportUnsupportedNativePointer(
+        event: MotionEvent,
+        nativePointerInput: ClientPointerInput,
+        capabilities: ClientSessionCapabilities,
+    ): Boolean {
+        if (capabilities.nativePointer) return false
+        if (!NativeInputWire.isMouseLikeSource(event.device?.sources ?: event.source)) return false
+        if (nativePointerInput.action == ClientPointerAction.SCROLL) return false
+        val secondaryButtonEvent =
+            nativePointerInput.actionButton == MotionEvent.BUTTON_SECONDARY ||
+                nativePointerInput.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+        val secondaryButtonTransition =
+            nativePointerInput.action == ClientPointerAction.BUTTON_PRESS ||
+                nativePointerInput.action == ClientPointerAction.BUTTON_RELEASE
+        if (secondaryButtonTransition && secondaryButtonEvent) {
+            return false
+        }
+        return true
+    }
+
+    private fun reportUnsupportedNativePointer(
+        nativePointerInput: ClientPointerInput,
+        capabilities: ClientSessionCapabilities,
+    ) {
+        mainDiag(
+            "native pointer input blocked without negotiated pointer capability " +
+                "action=${nativePointerInput.action} buttonState=${nativePointerInput.buttonState}",
+        )
+        if (!unsupportedNativePointerNoticeShown) {
+            unsupportedNativePointerNoticeShown = true
+            Toast
+                .makeText(this, nativePointerUnavailableMessage(capabilities), Toast.LENGTH_LONG)
+                .show()
+        }
+    }
+
+    private fun nativePointerUnavailableMessage(capabilities: ClientSessionCapabilities): Int =
+        if (capabilities == ClientSessionCapabilities.LEGACY_TOUCH_ONLY) {
+            R.string.native_pointer_requires_touch_only_host
+        } else {
+            R.string.native_pointer_unavailable_for_session
+        }
 
     private fun logNativePointerForwarded(
         event: MotionEvent,
@@ -1235,6 +1358,9 @@ class MainActivity : AppCompatActivity() {
         dispatch: ControllerDispatch,
         source: String,
     ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            return sendInternetControllerDispatch(dispatch, source)
+        }
         val result = ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))
         return when (result) {
             ClientInputDispatchResult.SENT -> true
@@ -1247,6 +1373,85 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
+    }
+
+    private fun sendInternetControllerDispatch(
+        dispatch: ControllerDispatch,
+        source: String,
+        targetSession: InternetProductSession? = internetSession,
+    ): Boolean {
+        val session = targetSession ?: return false
+        val events = dispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val delivery =
+            when (dispatch.delivery) {
+                ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
+                ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
+            }
+        val accepted = session.sendController(events, delivery)
+        if (!accepted) mainDiag("internet controller sink rejected $source")
+        return accepted
+    }
+
+    private fun activeControllerSessionState(): ControllerSessionState =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            internetControllerSessionState
+        } else {
+            streamControllerSessionState
+        }
+
+    private fun canSendControllerInput(targetSession: InternetProductSession? = internetSession): Boolean =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            targetSession?.canSendController() == true
+        } else {
+            isConnected && currentSessionBinding().capabilities.controller
+        }
+
+    private fun hasNegotiatedControllerInput(targetSession: InternetProductSession? = internetSession): Boolean =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            targetSession?.hasNegotiatedControllerCapability() == true
+        } else {
+            currentSessionBinding().capabilities.controller
+        }
+
+    private fun synchronizeControllerDevices(reason: String) {
+        val snapshots = currentControllerDeviceSnapshots()
+        if (!isInForeground || !isConnected || !hasNegotiatedControllerInput()) {
+            controllerHotplugCoordinator.reset()
+            snapshots.forEach { snapshot ->
+                controllerHotplugCoordinator.rememberObservedController(snapshot.deviceId, snapshot.controllerId)
+            }
+            return
+        }
+        val state = activeControllerSessionState()
+        val result =
+            controllerHotplugCoordinator.synchronizeAvailableControllers(
+                availableDevices = snapshots,
+                sessionState = state,
+                submit = { dispatch -> sendStreamControllerDispatch(dispatch, "controller hotplug $reason") },
+            )
+        if (result.connected > 0 || result.disconnected > 0 || result.resynchronized) {
+            mainDiag(
+                "controller hotplug synchronized reason=$reason " +
+                    "connected=${result.connected} disconnected=${result.disconnected} " +
+                    "resynchronized=${result.resynchronized}",
+            )
+        }
+        if (result.limitReached > 0) {
+            mainDiag("controller hotplug ignored ${result.limitReached} device(s): active controller limit reached")
+        }
+    }
+
+    private fun currentControllerDeviceSnapshots(): List<ControllerDeviceSnapshot> =
+        buildList {
+            InputDevice.getDeviceIds().forEach { deviceId ->
+                val device = InputDevice.getDevice(deviceId) ?: return@forEach
+                if (!ControllerInputMapper.isControllerSource(device.sources)) return@forEach
+                add(ControllerDeviceSnapshot(deviceId, ControllerInputMapper.controllerId(device)))
+            }
+        }
+
+    private fun resetControllerHotplugTracking() {
+        controllerHotplugCoordinator.reset()
     }
 
     private fun finishPendingRightClick() {
@@ -1791,19 +1996,27 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
-        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
-        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
-        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
-        if (!useInlineSettingsButton) {
-            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
-            binding.settingsButton.bringToFront()
-        }
+        applyDisconnectedSettingsEntryPolicy()
         binding.statusBar.visibility = View.GONE
         binding.connectionSecurityGroup.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
+        discardPendingOutgoingFileTransfer()
         hideControlBar()
         updateDisconnectedHeader(prefs.connectionMode)
+    }
+
+    private fun applyDisconnectedSettingsEntryPolicy() {
+        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
+        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
+        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
+        if (!useInlineSettingsButton) {
+            // Stream overlay opacity can be very low; the disconnected settings
+            // entry remains a primary recovery affordance and must stay readable.
+            binding.settingsButton.alpha = 1f
+            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
+            binding.settingsButton.bringToFront()
+        }
     }
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
@@ -1825,6 +2038,10 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
             showClipboardMenu()
         }
+        binding.controlFileTransferButton.setOnClickListener {
+            revealControlBar()
+            beginChooseFileForTransfer()
+        }
         // The whole capsule row is the dropdown-selector tap target so touch
         // users hit it reliably, not just the leading icon.
         binding.displayCapsuleGroup.setOnClickListener {
@@ -1838,6 +2055,7 @@ class MainActivity : AppCompatActivity() {
         TooltipCompat.setTooltipText(binding.displayCapsuleGroup, getText(R.string.control_displays))
         TooltipCompat.setTooltipText(binding.controlHostActionsButton, getText(R.string.control_host_actions))
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
+        TooltipCompat.setTooltipText(binding.controlFileTransferButton, getText(R.string.control_file_transfer))
     }
 
     /**
@@ -1903,10 +2121,42 @@ class MainActivity : AppCompatActivity() {
     ) {
         availableDisplays = displays
         selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         refreshDisplayCapsuleLabel()
         applyControlBarLayout()
+    }
+
+    private fun markDisplaySelectionPending(
+        selectedId: String,
+        pendingId: String,
+    ) {
+        if (pendingId == selectedId || availableDisplays.none { it.id == pendingId }) return
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = pendingId
+        refreshDisplayCapsuleLabel()
+    }
+
+    private fun confirmDisplaySelection(selectedId: String) {
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
+        refreshDisplayCapsuleLabel()
+    }
+
+    private fun rejectDisplaySelection(
+        selectedId: String,
+        rejectedId: String,
+        reason: String,
+    ) {
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
+        refreshDisplayCapsuleLabel()
+        val active =
+            DisplayCapsulePolicy.capsuleLabel(availableDisplays, selectedDisplayId)
+                .ifEmpty { getString(R.string.display_capsule_placeholder) }
+        Toast.makeText(this, getString(R.string.display_switch_request_failed, active), Toast.LENGTH_SHORT).show()
+        mainDiag("capsule selectDisplay rejected target=$rejectedId active=$selectedId reason=$reason")
     }
 
     /**
@@ -1922,6 +2172,7 @@ class MainActivity : AppCompatActivity() {
             displaySelection = currentSessionBinding().capabilities.displaySelection,
             displays = availableDisplays,
             selectedId = selectedDisplayId,
+            pendingDisplayId = pendingDisplaySelectionId,
         )
     }
 
@@ -1937,10 +2188,11 @@ class MainActivity : AppCompatActivity() {
                 currentSessionBinding().capabilities.displaySelection,
                 availableDisplays,
             )
-        if (!selectable) return
+        if (!selectable || pendingDisplaySelectionId != null) return
         val displays = availableDisplays
-        val popup = PopupMenu(this, binding.controlDisplaysButton)
+        val popup = PopupMenu(this, binding.displayCapsuleGroup)
         val menu = popup.menu
+        var displayMenuShownAtMs = -1L
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
             val kindTag =
@@ -1965,12 +2217,25 @@ class MainActivity : AppCompatActivity() {
             item.isChecked = option.id == selectedDisplayId
         }
         popup.setOnMenuItemClickListener { item ->
+            if (!DisplayMenuSelectionGuard.acceptsSelection(
+                    menuShownAtMs = displayMenuShownAtMs,
+                    nowMs = SystemClock.uptimeMillis(),
+                    armDelayMs = DISPLAY_MENU_SELECTION_GUARD_MS,
+                )
+            ) {
+                mainDiag("capsule ignored immediate display menu selection item=${item.itemId}")
+                return@setOnMenuItemClickListener true
+            }
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
             if (option.id != selectedDisplayId) {
                 mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
-                streamClient?.selectDisplay(option.id)
-                selectedDisplayId = option.id
-                refreshDisplayCapsuleLabel()
+                val previousDisplayId = selectedDisplayId
+                if (streamClient?.selectDisplay(option.id) == true) {
+                    markDisplaySelectionPending(previousDisplayId, option.id)
+                    Toast.makeText(this, R.string.display_switch_request_sent, Toast.LENGTH_SHORT).show()
+                } else {
+                    rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+                }
             }
             true
         }
@@ -1982,7 +2247,9 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        popup.show()
+        showDisplayPopupMenu(popup, binding.displayCapsuleGroup) { shownAtMs ->
+            displayMenuShownAtMs = shownAtMs
+        }
     }
 
     /**
@@ -1993,11 +2260,11 @@ class MainActivity : AppCompatActivity() {
      * menu is built lazily in showHostActionsMenu() from the stored list.
      */
     private fun populateHostActions(actions: List<HostActionOption>) {
-        availableHostActions = actions
+        availableHostActions = HostActionMenuPolicy.supportedActions(actions)
         val available =
             HostActionMenuPolicy.isAvailable(
                 currentSessionBinding().capabilities.hostActions,
-                actions,
+                availableHostActions,
             )
         binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
         binding.controlHostActionsButton.isEnabled = available
@@ -2030,6 +2297,366 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /** File transfer is absent from legacy and unnegotiated sessions. */
+    private fun refreshFileTransferControl() {
+        val client = streamClient
+        val available =
+            client != null &&
+                client.canTransferFiles &&
+                ClientControlAvailability.isSupported(
+                    ClientControl.FILE_TRANSFER,
+                    currentSessionBinding().capabilities,
+                )
+        binding.controlFileTransferButton.visibility = if (available) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled = available
+        applyControlBarLayout()
+    }
+
+    private fun beginChooseFileForTransfer() {
+        val client = streamClient ?: return
+        if (!isCurrentSession(client, activeSessionGeneration) ||
+            !currentSessionBinding().capabilities.fileTransfer ||
+            !client.canTransferFiles
+        ) {
+            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent =
+            Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*")
+        runCatching { startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN) }
+            .onFailure { failure ->
+                mainDiag("file transfer picker failed: " + failure.javaClass.simpleName)
+                Toast.makeText(this, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun handleFileTransferPickerResult(
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val client = streamClient
+        val generation = activeSessionGeneration
+        if (client == null ||
+            !isCurrentSession(client, generation) ||
+            !currentSessionBinding().capabilities.fileTransfer ||
+            !client.canTransferFiles
+        ) {
+            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val maximumFileBytes = client.negotiatedMaxFileBytes
+        lifecycleScope.launch(Dispatchers.IO) {
+            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+            val sent =
+                runCatching {
+                    val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
+                    val registered = withContext(Dispatchers.Main) {
+                        if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                            discardPendingOutgoingFileTransfer()
+                            pendingOutgoingFileTransfer = file
+                            true
+                        } else {
+                            file.deleteRecursivelyBestEffort()
+                            false
+                        }
+                    }
+                    registered && client.offerFile(file, mimeType)
+            }
+            withContext(Dispatchers.Main) {
+                if (!isCurrentSession(client, generation)) return@withContext
+                val sentValue =
+                    sent.getOrElse { failure ->
+                        mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
+                        discardPendingOutgoingFileTransfer()
+                        Toast.makeText(this@MainActivity, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                        return@withContext
+                    }
+                Toast.makeText(
+                    this@MainActivity,
+                    if (sentValue) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                if (!sentValue) discardPendingOutgoingFileTransfer()
+            }
+        }
+    }
+
+    private fun stageOutgoingFileTransfer(
+        uri: Uri,
+        maximumFileBytes: Long,
+    ): File {
+        val safeName = safeOutgoingFileName(displayNameForUri(uri))
+        val directory = File(cacheDir, "vibescreen-outgoing-files/" + UUID.randomUUID())
+        if (!directory.mkdirs()) throw IOException("Unable to create outgoing file staging directory")
+        val staged = File(directory, safeName)
+        var total = 0L
+        try {
+            contentResolver.openInputStream(uri).use { input ->
+                if (input == null) throw IOException("Unable to open selected file")
+                FileOutputStream(staged).use { output ->
+                    val buffer = ByteArray(FILE_TRANSFER_COPY_BUFFER_BYTES)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read.toLong()
+                        if (total > maximumFileBytes) {
+                            throw IOException("Selected file exceeds the file transfer limit")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            return staged
+        } catch (failure: Throwable) {
+            directory.deleteRecursivelyBestEffort()
+            throw failure
+        }
+    }
+
+    private fun displayNameForUri(uri: Uri): String? =
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) cursor.getString(index) else null
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+
+    private fun safeOutgoingFileName(displayName: String?): String {
+        val candidate =
+            displayName
+                ?.substringAfterLast('/')
+                ?.substringAfterLast('\\')
+                ?.replace('\u0000', '_')
+                ?.trim()
+                ?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
+                .orEmpty()
+        return if (candidate.isNotEmpty() &&
+            candidate != "." &&
+            candidate != ".." &&
+            !candidate.contains('/') &&
+            !candidate.contains('\\')
+        ) {
+            candidate
+        } else {
+            "transfer.bin"
+        }
+    }
+
+    private fun promptIncomingFileOffer(
+        client: StreamClient,
+        generation: Long,
+        offer: dev.vibescreen.protocol.v1.FileOffer,
+    ) {
+        runOnUiThread {
+            if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
+                client.respondToFileOffer(offer, accepted = false)
+                return@runOnUiThread
+            }
+            if (pendingIncomingFileDialog != null) {
+                client.respondToFileOffer(offer, accepted = false)
+                return@runOnUiThread
+            }
+
+            var decided = false
+            val timeout = Runnable {
+                if (pendingIncomingFileDialog == null || decided) return@Runnable
+                decided = true
+                pendingIncomingFileDialog?.dismiss()
+                pendingIncomingFileDialog = null
+                client.respondToFileOffer(offer, accepted = false)
+                Toast.makeText(this, R.string.file_transfer_offer_expired, Toast.LENGTH_SHORT).show()
+            }
+            val dialog =
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.file_transfer_offer_title)
+                    .setMessage(
+                        getString(
+                            R.string.file_transfer_offer_message,
+                            safeIncomingDisplayName(offer.fileName),
+                            readableByteCount(offer.byteLength),
+                            fileTransferDestinationLabel(),
+                        ),
+                    )
+                    .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
+                        if (decided) return@setPositiveButton
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = true)
+                    }
+                    .setNegativeButton(R.string.file_transfer_reject) { _, _ ->
+                        if (decided) return@setNegativeButton
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = false)
+                    }
+                    .setOnCancelListener {
+                        if (decided) return@setOnCancelListener
+                        decided = true
+                        pendingIncomingFileDialog = null
+                        fileTransferApprovalHandler.removeCallbacks(timeout)
+                        client.respondToFileOffer(offer, accepted = false)
+                    }
+            pendingIncomingFileDialog = showImmersiveDialog(dialog)
+            fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
+        }
+    }
+
+    private fun safeIncomingDisplayName(fileName: String): String =
+        fileName.takeIf { it.isNotBlank() }?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS) ?:
+            getString(R.string.file_transfer_unknown_name)
+
+    private fun readableByteCount(bytes: Long): String {
+        if (bytes < 1024L) return getString(R.string.file_transfer_size_bytes, bytes)
+        val units = arrayOf("KiB", "MiB", "GiB")
+        var value = bytes.toDouble()
+        var unitIndex = -1
+        while (value >= 1024.0 && unitIndex < units.lastIndex) {
+            value /= 1024.0
+            unitIndex += 1
+        }
+        return String.format(Locale.US, "%.1f %s", value, units[unitIndex])
+    }
+
+    private fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val displayName = safeIncomingDisplayName(completed.fileName)
+            val stagedBytes = completed.stagingFile.length()
+            val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }
+            completed.stagingFile.deleteBestEffort()
+            runOnUiThread {
+                saved
+                    .onSuccess {
+                        mainDiag(
+                            "file transfer saved bytes=$stagedBytes " +
+                                "transfer_id=${completed.transferId.shortDebugId()}",
+                        )
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(fileTransferSavedMessage(), displayName),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    .onFailure { failure ->
+                        mainDiag(
+                            "file transfer save failed bytes=$stagedBytes " +
+                                "transfer_id=${completed.transferId.shortDebugId()} " +
+                                failure.javaClass.simpleName,
+                        )
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.file_transfer_save_failed, displayName),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+            }
+        }
+    }
+
+    private fun saveIncomingFileToDownloads(
+        completed: dev.telemachus.display.protocol.CompletedIncomingFile,
+        displayName: String,
+    ): Uri {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values =
+                ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                    put(MediaStore.Downloads.MIME_TYPE, completed.mimeType.ifBlank { "application/octet-stream" })
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IOException("Unable to create downloads entry")
+            try {
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    copyFileTo(completed.stagingFile, output)
+                } ?: throw IOException("Unable to open downloads entry")
+                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.also {
+                    contentResolver.update(uri, it, null, null)
+                }
+                return uri
+            } catch (failure: Throwable) {
+                runCatching { contentResolver.delete(uri, null, null) }
+                throw failure
+            }
+        }
+
+        val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: throw IOException("Downloads directory is unavailable")
+        if (!downloads.exists() && !downloads.mkdirs()) {
+            throw IOException("Unable to create downloads directory")
+        }
+        val target = File(downloads, displayName)
+        FileOutputStream(target).use { output -> copyFileTo(completed.stagingFile, output) }
+        return Uri.fromFile(target)
+    }
+
+    private fun fileTransferDestinationLabel(): String =
+        getString(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                R.string.file_transfer_downloads_destination
+            } else {
+                R.string.file_transfer_app_downloads_destination
+            },
+        )
+
+    private fun fileTransferSavedMessage(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            R.string.file_transfer_saved_to_downloads
+        } else {
+            R.string.file_transfer_saved_to_app_downloads
+        }
+
+
+    private fun copyFileTo(source: File, output: OutputStream) {
+        BufferedInputStream(source.inputStream()).use { input ->
+            BufferedOutputStream(output).use { bufferedOutput ->
+                val buffer = ByteArray(FILE_TRANSFER_COPY_BUFFER_BYTES)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    bufferedOutput.write(buffer, 0, read)
+                }
+            }
+        }
+    }
+
+    private fun discardPendingOutgoingFileTransfer() {
+        pendingOutgoingFileTransfer?.deleteRecursivelyBestEffort()
+        pendingOutgoingFileTransfer = null
+    }
+
+    private fun File.deleteRecursivelyBestEffort() {
+        runCatching {
+            if (isDirectory) {
+                deleteRecursively()
+            } else {
+                parentFile?.deleteRecursively() ?: delete()
+            }
+        }.onFailure { failure ->
+            mainDiag("file transfer cleanup failed: " + failure.javaClass.simpleName)
+        }
+    }
+
+    private fun File.deleteBestEffort() {
+        runCatching { delete() }
+            .onFailure { failure ->
+                mainDiag("file transfer staging delete failed: " + failure.javaClass.simpleName)
+            }
+    }
+
+    private fun ByteString.shortDebugId(): String =
+        toByteArray().take(4).joinToString("") { "%02x".format(it) }
+
     /**
      * Builds the menu without inspecting Android's clipboard. The local text is
      * read only after the user selects Send to Mac.
@@ -2043,7 +2670,7 @@ class MainActivity : AppCompatActivity() {
         ) {
             return
         }
-        val popup = PopupMenu(this, binding.controlClipboardButton)
+        val popup = PopupMenu(this, binding.controlClipboardButton, Gravity.NO_GRAVITY)
         popup.menu.add(0, CLIPBOARD_MENU_SEND, 0, R.string.clipboard_send_to_mac).isEnabled = true
         popup.menu
             .add(0, CLIPBOARD_MENU_RECEIVE, 1, R.string.clipboard_get_from_mac)
@@ -2057,7 +2684,7 @@ class MainActivity : AppCompatActivity() {
         }
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         popup.setOnDismissListener { revealControlBar() }
-        popup.show()
+        showControlPopupMenu(popup, binding.controlClipboardButton)
     }
 
     private fun beginSendLocalClipboard(
@@ -2069,7 +2696,7 @@ class MainActivity : AppCompatActivity() {
             showImmersiveDialog(
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.clipboard_lan_confirm_title)
-                    .setMessage(R.string.clipboard_lan_confirm_message)
+                    .setMessage(LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState))
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
                         sendLocalClipboard(client, generation)
                     }
@@ -2152,7 +2779,7 @@ class MainActivity : AppCompatActivity() {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
-                .setMessage(R.string.clipboard_lan_receive_confirm_message)
+                .setMessage(LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState))
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     receiveRemoteClipboard(client, generation)
                 }
@@ -2171,7 +2798,7 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(R.string.clipboard_receive_confirm_title)
                 .setMessage(
                     if (prefs.connectionMode == ConnectionMode.WIRELESS) {
-                        R.string.clipboard_lan_direct_receive_confirm_message
+                        LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
                     } else {
                         R.string.clipboard_receive_confirm_message
                     },
@@ -2257,6 +2884,7 @@ class MainActivity : AppCompatActivity() {
                     actions = binding.controlActionsGroup,
                     hostAction = binding.controlHostActionsButton,
                     clipboard = binding.controlClipboardButton,
+                    fileTransfer = binding.controlFileTransferButton,
                     settings = binding.controlSettingsButton,
                     disconnect = binding.controlDisconnectButton,
                 ),
@@ -2280,8 +2908,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun updateConnectionSecurityStatus() {
-        val presentation = ConnectionSecurityPresentationPolicy.presentation(prefs.connectionMode)
+    private fun updateConnectionSecurityStatus(
+        lanProtectionState: LanRecordProtectionState = streamClient?.currentLanProtectionState
+            ?: LanRecordProtectionState.NOT_APPLICABLE,
+    ) {
+        val presentation =
+            ConnectionSecurityPresentationPolicy.presentation(
+                mode = prefs.connectionMode,
+                lanProtectionState = lanProtectionState,
+            )
         val label = getString(presentation.labelResource)
         val detail = getString(presentation.detailResource)
         val detailColor =
@@ -2317,7 +2952,7 @@ class MainActivity : AppCompatActivity() {
         if (!available) return
         val moveDefault = getString(R.string.host_action_move_window)
         val returnDefault = getString(R.string.host_action_return_windows)
-        val popup = PopupMenu(this, binding.controlHostActionsButton)
+        val popup = PopupMenu(this, binding.controlHostActionsButton, Gravity.NO_GRAVITY)
         val menu = popup.menu
         actions.forEachIndexed { index, option ->
             menu.add(0, index, index, HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault))
@@ -2334,7 +2969,27 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        popup.show()
+        showControlPopupMenu(popup, binding.controlHostActionsButton)
+    }
+
+    private fun showControlPopupMenu(popup: PopupMenu, anchor: View) {
+        popup.gravity = Gravity.END
+        anchor.post { popup.show() }
+    }
+
+    private fun showDisplayPopupMenu(
+        popup: PopupMenu,
+        anchor: View,
+        onShown: (Long) -> Unit,
+    ) {
+        popup.gravity = Gravity.END
+        anchor.postDelayed(
+            {
+                popup.show()
+                onShown(SystemClock.uptimeMillis())
+            },
+            DISPLAY_MENU_SHOW_DELAY_MS,
+        )
     }
 
     private fun requestHostAction(option: HostActionOption, label: String) {
@@ -2354,11 +3009,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun invokeHostActionIfAvailable(actionId: String, label: String) {
+        val supportedActions = availableHostActions
         val actionIsCurrent =
             HostActionMenuPolicy.isAvailable(
                 currentSessionBinding().capabilities.hostActions,
-                availableHostActions,
-            ) && availableHostActions.any { it.id == actionId }
+                supportedActions,
+            ) && supportedActions.any { it.id == actionId }
         val client = streamClient
         if (!actionIsCurrent || client == null) return
         mainDiag("capsule invokeHostAction id=$actionId")
@@ -2432,10 +3088,7 @@ class MainActivity : AppCompatActivity() {
             positionOverlayAt(x, y)
         }
 
-        // Apply opacity to both overlay and settings button
-        val opacity = prefs.overlayOpacity
-        updateOverlayOpacity(opacity)
-        updateSettingsButtonOpacity(opacity)
+        updateOverlayOpacity(prefs.overlayOpacity)
 
         // Apply visibility
         updateOverlayVisibility(prefs.showStatsOverlay)
@@ -2535,6 +3188,18 @@ class MainActivity : AppCompatActivity() {
 
         if (!available) return
 
+        var suppressQualityListener = false
+
+        fun syncQualityAutoForExplicitVideoSetting() {
+            if (prefs.videoQuality == VideoQualityChoice.AUTO) return
+            suppressQualityListener = true
+            qualityButtons[VideoQualityChoice.AUTO]?.let { autoButton ->
+                qualityGroup.check(autoButton.id)
+            }
+            suppressQualityListener = false
+            prefs.videoQuality = VideoQualityChoice.AUTO
+        }
+
         fun announceRequest(kind: VideoPreferenceFeedbackKind) {
             if (!VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = available && streamClient != null)) {
                 return
@@ -2549,6 +3214,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (suppressQualityListener) return@addOnButtonCheckedListener
             if (!isChecked) return@addOnButtonCheckedListener
             val choice =
                 qualityButtons.entries.firstOrNull { it.value.id == checkedId }?.key
@@ -2586,7 +3252,9 @@ class MainActivity : AppCompatActivity() {
                 bitrateKbps = 0,
                 framesPerSecond = fps,
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                resetQualityToAuto = true,
             )
+            syncQualityAutoForExplicitVideoSetting()
             prefs.videoFrameRate = fps
             announceRequest(VideoPreferenceFeedbackKind.FRAME_RATE)
         }
@@ -2605,12 +3273,68 @@ class MainActivity : AppCompatActivity() {
                         bitrateKbps = mbps * ClientVideoBounds.KBPS_PER_MBPS,
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                        resetQualityToAuto = true,
                     )
+                    syncQualityAutoForExplicitVideoSetting()
                     prefs.videoBitrateMbps = mbps
                     announceRequest(VideoPreferenceFeedbackKind.BITRATE)
                 }
             },
         )
+    }
+
+    private fun setupGestureShortcutControls(
+        unavailableNote: TextView,
+        swipeUpGroup: MaterialButtonToggleGroup,
+        swipeUpButtons: Map<GestureHostActionChoice, MaterialButton>,
+        swipeDownGroup: MaterialButtonToggleGroup,
+        swipeDownButtons: Map<GestureHostActionChoice, MaterialButton>,
+    ) {
+        val available = gestureShortcutsAvailable()
+
+        fun applyChoice(
+            group: MaterialButtonToggleGroup,
+            buttons: Map<GestureHostActionChoice, MaterialButton>,
+            choice: GestureHostActionChoice,
+        ) {
+            buttons[choice]?.let { group.check(it.id) }
+                ?: buttons[GestureHostActionChoice.DEFAULT]?.let { group.check(it.id) }
+        }
+
+        fun choiceFor(
+            checkedId: Int,
+            buttons: Map<GestureHostActionChoice, MaterialButton>,
+        ): GestureHostActionChoice? = buttons.entries.firstOrNull { it.value.id == checkedId }?.key
+
+        fun supportsChoice(choice: GestureHostActionChoice): Boolean = choice.isSupportedByHostActions(availableHostActions)
+
+        applyChoice(swipeUpGroup, swipeUpButtons, prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions))
+        applyChoice(swipeDownGroup, swipeDownButtons, prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions))
+        unavailableNote.visibility = if (available) View.GONE else View.VISIBLE
+        listOf(swipeUpGroup, swipeDownGroup).forEach { group -> group.isEnabled = available }
+        listOf(swipeUpButtons, swipeDownButtons).forEach { buttons ->
+            buttons.forEach { (choice, button) ->
+                button.isEnabled = available && supportsChoice(choice)
+            }
+        }
+
+        if (!available) return
+
+        swipeUpGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.gestureSwipeUpAction = choiceFor(checkedId, swipeUpButtons) ?: return@addOnButtonCheckedListener
+        }
+        swipeDownGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.gestureSwipeDownAction = choiceFor(checkedId, swipeDownButtons) ?: return@addOnButtonCheckedListener
+        }
+    }
+
+    private fun gestureShortcutsAvailable(): Boolean {
+        val capabilities = currentSessionBinding().capabilities
+        return capabilities.customGestures &&
+            HostActionMenuPolicy.isAvailable(capabilities.hostActions, availableHostActions) &&
+            streamClient?.canInvokeHostActions == true
     }
 
     private fun showSettingsDialog() {
@@ -2652,6 +3376,21 @@ class MainActivity : AppCompatActivity() {
         val videoFps120 = view.findViewById<MaterialButton>(R.id.videoFps120)
         val videoBitrateSlider = view.findViewById<Slider>(R.id.videoBitrateSlider)
         val videoBitrateValue = view.findViewById<TextView>(R.id.videoBitrateValue)
+        val gestureShortcutUnavailable = view.findViewById<TextView>(R.id.gestureShortcutUnavailable)
+        val gestureSwipeUpGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeUpGroup)
+        val gestureSwipeDownGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeDownGroup)
+        val gestureSwipeUpButtons =
+            mapOf(
+                GestureHostActionChoice.DEFAULT to view.findViewById<MaterialButton>(R.id.gestureSwipeUpDefault),
+                GestureHostActionChoice.MOVE_WINDOW to view.findViewById<MaterialButton>(R.id.gestureSwipeUpMoveWindow),
+                GestureHostActionChoice.RETURN_WINDOWS to view.findViewById<MaterialButton>(R.id.gestureSwipeUpReturnWindows),
+            )
+        val gestureSwipeDownButtons =
+            mapOf(
+                GestureHostActionChoice.DEFAULT to view.findViewById<MaterialButton>(R.id.gestureSwipeDownDefault),
+                GestureHostActionChoice.MOVE_WINDOW to view.findViewById<MaterialButton>(R.id.gestureSwipeDownMoveWindow),
+                GestureHostActionChoice.RETURN_WINDOWS to view.findViewById<MaterialButton>(R.id.gestureSwipeDownReturnWindows),
+            )
 
         renderDeviceHealth(dialog)
 
@@ -2702,6 +3441,13 @@ class MainActivity : AppCompatActivity() {
             rotationButtons[prefs.clientRotation]?.let { rotationGroup.check(it.id) }
         }
         updateViewportButtons()
+        setupGestureShortcutControls(
+            unavailableNote = gestureShortcutUnavailable,
+            swipeUpGroup = gestureSwipeUpGroup,
+            swipeUpButtons = gestureSwipeUpButtons,
+            swipeDownGroup = gestureSwipeDownGroup,
+            swipeDownButtons = gestureSwipeDownButtons,
+        )
 
         // Highlight current position selection (8 positions)
         // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
@@ -2735,7 +3481,6 @@ class MainActivity : AppCompatActivity() {
         opacitySlider.addOnChangeListener { _, value, _ ->
             prefs.overlayOpacity = value
             updateOverlayOpacity(value)
-            updateSettingsButtonOpacity(value)
             opacityValue.text = "${(value * 100).toInt()}%"
         }
 
@@ -2891,21 +3636,17 @@ class MainActivity : AppCompatActivity() {
             val availableHeight =
                 (resources.displayMetrics.heightPixels -
                     safeAreaInsets.top - safeAreaInsets.bottom - margin * 2).coerceAtLeast(1)
-            val dialogWidth = minOf((SETTINGS_DIALOG_MAX_WIDTH_DP * density).toInt(), availableWidth)
+            val dialogWidth = minOf(resources.getDimensionPixelSize(R.dimen.settings_dialog_max_width), availableWidth)
             val dialogHeight =
                 minOf(
                     (resources.displayMetrics.heightPixels * SETTINGS_DIALOG_MAX_HEIGHT_RATIO).toInt(),
                     availableHeight,
                 )
             win.setLayout(dialogWidth, dialogHeight)
-            dialog.findViewById<View>(R.id.settingsContent)?.let(
+            dialog.findViewById<View>(android.R.id.content)?.let(
                 SettingsDialogLayoutApplier::applyAfterNextLayout,
             )
         }
-    }
-
-    private fun updateSettingsButtonOpacity(opacity: Float) {
-        binding.settingsButton.alpha = opacity
     }
 
     private fun setupSettingsButton() {
@@ -3065,6 +3806,10 @@ class MainActivity : AppCompatActivity() {
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
+        resetControllerHotplugTracking()
+        managedCustomGesturesAllowed = true
+        managedHostActionsAllowed = true
+        resetCustomGestureTouchState()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -3594,6 +4339,7 @@ class MainActivity : AppCompatActivity() {
                     hasConnectedThisRun = true
                     isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
+                    unsupportedNativePointerNoticeShown = false
                     pendingWirelessReconnectDelayMs = null
                     initialWirelessReconnectBackoff.reset()
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
@@ -3602,6 +4348,7 @@ class MainActivity : AppCompatActivity() {
                     enableFullscreenMode()
                     binding.inputViewport.requestFocus()
                     refreshClipboardControl()
+                    refreshFileTransferControl()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -3688,18 +4435,27 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
                 val clipboard =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
-                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard) {
+                val fileTransfer =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_FILE_TRANSFER in negotiated
+                val peripheralInputFramework =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiated
+                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || fileTransfer || peripheralInputFramework) {
+                    val managedHostActions = hostActions && managedHostActionsAllowed
+                    val customGestures = managedHostActions && managedCustomGesturesAllowed
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
                             keyboard = keyboard,
                             nativePointer = nativePointer,
                             controller = controller,
-                            hostActions = hostActions,
+                            customGestures = customGestures,
+                            hostActions = managedHostActions,
                             clipboard = clipboard,
+                            fileTransfer = fileTransfer,
+                            peripheralInputFramework = peripheralInputFramework,
                         )
                     val sink =
-                        if (keyboard || nativePointer || controller) {
+                        if (keyboard || nativePointer || controller || peripheralInputFramework) {
                             StreamClientInputSink(callbackClient, callbackGeneration)
                         } else {
                             null
@@ -3714,13 +4470,43 @@ class MainActivity : AppCompatActivity() {
                     // that arrival order cannot leave the button permanently hidden.
                     populateHostActions(availableHostActions)
                     refreshClipboardControl()
+                    refreshFileTransferControl()
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
-                            "controller=$controller hostActions=$hostActions clipboard=$clipboard",
+                            "controller=$controller customGestures=$customGestures hostActions=$managedHostActions " +
+                            "clipboard=$clipboard fileTransfer=$fileTransfer " +
+                            "peripheralInputFramework=$peripheralInputFramework",
                     )
+                    if (controller) synchronizeControllerDevices("capability negotiation")
                 }
                 populateDisplayCapsule(options, selectedId)
+            }
+        }
+
+        callbackClient.onDisplaySelectionPending = displayPending@{ selectedId, pendingId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayPending
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("display selection pending target=$pendingId active=$selectedId")
+                markDisplaySelectionPending(selectedId, pendingId)
+            }
+        }
+
+        callbackClient.onDisplaySelectionConfirmed = displayConfirmed@{ selectedId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayConfirmed
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("display selection confirmed active=$selectedId")
+                confirmDisplaySelection(selectedId)
+            }
+        }
+
+        callbackClient.onDisplaySelectionRejected = displayRejected@{ selectedId, rejectedId, reason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayRejected
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                rejectDisplaySelection(selectedId, rejectedId, reason)
             }
         }
 
@@ -3730,6 +4516,34 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionsAvailable: ${actions.joinToString { it.id }}")
                 populateHostActions(actions)
+            }
+        }
+        callbackClient.onManagedPolicyReceived = managedPolicy@{ status ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@managedPolicy
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed
+                managedHostActionsAllowed = !status.managed || status.hostActionsAllowed
+                val binding = currentSessionBinding()
+                val hostActionsNegotiated =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()
+                val hostActions = hostActionsNegotiated && managedHostActionsAllowed
+                val customGestures = hostActions && managedCustomGesturesAllowed
+                val capabilities =
+                    binding.capabilities.copy(
+                        customGestures = customGestures,
+                        hostActions = hostActions,
+                    )
+                applyNegotiatedSession(
+                    callbackClient,
+                    callbackGeneration,
+                    ClientSessionBinding(capabilities, binding.inputSink),
+                )
+                populateHostActions(availableHostActions)
+                mainDiag(
+                    "managed policy updated: customGestures=" + customGestures +
+                        " hostActions=" + capabilities.hostActions,
+                )
             }
         }
         callbackClient.onControllerInputAck = controllerAck@{ connection, accepted, rejectionReason ->
@@ -3822,6 +4636,34 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        callbackClient.onFileOffer = fileOffer@{ offer ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileOffer
+            promptIncomingFileOffer(callbackClient, callbackGeneration, offer)
+        }
+        callbackClient.onIncomingFileCompleted = incomingFile@{ completed ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@incomingFile
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                onIncomingFileCompleted(completed)
+            }
+        }
+        callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileResult
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                discardPendingOutgoingFileTransfer()
+                val message =
+                    if (accepted) {
+                        getString(R.string.file_transfer_completed)
+                    } else if (reason.isNotBlank()) {
+                        getString(R.string.file_transfer_failed_with_reason, reason)
+                    } else {
+                        getString(R.string.file_transfer_failed)
+                    }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+
         callbackClient.onStats = stats@{ fps, mbps ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@stats
             runOnUiThread {
@@ -3884,6 +4726,7 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = true
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
+        resetInternetInputStateForNewSession()
         val generation = ++internetGeneration
         internetVideoDecoderLifecycle?.invalidate()
         internetVideoDecoderLifecycle = null
@@ -3934,6 +4777,7 @@ class MainActivity : AppCompatActivity() {
                 supportedCodecs =
                     CodecCapabilities.advertisedStreamCodecs
                         .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
+                advertiseController = true,
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -3964,6 +4808,16 @@ class MainActivity : AppCompatActivity() {
                     videoDecoderLifecycle.onVideoConfiguration(configuration, effect, completion)
                 }
 
+                override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        internetControllerSessionState.resynchronize()?.let { dispatch ->
+                            sendInternetControllerDispatch(dispatch, "internet controller video configuration")
+                        }
+                    }
+                }
+
                 override fun onVideoFrame(frame: ProductVideoFrame) {
                     if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
                     videoDecoder?.decode(
@@ -3973,6 +4827,25 @@ class MainActivity : AppCompatActivity() {
                         frame.keyframe,
                         frame.sessionEpoch,
                     )
+                }
+
+                override fun onInputAck(
+                    inputId: Long,
+                    controllerId: String?,
+                    controllerEpoch: Long?,
+                    accepted: Boolean,
+                    rejectionReason: String,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    val rejectedConnection =
+                        ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted) ?: return
+                    if (internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)) {
+                        mainDiag(
+                            "internet controller input rejected input_id=$inputId " +
+                                "controller=${rejectedConnection.controllerId} " +
+                                "epoch=${rejectedConnection.controllerEpoch} reason=$rejectionReason",
+                        )
+                    }
                 }
 
                 override fun onFreshSessionRequired(reason: String) {
@@ -4404,10 +5277,7 @@ class MainActivity : AppCompatActivity() {
         videoDecoder = null
         connectionAttemptInProgress = false
         internetRoute = null
-        activeInternetInputIds.clear()
-        internetStylusInputIds.clear()
-        internetStylusGestureRouter.reset()
-        internetStylusContactRouter.reset()
+        resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -4589,7 +5459,13 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
-        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
+        val callbackClient = StreamClient(
+            host,
+            port,
+            applicationContext,
+            advertiseController = true,
+            wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf()),
+        )
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
@@ -4769,6 +5645,9 @@ class MainActivity : AppCompatActivity() {
     private fun applyDisconnectedSessionUi() {
         isConnected = false
         revealOnlyTouchGestureActive = false
+        resetCustomGestureTouchState()
+        managedCustomGesturesAllowed = true
+        managedHostActionsAllowed = true
         streamStylusGestureRouter.reset()
         streamStylusContactRouter.reset()
         streamStylusInputIds.clear()
@@ -4787,6 +5666,7 @@ class MainActivity : AppCompatActivity() {
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
         availableDisplays = emptyList()
         selectedDisplayId = ""
+        pendingDisplaySelectionId = null
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,
@@ -4863,18 +5743,32 @@ class MainActivity : AppCompatActivity() {
                     extendedNegotiated = client?.canSendExtendedStylus() == true,
                 )
             if (stylusSamples.isNotEmpty() && client?.sendMotionStylus(stylusSamples) == true) {
+                mainDiagStylusForwarded(
+                    "stream",
+                    event,
+                    stylusSamples,
+                    extended = client.canSendExtendedStylus(),
+                )
                 trackStreamStylus(stylusSamples)
             }
             if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
             return
         }
+        if (consumeCustomGestureHostAction(view, event)) return
+        forwardMotionTouch(view, event)
+    }
+
+    private fun buildTouchForwardingPayload(
+        view: View,
+        event: MotionEvent,
+    ): TouchForwardingPayload? {
         val pointerCount = event.pointerCount.coerceAtMost(MAX_FORWARDED_POINTERS)
         val mappedPointers =
             (0 until pointerCount).map { index ->
                 val mapped = mapInputPoint(view, event.getX(index), event.getY(index))
                 MotionPointer(event.getPointerId(index), mapped.x.toDouble(), mapped.y.toDouble())
             }.toMutableList()
-        val first = mappedPointers.firstOrNull() ?: return
+        val first = mappedPointers.firstOrNull() ?: return null
         val x = first.x
         val y = first.y
         when (event.actionMasked) {
@@ -4923,12 +5817,201 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> LEGACY_TOUCH_MOVE
                 else -> LEGACY_TOUCH_UP
             }
+        return TouchForwardingPayload(v1Samples, legacyAction, mappedPointers)
+    }
+
+    private fun forwardMotionTouch(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val payload = buildTouchForwardingPayload(view, event) ?: return
+        sendTouchForwardingPayload(payload)
+    }
+
+    private fun sendTouchForwardingPayload(payload: TouchForwardingPayload) {
         streamClient?.sendMotionTouch(
-            v1Samples = v1Samples,
-            legacyAction = legacyAction,
-            legacyPointers = mappedPointers,
+            v1Samples = payload.v1Samples,
+            legacyAction = payload.legacyAction,
+            legacyPointers = payload.legacyPointers,
         )
     }
+
+    private fun currentGestureHostActionProfile(): GestureHostActionProfile =
+        GestureHostActionProfile.fromChoices(
+            swipeUp = prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions),
+            swipeDown = prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions),
+        )
+
+    private fun consumeCustomGestureHostAction(
+        view: View,
+        event: MotionEvent,
+    ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) return false
+        if (customGestureBypassUntilSequenceEnd) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                resetCustomGestureTouchState()
+            }
+            return false
+        }
+        val profile = currentGestureHostActionProfile()
+        if (!GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile)) {
+            resetCustomGestureTouchState()
+            return false
+        }
+        if (!customGestureTouchSequenceActive && !gestureShortcutsAvailable()) {
+            resetCustomGestureTouchState()
+            return false
+        }
+        val action = event.actionMasked
+        if (!customGestureTouchSequenceActive && event.pointerCount < CUSTOM_GESTURE_POINTER_COUNT) {
+            if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_UP) resetCustomGestureTouchState()
+            return false
+        }
+        if (!customGestureTouchSequenceActive && event.pointerCount >= CUSTOM_GESTURE_POINTER_COUNT) {
+            inputPredictor.reset()
+            customGestureTouchSequenceActive = true
+            customGestureActionCommitted = false
+            customGesturePendingTouchEvents.clear()
+            revealControlBar()
+        }
+        if (!customGestureTouchSequenceActive) return false
+        if (!customGestureActionCommitted) {
+            buildTouchForwardingPayload(view, event)?.let(customGesturePendingTouchEvents::add)
+        }
+
+        val trigger =
+            threeFingerGestureClassifier.consume(
+                ThreeFingerGestureSample(
+                    pointerCount = event.pointerCount,
+                    phase = event.toThreeFingerGesturePhase(),
+                    centroidY = event.centroidY(),
+                    viewportHeight = view.height,
+                ),
+            )
+        if (trigger != null) handleGestureHostActionDecision(view, event, trigger, profile)
+        if (!customGestureActionCommitted && shouldReleasePendingCustomGesture(event)) {
+            replayPendingCustomGestureTouchEvents()
+            resetCustomGestureTouchState()
+            return true
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            resetCustomGestureTouchState()
+        }
+        return true
+    }
+
+    private fun sendCustomGestureTouchCancellation(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val cancelledPointers =
+            (0 until minOf(MAX_FORWARDED_POINTERS, event.pointerCount)).map { index ->
+                val mapped = mapInputPoint(view, event.getX(index), event.getY(index))
+                MotionPointer(event.getPointerId(index), mapped.x.toDouble(), mapped.y.toDouble())
+            }
+        streamClient?.sendMotionTouch(
+            v1Samples =
+                cancelledPointers.map { pointer ->
+                    TouchSample(pointer.pointerId, InputPhase.INPUT_PHASE_CANCELLED, pointer.x, pointer.y)
+                },
+            legacyAction = LEGACY_TOUCH_UP,
+            legacyPointers = cancelledPointers,
+        )
+    }
+
+    private fun handleGestureHostActionDecision(
+        view: View,
+        event: MotionEvent,
+        trigger: GestureHostActionTrigger,
+        profile: GestureHostActionProfile,
+    ) {
+        if (customGestureActionCommitted) return
+        val capabilities = currentSessionBinding().capabilities
+        val supportedActions = availableHostActions
+        val decision =
+            GestureHostActionPolicy.resolve(
+                trigger = trigger,
+                profile = profile,
+                context =
+                    GestureHostActionPolicyContext(
+                        customGesturesAllowed = capabilities.customGestures,
+                        hostActionsAllowed = capabilities.hostActions,
+                        hostActionsNegotiated = streamClient?.canInvokeHostActions == true,
+                        availableHostActionIds = supportedActions.map { it.id }.toSet(),
+                    ),
+            )
+        when (decision) {
+            GestureHostActionDecision.Default -> {
+                replayPendingCustomGestureTouchEvents()
+                customGestureBypassUntilSequenceEnd = true
+                releaseCustomGestureCandidate()
+            }
+            GestureHostActionDecision.Denied -> {
+                sendCustomGestureTouchCancellation(view, event)
+                customGestureActionCommitted = true
+                mainDiag("gesture host action denied trigger=$trigger")
+            }
+            is GestureHostActionDecision.InvokeHostAction -> {
+                val option = supportedActions.firstOrNull { it.id == decision.actionId } ?: return
+                val label =
+                    HostActionMenuPolicy.menuLabel(
+                        option,
+                        moveDefault = getString(R.string.host_action_move_window),
+                        returnDefault = getString(R.string.host_action_return_windows),
+                    )
+                sendCustomGestureTouchCancellation(view, event)
+                customGestureActionCommitted = true
+                invokeHostActionIfAvailable(decision.actionId, label)
+            }
+        }
+    }
+
+    private fun shouldReleasePendingCustomGesture(event: MotionEvent): Boolean =
+        event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_CANCEL ||
+            event.actionMasked == MotionEvent.ACTION_POINTER_UP
+
+    private fun replayPendingCustomGestureTouchEvents() {
+        customGesturePendingTouchEvents.forEach(::sendTouchForwardingPayload)
+    }
+
+    private fun releaseCustomGestureCandidate() {
+        customGestureTouchSequenceActive = false
+        customGestureActionCommitted = false
+        customGesturePendingTouchEvents.clear()
+        threeFingerGestureClassifier.reset()
+    }
+
+    private fun resetCustomGestureTouchState() {
+        releaseCustomGestureCandidate()
+        customGestureBypassUntilSequenceEnd = false
+    }
+
+    private fun MotionEvent.toThreeFingerGesturePhase(): ThreeFingerGesturePhase =
+        when (actionMasked) {
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN,
+            -> ThreeFingerGesturePhase.BEGIN
+            MotionEvent.ACTION_MOVE -> ThreeFingerGesturePhase.MOVE
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_POINTER_UP,
+            -> ThreeFingerGesturePhase.END
+            MotionEvent.ACTION_CANCEL -> ThreeFingerGesturePhase.CANCEL
+            else -> ThreeFingerGesturePhase.OTHER
+        }
+
+    private fun MotionEvent.centroidY(): Float {
+        if (pointerCount == 0) return 0f
+        var total = 0f
+        for (index in 0 until pointerCount) total += getY(index)
+        return total / pointerCount
+    }
+
+    private data class TouchForwardingPayload(
+        val v1Samples: List<TouchSample>,
+        val legacyAction: Int,
+        val legacyPointers: List<MotionPointer>,
+    )
 
     /**
      * Bridges negotiated native input into the active Protocol v1 session.
@@ -4990,6 +6073,11 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(client, generation)) return false
             return client.sendController(input.dispatch)
         }
+
+        override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendPeripheral(input.peripheralKind, input.payload)
+        }
     }
 
     private fun completeCurrentNativeInputBoundary(
@@ -5010,8 +6098,25 @@ class MainActivity : AppCompatActivity() {
         ) {
             streamStylusContactRouter.reset()
             internetStylusContactRouter.reset()
+            if (internet != null) {
+                internetControllerSessionState.takeRelease()?.let { release ->
+                    if (!sendInternetControllerDispatch(release, "internet controller release", internet)) {
+                        mainDiag("internet controller release was rejected")
+                    }
+                }
+            }
             completeNativeInputBoundary(client, generation, pointerPhase, afterRelease)
         }
+    }
+
+    private fun resetInternetInputStateForNewSession() {
+        activeInternetInputIds.clear()
+        internetStylusInputIds.clear()
+        internetStylusGestureRouter.reset()
+        internetStylusContactRouter.reset()
+        internetControllerSessionState.resetForNewSession()
+        resetControllerHotplugTracking()
+        internetInputIds.resetForNewSession()
     }
 
     private fun completeNativeInputBoundary(
@@ -5111,7 +6216,7 @@ class MainActivity : AppCompatActivity() {
             val pointerId = event.getPointerId(index)
             val inputId =
                 when (phase) {
-                    ProductInputPhase.BEGAN -> nextInternetInputId.incrementAndGet().also { activeInternetInputIds[pointerId] = it }
+                    ProductInputPhase.BEGAN -> internetInputIds.next().also { activeInternetInputIds[pointerId] = it }
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
@@ -5174,7 +6279,9 @@ class MainActivity : AppCompatActivity() {
         if (extendedOnly && samples.isEmpty()) return false
         samples.forEach { sample ->
             val inputId = internetStylusInputIds.resolve(sample) ?: return@forEach
-            session.sendStylus(sample.toProductStylusEvent(inputId, extended))
+            if (session.sendStylus(sample.toProductStylusEvent(inputId, extended))) {
+                mainDiagStylusForwarded("internet", event, listOf(sample), extended)
+            }
             internetStylusInputIds.complete(sample)
         }
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
@@ -5279,6 +6386,38 @@ class MainActivity : AppCompatActivity() {
                 } else null,
         )
 
+    private fun mainDiagStylusForwarded(
+        transport: String,
+        event: MotionEvent,
+        samples: List<StylusSample>,
+        extended: Boolean,
+    ) {
+        val sample = samples.firstOrNull() ?: return
+        mainDiag(
+            "Stylus forwarded: transport=$transport samples=${samples.size} extended=$extended " +
+                "rawSource=0x${event.source.toString(16)} rawAction=${event.actionMasked} " +
+                "rawTools=${event.toolTypesSummary()} " +
+                "phase=${sample.phase} contact=${sample.contactState} tool=${sample.toolKind} " +
+                "buttons=${sample.buttonMask} pressure=${sample.pressure} " +
+                "tiltX=${sample.tiltXDegrees} tiltY=${sample.tiltYDegrees}",
+        )
+    }
+
+    private fun MotionEvent.toolTypesSummary(): String =
+        (0 until pointerCount).joinToString(separator = ",", prefix = "[", postfix = "]") { index ->
+            toolTypeName(getToolType(index))
+        }
+
+    private fun toolTypeName(toolType: Int): String =
+        when (toolType) {
+            MotionEvent.TOOL_TYPE_STYLUS -> "stylus"
+            MotionEvent.TOOL_TYPE_ERASER -> "eraser"
+            MotionEvent.TOOL_TYPE_FINGER -> "finger"
+            MotionEvent.TOOL_TYPE_MOUSE -> "mouse"
+            MotionEvent.TOOL_TYPE_UNKNOWN -> "unknown"
+            else -> "other-$toolType"
+        }
+
     /**
      * Apply rotation by changing the Activity's screen orientation
      * This provides proper fullscreen portrait/landscape support
@@ -5333,6 +6472,10 @@ class MainActivity : AppCompatActivity() {
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         cancelClipboardRequestTimeout()
+        fileTransferApprovalHandler.removeCallbacksAndMessages(null)
+        pendingIncomingFileDialog?.dismiss()
+        pendingIncomingFileDialog = null
+        discardPendingOutgoingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
         runCatching(::discardPendingInternetPairing).onFailure { failure ->
@@ -5362,18 +6505,23 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_TOUCH_UP = 2
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
         private const val MAX_FORWARDED_POINTERS = 2
+        private const val CUSTOM_GESTURE_POINTER_COUNT = 3
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS = 250L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
+        private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
+        private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
+        private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val DISPLAY_MENU_SHOW_DELAY_MS = 120L
+        private const val DISPLAY_MENU_SELECTION_GUARD_MS = 300L
 
         // Uniform breathing gap, in dp, added on top of the safe-area insets for
         // floating chrome (control bar, settings panel, settings button) and the
         // draggable overlay clamp. Matches the settings button's resting margin.
         private const val SETTINGS_CHROME_MARGIN_DP = 24f
-        private const val SETTINGS_DIALOG_MAX_WIDTH_DP = 680f
         private const val SETTINGS_DIALOG_MAX_HEIGHT_RATIO = 0.85f
         private val DECODER_LIFECYCLE_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
@@ -5381,6 +6529,7 @@ class MainActivity : AppCompatActivity() {
             }
         private const val REQ_INTERNET_SCAN = 1101
         private const val REQ_INTERNET_CAMERA = 1102
+        private const val REQ_FILE_TRANSFER_OPEN = 1103
         private const val INTERNET_TICK_INTERVAL_MS = 250L
         private const val INTERNET_LOG_TAG = "VibeInternet"
         private val QUARANTINED_INTERNET_SESSION = AtomicReference<InternetProductSession?>()

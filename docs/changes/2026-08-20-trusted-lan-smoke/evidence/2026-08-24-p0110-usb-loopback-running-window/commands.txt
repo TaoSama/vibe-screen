@@ -1,0 +1,57 @@
+# Commands run from <repo-worktree>
+# Date: 2026-08-24 UTC
+# All Android commands used the explicit target serial <device-serial>.
+
+$ git fetch origin --prune
+$ git pull --ff-only
+$ git status --short --branch
+$ git rev-parse HEAD
+$ git rev-parse origin/main
+$ git remote get-url origin
+
+$ test ! -e /tmp/vibe-screen-device-android.lock
+$ test ! -e /tmp/vibe-screen-device-soak.lock
+
+$ adb -s <device-serial> get-state
+$ adb -s <device-serial> devices -l
+$ adb -s <device-serial> shell getprop ro.product.manufacturer
+$ adb -s <device-serial> shell getprop ro.product.model
+$ adb -s <device-serial> shell getprop ro.product.device
+$ adb -s <device-serial> shell getprop ro.build.version.release
+$ adb -s <device-serial> shell getprop ro.build.version.sdk
+
+$ make evidence-usb-live-smoke EVIDENCE_SERIAL=<device-serial> EVIDENCE_PACKAGE=dev.telemachus.display EVIDENCE_PORT=54321 EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window
+# Exit code 2. The default 1500-line logcat window did not contain
+# current-process telemetry, so the output was superseded by the wider
+# read-only collector run below.
+
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial <device-serial> --package dev.telemachus.display --port 54321 --logcat-lines 50000 --max-log-bytes 1048576 --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window/usb-live-smoke.json
+# Exit code 0; final read-only USB live smoke verdict is pass.
+
+$ adb -s <device-serial> logcat -d -v threadtime -t 50000 --pid=15457
+$ adb -s <device-serial> logcat -d -v threadtime -t 20000 -s VibeScreenTelemetry MediaCodec MA VD StreamClient
+$ adb -s <device-serial> exec-out run-as dev.telemachus.display sh -c "tail -n 2500 files/diag.log.old 2>/dev/null; tail -n 2500 files/diag.log 2>/dev/null"
+$ adb -s <device-serial> reverse --list
+$ adb -s <device-serial> shell pidof dev.telemachus.display
+$ adb -s <device-serial> shell dumpsys window
+# The retained window-focus.txt artifact keeps only foreground/focus lines from
+# the full dumpsys output; the full dump was discarded to reduce unrelated app
+# metadata in committed evidence.
+
+$ adb -s <device-serial> shell cmd wifi status
+$ adb -s <device-serial> shell ip addr show wlan0
+$ adb -s <device-serial> shell ip route
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
+$ ps -p 22385 -o pid,ppid,comm,args
+$ security find-identity -v -p codesigning
+$ python3 scripts/macos_dev_host.py preflight
+$ tail -n 800 ~/Library/Logs/Telemachus/telemachus.log | rg "2026-08-24|Protocol v1 selected|SCStream capture started|First frame|fps|FPS|Trusted LAN|secure records|legacy|127\.0\.0\.1|54321|Listening|Started"
+
+$ find docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window -type f ! -name README.md ! -name commands.txt ! -name SHA256SUMS -print0 | xargs -0 rg -n -i 'telemachus://|pairing|qr|ssid|password|passphrase|psk|private key|bearer|authorization|secret'
+# After replacing the full window dump with window-focus.txt, a scan excluding
+# README.md and commands.txt found no retained pairing URL, QR payload, SSID,
+# password, credential, bearer token, or similar secret.
+
+$ (cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS)
+$ (cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window && shasum -a 256 -c SHA256SUMS)

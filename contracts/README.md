@@ -50,9 +50,12 @@ channel: uint8 | payload_length: uint32 big-endian | payload
 
 Control is channel `1` and contains one serialized `Envelope`. Video is channel
 `2` and contains a protobuf-varint header length, the serialized
-`MediaPacketHeader`, and exactly `payload_length` bytes of Annex-B video. The
-maximum framed payload is 16 MiB. Control is reliable and ordered; video keeps
-its independent latest-frame policy even when both channels share one TCP
+`MediaPacketHeader`, and exactly `payload_length` bytes of Annex-B video. Audio
+is channel `3` and contains a protobuf-varint header length, the serialized
+`AudioPacketHeader`, and exactly `payload_length` bytes of PCM audio for
+negotiated Protocol v1 sessions. Bulk file-transfer data is channel `4`. The
+maximum framed payload is 16 MiB. Control is reliable and ordered; video and
+audio keep independent low-latency queues even when all channels share one TCP
 connection.
 
 `fixtures/messages/v1/` contains fixed cross-platform protobuf and framing
@@ -86,6 +89,28 @@ Compatibility policy:
   discard them and are not a field-preserving relay format;
 - use a new versioned package for an incompatible wire change.
 
+## Shared Android/iOS model contract
+
+`shared-models/v1/manifest.json` pins the Protocol v1 model boundary that
+Android and iOS must keep aligned while the clients continue to use native
+Kotlin and Swift code. It records the source proto fields for the shared Hello,
+session, display, video, input, and managed-policy messages; every envelope
+payload field number; every capability enum value; dependency-gated production
+boundaries; and the required cross-platform fixture names.
+
+Run:
+
+```bash
+python3 scripts/verify_shared_protocol_model.py
+```
+
+`make protocol` also runs this verifier through `contracts/tests/`. The verifier
+is intentionally source-level and fail-closed: if a pinned message field number,
+envelope payload, capability value, required fixture, generated-binding source,
+or Android/iOS advertisement boundary drifts without updating the manifest, the
+contract test fails. This is not a Kotlin Multiplatform runtime slice and does
+not claim iOS or Android real-device evidence.
+
 `KeyEvent.modifier_mask` keeps its original field and uses capability-gated
 interpretation. Capability `27` selects the standard USB HID modifier byte
 (`Control=0x01`, `Shift=0x02`, `Alt=0x04`, `GUI=0x08`, right-side variants in
@@ -93,3 +118,10 @@ interpretation. Capability `27` selects the standard USB HID modifier byte
 (`Shift=0x01`, `Control=0x02`, `Alt=0x04`, `GUI=0x08`). New clients collapse
 right-side modifiers to the equivalent left-side legacy bit; new hosts reject
 legacy high-nibble bits rather than guessing their meaning.
+
+`PeripheralEvent` is an additive admission boundary, not a hardware support
+claim. Capability `30` (`CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK`) only allows a
+peer to send a bounded generic peripheral envelope after negotiation. Receivers
+must reject unsupported kinds with `InputAck(accepted=false,
+rejection_reason="unsupported_peripheral_kind")` instead of falling through to
+native input handling.

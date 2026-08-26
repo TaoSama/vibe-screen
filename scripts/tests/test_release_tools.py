@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
+import plistlib
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
 import harmony_device_gate
+import harmony_host_interop_preflight
 import package_macos
 import prepare_release
 import android_stylus_acceptance
@@ -31,6 +33,7 @@ PHASE0_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/phase0.yml"
 MAKEFILE = REPOSITORY_ROOT / "Makefile"
 PHASE3_RUNNER = REPOSITORY_ROOT / "scripts/phase3_webrtc/run_local_e2e.py"
 ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
+MAC_HOST_ENTITLEMENTS = REPOSITORY_ROOT / "baseline/MacHost/Telemachus.entitlements"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
@@ -44,7 +47,7 @@ class AndroidStylusAcceptanceTests(unittest.TestCase):
 Input Reader State:
   Device 5: goodix_stylus_input
     Descriptor: abc123
-    Sources: 0x00005002 TOUCHSCREEN STYLUS
+    Sources: 0x00001002 TOUCHSCREEN
     Motion Ranges:
       Motion Range: X source=0x00001002 min=0.0 max=1440.0 flat=0.0 fuzz=0.0 resolution=0.0
       Motion Range: Y source=0x00001002 min=0.0 max=2880.0 flat=0.0 fuzz=0.0 resolution=0.0
@@ -74,8 +77,10 @@ Input Reader State:
         self.assertEqual(2, len(candidates))
         self.assertEqual("goodix_stylus_input", candidates[0].name)
         self.assertTrue(candidates[0].required_axes_present)
+        self.assertFalse(candidates[0].pass_eligible)
         self.assertEqual(("STYLUS_PRIMARY", "STYLUS_SECONDARY"), candidates[0].buttons)
         self.assertEqual(("ORIENTATION", "PRESSURE", "TILT"), candidates[1].axes)
+        self.assertTrue(candidates[1].pass_eligible)
 
     def test_capability_without_physical_observation_stays_blocked(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=False, drawing_observation="", host_log=None)
@@ -92,10 +97,164 @@ Input Reader State:
             android_stylus_acceptance.conclusion_status(args, [candidate]),
         )
 
+    def test_required_axes_without_stylus_source_cannot_pass(self) -> None:
+        args = argparse.Namespace(observed_physical_drawing=False, drawing_observation="", host_log=None)
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=(),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+
+        self.assertEqual(
+            "blocked_no_required_stylus_capability",
+            android_stylus_acceptance.conclusion_status(args, [candidate]),
+        )
+
+    def test_appended_diag_log_rejects_rotated_or_rewritten_logs(self) -> None:
+        self.assertEqual(
+            "\nnew stylus line",
+            android_stylus_acceptance.appended_diag_log("old line", "old line\nnew stylus line"),
+        )
+        self.assertEqual("new complete log", android_stylus_acceptance.appended_diag_log("", "new complete log"))
+        with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "changed or rotated"):
+            android_stylus_acceptance.appended_diag_log("old line", "different log")
+
+    def test_read_new_host_log_rejects_replaced_truncated_or_oversized_log(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host.log"
+            host_log.write_text("old host line\n", encoding="utf-8")
+            cursor = android_stylus_acceptance.host_log_cursor(host_log)
+
+            host_log.write_text("old host line\nnew host line\n", encoding="utf-8")
+            self.assertEqual("new host line\n", android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024))
+
+            host_log.write_text("short", encoding="utf-8")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "truncated"):
+                android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024)
+
+            replacement = Path(temporary_directory) / "replacement.log"
+            replacement.write_text("old host line\nnew host line\n", encoding="utf-8")
+            replacement.replace(host_log)
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "identity changed"):
+                android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024)
+
+            refreshed_cursor = android_stylus_acceptance.host_log_cursor(host_log)
+            host_log.write_text("old host line\nnew host line\nexcess\n", encoding="utf-8")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "above limit"):
+                android_stylus_acceptance.read_new_host_log(host_log, refreshed_cursor, 1)
+
+    def test_host_log_cursor_reports_stat_errors_as_evidence_errors(self) -> None:
+        host_log = mock.Mock(spec=Path)
+        host_log.stat.side_effect = OSError("permission denied")
+
+        with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "cannot stat host log"):
+            android_stylus_acceptance.host_log_cursor(host_log)
+
+    def test_main_reports_missing_host_log_before_adb_for_observed_drawing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+            with mock.patch.object(android_stylus_acceptance, "describe_device_locks", return_value=[]):
+                with mock.patch.object(android_stylus_acceptance, "check_device_locks", return_value=[]):
+                    with mock.patch.object(android_stylus_acceptance, "adb") as adb_mock:
+                        with mock.patch.object(sys, "stderr") as stderr:
+                            result = android_stylus_acceptance.main([
+                                "--adb",
+                                "adb",
+                                "--serial",
+                                "DEVICE_SERIAL",
+                                "--observed-physical-drawing",
+                                "--drawing-observation",
+                                "physical stylus produced visible ink",
+                                "--output-dir",
+                                str(output_dir),
+                            ])
+
+        self.assertEqual(2, result)
+        adb_mock.assert_not_called()
+        self.assertIn("error: --host-log is required", "".join(call.args[0] for call in stderr.write.call_args_list))
+
     def test_passing_status_requires_host_log_and_observation(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=True, drawing_observation="", host_log=None)
         with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "drawing-observation"):
             android_stylus_acceptance.conclusion_status(args, [])
+
+    def test_write_evidence_records_host_log_name_without_absolute_path(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            output_dir = root / "evidence"
+            host_log = root / "Users" / "operator" / "Library" / "Logs" / "Telemachus" / "telemachus.log"
+            host_log.parent.mkdir(parents=True)
+            host_log.write_text("old host line\n", encoding="utf-8")
+            args = argparse.Namespace(
+                host_log=host_log,
+                observed_physical_drawing=True,
+                observe_seconds=0,
+                drawing_observation="physical stylus produced visible ink",
+            )
+
+            android_stylus_acceptance.write_evidence(
+                output_dir,
+                args,
+                [],
+                {},
+                "Input Reader State:\n",
+                [candidate],
+                "",
+                None,
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                "pass",
+            )
+
+            summary = json.loads((output_dir / "stylus-evidence.json").read_text(encoding="utf-8"))
+
+        self.assertEqual("telemachus.log", summary["host_log_name"])
+        self.assertNotIn("host_log", summary)
+        self.assertNotIn("operator", json.dumps(summary))
+
+    def test_write_evidence_normalizes_dumpsys_artifact_whitespace(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        args = argparse.Namespace(
+            host_log=Path("host-stylus.log"),
+            observed_physical_drawing=True,
+            observe_seconds=0,
+            drawing_observation="physical stylus produced visible ink",
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+
+            android_stylus_acceptance.write_evidence(
+                output_dir,
+                args,
+                [],
+                {},
+                "Input Reader State:  \n  UniqueId:  \n",
+                [candidate],
+                "Stylus forwarded: samples=1 extended=true rawSource=0x4002 rawAction=2 rawTools=[stylus] phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.5 tiltX=1 tiltY=-1  \n",
+                None,
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0  \n",
+                "pass",
+            )
+
+            dumpsys_text = (output_dir / "dumpsys-input.txt").read_text(encoding="utf-8")
+            self.assertTrue(dumpsys_text.endswith("\n"))
+            self.assertFalse(any(line.endswith(" ") for line in dumpsys_text.splitlines()))
+            self.assertIn("tiltY=-1  ", (output_dir / "android-diag.log").read_text(encoding="utf-8"))
+            self.assertIn("tiltY=-45.0  ", (output_dir / "host-stylus.log").read_text(encoding="utf-8"))
 
     def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(
@@ -112,10 +271,92 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
 
-            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, tool, buttons, tilt_x, tilt_y"):
-                android_stylus_acceptance.conclusion_status(args, [candidate])
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus injection line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt="Stylus injected: input=1 pressure=0.5",
+                )
+
+    def test_passing_status_ignores_preexisting_host_log_without_new_excerpt(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+                host_stable_signed_tcc_ready=True,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "new Host stylus log excerpt"):
+                android_stylus_acceptance.conclusion_status(args, [candidate], diag_log)
+
+    def test_passing_status_requires_android_diag_stylus_forwarding_fields(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+                host_stable_signed_tcc_ready=True,
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "Android diag log"):
+                android_stylus_acceptance.conclusion_status(args, [candidate], "")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus forwarding line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    "Stylus forwarded: transport=stream samples=1 extended=false pressure=0.625 tiltX=45.0 tiltY=-45.0",
+                )
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus forwarding line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    "Stylus forwarded: transport=stream samples=1 extended=false rawSource=0x1002 rawAction=2 rawTools=[finger] "
+                    "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0",
+                )
 
     def test_passing_status_accepts_host_log_with_pressure_and_signed_tilt(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(
@@ -136,9 +377,134 @@ Input Reader State:
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
                 host_log=host_log,
+                host_stable_signed_tcc_ready=True,
             )
 
-            self.assertEqual("pass", android_stylus_acceptance.conclusion_status(args, [candidate]))
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            host_log_excerpt = host_log.read_text(encoding="utf-8")
+            self.assertEqual(
+                "pass",
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log_excerpt,
+                ),
+            )
+
+    def test_passing_status_rejects_hover_only_host_log(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=PROXIMITY tool=pen buttons=0 pressure=0 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+                host_stable_signed_tcc_ready=True,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
+
+    def test_passing_status_rejects_host_log_without_phase(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+                host_stable_signed_tcc_ready=True,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
+
+    def test_passing_status_rejects_hover_only_android_diag(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+                host_stable_signed_tcc_ready=True,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=7 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=PROXIMITY tool=PEN "
+                "buttons=0 pressure=0 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
 
     def test_observed_drawing_without_required_capability_stays_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -184,6 +550,7 @@ Input Reader State:
 
         self.assertIn("  - Sources: none", readme)
         self.assertIn("  - Buttons: none", readme)
+        self.assertIn("  - Pass eligible: no", readme)
         self.assertFalse(any(line.endswith(" ") for line in readme.splitlines()))
 
     def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:
@@ -207,6 +574,20 @@ Input Reader State:
 
 
 class HarmonyDeviceGateTests(unittest.TestCase):
+    def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
+        gate: dict[str, object] = {
+            "id": gate_id,
+            "status": status,
+            "evidence": [f"evidence/{gate_id}.txt"],
+        }
+        if gate_id == "huks_backed_secure_pairing":
+            gate["secure_pairing_manifest"] = {
+                "schema": harmony_device_gate.SECURE_PAIRING_MANIFEST_SCHEMA,
+                "path": "harmony-secure-pairing.json",
+                "status": status,
+            }
+        return gate
+
     def passing_manifest(self) -> dict[str, object]:
         manifest = harmony_device_gate.template_manifest()
         manifest["repository"] = {
@@ -236,13 +617,47 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             "protocol": "Protocol v1",
         }
         manifest["gates"] = [
-            {"id": gate_id, "status": "pass", "evidence": [f"evidence/{gate_id}.txt"]}
+            self.gate_manifest(gate_id, "pass")
             for gate_id in harmony_device_gate.REQUIRED_GATE_IDS
         ]
         return manifest
 
     def test_harmony_device_manifest_passes_when_all_real_device_gates_are_present(self) -> None:
         self.assertEqual(harmony_device_gate.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_device_manifest_requires_evidence_files_under_root(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for gate in manifest["gates"]:
+                artifact = evidence_root / gate["evidence"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                gate_id = gate["id"]
+                artifact.write_text(f"{gate_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
+
+    def test_harmony_device_manifest_rejects_missing_evidence_file_when_root_is_set(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+
+            with self.assertRaisesRegex(harmony_device_gate.ManifestError, "missing evidence artifact"):
+                harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
+
+    def test_harmony_device_manifest_rejects_evidence_references_outside_root(self) -> None:
+        blocked_references = ("/tmp/harmony.log", "../harmony.log", "https://example.test/harmony.log", ".")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for reference in blocked_references:
+                manifest = self.passing_manifest()
+                manifest["gates"][0]["evidence"] = [reference]
+                with self.subTest(reference=reference):
+                    with self.assertRaisesRegex(
+                        harmony_device_gate.ManifestError,
+                        "evidence root|got URL|escape evidence root|artifact below evidence root",
+                    ):
+                        harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
 
     def test_harmony_device_manifest_rejects_android_substitute(self) -> None:
         manifest = self.passing_manifest()
@@ -269,6 +684,15 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             harmony_device_gate.validate_manifest(manifest, allow_blocked=True),
             ["deveco_sdk_and_api_checker: blocked"],
         )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.assertEqual(
+                harmony_device_gate.validate_manifest(
+                    manifest,
+                    allow_blocked=True,
+                    evidence_root=Path(temporary_directory),
+                ),
+                ["deveco_sdk_and_api_checker: blocked"],
+            )
 
     def test_harmony_device_template_is_readiness_only(self) -> None:
         manifest = harmony_device_gate.template_manifest()
@@ -281,7 +705,7 @@ class HarmonyDeviceGateTests(unittest.TestCase):
     def test_harmony_device_cli_allow_blocked_never_prints_acceptance_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             manifest_path = Path(temporary_directory) / "harmony-device-gates.json"
-            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+            manifest_path.write_text(json.dumps(harmony_device_gate.template_manifest()), encoding="utf-8")
 
             result = subprocess.run(
                 [
@@ -298,6 +722,25 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("not acceptance evidence", result.stdout)
         self.assertNotIn("passes all required real-device gates", result.stdout)
 
+    def test_harmony_device_cli_strict_mode_defaults_evidence_root_to_manifest_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-device-gates.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_device_gate.py"),
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing evidence artifact", result.stderr)
+
     def test_harmony_device_manifest_requires_signed_artifact_hashes(self) -> None:
         manifest = self.passing_manifest()
         manifest["artifact"]["hap_sha256"] = "not-a-hash"
@@ -310,7 +753,218 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
         self.assertIn("harmony-device-gate", makefile)
         self.assertIn("scripts/harmony_device_gate.py", makefile)
+        self.assertIn("--evidence-root", makefile)
         self.assertIn("$(EVIDENCE_DIR)/harmony-device-gates.json", makefile)
+
+    def test_host_rss_makefile_requires_host_pid_for_two_hour_gate(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("HOST_PID ?=\n", makefile)
+        self.assertIn("require-host-pid:", makefile)
+        self.assertRegex(
+            makefile,
+            r"(?m)^soak-2h\s*:\s*require-evidence-serial\s+require-host-pid\s*$",
+        )
+        self.assertIn(
+            "$(if $(strip $(HOST_PID)),--host-pid $(HOST_PID),$(if $(strip $(EVIDENCE_HOST_PID)),--host-pid $(EVIDENCE_HOST_PID),))",
+            makefile,
+        )
+        self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
+        self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
+
+
+class HarmonyHostInteropPreflightTests(unittest.TestCase):
+    def passing_manifest(self) -> dict[str, object]:
+        manifest = harmony_host_interop_preflight.template_manifest()
+        manifest["repository"] = {"commit": "a" * 40, "tree": "b" * 40, "status": "clean"}
+        manifest["artifact"] = {
+            "bundle_name": "dev.vibescreen.harmony",
+            "version_name": "0.1.0",
+            "hap_sha256": "1" * 64,
+            "signature_certificate_sha256": "2" * 64,
+        }
+        manifest["device"] = {
+            "platform": "HarmonyOS NEXT",
+            "manufacturer": "Huawei",
+            "model": "MatePad Mini",
+            "product": "MatePad Mini",
+            "os_build": "HarmonyOS NEXT build 1",
+            "hdc_target": "redacted-hdc-target",
+            "serial_hash": "3" * 64,
+        }
+        manifest["host"] = {
+            "commit": "c" * 40,
+            "build_sha256": "4" * 64,
+            "protocol": "Protocol v1",
+            "resume_registry": "resume-capable",
+        }
+        manifest["transport"] = {"mode": "trusted_lan", "encrypted_records": True}
+        manifest["reconnect"] = {
+            "maximum_attempts": 8,
+            "maximum_delay_ms": 8000,
+            "maximum_observed_recovery_ms": 2500,
+        }
+        manifest["flows"] = [
+            {"id": flow_id, "status": "pass", "evidence": [f"evidence/{flow_id}.txt"]}
+            for flow_id in harmony_host_interop_preflight.REQUIRED_FLOW_IDS
+        ]
+        return manifest
+
+    def test_harmony_host_interop_manifest_passes_when_all_flows_pass(self) -> None:
+        self.assertEqual(harmony_host_interop_preflight.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_host_interop_manifest_requires_evidence_files_under_root(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for flow in manifest["flows"]:
+                artifact = evidence_root / flow["evidence"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                flow_id = flow["id"]
+                artifact.write_text(f"{flow_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(
+                harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root),
+                [],
+            )
+
+    def test_harmony_host_interop_manifest_rejects_evidence_references_outside_root(self) -> None:
+        blocked_references = ("/tmp/harmony.log", "../harmony.log", "https://example.test/harmony.log", ".")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for reference in blocked_references:
+                manifest = self.passing_manifest()
+                manifest["flows"][0]["evidence"] = [reference]
+                with self.subTest(reference=reference):
+                    with self.assertRaisesRegex(
+                        harmony_host_interop_preflight.InteropManifestError,
+                        "evidence root|got URL|escape evidence root|artifact below evidence root",
+                    ):
+                        harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root)
+
+    def test_harmony_host_interop_cli_strict_mode_defaults_evidence_root_to_manifest_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-host-interop.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_host_interop_preflight.py"),
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing evidence artifact", result.stderr)
+
+    def test_harmony_host_interop_rejects_android_substitute(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["device"] = {
+            "platform": "Android",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "product": "pacific",
+            "os_build": "Android 16",
+            "hdc_target": "not-applicable",
+            "serial_hash": "3" * 64,
+        }
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "Android evidence"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_requires_resume_capable_host(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["host"]["resume_registry"] = "client-hello-only"
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "resume-capable"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_requires_old_epoch_rejection_flows(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["flows"] = [flow for flow in manifest["flows"] if flow["id"] != "old_epoch_media_rejected"]
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "old_epoch_media_rejected"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_allows_blocked_structure_without_acceptance(self) -> None:
+        manifest = harmony_host_interop_preflight.template_manifest()
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "placeholder zero value"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            warnings = harmony_host_interop_preflight.validate_manifest(
+                manifest,
+                allow_blocked=True,
+                evidence_root=Path(temporary_directory),
+            )
+            self.assertEqual(len(warnings), len(harmony_host_interop_preflight.REQUIRED_FLOW_IDS))
+
+    def test_harmony_host_interop_rejects_unencrypted_trusted_lan(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["transport"]["encrypted_records"] = False
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "authenticated records"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_rejects_slow_reconnect(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["reconnect"]["maximum_observed_recovery_ms"] = 3001
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "<= 3000"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_preflight_writes_blocked_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with mock.patch.object(
+                harmony_host_interop_preflight,
+                "probe_command",
+                side_effect=lambda name, _version_args: harmony_host_interop_preflight.CommandProbe(
+                    name, None, "not found"
+                ),
+            ):
+                exit_code = harmony_host_interop_preflight.main(
+                    ["--evidence-dir", str(evidence_dir), "--run-id", "run-test"]
+                )
+
+            self.assertEqual(exit_code, harmony_host_interop_preflight.BLOCKED_EXIT)
+            summary = json.loads((evidence_dir / "harmony-host-interop-preflight.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["run_id"], "run-test")
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["can_close_harmony_host_interop_gate"])
+            self.assertTrue((evidence_dir / "harmony-host-interop-manifest-template.json").exists())
+            self.assertIn("not acceptance evidence", (evidence_dir / "README.md").read_text(encoding="utf-8"))
+
+    def test_harmony_host_interop_preflight_accepts_either_hvigor_binary(self) -> None:
+        def fake_probe(name: str, _version_args: list[str]) -> harmony_host_interop_preflight.CommandProbe:
+            path = "/usr/local/bin/hvigorw" if name == "hvigorw" else "/usr/local/bin/tool" if name in {"ohpm", "hdc"} else None
+            return harmony_host_interop_preflight.CommandProbe(name, path, "version")
+
+        with mock.patch.object(harmony_host_interop_preflight, "probe_command", side_effect=fake_probe):
+            summary = harmony_host_interop_preflight.local_preflight("run-test")
+
+        missing = next(
+            (reason["reason"] for reason in summary["blocking_reasons"] if reason["field"] == "missing_commands"),
+            "",
+        )
+        self.assertNotIn("hvigor", missing)
+        probes = {probe["name"]: probe for probe in summary["command_probes"]}
+        self.assertEqual(probes["hvigorw"]["path"], "hvigorw")
+        self.assertEqual(probes["ohpm"]["path"], "tool")
+        self.assertNotIn("/usr/local/bin", json.dumps(summary))
+
+    def test_harmony_host_interop_make_targets_use_manifest_validator(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("harmony-host-interop-preflight", makefile)
+        self.assertIn("harmony-host-interop-gate", makefile)
+        self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
+        self.assertIn("--evidence-root", makefile)
+        self.assertIn("$(HARMONY_HOST_INTEROP_JSON)", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):
@@ -349,6 +1003,11 @@ class ArchiveArtifactTests(unittest.TestCase):
 
 
 class MacOSSigningIdentityTests(unittest.TestCase):
+    def test_packaged_host_requests_virtual_hid_entitlement(self) -> None:
+        entitlements = plistlib.loads(MAC_HOST_ENTITLEMENTS.read_bytes())
+
+        self.assertIs(entitlements.get("com.apple.developer.hid.virtual.device"), True)
+
     def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
         with mock.patch.object(package_macos.subprocess, "run") as run_mock:
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")
@@ -682,6 +1341,9 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('"-file-prefix-map"', package_script)
         self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
         self.assertIn('EXECUTABLE_NAME = PRODUCT_NAME', package_script)
+        self.assertIn('SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"', package_script)
+        self.assertIn('SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"', package_script)
+        self.assertIn('SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"', package_script)
         self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
         self.assertIn('SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"', package_script)
         self.assertNotIn("TELEMACHUS_SIGN_IDENTITY", package_script)
@@ -701,6 +1363,51 @@ class PrepareReleaseTests(unittest.TestCase):
             (REPOSITORY_ROOT / "baseline/MacHost/Sources/ProtocolV1SelfTest.swift").read_text(
                 encoding="utf-8"
             ),
+        )
+
+    def test_bundled_plist_embeds_source_identity(self) -> None:
+        plist = package_macos.bundled_plist(
+            {"CFBundleIdentifier": "dev.telemachus.display"},
+            "1.2.3",
+            package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+        )
+
+        self.assertEqual(plist["CFBundleExecutable"], "Vibe Screen")
+        self.assertEqual(plist["CFBundleVersion"], "1.2.3")
+        self.assertEqual(plist["VibeScreenSourceCommit"], "a" * 40)
+        self.assertEqual(plist["VibeScreenSourceTree"], "b" * 40)
+        self.assertIs(plist["VibeScreenSourceDirty"], False)
+
+    def test_collect_source_identity_reads_commit_tree_and_dirty_state(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def fake_run(*command: str, cwd: Path | None = None) -> str:
+            calls.append(command)
+            if command == ("git", "rev-parse", "HEAD"):
+                return "a" * 40
+            if command == ("git", "rev-parse", "HEAD^{tree}"):
+                return "b" * 40
+            if command == ("git", "status", "--porcelain"):
+                return " M README.md"
+            raise AssertionError(command)
+
+        with mock.patch.object(package_macos, "run", side_effect=fake_run):
+            identity = package_macos.collect_source_identity(Path("repo"))
+
+        self.assertEqual(identity.commit, "a" * 40)
+        self.assertEqual(identity.tree, "b" * 40)
+        self.assertTrue(identity.dirty)
+        self.assertEqual(
+            calls,
+            [
+                ("git", "rev-parse", "HEAD"),
+                ("git", "rev-parse", "HEAD^{tree}"),
+                ("git", "status", "--porcelain"),
+            ],
         )
 
     def test_release_workflow_binds_tag_to_all_successful_main_gates_and_debug_audit(self) -> None:

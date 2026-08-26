@@ -8,10 +8,13 @@ before claiming the HarmonyOS gate is closed:
 ```bash
 make harmony-readiness EVIDENCE_DIR=/path/to/evidence
 python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
+python3 scripts/harmony_secure_pairing_gate.py --template > /tmp/harmony-secure-pairing.json
 # Fill every field from the exact DevEco build, signed HAP, MatePad Mini,
-# Protocol v1 Mac host, logs, metrics, and external-camera evidence.
-python3 scripts/harmony_device_gate.py /path/to/evidence/harmony-device-gates.json
-make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
+# Protocol v1 Mac host, HUKS run, Authority/Signaling services, logs,
+# metrics, and external-camera evidence.
+make harmony-secure-pairing-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
 ```
 
 `make harmony-readiness` writes `/path/to/evidence/harmony-readiness.json` and
@@ -25,25 +28,14 @@ HarmonyOS gate.
 For a readiness or blocked dry run, `--allow-blocked` may validate the final
 manifest shape, but the resulting output is not acceptance evidence and must not
 close the README gate.
-
-When no MatePad Mini or signing environment is available, write a blocked
-package instead of leaving an empty evidence directory:
-
-```bash
-set +e
-make harmony-readiness EVIDENCE_DIR=/path/to/evidence
-status=$?
-set -e
-test "$status" = "2"
-python3 scripts/harmony_matepad_acceptance.py \
-  --evidence-dir /path/to/evidence \
-  --write-blocked
-```
-
-That produces `harmony-device-gates.json` and
-`harmony-matepad-acceptance.json` with `verdict: blocked`. It is a readiness
-artifact for tracking missing prerequisites; it is not a substitute for the
-strict `make harmony-matepad-acceptance` pass.
+Strict `make harmony-device-gate` validation also resolves every `pass` gate's
+evidence references under `EVIDENCE_DIR`; absolute paths, URLs, `..` traversal,
+directories, and missing files fail closed. Direct strict script invocations use
+the manifest directory as the evidence root. Keep all referenced logs, summaries,
+metrics, and checksums inside the evidence package before asking the gate to pass.
+`make harmony-current-base-gate` is the aggregate owner check for the current
+README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
+must stay blocked until the strict device gate and readiness preflight both pass.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
@@ -51,28 +43,46 @@ strict `make harmony-matepad-acceptance` pass.
    `dist/*/SHA256SUMS`. `pnpm verify` alone is not ArkTS/HAP evidence.
 3. Run `hdc list targets -v`; match the serial in Settings before installing.
 4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
-   VibeScreen domain. Verify the bundle name, signature certificate hash,
-   install result, launch result, permission copy, denial/retry behavior,
-   in-place upgrade, rollback, and uninstall cleanup.
+   VibeScreen domain. Verify permission copy and denial/retry behavior.
 5. Pair with a one-time QR credential using the completed cryptographic pairing
-   flow (address-link import is not sufficient), connect over LAN, and verify the device
+   flow (address-link import is not sufficient). Record HUKS key creation, the
+   failed private-key export attempt, PairingOffer/Request/Result transcripts
+   after redaction, Host proof verification, credential installation, expiry
+   rejection, replay rejection, old-peer rejection, no-HUKS rejection, and
+   Authority/Signaling admission. Then connect over LAN and verify the device
    can be revoked and cannot reuse the credential.
-6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
+   The committed portable verifier must already pass against
+   contracts/fixtures/security/v1/channel-records.json, but that verifier is not
+   device evidence.
+6. Require authenticated transport markers before accepting the LAN run:
+   secure-record negotiation must choose encrypted, logs must identify the
+   negotiated AES-256-GCM application-record session, and any telemetry summary
+   must report trusted_lan_encrypted=true and
+   trusted_lan_legacy_plaintext=false. An explicit legacy plaintext fallback is
+   a useful compatibility result but must be filed separately and cannot close
+   the HarmonyOS authenticated-transport gate.
+7. Exercise fail-closed record-layer probes with non-sensitive fixtures or a
+   dedicated test harness: nonce reuse, replay, wrong key, stale session epoch,
+   wrong channel, and tamper must all close or reject before payload dispatch.
+   Capture the exact command, sanitized logs, and final state for each rejection.
+8. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
-7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
-   keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
-   Archive redacted screenshots, the UI component tree, and structured input
-   observations beside the device identity record.
-8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
-   and wake the Mac, and restart the host. Confirm resume result metadata,
-   reconnect timing, fresh-session fallback after Host restart, and that no
-   prior-epoch control or media frame renders.
-9. Run eight hours at the target mode. Archive timestamped logs and metrics;
+9. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
+   keyboard/modifiers, mouse buttons, stylus pressure, and controller input
+   (button mask, left/right stick axes, left/right triggers, hat,
+   CONNECTED/STATE/DISCONNECTED lifecycle, up to four active controllers, and
+   all-zero neutral release on disconnect) in both orientations.
+10. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
+   and wake the Mac, and restart the host. Confirm reconnect within the target
+   and that no prior-epoch frame renders.
+11. Run eight hours at the target mode. Archive timestamped logs and metrics;
    reject any unbounded latency, queue, RSS, or thermal throttling trend.
-10. Measure glass-to-glass and input latency with an external high-frame-rate
+12. Measure glass-to-glass and input latency with an external high-frame-rate
     camera; do not compare unsynchronized host/device clocks.
 
 Store raw evidence under an ignored local directory or attach it to the release;
 do not commit device identifiers, pairing credentials, or private network data.
 The committed evidence summary, if any, should reference only redacted artifact
 paths or reviewed release attachments.
+The current-base owner and merge-order audit for overlapping HarmonyOS gate PRs
+is maintained in `docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md`.

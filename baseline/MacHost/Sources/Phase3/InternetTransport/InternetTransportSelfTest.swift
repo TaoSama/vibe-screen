@@ -140,6 +140,8 @@ enum InternetTransportSelfTest {
         let failureTransitionOrderingPasses = failureTransitionOrderingContractPasses()
         let sdkTransmissionEpochGatePasses = sdkTransmissionEpochGateContractPasses()
         let recoveryExhaustionFailClosedPasses = recoveryExhaustionFailClosedContractPasses()
+        let recoveryExhaustionFreshSessionPasses = recoveryExhaustionFreshSessionFallbackContractPasses()
+        let networkHandoffFreshSessionPasses = networkHandoffFreshSessionContractPasses()
         let finalReviewContractsPassed = finalReviewContractsPass()
         let legacyCleanupCrashSafe = LegacyGlobalRevocationCleanupSelfTest.run()
         let unknownCandidatePathFailsClosed =
@@ -185,6 +187,8 @@ enum InternetTransportSelfTest {
             && failureTransitionOrderingPasses
             && sdkTransmissionEpochGatePasses
             && recoveryExhaustionFailClosedPasses
+            && recoveryExhaustionFreshSessionPasses
+            && networkHandoffFreshSessionPasses
             && finalReviewContractsPassed
             && legacyCleanupCrashSafe
             && unknownCandidatePathFailsClosed
@@ -207,6 +211,8 @@ enum InternetTransportSelfTest {
                 + "failureTransitionOrdering=\(failureTransitionOrderingPasses), "
                 + "sdkTransmissionEpochGate=\(sdkTransmissionEpochGatePasses), "
                 + "recoveryExhaustionFailClosed=\(recoveryExhaustionFailClosedPasses), "
+                + "recoveryExhaustionFreshSession=\(recoveryExhaustionFreshSessionPasses), "
+                + "networkHandoffFreshSession=\(networkHandoffFreshSessionPasses), "
                 + "finalReviewContracts=\(finalReviewContractsPassed), "
                 + "legacyCleanupCrashSafe=\(legacyCleanupCrashSafe), "
                 + "unknownCandidatePathFailsClosed=\(unknownCandidatePathFailsClosed))"
@@ -957,7 +963,7 @@ enum InternetTransportSelfTest {
             transport.close()
             return false
         }
-        return reason.contains("ICE recovery exhausted after 2 attempts")
+        return reason.contains("Network recovery exhausted after 2 attempts")
             && engine.didClose
             && engine.restartCount == 2
     }
@@ -1066,6 +1072,39 @@ enum InternetTransportSelfTest {
         let snapshot = transport.snapshot()
         let passed = recoveryAttempts == [1]
             && engine.restartCount == 1
+            && snapshot.iceRestartCount == 0
+            && snapshot.state == .recovering(attempt: 1)
+            && transport.sendControl(Data([1])).isNotConnectedFailure
+        transport.close()
+        return passed
+    }
+
+    private static func networkHandoffFreshSessionContractPasses() -> Bool {
+        let sessionIdentifier = "network-handoff-fresh-session-self-test"
+        guard let ciphers = try? PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: sessionIdentifier,
+            sharedSecret: Data(repeating: 0xd1, count: 32),
+            bootstrapSecret: Data(repeating: 0xd2, count: 32),
+            transcriptContext: Data(repeating: 0xd3, count: 32)
+        ) else { return false }
+        let engine = SelfTestWebRTCEngine(remoteCipher: ciphers.device)
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: ciphers.host,
+            recoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2),
+            networkHandoffRecoveryStrategy: .freshSession
+        )
+        var recoveryAttempts: [Int] = []
+        transport.onFreshSessionRecoveryRequired = { recoveryAttempts.append($0) }
+        guard startSelfTestTransport(transport, sessionIdentifier: sessionIdentifier) else {
+            return false
+        }
+        engine.connect(path: .direct)
+        engine.changePath(.init(interface: .wifi, isSatisfied: true, fingerprint: "wifi-a"))
+        engine.changePath(.init(interface: .cellular, isSatisfied: true, fingerprint: "cell-b"))
+        let snapshot = transport.snapshot()
+        let passed = recoveryAttempts == [1]
+            && engine.restartCount == 0
             && snapshot.iceRestartCount == 0
             && snapshot.state == .recovering(attempt: 1)
             && transport.sendControl(Data([1])).isNotConnectedFailure
@@ -1341,7 +1380,7 @@ enum InternetTransportSelfTest {
         let controlRejected = transport.sendControl(Data([3])).isNotConnectedFailure
 
         guard case .failed(let reason) = failedSnapshot.state else { return false }
-        return reason.contains("ICE recovery exhausted after 2 attempts")
+        return reason.contains("Network recovery exhausted after 2 attempts")
             && engine.didClose
             && engine.restartCount == 2
             && controlRejected
@@ -1349,6 +1388,55 @@ enum InternetTransportSelfTest {
             && receivedMedia.isEmpty
             && engine.controlPayloads.isEmpty
             && engine.mediaPayloads.isEmpty
+    }
+
+    private static func recoveryExhaustionFreshSessionFallbackContractPasses() -> Bool {
+        let sessionIdentifier = "recovery-exhaustion-fresh-session-self-test"
+        guard let ciphers = try? PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: sessionIdentifier,
+            sharedSecret: Data(repeating: 0xb1, count: 32),
+            bootstrapSecret: Data(repeating: 0xb2, count: 32),
+            transcriptContext: Data(repeating: 0xb3, count: 32)
+        ) else { return false }
+        let engine = SelfTestWebRTCEngine(remoteCipher: ciphers.device)
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: ciphers.host,
+            recoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 1)
+        )
+        var recoveryAttempts: [Int] = []
+        transport.onFreshSessionRecoveryRequired = { recoveryAttempts.append($0) }
+        do {
+            try transport.start(configuration: WebRTCTransportConfiguration(
+                iceServers: [WebRTCICEServer(urls: [URL(string: "stun:stun.example.test:3478")!])],
+                peerIdentity: "recovery-exhaustion-fresh-peer",
+                sessionIdentifier: sessionIdentifier,
+                forceRelay: false
+            ))
+        } catch {
+            transport.close()
+            return false
+        }
+        engine.connect(path: .direct)
+        engine.disconnect()
+        guard transport.snapshot().state == .recovering(attempt: 1),
+              engine.restartCount == 1,
+              recoveryAttempts.isEmpty else {
+            transport.close()
+            return false
+        }
+        engine.connecting()
+        engine.disconnect()
+        let snapshot = transport.snapshot()
+        let controlRejected = transport.sendControl(Data([3])).isNotConnectedFailure
+        let passed = recoveryAttempts == [1]
+            && snapshot.state == .recovering(attempt: 1)
+            && engine.restartCount == 1
+            && !engine.didClose
+            && snapshot.relayBytesReserved == 0
+            && controlRejected
+        transport.close()
+        return passed
     }
 
     private static func preparedFailureRejectsConnectedCallback() -> Bool {

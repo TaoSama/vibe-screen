@@ -7,6 +7,10 @@ The client is an early developer release. Its core modules build and self-test
 on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
 pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
 separate gates; do not treat Simulator or Android records as that evidence.
+The hardware VideoToolbox gate is owned by the fail-closed
+`ios-videotoolbox-readiness` evidence helper: Simulator and unsigned archive
+records can be summarized for readiness tracking, but only real physical iPhone
+and iPad records can produce family-level pass summaries.
 The trusted-LAN Core client still uses the legacy plaintext compatibility path:
 it connects to the baseline MacHost on TCP port `54321`, completes authenticated
 `SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
@@ -24,10 +28,11 @@ secure-record LAN, or advanced-host evidence.
   technical design;
 - an Apple development team and a unique bundle identifier for device signing.
 
-The package pins `swift-protobuf` to immutable revision
-`c6fe6442e6a64250495669325044052e113e990c`. The first build therefore needs
-network access unless the Swift Package cache is already populated. The full
-Apache-2.0 license with runtime-library exception is retained at
+The package requires exact `swift-protobuf` version `1.32.0`, which Swift
+Package Manager resolves to immutable revision
+`c6fe6442e6a64250495669325044052e113e990c` in `Package.resolved`. The first
+build therefore needs network access unless the Swift Package cache is already
+populated. The full Apache-2.0 license with runtime-library exception is retained at
 `ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt` and included in the application
 Resources build phase.
 
@@ -41,6 +46,17 @@ swift build --package-path apps/ios --configuration release
 swift test --package-path apps/ios --configuration release
 apps/ios/.build/release/vibescreen-ios-selftest
 ```
+
+Before reporting current-base iOS acceptance readiness, generate the aggregate
+fail-closed summary from the repository root:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+Without full Xcode, signing, and real iPhone plus iPad evidence, this command is
+expected to exit nonzero with `verdict=blocked`. That output is readiness
+evidence only and does not claim device acceptance.
 
 The self-test decodes the shared
 `contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
@@ -99,6 +115,32 @@ Use `--action simulator-build`, `--action simulator-test`, or
 `--action archive` to run one gate. The archive is written to
 `apps/ios/.build/xcode/VibeScreen.xcarchive` and is intentionally unsigned; it
 is build evidence, not an installable signed release.
+
+Record hardware VideoToolbox readiness separately from those build gates:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR"
+
+# Strict gate wrapper; exits nonzero for blocked or insufficient summaries:
+make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
+```
+
+Set `runtime_class` in the observations file to exactly one of `simulator`,
+`unsigned_archive`, `physical_iphone`, or `physical_ipad`. The first two are
+readiness-tracking records only and cannot make the strict gate pass. Physical
+family summaries require existing retained iOS VideoToolbox artifacts under the
+evidence directory.
+blocked by construction. A physical-device family summary requires signed app
+installation, real device identity, H.264 and HEVC parameter-set evidence,
+VideoToolbox session creation, output frames, hardware-path evidence,
+stream/config epoch telemetry, thermal and power state, and retained artifacts.
+A single family-level pass still does not close the README Phase 5 hardware
+VideoToolbox gate; reviewed passing summaries are required for both iPhone and
+iPad hardware.
 
 For a physical device, open `apps/ios/VibeScreen.xcodeproj`, select the
 `VibeScreen` target, choose your development team, replace
@@ -161,7 +203,8 @@ currently no key migration step.
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
   `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
-  `AllowedHosts`. Invalid types fail closed.
+  `AllowedHosts`, and `DeniedHosts`. Invalid types fail closed; `DeniedHosts`
+  wins after allowlist merging.
 
 ## Advanced feature use
 
@@ -172,9 +215,13 @@ currently no key migration step.
   epochs, and bounded jitter/playback queues.
 - File chunks use the bulk channel with sequential offsets, negotiated chunk
   size, per-chunk and final SHA-256, limits, cancellation, and cleanup.
+  These are iOS trusted-LAN/client-core semantics; they do not prove
+  Mac/Android Internet product-session audio/bulk end-to-end behavior.
 - The renderer does not advertise HDR output. HDR10/PQ/Main10 requests are
   explicitly rejected with an 8-bit BT.709 SDR fallback at a newer
-  `config_epoch`; color is never changed silently.
+  `config_epoch`; color is never changed silently. Use `make ios-hdr-edr-gate`
+  with retained physical-device HDR/EDR observations before reporting any future
+  iOS HDR output pass.
 - Gesture definitions remain local. Only action IDs from a negotiated host
   catalog may be invoked.
 
@@ -224,6 +271,7 @@ currently no key migration step.
 The baseline MacHost compatibility boundary now admits the iOS trusted-LAN
 client and composes it with the existing Protocol v1 main session. This closes
 the basic port `54321` interoperability gap only. Advanced host integrations
+are owned by the phase5-host-advanced-adapters-gate readiness contract and
 must still preserve these client semantics:
 
 - Hello plus explicit negotiated capabilities/resource limits;
@@ -234,7 +282,7 @@ must still preserve these client semantics:
 - finite host action catalogs, authenticated/replay-safe wake helpers, and
   deny-wins managed policy;
 - separate control/video/audio/bulk keys, sequences, and replay windows before
-  enabling advanced channels on Internet transport.
+  enabling advanced product flows over Internet transport.
 
 See the [Phase 5 verification record](../../docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
 and [dependency provenance](../../THIRD_PARTY.md) for exact evidence and

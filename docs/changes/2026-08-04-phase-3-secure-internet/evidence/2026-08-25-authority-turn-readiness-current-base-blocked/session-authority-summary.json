@@ -1,0 +1,20 @@
+{
+  "blockers": [
+    "Android did not import the signed lease through product flow",
+    "Mac signature was not observed in product flow",
+    "TURN rotation or expiry was not observed",
+    "account registration was not product-driven",
+    "device registration was not product-driven",
+    "manual Android import UI was still used",
+    "manual unsigned lease transfer is still required",
+    "operator manual profile copy is still required",
+    "product flow did not call Authority profile issuance",
+    "product pairing/session UI flow was not observed",
+    "unsigned lease did not stay in product flow"
+  ],
+  "failures": [],
+  "missing": [],
+  "schema": "dev.vibescreen.phase3-session-authority-readiness/v1",
+  "status": "blocked",
+  "warnings": []
+}

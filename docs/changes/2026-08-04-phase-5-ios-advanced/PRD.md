@@ -2,6 +2,7 @@
 
 Status: 5A–5D client implementation complete; baseline MacHost loopback and Simulator gates pass, device verification pending
 Owner: iOS and advanced capabilities  
+Current-base aggregate owner: #290 (`current-base-ios-acceptance`)
 Started: 2026-08-04
 
 ## Goal
@@ -33,8 +34,8 @@ older Phase 0 clients remain valid.
 | --- | --- | --- | --- |
 | 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device run pending |
 | 5B | multiple clients, multiple virtual displays/streams | additive resource limits, stream/display targets, explicit negotiated capability result | client routing/limits/UI implemented and CLI tested; host allocation pending |
-| 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; platform/host E2E pending |
-| 5D | HDR/color, custom gestures, wake, managed devices | structured color metadata; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; HDR output/host helper pending |
+| 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; Internet product-flow wiring and platform/host E2E pending |
+| 5D | HDR/color, custom gestures, wake, managed devices | color-description fields; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; authenticated WOL sender baseline merged; HDR static metadata, HDR output, and real WakeHost hardware gates pending |
 
 ## Acceptance criteria
 
@@ -55,8 +56,31 @@ older Phase 0 clients remain valid.
 Criteria 1 and 2 are proved. Criterion 4 is proved by the release-build,
 two-process loopback for both normal lifecycle and invalid-target error paths;
 this is core wire transport/session evidence, not `StreamViewModel`, decoder,
-UI, iOS app, or device evidence. The Swift/HarmonyOS shared ClientHello fixture
-adds an independent Protocol v1 compatibility case. Criterion 5 still requires
-the Android application fixture named by the acceptance criterion. Android ADB
-evidence can prove cross-client contract behavior but cannot satisfy criterion
-3.
+UI, iOS app, or device evidence. The shared Android/iOS model contract in
+`contracts/shared-models/v1/manifest.json` now fail-closes field-number,
+capability, envelope payload, fixture, generated-binding, and
+production-advertisement drift while Android and iOS remain native Kotlin/Swift
+implementations. The Swift/HarmonyOS shared ClientHello fixture adds an
+independent Protocol v1 compatibility case.
+Criterion 5 still requires the Android application golden-byte fixture named by
+the acceptance criterion. Android ADB evidence can prove cross-client contract
+behavior but cannot satisfy criterion 3.
+
+The current-base aggregate owner is #290. The merged #182 gate remains the
+historical sanitized device-acceptance baseline, while #290 owns the
+machine-readable aggregate entry point for the current base. This is not a
+device-pass claim. The aggregate must continue to include the narrower readiness
+owners for signing, VideoToolbox hardware decode, host advanced adapters,
+AVAudioEngine/PCM, HDR, native input, reconnect, and trusted-LAN secure records.
+Without real signed iPhone and iPad evidence, the aggregate remains fail-closed
+readiness only.
+After rebasing onto the #225 baseline, #199 is the WakeHost current-base
+evidence owner. It tracks the authenticated magic-packet path against current
+mainline and keeps the sleeping-Mac/router/NIC WOL gate blocked until retained
+hardware evidence satisfies the dedicated gate.
+The current-base manifest records the narrower owner per gate so aggregate
+tracking cannot hide missing evidence: hardware H.264/HEVC VideoToolbox decode
+is owned by #251, and Host advanced adapters are owned by #253 with this gate
+ownership layer tracked by #282. Both remain open until their retained evidence
+passes through the machine gate; neither #182 nor #290 closes either gate by
+aggregation alone.

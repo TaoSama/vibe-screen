@@ -1,0 +1,8 @@
+serial=EP0110PZ0B9110300B
+manufacturer=nubia
+model=P0110
+device=pacific
+android=16
+sdk=36
+Physical size: 1264x2800
+Physical density: 560

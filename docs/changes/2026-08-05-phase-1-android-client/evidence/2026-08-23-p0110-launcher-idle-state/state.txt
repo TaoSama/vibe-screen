@@ -1,0 +1,9 @@
+time=2026-08-23T08:09:22+08:00
+adb_state=device
+manufacturer=nubia
+model=P0110
+device=pacific
+android=16
+sdk=36
+foreground=com.android.launcher3/com.obric.feature.ObricLauncher
+locks=/tmp/vibe-screen-device-android-test.lock

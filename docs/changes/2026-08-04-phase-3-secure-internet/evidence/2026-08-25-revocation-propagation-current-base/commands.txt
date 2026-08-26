@@ -1,0 +1,20 @@
+git rev-parse HEAD
+git rev-parse origin/main
+test $(git rev-parse origin/main) = 1f19da57ea112a24239b724da9303d3a307c17fa
+git merge-base --is-ancestor 1f19da57ea112a24239b724da9303d3a307c17fa HEAD
+test -z "$(git status --short)"
+test -z "$(gofmt -l services/signaling/internal/signaling/server.go services/signaling/internal/signaling/authority_mode_test.go services/signaling/authority_process_integration_test.go services/relay/internal/relay/*.go)"
+cd services/relay && go test ./internal/relay -count=1
+cd services/signaling && go test ./internal/signaling -run "AuthorityMode(LongPollRetainsWaiterAcrossReauthorizationRefresh|LongPollReauthorizesDuringWait|RevocationBeforePollResponseDoesNotReleaseEvent|PollAuthorizesViaAuthority)" -count=1
+python3 -m unittest tests.phase3.test_coturn_cli_control -v
+python3 -m unittest tests.phase3.test_relay_production_profile_static tests.phase3.test_production_profile_static -v
+python3 -m unittest tests.phase3.test_coturn_cli_control tests.phase3.test_coturn_reconcile tests.phase3.test_revocation_propagation_verifier tests.phase3.test_authority_production_gates tests.phase3.test_relay_production_profile_static tests.phase3.test_production_profile_static -v
+cd services/signaling && go test ./internal/signaling -count=1
+cd services/authority && go test ./internal/authority -count=1
+python3 scripts/phase3/revocation_propagation_verifier.py --report docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-revocation-propagation-current-base/revocation-propagation-current-base-blocked.json --write-summary docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-revocation-propagation-current-base/revocation-propagation-current-base-summary.json
+make -C services/relay verify
+make -C services/signaling verify
+make -C services/authority verify
+python3 -m unittest tests.phase3.test_coturn_cli_control tests.phase3.test_coturn_reconcile tests.phase3.test_revocation_propagation_verifier tests.phase3.test_authority_production_gates tests.phase3.test_relay_production_profile_static tests.phase3.test_production_profile_static tests.phase3.test_release_gate_manifest tests.phase3.test_release_gate_summary -v
+make phase3-test
+git diff --check

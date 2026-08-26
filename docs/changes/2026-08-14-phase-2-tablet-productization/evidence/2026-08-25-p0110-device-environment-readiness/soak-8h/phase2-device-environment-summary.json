@@ -1,0 +1,377 @@
+{
+  "artifact_checks": {
+    "README.md": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/README.md",
+      "size_bytes": 4176
+    },
+    "adb-battery-after.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/adb-battery-after.txt",
+      "size_bytes": 690
+    },
+    "adb-battery-before.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/adb-battery-before.txt",
+      "size_bytes": 690
+    },
+    "adb-power-after.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/adb-power-after.txt",
+      "size_bytes": 398749
+    },
+    "adb-power-before.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/adb-power-before.txt",
+      "size_bytes": 398753
+    },
+    "device-info.json": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/device-info.json",
+      "size_bytes": 779
+    },
+    "screenshots/sustained-use-landscape.png": {
+      "expected": "non-empty file exists",
+      "listed": false,
+      "passed": false,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/screenshots/sustained-use-landscape.png",
+      "size_bytes": null
+    },
+    "screenshots/sustained-use-portrait.png": {
+      "expected": "non-empty file exists",
+      "listed": false,
+      "passed": false,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/screenshots/sustained-use-portrait.png",
+      "size_bytes": null
+    },
+    "soak-8h/exact-window-report.json": {
+      "expected": "non-empty file exists",
+      "listed": false,
+      "passed": false,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/exact-window-report.json",
+      "size_bytes": null
+    },
+    "soak-8h/samples.jsonl": {
+      "expected": "non-empty file exists",
+      "listed": false,
+      "passed": false,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/samples.jsonl",
+      "size_bytes": null
+    },
+    "soak-8h/summary.json": {
+      "expected": "non-empty file exists",
+      "listed": false,
+      "passed": false,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/summary.json",
+      "size_bytes": null
+    },
+    "thermal-after.err": {
+      "expected": "file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/thermal-after.err",
+      "size_bytes": 0
+    },
+    "thermal-after.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/thermal-after.txt",
+      "size_bytes": 9728
+    },
+    "thermal-before.err": {
+      "expected": "file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/thermal-before.err",
+      "size_bytes": 0
+    },
+    "thermal-before.txt": {
+      "expected": "non-empty file exists",
+      "listed": true,
+      "passed": true,
+      "path": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/thermal-before.txt",
+      "size_bytes": 9728
+    }
+  },
+  "artifact_paths": [
+    "README.md",
+    "adb-devices.txt",
+    "device-info.json",
+    "device.txt",
+    "device-lock-check-exit.txt",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-before.err",
+    "thermal-after.txt",
+    "thermal-after.err",
+    "screenshots/p0110-current-screen.png"
+  ],
+  "blocking_notes": [
+    "The attached device is a nubia P0110 / pacific / Android 16 / SDK 36 phone substitute, not a physical 8-9 inch tablet.",
+    "No physical tablet stand, charger/cable-or-dock mounting observation, or all-day desk setup was available.",
+    "No eight-hour sampling window, sustained stream, Host telemetry, or soak-8h artifacts were collected.",
+    "No controlled thermal-load or post-load recovery observation was performed.",
+    "The retained battery, power, and thermal dumps are readiness-only snapshots and cannot close Phase 2 tablet gates."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    },
+    {
+      "field": "device.device_class",
+      "requirement": "device environment evidence must come from the named physical 8-9 inch tablet, not a phone substitute"
+    },
+    {
+      "field": "device.tablet_size_inches",
+      "requirement": "device environment evidence must come from the named physical 8-9 inch tablet, not a phone substitute"
+    },
+    {
+      "field": "device.known_phone_substitute_rejected",
+      "requirement": "device environment evidence must come from the named physical 8-9 inch tablet, not a phone substitute"
+    }
+  ],
+  "can_close_device_environment_gate": false,
+  "can_close_device_environment_gates": false,
+  "can_close_stand_charging_gate": false,
+  "criteria": {
+    "charge_counter_uah_negative_drift": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "environment_duration_seconds": {
+      "measured": 0.0,
+      "minimum": 28800,
+      "passed": false
+    },
+    "maximum_battery_temperature_celsius": {
+      "maximum": 45.0,
+      "measured": 37.0,
+      "passed": true
+    },
+    "maximum_sample_gap_seconds": {
+      "maximum": 90.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "maximum_thermal_status": {
+      "maximum": 2.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "net_battery_drain_percent": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "non_charging_sample_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "power_source_change_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    },
+    "power_voltage_now_uv_min": {
+      "measured": 4435000.0,
+      "minimum": 3500000.0,
+      "passed": true
+    },
+    "thermal_recovery_status_max": {
+      "maximum": 2.0,
+      "measured": null,
+      "passed": false
+    },
+    "unplugged_sample_count": {
+      "maximum": 0.0,
+      "measured": 0.0,
+      "passed": true
+    }
+  },
+  "device": {
+    "device_class": "android_substitute",
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "<redacted-adb-serial>",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "codename": "pacific",
+      "device_serial": "<redacted-adb-serial>",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": "36"
+    },
+    "tablet_size_inches": null
+  },
+  "device_checks": {
+    "device_class": {
+      "expected": "physical_8_9_inch_tablet",
+      "measured": "android_substitute",
+      "passed": false
+    },
+    "identity_required_fields": {
+      "expected": [
+        "adb_serial",
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "build_fingerprint",
+        "abi"
+      ],
+      "measured_missing": [],
+      "passed": true
+    },
+    "known_phone_substitute_rejected": {
+      "expected": false,
+      "measured": true,
+      "passed": false
+    },
+    "tablet_size_inches": {
+      "maximum": 9.0,
+      "measured": null,
+      "minimum": 8.0,
+      "passed": false
+    }
+  },
+  "does_not_close_eight_hour_stream_gate": true,
+  "environment_gates": [
+    "stand_mounted_charging",
+    "thermal_power_sampling",
+    "power_source_stability"
+  ],
+  "failed_criteria": [
+    "environment_duration_seconds"
+  ],
+  "interpretation": "A pass means a physical 8-9 inch tablet run supplied explicit stand-mounted setup observations, an eight-hour environment window, continuous battery, power-source, and thermal samples, and a controlled thermal-load recovery record within the declared thresholds. This summary does not close the separate eight-hour stream, device-memory, recovery, login, headless, stylus, or hardware-keyboard gates.",
+  "kind": "phase2_device_environment_gate",
+  "missing_artifacts": [
+    "soak-8h/samples.jsonl",
+    "soak-8h/summary.json",
+    "soak-8h/exact-window-report.json",
+    "screenshots/sustained-use-portrait.png",
+    "screenshots/sustained-use-landscape.png"
+  ],
+  "missing_criteria": [
+    "thermal_recovery_status_max"
+  ],
+  "missing_requirements": [
+    {
+      "field": "physical_8_9_inch_tablet_observed",
+      "requirement": "run on the named physical 8-9 inch tablet, not a phone, emulator, or synthetic layout"
+    },
+    {
+      "field": "stand_mounted_setup_observed",
+      "requirement": "observe and record the stand orientation, mount, charger, and cable or dock"
+    },
+    {
+      "field": "eight_hour_environment_window_observed",
+      "requirement": "retain the full eight-hour environment sampling window for this setup"
+    },
+    {
+      "field": "battery_power_samples_retained",
+      "requirement": "retain raw battery and power-source samples for the full environment window"
+    },
+    {
+      "field": "thermal_samples_retained",
+      "requirement": "retain raw thermal status and battery-temperature samples for the full environment window"
+    },
+    {
+      "field": "controlled_thermal_load_observed",
+      "requirement": "apply and document a safe controlled thermal load on the recorded tablet"
+    },
+    {
+      "field": "thermal_load_recovery_observed",
+      "requirement": "show the tablet remains usable and returns within the declared thermal limit after load"
+    },
+    {
+      "field": "settings_status_matches_platform",
+      "requirement": "verify the sustained-use UI agrees with dumpsys battery, power, and thermal state"
+    },
+    {
+      "field": "artifact.soak-8h/samples.jsonl",
+      "requirement": "non-empty file exists"
+    },
+    {
+      "field": "artifact.soak-8h/summary.json",
+      "requirement": "non-empty file exists"
+    },
+    {
+      "field": "artifact.soak-8h/exact-window-report.json",
+      "requirement": "non-empty file exists"
+    },
+    {
+      "field": "artifact.screenshots/sustained-use-portrait.png",
+      "requirement": "non-empty file exists"
+    },
+    {
+      "field": "artifact.screenshots/sustained-use-landscape.png",
+      "requirement": "non-empty file exists"
+    }
+  ],
+  "notes": "Current-base readiness smoke only. adb was used with explicit serial <redacted-adb-serial> and recorded nubia P0110 / pacific / Android 16 / SDK 36. Battery/power dumps show AC powered true, Dock powered false, level 100, status FULL, and thermal status 0, but this was not a physical tablet, stand-mounted charging, controlled thermal-load, or eight-hour stability run.",
+  "observations": {
+    "android_device_lock_checked": true,
+    "battery_power_samples_retained": false,
+    "controlled_thermal_load_observed": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "eight_hour_environment_window_observed": false,
+    "physical_8_9_inch_tablet_observed": false,
+    "raw_platform_dumps_retained": true,
+    "run_readme_retained": true,
+    "settings_status_matches_platform": false,
+    "stand_mounted_setup_observed": false,
+    "thermal_load_recovery_observed": false,
+    "thermal_samples_retained": false
+  },
+  "profile": "phase2-device-environment",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi or as physical tablet evidence.",
+  "run_id": "2026-08-25-p0110-device-environment-readiness",
+  "schema_version": "vibescreen.evidence/v1",
+  "thresholds": {
+    "maximum_battery_temperature_celsius": 45.0,
+    "maximum_negative_charge_counter_drift_uah": 0.0,
+    "maximum_net_battery_drain_percent": 0.0,
+    "maximum_non_charging_sample_count": 0.0,
+    "maximum_power_source_change_count": 0.0,
+    "maximum_sample_gap_seconds": 90.0,
+    "maximum_thermal_status": 2.0,
+    "maximum_unplugged_sample_count": 0.0,
+    "minimum_environment_duration_seconds": 28800,
+    "minimum_power_voltage_uv": 3500000.0
+  },
+  "verdict": "blocked"
+}

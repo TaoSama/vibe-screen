@@ -55,6 +55,7 @@ class StreamInputDispatcherTest {
         assertFalse(dispatcher.sendScroll(1.0, -1.0))
         assertFalse(dispatcher.sendKey(0x04, pressed = true, modifierMask = 0))
         assertFalse(dispatcher.sendController(controllerDispatch()))
+        assertFalse(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01)))
 
         assertTrue(recorder.submissions.isEmpty())
     }
@@ -76,6 +77,7 @@ class StreamInputDispatcherTest {
         assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_BEGAN, 0.2f, 0.3f, NativeInputWire.BUTTON_PRIMARY))
         assertFalse(dispatcher.sendKey(0x04, pressed = true, modifierMask = 0))
         assertFalse(dispatcher.sendController(controllerDispatch()))
+        assertFalse(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01)))
 
         assertTrue(recorder.submissions.isEmpty())
     }
@@ -130,6 +132,19 @@ class StreamInputDispatcherTest {
             dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_CONTACT,
             extended.stylusEvent.contactState,
         )
+    }
+
+    @Test
+    fun rejectedStylusForwardingReportsNotAdmitted() {
+        val recorder = RecordingSubmitter(OutboundCommandScheduler.Submission.CLOSED)
+        val dispatcher = dispatcher(
+            state = negotiatedState(stylus = true, extendedStylus = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendMotionStylus(listOf(stylusSample())))
+
+        assertEquals(1, recorder.submissions.size)
     }
 
     @Test
@@ -249,16 +264,53 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun peripheralInputUsesStructuralProtocolBatchOnlyAfterNegotiation() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(peripheral = true),
+            recorder = recorder,
+            firstInputId = 50,
+        )
+
+        assertTrue(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01, 0x02)))
+
+        val submission = recorder.single()
+        assertEquals(OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH, submission.kind)
+        val event = submission.protocolEnvelopes(
+            streamingSession(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK),
+        ).single().peripheralEvent
+        assertEquals(50L, event.inputId)
+        assertEquals("vendor-device", event.peripheralKind)
+        assertEquals(listOf(0x01.toByte(), 0x02.toByte()), event.payload.toByteArray().toList())
+    }
+
+    @Test
+    fun peripheralInputRejectsInvalidEnvelopeBeforeWireSubmission() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(peripheral = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendPeripheral(" ", byteArrayOf(0x01)))
+        assertFalse(dispatcher.sendPeripheral(String(CharArray(129) { 'a' }), byteArrayOf(0x01)))
+        assertFalse(dispatcher.sendPeripheral("vendor-device", ByteArray(64 * 1_024 + 1)))
+
+        assertTrue(recorder.submissions.isEmpty())
+    }
+
+    @Test
     fun rejectedSubmissionPropagatesFalseForStatefulNativeInput() {
         val recorder = RecordingSubmitter(result = OutboundCommandScheduler.Submission.CLOSED)
         val dispatcher = dispatcher(
-            state = negotiatedState(pointer = true, keyboard = true, controller = true),
+            state = negotiatedState(pointer = true, keyboard = true, controller = true, peripheral = true),
             recorder = recorder,
         )
 
         assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_BEGAN, 0.2f, 0.3f, 1))
         assertFalse(dispatcher.sendKey(0x04, pressed = true, modifierMask = 0))
         assertFalse(dispatcher.sendController(controllerDispatch()))
+        assertFalse(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01)))
         assertFalse(
             dispatcher.sendNativeInputRelease(
                 NativeInputReleasePlan(listOf(0x04), NativePointerSnapshot(0.2f, 0.3f)),
@@ -286,6 +338,7 @@ class StreamInputDispatcherTest {
         stylus: Boolean = false,
         extendedStylus: Boolean = false,
         controller: Boolean = false,
+        peripheral: Boolean = false,
     ) = StreamInputSessionState(
         connected = true,
         protocolV1 = true,
@@ -295,6 +348,7 @@ class StreamInputDispatcherTest {
         canSendStylus = stylus,
         canSendExtendedStylus = extendedStylus,
         canSendController = controller,
+        canSendPeripheral = peripheral,
     )
 
     private fun stylusSample() =
@@ -354,6 +408,7 @@ class StreamInputDispatcherTest {
             transport = TransportKind.TRANSPORT_KIND_USB,
             codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
             advertiseController = Capability.CAPABILITY_CONTROLLER in capabilities,
+            advertisePeripheralInputFramework = Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in capabilities,
             nowNs = { 1_000L },
         ).also { session ->
             session.clientHello()

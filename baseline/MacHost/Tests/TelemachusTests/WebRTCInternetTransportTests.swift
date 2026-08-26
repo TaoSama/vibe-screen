@@ -1648,7 +1648,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertTrue(media.isEmpty)
     }
 
-    func testRecoveryExhaustionClosesEngineAndRejectsReconnectAndLateInbound() throws {
+    func testRecoveryExhaustionWithoutFreshSessionCallbackClosesEngineAndRejectsReconnectAndLateInbound() throws {
         let engine = FakeWebRTCEngine()
         let transport = WebRTCInternetTransport(
             engine: engine,
@@ -1679,7 +1679,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         guard case .failed(let reason) = transport.snapshot().state else {
             return XCTFail("Recovery exhaustion must fail the transport")
         }
-        XCTAssertTrue(reason.contains("ICE recovery exhausted after 2 attempts"))
+        XCTAssertTrue(reason.contains("Network recovery exhausted after 2 attempts"))
         XCTAssertTrue(engine.didClose)
         XCTAssertEqual(engine.restartICECount, 2)
         XCTAssertEqual(transport.snapshot().relayBytesReserved, 0)
@@ -1693,6 +1693,35 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertFailure(transport.sendControl(Data([3])), expected: .notConnected)
         XCTAssertFailure(transport.sendMedia(frame(3, isKeyframe: true)), expected: .notConnected)
         XCTAssertTrue(engine.sentPayloads.isEmpty)
+    }
+
+    func testRecoveryExhaustionRequestsFreshSessionWhenCallbackIsInstalled() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: engine.localCipher,
+            recoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2)
+        )
+        var recoveryAttempts: [Int] = []
+        transport.onFreshSessionRecoveryRequired = { recoveryAttempts.append($0) }
+        try transport.start(configuration: validConfiguration())
+        engine.emitConnection(.connected(path: .direct))
+
+        engine.emitConnection(.disconnected)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 1))
+        XCTAssertEqual(engine.restartICECount, 1)
+        engine.emitConnection(.connecting)
+        engine.emitConnection(.disconnected)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
+        XCTAssertEqual(engine.restartICECount, 2)
+        engine.emitConnection(.connecting)
+        engine.emitConnection(.disconnected)
+
+        XCTAssertEqual(recoveryAttempts, [2])
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
+        XCTAssertFalse(engine.didClose)
+        XCTAssertEqual(engine.restartICECount, 2)
+        XCTAssertFailure(transport.sendControl(Data([3])), expected: .notConnected)
     }
 
     func testPathChangesDuringRecoveryDoNotConsumeRecoveryBudget() throws {
@@ -1733,7 +1762,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         guard case .failed(let reason) = transport.snapshot().state else {
             return XCTFail("An exhausted path recovery action must fail closed")
         }
-        XCTAssertTrue(reason.contains("ICE recovery exhausted after 0 attempts"))
+        XCTAssertTrue(reason.contains("Network recovery exhausted after 0 attempts"))
         XCTAssertTrue(engine.didClose)
         XCTAssertEqual(engine.restartICECount, 0)
     }
@@ -1893,7 +1922,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         guard case .failed(let reason) = transport.snapshot().state else {
             return XCTFail("Connection-attempt deadline must eventually exhaust recovery")
         }
-        XCTAssertTrue(reason.contains("ICE recovery exhausted after 2 attempts"))
+        XCTAssertTrue(reason.contains("Network recovery exhausted after 2 attempts"))
         XCTAssertTrue(engine.didClose)
         XCTAssertEqual(engine.restartICECount, 2)
     }
@@ -1997,6 +2026,35 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(engine.keyframeRequestCount, 2)
     }
 
+    func testNetworkHandoffFreshSessionStrategyRequestsNewSessionWithoutICERestart() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: engine.localCipher,
+            networkHandoffRecoveryStrategy: .freshSession
+        )
+        var recoveryAttempts: [Int] = []
+        transport.onFreshSessionRecoveryRequired = { recoveryAttempts.append($0) }
+        try transport.start(configuration: validConfiguration())
+        engine.emitConnection(.connected(path: .direct))
+        engine.emitPath(InternetNetworkPath(interface: .wifi, isSatisfied: true, fingerprint: "wifi-a"))
+
+        engine.emitPath(InternetNetworkPath(interface: .cellular, isSatisfied: true, fingerprint: "cell-b"))
+
+        XCTAssertEqual(recoveryAttempts, [1])
+        XCTAssertEqual(engine.restartICECount, 0)
+        XCTAssertEqual(transport.snapshot().iceRestartCount, 0)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 1))
+        XCTAssertFailure(
+            transport.sendControl(Data([1])),
+            expected: .notConnected
+        )
+        XCTAssertFailure(
+            transport.sendMedia(frame(2, isKeyframe: true)),
+            expected: .notConnected
+        )
+    }
+
     func testRepeatedCurrentDisconnectOutcomeAdvancesOnceAndPathEventDoesNotAddRestart() {
         let engine = FakeWebRTCEngine()
         let transport = connectedTransport(engine: engine)
@@ -2044,7 +2102,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(recovery.connectivityLost(), .restartICE)
         XCTAssertEqual(
             recovery.connectivityLost(),
-            .fail("ICE recovery exhausted after 2 attempts.")
+            .fail("Network recovery exhausted after 2 attempts.")
         )
     }
 

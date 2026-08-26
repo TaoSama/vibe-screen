@@ -38,17 +38,22 @@ WebRTC/network/key-store implementations.
    create an ECDSA-P256 signing key and stable random device identifier.
 2. Pair locally or through an already authenticated rendezvous. The QR offer is
    single-use, expires quickly, and carries a random challenge, host identity,
-   ephemeral key, and supported algorithms.
+   ephemeral key, and supported algorithms. Android accepts only the canonical
+   `vibescreen://pair?v=1&o=` URL envelope with raw base64url payload characters
+   before decoding the embedded one-time credential.
 3. Both peers sign a canonical transcript containing protocol range,
    capabilities, identities, ephemeral keys, offer identifier, challenge, and
    roles. Unknown required algorithms or downgrade attempts abort pairing.
-4. Derive a root secret from ECDH-P256 and transcript using HKDF-SHA-256. Derive
-   direction/channel/session-specific traffic keys; never use the raw shared
-   secret as an AEAD key.
+4. Mac consumes the offer on the first redemption attempt, including invalid
+   device proofs, before deriving a root secret from ECDH-P256 and transcript
+   using HKDF-SHA-256. Derive direction/channel/session-specific traffic keys;
+   never use the raw shared secret as an AEAD key.
 5. Before Android stores or activates a session lease, verify a signature from
    the paired host identity over every routing, epoch, transcript, token, ICE,
    TURN-credential, and test-policy field. Verify before advancing any durable
-   high-water mark.
+   high-water mark. The local host lease issuer requires a bounded unsigned
+   `expires_at` compatibility field, but rewrites it to the issuer TTL before
+   signing so the caller cannot choose the accepted expiry.
 6. Exchange signaling messages over authenticated HTTPS/WebSocket. Authenticate
    the remote identity independently of the signaling channel.
 7. Gather ICE candidates, prefer direct connectivity, and use short-lived TURN
@@ -147,19 +152,32 @@ PostgreSQL-backed authority, while SDP/ICE routing is stored in the signaling
 PostgreSQL backend until TTL cleanup. Authority failure, malformed response,
 storage failure, or a session-ID collision fails closed without local token
 fallback or state overwrite. Real PostgreSQL tests cover migration/readiness,
-restart-durable routing, expiry and concurrent capacity; a two-process
+restart-durable routing, expiry, concurrent capacity, cross-instance routing,
+LISTEN/NOTIFY long-poll wakeup, and invalidation tombstones; a two-process
 PostgreSQL test covers account/device registration, admission, offer/poll,
 device revocation rejecting both roles, bounded shutdown, and secret-log
 scanning. This is a signaling admission boundary, not automatic product
 issuance.
+Authority can also issue an admin/operator session profile for already
+registered devices; signaling adopts that authority-issued session as local
+routing metadata only after a successful role authorization, without retaining
+the role token. This is still a service-control-plane path, not Mac/Android
+automatic product invocation or production multi-replica evidence.
 
-The service still rejects a second offer. The product transport therefore does
-not attempt to reuse the old rendezvous after a network handoff: it suspends
-application traffic and asks its owner for a fresh signaling session, role token,
-TURN credential where needed, PeerConnection, and larger authority-agreed session
-epoch. The macOS UI currently fails closed and asks the operator to supply that
-fresh profile; automatic authority issuance and macOS/Android device proof of the
-complete handoff remain release gates.
+The service still rejects a second offer. The product transport now enters a
+bounded ICE-recovery window for ordinary disconnects on transports whose
+engine/signaling layer can actually perform a restart, and it keeps application
+traffic suspended during that window. A detected validated-network handoff is
+treated as a session-authority boundary instead of an ICE-restart candidate:
+both product peers fail closed directly into fresh-session recovery, invalidate
+the old transport owner, ignore late callbacks and old-epoch traffic, and require
+the owner to supply a fresh signaling session, role token, TURN credential where
+needed, PeerConnection, and larger authority-agreed session epoch. If an
+ordinary ICE restart is unsupported or the bounded restart window is exhausted,
+the same fresh-session recovery path is used. The macOS UI currently asks the
+operator to supply that fresh profile; Mac/Android automatic invocation of
+Authority profile issuance and device proof of the complete handoff remain
+release gates.
 
 ## TURN and ICE
 
@@ -176,10 +194,17 @@ complete handoff remain release gates.
   counter. Allocation lifetime, peer permissions, bandwidth, and concurrent
   allocations are bounded in the data plane.
 - The current `/v1/usage` byte/session ledger is non-authoritative telemetry;
-  it is not a real-time spend or admission-control boundary until a trusted
-  coturn collector is deployed. `scripts/phase3/coturn_reconcile.py` defines the
-  expected structured snapshot submission and disconnect-executor contract for
-  that collector, but it does not observe coturn by itself.
+  it is not a real-time spend boundary until a trusted coturn collector is
+  deployed. In `production_authority` mode, relay now requires `allocation_id`
+  and asks Authority to admit every non-duplicate usage event before mutating the
+  ledger, so revoked, expired, unknown, quota-exceeded, or conflicting
+  allocation state fails closed. `scripts/phase3/coturn_reconcile.py` defines the
+  expected structured snapshot submission, optional external exporter-command,
+  bounded retry loop, and disconnect-executor contract for that collector.
+  `scripts/phase3/coturn_cli_control.py` can use relay's allocation registry to
+  export or disconnect exact coturn CLI sessions in local/operator runs. Neither
+  helper observes coturn by itself as a production daemon or provides a deployed
+  production scheduler.
 
 ## Backpressure and recovery
 
@@ -204,8 +229,9 @@ reliable channel. Android has the matching Protocol v1 product-session compositi
 and consumes an authority-agreed epoch. Both sides reject an epoch at or below the
 durable high-water mark before traffic keys are used. Network change
 requests a replacement product session rather than a second offer in the old
-rendezvous. The local lease issuer allocates the next pairing-scoped epoch from
-durable Keychain state and never signs a caller-selected epoch. Packet seal and
+rendezvous. The local lease issuer reserves the Authority-supplied
+`session_epoch` in pairing-scoped durable Keychain state and rejects values at or
+below the local high-water mark before signing. Packet seal and
 open hold the peer-scoped durable epoch lock through nonce reservation or replay
 check, AEAD, and replay commit, so an N+1 reservation cannot interleave after an
 N check. Pairing cleanup markers remain durable until identity authorization,
@@ -218,10 +244,10 @@ forced local coturn with Protocol v1 application AEAD. Its media source is
 synthetic. The current local product E2E path raises the host-side loopback media
 source from fixed strings to real VideoToolbox HEVC keyframe and delta payloads
 over the protected production WebRTC media DataChannel, but still uses synthetic
-pixel-buffer input and a synthetic Protocol v1 peer. Automatic authority
-issuance, real ScreenCaptureKit/CGDisplayStream capture, Android MediaCodec
-decode, rotation, disconnect/handoff, and old-record injection across a real
-handoff remain unproved.
+pixel-buffer input and a synthetic Protocol v1 peer. Mac/Android automatic
+profile issuance, real ScreenCaptureKit/CGDisplayStream capture, Android
+MediaCodec decode, rotation, disconnect/handoff, and old-record injection across
+a real handoff remain unproved.
 
 ## Adaptive media
 
@@ -310,14 +336,16 @@ semantic change requires a new protocol package/version.
 | Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. Durable transaction markers span secret writes, authorization/reauthorization and metadata commit; Android markers carry the owning pairing and recover under the global admission gate after authenticated-revocation recovery. A different verified/profile pairing cannot be replaced until its tombstone cleanup has removed binding, profile and old secrets. Upgrade cleanup is owner-aware: an old revocation deletes its pairing secret/identity, but treats a different current profile/binding as superseding state and durably retires those steps without cross-deletion. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
 | Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped, keeps a Keychain-backed revoked-identity epoch floor per stable device ID, and persists signed targeted tombstones plus restart-safe secret-cleanup progress. Both platforms reserve the common authority epoch before first use. Cross-language product-session and real platform crash-boundary evidence remain gates |
 | macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. The 2026-08-20 local readiness snapshot passed synthetic direct/relay product sessions at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`, and the narrower 2026-08-05 Nubia local synthetic-media interop record at commit `597518f948075e396352bc353afcec01a30303f3` still exists for that dated device/source pair only. The current worktree's local product E2E sends real VideoToolbox HEVC keyframe/delta payloads over the production WebRTC media DataChannel to a synthetic Protocol v1 peer, with synthetic pixel-buffer input and no capture server. None of these results prove real ScreenCaptureKit device streaming, Android MediaCodec decode, visible Mac input effects, public Internet, or handoff, which remain gates |
-| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The historical Nubia P0110 run is dated 2026-08-05 and bound only to commit `597518f948075e396352bc353afcec01a30303f3`; it covers local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic Protocol v1 media. The current Android JVM contract also confirms Annex-B HEVC-like Internet media frames are preserved through the Protocol v1 assembler into the decoder callback payload, but it does not instantiate MediaCodec. These are not current-worktree device decoder evidence and must not be extrapolated to later commits, real screen capture, public Internet, rotation, handoff, or soak |
+| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The historical Nubia P0110 run is dated 2026-08-05 and bound only to commit `597518f948075e396352bc353afcec01a30303f3`; it covers local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic Protocol v1 media. The current Android JVM contract also confirms Annex-B HEVC-like Internet media frames are preserved through the Protocol v1 assembler into the decoder callback payload, but it does not instantiate MediaCodec or prove visible Android UI import for this worktree. These are not current-worktree device decoder evidence and must not be extrapolated to later commits, real screen capture, public Internet, rotation, handoff, or soak |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt`, LAN secure-record adapters | 32-byte bearer token admission followed by per-session AES-256-GCM application records for current macOS/Android peers. Explicit legacy fallback remains plaintext and must be separately reported; trusted LAN is still private-network only and not Internet E2EE |
-| Relay control/data plane | `services/relay/`, `deploy/phase3/`, `scripts/phase3/coturn_reconcile.py` | Short-term credential control plane and digest-pinned coturn/relay Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. Relay now has explicit local/production-authority modes: production credential issuance requires `allocation_id`, calls Authority `/v1/relay/admissions`, and fails closed on dependency, revoked session/device, quota, or conflicting allocation identity before returning a TURN credential. Authority closes relay-allocation ledger entries when an account is suspended, a device is revoked, or a signaling admission is invalidated, and later usage/reconciliation updates for revoked, suspended, expired, or closed allocations fail closed without advancing counters. The 2026-08-20 local readiness snapshot passed coturn REST allocation/quota and production peer-ACL scripts at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`. A new local helper submits trusted structured coturn snapshots to Authority and fails closed unless unauthorized/conflicting source allocations are handed to an external disconnect executor. It is not a coturn exporter and is not wired into production Compose; existing coturn allocations are not terminated by this control-plane/helper action. Public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
-| Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable memory and PostgreSQL store backends, explicit local/production-authority modes, fail-closed store readiness, fail-closed authority admission and per-request authorization, device-revocation rejection, issuer-only invalidation, restart-durable PostgreSQL routing tests, and real two-process PostgreSQL tests exist. The 2026-08-20 local readiness snapshot passed Phase 3 service verification and local Authority container gating at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`. It remains a one-offer router; Mac/Android automatic profile issuance, proven multi-instance routing, relay/coturn authority integration, and active transport disconnect remain gates |
+| Relay control/data plane | `services/relay/`, `deploy/phase3/`, `scripts/phase3/coturn_reconcile.py`, `scripts/phase3/coturn_cli_control.py` | Short-term credential control plane and digest-pinned coturn/relay Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. Relay now has explicit local/production-authority modes: production credential issuance requires `allocation_id`, calls Authority `/v1/relay/admissions`, writes an allocation registry entry, and fails closed on dependency, revoked session/device, quota, or conflicting allocation identity before returning a TURN credential. Production `/v1/usage` also requires `allocation_id`, treats only exact same-payload retries as idempotent duplicates, calls Authority admission before non-duplicate ledger mutation, and fails closed for revoked, suspended, expired, closed, quota-exceeded, or conflicting allocations. Authority closes relay-allocation ledger entries when an account is suspended, a device is revoked, or a signaling admission is invalidated, and later usage/reconciliation updates for revoked, suspended, expired, or closed allocations fail closed without advancing counters. Reconciliation now classifies source-observed allocations whose Authority ledger is already closed as `revoked_allocation_ids`, so the external disconnect executor receives explicit revocation work instead of a generic conflict. The 2026-08-20 local readiness snapshot passed coturn REST allocation/quota and production peer-ACL scripts at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`. The local reconcile helper submits trusted structured coturn snapshots or an external exporter command's strict JSON stdout to Authority, retries transient failures when configured, and fails closed unless unauthorized/conflicting/revoked source allocations are handed to an external disconnect executor. The local coturn CLI control helper can export and disconnect exact registry-matched coturn sessions. These helpers are still not a production coturn exporter, production scheduler, or production-proven concrete coturn disconnect implementation, and no worker is wired into production Compose. Public deployment, authoritative byte usage, active-allocation disconnect, production reconciliation scheduler, multi-instance throughput, and multi-region state remain gates |
+| Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable memory and PostgreSQL store backends, explicit local/production-authority modes, fail-closed store readiness, fail-closed authority admission and per-request authorization, authority-issued session adoption after successful role authorization, device-revocation rejection, issuer-only invalidation, restart-durable PostgreSQL routing tests, and real two-process PostgreSQL tests exist. In authority mode, long-poll waits are split into bounded reauthorization windows so revocation wins during a pending poll without waiting for the full client timeout. PostgreSQL-backed routing now has focused cross-instance delivery coverage and connection-scoped long-poll waiter leases, so a replacement instance can reclaim a waiter slot after the failed instance loses its database backend. The 2026-08-20 local readiness snapshot passed Phase 3 service verification and local Authority container gating at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`. It remains a one-offer router; Mac/Android automatic invocation of Authority profile issuance, multi-instance throughput, public ingress/load-balancer behavior, global create-rate enforcement, production coturn exporter/disconnect wiring, and active transport disconnect remain gates |
 | Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. Authority-backed process integration now covers session invalidation and device revocation rejecting signaling role access plus future relay credential admission for the same session/device. End-to-end revocation propagation to the peer and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | `AdaptiveMediaPolicy` (macOS) / `AdaptiveVideoPolicy` (Android), `InternetProductSession` video-config transaction, `InternetAdaptiveVideoPlan` baseline clamp | Fast-drop/slow-rise hysteresis with jitter reset, even dimensions without upscaling, user-baseline upper bounds, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, reject rollback, and host-apply/ACK/rollback-timeout fail-closed are implemented and unit/self-tested. The production encoder/capture-application callback (`onAdaptiveProfileRequested`) is wired, but verified only through offline build and unit/self-tests, not real capture output. Real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, and soak remain unproved |
+| Real media E2E evidence | `tools/vibescreen_evidence/phase3_real_media_continuity.py`, `tools/vibescreen_evidence/phase3_real_media_current_base.py`, [TEST.md](TEST.md), `evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/` | A passive fail-closed preflight now converts retained Host and Android logs into structured continuity evidence for ScreenCaptureKit/CGDisplayStream -> VideoToolbox -> WebRTC -> Android MediaCodec. It distinguishes legacy encoded-frame markers from real capture-source metadata, records VideoToolbox output epochs, records Android MediaCodec first input/output epochs, and blocks unless at least one epoch is shared across the Host output and Android decode window. The current-base child gate additionally requires that continuity result to match clean current `HEAD`, retain complete Android device identity, and include screenshot/video evidence plus an operator note for visible decoded Android UI. The first application is blocked because it reuses the 2026-08-18 Nubia P0110 logs where Screen Recording was denied and no public-Internet route, capture frame, VideoToolbox output, Protocol v1 media session, MediaCodec output, or visible Android UI evidence was observed. This tooling improves readiness but does not close any Phase 3 release gate |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
-| Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json`, `evidence/2026-08-05-nubia-p0110-internet/`, `evidence/2026-08-20-local-phase3-readiness/` | Prior record remains withdrawn. The reachable-source Android record is a historical 2026-08-05 result for commit `597518f948075e396352bc353afcec01a30303f3` only. The 2026-08-20 local readiness record proves local checks and local synthetic direct/forced-coturn product E2E at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`, but it has no Android device/UI, no real screen capture, and no public Internet path. Current local evidence may prove real VideoToolbox HEVC payload delivery only to the synthetic peer; no current Android MediaCodec decode or device UI evidence is implied. Neither record can be extrapolated beyond its stated source and boundary |
+| Internet soak gate | `tools/vibescreen_evidence/phase3_internet_soak.py`, `Makefile` targets `phase3-internet-soak-manifest` and `phase3-internet-soak-gate` | A fail-closed composition gate now pins the evidence shape for public TURN, real media continuity, network handoff, revocation propagation, and two-hour mixed-route soak. It is not a deployment runner and does not create single-source evidence by itself; missing reports are `blocked`, while plaintext fallback or raw secret-like fields fail the gate. The current 2026-08-26 record is blocked because the required public deployment and runtime reports are absent |
+| Android Internet evidence | [TEST.md](TEST.md), `scripts/phase3/android_current_base_interop_gate.py`, `evidence/android-product-interop.json`, `evidence/2026-08-05-nubia-p0110-internet/`, `evidence/2026-08-20-local-phase3-readiness/` | Prior record remains withdrawn. The reachable-source Android record is a historical 2026-08-05 result for commit `597518f948075e396352bc353afcec01a30303f3` only. The current-base replacement owner is the fail-closed Android interop gate: `product-interop` accepts only fresh current-source Nubia P0110 direct plus forced-local-coturn synthetic-media interop, while the default `real-capture` profile additionally requires ScreenCaptureKit/CGDisplayStream, VideoToolbox, Android MediaCodec first output, FPS/decode, and reconnect assertions. The 2026-08-20 local readiness record proves local checks and local synthetic direct/forced-coturn product E2E at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`, but it has no Android device/UI, no real screen capture, and no public Internet path. Current local evidence may prove real VideoToolbox HEVC payload delivery only to the synthetic peer; no current Android MediaCodec decode or device UI evidence is implied. None of these records can be extrapolated beyond its stated source and boundary |
 
 ### Open implementation findings
 
@@ -345,15 +373,24 @@ These are release blockers, not accepted architecture:
   at main commit `4c2e908fe31af4c187684991301e163371444eab` (202/202 tests);
   that later CI result is not retroactive evidence for the device
   artifact's source commit.
-- Recovery now fails closed into a fresh-session request instead of sending a
-  second offer, but the local development UI requires manually supplied authority
+- Recovery now attempts a bounded transport-level ICE restart only for ordinary
+  disconnect recovery when the underlying engine/signaling path can perform one;
+  otherwise, and after bounded exhaustion, it fails closed into a fresh-session
+  request. Validated network handoff in the product Internet session now requests
+  a fresh session immediately instead of first attempting ICE restart, preventing
+  reuse of stale signaling state and application record keys across a route
+  boundary. The local development UI still requires manually supplied authority
   credentials and epoch. Do not claim automatic network-handoff recovery until a
-  real Mac/Android run proves new signaling tokens, PeerConnection, record keys,
-  epoch advance, and rejection of old records.
+  real Mac/Android run proves automatic profile issuance, new signaling tokens,
+  PeerConnection, record keys, epoch advance, stream pause/resume, and rejection
+  of old records.
 - Authority-backed signaling still performs remote authorization for every
   message publish and poll, and serializes creates through one global
-  PostgreSQL advisory lock to prevent orphan admissions at store capacity. These
-  are fail-closed correctness choices, not evidence of multi-instance throughput.
+  PostgreSQL advisory lock to prevent orphan admissions at store capacity. The
+  signaling PostgreSQL store has cross-instance delivery coverage and reclaims
+  crashed long-poll waiter slots through connection-scoped database leases. These
+  are fail-closed correctness choices, not evidence of multi-instance throughput
+  or global rate limiting.
   Signaling and authority require NTP clock synchronization, and their maximum
   session TTL settings must agree; expiry validation is not relaxed for skew.
 - The authority enforces one epoch floor per device ID, while the Mac lease
@@ -397,9 +434,15 @@ These are release blockers, not accepted architecture:
   metrics scraping, credential issuance, and administration now use distinct
   tokens; the ledger atomically replaces and directory-syncs its state file.
   The structured reconcile helper gives operators a tested way to submit a
-  trusted snapshot and force unauthorized/conflicting source allocations through
-  an idempotent external disconnect executor; missing ledger-only allocations
-  still require a deployment policy before closure.
+  trusted snapshot, or call an external exporter command that emits the same
+  strict JSON snapshot, and force unauthorized/conflicting/revoked source
+  allocations through an idempotent external disconnect executor; missing
+  ledger-only allocations still require a deployment policy before closure. The
+  coturn CLI control helper gives operators a tested way to map relay allocation
+  registry entries to exact coturn sessions and issue loopback CLI disconnect
+  commands when the mapping is unambiguous. The repository still does not
+  include a real coturn management exporter, production scheduler, or
+  production-proven concrete data-plane disconnect executor.
   Admin revocation blocks new credentials and later usage events but cannot
   terminate an already-issued TURN allocation.
   Authoritative coturn accounting, cryptographic signaling binding, multi-instance

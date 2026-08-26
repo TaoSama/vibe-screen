@@ -1,0 +1,160 @@
+08-24 19:11:22.892 15457 24338 D ReflectedParamUpdater: ignored struct field vendor.input.configs.portConfigs
+08-24 19:11:22.892 15457 24338 D CCodecConfig: ignoring local param raw.size (0xd2001800) as it is already supported
+08-24 19:11:22.892 15457 24338 D CCodecConfig: ignoring local param default.color (0x5200180b) as it is already supported
+08-24 19:11:22.892 15457 24338 D CCodecConfig: ignoring local param raw.hdr-static-info (0xd200180a) as it is already supported
+08-24 19:11:22.893 15457 24338 I CCodecConfig: query failed after returning 18 values (BAD_INDEX)
+08-24 19:11:22.893 15457 24338 D CCodecConfig: c2 config diff is Dict {
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::i32 algo.priority.value = -4
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::float algo.rate.value = 1
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 algo.secure-mode.value = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::float coded.frame-rate.value = 1
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.pl.level = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.pl.profile = 24576
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.vui.color.matrix = 255
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.vui.color.primaries = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.vui.color.range = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 coded.vui.color.transfer = 255
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 default.color.matrix = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 default.color.primaries = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 default.color.range = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 default.color.transfer = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 input.buffers.max-size.value = 8847360
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 input.delay.value = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   string input.media-type.value = "video/hevc"
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 output.delay.value = 6
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   Buffer output.hdr10-plus-info.value = {
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   }
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   string output.media-type.value = "video/raw"
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 raw.color.matrix = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 raw.color.primaries = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 raw.color.range = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::u32 raw.color.transfer = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::float raw.hdr-static-info.mastering.blue.x = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c2::float raw.hdr-static-info.mastering.blue.y = 0
+08-24 19:11:22.893 15457 24338 D CCodecConfig:   c
+08-24 19:11:22.893 15457 24338 W ColorUtils: expected specified color aspects (0:0:0:0)
+08-24 19:11:22.894 15457 24337 D CypressMediaAnalyticsHelper: onCodecComponentAllocated: State transition: 0 -> 1 (Allocated)
+08-24 19:11:22.895 15457 24342 I CypressMediaAnalyticsHelper: init: init pid:15457, pkgName:dev.telemachus.display
+08-24 19:11:22.895 15457 24337 I MediaCodec: MediaCodec will operate in async mode
+08-24 19:11:22.896  2462 29713 D CypressMediaAnalyticsService: submit: item: [1:codec:154:-1:dev.telemachus.display:0:15457:1:0:3:codec_name=c2.qti.hevc.decoder:is_protected=0:key_event=media_codec_allocate:]
+08-24 19:11:22.896  2462 29713 V CypressMediaAnalyticsService: submit: given pid 15457; calling pid: 15457, pkgName dev.telemachus.display
+08-24 19:11:22.900 15457 14711 E MediaCodec: Media Quality Service not found.
+08-24 19:11:22.901 15457 14711 D CypressMediaAnalyticsHelper: onCodecConfiguring: State transition: 1 -> 2 (Configuring)
+08-24 19:11:22.901 15457 24337 D SurfaceUtils: connecting to surface 0xb400007c1267c0e0, reason connectToSurface
+08-24 19:11:22.901 15457 24337 I MediaCodec: [c2.qti.hevc.decoder] setting surface generation to 15827971
+08-24 19:11:22.901 15457 24337 D SurfaceUtils: disconnecting from surface 0xb400007c1267c0e0, reason connectToSurface(reconnect)
+08-24 19:11:22.902 15457 24337 D SurfaceUtils: connecting to surface 0xb400007c1267c0d0, reason connectToSurface(reconnect-with-listener)
+08-24 19:11:22.902  2474  2598 D resmanagerserver: clearSvpTask pid 15457 tid 30854 packageName dev.telemachus.display
+08-24 19:11:22.902  2474  2598 D resmanagerserver: setSvpTask pid 15457 tid 24337 pri 4 packageName dev.telemachus.display fg 0 startType 0
+08-24 19:11:22.903 15457 24338 D CCodec  : [c2.qti.hevc.decoder] buffers are bound to CCodec for this session
+08-24 19:11:22.903 15457 24338 D CCodecConfig: no c2 equivalents for max-bframes
+08-24 19:11:22.903 15457 24338 D CCodecConfig: no c2 equivalents for color-standard
+08-24 19:11:22.903 15457 24338 D CCodecConfig: no c2 equivalents for native-window
+08-24 19:11:22.903 15457 24338 D CCodecConfig: no c2 equivalents for native-window-generation
+08-24 19:11:22.903 15457 24338 D CCodecConfig: no c2 equivalents for flags
+08-24 19:11:22.904 15457 24338 D CCodecConfig: c2 config diff is   c2::i32 algo.priority.value = 0
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::float algo.rate.value = 60
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 default.color.matrix = 1
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 default.color.primaries = 1
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 default.color.range = 2
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 default.color.transfer = 3
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 raw.size.height = 982
+08-24 19:11:22.904 15457 24338 D CCodecConfig:   c2::u32 raw.size.width = 1512
+08-24 19:11:22.904 15457 24338 D CCodec  : encoding statistics level = 0
+08-24 19:11:22.904 15457 24338 D CCodec  : setup formats input: AMessage(what = 0x00000000) = {
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t feature-secure-playback = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t frame-rate = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t height = 982
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t max-input-size = 8847360
+08-24 19:11:22.904 15457 24338 D CCodec  :   string mime = "video/hevc"
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t priority = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t profile = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t width = 1512
+08-24 19:11:22.904 15457 24338 D CCodec  :   Rect crop(0, 0, 1511, 981)
+08-24 19:11:22.904 15457 24338 D CCodec  : }
+08-24 19:11:22.904 15457 24338 D CCodec  : setup formats output: AMessage(what = 0x00000000) = {
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t android._color-format = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t android._video-scaling = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t android._dataspace = 260
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t color-standard = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t color-range = 2
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t color-transfer = 3
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t sar-height = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t rotation-degrees = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   Buffer hdr-static-info = {
+08-24 19:11:22.904 15457 24338 D CCodec  :     00000000:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ................
+08-24 19:11:22.904 15457 24338 D CCodec  :     00000010:  00 00 00 00 00 00 00 00  00                       .........
+08-24 19:11:22.904 15457 24338 D CCodec  :   }
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t sar-width = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   Rect crop(0, 0, 1511, 981)
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t width = 1512
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t feature-secure-playback = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t frame-rate = 1
+08-24 19:11:22.904 15457 24338 D CCodec  :   Buffer hdr10-plus-info = {
+08-24 19:11:22.904 15457 24338 D CCodec  :   }
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t height = 982
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t max-height = 4320
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t max-width = 8192
+08-24 19:11:22.904 15457 24338 D CCodec  :   string mime = "video/raw"
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t priority = 0
+08-24 19:11:22.904 15457 24338 D CCodec  :   int32_t color-format = 2130708361
+08-24 19:11:22.904 15457 24338 D CCodec  : }
+08-24 19:11:22.904 15457 24338 I CCodecConfig: query failed after returning 18 values (BAD_INDEX)
+08-24 19:11:22.904 15457 24338 E emachus.display: Failed to query component interface for required system resources: 6
+08-24 19:11:22.904  2474  2598 D resmanagerserver: setSvpTask pid 15457 tid 30854 pri 4 packageName dev.telemachus.display fg 0 startType 0
+08-24 19:11:22.905 15457 24337 D CypressMediaAnalyticsHelper: onCodecConfigured: State transition: 2 -> 3 (Configured)
+08-24 19:11:22.905 15457 14711 D VD      : Configured with full low-latency
+08-24 19:11:22.905 15457 24342 I CypressMediaAnalyticsHelper: handleCodecConfigure: looper id: 24337, 24338
+08-24 19:11:22.907 15457 14711 D VD      : Surface frame rate requested: 60.000004Hz fixed-source
+08-24 19:11:22.907 15457 14711 D MediaCodec: keep callback message for reclaim
+08-24 19:11:22.907  2474  2598 D resmanagerserver: clearSvpTask pid 15457 tid 24337 packageName dev.telemachus.display
+08-24 19:11:22.907  2474  2598 D resmanagerserver: clearSvpTask pid 15457 tid 30854 packageName dev.telemachus.display
+08-24 19:11:22.907  2474  2598 D resmanagerserver: setSvpTask pid 15457 tid 24337 pri 4 packageName dev.telemachus.display fg 0 startType 0
+08-24 19:11:22.910  2474  2598 D resmanagerserver: setSvpTask pid 15457 tid 30854 pri 4 packageName dev.telemachus.display fg 0 startType 0
+08-24 19:11:22.915 15457  2667 D AidlBufferPool: bufferpool2 0xb400007c025ec338 : 0(0 size) total buffers - 0(0 size) used buffers - 58142/58153 (recycle/alloc) - 11/58144 (fetch/transfer)
+08-24 19:11:22.915 15457  2667 D AidlBufferPool: Destruction - bufferpool2 0xb400007c025ec338 cached: 0/0M, 0/0% in use; allocs: 58153, 100% recycled; transfers: 58144, 100% unfetched
+08-24 19:11:22.916 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] Query input allocators returned 0 params => BAD_INDEX (6)
+08-24 19:11:22.917 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] Created input block pool with allocatorID 16 => poolID 19 - OK (0)
+08-24 19:11:22.917 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] start: max output delay 21
+08-24 19:11:22.917 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] Query output allocators returned 0 params => BAD_INDEX (6)
+08-24 19:11:22.918 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] Query output surface allocator returned 0 params => BAD_INDEX (6)
+08-24 19:11:22.918 15457 24338 D Codec2Client: GraphicBufferAllocator created
+08-24 19:11:22.919 15457 24338 I CCodecBufferChannel: [c2.qti.hevc.decoder#645] Created output block pool with allocatorID 18 => poolID 324 - OK
+08-24 19:11:22.920 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] Configured output block pool ids 324 => OK
+08-24 19:11:22.920 15457 24338 D Codec2Client: setOutputSurface -- failed to set consumer usage (6/BAD_INDEX)
+08-24 19:11:22.920 15457 24338 D GraphicsTracker: new surface in configuration: maxDequeueRequested(0), maxDequeueCommitted(3)
+08-24 19:11:22.920 15457 24338 D GraphicsTracker: new surface configured with id:66387309494273 gen:15827971 maxDequeue:3
+08-24 19:11:22.920 15457 24338 D GraphicsTracker: maxDequeueCount committed to IGBP: 11
+08-24 19:11:22.920 15457 24338 D GraphicsTracker: Cache size 0 -> 0: maybe_cleared(0), dequeued(0)
+08-24 19:11:22.920 15457 24338 D GraphicsTracker: maxDqueueCount change 3 -> 11: pending: 0
+08-24 19:11:22.920 15457 24338 D Codec2Client: setOutputSurface -- generation=15827971 consumer usage=0x900
+08-24 19:11:22.920 15457 24338 D CCodecBufferChannel: [c2.qti.hevc.decoder#645] start: updating output delay 4
+08-24 19:11:22.927 15457 24337 D CypressMediaAnalyticsHelper: onCodecStart  isSurfaceToScreen 1  bufferqueuename:b8e1668 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1(BLAST Consumer)1
+08-24 19:11:22.927 15457 24337 D CypressMediaAnalyticsHelper: onCodecStart: State transition: 3 -> 4 (Started)
+08-24 19:11:22.927 15457 14711 D VD      : Decoder started: 1512x982 @ 60.000004Hz, surface=Surface(name=null mNativeObject=-5476376613998212512)/@0x306e2e4, valid=true
+08-24 19:11:22.928  2462 29713 D CypressMediaAnalyticsService: submit: item: [1:codec:154:-1:dev.telemachus.display:0:15457:1:0:15:codec_name=c2.qti.hevc.decoder:is_protected=0:key_event=media_codec_start:operating_rate=60:video_width=1512:video_height=982:rotation_degrees=0:frame_rate=0:low_latency_mode=1:mime=video/hevc:codeclooper_tid=24338:mediacodec_loop_tid=24337:use_surface=1:buffer_queue_name=b8e1668 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1(BLAST Consumer)1:codec_start_time=1787569882928071483:]
+08-24 19:11:22.928  2462 29713 V CypressMediaAnalyticsService: submit: given pid 15457; calling pid: 15457, pkgName dev.telemachus.display
+08-24 19:11:22.929  2462 29713 D AppRecordClient: submitInternal: event 1 codec_name c2.qti.hevc.decoder uid 10281 pid 15457 sessionId 154 fps 0
+08-24 19:11:22.929  3199  8269 I SmartPowerMonitor: [FEAT_POWER_MON][0] HwCodeInfo from mdeia event :1 uid:10281 pid:15457 codeName:c2.qti.hevc.decoder duration:-1787569882s width:1512 height:982 framerate:0 lowLatencyMode:1
+08-24 19:11:22.929  3199  8269 D VideoUidTeardown: [FEAT_POWER_TEARDOWN][0] noteVideoOn, uid: 10281, pid: 15457, codec: c2.qti.hevc.decoder, framerate: 0, width: 1512, height: 982, lowlatency: 1
+08-24 19:11:22.929  3199  4111 I AppRecordManagerService: sendMessageForSessionVideoEvent [10281, 15457, 1, 154, 0, c2.qti.hevc.decoder]
+08-24 19:11:22.930  3199  4111 I AppRecordManagerService: PID_MSG_SESSION_VIDEO_EVENT uid:10281 pid:15457 sessionId:154 start:1 isIsolatedProcess:false
+08-24 19:11:22.930  3199  4111 I AppRecordManagerService: onSessionVideoEvent: eventType=1 pkg=dev.telemachus.display uid=10281 pid=15457 sessionId=154 fps=0 maxFps=0 isPlaying=true
+08-24 19:11:22.930  3199  4111 I AppRecordManagerService: onPidVideoEvent [uid:10281 pid:15457 eventType:1 maxFps:0]
+08-24 19:11:22.930  3199  4111 I AppRecordManagerService: PID_MSG_VIDEO_EVENT uid:10281 pid:15457 start:1 maxfps:0
+08-24 19:11:22.931 15457 15457 D MA      : Decoder configuration committed 1512x982 epoch=1
+08-24 19:11:22.933 15457 15457 D MA      : onDisplayGeometry: 1512x982 @ 0°
+08-24 19:11:22.940 15457 15457 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+08-24 19:11:26.327 15457 14716 D AidlBufferPoolAcc: evictor expired: 1, evicted: 0
+08-24 19:11:28.327 15457 14716 D AidlBufferPool: bufferpool2 0xb400007c025c8ca8 : 10(88473600 size) total buffers - 10(88473600 size) used buffers - 0/10 (recycle/alloc) - 0/0 (fetch/transfer)
+08-24 19:11:28.328 15457 14716 D AidlBufferPoolAcc: evictor expired: 2, evicted: 1
+08-24 19:12:01.299 15457 30845 I emachus.display: ProfileSaver: LiteProfileSaver time 98.750us new_methods=0
+08-24 19:13:09.605  3199  4114 I MemoryUtils: 15457  procMemInfo = [0, 323412, 314280, 143132, 143060, 1976]
+08-24 19:13:09.606  3199  4114 I MemoryUtils: 15457  procMemInfo = [0, 323412, 314280, 143132, 143060, 1976]
+08-24 19:13:09.680 15457 30845 I emachus.display: ProfileSaver: LiteProfileSaver time 48.959us new_methods=0
+08-24 19:13:18.499  1069  1069 I KERNEL  : [856666.170710] T1069] [11:14:01](5)[1069|logd.reader]logd:logdr: UID=0 GID=0 PID=28635 n tail=800 logMask=99 pid=15457 start=0ns deadline=0ns
+08-24 19:14:09.715  8311  9196 V chromium: [8311:9196:0824/191409.715457:VERBOSE1:url_request_json_log_visitor.cc(164)] es":0,"sent_bytes":0,"sent_header_bytes":0,"via_proxy":false},"session":{"Cookie":false},"socket":{"acc_r":0,"address_family":0,"cip":"","connection_attemps":[{"address":"101.36.166.18:443","result":-106},{"address":"101.36.166.17:443","result":-106},{"address":"101.36.166.16:443","result":-106},{"address":"101.36.166.19:443","result":-106},{"address":"101.36.166.18:443","result":-106},{"address":"101.36.166.17:443","result":-106},{"address":"101.36.166.16:443","result":-106},{"address":"101.36.166.19:443","result":-106}],"connection_reuse_source":0,"happy_eyeballs_result":0,"remote":"","socket_reused":false,"tcp_socket_reuse_type":0},"socketpool":{"assign_type":0,"consume_time":0,"is_backup_job":false,"pending_reason":0,"pending_time":0,"reuse_type":0,"socket_idle_time":0.0},"ssl":{"cert_status":0,"connection_status":0,"handshake_type":0,"is_issued_by_known_root":false},"store_idc":{"last_update":{"init":1}},"thread_priority":{"file":{"count":0,"priority":0.0},"init":{"count":0,"priority":0.0},"network":{"count":0,"priority":0.0}},"timing":{"detailed_duration":{"before_body_recv":-1,"before_start":0,"before_stream":0,"body_recv":-1,"connect_delay":0,"create_stream":7,"dispatch":0,"dns":1,"header_recv":-1,"meta_dp":0,"proxy":0,"request_delay":0,"security_callback":0,"send":-1,"ssl":-1,"tcp":6,"ttfb":-1},"request":{"duration":8,"init_end_to_start_us":"856388622221","init_start_to_start_us":"856388942639","log_time":1787570049.715068,"request_sent_time":0.0,"response_recv_time":0.0,"start_time":1787570049.70686}},"tnc":{"data":{"canary":"","cold_start":1,"config":"epoch:788063|cond_label:1137603,1137629,1176718,1177881,1190093,1193667,1193992,1285689,1285732,1346150,1409445,1553435,1553438,1626900,1626903,1682870,566101,566102,977820,977821,1346174,1346201,1346176,1346203,1346183,1346210,1346186,1346213|dispatch:196432,203606,204304,447019,1181766,1189207,1189791,1189792,1189793,1189794,1255463,1389844,1389847,1462224,1479289,1479291,1479294,1479296,1479297,1479299,1479320,1479322,1479324,1479326,1479336,1479338,1480004,1480006,1521159,1521163,1521179,1521189,1526407,1526408,1526411,1526434,1526666,1526671,1527142,1527229,1527231,1550986,1550990,1559968,1588763,1588771,1617179,1617186,1627307,1680754,1708608,247251,247252,821549,1137512|new_common:205917,654604,654610,680699,680700,680701,680704,680711,707339,746079,746080,746082,746084,746087,746088,746089,746090,746093,746094,746095,746096,746098,746099,746108,798111,798113,798114,798119,798120,798125,798126,798128,798131,798137,904090,904091,904108,904109,904110,904111,968771,1014697,1016805,1039430,1039431,1059395,1061188,1072152,1079604,1080482,1080483,1125491,1125492,1125493,1125494,1125495,1128042,1140556,1145939,1145940,1145941,1151362,1158182,1167468,1167960,1167961,1167962,1167963,1167964,1167965,1189202,1189204,1189781,1189782,1189783,1189784,1189785,1189786,1189787,1189788,1189789,1189790,1189795,1189796,1189797,1189798,1194750,1194751,1215362,1215363,1215364,1215365,1215366,1215367,123
+08-24 19:13:42.439  1069  1069 I KERNEL  : [856690.110035] T1069] [11:14:25](4)[1069|logd.reader]logd:logdr: UID=0 GID=0 PID=29267 n tail=1500 logMask=99 pid=15457 start=0ns deadline=0ns
+08-24 19:13:42.475  1069  1069 I KERNEL  : [856690.146532] T1069] [11:14:25](5)[1069|logd.reader]logd:logdr: UID=0 GID=0 PID=29271 n tail=1500 logMask=99 pid=15457 start=0ns deadline=0ns
+08-24 19:14:44.416 15457 15457 D VibeScreenTouchMap: raw=973.0,632.0 view=1946x1264 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.5,0.5
+08-24 19:14:44.437 15457 30845 I emachus.display: ProfileSaver: FullProfileSaver time 20.634ms new_methods=16

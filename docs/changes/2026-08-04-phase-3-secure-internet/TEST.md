@@ -52,8 +52,13 @@ remain explicit production or end-to-end gates. When
 `services/signaling` also runs a process integration test that starts real
 Authority, signaling, and relay binaries, creates authority-backed signaling
 sessions, obtains authority-admitted relay credentials, invalidates one session,
-revokes the client device at Authority, then proves both signaling role access
-and future relay credential admission fail closed.
+revokes the client device at Authority, then proves signaling role access, future
+relay credential admission, exact same-allocation credential retry before revoke, relay
+`/v1/usage` Authority admission, and later Authority coturn usage accounting fail
+closed. Relay unit tests separately cover exact duplicate usage retries before
+Authority admission, rejected changed-payload event ID reuse, required
+`allocation_id` in production authority mode, restart-safe registry writes,
+registry readiness failure, and usage rejection after Authority revocation.
 
 `make phase3-test` also runs static production-profile checks for the Phase 3
 relay/Authority deployment files. These checks prove only repository configuration
@@ -62,17 +67,78 @@ secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
 or prove public reachability. The same target validates the structured coturn
-snapshot reconciliation helper: strict JSON input, loopback-only plaintext
-Authority URLs, exact token-source selection, and fail-closed external disconnect
-execution when Authority reports unauthorized or conflicting active source
-allocations. That helper test does not prove a production coturn exporter,
-scheduled loop, provider billing reconciliation, or real data-plane allocation
-termination.
+snapshot reconciliation helper and the current-base exporter/reconciliation-loop/
+disconnect-executor product slice: strict JSON input, optional external exporter
+stdout validation, loopback-only plaintext Authority URLs, exact token-source
+selection, bounded failure retry, consecutive missing-allocation tracking, and
+fail-closed disconnect execution when Authority reports unauthorized, conflicting,
+or revoked active source allocations. This local slice proves stale allocation,
+revoked device, and quota-closed allocation contracts against structured local
+state. The coturn CLI control helper tests cover strict allocation-registry
+parsing, coturn `ps` parsing, exact allocation export, ambiguous username
+failure, and loopback CLI `cs` disconnect command construction. These tests do
+not prove a production coturn exporter, production scheduler, provider billing
+reconciliation, production coturn process integration, or real data-plane
+allocation termination.
+The Phase 3 revocation propagation verifier now pins the evidence contract for
+Authority/signaling/relay/coturn propagation. It passes only when a report proves
+Authority audit visibility, signaling long-poll wakeup rejection, future and
+post-revocation same-allocation relay credential rejection, stale issued TURN credential
+rejection, active allocation disconnect, and zero relayed post-revocation
+packets; a missing live deployment observation returns a blocked status. The
+2026-08-25 current-base blocked record documents that the local service tests
+cover Authority-backed signaling, bounded long-poll reauthorization, future and
+post-revocation same-allocation relay credential rejection, relay `/v1/usage` Authority
+admission/revocation rejection, and strict coturn registry/CLI helper behavior,
+but not deployed coturn allocation teardown, stale credential reuse denial, or
+packet-denial behavior.
+
+The production end-to-end enforcement release gate has its own aggregate owner
+contract:
+
+    make phase3-production-e2e-enforcement \
+      EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-production-e2e-enforcement-current-base-blocked
+
+This gate accepts only a reviewed production-e2e-enforcement.json manifest that
+binds release, Authority, signaling, coturn data-plane, and evidence-review
+owners to one source revision. It fails when authority/signaling/coturn policy
+values disagree. It returns blocked rather than pass when real deployed
+secret-manager configuration, public route evidence, remote TURN observation,
+ScreenCaptureKit-to-Android MediaCodec data-plane evidence, active coturn
+disconnect proof, or a 120-minute mixed-route production soak is missing. Local
+loopback, forced local coturn, and synthetic Protocol v1 peers are hard failures
+when presented as public production E2E.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
 is added, add deterministic Make targets rather than relying on undocumented IDE
 steps.
+
+## Public Internet soak gate
+
+The complete Internet soak gate is evaluated by
+`python3 -m vibescreen_evidence.phase3_internet_soak gate` or the Make target
+`phase3-internet-soak-gate`. It is a composition verifier, not a runner. It
+consumes these privacy-reviewed inputs from one evidence directory:
+
+- `phase3-internet-soak-manifest.json`, created before the run from production
+  TURN/signaling/relay/Authority/TLS/secret-source/remote-peer inputs;
+- `remote-turn-verifier.json`, proving public remote TURN packet exchange;
+- `media-continuity.json`, proving real ScreenCaptureKit-to-Android decoder
+  continuity;
+- `network-handoff.json`, proving fresh-session handoff recovery, stale media
+  rejection, and no plaintext fallback;
+- `revocation-propagation.json`, proving active coturn allocation disconnect,
+  stale credential rejection, and zero post-revocation relayed packets;
+- `soak-exact-window-report.json`, proving a clean two-hour mixed direct/relay
+  window with route samples, nonce-reuse absence, and RSS, queue, loss, RTT, FPS,
+  bitrate, relay-byte, ICE-restart, drop, thermal, and battery metric families.
+
+Exit code `0` means `pass`. Exit code `3` means blocked evidence unless
+`--allow-blocked` is set for archiving a blocked result. Exit code `2` means a
+complete input proves unsafe behavior, such as plaintext fallback or raw secret
+material in a report. Local loopback, forced local coturn, synthetic Protocol v1,
+or partial Android UI evidence must not be renamed into any of these files.
 
 ## Test matrix
 
@@ -85,8 +151,8 @@ steps.
 | Replay | duplicate, too old, reordered media, reordered control, cross-channel/session/epoch/key, crash/restart counter safety |
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, control/media/audio/bulk channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
-| Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
-| Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
+| Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Current-base real fluctuation claims additionally require `make phase3-adaptive-media-current-base`, which is fail-closed for static latency fixtures, local loopback, deterministic network-profile output, synthetic media, missing real WebRTC stats, missing fast-drop/slow-rise, missing bitrate/FPS/config-epoch evidence, or transport restarts. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
+| Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, non-authoritative Authority snapshot reconciliation, and separate provider billing reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
 | Latency | external-camera direct and relay raw samples; never infer glass-to-glass from unsynchronized clocks |
@@ -119,7 +185,7 @@ parameters. Cover at least:
 | Bandwidth step | 20→3→12 Mbps | fast downgrade, conservative upgrade |
 | NAT restricted | no viable direct pair | authenticated TURN fallback |
 | UDP blocked | TCP/TLS relay only | connects or reports explicit unsupported route |
-| Path handoff | Wi-Fi→cellular→Wi-Fi/VPN | ICE restart, new epoch, no stale media/input |
+| Path handoff | Wi-Fi→cellular→Wi-Fi/VPN | fresh session, new epoch, no stale media/input |
 | Relay loss | kill selected TURN path | bounded failover/recovery, no plaintext fallback |
 
 Simulation proves policy and transport behavior, not physical glass-to-glass
@@ -142,46 +208,436 @@ latency or a mobile carrier path.
 
 ## Android Internet evidence template
 
+The current-base replacement owner for the historical/withdrawn Android interop
+record is `scripts/phase3/android_current_base_interop_gate.py`, exposed through
+`make phase3-android-current-base-interop-gate`. The gate is intentionally
+fail-closed and has three proof profiles:
+
+| Profile | What can pass | What remains open |
+| --- | --- | --- |
+| `product-interop` | Current clean `HEAD`, `nubia P0110 / pacific / Android 16 / SDK 36`, direct plus forced local coturn route reports from `android_product_session_interop_acceptance.py`, one stable device lease, Protocol v1, AES-256-GCM control/media, Android UI instrumentation, and synthetic config/keyframe/delta media | Real ScreenCaptureKit/CGDisplayStream, Android MediaCodec output, public Internet, handoff, latency, and soak |
+| `real-capture` | Current clean `HEAD`, the same P0110 identity, direct plus forced local coturn route reports, one stable device lease, Protocol v1, AES-256-GCM control/media, Android UI instrumentation, authenticated touch, plus `real_screen_capture`, `screen_capture_kit`, `videotoolbox_output`, `android_mediacodec_decode`, `mediacodec_first_output_frame`, `continuous_fps_and_decode_latency`, and `disconnect_reconnect` assertions with matching `evidence_boundaries` set to `pass` | Public NAT/TURN and carrier/remote-route evidence |
+| `public-internet` | Everything in `real-capture` plus `public_internet_path` and `public_nat_or_remote_turn` assertions | Release still also needs any separate soak, latency, revocation, multi-node, and operations gates called out below |
+
+The default Make target uses `PHASE3_ANDROID_INTEROP_GATE_PROFILE=real-capture`
+so local synthetic product evidence and the historical 2026-08-05 P0110 record
+remain blocked by default:
+
+```bash
+make phase3-android-current-base-interop-gate \
+  PHASE3_ANDROID_INTEROP_EVIDENCE=/absolute/path/to/acceptance.json
+```
+
+Use `PHASE3_ANDROID_INTEROP_GATE_PROFILE=product-interop` only when the intent is
+to replace the historical synthetic-media product-interop record on current
+source without claiming real capture, Android MediaCodec, public Internet,
+handoff, latency, or soak. A `blocked` output from this gate is valid evidence
+of the current blocker; it is not a pass. The gate rejects any `product-interop`
+route report that marks real-capture, public-Internet, handoff, latency, soak,
+or other out-of-profile assertions or boundaries as `pass`. The real-capture and
+public-Internet profiles require their matching `evidence_boundaries` entries to
+be `pass`, and the combined direct/relay report must prove the same ADB lease
+identity through the route-level `adb_gate` fields rather than relying only on
+the top-level `same_device_lease_holder` boolean.
+
 Store evidence under a new immutable run directory such as:
 
 ```text
 docs/changes/2026-08-04-phase-3-secure-internet/evidence/
   2026-08-04T120000Z-xiaomi12-internet/
-    manifest.json
-    commands.txt
-    adb-devices.txt
-    device-properties.txt
-    artifact-sha256.txt
-    host-version.txt
-    client-version.txt
+    README.md
+    phase3-internet-manifest.json
+    device-info.json
+    host.txt
+    build.txt
+    apk-sha256.txt
     direct-session.jsonl
     relay-session.jsonl
     network-handoff.jsonl
+    network-handoff.json
     replay-revocation.jsonl
-    soak-summary.json
-    logcat-redacted.txt
-    host-log-redacted.txt
+    revocation-evidence.json
+    soak-2h/summary.json
+    soak-2h/samples.jsonl
+    soak-2h/host-telemetry.jsonl
+    soak-2h/exact-window-report.json
+    raw-logcat.txt
+    host.log
+    real-media-continuity.json
+    adaptive-media-fluctuation.json
+    adaptive-media-current-base.json
     packet-capture-notes.md
+    packet-capture-confidentiality.json
+    datachannel-record-layer.json
+    privacy-manifest.json
+    latency/direct/manifest.json
+    latency/direct/samples.csv
+    latency/direct/raw-camera.mov
+    latency/direct/latency-evidence.json
+    latency/relay/manifest.json
+    latency/relay/samples.csv
+    latency/relay/raw-camera.mov
+    latency/relay/latency-evidence.json
     latency-method.md          # copy or link docs/runbook/latency-measurement.md
+    phase3-internet-release-gate.json
 ```
 
-Start by proving device identity, not merely that some ADB endpoint responded:
+When a curated evidence package is intended to close the Phase 3 release gate,
+add a `release-gate-manifest.json` beside those artifacts and validate it before
+changing release language:
 
 ```bash
-export ADB_ENDPOINT='<lease-controlled-endpoint>'
-adb connect "$ADB_ENDPOINT"
-adb -s "$ADB_ENDPOINT" devices -l
-adb -s "$ADB_ENDPOINT" shell getprop ro.product.manufacturer
-adb -s "$ADB_ENDPOINT" shell getprop ro.product.model
-adb -s "$ADB_ENDPOINT" shell getprop ro.build.version.sdk
+python3 scripts/phase3/release_gate_manifest.py --print-matrix
+python3 scripts/phase3/release_gate_manifest.py \
+  docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/release-gate-manifest.json \
+  --evidence-root docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>
 ```
+
+The manifest schema is `dev.vibescreen.phase3-release-gate-manifest/v1`. It is a
+necessary-condition verifier, not an automatic release approval: a pass requires
+the manifest to cover every open gate below with repository-relative evidence
+files, clean-source artifact hashes, truthful device identity, and real-world
+observations. USB, trusted-LAN-only, private-network-only, local loopback,
+synthetic loopback, synthetic peer, forced-local-coturn, synthetic media, blocked
+runs, or Nubia evidence claiming Xiaomi/fuxi identity fail closed. A
+DataChannel record-layer pass proves only the Internet DataChannel transport
+boundary; audio_capture_playback, clipboard_sync, and file_transfer must remain
+not_claimed until real public Internet product-flow evidence exists.
+
+```json
+{
+  "schema": "dev.vibescreen.phase3-release-gate-manifest/v1",
+  "result": "pass",
+  "source": {
+    "commit": "<40-character-clean-source-commit>",
+    "tree_status": "clean"
+  },
+  "device": {
+    "manufacturer": "<exact observed manufacturer>",
+    "model": "<exact observed model>",
+    "codename": "<exact observed codename>",
+    "os_version": "<exact observed Android version>",
+    "evidence_role": "<evidence role for this exact observed device>"
+  },
+  "artifacts": {
+    "mac_host_sha256": "<sha256>",
+    "android_apk_sha256": "<sha256>"
+  },
+  "claims": ["Exact human-readable claims for this evidence package"],
+  "gates": {
+    "public_internet_direct_path": {
+      "status": "pass",
+      "route": "direct",
+      "public_internet_path": true,
+      "selected_candidate_pair": "direct(...)",
+      "remote_public_route_observed": true,
+      "local_loopback_address": false,
+      "usb_adb_reverse": false,
+      "host_network": "<host public network>",
+      "device_network": "<different device public network>",
+      "remote_public_asn": "<observed remote ASN>",
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["direct-session.jsonl"]
+    },
+    "remote_turn_relay_path": {
+      "status": "pass",
+      "route": "relay",
+      "public_internet_path": true,
+      "remote_turn_deployment": true,
+      "local_coturn_only": false,
+      "forced_local_coturn": false,
+      "turn_public_hostname": "<public TURN hostname>",
+      "turn_resolved_public_ip": "<public TURN IP>",
+      "turn_provider": "<provider>",
+      "turn_region": "<region>",
+      "selected_candidate_pair": "relay(...)",
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["relay-session.jsonl"]
+    },
+    "real_screencapturekit_to_android_media": {
+      "status": "pass",
+      "capture_source": "ScreenCaptureKit",
+      "android_decoder": "MediaCodec",
+      "screen_capture_frames": 1,
+      "encoded_frames": 1,
+      "android_decoded_frames": 1,
+      "first_android_output_observed": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["real-media.jsonl"]
+    },
+    "network_handoff_recovery": {
+      "status": "pass",
+      "handoff_count": 1,
+      "controlled_impairment": true,
+      "impairment_tool": "linux-netns-tc-or-equivalent",
+      "impairment_profile": {
+        "latency_ms": 95,
+        "jitter_ms": 20,
+        "loss_percent": 2.0,
+        "bandwidth_kbps": 6000
+      },
+      "route_before": "direct",
+      "route_after": "relay",
+      "fresh_session_requested": true,
+      "ice_restart_attempted": true,
+      "old_session_closed": true,
+      "initial_session_epoch": 7,
+      "recovered_session_epoch": 8,
+      "stream_pause_detected": true,
+      "stream_resume_detected": true,
+      "recovery_started_at_monotonic_ms": 1000,
+      "recovery_completed_at_monotonic_ms": 5200,
+      "session_epoch_advanced": true,
+      "stale_epoch_rejected": true,
+      "recovered_streaming": true,
+      "recovery_seconds": 4.2,
+      "approved_limit_seconds": 5,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["network-handoff.jsonl"]
+    },
+    "cross_service_revocation": {
+      "status": "pass",
+      "active_session_disconnected": true,
+      "direct_reconnect_rejected": true,
+      "relay_reconnect_rejected": true,
+      "turn_allocation_disconnected": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["replay-revocation.jsonl"]
+    },
+    "packet_capture_confidentiality": {
+      "status": "pass",
+      "capture_reviewed": true,
+      "no_plaintext_media": true,
+      "no_plaintext_input": true,
+      "no_credentials": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["packet-capture-notes.md"]
+    },
+    "external_camera_latency": {
+      "status": "pass",
+      "method": "external_camera",
+      "sample_count": 5,
+      "direct_p95_ms": 150,
+      "relay_p95_ms": 150,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["latency-method.md"]
+    },
+    "webrtc_datachannel_record_layer": {
+      "status": "pass",
+      "public_internet_path": true,
+      "remote_turn_deployment": true,
+      "fake_webrtc_engine": false,
+      "forced_local_coturn": false,
+      "aead": "AES-256-GCM",
+      "aad_binds_session_epoch": true,
+      "key_epoch_bound": true,
+      "directional_key_separation": true,
+      "channel_binding_enforced": true,
+      "replay_rejected": true,
+      "wrong_channel_rejected": true,
+      "packet_capture_no_plaintext": true,
+      "nonce_reuse_detected": false,
+      "plaintext_fallback": false,
+      "channels": ["control", "media", "audio", "bulk"],
+      "product_flows": {
+        "audio_capture_playback": "not_claimed",
+        "clipboard_sync": "not_claimed",
+        "file_transfer": "not_claimed"
+      },
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["datachannel-record-layer.json"]
+    },
+    "two_hour_mixed_route_soak": {
+      "status": "pass",
+      "duration_seconds": 7200,
+      "routes": ["direct", "relay"],
+      "controlled_impairment": true,
+      "impairment_tool": "linux-netns-tc-or-equivalent",
+      "impairment_profile": {
+        "latency_ms": 120,
+        "jitter_ms": 35,
+        "loss_percent": 2.0,
+        "bandwidth_kbps": 10000
+      },
+      "route_before": "direct",
+      "route_after": "relay",
+      "network_change_count": 1,
+      "bounded_queues": true,
+      "bounded_memory": true,
+      "no_nonce_reuse": true,
+      "no_steady_latency_growth": true,
+      "synthetic_media": false,
+      "local_loopback_only": false,
+      "usb_transport": false,
+      "trusted_lan_only": false,
+      "private_network_only": false,
+      "same_private_network": false,
+      "loopback": false,
+      "synthetic_loopback": false,
+      "synthetic_peer": false,
+      "evidence_files": ["soak-summary.json"]
+    }
+  }
+}
+```
+
+For blocked readiness, write a separate blocked package instead of weakening the
+pass manifest. This records the blocker and intentionally creates a
+`release-gate-manifest.json` that fails the pass verifier:
+
+```bash
+python3 scripts/phase3/network_recovery_blocked_evidence.py \
+  --output-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked
+python3 scripts/phase3/release_gate_manifest.py \
+  docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked/release-gate-manifest.json \
+  --evidence-root docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>-network-recovery-blocked
+```
+
+The second command is expected to fail for blocked evidence. A blocked package is
+evidence of non-execution and readiness gaps only; it must not be used to mark
+public Internet, handoff, real media, or soak complete.
+
+Start by proving device identity, not merely that some ADB endpoint responded.
+Manual ADB use must follow the same shared lease-aware acceptance flow as the
+runner: create and hold `/tmp/vibe-screen-device-internet.lock` from a separate
+process, keep `/tmp/vibe-screen-device-soak.lock` and
+`/tmp/vibe-screen-device-android.lock` absent, and recheck both the Android and
+Internet locks before every ADB subprocess:
+
+```bash
+test ! -e /tmp/vibe-screen-device-soak.lock
+test ! -e /tmp/vibe-screen-device-android.lock
+export ADB_ENDPOINT='<device-serial>'
+export LEASE_OWNER='<opaque-owner-value>'
+export VIBE_SCREEN_COMMIT="$(git rev-parse HEAD)"
+python3 - <<'PY' &
+import json, os, pathlib, time
+path = pathlib.Path("/tmp/vibe-screen-device-internet.lock")
+payload = json.dumps({
+    "owner": os.environ["LEASE_OWNER"],
+    "pid": os.getpid(),
+    "task": "phase3-android-internet-acceptance",
+    "commit": os.environ["VIBE_SCREEN_COMMIT"],
+}, separators=(",", ":")).encode()
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+os.write(fd, payload)
+os.fsync(fd)
+try:
+    while True:
+        time.sleep(60)
+finally:
+    os.close(fd)
+    path.unlink(missing_ok=True)
+PY
+LEASE_PID=$!
+export LEASE_PID
+trap 'kill "$LEASE_PID"; wait "$LEASE_PID" 2>/dev/null || true; rm -f /tmp/vibe-screen-device-internet.lock' EXIT
+
+check_android_internet_locks() {
+  test ! -e /tmp/vibe-screen-device-soak.lock
+  test ! -e /tmp/vibe-screen-device-android.lock
+  python3 - <<'PY'
+import json, os, pathlib
+path = pathlib.Path("/tmp/vibe-screen-device-internet.lock")
+stat = path.stat()
+assert stat.st_mode & 0o777 == 0o600
+root = json.loads(path.read_text())
+assert root["owner"] == os.environ["LEASE_OWNER"]
+assert root["task"] == "phase3-android-internet-acceptance"
+assert root["commit"] == os.environ["VIBE_SCREEN_COMMIT"]
+assert root["pid"] == int(os.environ["LEASE_PID"])
+os.kill(root["pid"], 0)
+PY
+}
+
+adb_guarded() {
+  check_android_internet_locks
+  adb -s "$ADB_ENDPOINT" "$@"
+  check_android_internet_locks
+}
+
+adb_guarded devices -l
+adb_guarded shell getprop ro.product.manufacturer  # nubia
+adb_guarded shell getprop ro.product.model         # P0110
+adb_guarded shell getprop ro.product.device        # pacific
+adb_guarded shell getprop ro.build.version.release # 16
+adb_guarded shell getprop ro.build.version.sdk     # 36
+```
+
+Use `adb -s <device-serial>` explicitly for the Nubia path. The archived
+identity must be `nubia P0110 / pacific / Android 16 / SDK 36`; it must not be
+reported as Xiaomi 13/fuxi evidence.
 
 Then record the exact APK and installed version:
 
 ```bash
 shasum -a 256 path/to/vibe-screen.apk
-adb -s "$ADB_ENDPOINT" install -r path/to/vibe-screen.apk
-adb -s "$ADB_ENDPOINT" shell dumpsys package dev.telemachus.display
+adb_guarded install -r path/to/vibe-screen.apk
+adb_guarded shell dumpsys package dev.telemachus.display
 ```
 
 The run log must state, with timestamps and route evidence:
@@ -196,6 +652,106 @@ The run log must state, with timestamps and route evidence:
 8. two-hour mixed-route soak with RSS, queue, loss, RTT, FPS, bitrate, relay bytes,
    ICE restarts, drops, thermal/battery, and latency series;
 9. redaction/secret scan result for every archived artifact.
+
+Before treating the package as release evidence, run the package gate:
+
+```bash
+make phase3-internet-release-gate \
+  EVIDENCE_DIR=/absolute/path/to/phase3-public-internet-run
+```
+
+The gate is fail-closed. `phase3-internet-manifest.json` must explicitly record
+`network_scope=public_internet`, `turn_scope=deployed_remote_turn`, both direct
+and relay routes, a real Android device, a real macOS Host, an identity-signed
+Host, granted Screen Recording, real capture-to-MediaCodec continuity, visible
+input effects, network handoff, cross-service revocation, packet-capture
+confidentiality, and `no_synthetic_media=true`. Missing raw camera files,
+annotated latency samples, the exact-window two-hour soak report, public-route
+evidence, or remote TURN evidence returns `blocked` or `insufficient`; it never
+closes a gate from local loopback, forced local coturn, synthetic media, or a
+diagnostic-only device run. A Nubia P0110 run must keep
+`manufacturer=nubia`, `model=P0110`, `codename=pacific`, and the real Android
+version; it must not be relabeled as Xiaomi/fuxi evidence.
+
+`device-info.json` must independently match the manifest identity fields.
+Structured pass files are not free-form status markers: `network-handoff.json`,
+`revocation-evidence.json`, and `packet-capture-confidentiality.json` must use
+their Phase 3 `kind`, list non-empty `raw_sources`, and set each required
+observation to `true`. The soak report must include `phase3_internet_scope`
+with public Internet scope, direct and relay route coverage, observed handoff,
+observed cross-service revocation, packet-capture confidentiality,
+`no_synthetic_media=true`, `no_plaintext_fallback=true`, and
+`nonce_reuse_detected=false`; otherwise the aggregate package remains
+`insufficient` even when generic two-hour metrics pass.
+
+For the real capture -> Android decoder continuity slice, generate
+`real-media-continuity.json` from retained Host and Android logs with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_continuity` or
+`make phase3-real-media-continuity`. The result must record `media_source`
+through observed real-capture markers, explicit `capture_sources` metadata from
+ScreenCaptureKit/CGDisplayStream, Protocol v1 `session_epoch` or media epoch,
+selected `network_path`, Host signing state, Screen Recording state,
+VideoToolbox output epochs, MediaCodec first input/output epochs, continuous
+output-frame count, drops, and decoder errors. The evaluator is fail-closed:
+synthetic-media markers, missing public-Internet route evidence, missing
+identity-signed Host evidence, missing Screen Recording permission, missing
+real capture-source metadata, missing capture/VideoToolbox output, missing
+VideoToolbox output epoch, missing MediaCodec output, or no shared epoch across
+Host VideoToolbox output and Android MediaCodec first input/output produce
+`blocked`. Decoder/runtime errors or excess drops produce `fail` only after the
+required runtime stages are otherwise present. The file is a narrow continuity
+preflight and always records `gate_can_close_phase3_release=false`; it cannot by
+itself close the broader Phase 3 release gate.
+
+
+For adaptive media under real network fluctuation, bind retained WebRTC transport
+statistics and adaptive policy events to current `HEAD` with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_adaptive_media_current_base`
+or `make phase3-adaptive-media-current-base`. The input report schema is
+`dev.vibescreen.phase3-adaptive-media-fluctuation/v1` and must record current
+clean source, exact Android identity, public-Internet WebRTC scope, controlled
+real network impairment, real WebRTC statistics, raw Host/Android/stats sources,
+fast downgrade, conservative slow upgrade, bitrate/FPS changes, strictly
+increasing video `config_epoch` values, `VideoConfig` ACK before keyframe/resume,
+stale owner or generation rejection, rollback fail-closed behavior, no unsafe
+oscillation, and no transport/session/media-channel restart. Local loopback,
+deterministic `scripts/phase3/network_profile.py` output, static latency
+fixtures, synthetic media, missing raw sources, or Nubia P0110 results relabeled
+as Xiaomi/fuxi keep the child gate blocked. A transport restart or unsafe
+oscillation is a failure. Even a pass records only
+`can_claim_current_base_adaptive_media_fluctuation=true` and keeps
+`gate_can_close_phase3_release=false`.
+
+After `real-media-continuity.json` exists, bind it to the checked-out current
+base and retained Android visible-UI evidence with
+`PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_current_base`
+or `make phase3-real-media-current-base`. This child gate requires the
+continuity result's repository revision to match current `HEAD`, the captured
+tree to be clean, Android device identity to record manufacturer/model/codename,
+Android version, and SDK, and a non-empty screenshot, device recording, or
+external-camera recording plus an operator note confirming decoded Mac desktop
+content is visible in the Android UI. Missing UI evidence, stale or dirty source,
+synthetic media, local-only or forced-local-coturn routes, unsigned/ad-hoc Host
+builds, blocked TCC, missing real capture-source metadata, missing
+capture/VideoToolbox/MediaCodec stages, no shared VideoToolbox-to-MediaCodec
+pipeline epoch, decoder errors, or excess drops keep the current-base gate
+blocked or failed. Even a pass records only
+`release_gate_effect=child_gate_only`; it does not close the broader public
+Internet release gate.
+
+For Internet DataChannel audio, clipboard, and file-transfer product-flow
+ownership, run `make phase3-advanced-datachannel-current-base` with
+`PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON` pointing at the reviewed retained
+manifest. To create the default blocked baseline manifest, run
+`make phase3-advanced-datachannel-blocked-baseline`. A pass requires retained
+evidence files with matching SHA-256 values proving real macOS+Android
+public-Internet product sessions with `vibescreen.audio.v1`, the protected
+control DataChannel clipboard flow, and `vibescreen.bulk.v1` file-transfer flow.
+Existing USB/LAN audio, clipboard, and file-transfer evidence, iOS trusted-LAN
+evidence, local loopback, forced local coturn, synthetic Protocol v1 peers, or
+raw audio/bulk hook tests must not be used as pass evidence for this gate. A
+pass would remain a child gate and would not close the broader public Internet
+release gate.
 
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not
@@ -275,6 +831,17 @@ named by that run:
   ready/EOF and fresh-fallback regressions passed five independent rerun rounds.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
+- Android QR pairing verifier tests cover canonical
+  `vibescreen://pair?v=1&o=` URL parsing, pre-decode rejection of non-canonical
+  payload characters, and single-use Android scanned-offer handling. macOS
+  source-level XCTest cases cover first-attempt offer consumption when a
+  bootstrap proof fails, but the archived local current-base run records those
+  XCTest filters as blocked before execution where the selected Command Line
+  Tools environment could not compile XCTest. The Android
+  profile codec also covers missing/reserved lease expiry rejection and host
+  lease signatures bound to the previously verified pairing identity. These are
+  offline parser/state-machine checks and do not prove a real camera QR scan or
+  device-to-host request/acceptance exchange;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
   SBOM and bundled WebRTC/Gson notice hashes; release packaging depends on this
   task;
@@ -286,8 +853,10 @@ named by that run:
 - `services/signaling make verify`: format, vet, race tests and a real child-process
   offer/answer/candidate exchange passed; PostgreSQL store tests additionally
   cover migration/readiness, restart-durable routing, expiry, long-poll wakeup,
-  waiter caps, and concurrent capacity when `VIBE_SIGNALING_TEST_DATABASE_URL` is
-  set. Its container was not built because Docker is unavailable.
+  waiter caps, concurrent capacity, cross-instance routing through one shared
+  PostgreSQL ledger, LISTEN/NOTIFY wakeup across store instances, and
+  invalidation tombstones when `VIBE_SIGNALING_TEST_DATABASE_URL` is set. Its
+  container was not built because Docker is unavailable.
 - macOS production WebRTC loopback and a real local signaling-process self-test
   passed for SDP/ICE and both data channels. The binary links M150 WebRTC.
 - A fresh local M150 loopback rerun passed with direct UDP, bidirectional reliable
@@ -317,11 +886,21 @@ named by that run:
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
 - `scripts/phase3/coturn_reconcile.py` has focused unit coverage for strict
-  structured snapshot ingestion, sanitized token-source selection, loopback-only
-  plaintext Authority URLs, Authority response validation, and fail-closed
-  handling of unauthorized/conflicting active allocations when no disconnect
-  executor exists or when the executor fails. This is a local contract test, not
-  production coturn exporter or data-plane disconnect evidence.
+  structured snapshot ingestion, external exporter-command stdout validation,
+  sanitized token-source selection, loopback-only plaintext Authority URLs,
+  Authority response validation, bounded retry after transient failure, and
+  fail-closed handling of unauthorized/conflicting/revoked active allocations
+  when no disconnect executor exists or when the executor fails. This is a local
+  contract test, not production coturn exporter, production scheduler, provider
+  billing reconciliation, or data-plane disconnect evidence.
+- The 2026-08-25 current-base coturn reconciliation product-slice tests add
+  strict structured exporter adaptation, bounded durable reconciliation-loop
+  state for stale ledger allocations, local active-allocation disconnect audit
+  handling, and the Authority quota-closed allocation handoff that reports the
+  allocation as `revoked_allocation_ids` for remediation. This remains local
+  structured-state evidence only; no Android device, public Internet path, live
+  coturn control socket, provider API, packet capture, latency, or soak evidence
+  was collected.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until
@@ -390,7 +969,7 @@ named by that run:
   runtime timestamps, exact commands/environment, artifact provenance,
   candidate-pair/E2EE logs, and UI source files were not retained. No pass result
   is recoverable from the summary, and none is inferred or reconstructed.
-- A new combined Android acceptance PASS is archived under
+- A historical combined Android acceptance PASS is archived under
   [`evidence/2026-08-05-nubia-p0110-internet/`](evidence/2026-08-05-nubia-p0110-internet/README.md).
   Its clean, reachable source is
   `597518f948075e396352bc353afcec01a30303f3`; the device boundary is only
@@ -408,7 +987,10 @@ That pass is not ScreenCaptureKit, real display content, visible Mac input,
 Android rotation, disconnect/reconnect or network-handoff evidence. It also does
 not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
-those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains open.
+those release gates remain open. It is not current-source evidence. Xiaomi 13
+(2211133C) acceptance also remains open. A future current-source replacement
+must pass `scripts/phase3/android_current_base_interop_gate.py` for the intended
+profile; otherwise the replacement state is `blocked`.
 
 - A 2026-08-18 attempt to re-verify current-main real display capture through
   the USB media path on `Nubia P0110 / pacific / Android 16` is archived as
@@ -438,6 +1020,69 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.
+
+- A 2026-08-21 continuity-preflight application to retained blocked Nubia P0110
+  evidence is archived under
+  [`evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/`](evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/README.md).
+  It adds a structured fail-closed `real-media-continuity.json` result for the
+  ScreenCaptureKit/CGDisplayStream -> Android MediaCodec slice. The source logs
+  are the 2026-08-18 blocked Host and Android windows, so the result remains
+  blocked by missing Screen Recording permission, missing public-Internet route
+  evidence, and absent capture/encoder/decoder output. No ADB command was run
+  for this derived preflight, and no Phase 3 release gate changes state.
+
+- A 2026-08-21 local implementation check on branch
+  `codex/phase3-network-handoff-recovery` covers the network-recovery code
+  slice only. Android focused unit tests passed for `WebRtcInternetTransportTest`
+  and `InternetProductSessionTest`, proving bounded ICE restart attempts,
+  unsupported-renegotiation fresh-session fallback, old-owner invalidation, and
+  late-callback rejection in the JVM test harness. The macOS `Vibe Screen`
+  product built and `--phase3-webrtc-loopback-self-test` passed, including the
+  local ICE restart loopback; `--phase3-product-signaling-self-test` failed
+  closed because `VIBE_SIGNALING_URL`, `VIBE_SIGNALING_SESSION_ID`,
+  `VIBE_SIGNALING_HOST_TOKEN`, and `VIBE_SIGNALING_DEVICE_TOKEN` were not
+  provided. The broader `--phase3-internet-self-test` passed locally, including
+  `sdkTransmissionEpochGate=true`, `recoveryExhaustionFailClosed=true`, and
+  `recoveryExhaustionFreshSession=true`; this is still an offline transport
+  self-test rather than product-device handoff evidence.
+  `swift test --filter InternetProductSessionTests` could not run in
+  the local Command Line Tools environment because `xctest`/`XCTest` were
+  unavailable. No Android device, real ScreenCaptureKit media, public Internet path, remote
+  TURN route, controlled network handoff, packet capture, latency, or soak run
+  was executed; all corresponding release gates remain open.
+
+- A 2026-08-23 current-base service slice adds an admin-only Authority session
+  profile endpoint for already registered devices, makes Authority return the
+  role authorization expiry, lets Signaling adopt Authority-issued sessions as
+  local routing metadata only after successful remote authorization, and makes
+  the Mac lease issuer sign the exact Authority-supplied `session_epoch` while
+  rejecting stale values. Local verification for this slice passed:
+  `cd services/authority && go test -count=1 ./internal/authority`,
+  `cd services/authority && go test -count=1 ./...`,
+  `cd services/signaling && go test -count=1 ./...`, and
+  `python3 -m unittest tests.phase3.test_authority_session_profile_contract -v`.
+
+- A 2026-08-25 current-base product slice makes validated network handoff request
+  fresh-session recovery immediately instead of first attempting ICE restart,
+  while ordinary disconnect recovery keeps its bounded ICE-restart path. Focused
+  macOS and Android unit coverage exercises direct handoff-to-fresh-session
+  behavior, old transport closure/owner invalidation, replacement session epoch
+  installation, and the existing unsupported-ICE fallback. Local direct and
+  forced-local-coturn product E2E remain synthetic only;
+  `--phase3-internet-self-test` now reports
+  `networkHandoffFreshSession=true` for the offline transport contract. The
+  blocked readiness record is archived under
+  `evidence/2026-08-25-network-handoff-fresh-session-current-base-blocked/`.
+  No Android device, real ScreenCaptureKit media, Android MediaCodec decode,
+  public Internet path, remote TURN route, controlled network handoff, packet
+  capture, latency, or soak run was executed for this product slice; all
+  corresponding release gates remain open.
+  This is unit/contract evidence only. It does not prove Mac/Android automatic
+  profile invocation, Android UI import, public Internet, real ScreenCaptureKit
+  capture, Android MediaCodec decode, active disconnect, handoff, latency, or
+  soak. A local `cd baseline/MacHost && swift test --filter
+  InternetSessionLeaseIssuerTests` attempt was blocked by this environment with
+  `no such module 'XCTest'`, so XCTest evidence remains external to this run.
 
 ### Main CI follow-up snapshot (2026-08-06)
 

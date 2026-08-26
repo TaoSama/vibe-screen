@@ -16,7 +16,9 @@
     "host",
     "android_artifact",
     "session",
+    "memory_sampling",
     "thresholds",
+    "gate_owners",
     "recovery_scenarios",
     "required_gates",
     "required_artifacts",
@@ -85,9 +87,10 @@
     "android_artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["apk_sha256"],
+      "required": ["apk_sha256", "identity_status"],
       "properties": {
-        "apk_sha256": {"type": "string", "minLength": 1}
+        "apk_sha256": {"type": ["string", "null"], "minLength": 1},
+        "identity_status": {"enum": ["present", "missing"]}
       }
     },
     "session": {
@@ -97,8 +100,30 @@
       "properties": {
         "transport": {"enum": ["usb", "lan"]},
         "video_preferences": {"type": "string", "minLength": 1},
-        "duration_seconds": {"type": "integer", "minimum": 28800},
+        "duration_seconds": {"type": "integer", "minimum": 1},
         "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60}
+      }
+    },
+    "memory_sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "android_pss_source",
+        "host_rss_source",
+        "host_pid",
+        "require_host_pid",
+        "sample_interval_seconds",
+        "minimum_duration_seconds",
+        "required_fields"
+      ],
+      "properties": {
+        "android_pss_source": {"type": "string", "minLength": 1},
+        "host_rss_source": {"type": "string", "minLength": 1},
+        "host_pid": {"type": ["integer", "null"], "minimum": 1},
+        "require_host_pid": {"type": "boolean"},
+        "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60},
+        "minimum_duration_seconds": {"type": "integer", "minimum": 28800},
+        "required_fields": {"type": "array", "items": {"type": "string", "minLength": 1}}
       }
     },
     "thresholds": {
@@ -116,6 +141,22 @@
       }
     },
     "recovery_scenarios": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "gate_owners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stand_mounted_charging",
+        "thermal_power_sampling",
+        "posture_and_mount",
+        "eight_hour_sustained_stream"
+      ],
+      "properties": {
+        "stand_mounted_charging": {"type": "string", "minLength": 1},
+        "thermal_power_sampling": {"type": "string", "minLength": 1},
+        "posture_and_mount": {"type": "string", "minLength": 1},
+        "eight_hour_sustained_stream": {"type": "string", "minLength": 1}
+      }
+    },
     "required_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "required_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},

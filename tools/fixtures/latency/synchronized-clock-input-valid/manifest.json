@@ -1,0 +1,62 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "fixture-synchronized-clock-input-valid",
+  "latency_kind": "input",
+  "transport": "usb",
+  "measurement_method": "synchronized-clock",
+  "gate_profile": "input-p95-sub50",
+  "synchronization": {
+    "host_clock_source": "macOS system clock (CLOCK_REALTIME)",
+    "device_clock_source": "Android SystemClock.elapsedRealtimeNanos",
+    "sync_procedure": "ADB round-trip calibration with 100 samples, median offset applied",
+    "before_skew_ms": 1.2,
+    "after_skew_ms": 1.5,
+    "max_drift_ms": 0.8,
+    "total_error_budget_ms": 3.5,
+    "input_timestamp_method": "Android MotionEvent.eventTime captured at touch dispatch",
+    "result_timestamp_method": "macOS CGEvent timestamp captured at injection"
+  },
+  "samples": {
+    "file": "samples.csv",
+    "format": "csv",
+    "sha256": "6ad1942449f73bf4daad692c5034b478c1620415335977d5882aff876bc72c11",
+    "annotation_method": "direct-latency-ms",
+    "annotator": "fixture"
+  },
+  "device": {
+    "manufacturer": "Fixture",
+    "model": "Fixture Device",
+    "codename": "fixture",
+    "os_version": "Android fixture"
+  },
+  "host": {
+    "model": "Fixture Mac",
+    "macos_version": "fixture"
+  },
+  "build": {
+    "repository_revision": "fixture-revision",
+    "host_artifact": "fixture-host",
+    "client_artifact": "fixture-client"
+  },
+  "measurement_setup": {
+    "stimulus": "physical touch on Android screen",
+    "start_event_definition": "Android touch event timestamp",
+    "end_event_definition": "macOS CGEvent injection timestamp",
+    "lighting": "n/a",
+    "mounting": "n/a",
+    "clock_domain": "synchronized-host-device-clocks",
+    "notes": "Synchronized-clock input latency fixture; not acceptance evidence."
+  },
+  "gate_artifacts": {
+    "input_actuation_record": {
+      "file": "input-actuation.txt",
+      "sha256": "d56a69969077d7fb6be3f9552a97e6e9ecfd7bdce00c80429543ef03a007c230",
+      "description": "Synthetic physical-input proof for checker tests only."
+    },
+    "synchronization_record": {
+      "file": "synchronization-record.txt",
+      "sha256": "03965cf7ffe46a7dd9fe18422883cf68a66f9861c06bc317e9f50a21b3db80eb",
+      "description": "Synthetic clock synchronization proof for checker tests only."
+    }
+  }
+}

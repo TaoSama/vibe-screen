@@ -1,0 +1,16 @@
+Executable=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen/baseline/MacHost/.build/arm64-apple-macosx/release/Vibe Screen
+Identifier=Vibe Screen
+Format=Mach-O thin (arm64)
+CodeDirectory v=20400 size=112964 flags=0x20002(adhoc,linker-signed) hashes=3527+0 location=embedded
+Hash type=sha256 size=32
+CandidateCDHash sha256=df1ba79350055c23dd2b8e395b5fefe9ae64425b
+CandidateCDHashFull sha256=df1ba79350055c23dd2b8e395b5fefe9ae64425b85b5f25b96ead0dfe3455dda
+Hash choices=sha256
+CMSDigest=df1ba79350055c23dd2b8e395b5fefe9ae64425b85b5f25b96ead0dfe3455dda
+CMSDigestType=2
+CDHash=df1ba79350055c23dd2b8e395b5fefe9ae64425b
+Signature=adhoc
+Info.plist=not bound
+TeamIdentifier=not set
+Sealed Resources=none
+Internal requirements=none

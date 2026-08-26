@@ -166,6 +166,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(View.GONE, layout.floatingSettingsButton.visibility)
             layout.assertFullyReachableByScroll(layout.connectButton)
             layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
+            layout.assertMinimumTouchTarget(layout.inlineSettingsButton)
             assertFalse(
                 "Inline settings button must not overlap the primary connect action",
                 Rect.intersects(layout.boundsInContent(layout.connectButton), layout.boundsInContent(layout.inlineSettingsButton)),
@@ -177,6 +178,13 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     fun wideLandscapeKeepsFloatingSettingsButtonPolicy() {
         withLayout(widthDp = 873, heightDp = 393) { layout ->
             assertFalse(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
+            layout.inlineSettingsButton.visibility = View.GONE
+            layout.floatingSettingsButton.visibility = View.VISIBLE
+            layout.measureAndLayout()
+
+            assertEquals(View.VISIBLE, layout.floatingSettingsButton.visibility)
+            assertEquals(1f, layout.floatingSettingsButton.alpha, 0f)
+            layout.assertMinimumTouchTarget(layout.floatingSettingsButton)
         }
     }
 
@@ -324,6 +332,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             if (view.height <= scrollView.height) {
                 assertTrue(viewBounds.top >= scrollView.scrollY)
             }
+        }
+
+        fun assertMinimumTouchTarget(view: View) {
+            assertTrue(
+                "View " + view.resources.getResourceEntryName(view.id) + " width was " + view.width + "px",
+                view.width >= dp(48),
+            )
+            assertTrue(
+                "View " + view.resources.getResourceEntryName(view.id) + " height was " + view.height + "px",
+                view.height >= dp(48),
+            )
+            assertTrue(
+                "View " + view.resources.getResourceEntryName(view.id) + " must stay enabled",
+                view.isEnabled,
+            )
         }
 
         fun assertConfigurationUsesTwoColumns(expected: Boolean) {

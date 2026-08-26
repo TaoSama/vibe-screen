@@ -7,8 +7,9 @@ import java.util.UUID
 
 class PreferencesManager(
     context: Context,
+    preferencesName: String = "app_prefs",
 ) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
     var showStatsOverlay: Boolean
         get() = prefs.getBoolean("show_stats", false)
@@ -66,6 +67,14 @@ class PreferencesManager(
     var videoFrameRate: Int
         get() = prefs.getInt("video_frame_rate", ClientVideoBounds.DEFAULT_FRAME_RATE)
         set(value) = prefs.edit().putInt("video_frame_rate", value).apply()
+
+    var gestureSwipeUpAction: GestureHostActionChoice
+        get() = GestureHostActionChoice.fromName(prefs.getString("gesture_swipe_up_action", null))
+        set(value) = prefs.edit().putString("gesture_swipe_up_action", value.name).apply()
+
+    var gestureSwipeDownAction: GestureHostActionChoice
+        get() = GestureHostActionChoice.fromName(prefs.getString("gesture_swipe_down_action", null))
+        set(value) = prefs.edit().putString("gesture_swipe_down_action", value.name).apply()
 
     var internetForceRelay: Boolean
         get() = prefs.getBoolean("internet_force_relay", false)

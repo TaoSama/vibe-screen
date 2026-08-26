@@ -5,7 +5,11 @@ exists today, not the complete product vision in the root README.
 
 ## Support and prerequisites
 
-- Apple silicon Mac running macOS 13 or newer.
+- macOS 13 or newer. Apple silicon is the currently locally exercised Host
+  class; Intel Macs, additional macOS builds, and distinct display topologies
+  require the separate
+  [macOS Host compatibility matrix gate](macos-host-compatibility.md) before
+  they are listed as supported.
 - Android device with the Vibe Screen client installed.
 - Android Platform Tools (`adb`) for USB mode.
 - A monitor attached during first setup. A headless Mac cannot grant its own
@@ -15,6 +19,10 @@ The virtual extension path uses private `CGVirtualDisplay` APIs. It may stop
 working after a macOS update and is not suitable for Mac App Store delivery.
 The **Current Main Display** path remains the supported fallback. A physical or
 dummy display is required when macOS does not expose a usable headless display.
+HDR/EDR capture or output must not be claimed from the host until the
+[HDR/color acceptance runbook](hdr-color-acceptance.md) has retained hardware
+evidence. Current fallback and encoder metadata tests prove SDR fail-closed
+readiness only.
 
 ## Install a release artifact
 
@@ -59,11 +67,17 @@ codesign:
 security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 ```
 
+In Keychain Access, use **Certificate Assistant -> Create a Certificate**, set
+the name to `Vibe Screen Dev`, identity type to **Self Signed Root**, and
+certificate type to **Code Signing**. Missing this identity blocks rebuilding or
+installing a new stable Host, but a read-only preflight can still inspect an
+already-installed bundle and report its actual signing/TCC state.
+
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current
-identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement, and
-read-only TCC state to:
+identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement,
+embedded source commit/tree/dirty state, and read-only TCC state to:
 
 ```text
 .build/dev-macos-host/host-signing-and-permissions.txt
@@ -92,22 +106,89 @@ untrusted build: it can synthesize system-wide input.
 
 ## Touch-rerun preflight
 
-Before running the opt-in Android touch-gesture rerun, install the stable local
-Host and require the preflight to pass:
+Before running any Host-backed Android gate, install the stable local Host and
+require the source-bound Host preflight to pass:
 
 ```bash
 make baseline-macos-dev-install
-make baseline-macos-touch-preflight
+make baseline-macos-host-preflight
 ```
 
-`baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
+`baseline-macos-host-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity, the designated requirement, and read-only Screen
-Recording plus Accessibility rows in the user's TCC database. It exits non-zero
-if any check is missing. When blocked, open **System Settings → Privacy &
-Security → Screen & System Audio Recording** and **Accessibility**, grant the
-installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again.
+ad-hoc signing identity matching `VIBE_SCREEN_SIGN_IDENTITY` or `Vibe Screen Dev`,
+the designated requirement, source commit/tree provenance embedded by
+`scripts/package_macos.py`, a clean current source tree, and read-only Screen
+Recording plus Accessibility rows in the user's and system TCC databases. It
+does not require the signing identity to still be present in the current
+Keychain; that requirement belongs to `baseline-macos-dev-install`, where a
+missing `Vibe Screen Dev` identity means the Host cannot be rebuilt or
+reinstalled as a stable signed binary. `baseline-macos-touch-preflight` is a
+compatibility alias for the same check. Both targets exit non-zero if any
+installed-bundle, source-provenance, or permission check is missing. When
+blocked, keep the generated report as readiness evidence, open **System Settings
+-> Privacy & Security -> Screen & System Audio Recording** and
+**Accessibility**, grant the installed `/Applications/Vibe Screen.app`, quit and
+reopen Vibe Screen, then run the preflight again. A report produced without a
+stable installed Host identity, TCC authorization, or matching source provenance
+cannot close USB, LAN, Host RSS, native-pointer, stylus, controller, rotation,
+login/headless, or compatibility gates.
+
+## Shared Host readiness snapshot
+
+Before a LAN stream/reconnect, controller runtime, Host RSS, native-pointer,
+stylus, physical-keyboard, login/headless, or compatibility run consumes a
+local Host, collect the shared read-only readiness snapshot for the evidence
+directory that will own the run:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The target writes both files below without launching the Host or mutating the
+machine:
+
+```text
+<evidence-dir>/host-signing-and-permissions.txt
+<evidence-dir>/host-readiness.json
+```
+
+`host-readiness.json` records the installed bundle path, signing identity,
+codesign provenance, embedded source commit/tree/dirty state, current checkout
+commit/tree/dirty state, read-only Screen Recording and Accessibility TCC rows,
+TCP listener observation for port `54321`, and whether the bundle carries the
+virtual HID entitlement needed by controller runtime acceptance. The command is
+read-only: it does not start Vibe Screen, import certificates, change Keychain
+settings, modify `TCC.db`, request macOS privacy grants, configure ADB, or touch
+Android state.
+
+The `can_start_*` fields are prerequisite flags only. They say whether a run may
+begin collecting runtime evidence from the current Host identity; they never
+close README-facing runtime gates by themselves. The top-level `status` covers
+every reported prerequisite, so it can be `blocked` because the controller-only
+virtual HID entitlement is absent while `can_start_trusted_lan_gate` or another
+non-controller flag is still true. For each runtime attempt, use the matching
+`can_start_*` field and keep the JSON plus text report as readiness evidence.
+If that gate's prerequisite flag is false, leave the downstream runtime stages
+as not-run and fix the missing signing identity, source provenance, TCC grant,
+listener, or gate-specific entitlement before claiming LAN, reconnect, Host RSS,
+native-pointer, stylus, controller, login/headless, or compatibility acceptance.
+
+For Android acceptance runs, archive the unified session readiness record before
+starting soak, latency, reconnect, or input work:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  REAL_DEVICE_GATE_DIR=<evidence-dir>
+```
+
+That runner wraps this Host preflight with the Android device identity, ADB
+reverse state, foreground app state, Host TCP listener, and stream telemetry
+checks. It writes `<evidence-dir>/real-device-gate.json` and reports
+`result=blocked` if the stable signing identity, Screen Recording, Accessibility,
+listener, or fresh structured stream telemetry is missing. It does not launch
+the Host or modify macOS privacy state.
 
 ## USB quick start
 
@@ -183,6 +264,19 @@ If macOS reports that the login item requires approval, open **System Settings
 → General → Login Items** and approve Vibe Screen. Registration alone is not
 treated as proof that login launch is active.
 
+Before scheduling a reboot or headless pass, collect the shared read-only
+readiness snapshot:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The `login_headless` section in `host-readiness.json` records the local blockers
+for setup readiness. Exit code 2 means the run is blocked and should be kept as
+readiness evidence. A passing readiness snapshot is still only a preflight: it
+does not prove login launch after reboot, headless capture, Android rendering,
+or recovery from a controlled listener/capture/display failure.
+
 ### Acceptance gate matrix
 
 Use this matrix when turning the login-startup/headless path from source-level
@@ -219,6 +313,22 @@ shows each scheduled retry delay. For display-removal window recovery, record
 the original window frame and display, remove or disable that display during the
 run, then record the restored frame on the current main display.
 
+After collecting the retained artifacts, summarize the run in
+`macos-startup-recovery-evidence.json` and run the passive gate:
+
+```bash
+make phase2-macos-startup-recovery-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The gate writes `macos-startup-recovery-gate.json`, which can be passed to the
+Phase 2 aggregate owner as `PHASE2_LOGIN_HEADLESS`. It exits nonzero and keeps
+`can_close_login_headless_gate=false` unless every integration boundary in the
+matrix above is backed by retained real-machine evidence. This is expected for
+readiness or blocked packages gathered without a rebootable Mac mini, stable
+signing/TCC grants, approved Login Item, dummy/headless or Screen Sharing
+display, client-rendered first frame, bounded recovery logs, window restoration
+artifacts, and a reachable administrator intervention path.
+
 ## Upgrade and rollback
 
 1. Stop streaming and quit Vibe Screen.
@@ -237,6 +347,27 @@ app. To roll back, quit the new version and restore the previous verified app
 at the same path.
 
 ## Troubleshooting
+
+The Phase 1 actionable-error owner matrix is tracked in
+docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json.
+Run make actionable-error-states-gate before changing Host permission, ADB,
+listener, capture, virtual-display, LAN, or Internet recovery copy. The gate is
+offline only and does not prove Host alert rendering or device acceptance.
+
+When producing README-facing evidence, retain an
+`actionable-error-current-base.json` manifest and run:
+
+```bash
+make actionable-error-current-base-gate EVIDENCE_DIR=<evidence-dir>
+```
+
+This gate validates exact retained artifacts and prevents blocked or not-run
+states from being counted as a real-device matrix pass; it exits non-zero unless
+the report is a pass. Use `make actionable-error-current-base-owner-record
+EVIDENCE_DIR=<evidence-dir>` to refresh a blocked current-base owner report. Do
+not induce Screen Recording or Accessibility denial by modifying TCC on a shared
+machine; record the environment as blocked unless a safe, stable-signed
+denied-permission run is already available.
 
 ### ADB is missing or reverse forwarding disappeared
 
@@ -262,6 +393,24 @@ only on a trusted private network. Current macOS and Android peers protect the
 token-admitted LAN session with per-session AES-256-GCM application records;
 explicit legacy fallback remains plaintext and must be called out separately if
 it is ever used.
+
+### Trusted LAN evidence preflight
+
+Before a real-device trusted-LAN stream or reconnect run, collect the read-only
+preflight package while the Android device is USB-attached and identified by its
+exact serial:
+
+```sh
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=<evidence-dir>
+```
+
+The preflight confirms the Nubia P0110/pacific/Android 16 identity, Android
+Wi-Fi association, wlan0 IPv4, route to the Mac LAN candidate, and the stable
+Host signing/TCC preflight. It does not launch the Host, generate a QR code,
+write a pairing token, modify Keychain, reset TCC, or change saved Wi-Fi
+credentials. If the JSON reports blocked, keep it as the evidence output and
+stop before Host launch, pairing, streaming, reconnect, or latency measurement.
+Loopback-only TCP 54321 listeners are not LAN evidence.
 
 ### Capture is black, frozen, or unavailable
 
@@ -299,13 +448,22 @@ the opt-in Android gesture driver:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=<evidence-dir> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 The preflight must report the expected Host binary SHA-256 and authorized
 Screen Recording plus Accessibility for `dev.telemachus.display`. If it reports
 `blocked`, keep that JSON as the evidence output and do not reset TCC, reset
 Keychain state, clear Android app data, or run a long soak to force the gate.
+After a rerun, use `make evidence-touch-rerun-summary EVIDENCE_DIR=<evidence-dir>`
+with the same expected Android identity variables to verify that the retained
+preflight, instrumentation, Host log, and listen-only event-tap log can close the
+touch rerun gate.
 
 ### Logs and diagnostics
 

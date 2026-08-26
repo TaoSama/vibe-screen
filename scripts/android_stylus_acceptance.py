@@ -11,7 +11,9 @@ caller records an observed physical stylus drawing run.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -21,24 +23,58 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_PATH = REPOSITORY_ROOT / "tools"
+if str(TOOLS_PATH) not in sys.path:
+    sys.path.insert(0, str(TOOLS_PATH))
+
+from vibescreen_evidence.stylus import summarize as summarize_stylus
+
 
 DEFAULT_PACKAGE = "dev.telemachus.display"
 DEFAULT_OUTPUT_ROOT = Path("docs/changes/2026-08-19-physical-stylus-acceptance/evidence")
+DEFAULT_OBSERVATION_SECONDS = 20.0
 DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
 REQUIRED_STYLUS_AXES = ("PRESSURE", "TILT")
 STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
+NUMBER_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
+CONTACT_RE = re.compile(r"\bcontact=(?:contact|CONTACT|STYLUS_CONTACT_STATE_CONTACT)\b")
+PHASE_RE = re.compile(r"\bphase=([^\s]+)")
+PRESSURE_RE = re.compile(rf"\bpressure=({NUMBER_RE})\b")
+TERMINAL_PHASES = {
+    "cancelled",
+    "ended",
+    "INPUT_PHASE_CANCELLED",
+    "INPUT_PHASE_ENDED",
+}
 HOST_STYLUS_LOG_PATTERNS = {
     "stylus_injection": re.compile(r"\bStylus injected:"),
     "contact": re.compile(r"\bcontact=\S+"),
     "tool": re.compile(r"\btool=\S+"),
     "buttons": re.compile(r"\bbuttons=\d+\b"),
-    "pressure": re.compile(r"\bpressure=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
-    "tilt_x": re.compile(r"\btiltX=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
-    "tilt_y": re.compile(r"\btiltY=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
+    "pressure": PRESSURE_RE,
+    "tilt_x": re.compile(rf"\btiltX={NUMBER_RE}\b"),
+    "tilt_y": re.compile(rf"\btiltY={NUMBER_RE}\b"),
 }
+ANDROID_STYLUS_LINE_PATTERNS = (
+    re.compile(r"\bStylus forwarded:"),
+    re.compile(r"\bsamples=\d+\b"),
+    re.compile(r"\bextended=(?:true|false)\b"),
+    re.compile(r"\brawSource=0x[0-9a-fA-F]+\b"),
+    re.compile(r"\brawAction=\d+\b"),
+    re.compile(r"\brawTools=\[[^]]*(?:stylus|eraser)[^]]*]"),
+    re.compile(r"\bphase=\S+"),
+    re.compile(r"\bcontact=\S+"),
+    re.compile(r"\btool=\S+"),
+    re.compile(r"\bbuttons=\d+\b"),
+    PRESSURE_RE,
+    re.compile(rf"\btiltX={NUMBER_RE}\b"),
+    re.compile(rf"\btiltY={NUMBER_RE}\b"),
+)
+HOST_STYLUS_LINE_PATTERNS = tuple(HOST_STYLUS_LOG_PATTERNS.values())
 
 
 class EvidenceError(RuntimeError):
@@ -64,11 +100,22 @@ class InputDeviceCapability:
 
     @property
     def has_stylus_source(self) -> bool:
-        return any(source in {"STYLUS", "TOUCHSCREEN"} for source in self.sources)
+        return "STYLUS" in self.sources
 
     @property
     def required_axes_present(self) -> bool:
         return all(axis in self.axes for axis in REQUIRED_STYLUS_AXES)
+
+    @property
+    def pass_eligible(self) -> bool:
+        return self.has_stylus_source and self.required_axes_present
+
+
+@dataclass(frozen=True)
+class HostLogCursor:
+    device: int
+    inode: int
+    offset: int
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -110,6 +157,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Host log excerpt captured during the physical stylus drawing run; required for pass.",
+    )
+    parser.add_argument(
+        "--host-stable-signed-tcc-ready",
+        action="store_true",
+        help=(
+            "Set only after scripts/macos_dev_host.py preflight passes for a stable signed Host "
+            "with Screen Recording and Accessibility permissions."
+        ),
+    )
+    parser.add_argument(
+        "--observe-seconds",
+        type=float,
+        default=DEFAULT_OBSERVATION_SECONDS,
+        help="Seconds to wait for a human physical stylus drawing run before checking newly appended logs.",
+    )
+    parser.add_argument(
+        "--max-host-log-bytes",
+        type=int,
+        default=1_000_000,
+        help="Maximum appended Host log bytes to read during a passing observation run.",
     )
     return parser.parse_args(argv)
 
@@ -187,6 +254,20 @@ def collect_device_identity(adb_path: str, serial: str) -> dict[str, str]:
         if result.returncode == 0:
             identity[key] = result.stdout.strip()
     return identity
+
+
+def redacted_requested_serial(serial: str) -> str:
+    return "redacted-requested-serial" if serial.strip() else "not provided"
+
+
+def redacted_device_identity(identity: dict[str, str]) -> dict[str, str]:
+    redacted = dict(identity)
+    device = redacted.get("device", "device").strip().lower() or "device"
+    if redacted.get("serialno"):
+        redacted["serialno"] = f"redacted-{device}-serial"
+    if redacted.get("fingerprint"):
+        redacted["fingerprint"] = "redacted-build-fingerprint"
+    return redacted
 
 
 def parse_input_devices(dumpsys_input: str) -> list[InputDeviceCapability]:
@@ -298,6 +379,59 @@ def read_diag_log(adb_path: str, serial: str, package: str) -> tuple[str, str | 
     return result.stdout, None
 
 
+def appended_diag_log(before: str, after: str) -> str:
+    if after.startswith(before):
+        return after[len(before):]
+    if not before:
+        return after
+    raise EvidenceError("Android diag log changed or rotated during observation; cannot isolate new stylus lines")
+
+
+def host_log_cursor(path: Path) -> HostLogCursor:
+    try:
+        stat = path.stat()
+        return HostLogCursor(device=stat.st_dev, inode=stat.st_ino, offset=stat.st_size)
+    except FileNotFoundError as error:
+        raise EvidenceError(f"host log does not exist: {path}") from error
+    except OSError as error:
+        raise EvidenceError(f"cannot stat host log {path}: {error}") from error
+
+
+def read_new_host_log(path: Path, cursor: HostLogCursor, max_bytes: int) -> str:
+    try:
+        with path.open("rb") as handle:
+            stat = os.fstat(handle.fileno())
+            if stat.st_dev != cursor.device or stat.st_ino != cursor.inode:
+                raise EvidenceError(f"host log identity changed during observation: {path}")
+            current_size = stat.st_size
+            if current_size < cursor.offset:
+                raise EvidenceError(f"host log was truncated during observation: {path}")
+            appended = current_size - cursor.offset
+            if appended > max_bytes:
+                raise EvidenceError(f"host log appended {appended} bytes, above limit {max_bytes}")
+            handle.seek(cursor.offset)
+            data = handle.read(appended)
+    except OSError as error:
+        raise EvidenceError(f"cannot read host log {path}: {error}") from error
+    return data.decode("utf-8", errors="replace")
+
+
+def wait_for_physical_drawing(args: argparse.Namespace, host_cursor: HostLogCursor | None) -> str:
+    if not args.observed_physical_drawing:
+        return ""
+    validate_observed_drawing_inputs(args)
+    if host_cursor is None:
+        raise EvidenceError("host log cursor is required with --observed-physical-drawing")
+    if args.observe_seconds > 0:
+        print(
+            "Draw in the macOS test app using the physical Android stylus. "
+            f"Waiting {args.observe_seconds:.1f}s...",
+            file=sys.stderr,
+        )
+        time.sleep(args.observe_seconds)
+    return read_new_host_log(args.host_log, host_cursor, args.max_host_log_bytes)
+
+
 def create_output_dir(output_dir: Path | None, identity: dict[str, str]) -> Path:
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -313,54 +447,126 @@ def slug(value: str) -> str:
     return result or "unknown"
 
 
-def conclusion_status(args: argparse.Namespace, candidates: Sequence[InputDeviceCapability]) -> str:
-    has_required_capability = any(candidate.required_axes_present for candidate in candidates)
+def validate_observed_drawing_inputs(args: argparse.Namespace) -> None:
+    if not args.observed_physical_drawing:
+        return
+    if not args.drawing_observation.strip():
+        raise EvidenceError("--drawing-observation is required with --observed-physical-drawing")
+    if args.host_log is None:
+        raise EvidenceError("--host-log is required with --observed-physical-drawing")
+    if not args.host_log.exists():
+        raise EvidenceError(f"host log does not exist: {args.host_log}")
+    if getattr(args, "observe_seconds", DEFAULT_OBSERVATION_SECONDS) < 0:
+        raise EvidenceError("--observe-seconds must be non-negative")
+    if getattr(args, "max_host_log_bytes", 1) <= 0:
+        raise EvidenceError("--max-host-log-bytes must be positive")
+
+
+def conclusion_status(
+    args: argparse.Namespace,
+    candidates: Sequence[InputDeviceCapability],
+    diag_log: str = "",
+    diag_error: str | None = None,
+    host_log_excerpt: str = "",
+) -> str:
+    has_required_capability = any(candidate.pass_eligible for candidate in candidates)
     if args.observed_physical_drawing:
-        if not args.drawing_observation.strip():
-            raise EvidenceError("--drawing-observation is required with --observed-physical-drawing")
-        if not args.host_log:
-            raise EvidenceError("--host-log is required with --observed-physical-drawing")
-        if not args.host_log.exists():
-            raise EvidenceError(f"host log does not exist: {args.host_log}")
+        validate_observed_drawing_inputs(args)
         if not has_required_capability:
             return "blocked_no_required_stylus_capability"
-        validate_host_log_for_pass(args.host_log)
+        if not getattr(args, "host_stable_signed_tcc_ready", False):
+            return "blocked_host_stable_signed_tcc_not_ready"
+        validate_android_diag_for_pass(diag_log, diag_error)
+        validate_host_log_text_for_pass(host_log_excerpt)
         return "pass"
     if has_required_capability:
         return "blocked_physical_stylus_not_observed"
     return "blocked_no_required_stylus_capability"
 
 
-def validate_host_log_for_pass(host_log: Path) -> None:
-    try:
-        text = host_log.read_text(encoding="utf-8")
-    except OSError as error:
-        raise EvidenceError(f"cannot read host log: {host_log}: {error}") from error
-    missing = [name for name, pattern in HOST_STYLUS_LOG_PATTERNS.items() if pattern.search(text) is None]
-    if missing:
+def validate_host_log_text_for_pass(text: str) -> None:
+    if not text.strip():
+        raise EvidenceError("new Host stylus log excerpt is required for pass and was empty")
+    if not any(
+        all(pattern.search(line) for pattern in HOST_STYLUS_LINE_PATTERNS)
+        and is_contact_pressure_sample(line)
+        for line in text.splitlines()
+    ):
         raise EvidenceError(
-            "host log is missing required stylus evidence fields: " + ", ".join(missing)
+            "host log is missing a single stylus injection line with contact, non-zero pressure, and all required fields"
         )
 
 
-def write_evidence(output_dir: Path, args: argparse.Namespace, existing_locks: Sequence[str], identity: dict[str, str], dumpsys_input: str, candidates: Sequence[InputDeviceCapability], diag_log: str, diag_error: str | None, status: str) -> None:
+def validate_android_diag_for_pass(diag_log: str, diag_error: str | None) -> None:
+    if diag_error:
+        raise EvidenceError("Android diag log is required for pass; run-as failed: " + diag_error)
+    if not diag_log.strip():
+        raise EvidenceError("Android diag log is required for pass and was empty")
+    if not any(
+        all(pattern.search(line) for pattern in ANDROID_STYLUS_LINE_PATTERNS)
+        and is_contact_pressure_sample(line)
+        for line in diag_log.splitlines()
+    ):
+        raise EvidenceError(
+            "Android diag log is missing a single stylus forwarding line with contact, non-zero pressure, and all required fields"
+        )
+
+
+def is_contact_pressure_sample(line: str) -> bool:
+    if not CONTACT_RE.search(line):
+        return False
+    phase = PHASE_RE.search(line)
+    if phase is None or phase.group(1) in TERMINAL_PHASES:
+        return False
+    pressure = PRESSURE_RE.search(line)
+    if not pressure:
+        return False
+    try:
+        return float(pressure.group(1)) > 0.0
+    except ValueError:
+        return False
+
+
+def evidence_text(text: str) -> str:
+    return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+
+
+def write_evidence(
+    output_dir: Path,
+    args: argparse.Namespace,
+    existing_locks: Sequence[str],
+    identity: dict[str, str],
+    dumpsys_input: str,
+    candidates: Sequence[InputDeviceCapability],
+    diag_log: str,
+    diag_error: str | None,
+    host_log_excerpt: str,
+    status: str,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
+    (output_dir / "dumpsys-input.txt").write_text(evidence_text(dumpsys_input), encoding="utf-8")
     if diag_log:
         (output_dir / "android-diag.log").write_text(diag_log, encoding="utf-8")
-    if args.host_log:
-        (output_dir / "host-stylus.log").write_text(args.host_log.read_text(encoding="utf-8"), encoding="utf-8")
+    if host_log_excerpt:
+        (output_dir / "host-stylus.log").write_text(host_log_excerpt, encoding="utf-8")
     summary = {
         "status": status,
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "device_identity": identity,
+        "device_identity": redacted_device_identity(identity),
         "existing_locks": list(existing_locks),
         "stylus_candidates": [candidate.__dict__ for candidate in candidates],
+        "pass_eligible_stylus_candidates": [candidate.__dict__ for candidate in candidates if candidate.pass_eligible],
         "diag_log_read_error": diag_error,
+        "host_log_name": args.host_log.name if args.host_log else None,
+        "host_log_appended_bytes": len(host_log_excerpt.encode("utf-8")) if host_log_excerpt else 0,
+        "host_log_appended_sha256": hashlib.sha256(host_log_excerpt.encode("utf-8")).hexdigest(),
+        "host_stable_signed_tcc_ready": bool(getattr(args, "host_stable_signed_tcc_ready", False)),
+        "observation_seconds": float(args.observe_seconds) if args.observed_physical_drawing else 0.0,
         "observed_physical_drawing": bool(args.observed_physical_drawing),
         "drawing_observation": args.drawing_observation.strip(),
     }
     (output_dir / "stylus-evidence.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_stylus_summary(output_dir, summary)
     (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
 
 
@@ -369,16 +575,31 @@ def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, lock
     summary = {
         "status": "blocked_device_coordination_lock",
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "requested_serial": args.serial,
+        "requested_serial": redacted_requested_serial(args.serial),
         "device_identity": {},
         "existing_locks": list(locks),
         "stylus_candidates": [],
+        "pass_eligible_stylus_candidates": [],
         "diag_log_read_error": "ADB not run because a device coordination lock exists.",
+        "host_log_name": args.host_log.name if args.host_log else None,
+        "host_log_appended_bytes": 0,
+        "host_log_appended_sha256": hashlib.sha256(b"").hexdigest(),
+        "host_stable_signed_tcc_ready": False,
+        "observation_seconds": 0.0,
         "observed_physical_drawing": False,
         "drawing_observation": "",
     }
     (output_dir / "stylus-evidence.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_stylus_summary(output_dir, summary)
     (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
+
+
+def write_stylus_summary(output_dir: Path, evidence: dict[str, object]) -> None:
+    summary = summarize_stylus(evidence, source_path=output_dir / "stylus-evidence.json")
+    (output_dir / "stylus-summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def render_readme(summary: dict[str, object]) -> str:
@@ -393,6 +614,8 @@ def render_readme(summary: dict[str, object]) -> str:
         conclusion = "Blocked: Android exposes stylus-capable input hardware, but this run did not observe a physical stylus drawing in a macOS drawing app. The README gate stays open."
     elif status == "blocked_device_coordination_lock":
         conclusion = "Blocked: an Android device coordination lock existed, so this run did not execute ADB commands or observe physical stylus input. The README gate stays open."
+    elif status == "blocked_host_stable_signed_tcc_not_ready":
+        conclusion = "Blocked: physical stylus drawing requires a stable signed/TCC-ready Host preflight before Host injection evidence can close the README gate."
     else:
         conclusion = "Blocked: this device snapshot did not expose the required stylus pressure and tilt capability set, so drawing-app acceptance cannot start from this evidence."
     lines = [
@@ -402,6 +625,7 @@ def render_readme(summary: dict[str, object]) -> str:
         "",
         f"- Status: {status}",
         f"- Result: {conclusion}",
+        f"- Stable signed/TCC Host ready: {str(bool(summary.get('host_stable_signed_tcc_ready'))).lower()}",
         "",
     ]
     lines.extend(["## Device", ""])
@@ -445,24 +669,26 @@ def render_readme(summary: dict[str, object]) -> str:
                 f"  - Sources: {format_list(candidate.get('sources', []))}",
                 f"  - Axes: {format_list(candidate.get('axes', []))}",
                 f"  - Buttons: {format_list(candidate.get('buttons', []))}",
+                f"  - Pass eligible: {'yes' if candidate_is_pass_eligible(candidate) else 'no'}",
             ])
     lines.extend([
         "",
         "## Evidence files",
         "",
         "- stylus-evidence.json: structured summary and status.",
-        "- host-stylus.log: required only for a passing physical drawing run.",
+        "- stylus-summary.json: independent gate summary with can_close_physical_stylus_gate.",
+        "- host-stylus.log: new Host log bytes from the passing observation window, required only for a passing physical drawing run.",
     ])
     if status != "blocked_device_coordination_lock":
         lines.extend([
-            "- dumpsys-input.txt: raw read-only Android input-device snapshot.",
-            "- android-diag.log: app private diagnostic log, present only when run-as succeeded.",
+            "- dumpsys-input.txt: raw read-only Android input-device snapshot with line-ending whitespace normalized.",
+            "- android-diag.log: app private diagnostic log, present only when run-as succeeded and required for a passing physical drawing run.",
         ])
     lines.extend([
         "",
         "## Gate rule",
         "",
-        "Do not close the physical-stylus drawing-app gate from device capability alone. A pass requires a real stylus contacting the Android device while the Protocol v1 session is active, host stylus injection logs for pressure/tilt/barrel/proximity as applicable, and a visible macOS drawing-app result.",
+        "Do not close the physical-stylus drawing-app gate from device capability alone. A pass requires a real stylus contacting the Android device while the Protocol v1 session is active, stable signed/TCC-ready Host evidence, host stylus injection logs for pressure/tilt/barrel/proximity as applicable, and a visible macOS drawing-app result.",
         "",
     ])
     return "\n".join(lines)
@@ -473,6 +699,12 @@ def format_list(value: object) -> str:
         return "none"
     items = [str(item).strip() for item in value if str(item).strip()]
     return ", ".join(items) if items else "none"
+
+
+def candidate_is_pass_eligible(candidate: dict[str, object]) -> bool:
+    sources = {str(source) for source in candidate.get("sources", []) if str(source)}
+    axes = {str(axis) for axis in candidate.get("axes", []) if str(axis)}
+    return "STYLUS" in sources and all(axis in axes for axis in REQUIRED_STYLUS_AXES)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -490,23 +722,51 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + ", ".join(str(lock.get("path", "")) for lock in lock_details)
             )
         existing_locks = check_device_locks(args.allow_existing_device_lock)
-        require_success(run([args.adb, "start-server"], timeout=30))
+        validate_observed_drawing_inputs(args)
+        require_success(adb(args.adb, args.serial, "start-server", timeout=30))
         require_success(adb(args.adb, args.serial, "get-state"))
         identity = collect_device_identity(args.adb, args.serial)
         dumpsys_input = require_success(adb(args.adb, args.serial, "shell", "dumpsys", "input", timeout=60))
         candidates = select_stylus_candidates(parse_input_devices(dumpsys_input))
+        diag_before = ""
+        diag_before_error = None
+        if args.observed_physical_drawing and not args.skip_diag_log:
+            diag_before, diag_before_error = read_diag_log(args.adb, args.serial, args.package)
+            if diag_before_error:
+                raise EvidenceError("Android diag log is required for pass; run-as failed: " + diag_before_error)
+        host_cursor = host_log_cursor(args.host_log) if args.observed_physical_drawing else None
+        host_log_excerpt = wait_for_physical_drawing(args, host_cursor)
         diag_log = ""
         diag_error = None
         if not args.skip_diag_log:
             diag_log, diag_error = read_diag_log(args.adb, args.serial, args.package)
-        status = conclusion_status(args, candidates)
+            if args.observed_physical_drawing and diag_error is None:
+                diag_log = appended_diag_log(diag_before, diag_log)
+            elif args.observed_physical_drawing and diag_error is not None and diag_before_error is None:
+                raise EvidenceError("Android diag log is required for pass; run-as failed: " + diag_error)
+        status = conclusion_status(args, candidates, diag_log, diag_error, host_log_excerpt)
         output_dir = create_output_dir(args.output_dir, identity)
-        write_evidence(output_dir, args, existing_locks, identity, dumpsys_input, candidates, diag_log, diag_error, status)
+        write_evidence(
+            output_dir,
+            args,
+            existing_locks,
+            identity,
+            dumpsys_input,
+            candidates,
+            diag_log,
+            diag_error,
+            host_log_excerpt,
+            status,
+        )
     except EvidenceError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     print(f"{status}: wrote {output_dir}")
-    return 0
+    if status == "pass":
+        return 0
+    if status.startswith("blocked_"):
+        return 2
+    return 1
 
 
 if __name__ == "__main__":

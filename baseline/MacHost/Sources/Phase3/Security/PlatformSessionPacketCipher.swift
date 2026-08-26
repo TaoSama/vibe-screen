@@ -177,16 +177,16 @@ final class PlatformSessionPacketCipher {
             let replacement = try rotateKeys(current, updateNonce)
             keys = replacement
             replay.removeAll()
-            current.close()
+            current.zeroize()
         }
     }
 
     func close() {
         lock.withPacketCipherLock {
-            keys?.close()
+            keys?.zeroize()
             keys = nil
             replay.removeAll()
-            sessionHash.resetBytes(in: 0..<sessionHash.count)
+            sessionHash.zeroize()
         }
     }
 
@@ -434,7 +434,8 @@ private extension InternetTransportChannel {
         switch securityChannel {
         case .control: self = .control
         case .media: self = .media
-        case .audio, .bulk: return nil
+        case .audio: self = .audio
+        case .bulk: self = .bulk
         }
     }
 }

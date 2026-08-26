@@ -31,9 +31,12 @@ legacy touch protocol.
 | permissions/lifecycle | Camera permission is re-evaluated after returning from Settings; background pauses input/retries and keep-awake, foreground resumes/rekeys | original camera deny/settings launch passed on device; Settings-return state machine passes on JVM; post-review device rerun pending |
 | outbound input | bounded single writer reserves recovery capacity, uses non-blocking atomic ingress under lock contention, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails closed only on true capacity saturation | contention/capacity/close-race/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
 
-No unsupported keyboard, pointer, or display-selection bytes are added to the
-legacy wire format. A compatible negotiated application session remains the
-gate for those controls.
+No unsupported keyboard, pointer, controller, peripheral, or display-selection
+bytes are added to the legacy wire format. This is an intentional compatibility
+boundary rather than a missing fallback implementation: the legacy session
+remains touch-only so old peers never receive unnegotiated native-input bytes.
+A compatible Protocol v1 negotiated application session remains the gate for
+those controls.
 
 ## Offline evidence
 
@@ -150,6 +153,10 @@ still record:
 - a real unlocked Mac stream, missing reverse, host interruption, Host PID,
   visible Mac result, session epochs, and end-to-end recovery duration;
 - Android diagnostic/logcat plus visible Mac-side outcomes.
+- USB glass-to-glass (`usb-glass-to-glass-sub50`), LAN glass-to-glass
+  (`lan-glass-to-glass-sub80`), and input P95 (`input-p95-sub50`) latency
+  gates remain open until a formal external-camera package, or synchronized-clock
+  package for input only, passes the stricter latency provenance checker.
 
 Compilation, synthetic media, ADB-injected events, and old Phase 0 tap evidence
 cannot close the remaining unlocked-Mac, physical-peripheral, or Xiaomi 13
@@ -218,27 +225,37 @@ combined into the Android Surface/input transform. It is not an acceptance run
 for a rotated physical or virtual Mac display.
 
 Before claiming rotated host-display acceptance, run a fresh real-device pass
-that records both display kinds:
+that records both display kinds across all required host rotations:
 
-1. Rotate an existing physical Mac display, stream it over a Protocol v1 USB or
-   LAN session, capture visual source orientation, corner/center input mapping,
-   stable stream state, no session teardown, and restoration of the original
-   macOS rotation.
-2. Repeat the same probes for a virtual display in its rotated host-display
-   state.
+1. Rotate an existing physical Mac display through 90, 180, and 270 degrees;
+   for each angle, stream it over a Protocol v1 USB or LAN session, capture
+   visual source orientation, corner/center inverse touch mapping in host
+   logical-display coordinates, stable stream state, no session teardown, and
+   restoration of the original macOS rotation.
+2. Repeat the same 90/180/270 probes for a virtual display in its rotated
+   host-display state.
 3. Keep client rotation as an explicit client-local setting, usually Follow Mac
    or 0 for the host-display run, and do not treat the existing client-local
    90/180/270 matrix as host-display rotation evidence.
 4. Record retained artifacts for device identity, before/rotated host display
    snapshots, Android screenshot, touch matrix, Host log, and Android logcat.
+5. Record the Host signing/TCC preflight for the exact installed Host bundle.
+   The gate depends on a stable non-ad-hoc signing identity, matching bundle
+   identifier, Screen Recording grant, Accessibility grant, and a restoration
+   plan for the original macOS display rotation.
 
-Summarize the retained evidence in a JSON file and run the offline gate. This
-command validates the record only; it does not rotate displays, start the Host,
-touch ADB, or perform device actions:
+The detailed operator checklist is in
+[`docs/runbook/host-display-rotation-acceptance.md`](../../runbook/host-display-rotation-acceptance.md).
+
+Summarize the retained evidence in a JSON file matching
+[`tools/schemas/host-display-rotation-evidence.schema.json`](../../../tools/schemas/host-display-rotation-evidence.schema.json)
+and run the offline gate. This command validates the record only; it does not
+rotate displays, start the Host, touch ADB, or perform device actions:
 
 ```bash
-python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
   docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --check-artifacts \
   --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
 ```
 
@@ -253,6 +270,22 @@ Minimum summary shape:
       "display_kind": "physical",
       "display_id": "<macOS display id/name>",
       "transport": "usb",
+      "device": {
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "codename": "pacific",
+        "android_release": "16",
+        "sdk": 36,
+        "adb_serial": "<serial>"
+      },
+      "host_preflight": {
+        "host_signing_identity": "Vibe Screen Dev",
+        "host_bundle_id": "dev.telemachus.display",
+        "screen_recording_granted": true,
+        "accessibility_granted": true,
+        "signing_tcc_match": true,
+        "host_display_rotation_restoration_plan": true
+      },
       "host_rotation_degrees": 90,
       "original_host_rotation_degrees": 0,
       "client_rotation_degrees": 0,
@@ -265,6 +298,28 @@ Minimum summary shape:
         "stable_stream": true,
         "no_session_teardown": true,
         "restored_original_host_rotation": true
+      },
+      "inverse_touch_mapping": {
+        "coordinate_space": "host-logical-display",
+        "tolerance_px": 8,
+        "points": [
+          {
+            "name": "top_left",
+            "android_x": 16,
+            "android_y": 16,
+            "expected_host_x": 0,
+            "expected_host_y": 0,
+            "observed_host_x": 2,
+            "observed_host_y": 1,
+            "error_px": 2.2,
+            "within_tolerance": true
+          },
+          {"name": "top_right", "android_x": 1248, "android_y": 16, "expected_host_x": 1999, "expected_host_y": 0, "observed_host_x": 1997, "observed_host_y": 2, "error_px": 2.8, "within_tolerance": true},
+          {"name": "bottom_left", "android_x": 16, "android_y": 2784, "expected_host_x": 0, "expected_host_y": 1199, "observed_host_x": 1, "observed_host_y": 1196, "error_px": 3.2, "within_tolerance": true},
+          {"name": "bottom_right", "android_x": 1248, "android_y": 2784, "expected_host_x": 1999, "expected_host_y": 1199, "observed_host_x": 1998, "observed_host_y": 1197, "error_px": 2.2, "within_tolerance": true},
+          {"name": "center", "android_x": 632, "android_y": 1400, "expected_host_x": 1000, "expected_host_y": 600, "observed_host_x": 1001, "observed_host_y": 601, "error_px": 1.4, "within_tolerance": true}
+        ],
+        "all_points_within_tolerance": true
       },
       "artifacts": {
         "device_identity": "device-and-artifact-identity.txt",
@@ -280,6 +335,22 @@ Minimum summary shape:
       "display_kind": "virtual",
       "display_id": "<macOS virtual display id/name>",
       "transport": "usb",
+      "device": {
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "codename": "pacific",
+        "android_release": "16",
+        "sdk": 36,
+        "adb_serial": "<serial>"
+      },
+      "host_preflight": {
+        "host_signing_identity": "Vibe Screen Dev",
+        "host_bundle_id": "dev.telemachus.display",
+        "screen_recording_granted": true,
+        "accessibility_granted": true,
+        "signing_tcc_match": true,
+        "host_display_rotation_restoration_plan": true
+      },
       "host_rotation_degrees": 90,
       "original_host_rotation_degrees": 0,
       "client_rotation_degrees": 0,
@@ -306,6 +377,10 @@ Minimum summary shape:
   ]
 }
 ```
+
+The final evidence file must contain six successful entries: physical
+90/180/270 and virtual 90/180/270. A shorter file remains a readiness or
+blocked record only.
 
 ## Xiaomi 13 window-action and recovery follow-up
 
@@ -425,6 +500,62 @@ Evidence:
 
 - [`evidence/2026-08-21-p0110-native-pointer-hid-readiness/`](evidence/2026-08-21-p0110-native-pointer-hid-readiness/)
 
+## P0110 native pointer HID current-base gate summary
+
+On 2026-08-22, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked from current `origin/main` plus the native pointer HID gate-summary
+tooling. The `make native-pointer-hid-acceptance` target invoked
+`scripts/native_pointer_hid_acceptance.py`, recorded the real P0110 identity and
+`dumpsys input`, and then ran the independent
+`vibescreen_evidence.native_pointer_hid` summary over the generated
+`result.json`.
+
+No external Android input device with a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`,
+or `TRACKBALL` source was attached. The target therefore returned `blocked`
+(`exit_code=2`), and `native-pointer-hid-summary.json` reports
+`verdict=blocked` with `can_close_native_pointer_hid_gate=false`. This does not
+close the native pointer move/click gate, and it remains P0110/pacific evidence,
+not Xiaomi 13/fuxi evidence.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-current-gate/`](evidence/2026-08-22-p0110-native-pointer-hid-current-gate/)
+
+After rebasing the PR branch onto `origin/main` commit
+`4dc84505b0edcd76a820cb2ba219461312ba8b81`, the same target was run again
+against the requested P0110 serial. A shared Android coordination lock was held
+by another P0110 task, so the collector exited before running ADB, wrote
+`blocked_device_coordination_lock`, and kept
+`can_close_native_pointer_hid_gate=false`. This current-main rerun records only
+readiness/blocking state; it does not replace the earlier P0110 identity
+record and does not close the physical HID mouse gate.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/`](evidence/2026-08-22-p0110-native-pointer-hid-current-gate-main-4dc84505/)
+
+After the Android UI task reported releasing the shared P0110 lock, a short
+manual preflight used the required `adb -s EP0110PZ0B9110300B` endpoint to
+read the device as Nubia P0110 / `pacific` / Android 16 / SDK 36 and inspect
+`dumpsys input`. That input inventory still exposed no `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. When the formal collector
+started immediately afterward, a new shared Android coordination lock had been
+created by `trusted-lan-p0110-pr261`, so the collector exited before running
+ADB, wrote `blocked_device_coordination_lock`, and kept
+`can_close_native_pointer_hid_gate=false`. The gate therefore remains open; no
+synthetic ADB pointer input was used or counted as HID confirmation.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/`](evidence/2026-08-22-p0110-native-pointer-hid-after-lock-release/)
+
+A later 2026-08-22 refresh found no shared Android device lock, reached the
+P0110 with `adb -s EP0110PZ0B9110300B`, and recorded the device identity as
+Nubia P0110 / `pacific` / Android 16 / SDK 36. The retained `dumpsys input`
+inventory still had no external `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or
+`TRACKBALL` source, so the collector wrote a `blocked` bundle with
+`adb_was_run=true`, zero external mouse devices, and
+`can_close_native_pointer_hid_gate=false`. This is the current no-HID-source
+gate state and does not close native pointer move/click confirmation.
+
+- [`evidence/2026-08-22-p0110-native-pointer-hid-no-source-refresh/`](evidence/2026-08-22-p0110-native-pointer-hid-no-source-refresh/)
+
 ## P0110 rotated host-display readiness follow-up
 
 On 2026-08-20, the connected Nubia P0110 (pacific, Android 16 / SDK 36)
@@ -450,3 +581,169 @@ open.
 Evidence:
 
 - [`evidence/2026-08-20-p0110-host-display-rotation-blocked/`](evidence/2026-08-20-p0110-host-display-rotation-blocked/)
+
+## P0110 rotated host-display preflight follow-up
+
+On 2026-08-22, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
+serial EP0110PZ0B9110300B) was checked again after the branch was rebased to
+origin/main cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b. The initial Android
+coordination lock path existed as an empty stale marker with no lsof holder, so
+the run recorded that state, acquired a non-blocking fcntl exclusive lock on the
+same path, and kept the device lease for limited read-only sampling only.
+
+The device-side USB smoke preconditions were healthy: adb reverse still mapped
+tcp:54321, dev.telemachus.display was foreground, the device loopback
+connection to 127.0.0.1:54321 was ESTABLISHED, stream_stats stayed around
+55-60 fps, decoder dropped frames were 0, and PID-filtered E-level logcat search
+found no current app errors. No install, launch, force-stop, reverse change,
+host display rotation, or input injection was performed by this run.
+
+The attempt remained blocked before rotated host-display acceptance because the
+installed Host could not pass stable signing/TCC preflight: the `Vibe Screen Dev`
+codesigning identity was not visible in the current keychain, ad-hoc signing is
+refused for local device reruns, and a read-only TCC database query returned
+authorization denied. The retained host-display-rotation.json therefore still
+contains no completed physical or virtual display run; the offline gate output
+is expected to remain status=failed with missing physical and virtual rotated
+host-display evidence.
+
+Evidence:
+
+- [`evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/`](evidence/2026-08-22-p0110-host-display-rotation-preflight-blocked/)
+
+## P0110 Android visual/UI E2E test-entry blocker
+
+On 2026-08-23, a controller-side read-only Android visual/UI sampling run found
+the connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B) online with both dev.telemachus.display and
+dev.telemachus.display.test installed, but the foreground Activity was the
+system permission controller:
+
+```text
+com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity
+```
+
+The retained screenshot shows a firmware/system confirmation dialog asking
+whether Vibe Screen should open dev.telemachus.display.test, with Cancel/Open
+actions, over the launcher. This blocked the visual/UI E2E entry before the
+test reached any Vibe Screen product surface.
+
+This is classified as an external system UI / test-entry blocker, not a Vibe
+Screen product UI regression. It does not require a product-code change by
+itself. Future test harnesses should pre-acknowledge or bypass this
+device-specific confirmation before starting visual/UI E2E, or record the same
+permission-controller Activity as a blocked external-system state. This record
+does not close any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-test-entry-system-ui-blocked/`](evidence/2026-08-23-p0110-test-entry-system-ui-blocked/)
+
+## P0110 Android visual/UI E2E test-entry confirmation handled
+
+On 2026-08-23, the connected Nubia P0110 (pacific, Android 16 / SDK 36,
+serial EP0110PZ0B9110300B) was sampled again from the same system
+permission-controller confirmation page. The main Android coordination lock and
+soak lock were absent, so this task created the configured Android coordination
+lock before issuing explicit serial-targeted ADB commands, then released the
+lock after each bounded sample. The older test-specific lock path still existed
+with content "pre-existing lock" and was retained as evidence.
+
+The first tap did not hit the confirmation button, and the system dialog
+remained focused. The retained UIAutomator XML then identified the positive
+button as com.android.permissioncontroller:id/actionPositive with text
+"打开" and bounds `[653,2548][1180,2716]`. A second tap at the button center
+opened dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity,
+confirming that the blocker belonged to the test-package entry path rather than
+the product UI. A direct launch of dev.telemachus.display/.MainActivity then
+reached the Vibe Screen product surface and captured the Internet development
+preview UI.
+
+This remains an external system UI / test-entry blocker with a documented
+workaround. It does not require a product-code change by itself. Future
+visual/UI E2E harnesses should detect this permission-controller Activity, tap
+the positive action by resource id or bounds, and then explicitly launch the
+intended product Activity before judging product UI. This record does not close
+any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-test-entry-system-ui-opened/`](evidence/2026-08-23-p0110-test-entry-system-ui-opened/)
+
+## P0110 Android visual/UI E2E launcher-state update
+
+On 2026-08-23 08:09 +08, a controller-side read-only Android state sample found
+the same Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B) online with the foreground Activity at the Nubia launcher:
+
+```text
+com.android.launcher3/com.obric.feature.ObricLauncher
+```
+
+The retained screenshot shows the launcher, not the earlier
+permission-controller test-entry confirmation and not the Vibe Screen product
+surface. The stale test-specific lock path still existed with content
+"pre-existing lock". No device command was run for this classification step,
+and the main Android coordination lock plus soak lock were absent when the
+evidence was prepared.
+
+This is a read-only idle-state update for the next UI/E2E attempt. Future
+device interaction should set `REPO`, `EVIDENCE_DIR`, `ANDROID_SERIAL`,
+`ADB_SERIAL="${ANDROID_SERIAL}"`, and the coordination-lock path variables,
+acquire the Android coordination lock, and use `adb -s "$ADB_SERIAL"` before
+launching the intended product or test Activity. This record does not require a
+product-code change and does not close any README acceptance gate.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-launcher-idle-state/`](evidence/2026-08-23-p0110-launcher-idle-state/)
+
+## P0110 native pointer HID current-base blocked evidence
+
+On 2026-08-23, the native pointer HID gate owner was refreshed on
+`origin/main` commit `3d23de133adc4414b4c70430c619fadbe7d90207` using the
+connected Nubia P0110 (pacific, Android 16 / SDK 36, serial
+EP0110PZ0B9110300B). The Android coordination lock was absent, so the collector
+was allowed to run serial-scoped ADB reads against that device.
+
+The run did not find any external Android input device with `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore wrote
+`status=blocked`; the independent summary reports `verdict=blocked` and
+`can_close_native_pointer_hid_gate=false`. No Android native pointer
+MOVE/BUTTON_PRESS/BUTTON_RELEASE forwarding lines, Host pointer changed/began/
+ended injection lines, or visible Mac pointer/click result were captured. This
+keeps the README native mouse pointer move/click gate open and does not treat
+synthetic ADB pointer input as physical HID mouse evidence.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-native-pointer-hid-current-base-blocked/`](evidence/2026-08-23-p0110-native-pointer-hid-current-base-blocked/)
+
+## P0110 rotated host-display current-base follow-up
+
+On 2026-08-23, the current-base owner record was refreshed for the
+rotated physical/virtual host-display acceptance gate. The check ran from
+current `origin/main` at `305205070adc8f9c3012b811223394bd63be90d4`, after
+merged PR #272 had landed and with PR #243 confirmed unrelated to this gate.
+
+The Android coordination lock was absent before sampling. Read-only ADB identity
+commands used an explicit redacted serial and identified the connected device as
+nubia P0110 / pacific / Android 16 / SDK 36. No install, launch, reverse
+mutation, host display rotation, or input injection was performed.
+
+The attempt remained blocked before real rotated host-display acceptance because
+the stable signed Host preflight still failed: the expected `Vibe Screen Dev`
+codesigning identity was not available to the preflight, and the task could not
+prove Screen Recording or Accessibility grants for the signed Host bundle.
+
+The retained `host-display-rotation.json` intentionally contains no completed
+physical or virtual run. The offline evidence gate output is `status=failed`,
+with missing physical and virtual host-display evidence and missing 90/180/270
+coverage for both display kinds. The new current-base aggregate gate also
+returns `verdict=blocked`, `can_close_current_base_aggregate=false`, and
+`can_claim_real_device_pass=false`. This remains blocked/readiness evidence
+only; the rotated host-display acceptance gate is still open.
+
+Evidence:
+
+- [`evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/)

@@ -1,0 +1,54 @@
+Repository: /private/tmp/vibe-screen-pr195-current-0824
+Base revision: fb4ba4a4801c3ab228855a2e374791558e80401e
+Branch: codex/host-rss-frame-lifecycle-current
+Date: 2026-08-24
+
+Initial state:
+
+  git -C /Users/luwentao/Workspaces/vibe-screen worktree add     -B codex/host-rss-frame-lifecycle-current     /private/tmp/vibe-screen-pr195-current-0824 origin/main
+
+Outcome: exit 0. Worktree created from origin/main fb4ba4a4801c3ab228855a2e374791558e80401e.
+
+PR audit:
+
+  gh pr view 195 --repo TaoSama/vibe-screen --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,baseRefOid,mergeStateStatus,reviewDecision,files,commits,url
+
+Outcome: exit 0. #195 remains open draft on old base e8fbed466581c4d20e59801e7d7c0a03af04ad51 and old head fd602c2469d07f0aa8ef6c4cdecc13f0197a1285. Current-base successor keeps only frame lifecycle, autoreleasepool, and focused test/docs value; Makefile HOST_PID and closed-socket work are already on main.
+
+Device identity check:
+
+  adb -s EP0110PZ0B9110300B get-state
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+
+Outcome: exit 0. device / nubia / P0110 / pacific / 16 / 36. This verifies the connected Android substitute identity only; no Host RSS stream or two-hour gate was run.
+
+Verification commands:
+
+  git diff --check
+
+Outcome: exit 0, no whitespace errors.
+
+  python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-24-frame-lifecycle-current-base-blocked/readiness-report.json >/dev/null
+
+Outcome: exit 0, JSON parsed.
+
+  swift build --package-path baseline/MacHost --scratch-path /tmp/vibe-screen-pr195-current-swift-build
+
+Outcome: exit 0. MacHost package sources compile. Existing StreamingServer Sendable warnings remain unrelated to this diff.
+
+  xcode-select -p
+  xcrun --find xctest
+
+Outcome: /Library/Developer/CommandLineTools; xcrun cannot find xctest.
+
+  swift test --package-path baseline/MacHost --scratch-path /tmp/vibe-screen-pr195-current-swift-test --filter "VideoEncoderInFlightAdmissionTests|LatestRetainedSlotTests"
+
+Outcome: exit 1 after package source compilation reaches the test target. Failure is environmental: no such module 'XCTest' from the active Command Line Tools developer directory. This is not evidence of a source test assertion failure.
+
+Formal gate status:
+
+No stable-signed current-source Host was installed or launched with VIBE_SCREEN_TELEMETRY_PATH. No 10-17 minute short diagnostic or formal two-hour Host RSS soak was started. The Host RSS no-growth gate remains open until host-rss-gate.json reports verdict pass from a complete current-source run.

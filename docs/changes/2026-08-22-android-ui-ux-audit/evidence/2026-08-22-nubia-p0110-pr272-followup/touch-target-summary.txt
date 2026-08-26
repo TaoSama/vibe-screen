@@ -1,0 +1,19 @@
+density_dpi=560
+
+[portrait connection] file=window-app-after-start.xml rotation=0
+modeUSB: px=[224,1432][498,1600] size_px=274x168 size_dp=78.3x48.0 pass
+modeWireless: px=[494,1432][769,1600] size_px=275x168 size_dp=78.6x48.0 pass
+modeInternet: px=[765,1432][1040,1600] size_px=275x168 size_dp=78.6x48.0 pass
+connectButton: px=[224,1656][1040,1852] size_px=816x196 size_dp=233.1x56.0 pass
+showAdvanced: px=[224,2137][1040,2305] size_px=816x168 size_dp=233.1x48.0 pass
+connectionSettingsButton: px=[224,2347][1040,2515] size_px=816x168 size_dp=233.1x48.0 pass
+
+[portrait settings] file=window-settings-portrait-disconnected.xml rotation=0
+showStatsSwitch: px=[872,746][1040,914] size_px=168x168 size_dp=48.0x48.0 pass
+
+[800dp width override connection] file=window-disconnected-wm-override-800dp.xml rotation=0
+modeUSB: px=[1248,252][1651,420] size_px=403x168 size_dp=115.1x48.0 pass
+modeWireless: px=[1647,252][2050,420] size_px=403x168 size_dp=115.1x48.0 pass
+modeInternet: px=[2046,252][2450,420] size_px=404x168 size_dp=115.4x48.0 pass
+connectButton: px=[1248,448][2450,644] size_px=1202x196 size_dp=343.4x56.0 pass
+showAdvanced: px=[1248,875][2450,1043] size_px=1202x168 size_dp=343.4x48.0 pass

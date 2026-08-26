@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-videotoolbox-readiness.schema.json",
+  "title": "Vibe Screen iOS hardware VideoToolbox readiness summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "runtime_class",
+    "verdict",
+    "can_close_device_family_videotoolbox_gate",
+    "can_close_phase5_hardware_videotoolbox_gate",
+    "requires_physical_ios_device",
+    "simulator_is_not_device_evidence",
+    "unsigned_archive_is_not_device_evidence",
+    "android_evidence_is_not_ios_evidence",
+    "phase5_gate_closure_rule",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "artifact_checks",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+    "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+    "runtime_class": {"enum": ["simulator", "unsigned_archive", "physical_iphone", "physical_ipad"]},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_device_family_videotoolbox_gate": {"type": "boolean"},
+    "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+    "requires_physical_ios_device": {"const": true},
+    "simulator_is_not_device_evidence": {"const": true},
+    "unsigned_archive_is_not_device_evidence": {"const": true},
+    "android_evidence_is_not_ios_evidence": {"const": true},
+    "phase5_gate_closure_rule": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signed_app_installed",
+        "physical_ios_device_identity_recorded",
+        "device_family_matches_runtime_class",
+        "h264_parameter_sets_recorded",
+        "hevc_parameter_sets_recorded",
+        "videotoolbox_h264_session_created",
+        "videotoolbox_hevc_session_created",
+        "h264_output_frames_observed",
+        "hevc_output_frames_observed",
+        "hardware_decode_path_recorded",
+        "stream_epoch_telemetry_recorded",
+        "thermal_and_power_recorded",
+        "artifacts_retained"
+      ],
+      "properties": {
+        "signed_app_installed": {"type": "boolean"},
+        "physical_ios_device_identity_recorded": {"type": "boolean"},
+        "device_family_matches_runtime_class": {"type": "boolean"},
+        "h264_parameter_sets_recorded": {"type": "boolean"},
+        "hevc_parameter_sets_recorded": {"type": "boolean"},
+        "videotoolbox_h264_session_created": {"type": "boolean"},
+        "videotoolbox_hevc_session_created": {"type": "boolean"},
+        "h264_output_frames_observed": {"type": "boolean"},
+        "hevc_output_frames_observed": {"type": "boolean"},
+        "hardware_decode_path_recorded": {"type": "boolean"},
+        "stream_epoch_telemetry_recorded": {"type": "boolean"},
+        "thermal_and_power_recorded": {"type": "boolean"},
+        "artifacts_retained": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "exists", "non_empty", "under_evidence_dir", "valid_ios_videotoolbox_source"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "exists": {"type": "boolean"},
+          "non_empty": {"type": "boolean"},
+          "under_evidence_dir": {"type": "boolean"},
+          "valid_ios_videotoolbox_source": {"type": "boolean"}
+        }
+      }
+    },
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  }
+}

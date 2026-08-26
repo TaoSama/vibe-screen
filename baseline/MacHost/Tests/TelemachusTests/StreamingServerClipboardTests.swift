@@ -263,6 +263,331 @@ final class StreamingServerClipboardTests: XCTestCase {
         wait(for: [staleDropped], timeout: 1)
     }
 
+    // MARK: - File transfer integration
+
+    func testIncomingFileOfferAcceptsBulkChunkAndCompletes() throws {
+        let port = testPort(offset: 108)
+        server = StreamingServer(port: port)
+        server.onFileTransferApprovalRequested = { offer in
+            offer.fileName == "hello.txt"
+        }
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
+
+        let payload = Data("from android file".utf8)
+        let transferID = Data(repeating: 0x4A, count: 16)
+        let completed = expectation(description: "incoming file completed")
+        var completedFile: ProtocolV1CompletedIncomingFile?
+        server.onIncomingFileCompleted = { file in
+            completedFile = file
+            completed.fulfill()
+        }
+
+        try sendControl(
+            payload: .fileOffer(fileOffer(
+                transferID: transferID,
+                fileName: "hello.txt",
+                payload: payload
+            )),
+            messageID: 10
+        )
+
+        let acceptEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileAccept = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileAccept(let accept)? = acceptEnvelope?.payload else {
+            return XCTFail("Missing FileAccept")
+        }
+        XCTAssertTrue(accept.accepted)
+        XCTAssertEqual(accept.transferID, transferID)
+
+        try sendBulk(chunk(
+            transferID: transferID,
+            offset: 0,
+            payload: payload,
+            final: true
+        ))
+
+        let resultEnvelopes = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferComplete = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        )
+        XCTAssertTrue(resultEnvelopes.contains { envelope in
+            if case .fileTransferProgress(let progress)? = envelope.payload {
+                return progress.transferID == transferID && progress.receivedBytes == UInt64(payload.count)
+            }
+            return false
+        })
+        guard let completeEnvelope = resultEnvelopes.last,
+              case .fileTransferComplete(let result)? = completeEnvelope.payload else {
+            return XCTFail("Missing FileTransferComplete")
+        }
+        XCTAssertTrue(result.accepted)
+        XCTAssertEqual(result.sha256, sha256(payload))
+
+        wait(for: [completed], timeout: 2)
+        XCTAssertEqual(completedFile?.fileName, "hello.txt")
+        XCTAssertEqual(try completedFile.map { try Data(contentsOf: $0.stagingURL) }, payload)
+    }
+
+    func testOfferProtocolV1FileSendsOfferAndBulkChunkAfterAccept() throws {
+        let port = testPort(offset: 109)
+        server = StreamingServer(port: port)
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
+
+        let payload = Data("from mac file".utf8)
+        let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        let offerEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileOffer = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileOffer(let offer)? = offerEnvelope?.payload else {
+            return XCTFail("Missing FileOffer")
+        }
+        XCTAssertEqual(offer.fileName, "send.txt")
+        XCTAssertEqual(offer.byteLength, UInt64(payload.count))
+        XCTAssertEqual(offer.sha256, sha256(payload))
+
+        var accept = VSFileAccept()
+        accept.transferID = offer.transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = 64 * 1024
+        try sendControl(payload: .fileAccept(accept), messageID: 10)
+
+        let bulkFrame = try receiveFrame(channel: .bulk, timeout: 2)
+        let fileChunk = try ProtocolV1FileChunk(serializedFrame: bulkFrame.payload)
+        XCTAssertEqual(fileChunk.header.transferID, offer.transferID)
+        XCTAssertEqual(fileChunk.header.offset, 0)
+        XCTAssertTrue(fileChunk.header.final)
+        XCTAssertEqual(fileChunk.payload, payload)
+
+        var progress = VSFileTransferProgress()
+        progress.transferID = offer.transferID
+        progress.receivedBytes = UInt64(payload.count)
+        try sendControl(payload: .fileTransferProgress(progress), messageID: 11)
+
+        var complete = VSFileTransferComplete()
+        complete.transferID = offer.transferID
+        complete.accepted = true
+        complete.sha256 = offer.sha256
+        try sendControl(payload: .fileTransferComplete(complete), messageID: 12)
+    }
+
+    func testOfferProtocolV1FileCancelsOnUnexpectedProgressOffset() throws {
+        let port = testPort(offset: 111)
+        server = StreamingServer(port: port)
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
+
+        let payload = Data("from mac file".utf8)
+        let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        let offerEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileOffer = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileOffer(let offer)? = offerEnvelope?.payload else {
+            return XCTFail("Missing FileOffer")
+        }
+
+        var accept = VSFileAccept()
+        accept.transferID = offer.transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = 2
+        try sendControl(payload: .fileAccept(accept), messageID: 10)
+        _ = try receiveFrame(channel: .bulk, timeout: 2)
+
+        var progress = VSFileTransferProgress()
+        progress.transferID = offer.transferID
+        progress.receivedBytes = 1
+        try sendControl(payload: .fileTransferProgress(progress), messageID: 11)
+
+        let cancelEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferCancel = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileTransferCancel(let cancellation)? = cancelEnvelope?.payload else {
+            return XCTFail("Missing FileTransferCancel")
+        }
+        XCTAssertEqual(cancellation.transferID, offer.transferID)
+        XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.unexpectedOffset(expected: 2, actual: 1).reasonCode)
+    }
+
+    func testOfferProtocolV1FileCancelsOnCompletionDigestMismatch() throws {
+        let port = testPort(offset: 112)
+        server = StreamingServer(port: port)
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
+
+        let payload = Data("from mac file".utf8)
+        let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        let offerEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileOffer = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileOffer(let offer)? = offerEnvelope?.payload else {
+            return XCTFail("Missing FileOffer")
+        }
+
+        var accept = VSFileAccept()
+        accept.transferID = offer.transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = 64 * 1024
+        try sendControl(payload: .fileAccept(accept), messageID: 10)
+        _ = try receiveFrame(channel: .bulk, timeout: 2)
+
+        var progress = VSFileTransferProgress()
+        progress.transferID = offer.transferID
+        progress.receivedBytes = UInt64(payload.count)
+        try sendControl(payload: .fileTransferProgress(progress), messageID: 11)
+
+        var complete = VSFileTransferComplete()
+        complete.transferID = offer.transferID
+        complete.accepted = true
+        complete.sha256 = Data(repeating: 0xEE, count: SHA256.byteCount)
+        try sendControl(payload: .fileTransferComplete(complete), messageID: 12)
+
+        let cancelEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferCancel = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileTransferCancel(let cancellation)? = cancelEnvelope?.payload else {
+            return XCTFail("Missing FileTransferCancel")
+        }
+        XCTAssertEqual(cancellation.transferID, offer.transferID)
+        XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.digestMismatch.reasonCode)
+    }
+
+    func testOfferProtocolV1FileCancelsCompletionBeforeAllBytesAreAcknowledged() throws {
+        let port = testPort(offset: 113)
+        server = StreamingServer(port: port)
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
+
+        let payload = Data("from mac multi chunk file".utf8)
+        let fileURL = temporaryDirectory().appendingPathComponent("send.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        let offerEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileOffer = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileOffer(let offer)? = offerEnvelope?.payload else {
+            return XCTFail("Missing FileOffer")
+        }
+
+        var accept = VSFileAccept()
+        accept.transferID = offer.transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = 5
+        try sendControl(payload: .fileAccept(accept), messageID: 10)
+        let firstFrame = try receiveFrame(channel: .bulk, timeout: 2)
+        let firstChunk = try ProtocolV1FileChunk(serializedFrame: firstFrame.payload)
+        XCTAssertFalse(firstChunk.header.final)
+
+        var progress = VSFileTransferProgress()
+        progress.transferID = offer.transferID
+        progress.receivedBytes = firstChunk.header.offset + UInt64(firstChunk.payload.count)
+        try sendControl(payload: .fileTransferProgress(progress), messageID: 11)
+        let secondFrame = try receiveFrame(channel: .bulk, timeout: 2)
+        let secondChunk = try ProtocolV1FileChunk(serializedFrame: secondFrame.payload)
+        XCTAssertFalse(secondChunk.header.final)
+
+        var complete = VSFileTransferComplete()
+        complete.transferID = offer.transferID
+        complete.accepted = true
+        complete.sha256 = offer.sha256
+        try sendControl(payload: .fileTransferComplete(complete), messageID: 12)
+
+        let cancelEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferCancel = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileTransferCancel(let cancellation)? = cancelEnvelope?.payload else {
+            return XCTFail("Missing FileTransferCancel")
+        }
+        XCTAssertEqual(cancellation.transferID, offer.transferID)
+        XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.incompleteFile.reasonCode)
+    }
+
+    func testOfferProtocolV1FileIsNoOpWhenFileTransferNotNegotiated() throws {
+        let port = testPort(offset: 110)
+        server = StreamingServer(port: port)
+        try server.start()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(clipboard: false, fileTransfer: false)
+
+        let fileURL = temporaryDirectory().appendingPathComponent("blocked.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("blocked".utf8).write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        XCTAssertThrowsError(try receiveFrame(channel: .control, timeout: 0.3)) { error in
+            guard case TestError.timeout = error else {
+                return XCTFail("Expected timeout, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private let clientDeviceID = "android-device"
@@ -318,7 +643,10 @@ final class StreamingServerClipboardTests: XCTestCase {
     /// Returns the active connection generation captured after the session is
     /// streaming so tests can assert callback generations.
     @discardableResult
-    private func driveHandshakeToStreaming(clipboard: Bool) throws -> UInt64 {
+    private func driveHandshakeToStreaming(
+        clipboard: Bool,
+        fileTransfer: Bool = false
+    ) throws -> UInt64 {
         guard client != nil else { throw TestError.noClient }
 
         var generation: UInt64?
@@ -337,6 +665,7 @@ final class StreamingServerClipboardTests: XCTestCase {
         // 1. ClientHello.
         var capabilities: [VSCapability] = [.touch, .multiDisplay]
         if clipboard { capabilities.append(.clipboard) }
+        if fileTransfer { capabilities.append(.fileTransfer) }
         var hello = VSClientHello()
         hello.supportedProtocols = { var r = VSProtocolRange(); r.minimum = 1; r.maximum = 1; return r }()
         hello.deviceID = clientDeviceID
@@ -415,6 +744,23 @@ final class StreamingServerClipboardTests: XCTestCase {
         XCTAssertEqual(sent.wait(timeout: .now() + 2), .success)
     }
 
+    private func sendBulk(_ chunk: ProtocolV1FileChunk) throws {
+        guard let client else { throw TestError.noClient }
+        let frame = try ProtocolV1TransportFrame(
+            channel: .bulk,
+            payload: try chunk.serializedFrame()
+        ).encoded()
+        let sent = DispatchSemaphore(value: 0)
+        client.send(
+            content: frame,
+            completion: .contentProcessed { error in
+                XCTAssertNil(error)
+                sent.signal()
+            }
+        )
+        XCTAssertEqual(sent.wait(timeout: .now() + 2), .success)
+    }
+
     private func envelope(
         messageID: UInt64,
         payload: VSEnvelope.OneOf_Payload
@@ -439,7 +785,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     ) throws -> [VSEnvelope] {
         guard let client else { throw TestError.noClient }
         var envelopes: [VSEnvelope] = []
-        let done = DispatchSemaphore(value: 0)
+        let done = expectation(description: "protocol v1 control envelopes received")
         var receiveFailure: Error?
 
         func receiveNext() {
@@ -452,22 +798,22 @@ final class StreamingServerClipboardTests: XCTestCase {
                         }
                     } catch {
                         receiveFailure = error
-                        done.signal()
+                        done.fulfill()
                         return
                     }
                 }
                 if let error {
                     receiveFailure = error
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 if connectionComplete {
                     receiveFailure = TestError.connectionClosed
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 if envelopes.contains(where: matchesTarget) {
-                    done.signal()
+                    done.fulfill()
                     return
                 }
                 receiveNext()
@@ -475,10 +821,96 @@ final class StreamingServerClipboardTests: XCTestCase {
         }
         receiveNext()
 
-        let result = done.wait(timeout: .now() + timeout)
-        if result == .timedOut { throw TestError.timeout }
+        let waitResult = XCTWaiter().wait(for: [done], timeout: timeout)
+        guard waitResult == .completed else { throw TestError.timeout }
         if let receiveFailure { throw receiveFailure }
+        guard envelopes.contains(where: matchesTarget) else { throw TestError.timeout }
         return envelopes
+    }
+
+    private func receiveFrame(
+        channel: ProtocolV1LogicalChannel,
+        timeout: TimeInterval
+    ) throws -> ProtocolV1TransportFrame {
+        guard let client else { throw TestError.noClient }
+        let done = expectation(description: "protocol v1 frame received")
+        var matchedFrame: ProtocolV1TransportFrame?
+        var receiveFailure: Error?
+
+        func receiveNext() {
+            client.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, connectionComplete, error in
+                if let data, !data.isEmpty {
+                    do {
+                        let frames = try self.inboundFramer.append(data)
+                        if let frame = frames.first(where: { $0.channel == channel }) {
+                            matchedFrame = frame
+                            done.fulfill()
+                            return
+                        }
+                    } catch {
+                        receiveFailure = error
+                        done.fulfill()
+                        return
+                    }
+                }
+                if let error {
+                    receiveFailure = error
+                    done.fulfill()
+                    return
+                }
+                if connectionComplete {
+                    receiveFailure = TestError.connectionClosed
+                    done.fulfill()
+                    return
+                }
+                receiveNext()
+            }
+        }
+        receiveNext()
+
+        let waitResult = XCTWaiter().wait(for: [done], timeout: timeout)
+        guard waitResult == .completed else { throw TestError.timeout }
+        if let receiveFailure { throw receiveFailure }
+        guard let matchedFrame else { throw TestError.timeout }
+        return matchedFrame
+    }
+
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibescreen-streaming-file-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    private func fileOffer(
+        transferID: Data,
+        fileName: String,
+        payload: Data
+    ) -> VSFileOffer {
+        var offer = VSFileOffer()
+        offer.transferID = transferID
+        offer.fileName = fileName
+        offer.mimeType = "text/plain"
+        offer.byteLength = UInt64(payload.count)
+        offer.sha256 = sha256(payload)
+        return offer
+    }
+
+    private func chunk(
+        transferID: Data,
+        offset: UInt64,
+        payload: Data,
+        final: Bool
+    ) -> ProtocolV1FileChunk {
+        var header = VSFileChunkHeader()
+        header.transferID = transferID
+        header.offset = offset
+        header.payloadLength = UInt32(payload.count)
+        header.sessionEpoch = sessionEpoch
+        header.chunkSha256 = sha256(payload)
+        header.final = final
+        return ProtocolV1FileChunk(header: header, payload: payload)
     }
 
     private func sha256(_ data: Data) -> Data {

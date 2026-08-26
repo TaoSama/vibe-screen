@@ -17,6 +17,11 @@ Version `0.1.0` runs in one of two explicit authority modes:
   process never falls back to locally minted tokens, and `/readyz` reports
   unavailable while the authority is unreachable.
 
+The `production_authority` mode name means the signaling service delegates trust
+decisions to Authority. It is not a claim that the public Internet deployment,
+Mac/Android automatic profile issuance, Android UI import, or real media path is
+production-ready.
+
 The service has two explicit store backends. `memory` is process-local and
 intended for local development; `postgres` persists the short-lived rendezvous
 routing state and is required in `production_authority` mode. It is not an
@@ -115,17 +120,39 @@ over an already authenticated channel to that endpoint. Repeating the same
 `request_id` and body returns the identical response with `200`; changing any
 field returns `409`.
 
+When an operator creates a session through Authority's admin-only
+`POST /v1/session-authority/profiles` endpoint, signaling has no local `/v1/sessions`
+creation record. In `production_authority` mode, the first successful role
+authorization for that authority-issued `session_id` creates local routing
+metadata with empty role-token columns and an Authority-derived expiry. The
+role token is still rechecked remotely on every publish and poll; signaling does
+not retain the bearer token as a local fallback.
+
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
-rate window, and waiter count are backed by PostgreSQL and survive a signaling
-process restart until TTL cleanup. Replaying the same `request_id` after restart
-therefore returns the existing session rather than reconstructing an empty
-session. With `store_backend: memory`, a restart still loses all routing state,
-so operators must issue a fresh `request_id`. In `production_authority` mode,
-they must also use a larger `session_epoch`.
+rate window are backed by PostgreSQL and survive a signaling process restart
+until TTL cleanup. Long-poll waiter leases are stored in PostgreSQL and are
+reclaimed when their listener backend disappears. Waiter leases are tied to the
+PostgreSQL listener backend PID and start timestamp; another instance clears a
+lease only after that backend disappears, so a crashed or killed signaling
+process cannot permanently consume the per-role waiter slot. Replaying the same
+`request_id` after restart therefore returns the existing session rather than
+reconstructing an empty session. With `store_backend: memory`, a restart still
+loses all routing state, so operators must issue a fresh `request_id`. In
+`production_authority` mode, they must also use a larger `session_epoch`.
 
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
+
+HarmonyOS HUKS-backed secure pairing uses this same `production_authority`
+path. The Harmony client proves its HUKS-backed device identity to the Host,
+but service credentials stay server-side: clients receive only their
+session-scoped role token after the paired Host/backend has created the
+Authority admission. A revoked Harmony device, expired admission, stale session
+epoch, unreachable Authority, malformed Authority response, old peer, or
+no-HUKS device path must fail closed; Signaling must not mint local replacement
+tokens in production mode and the Harmony app must not treat trusted-LAN address
+import as secure pairing.
 
 ```bash
 curl --fail-with-body -X DELETE \
@@ -185,9 +212,10 @@ next poll. A cursor is scoped by the session bearer; changing it can only skip
 that caller's events, never read another session. One waiter per role is allowed
 by default. In `production_authority` mode every message publish is authorized
 before parsing and again immediately before commit, while every poll is
-authorized before and after its wait. A revocation that lands during a long
-poll therefore wins. Sessions and all SDP/ICE state are deleted from the active
-store at TTL.
+authorized before and during its wait. Long polls are split into bounded
+Authority refresh windows, so a revocation that lands during a long poll fails
+closed without waiting for the caller's full `wait_seconds` timeout. Sessions
+and all SDP/ICE state are deleted from the active store at TTL.
 
 ### Status codes
 
@@ -313,7 +341,8 @@ TURN-credential fail-closed revocation propagation, not a WebRTC ICE connection
 or an already-active TURN allocation.
 The Postgres store tests apply the migration twice, verify readiness checksum and
 schema drift failure, prove routing state survives a signaling restart, exercise
-expiry cleanup, long-poll wakeup, waiter caps, and concurrent capacity admission.
+expiry cleanup, cross-instance long-poll wakeup, connection-scoped waiter-lease
+recovery after backend disconnect, waiter caps, and concurrent capacity admission.
 
 ## Upgrade and rollback
 
@@ -338,13 +367,15 @@ risks.
 The following are explicit limitations of the current `production_authority`
 slice, not accepted production behavior:
 
-- Mac and Android automatic profile/account/session issuance is not wired to the
-  authority; the local development flows still require operator-supplied
-  credentials and epoch.
+- Mac and Android automatic invocation of Authority session-profile issuance is
+  not wired; local development flows still require an operator to request the
+  profile, pass the unsigned lease through the Mac signer, and import the signed
+  lease.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a session can be
   created.
-- Relay credential admission is wired to the authority, but the coturn exporter,
+- Relay credential and usage admission are wired to the authority, but the
+  coturn exporter,
   reconciliation loop, and active-allocation disconnect path are not production
   proven.
 - An active PeerConnection or TURN allocation is not actively disconnected when
@@ -352,10 +383,14 @@ slice, not accepted production behavior:
   rendezvous access.
 - The authority's per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes; their interaction is not yet unified.
-- PostgreSQL durable routing is implemented for `production_authority`, but
-  multi-instance operation is not proven. `session_creates_per_minute` remains a
-  process-local cap, throughput has not been validated across replicas, and no
-  public ingress deployment has exercised it.
+- PostgreSQL durable routing is implemented for `production_authority`, including
+  cross-instance message delivery through `LISTEN`/`NOTIFY`, transaction-level
+  session state locks, and connection-scoped waiter leases that can be reclaimed
+  after an instance loses its database backend. Multi-instance throughput, public
+  ingress behavior, and rolling deployment behavior are still not proven.
+  `session_creates_per_minute` remains a process-local cap.
+  Local integration tests cover two store instances sharing routing, long-poll
+  wakeups, and invalidation tombstones.
 - Per-message remote authorization against the authority and the global
   PostgreSQL advisory lock serialization of creates are deliberate fail-closed
   correctness choices, not a high-throughput design. Do not claim multi-instance

@@ -1,0 +1,294 @@
+{
+  "attribution": "inconclusive",
+  "derivation_status": "complete",
+  "errors": [],
+  "host_pid": 22385,
+  "interpretation": "This verdict applies only to the complete 10-17 minute diagnostic window. A pass means the required memory signals remained within the short-window stability thresholds while stream telemetry and bounded queues remained healthy. It is not the formal two-hour Host RSS no-growth gate and cannot close it; only host_rss_gate can evaluate the two-hour requirement.",
+  "kind": "host_memory_short_diagnostic",
+  "metrics": {
+    "heap_allocated_bytes": {
+      "endpoint_median_drift": 209715.0,
+      "sample_count": 3,
+      "slope_per_minute": 21234.11476939696
+    },
+    "heap_class_growth": [
+      {
+        "allocated_bytes_drift": 32768.0,
+        "count_drift": 8.0,
+        "name": "@autoreleasepool content"
+      },
+      {
+        "allocated_bytes_drift": 25600.0,
+        "count_drift": 224.0,
+        "name": "non-object"
+      },
+      {
+        "allocated_bytes_drift": 16384.0,
+        "count_drift": 1.0,
+        "name": "Swift Metadata"
+      },
+      {
+        "allocated_bytes_drift": 4096.0,
+        "count_drift": 22.0,
+        "name": "Swift._DictionaryStorage<Swift.Int, Observation.ObservationRegistrar.(State in $293dc1570).Observation>"
+      },
+      {
+        "allocated_bytes_drift": 3072.0,
+        "count_drift": 17.0,
+        "name": "Class.methodCache._buckets (bucket_t)"
+      },
+      {
+        "allocated_bytes_drift": 2048.0,
+        "count_drift": 41.0,
+        "name": "Closure context"
+      },
+      {
+        "allocated_bytes_drift": 1024.0,
+        "count_drift": 19.0,
+        "name": "NSMutableDictionary (Storage)"
+      },
+      {
+        "allocated_bytes_drift": 1024.0,
+        "count_drift": 18.0,
+        "name": "CFString"
+      },
+      {
+        "allocated_bytes_drift": 976.0,
+        "count_drift": 22.0,
+        "name": "Observation._ManagedCriticalState<Observation.ObservationRegistrar.(State in $293dc1570)>.(LockedBuffer in $293dc140c)<>"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 6.0,
+        "name": "Class.data (class_rw_t)"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "ObservationRegistrar.Extent"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "CFDictionary (Value Storage)"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "Swift._DictionaryStorage<Swift.String, Swift.String>"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "SwiftUI.(TypedElement in $23d458e24)<SwiftUI.(StyleInput in $23d44de84)<SwiftUI.PrimitiveButtonStyleConfiguration>>"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "NSAutoreleasePool"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "Closure context (unknown layout)"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "SVGAttribute"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "Swift._DictionaryStorage<Swift.ObjectIdentifier, SwiftUI.(AnyTrackedValue in $23d458d14)>"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "CFData (Bytes Storage)"
+      },
+      {
+        "allocated_bytes_drift": 0.0,
+        "count_drift": 0.0,
+        "name": "Swift._ContiguousArrayStorage<SwiftUI.DisplayList.Item>"
+      }
+    ],
+    "heap_node_count": {
+      "endpoint_median_drift": 1107.0,
+      "sample_count": 3,
+      "slope_per_minute": 112.19556361359348
+    },
+    "heap_watch_summary": {
+      "autorelease_pool": {
+        "allocated_bytes_drift": 32768.0,
+        "count_drift": 8.0,
+        "first_allocated_bytes": 28864.0,
+        "first_count": 11.0,
+        "last_allocated_bytes": 61632.0,
+        "last_count": 19.0,
+        "matched_classes": [
+          "@autoreleasepool content",
+          "NSAutoreleasePool"
+        ]
+      },
+      "swiftui_observation": {
+        "allocated_bytes_drift": 5072.0,
+        "count_drift": 44.0,
+        "first_allocated_bytes": 13712.0,
+        "first_count": 138.0,
+        "last_allocated_bytes": 18784.0,
+        "last_count": 182.0,
+        "matched_classes": [
+          "Observation._ManagedCriticalState<Observation.ObservationRegistrar.(State in $293dc1570)>.(LockedBuffer in $293dc140c)<>",
+          "ObservationRegistrar.Extent",
+          "Swift._DictionaryStorage<Swift.Int, Observation.ObservationRegistrar.(State in $293dc1570).Observation>"
+        ]
+      },
+      "video_frames": {
+        "allocated_bytes_drift": 2832.0,
+        "count_drift": 9.0,
+        "first_allocated_bytes": 0.0,
+        "first_count": 0.0,
+        "last_allocated_bytes": 2832.0,
+        "last_count": 9.0,
+        "matched_classes": [
+          "CVPixelBuffer",
+          "CVPixelBufferBacking",
+          "IOSurface",
+          "IOSurface._impl (malloc)",
+          "ScreenCapture.PixelBufferBox                      Swift   Vibe Screen",
+          "VideoEncoder.FrameContext                         Swift   Vibe Screen"
+        ]
+      }
+    },
+    "iosurface_dirty_bytes": {
+      "endpoint_median_drift": 0.0,
+      "sample_count": 21,
+      "slope_per_minute": 0.0
+    },
+    "malloc_large_dirty_bytes": {
+      "endpoint_median_drift": 0.0,
+      "sample_count": 21,
+      "slope_per_minute": 0.0
+    },
+    "malloc_small_dirty_bytes": {
+      "endpoint_median_drift": -49152.0,
+      "sample_count": 21,
+      "slope_per_minute": 18849.595698710673
+    },
+    "malloc_zone_allocated_bytes": {
+      "endpoint_median_drift": 105881.0,
+      "sample_count": 21,
+      "slope_per_minute": 15168.016836855066
+    },
+    "malloc_zone_dirty_bytes": {
+      "endpoint_median_drift": -7566131.0,
+      "sample_count": 21,
+      "slope_per_minute": -575507.2743406583
+    },
+    "malloc_zone_fragmentation_bytes": {
+      "endpoint_median_drift": -133120.0,
+      "sample_count": 21,
+      "slope_per_minute": 5402.18518901801
+    },
+    "physical_footprint_bytes": {
+      "endpoint_median_drift": 65560.0,
+      "sample_count": 21,
+      "slope_per_minute": 56520.46703395933
+    },
+    "rss_bytes": {
+      "endpoint_median_drift": -9699328.0,
+      "sample_count": 21,
+      "slope_per_minute": -862276.0579362819
+    },
+    "vmmap_physical_footprint_bytes": {
+      "endpoint_median_drift": 104858.0,
+      "sample_count": 21,
+      "slope_per_minute": 58024.38108223757
+    }
+  },
+  "reasons": [
+    "required short-run samples or telemetry are incomplete"
+  ],
+  "run_id": "f67e3c34-e1ce-495b-be02-42005b7fd027",
+  "schema_version": "vibescreen.evidence/v1",
+  "sufficiency": {
+    "collection_complete": true,
+    "duration": false,
+    "error_free": true,
+    "heap_allocated_bytes_complete": true,
+    "heap_node_count_complete": true,
+    "heap_samples": true,
+    "heap_window_coverage": true,
+    "malloc_small_dirty_bytes_complete": true,
+    "malloc_zone_allocated_bytes_complete": true,
+    "malloc_zone_dirty_bytes_complete": true,
+    "malloc_zone_fragmentation_bytes_complete": true,
+    "memory_samples": true,
+    "memory_window_coverage": true,
+    "physical_footprint_bytes_complete": true,
+    "rss_bytes_complete": true,
+    "stream_telemetry": false
+  },
+  "telemetry": {
+    "anomalies": [],
+    "coverage_complete": false,
+    "encoder_in_flight_capacity": null,
+    "encoder_present_values": [],
+    "fallback_capture_active_values": [],
+    "finish_boundary_gap_seconds": null,
+    "invalid_record_count": 259,
+    "latest_pixel_buffer_capacity": null,
+    "maximum_encoder_in_flight": null,
+    "maximum_frame_registry_count": null,
+    "maximum_internal_gap_seconds": null,
+    "maximum_latest_pixel_buffer_retained": null,
+    "maximum_queue_depth": null,
+    "minimum_fps": null,
+    "missing_optional_fields": [],
+    "missing_required_fields": [],
+    "out_of_window_record_count": 0,
+    "queue_capacity": null,
+    "session_epochs": [],
+    "single_session": false,
+    "start_boundary_gap_seconds": null,
+    "stream_stats_count": 0,
+    "total_stream_stats_count": 259
+  },
+  "thresholds": {
+    "fragmentation_minimum_drift_bytes": 524288,
+    "heap_minimum_node_drift": 500,
+    "live_minimum_drift_bytes": 524288,
+    "live_minimum_slope_bytes_per_minute": 16384,
+    "maximum_boundary_gap_seconds": 60.0,
+    "maximum_memory_internal_gap_seconds": 90.0,
+    "maximum_telemetry_boundary_gap_seconds": 30.0,
+    "maximum_telemetry_internal_gap_seconds": 10.0,
+    "minimum_duration_seconds": 600.0,
+    "minimum_heap_sample_count": 3,
+    "minimum_memory_sample_count": 20,
+    "pressure_minimum_drift_bytes": 1048576,
+    "pressure_minimum_slope_bytes_per_minute": 32768,
+    "stable_maximum_drift_bytes": 262144,
+    "stable_maximum_node_drift": 100,
+    "stable_maximum_slope_bytes_per_minute": 16384
+  },
+  "verdict": "insufficient",
+  "watched_heap_class_substrings": [
+    "ObservationRegistrar",
+    "_SetStorage<Int>",
+    "AutoreleasePool",
+    "NSAutoreleasePool",
+    "FrameContext",
+    "PixelBufferBox",
+    "CVPixelBuffer",
+    "IOSurface"
+  ],
+  "window": {
+    "finished_at": "2026-08-24T11:21:17.203843Z",
+    "interval_seconds": 30.0,
+    "requested_duration_seconds": 600.0,
+    "sample_count": 21,
+    "started_at": "2026-08-24T11:11:11.870297Z"
+  }
+}

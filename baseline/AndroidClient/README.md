@@ -39,8 +39,13 @@ normalized pressure, signed two-axis tilt, pen/eraser tool kind, two barrel
 buttons, and hover/proximity state over USB, LAN, and Internet. Extended stylus
 fields use an independent capability gate, while legacy or unnegotiated peers
 receive the existing pen-contact/touch behavior instead of unknown protocol
-bytes. Physical-stylus drawing-app confirmation and other peripherals remain
-release gates.
+bytes. The explicit legacy fallback is intentionally touch-compatible only:
+physical keyboard input shows the compatibility message without sending bytes,
+and native pointer move/click are rejected unless Protocol v1 has negotiated the
+pointer capability and installed a session input sink. Wheel and secondary
+mouse button input continue through the existing touch adapters for old peers.
+Physical-stylus drawing-app confirmation and other peripherals remain release
+gates.
 
 Internet mode is exposed as
 a development-preview UI: it scans the one-time pairing offer, completes the

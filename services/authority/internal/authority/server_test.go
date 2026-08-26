@@ -3,7 +3,11 @@ package authority
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +38,7 @@ type memoryAllocation struct {
 	request                   RelayAdmissionRequest
 	sequence, ingress, egress uint64
 	closed                    bool
+	closureReason             string
 	observed                  time.Time
 }
 type memoryStore struct {
@@ -48,13 +53,19 @@ type memoryStore struct {
 	events          map[string][sha256.Size]byte
 	daily           map[string]uint64
 	epochFloors     map[string]uint64
+	profiles        map[string]memoryProfile
 	now             func() time.Time
 	allocationLimit int
 	dailyLimit      uint64
 }
+type memoryProfile struct {
+	digest    [sha256.Size]byte
+	request   SessionProfileRequest
+	sessionID string
+}
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, now: time.Now, allocationLimit: 1, dailyLimit: 100}
+	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, profiles: map[string]memoryProfile{}, now: time.Now, allocationLimit: 1, dailyLimit: 100}
 }
 func (s *memoryStore) Close()                      {}
 func (s *memoryStore) Ready(context.Context) error { return s.readyError }
@@ -79,8 +90,9 @@ func (s *memoryStore) SuspendAccount(_ context.Context, id string, _ time.Time) 
 		}
 	}
 	for _, allocation := range s.allocations {
-		if s.devices[allocation.request.DeviceID] == id {
+		if s.devices[allocation.request.DeviceID] == id && !allocation.closed {
 			allocation.closed = true
+			allocation.closureReason = allocationClosedByAccountSuspended
 		}
 	}
 	return nil
@@ -116,15 +128,57 @@ func (s *memoryStore) RevokeDevice(_ context.Context, id string, epoch uint64, _
 		}
 	}
 	for _, allocation := range s.allocations {
-		if allocation.request.DeviceID == id {
+		if allocation.request.DeviceID == id && !allocation.closed {
 			allocation.closed = true
+			allocation.closureReason = allocationClosedByDeviceRevoked
 		}
 	}
 	return nil
 }
+func (s *memoryStore) IssueSessionProfile(ctx context.Context, request SessionProfileRequest, now time.Time) (SessionProfileResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	digest, err := profileRequestDigest(request)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	if existing, ok := s.profiles[request.RequestID]; ok {
+		if existing.digest != digest {
+			return SessionProfileResponse{}, ErrConflict
+		}
+		session := s.sessions[existing.sessionID]
+		if session == nil {
+			return SessionProfileResponse{}, ErrNotFound
+		}
+		if session.revoked || !now.Before(session.admission.ExpiresAt) || s.accounts[session.request.AccountID] || s.revoked[session.request.HostDeviceID] > 0 || s.revoked[session.request.ClientDeviceID] > 0 {
+			return SessionProfileResponse{}, ErrRevoked
+		}
+		unsignedLease, err := unsignedAndroidLease(request, s.admissionForMemory(session.admission.SessionID, session.admission.ExpiresAt, false))
+		if err != nil {
+			return SessionProfileResponse{}, err
+		}
+		return SessionProfileResponse{AccountID: request.AccountID, PairingID: request.PairingID, SignalingSessionID: existing.sessionID, HostSignalingToken: session.admission.HostToken, ExpiresAt: session.admission.ExpiresAt, Created: false, UnsignedAndroidLease: unsignedLease}, nil
+	}
+	admission, err := s.createSignalingLocked(SignalingRequest{RequestID: profileSignalingRequestID(request.RequestID), AccountID: request.AccountID, HostDeviceID: request.HostIdentity.DeviceID, ClientDeviceID: request.ClientIdentity.DeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: request.TTLSeconds}, now)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	if !admission.Created {
+		return SessionProfileResponse{}, ErrConflict
+	}
+	unsignedLease, err := unsignedAndroidLease(request, admission)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	s.profiles[request.RequestID] = memoryProfile{digest: digest, request: request, sessionID: admission.SessionID}
+	return SessionProfileResponse{AccountID: request.AccountID, PairingID: request.PairingID, SignalingSessionID: admission.SessionID, HostSignalingToken: admission.HostToken, ExpiresAt: admission.ExpiresAt, Created: true, UnsignedAndroidLease: unsignedLease}, nil
+}
 func (s *memoryStore) CreateSignaling(_ context.Context, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createSignalingLocked(request, now)
+}
+func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.Time) (SignalingAdmission, error) {
 	if s.accounts[request.AccountID] || s.revoked[request.HostDeviceID] > 0 || s.revoked[request.ClientDeviceID] > 0 {
 		return SignalingAdmission{}, ErrRevoked
 	}
@@ -135,6 +189,9 @@ func (s *memoryStore) CreateSignaling(_ context.Context, request SignalingReques
 		session := s.sessions[id]
 		if session.request != request {
 			return SignalingAdmission{}, ErrConflict
+		}
+		if session.revoked || !now.Before(session.admission.ExpiresAt) {
+			return SignalingAdmission{}, ErrRevoked
 		}
 		result := session.admission
 		result.Created = false
@@ -151,23 +208,26 @@ func (s *memoryStore) CreateSignaling(_ context.Context, request SignalingReques
 	s.requests[request.RequestID] = id
 	return result, nil
 }
-func (s *memoryStore) AuthorizeSignaling(_ context.Context, id, token string, now time.Time) (string, error) {
+func (s *memoryStore) admissionForMemory(sessionID string, expiresAt time.Time, created bool) SignalingAdmission {
+	return SignalingAdmission{SessionID: sessionID, HostToken: "host-" + sessionID, ClientToken: "client-" + sessionID, ExpiresAt: expiresAt, Created: created}
+}
+func (s *memoryStore) AuthorizeSignaling(_ context.Context, id, token string, now time.Time) (SignalingAuthorization, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session := s.sessions[id]
 	if session == nil {
-		return "", ErrNotFound
+		return SignalingAuthorization{}, ErrNotFound
 	}
 	if session.revoked || !now.Before(session.admission.ExpiresAt) || s.accounts[session.request.AccountID] || s.revoked[session.request.HostDeviceID] > 0 || s.revoked[session.request.ClientDeviceID] > 0 {
-		return "", ErrRevoked
+		return SignalingAuthorization{}, ErrRevoked
 	}
 	if token == session.admission.HostToken {
-		return "host", nil
+		return SignalingAuthorization{Role: "host", ExpiresAt: session.admission.ExpiresAt}, nil
 	}
 	if token == session.admission.ClientToken {
-		return "client", nil
+		return SignalingAuthorization{Role: "client", ExpiresAt: session.admission.ExpiresAt}, nil
 	}
-	return "", ErrNotFound
+	return SignalingAuthorization{}, ErrNotFound
 }
 func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.Time) error {
 	s.mu.Lock()
@@ -177,8 +237,9 @@ func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.T
 	}
 	s.sessions[id].revoked = true
 	for _, allocation := range s.allocations {
-		if allocation.request.SessionID == id {
+		if allocation.request.SessionID == id && !allocation.closed {
 			allocation.closed = true
+			allocation.closureReason = allocationClosedBySignalingInvalidated
 		}
 	}
 	return nil
@@ -188,10 +249,26 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	defer s.mu.Unlock()
 	allocationKey := memoryAllocationKey(request.SourceID, request.AllocationID)
 	if existing := s.allocations[allocationKey]; existing != nil {
-		if existing.request == request {
-			return nil
+		if existing.request != request {
+			return ErrConflict
 		}
-		return ErrConflict
+		if existing.closed {
+			return ErrRevoked
+		}
+		if s.revoked[request.DeviceID] > 0 || s.accounts[s.devices[request.DeviceID]] {
+			return ErrRevoked
+		}
+		session := s.sessions[request.SessionID]
+		if session == nil {
+			return ErrNotFound
+		}
+		if session.request.HostDeviceID != request.DeviceID && session.request.ClientDeviceID != request.DeviceID {
+			return ErrNotFound
+		}
+		if session.revoked || !now.Before(session.admission.ExpiresAt) {
+			return ErrRevoked
+		}
+		return nil
 	}
 	if s.revoked[request.DeviceID] > 0 || s.accounts[s.devices[request.DeviceID]] {
 		return ErrRevoked
@@ -266,8 +343,18 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 				session.revoked = true
 			}
 		}
+		for _, existing := range s.allocations {
+			if existing.request.DeviceID == usage.DeviceID && !existing.closed {
+				existing.closed = true
+				existing.closureReason = allocationClosedByRelayQuotaExceeded
+			}
+		}
 	}
-	allocation.sequence, allocation.ingress, allocation.egress, allocation.closed, allocation.observed = usage.Sequence, usage.IngressBytes, usage.EgressBytes, usage.Closed, usage.ObservedAt
+	allocation.sequence, allocation.ingress, allocation.egress, allocation.observed = usage.Sequence, usage.IngressBytes, usage.EgressBytes, usage.ObservedAt
+	if usage.Closed && !allocation.closed {
+		allocation.closed = true
+		allocation.closureReason = allocationClosedBySource
+	}
 	return false, nil
 }
 
@@ -276,23 +363,58 @@ func dailyUsageKey(deviceID string, day time.Time) string {
 }
 
 func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
-	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
+	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}, RevokedAllocationIDs: []string{}}
 	seen := map[string]bool{}
 	for index, usage := range request.Allocations {
 		usage.SourceID = request.SourceID
 		usage.EventID = reconciliationEventID(request.SourceID, request.ObservedAt, usage.AllocationID)
 		usage.ObservedAt = request.ObservedAt
+		revoked, err := s.reconciliationAllocationRevoked(usage)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrStaleUsage) {
+				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			return result, err
+		}
+		if revoked {
+			result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+			seen[request.Allocations[index].AllocationID] = true
+			continue
+		}
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrRevoked) {
+				if revoked, classifyErr := s.reconciliationAllocationRevoked(usage); classifyErr == nil && revoked {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+				} else {
+					result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
+				}
+				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
 			if errors.Is(err, ErrStaleUsage) {
 				s.mu.Lock()
 				allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
+				closedByAuthority := allocation != nil && isAuthorityClosureString(allocation.closureReason) && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID
 				ahead := allocation != nil && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID && allocation.sequence >= usage.Sequence && allocation.ingress >= usage.IngressBytes && allocation.egress >= usage.EgressBytes
 				s.mu.Unlock()
+				if closedByAuthority {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+					seen[request.Allocations[index].AllocationID] = true
+					continue
+				}
 				if ahead {
 					result.AlreadyAhead++
 					seen[request.Allocations[index].AllocationID] = true
@@ -327,7 +449,25 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 	sort.Strings(result.MissingAllocationIDs)
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
+	sort.Strings(result.RevokedAllocationIDs)
 	return result, nil
+}
+
+func (s *memoryStore) reconciliationAllocationRevoked(usage CoturnUsage) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
+	if allocation == nil {
+		return false, ErrNotFound
+	}
+	if allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID {
+		return false, ErrStaleUsage
+	}
+	session := s.sessions[allocation.request.SessionID]
+	if session == nil {
+		return false, ErrNotFound
+	}
+	return isAuthorityClosureString(allocation.closureReason) || s.revoked[usage.DeviceID] > 0 || s.accounts[s.devices[usage.DeviceID]] || session.revoked || !usage.ObservedAt.Before(session.admission.ExpiresAt), nil
 }
 
 func memoryAllocationKey(sourceID, allocationID string) string {
@@ -339,12 +479,36 @@ func testAuthorityConfig() Config {
 }
 
 func TestRequiredSchemaChecksumMatchesMigration(t *testing.T) {
-	contents, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
+	contents, err := os.ReadFile(filepath.Join("..", "..", "migrations", "002_authority_relay_allocation_closure_reason.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if checksum := fmt.Sprintf("%x", sha256.Sum256(contents)); checksum != requiredSchemaChecksum {
 		t.Fatalf("migration checksum=%s, readiness requires %s", checksum, requiredSchemaChecksum)
+	}
+}
+
+func TestLoadMigrationsSortsVersionedDirectory(t *testing.T) {
+	directory := t.TempDir()
+	files := map[string]string{
+		"002_second.sql": "SELECT 2",
+		"001_first.sql":  "SELECT 1",
+		"README.md":      "ignored",
+	}
+	for name, contents := range files {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	migrations, err := LoadMigrations(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) != 2 {
+		t.Fatalf("migration count=%d, want 2", len(migrations))
+	}
+	if migrations[0].Version != 1 || migrations[0].Source != "SELECT 1" || migrations[1].Version != 2 || migrations[1].Source != "SELECT 2" {
+		t.Fatalf("migrations=%+v", migrations)
 	}
 }
 
@@ -513,6 +677,26 @@ func TestDenyWinsAcrossConcurrentSignalingAdmissionAndRevocation(t *testing.T) {
 	}
 }
 
+func TestCreatedSignalingAdmissionFailsClosedAfterDeviceRevocation(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now()
+	admission := createMemorySession(t, store, "account", "host", "client", 1, now)
+	if _, err := store.AuthorizeSignaling(ctx, admission.SessionID, admission.ClientToken, now); err != nil {
+		t.Fatalf("initial authorization failed: %v", err)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AuthorizeSignaling(ctx, admission.SessionID, admission.ClientToken, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("revoked client authorization error=%v, want ErrRevoked", err)
+	}
+	if _, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "after-revoke", AccountID: "account",
+		HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("new admission after revoke error=%v, want ErrRevoked", err)
+	}
+}
+
 func TestDeviceRevocationIsIdempotentAtTheSameEpoch(t *testing.T) {
 	store := newMemoryStore()
 	ctx := context.Background()
@@ -595,6 +779,52 @@ func TestSignalingEpochCannotRollBack(t *testing.T) {
 	}
 }
 
+func TestSignalingIdempotentReplayFailsClosedAfterInvalidation(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}
+	created, err := store.CreateSignaling(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InvalidateSignaling(ctx, created.SessionID, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSignaling(ctx, request, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("idempotent replay after invalidation error=%v, want ErrRevoked", err)
+	}
+}
+
+func TestSignalingIdempotentReplayFailsClosedAfterExpiry(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}
+	if _, err := store.CreateSignaling(ctx, request, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSignaling(ctx, request, now.Add(60*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("idempotent replay after expiry error=%v, want ErrRevoked", err)
+	}
+}
+
 func TestRelayAdmissionRequiresActiveBoundSession(t *testing.T) {
 	store := newMemoryStore()
 	now := time.Now().UTC()
@@ -642,6 +872,54 @@ func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	changed.DeviceID = "host"
 	if err := store.AdmitRelay(context.Background(), changed, now); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed retry error=%v", err)
+	}
+}
+
+func TestRelayAdmissionRetryFailsClosedAfterRevocation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(context.Context, *memoryStore, SignalingAdmission, time.Time) error
+	}{
+		{name: "session invalidated", mutate: func(ctx context.Context, store *memoryStore, session SignalingAdmission, now time.Time) error {
+			return store.InvalidateSignaling(ctx, session.SessionID, now)
+		}},
+		{name: "device revoked", mutate: func(ctx context.Context, store *memoryStore, _ SignalingAdmission, now time.Time) error {
+			return store.RevokeDevice(ctx, "client", 1, now)
+		}},
+		{name: "account suspended", mutate: func(ctx context.Context, store *memoryStore, _ SignalingAdmission, now time.Time) error {
+			return store.SuspendAccount(ctx, "account", now)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMemoryStore()
+			ctx := context.Background()
+			now := time.Now().UTC()
+			session := createMemorySession(t, store, "account", "host", "client", 1, now)
+			request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+			if err := store.AdmitRelay(ctx, request, now); err != nil {
+				t.Fatal(err)
+			}
+			if err := test.mutate(ctx, store, session, now.Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.AdmitRelay(ctx, request, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+				t.Fatalf("exact relay retry after revoke error=%v, want ErrRevoked", err)
+			}
+		})
+	}
+}
+
+func TestRelayAdmissionRetryFailsClosedAfterSessionExpiry(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "client", 1, now)
+	request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+	if err := store.AdmitRelay(ctx, request, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, request, session.ExpiresAt); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("exact relay retry after expiry error=%v, want ErrRevoked", err)
 	}
 }
 
@@ -782,6 +1060,33 @@ func TestCoturnUsageOverDailyLimitRevokesAfterLedgerUpdate(t *testing.T) {
 	}
 }
 
+func TestReconcileReportsQuotaClosedAllocationsAsRevoked(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 2
+	store.dailyLimit = 40
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "device", 1, now)
+	admission := RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+	if err := store.AdmitRelay(ctx, admission, now); err != nil {
+		t.Fatal(err)
+	}
+	overage := CoturnUsage{SourceID: "node", EventID: "event-1", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 41, ObservedAt: now}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || duplicate {
+		t.Fatalf("overage usage=%v/%v", duplicate, err)
+	}
+
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 2, IngressBytes: 42},
+	}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 0 || !slices.Equal(result.RevokedAllocationIDs, []string{"allocation"}) || len(result.ConflictAllocationIDs) != 0 || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result=%+v", result)
+	}
+}
+
 func TestRelayDailyQuotaUsesUTCIngestionDayBoundary(t *testing.T) {
 	store := newMemoryStore()
 	store.allocationLimit = 2
@@ -905,6 +1210,68 @@ func TestCoturnEventIdentityAndReconcileConflicts(t *testing.T) {
 	}
 }
 
+func TestReconcileReportsRevokedAllocationsAsRevoked(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 3
+	ctx := context.Background()
+	now := time.Now().UTC()
+	revokedSession := createMemorySession(t, store, "account", "host", "client", 1, now)
+	activeSession := createMemorySession(t, store, "account", "other-host", "other-client", 1, now)
+	for _, request := range []RelayAdmissionRequest{
+		{DeviceID: "client", SessionID: revokedSession.SessionID, AllocationID: "revoked", SourceID: "node"},
+		{DeviceID: "other-client", SessionID: activeSession.SessionID, AllocationID: "active", SourceID: "node"},
+	} {
+		if err := store.AdmitRelay(ctx, request, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "active", DeviceID: "other-client", SessionID: activeSession.SessionID, Sequence: 1, IngressBytes: 5},
+		{AllocationID: "revoked", DeviceID: "client", SessionID: revokedSession.SessionID, Sequence: 1, IngressBytes: 99},
+	}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 1 || !slices.Equal(result.RevokedAllocationIDs, []string{"revoked"}) || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result=%+v", result)
+	}
+	if got := store.daily[dailyUsageKey("client", now)]; got != 0 {
+		t.Fatalf("revoked usage mutated daily bytes to %d", got)
+	}
+}
+
+func TestCoturnReconcileDoesNotReportSourceClosedAllocationsAsRevoked(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 2
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "client", 1, now)
+	ctx := context.Background()
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "source-closed", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	closed := CoturnUsage{SourceID: "node", EventID: "source-close", AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now.Add(time.Second), Closed: true}
+	if _, err := store.ApplyCoturnUsage(ctx, closed); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyAhead != 1 || len(result.RevokedAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 {
+		t.Fatalf("source-closed reconcile result=%+v, want already ahead without revoked/conflict", result)
+	}
+	result, err = store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.ConflictAllocationIDs, []string{"source-closed"}) || len(result.RevokedAllocationIDs) != 0 {
+		t.Fatalf("source-closed advanced reconcile result=%+v, want conflict without revoked", result)
+	}
+}
+
 func TestCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
 	store := newMemoryStore()
 	store.allocationLimit = 6
@@ -1006,6 +1373,7 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	}
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.AdminToken, body, http.StatusUnauthorized)
 	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, body, http.StatusForbidden)
 	authorize := `{"role_token":"` + b.ClientToken + `"}`
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 }
@@ -1055,7 +1423,7 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
 	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
 	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
-	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request","account_id":"account","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, "{\"request_id\":\"request\",\"account_id\":\"account\",\"host_device_id\":\"host\",\"client_device_id\":\"client\",\"session_epoch\":1,\"ttl_seconds\":60}", http.StatusCreated)
 	var admission SignalingAdmission
 	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
 		t.Fatal(err)
@@ -1077,7 +1445,7 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 		t.Fatalf("duplicate response=%s", duplicate.Body.String())
 	}
 
-	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, "{\"epoch\":1}", http.StatusNoContent)
 	finalUsage := usage
 	finalUsage.EventID = "event-2"
 	finalUsage.Sequence = 2
@@ -1087,6 +1455,44 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, mustJSON(t, finalUsage), http.StatusForbidden)
 	newRelay := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "after-revoke", SourceID: "node"})
 	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, newRelay, http.StatusForbidden)
+}
+
+func TestHTTPCoturnReconcileReturnsRevokedAllocationsForDisconnect(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	current := now
+	server.now = func() time.Time { return current }
+	handler := server.Handler()
+
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, "{\"request_id\":\"request\",\"account_id\":\"account\",\"host_device_id\":\"host\",\"client_device_id\":\"client\",\"session_epoch\":1,\"ttl_seconds\":60}", http.StatusCreated)
+	var admission SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
+		t.Fatal(err)
+	}
+
+	relayBody := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "allocation", SourceID: "node"})
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, relayBody, http.StatusNoContent)
+	current = now.Add(time.Second)
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, "{\"epoch\":1}", http.StatusNoContent)
+
+	current = now.Add(3 * time.Second)
+	snapshot := ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{{AllocationID: "allocation", DeviceID: "client", SessionID: admission.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20}}}
+	response := request(t, handler, http.MethodPost, "/v1/coturn/reconcile", cfg.CoturnToken, mustJSON(t, snapshot), http.StatusOK)
+	var result ReconcileResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.RevokedAllocationIDs, []string{"allocation"}) || result.Applied != 0 {
+		t.Fatalf("reconcile result=%+v, want revoked allocation only", result)
+	}
 }
 
 func TestAuthorityResponsesSetSecurityHeaders(t *testing.T) {
@@ -1117,6 +1523,105 @@ func TestAuthorityReadinessFailsClosedWithoutExposingClockDetails(t *testing.T) 
 	if got, want := response.Body.String(), "{\"error\":\"authority storage unavailable\"}\n"; got != want {
 		t.Fatalf("readiness body=%q, want %q", got, want)
 	}
+}
+
+func TestSessionProfileIssuanceCreatesSignalingAndUnsignedLease(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-request", 11)
+	registerProfileDevices(t, store, profile)
+	body := mustJSON(t, profile)
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.SignalingToken, body, http.StatusUnauthorized)
+
+	created := request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusCreated)
+	var response SessionProfileResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.Created || response.AccountID != "account" || response.PairingID != "pair-1" || response.SignalingSessionID == "" || response.HostSignalingToken == "" {
+		t.Fatalf("unexpected profile response: %#v", response)
+	}
+	var lease map[string]any
+	if err := json.Unmarshal(response.UnsignedAndroidLease, &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease["session_epoch"] != float64(11) || lease["signaling_session_id"] != response.SignalingSessionID || lease["signaling_token"] == "" || lease["expires_at"] != float64(response.ExpiresAt.Unix()) {
+		t.Fatalf("unsigned lease did not bind authority session: %#v", lease)
+	}
+	if _, ok := lease["lease_signature"]; ok {
+		t.Fatal("authority returned a signed lease; Mac host must sign after local pairing verification")
+	}
+	if authorization, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, lease["signaling_token"].(string), time.Now().UTC()); err != nil || authorization.Role != "client" {
+		t.Fatalf("client token was not authority-admitted: authorization=%#v err=%v", authorization, err)
+	}
+}
+
+func TestSessionProfileIssuanceReplayIsExactAndRejectsDrift(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-request", 11)
+	registerProfileDevices(t, store, profile)
+	body := mustJSON(t, profile)
+	created := request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusCreated)
+	replayed := request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, body, http.StatusOK)
+	var first, second SessionProfileResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(replayed.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.SignalingSessionID != second.SignalingSessionID || first.HostSignalingToken != second.HostSignalingToken || second.Created {
+		t.Fatalf("idempotent replay changed stable fields: first=%#v second=%#v", first, second)
+	}
+	profile.SessionEpoch = 12
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, profile), http.StatusConflict)
+}
+
+func TestSessionProfileIssuanceFailsClosedForStaleEpochAndRevokedDevice(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := testSessionProfileRequest(t, "profile-request", 11)
+	registerProfileDevices(t, store, first)
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, first), http.StatusCreated)
+	stale := testSessionProfileRequest(t, "stale-request", 10)
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, stale), http.StatusConflict)
+	if err := store.RevokeDevice(context.Background(), first.ClientIdentity.DeviceID, 1, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	revoked := testSessionProfileRequest(t, "revoked-request", 12)
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, revoked), http.StatusForbidden)
+}
+
+func TestSessionProfileIssuanceValidatesIdentityAndLoopbackOnlyInsecureURL(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "bad-identity", 1)
+	registerProfileDevices(t, store, profile)
+	profile.HostIdentity.KeyID = strings.Repeat("0", 64)
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, profile), http.StatusBadRequest)
+
+	badURL := testSessionProfileRequest(t, "bad-url", 1)
+	registerProfileDevices(t, store, badURL)
+	badURL.SignalingURL = "http://example.test"
+	badURL.AllowInsecureForTesting = true
+	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, badURL), http.StatusBadRequest)
 }
 
 func TestPostgresStoreRejectsUsageOutsideAllocationColumnBounds(t *testing.T) {
@@ -1158,6 +1663,54 @@ func mustJSON(t *testing.T, value any) string {
 		t.Fatal(err)
 	}
 	return string(encoded)
+}
+
+func registerProfileDevices(t *testing.T, store *memoryStore, profile SessionProfileRequest) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.EnsureAccount(ctx, profile.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{profile.HostIdentity.DeviceID, profile.ClientIdentity.DeviceID} {
+		if err := store.RegisterDevice(ctx, profile.AccountID, deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func testSessionProfileRequest(t *testing.T, requestID string, epoch uint64) SessionProfileRequest {
+	t.Helper()
+	return SessionProfileRequest{
+		RequestID:               requestID,
+		AccountID:               "account",
+		PairingID:               "pair-1",
+		HostIdentity:            testPublicIdentity(t, "host-device", 3),
+		ClientIdentity:          testPublicIdentity(t, "client-device", 5),
+		SignalingURL:            "https://signal.example.test",
+		SessionEpoch:            epoch,
+		TTLSeconds:              60,
+		TranscriptContext:       base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)),
+		ProtocolSessionID:       base64.StdEncoding.EncodeToString([]byte("protocol-session")),
+		ICEServers:              []LeaseICEServer{{URLs: []string{"stun:stun.example.test"}}},
+		AllowInsecureForTesting: false,
+	}
+}
+
+func testPublicIdentity(t *testing.T, deviceID string, epoch uint64) PublicDeviceIdentity {
+	t.Helper()
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := key.PublicKey().Bytes()
+	digest := sha256.Sum256(publicKey)
+	return PublicDeviceIdentity{
+		DeviceID:           deviceID,
+		KeyID:              hex.EncodeToString(digest[:]),
+		KeyEpoch:           epoch,
+		SignatureAlgorithm: "ECDSA_P256_SHA256",
+		SigningPublicKey:   base64.RawURLEncoding.EncodeToString(publicKey),
+	}
 }
 
 func TestConfigBoundsPreventDurationAndUint64Overflow(t *testing.T) {

@@ -1,0 +1,79 @@
+mkdir -p .build/evidence/host-readiness-current-base-clean
+python3 scripts/macos_dev_host.py readiness \
+		--report .build/evidence/host-readiness-current-base-clean/host-signing-and-permissions.txt \
+		--json-output .build/evidence/host-readiness-current-base-clean/host-readiness.json \
+		--port 54321
+{
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+    "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement"
+  ],
+  "can_close_runtime_gates": false,
+  "can_start_controller_runtime_gate": false,
+  "can_start_hardware_keyboard_gate": false,
+  "can_start_headless_login_gate": false,
+  "can_start_host_rss_gate": false,
+  "can_start_native_hid_gate": false,
+  "can_start_stylus_gate": false,
+  "can_start_trusted_lan_gate": false,
+  "entitlements": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "error": null,
+    "keys": [],
+    "virtual_hid": false
+  },
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "authorities": [
+      "Vibe Screen Dev",
+      "Vibe Screen Dev Root"
+    ],
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "current_source_commit": "af3c02beee23b680f56b0bdc211c714df52b1119",
+    "current_source_dirty": false,
+    "current_source_tree": "5642b4cdb8f59cb3fdb05fd503a6d4f81d5dabb6",
+    "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
+    "identifier": "dev.telemachus.display",
+    "identity": "Vibe Screen Dev",
+    "is_ad_hoc": false,
+    "source_commit": null,
+    "source_dirty": null,
+    "source_tree": null,
+    "team_identifier": "not set"
+  },
+  "kind": "macos_host_shared_prerequisite_readiness",
+  "listener": {
+    "error": null,
+    "observed": true,
+    "output": "COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 22385 <redacted-user>    7u  IPv4 0x1b798f5fc60f9b70      0t0  TCP 127.0.0.1:54321 (LISTEN)",
+    "port": 54321
+  },
+  "listener_status": "ready",
+  "permissions": {
+    "accessibility_granted": false,
+    "database_path": "<user-tcc-db>; <system-tcc-db>",
+    "error": "<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "readable": false,
+    "rows": [],
+    "screen_recording_granted": false
+  },
+  "safety": {
+    "closes_runtime_gates": false,
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.host-readiness/v1",
+  "signing_tcc_status": "blocked",
+  "status": "blocked",
+  "virtual_hid_status": "blocked"
+}
+Wrote .build/evidence/host-readiness-current-base-clean/host-signing-and-permissions.txt
+Wrote .build/evidence/host-readiness-current-base-clean/host-readiness.json
+make: *** [baseline-macos-host-readiness] Error 2

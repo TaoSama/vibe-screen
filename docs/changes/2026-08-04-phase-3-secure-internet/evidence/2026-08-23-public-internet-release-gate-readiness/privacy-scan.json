@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3291,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "89f0450babbd23c270fb149fa761c71afa3798688da66984d6add8ffc87c5067"
+    },
+    {
+      "bytes": 2314,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "1f096d060cecc39cc1a95be1ede449dca67c396e9f009d0a39edbf64895d1915"
+    },
+    {
+      "bytes": 10070,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "phase3-internet-release-gate.json",
+      "result": "pass",
+      "sha256": "caf09c2725c8612062547c594d578330842c2dfb12aa17cc10dbcf0093278975"
+    },
+    {
+      "bytes": 5063,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "readiness.json",
+      "result": "pass",
+      "sha256": "bbc02e7fe62491db5895cc0a903991ac8e1cfff219206f8fb9aa82b9ee1457e6"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

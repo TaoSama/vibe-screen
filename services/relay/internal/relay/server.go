@@ -29,14 +29,15 @@ type rateWindow struct {
 }
 
 type Server struct {
-	cfg       Config
-	store     Store
-	authority relayAuthority
-	metrics   Metrics
-	now       func() time.Time
-	rateMu    sync.Mutex
-	rates     map[string]rateWindow
-	revokeMu  sync.RWMutex
+	cfg        Config
+	store      Store
+	authority  relayAuthority
+	metrics    Metrics
+	now        func() time.Time
+	rateMu     sync.Mutex
+	rates      map[string]rateWindow
+	revokeMu   sync.RWMutex
+	registryMu sync.Mutex
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -104,6 +105,10 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if s.authority != nil {
 		if err := s.authority.Ready(r.Context()); err != nil {
 			s.reject(w, http.StatusServiceUnavailable, "authority unavailable")
+			return
+		}
+		if err := checkAllocationRegistryReady(s.cfg.AllocationRegistryFile, s.cfg.AuthoritySourceID); err != nil {
+			s.reject(w, http.StatusServiceUnavailable, "allocation registry unavailable")
 			return
 		}
 	}
@@ -199,31 +204,9 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.authority != nil {
-		err := s.authority.AdmitRelay(r.Context(), relayAdmissionRequest{
-			DeviceID:     request.DeviceID,
-			SessionID:    request.SessionID,
-			AllocationID: request.AllocationID,
-			SourceID:     s.cfg.AuthoritySourceID,
-		})
-		switch {
-		case err == nil:
-		case errors.Is(err, ErrDeviceRevoked):
-			s.rejectRevoked(w)
-			return
-		case errors.Is(err, ErrQuotaExceeded):
-			s.reject(w, http.StatusTooManyRequests, err.Error())
-			return
-		case errors.Is(err, ErrConflict):
-			s.reject(w, http.StatusConflict, err.Error())
-			return
-		case errors.Is(err, ErrAuthorityUnavailable):
-			s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
-			return
-		default:
-			s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
-			return
-		}
+	if err := s.admitRelay(r.Context(), request.DeviceID, request.SessionID, request.AllocationID); err != nil {
+		s.writeAuthorityAdmissionError(w, err)
+		return
 	}
 	s.revokeMu.RLock()
 	defer s.revokeMu.RUnlock()
@@ -236,20 +219,79 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		s.rejectRevoked(w)
 		return
 	}
-	s.writeCredential(w, request, ttl)
+	credential, username, err := s.buildCredential(request, ttl)
+	if err != nil {
+		s.reject(w, http.StatusInternalServerError, "credential generation failed")
+		return
+	}
+	if err := s.registerAllocation(request, username); err != nil {
+		s.rejectStorage(w)
+		return
+	}
+	s.metrics.credentialIssued.Add(1)
+	writeJSON(w, http.StatusOK, credential)
+}
+
+func (s *Server) admitRelay(ctx context.Context, deviceID, sessionID, allocationID string) error {
+	if s.authority == nil {
+		return nil
+	}
+	return s.authority.AdmitRelay(ctx, relayAdmissionRequest{
+		DeviceID:     deviceID,
+		SessionID:    sessionID,
+		AllocationID: allocationID,
+		SourceID:     s.cfg.AuthoritySourceID,
+	})
+}
+
+func (s *Server) writeAuthorityAdmissionError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrDeviceRevoked):
+		s.rejectRevoked(w)
+	case errors.Is(err, ErrQuotaExceeded):
+		s.reject(w, http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, ErrConflict):
+		s.reject(w, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrAuthorityUnavailable):
+		s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
+	default:
+		s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
+	}
 }
 
 func (s *Server) writeCredential(w http.ResponseWriter, request credentialRequest, ttl int64) {
+	credential, _, err := s.buildCredential(request, ttl)
+	if err != nil {
+		s.reject(w, http.StatusInternalServerError, "credential generation failed")
+		return
+	}
+	s.metrics.credentialIssued.Add(1)
+	writeJSON(w, http.StatusOK, credential)
+}
+
+func (s *Server) buildCredential(request credentialRequest, ttl int64) (map[string]any, string, error) {
 	expires := s.now().UTC().Add(time.Duration(ttl) * time.Second).Unix()
 	username := fmt.Sprintf("%d:%s", expires, request.DeviceID)
 	mac := hmac.New(sha1.New, []byte(s.cfg.TurnSecret))
 	if _, err := mac.Write([]byte(username)); err != nil {
-		s.reject(w, http.StatusInternalServerError, "credential generation failed")
-		return
+		return nil, "", err
 	}
 	password := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	s.metrics.credentialIssued.Add(1)
-	writeJSON(w, http.StatusOK, map[string]any{"username": username, "password": password, "ttl_seconds": ttl, "realm": s.cfg.TurnRealm, "uris": s.cfg.TurnURIs})
+	return map[string]any{"username": username, "password": password, "ttl_seconds": ttl, "realm": s.cfg.TurnRealm, "uris": s.cfg.TurnURIs}, username, nil
+}
+
+func (s *Server) registerAllocation(request credentialRequest, username string) error {
+	if s.cfg.EffectiveAuthorityMode() != AuthorityModeProd {
+		return nil
+	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	return upsertAllocationRegistryEntry(s.cfg.AllocationRegistryFile, allocationRegistryEntry{
+		AllocationID: request.AllocationID,
+		DeviceID:     request.DeviceID,
+		SessionID:    request.SessionID,
+		Username:     username,
+	}, s.cfg.AuthoritySourceID)
 }
 
 func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
@@ -285,11 +327,48 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid event, device, or session identifier")
 		return
 	}
+	if s.authority != nil && !validIdentifier(event.AllocationID) {
+		s.reject(w, http.StatusBadRequest, "allocation_id is required in production authority mode")
+		return
+	}
 	if event.IngressBytes > s.cfg.MaxUsageEventBytes || event.EgressBytes > s.cfg.MaxUsageEventBytes {
 		s.reject(w, http.StatusBadRequest, "usage event exceeds byte limit")
 		return
 	}
-	err := s.store.Apply(r.Context(), s.now(), event)
+	if !validUsageKind(event.Kind) {
+		s.reject(w, http.StatusBadRequest, fmt.Sprintf("%s: unsupported event kind %q", ErrInvalidEvent, event.Kind))
+		return
+	}
+	duplicate, err := s.store.Duplicate(r.Context(), s.now(), event)
+	if errors.Is(err, ErrInvalidEvent) {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrStorage) {
+		s.rejectStorage(w)
+		return
+	}
+	if err != nil {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if duplicate {
+		if event.Kind == "end" {
+			if err := s.removeCompletedAllocation(event.AllocationID); err != nil {
+				s.rejectStorage(w)
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "duplicate"})
+		return
+	}
+	if s.authority != nil {
+		if err := s.admitRelay(r.Context(), event.DeviceID, event.SessionID, event.AllocationID); err != nil {
+			s.writeAuthorityAdmissionError(w, err)
+			return
+		}
+	}
+	err = s.store.Apply(r.Context(), s.now(), event)
 	if errors.Is(err, ErrDeviceRevoked) {
 		s.rejectRevoked(w)
 		return
@@ -310,10 +389,34 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if event.Kind == "end" {
+		if err := s.removeCompletedAllocation(event.AllocationID); err != nil {
+			s.rejectStorage(w)
+			return
+		}
+	}
 	s.metrics.usageAccepted.Add(1)
 	s.metrics.ingressBytes.Add(event.IngressBytes)
 	s.metrics.egressBytes.Add(event.EgressBytes)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+func (s *Server) removeCompletedAllocation(allocationID string) error {
+	if s.cfg.EffectiveAuthorityMode() != AuthorityModeProd {
+		return nil
+	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	return removeAllocationRegistryEntry(s.cfg.AllocationRegistryFile, allocationID, s.cfg.AuthoritySourceID)
+}
+
+func validUsageKind(kind string) bool {
+	switch kind {
+	case "start", "update", "end":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) allowCredential(key string) bool {

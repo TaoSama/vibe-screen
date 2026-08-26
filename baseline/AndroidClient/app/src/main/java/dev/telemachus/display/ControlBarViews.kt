@@ -15,6 +15,7 @@ internal data class ControlBarViews(
     val actions: LinearLayout,
     val hostAction: View,
     val clipboard: View,
+    val fileTransfer: View,
     val settings: View,
     val disconnect: View,
 )
@@ -108,6 +109,7 @@ internal object ControlBarLayoutApplier {
                 .coerceAtLeast(0)
         val hostActionsVisible = views.hostAction.visibility == View.VISIBLE
         val clipboardVisible = views.clipboard.visibility == View.VISIBLE
+        val fileTransferVisible = views.fileTransfer.visibility == View.VISIBLE
         val mode =
             ControlBarLayoutPolicy.mode(
                 availableWidthPx = availableWidthPx,
@@ -115,11 +117,14 @@ internal object ControlBarLayoutApplier {
                 hostActionsVisible = hostActionsVisible,
                 clipboardVisible = clipboardVisible,
                 geometry = geometry,
+                fileTransferVisible = fileTransferVisible,
         )
         val cardParams = views.card.layoutParams
         val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
         val selectorParams = views.displaySelector.layoutParams as LinearLayout.LayoutParams
         val actionsParams = views.actions.layoutParams as LinearLayout.LayoutParams
+        views.connectionStatus.minimumWidth = geometry.statusMinimumWidthPx
+        views.displaySelector.minimumWidth = geometry.selectorMinimumWidthPx
         when (mode) {
             ControlBarLayoutPolicy.Mode.COMPACT -> {
                 cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -134,8 +139,8 @@ internal object ControlBarLayoutApplier {
             ControlBarLayoutPolicy.Mode.INLINE -> {
                 cardParams.width = 0
                 views.content.orientation = LinearLayout.HORIZONTAL
-                statusParams.width = 0
-                statusParams.weight = 1f
+                statusParams.width = geometry.statusMinimumWidthPx
+                statusParams.weight = 0f
                 selectorParams.width = 0
                 selectorParams.weight = 1f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -177,10 +182,19 @@ internal object ControlBarLayoutApplier {
         listOf(
             views.hostAction to ControlBarLayoutPolicy.Action.HOST,
             views.clipboard to ControlBarLayoutPolicy.Action.CLIPBOARD,
+            views.fileTransfer to ControlBarLayoutPolicy.Action.FILE_TRANSFER,
             views.settings to ControlBarLayoutPolicy.Action.SETTINGS,
             views.disconnect to ControlBarLayoutPolicy.Action.DISCONNECT,
         ).forEach { (view, action) ->
-            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, clipboardVisible, geometry)
+            val margins =
+                ControlBarLayoutPolicy.actionMargins(
+                    mode,
+                    action,
+                    hostActionsVisible,
+                    clipboardVisible,
+                    geometry,
+                    fileTransferVisible = fileTransferVisible,
+                )
             val params = view.layoutParams as LinearLayout.LayoutParams
             params.marginStart = margins.startPx
             params.topMargin = margins.topPx
@@ -194,6 +208,7 @@ internal object ControlBarLayoutApplier {
 
 /** Production binding for the visible and accessibility display names. */
 internal object DisplayCapsuleViewBinder {
+    @JvmOverloads
     fun bind(
         resources: Resources,
         selector: View,
@@ -201,15 +216,30 @@ internal object DisplayCapsuleViewBinder {
         displaySelection: Boolean,
         displays: List<StreamDisplayOption>,
         selectedId: String,
+        pendingDisplayId: String? = null,
     ): Boolean {
         val selectable = DisplayCapsulePolicy.isSelectable(displaySelection, displays)
-        val label =
+        val activeLabel =
             DisplayCapsulePolicy.capsuleLabel(displays, selectedId)
                 .ifEmpty { resources.getString(R.string.display_capsule_placeholder) }
+        val pendingLabel =
+            DisplayCapsulePolicy
+                .pendingOption(displays, pendingDisplayId)
+                ?.name
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val label =
+            pendingLabel?.let { resources.getString(R.string.display_capsule_switching, it) }
+                ?: activeLabel
         labelView.text = label
-        selector.contentDescription = resources.getString(R.string.control_displays_current, label)
+        selector.contentDescription =
+            if (pendingLabel != null) {
+                resources.getString(R.string.control_displays_switching, activeLabel, pendingLabel)
+            } else {
+                resources.getString(R.string.control_displays_current, activeLabel)
+            }
         selector.visibility = if (selectable) View.VISIBLE else View.GONE
-        selector.isEnabled = selectable
+        selector.isEnabled = DisplayCapsulePolicy.isEnabled(displaySelection, displays, pendingDisplayId)
         return selectable
     }
 }

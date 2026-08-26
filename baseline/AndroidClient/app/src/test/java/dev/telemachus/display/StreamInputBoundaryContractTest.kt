@@ -20,6 +20,7 @@ class StreamInputBoundaryContractTest {
         assertTrue(streamClient.contains("inputDispatcher.sendKey("))
         assertTrue(streamClient.contains("inputDispatcher.sendNativeInputRelease("))
         assertTrue(streamClient.contains("inputDispatcher.sendController("))
+        assertTrue(streamClient.contains("inputDispatcher.sendPeripheral("))
 
         INPUT_ENVELOPE_BUILDERS.forEach { builder ->
             assertFalse("StreamClient must not build input envelope `$builder` directly", streamClient.contains(builder))
@@ -41,6 +42,73 @@ class StreamInputBoundaryContractTest {
         }
     }
 
+    @Test
+    fun `stream client delegates local session lifecycle state to boundary owner`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val sessionState = source(PRODUCTION_LOCAL_SESSION_STATE)
+
+        assertTrue(streamClient.contains("private val localSessionState = StreamClientLocalSessionState"))
+        assertTrue(streamClient.contains("localSessionState.prepareConnectionStart()"))
+        assertTrue(streamClient.contains("localSessionState.markConnected()"))
+        assertTrue(streamClient.contains("localSessionState.markTerminationClaimed(request.failure)"))
+        assertTrue(streamClient.contains("localSessionState.markReady()"))
+        assertTrue(streamClient.contains("localSessionState.nextReconnectDelayMs()"))
+
+        FORBIDDEN_STREAM_CLIENT_LOCAL_STATE_FIELDS.forEach { field ->
+            assertFalse("StreamClient must not own local session field `$field` directly", streamClient.contains(field))
+        }
+        FORBIDDEN_LOCAL_SESSION_STATE_REFERENCES.forEach { reference ->
+            assertFalse("StreamClientLocalSessionState must not depend on `$reference`", sessionState.contains(reference))
+        }
+    }
+
+    @Test
+    fun `stream client delegates protocol action routing to dispatcher`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val protocolActionDispatcher = source(PRODUCTION_PROTOCOL_ACTION_DISPATCHER)
+
+        assertTrue(streamClient.contains("private val protocolActionDispatcher ="))
+        assertTrue(streamClient.contains("protocolActionDispatcher.dispatchReceivedActions("))
+        assertTrue(streamClient.contains("protocolActionDispatcher.dispatchVideoConfigurationCompletionActions("))
+
+        val receiveRouting = streamClient
+            .substringAfter("private fun processProtocolReceive(")
+            .substringBefore("    private fun processProtocolBulk(")
+        val videoCompletionRouting = streamClient
+            .substringAfter("private fun processVideoConfigurationCompletion(")
+            .substringBefore("    private fun publishDisplaysAvailable(")
+        FORBIDDEN_STREAM_CLIENT_PROTOCOL_ACTION_REFERENCES.forEach { reference ->
+            assertFalse("StreamClient must not own protocol receive routing `$reference`", receiveRouting.contains(reference))
+            assertFalse(
+                "StreamClient must not own protocol video-completion routing `$reference`",
+                videoCompletionRouting.contains(reference),
+            )
+            assertTrue("StreamProtocolActionDispatcher should own protocol action routing `$reference`", protocolActionDispatcher.contains(reference))
+        }
+        FORBIDDEN_PROTOCOL_ACTION_DISPATCHER_REFERENCES.forEach { reference ->
+            assertFalse("StreamProtocolActionDispatcher must not depend on `$reference`", protocolActionDispatcher.contains(reference))
+        }
+    }
+
+    @Test
+    fun `stream client delegates media frame routing to boundary owner`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val mediaFrameRouter = source(PRODUCTION_MEDIA_FRAME_ROUTER)
+
+        assertTrue(streamClient.contains("private val mediaFrameRouter ="))
+        assertTrue(streamClient.contains("mediaFrameRouter.receiveLegacyFrame("))
+        assertTrue(streamClient.contains("mediaFrameRouter.receiveProtocolFrame("))
+        assertTrue(streamClient.contains("mediaFrameRouter.releaseBuffer(buffer)"))
+        assertTrue(streamClient.contains("mediaFrameRouter.resetStream()"))
+
+        FORBIDDEN_STREAM_CLIENT_MEDIA_ROUTING_REFERENCES.forEach { reference ->
+            assertFalse("StreamClient must not own media frame routing `$reference`", streamClient.contains(reference))
+        }
+        FORBIDDEN_MEDIA_FRAME_ROUTER_REFERENCES.forEach { reference ->
+            assertFalse("StreamMediaFrameRouter must not depend on `$reference`", mediaFrameRouter.contains(reference))
+        }
+    }
+
     private fun source(relativePath: String): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -56,6 +124,12 @@ class StreamInputBoundaryContractTest {
     private companion object {
         const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"
         const val PRODUCTION_INPUT_DISPATCHER = "app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt"
+        const val PRODUCTION_LOCAL_SESSION_STATE =
+            "app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt"
+        const val PRODUCTION_PROTOCOL_ACTION_DISPATCHER =
+            "app/src/main/java/dev/telemachus/display/StreamProtocolActionDispatcher.kt"
+        const val PRODUCTION_MEDIA_FRAME_ROUTER =
+            "app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt"
 
         val INPUT_ENVELOPE_BUILDERS =
             listOf(
@@ -65,6 +139,7 @@ class StreamInputBoundaryContractTest {
                 "activeSession.scroll(",
                 "activeSession.key(",
                 "activeSession.controller(",
+                "activeSession.peripheral(",
             )
 
         val FORBIDDEN_INPUT_DISPATCHER_REFERENCES =
@@ -74,6 +149,71 @@ class StreamInputBoundaryContractTest {
                 "MainActivity",
                 "StreamTransport",
                 "java.net.Socket",
+            )
+
+        val FORBIDDEN_STREAM_CLIENT_LOCAL_STATE_FIELDS =
+            listOf(
+                "@Volatile private var isConnected",
+                "@Volatile private var sessionReady",
+                "@Volatile private var stopRequested",
+                "@Volatile private var connectionEpoch",
+                "@Volatile private var lastTerminationFailure",
+                "private val reconnectBackoff = ReconnectBackoff()",
+            )
+
+        val FORBIDDEN_LOCAL_SESSION_STATE_REFERENCES =
+            listOf(
+                "import android.",
+                "import androidx.",
+                "MainActivity",
+                "StreamTransport",
+                "StreamTransportOwner",
+                "java.net.Socket",
+                "ProtocolV1Session",
+                "onConnectionStatus",
+            )
+
+        val FORBIDDEN_STREAM_CLIENT_PROTOCOL_ACTION_REFERENCES =
+            listOf(
+                "ProtocolV1Session.Action.",
+                "is ProtocolV1Session.Action",
+            )
+
+        val FORBIDDEN_PROTOCOL_ACTION_DISPATCHER_REFERENCES =
+            listOf(
+                "import android.",
+                "import androidx.",
+                "MainActivity",
+                "StreamTransport",
+                "StreamTransportOwner",
+                "SocketStreamTransportConnection",
+                "java.net.Socket",
+                "VideoDecoder",
+                "MediaCodec",
+            )
+
+        val FORBIDDEN_STREAM_CLIENT_MEDIA_ROUTING_REFERENCES =
+            listOf(
+                "private val bufferPool",
+                "private val poolLock",
+                "private fun acquireBuffer",
+                "private fun updateStats",
+                "private fun checkKeyframeFreshness",
+                "ProtocolV1Framing.decodeVideo(",
+                "internal fun isSyncFrame",
+            )
+
+        val FORBIDDEN_MEDIA_FRAME_ROUTER_REFERENCES =
+            listOf(
+                "import android.",
+                "import androidx.",
+                "MainActivity",
+                "StreamTransport",
+                "StreamTransportOwner",
+                "SocketStreamTransportConnection",
+                "java.net.Socket",
+                "VideoDecoder",
+                "MediaCodec",
             )
     }
 }

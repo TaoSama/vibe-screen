@@ -24,6 +24,7 @@ const REQUIRED_FILES = [
   'entry/src/main/ets/core/session/ProgressWatchdog.ts',
   'entry/src/main/ets/core/session/ProductSession.ts',
   'entry/src/main/ets/core/security/PairingSecurity.ts',
+  'entry/src/main/ets/core/security/ChannelRecordSecurity.ts',
   'entry/src/main/ets/core/transport/TransportCloseOwner.ts',
   'entry/src/main/ets/platform/HarmonySessionController.ets',
   'entry/src/main/ets/platform/PairingStore.ets',
@@ -697,13 +698,35 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(sessionPath, 'ProductSession', 'onResumeResult', 'this.decoder', 'resumeSessionResult');
 
   const securityPath = 'entry/src/main/ets/core/security/PairingSecurity.ts';
+  check(read(securityPath).includes("const HARMONY_HUKS_BACKEND: string = 'harmony_huks_v1'") &&
+    read(securityPath).includes("const HUKS_SIGNING_KEY_STORAGE: string = 'huks_non_exportable_p256'") &&
+    read(securityPath).includes("const HUKS_CREDENTIAL_STORAGE: string = 'asset_store_huks_bound_v1'"),
+    `${securityPath}: Harmony secure pairing must pin the HUKS-backed provider profile`);
+  requireCallInMethod(securityPath, 'PairingClient', 'begin', 'this.crypto', 'securityProfile');
+  check(methodHasDirectCall(securityPath, 'PairingClient', 'begin', 'requireHarmonyHuksProfile'),
+    `${securityPath}: PairingClient.begin() must call requireHarmonyHuksProfile()`);
   requireCallInMethod(securityPath, 'PairingClient', 'begin', 'this.crypto', 'ephemeral');
   requireCallInMethod(securityPath, 'PendingPairing', 'complete', 'this.crypto', 'verify');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'install', 'this.store', 'save');
   requireCallInMethod(securityPath, 'CredentialLifecycle', 'revoke', 'this.store', 'save');
+  check(read(securityPath).includes('value.version !== 2') && read(securityPath).includes('requireHarmonyHuksProfile(value.securityProfile)'),
+    `${securityPath}: stored credentials must reject legacy records and require a HUKS security profile`);
+
+  const recordSecurityPath = 'entry/src/main/ets/core/security/ChannelRecordSecurity.ts';
+  requireImport(recordSecurityPath, '../protocol/Utf8', 'encodeUtf8');
+  requireCallInMethod(recordSecurityPath, 'TrafficKeyDerivation', 'initial', 'crypto', 'hkdfSha256');
+  requireCallInMethod(recordSecurityPath, 'TrafficKeyDerivation', 'rotate', 'current', 'legacyMaterial');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'seal', 'this.options.crypto', 'sealAes256Gcm');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'this.options.crypto', 'openAes256Gcm');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'window', 'canAccept');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'open', 'window', 'commit');
+  requireCallInMethod(recordSecurityPath, 'ChannelRecordSession', 'close', 'this.sessionIdHash', 'fill');
 
   const pairingStorePath = 'entry/src/main/ets/platform/PairingStore.ets';
   requireCallInMethod(pairingStorePath, 'PairingStore', 'save', 'this', 'upsert');
+  check(read(pairingStorePath).includes('const SECURITY_RECORD_VERSION: number = 2') &&
+    read(pairingStorePath).includes('securityProfile: { ...record.securityProfile }'),
+    `${pairingStorePath}: secure pairing records must persist the version-2 HUKS profile`);
   check(hasEnumMembers(sessionPath, 'ProductSessionState', ['CONFIGURING_VIDEO']),
     `${sessionPath}: ProductSessionState.CONFIGURING_VIDEO is required`);
 
@@ -742,6 +765,58 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   const notices = read('entry/src/main/resources/rawfile/third_party_notices.md');
   check(notices.includes('no third-party runtime') && notices.includes('not compiled into or distributed'),
     'entry/src/main/resources/rawfile/third_party_notices.md: runtime/build boundary notice missing');
+
+  const readRepositoryFile = (relative) => {
+    try { return readFileSync(resolve(repositoryRoot, relative), 'utf8'); }
+    catch (error) { fail(relative + ': ' + error.message); return ''; }
+  };
+  const staleControllerGapPatterns = [
+    /does\s+not\s+advertise[^.\n]*(CAPABILITY_CONTROLLER|controller\s+capability|that\s+capability)/i,
+    /no\s+`?ControllerEvent`?\s+encoder/i,
+    /lacks?[^.\n]*`?ControllerEvent`?[^.\n]*encoder/i,
+    /no\s+controller\s+lifecycle/i,
+    /no\s+platform\s+routing/i,
+    /Harmony\s+does\s+not\s+implement\s+that\s+rule/i
+  ];
+  const controllerParagraphs = (source) => source.split(/\n\s*\n/)
+    .filter((paragraph) => /CAPABILITY_CONTROLLER|ControllerEvent|controller-specific input|controller portable/i.test(paragraph));
+  const controllerClosureParagraph = (relative, source) => {
+    const paragraph = controllerParagraphs(source).find((candidate) =>
+      candidate.includes('CAPABILITY_CONTROLLER') && candidate.includes('ControllerEvent')) ?? '';
+    check(paragraph.length > 0,
+      relative + ': Phase 4 controller portable boundary must mention CAPABILITY_CONTROLLER and ControllerEvent');
+    return paragraph;
+  };
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TEST.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const controllerScope = controllerParagraphs(source).join('\n\n');
+    const closureParagraph = controllerClosureParagraph(relative, source);
+    check(!staleControllerGapPatterns.some((pattern) => pattern.test(controllerScope)),
+      relative + ': Phase 4 controller docs must not describe the pre-closure controller gap');
+    check(['CAPABILITY_CONTROLLER', 'ControllerEvent', 'InputAck', 'lifecycle', 'all-zero neutral', 'DISCONNECTED']
+      .every((token) => closureParagraph.includes(token)),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+  }
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const normalized = source.toLowerCase();
+    check(normalized.includes('portable') && normalized.includes('source') &&
+      normalized.includes('advertises') && normalized.includes('capability'),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+    check((source.includes('DevEco/API-checker') || source.includes('DevEco SDK')) &&
+      source.includes('HAP') && source.includes('Host interoperability') && source.includes('MatePad') &&
+      (/device\s+evidence|real-device\s+behavior|device\s+acceptance|device\s+result/i).test(source),
+      relative + ': Phase 4 controller docs must keep DevEco/HAP/MatePad gates explicit');
+  }
+  const matePadRunbook = readRepositoryFile('docs/runbook/harmony-matepad-mini.md');
+  check(matePadRunbook.includes('controller input') && matePadRunbook.includes('CONNECTED/STATE/DISCONNECTED') &&
+    matePadRunbook.includes('all-zero neutral release'),
+  'docs/runbook/harmony-matepad-mini.md: device matrix must include controller lifecycle and neutral-release checks');
 
   const makeResult = spawnSync('make', ['-n', '--no-print-directory', '-f', resolve(root, 'Makefile'), 'release',
     'HVIGOR=__HVIGOR__', 'OHPM=__OHPM__'], { cwd: root, encoding: 'utf8' });

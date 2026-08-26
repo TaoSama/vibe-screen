@@ -1,0 +1,9 @@
+stale_lock_cleanup_at_utc=2026-08-20T19:38:03Z
+  PID  PPID  PGID STAT ELAPSED COMMAND
+49845  8221 49845 Ss     04:20 lockf -t 30 /tmp/vibe-screen-device-android.lock /bin/bash --noprofile --norc
+  PID  PPID  PGID STAT ELAPSED COMMAND
+49848 49845 49848 S+     04:21 /bin/bash --noprofile --norc
+# after kill
+  PID  PPID  PGID STAT ELAPSED COMMAND
+  PID  PPID  PGID STAT ELAPSED COMMAND
+lockf_capture_exit=0

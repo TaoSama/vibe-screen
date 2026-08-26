@@ -19,22 +19,27 @@
   advertisedCapabilities 含 CAPABILITY_TOUCH/KEYBOARD/POINTER/MULTI_DISPLAY；
   MainActivity.kt:2300 起按协商结果提升 session binding（keyboard/nativePointer）。
 
-因此下文"缺口 2"及对照表中键盘/原生鼠标两行的"桩代码（生产永不触发）"定级已过时，
-当前应视为**已实现但未真机验证**：真机端到端（手机接外设 -> host CGEvent 注入 -> Mac 端可见）
-仍是 open gate，需在 8a023e3a 上补证据后再把 README 的输入行从 scaffolding 升级为 verified。
+因此下文"缺口 2"及对照表中键盘/原生鼠标两行的"桩代码（生产永不触发）"定级已过时。
+当前应视为**Protocol v1 已实现，legacy 仍按设计保持 touch-only**：键盘、原生鼠标、
+native wheel wire payload、stylus、controller 和 generic peripheral 输入必须完成 Protocol v1
+能力协商后才可发送；legacy 或未协商 peer 必须 fail closed，不能收到新增输入字节。
+legacy wheel-to-touch 和 secondary-button long-press adapter 是保留的 touch-compatible 例外，
+不是 native wheel/button wire payload。键盘和滚轮已有真机端到端证据；native pointer
+move/click、controller runtime、physical stylus 和具体 peripheral hardware 仍是 open gate，
+需对应物理设备证据后才能关闭。
 
 ## 概述
 
 README 在措辞上整体是克制且诚实的：它反复用 "verified / offline gates pass /
 real-device acceptance pending / open gate" 区分"写了代码"和"真机验证过"。逐条核对源码后，
-**没有发现"代码根本不存在却声称已实现"的硬造假**。真正的落差集中在两类：
+**没有发现"代码根本不存在却声称已实现"的硬造假**。当前仍需要按协议边界区分两类落差：
 
-1. **产品输入能力被永久关闭**：键盘 / 原生鼠标 / 外设输入在协议、host、client 三层都存在
-   数据结构与解析代码，但生产路径的能力协商写死为"仅 touch + multiDisplay"，且 host 侧
-   从未把 onKeyEvent/onPointerEvent/onScrollEvent 回调接到 CGEvent。这部分是"桩代码 +
-   永不触发的分支"，README 的 Phase 1 清单把它们并列为交付项，容易让读者以为可用（README
-   自己在 macOS host 段落已承认 legacy 只有 touch-derived pointer，但 "Current
-   capabilities" 与 Phase 1 列表未同等醒目地标注键盘/鼠标不可用）。
+1. **输入能力只属于 Protocol v1 negotiated session**：键盘、原生鼠标、native wheel wire payload、
+   stylus、controller 和 generic peripheral 输入在 Protocol v1 production path 已接线或定义了
+   fail-closed admission；legacy compatibility session 仍按设计保持 touch-compatible，不新增
+   keyboard/native-mouse/controller/peripheral wire type。legacy wheel-to-touch 和 secondary-button
+   long-press adapter 是保留的 touch-compatible 例外。键盘和滚轮已有真机端到端证据，native
+   pointer move/click、controller runtime、physical stylus 和具体 peripheral hardware 仍需物理设备证据。
 
 2. **大量能力停留在 self-test / JVM 单测 / 离线门，真机未过**：镜像、HiDPI、旋转、
    虚拟扩展显示的实际抓取切换、window migration 的 AX 真实效果等，代码是真的，但只被
@@ -93,35 +98,29 @@ Recording，无法脚本化）。所以"能不能真的切"取决于你有没有
 建议后续任务：在有第二台物理显示器或可脚本化重授权的机器上，补一次虚拟扩展屏 select ->
 首帧抓取的真机证据；在 README 的胶囊描述里明确"单屏 Mac 上虚拟屏切换尚未真机验证"。
 
-### 缺口 2：键盘 / 原生鼠标 / 外设输入是"永不触发的桩代码"
+### 缺口 2：键盘 / 原生鼠标 / 外设输入是"永不触发的桩代码"（历史状态）
 
-三层都能看到相关代码，但生产路径被写死关闭，任何一层单独看都像"支持"，合起来则完全不可用：
+当前状态：该缺口已被后续 Protocol v1 输入接线取代，不应再作为 legacy fallback
+待办解读。legacy wire format 仍故意只保留 touch-compatible 行为；键盘、原生鼠标、
+native wheel wire payload、stylus、controller 和 generic peripheral 输入只在 Protocol v1
+能力协商后进入对应 session sink。legacy wheel-to-touch adapter 仍是保留的
+touch-compatible 例外。缺少物理 HID 鼠标真机 move/click 证据仍是 open gate，但它属于
+Protocol v1 native-pointer acceptance，不是给 legacy session 增加 keyboard/native-mouse
+entry point 的需求。
 
-- 协议 & 数据结构存在：ProtocolV1Session.swift:57-58（.key/.scroll/.pointer action）、
-  ProtocolV1Session.swift:358-363（解析 KeyEvent）；Android ClientInputDispatch.kt 全套
-  ClientKeyInput/ClientPointerInput/sendKey/sendPointer；AndroidKeyInputMapper.kt。
-- **host 生产能力写死只有 touch + multiDisplay**：ProtocolV1Session.swift:17-18
-  productionHostCapabilities = touchEnabled ? [.touch, .multiDisplay] : [.multiDisplay]。
-  于是 negotiatedCapabilities 永不含 .keyboard/.pointer，KeyEvent/PointerEvent/ScrollEvent
-  在 session 里必然走 unsupportedCapability 分支。
-- **client 生产也只 advertise touch + multiDisplay**：ProtocolV1Session.kt:131-133。
-  运行时唯一构造的 binding 是 LEGACY_TOUCH_ONLY.copy(displaySelection = true)：
-  MainActivity.kt:2277；全仓 main 源码搜不到任何 keyboard = true / nativePointer = true。
-- **host 侧回调根本没接线**：StreamingServer.swift:151-153 声明了 onPointerEvent /
-  onScrollEvent / onKeyEvent，但 AppDelegate 只 assign 了 onTouchEvent / onInputCancelled /
-  onDisplaySelectionRequested / onKeyframeRequested / onCodecNegotiated / onClientConnected /
-  onServerFailed（AppDelegate.swift:1904/1969/2030/2049 等），三个输入回调从未赋值——
-  即使协商开了也会被丢弃。
+历史判断记录：初版审计时，三层都能看到相关数据结构，但生产能力和回调还未全部接线，容易被误读为
+"支持"。这段判断只适用于当时的工作树，不适用于当前 main。
 
-用户可感知的落差：Android 上就算插实体键盘/鼠标，也没有任何字节能被 host 消费。Phase 1 TEST.md
-其实已诚实写明 "forwarding blocked by legacy host" / "native pointer/keyboard protocol
-required"，但 README 顶部 "Product Vision" 与 Phase 1 "Complete … input" 清单把 keyboard /
-mouse / peripheral 与 touch 并列，未在同等显眼处标注"当前完全不可用"。这是最容易被理解为"缩水"的点。
+当前用户可感知边界：legacy compatibility session 不会发送键盘、原生鼠标、native wheel wire
+payload、stylus、controller 或 generic peripheral 的新 wire type；旧 peer 只能继续收到
+touch-compatible 行为。Android 端物理键盘会显示 touch-only host 兼容提示，native pointer
+move/primary click 在未协商 pointer capability 时也应 fail closed 并提示；secondary click 和
+wheel 仍可通过既有 touch 手势 adapter 兼容旧 host。
 
-建议后续任务：要么让 host 在真正实现 CGEvent 键盘/指针注入后再把能力打开并接线（onKeyEvent ->
-CGEvent keyboard、onPointerEvent -> mouse），要么在 README "Current capabilities" 显式加一行
-"Keyboard/native mouse/peripheral input: not wired (scaffolding only)"，与 macOS host 段落
-保持一致口径。
+建议后续任务：不要给 legacy wire format 增加 keyboard/native-mouse 入口。应继续补 Protocol v1
+native pointer HID 真机证据（手机接物理 USB/蓝牙鼠标 -> Host Pointer injected 日志 -> Mac 端
+可见移动/点击），并按各自 runbook 补 controller、stylus、generic peripheral 物理设备证据；
+证据不足时保持 README gate open。
 
 ### 缺口 3："自适应视频"实为手动档位，Phase 1 无网络自适应
 
@@ -151,9 +150,10 @@ mirror 前后态、AX 真窗口迁移/恢复、Launch at Login 审批、热插�
 
 ## 建议后续任务（汇总）
 
-1. 输入能力口径对齐：README "Current capabilities" 明确加注键盘/原生鼠标/外设"仅脚手架、
-   未接线"，与 macOS host 段落一致；或实装 host CGEvent 键盘/指针注入 + 打开能力协商 +
-   接 onKeyEvent/onPointerEvent/onScrollEvent 回调。
+1. 输入能力证据补齐：保持 legacy touch-only 协议边界，不新增 keyboard/native-mouse/controller/
+   peripheral wire type；针对 Protocol v1 native pointer move/click 补物理 HID 鼠标真机证据，
+   并按各自 runbook 补 controller、stylus、generic peripheral 物理设备证据。证据不足时保持
+   README gate open。
 2. 显示切换真机证据：单屏 Mac 上补虚拟扩展屏 select -> 首帧抓取真机记录；在胶囊相关文案标注
    单屏场景的虚拟屏切换尚未真机验证。
 3. "adaptive video" 降级措辞：Phase 1 明确为手动档位，自动自适应归后续 Phase。

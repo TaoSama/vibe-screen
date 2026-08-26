@@ -9,9 +9,16 @@
     "kind",
     "status",
     "covered_display_kinds",
+    "covered_host_rotations_by_display_kind",
     "required_display_kinds",
+    "required_host_rotations",
+    "required_input_mapping_points",
+    "required_transports",
+    "required_device_fields",
+    "required_host_preflight_fields",
     "required_probes",
     "required_artifacts",
+    "artifact_file_check",
     "errors"
   ],
   "properties": {
@@ -22,18 +29,96 @@
       "type": "array",
       "items": {"enum": ["physical", "virtual"]}
     },
+    "covered_host_rotations_by_display_kind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical", "virtual"],
+      "properties": {
+        "physical": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]}
+        },
+        "virtual": {
+          "type": "array",
+          "items": {"enum": [90, 180, 270]}
+        }
+      }
+    },
     "required_display_kinds": {
       "type": "array",
-      "items": {"enum": ["physical", "virtual"]}
+      "items": {"enum": ["physical", "virtual"]},
+      "const": ["physical", "virtual"]
+    },
+    "required_host_rotations": {
+      "type": "array",
+      "items": {"enum": [90, 180, 270]},
+      "const": [90, 180, 270]
+    },
+    "required_input_mapping_points": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center"
+      ]
+    },
+    "required_transports": {
+      "type": "array",
+      "items": {"enum": ["lan", "usb"]},
+      "const": ["lan", "usb"]
+    },
+    "required_device_fields": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "adb_serial"
+      ]
+    },
+    "required_host_preflight_fields": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "host_signing_identity",
+        "host_bundle_id",
+        "screen_recording_granted",
+        "accessibility_granted",
+        "signing_tcc_match",
+        "host_display_rotation_restoration_plan"
+      ]
     },
     "required_probes": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "visual_source_orientation",
+        "input_mapping",
+        "stable_stream",
+        "no_session_teardown",
+        "restored_original_host_rotation"
+      ]
     },
     "required_artifacts": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "device_identity",
+        "host_display_snapshot_before",
+        "host_display_snapshot_rotated",
+        "android_screenshot",
+        "touch_matrix",
+        "host_log",
+        "android_logcat"
+      ]
     },
+    "artifact_file_check": {"type": "boolean"},
     "errors": {"type": "array", "items": {"type": "string"}}
   }
 }

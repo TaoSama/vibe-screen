@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/host-display-rotation-evidence.schema.json",
+  "title": "Vibe Screen host display rotation evidence input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "runs"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "host_display_rotation_acceptance"},
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/run"}
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "rotation": {"enum": [0, 90, 180, 270]},
+    "nonZeroRotation": {"enum": [90, 180, 270]},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "adb_serial"
+      ],
+      "properties": {
+        "manufacturer": {"$ref": "#/$defs/nonEmptyString"},
+        "model": {"$ref": "#/$defs/nonEmptyString"},
+        "codename": {"$ref": "#/$defs/nonEmptyString"},
+        "android_release": {"$ref": "#/$defs/nonEmptyString"},
+        "sdk": {"type": "integer", "minimum": 1},
+        "adb_serial": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "hostPreflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_signing_identity",
+        "host_bundle_id",
+        "screen_recording_granted",
+        "accessibility_granted",
+        "signing_tcc_match",
+        "host_display_rotation_restoration_plan"
+      ],
+      "properties": {
+        "host_signing_identity": {"$ref": "#/$defs/nonEmptyString"},
+        "host_bundle_id": {"$ref": "#/$defs/nonEmptyString"},
+        "screen_recording_granted": {"const": true},
+        "accessibility_granted": {"const": true},
+        "signing_tcc_match": {"const": true},
+        "host_display_rotation_restoration_plan": {"const": true}
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "visual_source_orientation",
+        "input_mapping",
+        "stable_stream",
+        "no_session_teardown",
+        "restored_original_host_rotation"
+      ],
+      "properties": {
+        "visual_source_orientation": {"const": true},
+        "input_mapping": {"const": true},
+        "stable_stream": {"const": true},
+        "no_session_teardown": {"const": true},
+        "restored_original_host_rotation": {"const": true}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "device_identity",
+        "host_display_snapshot_before",
+        "host_display_snapshot_rotated",
+        "android_screenshot",
+        "touch_matrix",
+        "host_log",
+        "android_logcat"
+      ],
+      "properties": {
+        "device_identity": {"$ref": "#/$defs/nonEmptyString"},
+        "host_display_snapshot_before": {"$ref": "#/$defs/nonEmptyString"},
+        "host_display_snapshot_rotated": {"$ref": "#/$defs/nonEmptyString"},
+        "android_screenshot": {"$ref": "#/$defs/nonEmptyString"},
+        "touch_matrix": {"$ref": "#/$defs/nonEmptyString"},
+        "host_log": {"$ref": "#/$defs/nonEmptyString"},
+        "android_logcat": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "display_kind",
+        "display_id",
+        "transport",
+        "device",
+        "host_preflight",
+        "host_rotation_degrees",
+        "original_host_rotation_degrees",
+        "client_rotation_degrees",
+        "client_transform_scope",
+        "host_rotation_combined_with_client_transform",
+        "host_rotation_source",
+        "probes",
+        "inverse_touch_mapping",
+        "artifacts"
+      ],
+      "properties": {
+        "display_kind": {"enum": ["physical", "virtual"]},
+        "display_id": {"$ref": "#/$defs/nonEmptyString"},
+        "transport": {"enum": ["usb", "lan"]},
+        "device": {"$ref": "#/$defs/device"},
+        "host_preflight": {"$ref": "#/$defs/hostPreflight"},
+        "host_rotation_degrees": {"$ref": "#/$defs/nonZeroRotation"},
+        "original_host_rotation_degrees": {"$ref": "#/$defs/rotation"},
+        "client_rotation_degrees": {"$ref": "#/$defs/rotation"},
+        "client_transform_scope": {"const": "client-local-only"},
+        "host_rotation_combined_with_client_transform": {"const": false},
+        "host_rotation_source": {"$ref": "#/$defs/nonEmptyString"},
+        "probes": {"$ref": "#/$defs/probes"},
+        "inverse_touch_mapping": {"$ref": "#/$defs/inverseTouchMapping"},
+        "artifacts": {"$ref": "#/$defs/artifacts"}
+      }
+    },
+    "mappingPointName": {
+      "enum": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center"
+      ]
+    },
+    "mappingPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "android_x",
+        "android_y",
+        "expected_host_x",
+        "expected_host_y",
+        "observed_host_x",
+        "observed_host_y",
+        "error_px",
+        "within_tolerance"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/mappingPointName"},
+        "android_x": {"type": "number", "minimum": 0},
+        "android_y": {"type": "number", "minimum": 0},
+        "expected_host_x": {"type": "number", "minimum": 0},
+        "expected_host_y": {"type": "number", "minimum": 0},
+        "observed_host_x": {"type": "number", "minimum": 0},
+        "observed_host_y": {"type": "number", "minimum": 0},
+        "error_px": {"type": "number", "minimum": 0},
+        "within_tolerance": {"const": true}
+      }
+    },
+    "inverseTouchMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coordinate_space",
+        "tolerance_px",
+        "points",
+        "all_points_within_tolerance"
+      ],
+      "properties": {
+        "coordinate_space": {"const": "host-logical-display"},
+        "tolerance_px": {"type": "number", "minimum": 0},
+        "points": {
+          "type": "array",
+          "minItems": 5,
+          "items": {"$ref": "#/$defs/mappingPoint"}
+        },
+        "all_points_within_tolerance": {"const": true}
+      }
+    }
+  }
+}

@@ -16,6 +16,23 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 private fun diagLog(msg: String) = DiagLog.log("VD", msg)
 
+internal object VideoDecoderSdrColorSettings {
+    @SuppressLint("InlinedApi")
+    val integerProperties: List<Pair<String, Int>> =
+        listOf(
+            MediaFormat.KEY_COLOR_STANDARD to MediaFormat.COLOR_STANDARD_BT709,
+            MediaFormat.KEY_COLOR_TRANSFER to MediaFormat.COLOR_TRANSFER_SDR_VIDEO,
+            MediaFormat.KEY_COLOR_RANGE to MediaFormat.COLOR_RANGE_LIMITED,
+        )
+
+    fun applyTo(format: MediaFormat): MediaFormat {
+        integerProperties.forEach { (key, value) ->
+            format.setInteger(key, value)
+        }
+        return format
+    }
+}
+
 class VideoDecoder(
     private val surface: Surface,
     private val display: Display? = null,
@@ -41,6 +58,7 @@ class VideoDecoder(
     private var lastStatsTime = System.currentTimeMillis()
     private var inputFrameCount = 0L
     private var outputFrameCount = 0L
+    private var firstOutputFrameSessionEpoch = 0L
 
     // Decoder pipeline latency (input enqueue -> output buffer available),
     // accumulated over ~60 frames then logged. High values indicate the codec
@@ -195,10 +213,12 @@ class VideoDecoder(
         codec.setCallback(callback, decoderHandler)
 
         val format =
-            MediaFormat.createVideoFormat(
-                mime,
-                currentWidth,
-                currentHeight,
+            VideoDecoderSdrColorSettings.applyTo(
+                MediaFormat.createVideoFormat(
+                    mime,
+                    currentWidth,
+                    currentHeight,
+                ),
             )
 
         var configured = false
@@ -224,10 +244,12 @@ class VideoDecoder(
         if (!configured) {
             try {
                 val basicFormat =
-                    MediaFormat.createVideoFormat(
-                        mime,
-                        currentWidth,
-                        currentHeight,
+                    VideoDecoderSdrColorSettings.applyTo(
+                        MediaFormat.createVideoFormat(
+                            mime,
+                            currentWidth,
+                            currentHeight,
+                        ),
                     )
                 basicFormat.setInteger(MediaFormat.KEY_PRIORITY, 0)
                 basicFormat.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
@@ -245,10 +267,12 @@ class VideoDecoder(
         if (!configured) {
             try {
                 val minimalFormat =
-                    MediaFormat.createVideoFormat(
-                        mime,
-                        currentWidth,
-                        currentHeight,
+                    VideoDecoderSdrColorSettings.applyTo(
+                        MediaFormat.createVideoFormat(
+                            mime,
+                            currentWidth,
+                            currentHeight,
+                        ),
                     )
                 codec.configure(minimalFormat, surface, null, 0)
                 diagLog("Configured with minimal format")
@@ -565,8 +589,17 @@ class VideoDecoder(
                 return
             }
             outputFrameCount++
-            if (outputFrameCount == 1L) {
-                diagLog("First output frame! size=${info.size}, flags=${info.flags}")
+            if (firstOutputFrameSessionEpoch != outputEpoch) {
+                firstOutputFrameSessionEpoch = outputEpoch
+                diagLog("First output frame! size=${info.size}, flags=${info.flags}, session_epoch=$outputEpoch")
+                emitTelemetry(
+                    "first_output_frame",
+                    mapOf(
+                        "session_epoch" to outputEpoch,
+                        "size" to info.size,
+                        "flags" to info.flags,
+                    ),
+                )
             }
 
             // Decoder latency: time from queueInputBuffer (where we encoded

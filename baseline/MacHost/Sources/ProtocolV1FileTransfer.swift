@@ -38,7 +38,7 @@ struct ProtocolV1FileTransferPolicy: Equatable {
     func applying(remote: ProtocolV1RemoteManagedPolicy) -> ProtocolV1FileTransferPolicy {
         guard remote.managed else { return self }
         return ProtocolV1FileTransferPolicy(
-            allowed: allowed && remote.fileTransferAllowed,
+            allowed: allowed && remote.fileTransferAllowed && remote.maximumFileBytes > 0,
             maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
             maximumChunkBytes: maximumChunkBytes,
             maximumConcurrentTransfers: maximumConcurrentTransfers,
@@ -167,6 +167,8 @@ struct ProtocolV1FileChunk: Equatable {
 struct ProtocolV1CompletedIncomingFile: Equatable {
     let transferID: Data
     let fileName: String
+    let mimeType: String
+    let byteLength: UInt64
     let stagingURL: URL
     let sha256: Data
 }
@@ -416,6 +418,8 @@ final class ProtocolV1IncomingFileTransferManager {
             return ProtocolV1CompletedIncomingFile(
                 transferID: transferID,
                 fileName: state.offer.fileName,
+                mimeType: state.offer.mimeType,
+                byteLength: state.offer.byteLength,
                 stagingURL: state.url,
                 sha256: digest
             )
@@ -455,6 +459,8 @@ final class ProtocolV1OutgoingFileTransfer {
     private let handle: FileHandle
     private let policy: ProtocolV1FileTransferPolicy
     private var offset: UInt64 = 0
+    private var acknowledgedOffset: UInt64 = 0
+    private var receivedAcknowledgement = false
     private var cancelled = false
     private var emittedEmptyFileChunk = false
     private var acceptedMaximumChunkBytes: Int?
@@ -547,10 +553,34 @@ final class ProtocolV1OutgoingFileTransfer {
         }
     }
 
-    var isComplete: Bool {
-        lock.withLock {
-            offer.byteLength == 0 ? emittedEmptyFileChunk : offset == offer.byteLength
+    func validateAcknowledgedOffset(_ receivedBytes: UInt64) throws {
+        try lock.withLock {
+            guard receivedBytes == offset else {
+                throw ProtocolV1FileTransferError.unexpectedOffset(expected: offset, actual: receivedBytes)
+            }
+            guard receivedBytes != offer.byteLength || isCompleteLocked else {
+                throw ProtocolV1FileTransferError.incompleteFile
+            }
+            acknowledgedOffset = receivedBytes
+            receivedAcknowledgement = true
         }
+    }
+
+    func validateCompletionDigest(_ sha256: Data) throws {
+        try lock.withLock {
+            guard receivedAcknowledgement, isCompleteLocked, acknowledgedOffset == offer.byteLength else {
+                throw ProtocolV1FileTransferError.incompleteFile
+            }
+            guard sha256 == offer.sha256 else { throw ProtocolV1FileTransferError.digestMismatch }
+        }
+    }
+
+    var isComplete: Bool {
+        lock.withLock { isCompleteLocked }
+    }
+
+    private var isCompleteLocked: Bool {
+        offer.byteLength == 0 ? emittedEmptyFileChunk : offset == offer.byteLength
     }
 
     private static func digest(fileURL: URL, chunkBytes: Int) throws -> Data {

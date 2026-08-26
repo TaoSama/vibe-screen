@@ -16,6 +16,7 @@ enum InternetProductExternalHostE2E {
                 bootstrapSecret: values.bootstrapSecret,
                 context: configuration.boundTranscriptContext
             )
+            defer { derived.zeroize() }
             guard derived.keyID == values.expectedTrafficKeyID else {
                 throw Failure("traffic-key KAT mismatch")
             }

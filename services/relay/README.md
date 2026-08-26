@@ -120,6 +120,13 @@ configured `authority_source_id`, `device_id`, `session_id`, and
 `allocation_id`. Authority failure, malformed response, revoked/unknown device
 or session, quota rejection, or conflicting allocation identity fails closed and
 no credential is returned.
+After Authority admits the allocation, relay writes a local allocation registry
+at `allocation_registry_file` with `source_id` and `allocations[]` entries
+containing `allocation_id`, `device_id`, `session_id`, the TURN REST
+`username`, and an optional `coturn_session_id`. This registry is a strict
+operator mapping for coturn export/disconnect tooling; it is not proof that an
+allocation has actually been observed or disconnected in a production data
+plane.
 
 The username is `<unix-expiry>:<device-id>` and the password is the base64
 HMAC-SHA1 required by TURN REST authentication. `session_id` and
@@ -136,7 +143,7 @@ Report lifecycle and cumulative byte deltas (trusted usage collector):
 ```bash
 curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_USAGE_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"event_id":"unique-event-id","device_id":"paired-device-id","session_id":"allocation-id","kind":"start","ingress_bytes":0,"egress_bytes":0}' \
+  -d '{"event_id":"unique-event-id","device_id":"paired-device-id","session_id":"authorized-session-id","allocation_id":"turn-allocation-id","kind":"start","ingress_bytes":0,"egress_bytes":0}' \
   http://127.0.0.1:8090/v1/usage
 ```
 
@@ -144,6 +151,12 @@ curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_USAGE_TOKEN" \
 current UTC day. Byte fields are deltas, not totals. The collector must retry
 with the same event ID until it receives `202 accepted` or `200 duplicate`.
 Limits return `429`; malformed or out-of-order lifecycle events return `400`.
+In `production_authority` mode, `/v1/usage` also requires `allocation_id`. The
+relay first recognizes an exact same-payload duplicate so a lost success response
+can be retried even after revocation; every non-duplicate usage event then calls
+Authority `/v1/relay/admissions` before mutating the local usage store. Authority
+failure, revoked device/session, expired allocation, quota rejection, or
+conflicting allocation identity fails closed.
 
 The trusted control plane can persistently block future credentials with
 `POST /v1/devices/{device-id}/revoke` using the admin token. After revocation,
@@ -160,7 +173,8 @@ Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
 readiness verifies that the file state directory is writable or that the
 Postgres backend is reachable with the expected schema and clock bound. In
 `production_authority` mode, readiness also requires Authority `/readyz` to be
-reachable.
+reachable and `allocation_registry_file` to be readable when present plus
+atomically writable by the relay process.
 Prometheus scrapes `/metrics` with the dedicated metrics token. Metrics expose issued and
 rejected requests, a dedicated
 `vibescreen_relay_revoked_device_requests_rejected_total` counter, accepted
@@ -209,10 +223,20 @@ used as the real-time allocation security boundary; coturn's stable-device
 `user-quota` remains that boundary in the current deployment.
 For Authority-backed deployments, `scripts/phase3/coturn_reconcile.py` can submit
 a trusted structured snapshot to Authority and require an external disconnect
-executor for unauthorized or conflicting active source allocations. It is a local
-contract helper only; deployments still need a production exporter, durable
-collector loop, provider/billing reconciliation, and concrete coturn allocation
-termination before the release gate closes.
+executor for unauthorized, revoked, or conflicting active source allocations. The
+current-base local operator slice adds a strict structured exporter adapter, a
+bounded durable reconciliation loop, and a local active-allocation state
+disconnect executor. These are contract tests and local state transitions only;
+deployments still need a production exporter, durable collector loop,
+provider/billing reconciliation, production scheduling, and concrete coturn
+allocation termination before the release gate closes.
+`scripts/phase3/coturn_cli_control.py` is a separate local/operator helper that
+can parse coturn CLI `ps` output, export active allocations using the relay
+allocation registry, and issue loopback CLI `cs <coturn_session_id>` disconnect
+commands when the mapping is exact. Missing registry entries, shared TURN REST
+usernames without a unique coturn session, corrupt JSON, or mismatched
+`source_id` fail closed. The helper is not deployed by the production Compose
+profile and does not prove a production active-allocation disconnect path.
 
 ## Threat model
 

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-internet-soak-manifest.schema.json",
+  "title": "Vibe Screen Phase 3 public Internet soak manifest v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "kind", "run_id", "created_at", "command", "repository", "deployment", "build", "session", "required_metric_families", "required_artifacts", "limitations"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_internet_soak_manifest"},
+    "run_id": {"type": "string"},
+    "created_at": {"type": "string"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {"type": "object"},
+    "deployment": {"type": "object"},
+    "build": {"type": "object"},
+    "session": {"type": "object"},
+    "required_metric_families": {"type": "array", "items": {"type": "string"}},
+    "required_artifacts": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": ["string", "null"]}
+  }
+}

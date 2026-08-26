@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/android-audio-playback.schema.json",
+  "title": "Vibe Screen Android Protocol v1 audio playback evidence summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "transport",
+    "verdict",
+    "can_close_android_audio_playback_gate",
+    "requires_real_android_device",
+    "requires_audible_or_instrumented_output",
+    "loopback_or_synthetic_is_not_playback_evidence",
+    "android_only_logs_are_not_playback_evidence",
+    "required_device_identity",
+    "device",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "artifact_paths",
+    "artifact_checks",
+    "blocking_notes",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "android_audio_playback_acceptance"},
+    "profile": {"const": "protocol-v1-android-usb-lan-audio-playback"},
+    "transport": {"type": "string"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+    "can_close_android_audio_playback_gate": {"type": "boolean"},
+    "requires_real_android_device": {"const": true},
+    "requires_audible_or_instrumented_output": {"const": true},
+    "loopback_or_synthetic_is_not_playback_evidence": {"const": true},
+    "android_only_logs_are_not_playback_evidence": {"const": true},
+    "required_device_identity": {"type": "string", "minLength": 1},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adb_serial",
+        "manufacturer",
+        "model",
+        "device",
+        "android_release",
+        "sdk",
+        "build_fingerprint"
+      ],
+      "properties": {
+        "adb_serial": {"type": "string"},
+        "manufacturer": {"type": "string"},
+        "model": {"type": "string"},
+        "device": {"type": "string"},
+        "android_release": {"type": "string"},
+        "sdk": {"type": ["integer", "null"]},
+        "build_fingerprint": {"type": "string"}
+      }
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "android_device_lock_acquired",
+        "device_identity_recorded",
+        "device_identity_matches_claim",
+        "device_identity_structured",
+        "transport_supported",
+        "apk_identity_recorded",
+        "host_build_identity_recorded",
+        "host_stable_signed_tcc_ready",
+        "host_listener_observed",
+        "protocol_v1_session_observed",
+        "audio_capability_negotiated",
+        "audio_config_accepted",
+        "host_microphone_capture_started",
+        "host_audio_packets_sent",
+        "android_audio_track_started",
+        "android_audio_packets_written",
+        "playback_output_confirmed",
+        "disconnect_cleanup_observed",
+        "host_logs_retained",
+        "android_logs_retained",
+        "retained_artifacts_available",
+        "no_synthetic_or_loopback_markers"
+      ],
+      "properties": {
+        "android_device_lock_acquired": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "device_identity_matches_claim": {"type": "boolean"},
+        "device_identity_structured": {"type": "boolean"},
+        "transport_supported": {"type": "boolean"},
+        "apk_identity_recorded": {"type": "boolean"},
+        "host_build_identity_recorded": {"type": "boolean"},
+        "host_stable_signed_tcc_ready": {"type": "boolean"},
+        "host_listener_observed": {"type": "boolean"},
+        "protocol_v1_session_observed": {"type": "boolean"},
+        "audio_capability_negotiated": {"type": "boolean"},
+        "audio_config_accepted": {"type": "boolean"},
+        "host_microphone_capture_started": {"type": "boolean"},
+        "host_audio_packets_sent": {"type": "boolean"},
+        "android_audio_track_started": {"type": "boolean"},
+        "android_audio_packets_written": {"type": "boolean"},
+        "playback_output_confirmed": {"type": "boolean"},
+        "disconnect_cleanup_observed": {"type": "boolean"},
+        "host_logs_retained": {"type": "boolean"},
+        "android_logs_retained": {"type": "boolean"},
+        "retained_artifacts_available": {"type": "boolean"},
+        "no_synthetic_or_loopback_markers": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "requirement"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "requirement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "exists", "non_empty", "under_evidence_dir"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "exists": {"type": "boolean"},
+          "non_empty": {"type": "boolean"},
+          "under_evidence_dir": {"type": "boolean"}
+        }
+      }
+    },
+    "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_close_android_audio_playback_gate": {"const": true},
+          "transport": {"enum": ["usb", "trusted_lan"]}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["blocked", "insufficient"]}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_close_android_audio_playback_gate": {"const": false}
+        }
+      }
+    }
+  ]
+}

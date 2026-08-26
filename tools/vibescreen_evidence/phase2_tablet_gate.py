@@ -11,7 +11,12 @@ from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
 from .phase2_tablet_manifest import KIND as MANIFEST_KIND
+from .phase2_tablet_manifest import MAXIMUM_TABLET_SIZE_INCHES
 from .phase2_tablet_manifest import MINIMUM_DURATION_SECONDS as MANIFEST_MINIMUM_DURATION_SECONDS
+from .phase2_tablet_manifest import MINIMUM_TABLET_SIZE_INCHES
+from .phase2_tablet_manifest import NUBIA_P0110_CODENAME
+from .phase2_tablet_manifest import NUBIA_P0110_MODEL
+from .phase2_tablet_manifest import PHYSICAL_TABLET_DEVICE_CLASS
 from .soak_public_report import EvidenceInputError, read_json as _read_json
 from .soak_report import SOAK_REPORT_KIND
 
@@ -34,6 +39,24 @@ MAXIMUM_HOST_RSS_SECOND_HALF_SLOPE_KIB_PER_MINUTE = 40.0
 MAXIMUM_HOST_RSS_SECOND_HALF_DRIFT_KIB = 8 * 1024.0
 ANDROID_BATTERY_STATUS_CHARGING = 2
 ANDROID_BATTERY_STATUS_FULL = 5
+REQUIRED_GATE_OWNERS: tuple[tuple[str, str], ...] = (
+    (
+        "stand_mounted_charging",
+        "owner for stand-mounted charging stability acceptance",
+    ),
+    (
+        "thermal_power_sampling",
+        "owner for thermal and power sampling acceptance",
+    ),
+    (
+        "posture_and_mount",
+        "owner for stand posture, mount, charger, cable, and ambient setup review",
+    ),
+    (
+        "eight_hour_sustained_stream",
+        "owner for the eight-hour sustained streaming verdict",
+    ),
+)
 
 PHASE2_MANIFEST_NAME = "phase2-tablet-manifest.json"
 REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] = (
@@ -51,6 +74,12 @@ REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] 
         True,
         "file",
     ),
+    (
+        "device_environment_summary",
+        ("phase2-device-environment-summary.json", "soak-8h/phase2-device-environment-summary.json"),
+        True,
+        "file",
+    ),
     ("adb_battery_before", ("adb-battery-before.txt",), True, "file"),
     ("adb_battery_after", ("adb-battery-after.txt",), True, "file"),
     ("adb_power_before", ("adb-power-before.txt",), True, "file"),
@@ -60,7 +89,6 @@ REQUIRED_EVIDENCE_ARTIFACTS: tuple[tuple[str, tuple[str, ...], bool, str], ...] 
     ("thermal_after", ("thermal-after.txt",), True, "file"),
     ("thermal_after_stderr", ("thermal-after.err",), False, "file"),
     ("raw_logcat", ("raw-logcat.txt",), True, "file"),
-    ("host_log", ("host.log",), True, "file"),
     ("reconnects_log", ("reconnects.log",), True, "file"),
     ("frame_drops_log", ("frame-drops.log",), True, "file"),
     ("decoder_telemetry", ("decoder-telemetry.jsonl",), True, "file"),
@@ -231,6 +259,41 @@ def _boolean_check(passed: bool, expected: str) -> dict[str, Any]:
     return {"passed": passed, "expected": expected}
 
 
+def _gate_owner_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    owners = _manifest_get(manifest, "gate_owners")
+    if not isinstance(owners, dict):
+        owners = {}
+    checks: dict[str, dict[str, Any]] = {}
+    for key, description in REQUIRED_GATE_OWNERS:
+        value = owners.get(key)
+        checks[key] = {
+            "passed": _non_empty_string(value),
+            "owner": value if isinstance(value, str) else None,
+            "expected": f"gate_owners.{key} declares {description}",
+        }
+    return checks
+
+
+def _tablet_size_inches(manifest: dict[str, Any]) -> float | None:
+    value = _manifest_get(manifest, "device", "tablet_size_inches")
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return _finite_number(value)
+
+
+def _is_nubia_p0110_manifest(manifest: dict[str, Any]) -> bool:
+    model = str(_manifest_get(manifest, "device", "identity", "model") or "").strip().lower()
+    codename = str(_manifest_get(manifest, "device", "identity", "codename") or "").strip().lower()
+    return model == NUBIA_P0110_MODEL and codename == NUBIA_P0110_CODENAME
+
+
 def _artifact_check(
     evidence_dir: Path,
     candidates: tuple[str, ...],
@@ -273,6 +336,156 @@ def _artifact_check(
     }
 
 
+def _device_environment_summary_check(evidence_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    candidates = (
+        "phase2-device-environment-summary.json",
+        "soak-8h/phase2-device-environment-summary.json",
+    )
+    for candidate in candidates:
+        path = evidence_dir / candidate
+        if not path.is_file():
+            continue
+        try:
+            document = _read_json(path, "Phase 2 device-environment summary")
+        except EvidenceInputError as error:
+            return {
+                "passed": False,
+                "path": str(path),
+                "checked": list(candidates),
+                "expected": "readable device-environment summary JSON with pass close signals",
+                "reason": str(error),
+            }
+        bound = _device_environment_document_is_bound(document, evidence_dir)
+        identity_matches_manifest = _device_environment_document_matches_manifest(
+            document,
+            manifest,
+        )
+        passed = (
+            document.get("schema_version") == SCHEMA_VERSION
+            and document.get("kind") == "phase2_device_environment_gate"
+            and document.get("verdict") == "pass"
+            and document.get("can_close_device_environment_gate") is True
+            and document.get("can_close_device_environment_gates") is True
+            and document.get("can_close_stand_charging_gate") is True
+            and bound
+            and identity_matches_manifest
+        )
+        return {
+            "passed": passed,
+            "path": str(path),
+            "checked": list(candidates),
+            "expected": "device-environment summary pass with stand and thermal/power close signals bound to this evidence package",
+            "verdict": document.get("verdict"),
+            "can_close_device_environment_gate": document.get("can_close_device_environment_gate"),
+            "can_close_device_environment_gates": document.get("can_close_device_environment_gates"),
+            "can_close_stand_charging_gate": document.get("can_close_stand_charging_gate"),
+            "bound_to_evidence_package": bound,
+            "identity_matches_manifest": identity_matches_manifest,
+        }
+    return {
+        "passed": False,
+        "path": None,
+        "checked": list(candidates),
+        "expected": "device-environment summary pass with stand and thermal/power close signals bound to this evidence package",
+    }
+
+
+def _device_environment_document_is_bound(document: dict[str, Any], evidence_dir: Path) -> bool:
+    if document.get("missing_artifacts") != []:
+        return False
+    if document.get("missing_requirements") != []:
+        return False
+    if document.get("missing_criteria") != []:
+        return False
+    if document.get("failed_criteria") != []:
+        return False
+    if document.get("blocking_reasons") != []:
+        return False
+    artifact_checks = document.get("artifact_checks")
+    if not isinstance(artifact_checks, dict):
+        return False
+    for relative_path, require_non_empty in (
+        ("README.md", True),
+        ("device-info.json", True),
+        ("adb-battery-before.txt", True),
+        ("adb-battery-after.txt", True),
+        ("adb-power-before.txt", True),
+        ("adb-power-after.txt", True),
+        ("thermal-before.txt", True),
+        ("thermal-before.err", False),
+        ("thermal-after.txt", True),
+        ("thermal-after.err", False),
+        ("soak-8h/samples.jsonl", True),
+        ("soak-8h/summary.json", True),
+        ("soak-8h/exact-window-report.json", True),
+        ("screenshots/sustained-use-portrait.png", True),
+        ("screenshots/sustained-use-landscape.png", True),
+    ):
+        check = artifact_checks.get(relative_path)
+        if not isinstance(check, dict) or check.get("passed") is not True:
+            return False
+        path_value = check.get("path")
+        if not isinstance(path_value, str):
+            return False
+        try:
+            bound_path = Path(path_value).resolve()
+            bound_path.relative_to(evidence_dir.resolve())
+        except (OSError, ValueError):
+            return False
+        if not bound_path.is_file():
+            return False
+        try:
+            size_bytes = bound_path.stat().st_size
+        except OSError:
+            return False
+        if require_non_empty and size_bytes <= 0:
+            return False
+    return True
+
+
+def _normalized_manifest_identity(manifest: dict[str, Any]) -> dict[str, str] | None:
+    identity = _manifest_get(manifest, "device", "identity")
+    if not isinstance(identity, dict):
+        return None
+    normalized: dict[str, str] = {}
+    for key in (
+        "adb_serial",
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "build_fingerprint",
+        "abi",
+    ):
+        value = identity.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        normalized[key] = value.strip()
+    return normalized
+
+
+def _device_environment_document_matches_manifest(document: dict[str, Any], manifest: dict[str, Any]) -> bool:
+    manifest_identity = _normalized_manifest_identity(manifest)
+    if manifest_identity is None:
+        return False
+    document_run_id = document.get("run_id")
+    manifest_run_id = manifest.get("run_id")
+    if not _non_empty_string(document_run_id) or document_run_id != manifest_run_id:
+        return False
+    document_identity = _get(document, "device", "identity")
+    if not isinstance(document_identity, dict):
+        return False
+    for key, value in manifest_identity.items():
+        if document_identity.get(key) != value:
+            return False
+    document_device_class = _get(document, "device", "device_class")
+    manifest_device_class = _manifest_get(manifest, "device", "device_class")
+    if document_device_class != manifest_device_class:
+        return False
+    return True
+
+
 def _evaluate_evidence_package(
     *,
     manifest_path: Path,
@@ -289,8 +502,17 @@ def _evaluate_evidence_package(
             MANIFEST_KIND,
         ),
         "physical_8_9_inch_tablet": _boolean_check(
-            _manifest_get(manifest, "device", "device_class") == "physical_8_9_inch_tablet",
+            _manifest_get(manifest, "device", "device_class") == PHYSICAL_TABLET_DEVICE_CLASS,
             "device.device_class is physical_8_9_inch_tablet",
+        ),
+        "tablet_size_inches": _boolean_check(
+            (size_inches := _tablet_size_inches(manifest)) is not None
+            and MINIMUM_TABLET_SIZE_INCHES <= size_inches <= MAXIMUM_TABLET_SIZE_INCHES,
+            "device.tablet_size_inches is a numeric 8.0..9.0 value",
+        ),
+        "not_nubia_p0110_substitute": _boolean_check(
+            not _is_nubia_p0110_manifest(manifest),
+            "Nubia P0110/pacific cannot close the physical 8-9 inch tablet gate",
         ),
         "stand_setup_declared": _boolean_check(
             _non_empty_string(_manifest_get(manifest, "physical_setup", "stand_setup")),
@@ -348,16 +570,25 @@ def _evaluate_evidence_package(
         name: _artifact_check(evidence_dir, candidates, require_non_empty, artifact_type)
         for name, candidates, require_non_empty, artifact_type in REQUIRED_EVIDENCE_ARTIFACTS
     }
+    device_environment_summary = _device_environment_summary_check(evidence_dir, manifest)
+    gate_owner_checks = _gate_owner_checks(manifest)
     reasons = [
         f"insufficient evidence package: manifest.{name}"
         for name, item in manifest_checks.items()
         if not item["passed"]
     ]
     reasons.extend(
+        f"insufficient evidence package: gate_owner.{name}"
+        for name, item in gate_owner_checks.items()
+        if not item["passed"]
+    )
+    reasons.extend(
         f"insufficient evidence package: artifact.{name}"
         for name, item in artifacts.items()
         if not item["passed"]
     )
+    if not device_environment_summary["passed"]:
+        reasons.append("insufficient evidence package: device_environment_summary")
     passed = not reasons
     return {
         "passed": passed,
@@ -365,7 +596,9 @@ def _evaluate_evidence_package(
         "evidence_dir": str(evidence_dir),
         "manifest_document": manifest,
         "manifest": manifest_checks,
+        "gate_owners": gate_owner_checks,
         "artifacts": artifacts,
+        "device_environment_summary": device_environment_summary,
         "reasons": reasons,
     }
 

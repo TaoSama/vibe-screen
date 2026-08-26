@@ -1,0 +1,11 @@
+{
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_version": "16",
+    "sdk": 36,
+    "hardware_serial": "[redacted]"
+  },
+  "source": "Retained 2026-08-18 blocked evidence; no new ADB command was run for this derived continuity preflight."
+}

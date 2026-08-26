@@ -55,6 +55,10 @@ func TestPairingRejectsExpiredWrongAndReusedOffer(t *testing.T) {
 	if !errors.Is(err, ErrExpiredOffer) {
 		t.Fatalf("expected expired offer, got %v", err)
 	}
+	_, _, err = NewDevicePairingSession(mustIdentity(t, "device", 1), hostSession.Offer(), hostSession.Offer().ExpiresAt, rand.Reader)
+	if !errors.Is(err, ErrExpiredOffer) {
+		t.Fatalf("expected expiry boundary rejection, got %v", err)
+	}
 	deviceSession, request, err := NewDevicePairingSession(mustIdentity(t, "device", 1), hostSession.Offer(), now, rand.Reader)
 	if err != nil {
 		t.Fatal(err)

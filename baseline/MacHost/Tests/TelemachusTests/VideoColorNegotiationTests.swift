@@ -3,6 +3,25 @@ import VibeScreenProtocol
 @testable import Telemachus
 
 final class VideoColorNegotiationTests: XCTestCase {
+    func testHDRWithNegotiatedCapabilityAndDecodeProfileIsAccepted() {
+        let negotiator = HostVideoColorNegotiator(
+            clientCapabilities: [.colorManagement, .hdrVideo],
+            decodeCapabilities: hdrDecodeCapabilities()
+        )
+
+        switch negotiator.evaluate(
+            hdrColor(),
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 60
+        ) {
+        case let .accepted(color):
+            XCTAssertEqual(color, hdrColor())
+        case .fallback, .rejected:
+            XCTFail("HDR should be accepted only when capability and decode profile both match")
+        }
+    }
+
     func testHDRWithoutNegotiatedCapabilityFallsBackToSDR() {
         let negotiator = HostVideoColorNegotiator(
             clientCapabilities: [.colorManagement],
@@ -22,6 +41,28 @@ final class VideoColorNegotiationTests: XCTestCase {
             XCTFail("HDR was accepted without CAPABILITY_HDR_VIDEO")
         case .rejected:
             XCTFail("HDR color mismatch should fall back when the SDR profile is supported")
+        }
+    }
+
+    func testHDRWithoutDecodeProfileFallsBackToSDR() {
+        let negotiator = HostVideoColorNegotiator(
+            clientCapabilities: [.colorManagement, .hdrVideo],
+            decodeCapabilities: []
+        )
+
+        switch negotiator.evaluate(
+            hdrColor(),
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 60
+        ) {
+        case let .fallback(color, reason):
+            XCTAssertEqual(reason, HostVideoColorNegotiator.unsupportedHDRFallbackReason)
+            assertLegacySDR(color)
+        case .accepted:
+            XCTFail("HDR must require an explicit decode profile")
+        case .rejected:
+            XCTFail("Missing HDR decode profile should fall back when legacy SDR is supported")
         }
     }
 
@@ -80,6 +121,13 @@ final class VideoColorNegotiationTests: XCTestCase {
         capability.maximumFramesPerSecond = 120
         capability.bitDepths = [8]
         capability.transferFunctions = [.bt709, .srgb]
+        return [capability]
+    }
+
+    private func hdrDecodeCapabilities() -> [VSVideoDecodeCapability] {
+        var capability = sdrDecodeCapabilities()[0]
+        capability.bitDepths = [8, 10]
+        capability.transferFunctions = [.bt709, .srgb, .pq]
         return [capability]
     }
 

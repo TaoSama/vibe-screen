@@ -9,7 +9,75 @@ signing, install, decode, UI, input, audio, reconnect, or device evidence.
 Use this runbook only when an iPhone or iPad acceptance pass is explicitly
 scheduled. It is a checklist and evidence schema; it does not ask for a long
 soak by default, and it must not reset macOS or Android permissions or clear
-Android application data.
+Android application data. The machine gate validates retained summaries after a
+run; it does not start Xcode, the Host, LAN traffic, ADB, or device automation.
+
+The current-base aggregate owner is #290 (`current-base-ios-acceptance`). Merged
+PR `#182` is the historical sanitized device-acceptance baseline; do not use it
+as the current aggregate owner. Before reporting readiness or a blocked run,
+produce the aggregate summary from the current base:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+The expected no-device result is fail-closed `blocked`. A nonzero exit from this
+command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
+retained gate evidence are missing. Do not convert that readiness output into a
+device pass.
+The aggregate report also records per-gate owners. PR #290 owns the aggregate
+and sanitized iOS device-acceptance validator only; hardware VideoToolbox
+readiness remains owned by #251, and Host-side advanced-adapter readiness
+remains owned by #253. Do not mark those gates complete from aggregate status,
+Simulator output, unsigned archives, MacHost loopback, or Android evidence.
+
+Before starting any install or device session, record and check the local iOS
+toolchain prerequisites. If any of these fail, stop at blocked readiness and do
+not begin the device run:
+
+```bash
+set -euo pipefail
+xcodebuild -version
+xcodebuild -showsdks | grep -qi 'iphoneos'
+identity_output="$(security find-identity -p codesigning -v)"
+printf '%s\n' "$identity_output" | grep -Eq '^[[:space:]]*[1-9][0-9]* valid identities found[[:space:]]*$'
+```
+
+Then validate the sanitized app-signing readiness summary. This is a dedicated
+fail-closed owner for the signing prerequisite only; it does not install the app
+or close any iOS device behavior gate:
+
+```bash
+make ios-app-signing-readiness-gate \
+  IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
+```
+
+The input must retain or summarize Team ID, provisioning profile UUID, unique
+bundle ID, codesign identity, registered physical-device UDID hashes, signed-app
+entitlements, signed artifact SHA-256, a clean current-base commit, and local
+artifacts for the archive command, codesign entitlements, and provisioning
+profile output. Missing any one of those values returns `blocked`; Simulator,
+unsigned, ad-hoc, or Android-derived material returns `fail`. Pass the produced
+`ios-app-signing-readiness-gate.json` into the current-base manifest before
+reporting aggregate readiness:
+
+```bash
+make ios-current-base-gate \
+  EVIDENCE_DIR=.build/evidence/ios-current-base \
+  IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness-gate.json
+```
+
+The current-base aggregate accepts this signing row only when the embedded gate
+declares `owner.role=ios_app_signing_readiness_current_base_owner`,
+`owner.head_ref=codex/phase5-ios-signing-readiness`, and
+`owner.repository=TaoSama/vibe-screen`. Its `signing_summary` is the source for
+the aggregate `signing` fields, including UDID-hash and entitlements coverage;
+hand-written manifest fields without that dedicated owner stay blocked.
+Embed the same passing `ios-app-signing-readiness-gate.json` as
+`signing_readiness_gate` in any later `acceptance.json`. The device acceptance
+gate binds the simplified signing row back to that owner output, so an ad-hoc
+signature, missing physical-device UDID hashes, missing entitlements, or a
+mismatched signed artifact digest cannot close the device gate.
 
 ## Open gates
 
@@ -29,8 +97,9 @@ below passes on real iPhone and iPad hardware:
 Evidence requirements:
 
 - E1: Xcode version, selected developer directory, development team, unique
-  bundle ID, signing certificate identity, provisioning profile UUID, signed app
-  or archive SHA-256.
+  bundle ID, signing certificate identity, provisioning profile UUID, physical
+  device UDID coverage in the provisioning profile, signed-app entitlements, and
+  signed app or archive SHA-256.
 - E2: iPhone and iPad-class hardware model, OS build, app revision, host
   revision, install log, first launch, and Local Network permission result.
 - E3: Pairing link source, `SSWA`/`SSWR`, `0D`/`0D01`, Hello, negotiated
@@ -54,7 +123,8 @@ Fail-closed rules:
 - F2: One device family alone leaves the other open; Simulator does not count.
 - F3: The macOS loopback gate cannot satisfy app/device session evidence.
 - F4: Android MediaCodec, synthetic media, or a decoded still image is not
-  hardware VideoToolbox evidence.
+  hardware VideoToolbox evidence. Simulator and unsigned archive summaries from
+  the readiness helper are also blocked by construction.
 - F5: Offline input encoding tests or Android CGEvent evidence do not close iOS
   input behavior.
 - F6: Manual relaunch, auth/protocol validation failure, or missing epoch
@@ -62,10 +132,17 @@ Fail-closed rules:
 - F7: Core PCM parser tests or host-side audio capture plans do not prove iOS
   playback.
 
-README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
-Internet transport, and advanced real-device behavior open; those broader gates
-remain tracked in the Phase 5 verification record rather than closed by this
-device runbook.
+README Phase 5 also keeps HDR output, iOS advanced adapters, host-side advanced
+adapters, audio/bulk product flows over Internet DataChannels, and advanced
+real-device behavior open; those broader gates remain tracked in the Phase 5
+verification record rather than closed by this device runbook. The host-side
+advanced-adapter owner is #253 and requires reviewed MacHost/product evidence
+for multi-client/display streams, audio capture, clipboard/file handlers,
+HDR/color retry, host actions, wake helper, and managed policy. HDR output
+specifically requires the dedicated `ios-hdr-edr-gate` in the
+[HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback,
+Simulator output, unsigned archives, Android evidence, Protocol field presence,
+ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
 
 ## Checklist
 
@@ -103,18 +180,69 @@ device runbook.
     30-minute memory, latency, dropped-frame, thermal, and power series. Do not
     start a longer soak from this runbook without explicit owner approval.
 
+## VideoToolbox readiness owner
+
+Record the Phase 5 hardware VideoToolbox behavior gate separately from the wider
+acceptance checklist. The owner is
+`tools/vibescreen_evidence/ios_videotoolbox_readiness.py`, with schema
+`tools/schemas/ios-videotoolbox-readiness.schema.json` and Makefile wrapper:
+
+```bash
+make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
+```
+
+The wrapper expects `$EVIDENCE_DIR/ios-videotoolbox-observations.json`. Set
+`runtime_class` to `simulator`, `unsigned_archive`, `physical_iphone`, or
+`physical_ipad`. The helper may be run offline or in CI with Simulator/archive
+inputs, but those runtime classes must produce `verdict=blocked` and make the
+Makefile gate exit nonzero. A physical device family can pass only when the
+observation record proves signed installation, real iPhone/iPad identity, H.264
+and HEVC parameter sets, VideoToolbox sessions and output frames for both
+codecs, hardware-path evidence, stream/config epoch telemetry, thermal/power
+state, and existing non-empty retained iOS VideoToolbox artifacts under the
+evidence directory. To write a blocked or insufficient summary for triage
+without failing the shell command, call the Python helper directly and omit
+`--require-pass`.
+
+The summary intentionally keeps `can_close_phase5_hardware_videotoolbox_gate`
+false. Close the README Phase 5 gate only after both `physical_iphone` and
+`physical_ipad` summaries pass and are reviewed with the signed installation,
+protocol session, input, reconnect, and audio evidence from this runbook.
+
 ## Evidence schema
 
-Each run should include a sanitized acceptance.json next to the retained logs.
+Each run should include a sanitized `acceptance.json` next to the retained logs.
 Missing required fields, any Android device substituted for an iPhone/iPad gate,
 or any gate without evidence keeps the run open, failed, or blocked; it must not
-be reported as passed.
+be reported as passed. Validate the sanitized file before using it to close a
+README gate:
 
-~~~json
+```sh
+make ios-device-acceptance-gate \
+  IOS_ACCEPTANCE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/acceptance.json \
+  IOS_ACCEPTANCE_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/ios-device-acceptance-gate.json
+```
+
+The underlying Python gate exits `0` only for `pass`, `1` for incomplete
+evidence (`insufficient`), and `2` for failed or invalid evidence; the Makefile
+target reports any non-pass as a failed target. `open` or `blocked` readiness
+summaries are useful for tracking prerequisites, but they are expected to return
+`insufficient` and cannot close the iOS trusted-LAN or real-device acceptance
+gate.
+
+```json
 {
-  "schema_version": 1,
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "ios_device_acceptance",
   "platform": "ios",
   "status": "open",
+  "aggregate_owner": {
+    "aggregate": "current-base-ios-acceptance",
+    "aggregate_pr": "#290",
+    "source_prs_or_tasks": ["#182", "#196", "#207", "#208", "#209", "#238", "#251", "#253", "#257", "#279", "#282"]
+  },
+  "readiness_status": "blocked",
+  "blocked_reasons": [],
   "repository": {
     "commit": "",
     "branch": "",
@@ -130,6 +258,10 @@ be reported as passed.
     "selected_developer_dir": "",
     "ios_sdk": ""
   },
+  "trusted_lan": {
+    "mode": "explicit_plaintext_legacy_fallback",
+    "encrypted_lan_claimed": false
+  },
   "signing": {
     "status": "open",
     "bundle_id": "",
@@ -137,6 +269,54 @@ be reported as passed.
     "certificate_common_name_redacted": true,
     "provisioning_profile_uuid_redacted": true,
     "archive_sha256": ""
+  },
+  "signing_readiness_gate": {
+    "schema_version": "vibescreen.evidence/v1",
+    "kind": "ios_app_signing_readiness_gate",
+    "owner": {
+      "role": "ios_app_signing_readiness_current_base_owner",
+      "head_ref": "codex/phase5-ios-signing-readiness",
+      "repository": "TaoSama/vibe-screen",
+      "scope": "Phase 5 iOS app-signing readiness prerequisite only"
+    },
+    "source": {
+      "readiness": "ios-app-signing-readiness.json",
+      "evidence_root": "."
+    },
+    "current_base": {
+      "commit": null,
+      "branch": "codex/phase5-ios-signing-readiness",
+      "dirty": false
+    },
+    "verdict": "blocked",
+    "signing_status": "blocked",
+    "signing_summary": {
+      "status": "blocked",
+      "bundle_id": null,
+      "unique_bundle_id": false,
+      "team_id_recorded": false,
+      "codesign_identity_recorded": false,
+      "provisioning_profile_recorded": false,
+      "device_udid_hashes_recorded": false,
+      "entitlements_recorded": false,
+      "signed_artifact_sha256": null
+    },
+    "can_close_ios_app_signing_readiness": false,
+    "can_close_ios_device_acceptance": false,
+    "recorded_fields": {
+      "team_id": false,
+      "provisioning_profile": false,
+      "bundle_id": false,
+      "codesign_identity": false,
+      "device_udid": false,
+      "entitlements": false,
+      "signed_artifact": false,
+      "artifacts": false
+    },
+    "missing": ["replace this object with the passing gate output before device acceptance"],
+    "failures": [],
+    "evidence": [],
+    "interpretation": "Blocked signing readiness cannot close device acceptance."
   },
   "devices": [
     {
@@ -166,10 +346,24 @@ be reported as passed.
     "reconnect": { "status": "open", "evidence": [] },
     "audio_playback": { "status": "open", "evidence": [] }
   },
+  "broader_gates": {
+    "hdr_output": { "status": "open", "evidence": [], "runbook": "docs/runbook/hdr-color-acceptance.md" },
+    "advanced_adapters": { "status": "open", "evidence": [] },
+    "host_advanced_adapters": { "status": "open", "evidence": [] },
+    "trusted_lan_secure_records": { "status": "open", "evidence": [] }
+  },
   "android_evidence_used_for_ios_gates": false,
   "notes": []
 }
-~~~
+```
+
+To turn this runbook record into current-base aggregate evidence, copy sanitized
+field values into `ios-current-base-manifest.json` or generate a fresh default
+manifest with `make ios-current-base-manifest`, then run
+`PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate`. The aggregate gate is
+stricter than this runbook: it keeps the current-base aggregate open until the
+E1-E7 device gates and the broader HDR, advanced-adapter, and trusted-LAN
+secure-record gates all carry retained evidence.
 
 Store raw logs under the active Phase 5 evidence directory or an external
 release bundle, depending on privacy review. Commit only sanitized summaries,

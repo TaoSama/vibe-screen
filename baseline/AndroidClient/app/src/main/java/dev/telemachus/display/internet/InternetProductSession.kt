@@ -1,7 +1,14 @@
 package dev.telemachus.display.internet
 
+import dev.telemachus.display.ControllerConnectionAckTracker
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+import dev.telemachus.display.internet.security.AdvancedChannelAdmission
+import dev.telemachus.display.internet.security.AdvancedChannelBinding
+import dev.telemachus.display.internet.security.AdvancedChannelOwner
+import dev.telemachus.display.internet.security.AdvancedChannelSecurityGate
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.SecurityTranscript
 import dev.vibescreen.protocol.v1.Capability
@@ -116,6 +123,15 @@ data class ProductVideoFrame(
     val payload: ByteArray,
 )
 
+internal data class ProductControllerEvent(
+    val inputId: Long,
+    val sample: ControllerStateSample,
+) {
+    init {
+        require(inputId > 0) { "Controller input identifier must be positive" }
+    }
+}
+
 interface InternetProductSessionCallbacks {
     fun onStateChanged(state: InternetProductSessionState) = Unit
 
@@ -127,9 +143,23 @@ interface InternetProductSessionCallbacks {
         completion: (ProductVideoDecision) -> Unit,
     ) = completion(effect.commit { ProductVideoDecision.reject("decoder_not_configured") })
 
+    fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) = Unit
+
     fun onVideoFrame(frame: ProductVideoFrame) = Unit
 
+    fun onAudioRecord(payload: ByteArray) = Unit
+
+    fun onBulkRecord(payload: ByteArray) = Unit
+
     fun onPong(sequence: Long) = Unit
+
+    fun onInputAck(
+        inputId: Long,
+        controllerId: String?,
+        controllerEpoch: Long?,
+        accepted: Boolean,
+        rejectionReason: String,
+    ) = Unit
 
     fun onFreshSessionRequired(reason: String) = Unit
 
@@ -278,6 +308,21 @@ class InternetProductSession internal constructor(
     private val transportOwner = TransportOwner(generation = 1)
     private var activeTransportOwner: TransportOwner? = transportOwner
     private val frameAssembler = ProductMediaFrameAssembler(clock)
+    private val controllerSendGate = ReentrantLock(true)
+    private val controllerSendQueue = InternetControllerSendQueue<ProductControllerEvent>()
+    private val controllerConnectionAcks = ControllerConnectionAckTracker()
+    private val advancedChannelGate =
+        AdvancedChannelSecurityGate(
+            initialOwner = advancedChannelOwner(transportOwner),
+            limits =
+                AdvancedChannelSecurityGate.Limits(
+                    maximumAudioRecordBytes = InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
+                    maximumAudioBacklogBytes =
+                        AUDIO_BACKLOG_RECORD_CAPACITY * InternetAudioRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
+                    maximumBulkRecordBytes = InternetBulkRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
+                    maximumBulkBacklogBytes = 4 * 1024 * 1024,
+                ),
+        )
 
     init {
         check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAdmissionBlocked(lease.pairingIdentifier)) {
@@ -295,6 +340,8 @@ class InternetProductSession internal constructor(
         ).apply {
             onControlMessage = { payload -> handleControl(transportOwner, payload) }
             onMediaPacket = { payload -> handleMedia(transportOwner, payload) }
+            onAudioRecord = { payload -> handleAudioRecord(transportOwner, payload) }
+            onBulkRecord = { payload -> handleBulkRecord(transportOwner, payload) }
         }
 
     @Volatile
@@ -392,6 +439,38 @@ class InternetProductSession internal constructor(
                 Capability.CAPABILITY_STYLUS_EXTENDED in expectedNegotiatedCapabilities
         }
 
+    fun hasNegotiatedControllerCapability(): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+        }
+
+    fun canSendController(): Boolean =
+        synchronized(lock) {
+            canSendControllerLocked()
+        }
+
+    internal fun sendController(
+        events: List<ProductControllerEvent>,
+        delivery: InternetControllerSendQueue.Delivery,
+    ): Boolean =
+        controllerSendGate.withLock {
+            if (events.isEmpty()) return@withLock false
+            val sendImmediately = synchronized(lock) { canSendControllerLocked() }
+            val queueStructuralForRecovery =
+                delivery == InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL &&
+                    synchronized(lock) { canQueueControllerStructuralForRecoveryLocked() }
+            if (!sendImmediately && !queueStructuralForRecovery) return@withLock false
+            val enqueueResult = controllerSendQueue.enqueue(events, delivery)
+            if (enqueueResult == InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW) {
+                fail(IllegalStateException("Controller structural send queue overflowed"))
+                return@withLock false
+            }
+            if (!sendImmediately) return@withLock true
+            drainControllerQueue() || synchronized(lock) { state in CONTROLLER_STRUCTURAL_STATES }
+        }
+
     fun requestKeyframe(reason: String): Boolean {
         val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
         return sendApplicationControl {
@@ -405,9 +484,81 @@ class InternetProductSession internal constructor(
         }
     }
 
+    fun sendAudioRecord(payload: ByteArray): Boolean {
+        val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
+        return sendAdvancedRecord(payload, AdvancedChannelBinding.Audio(INTERNET_DISPLAY_ID, streamId)) {
+            transport.sendAudioRecord(payload)
+        }
+    }
+
+    fun sendBulkRecord(
+        payload: ByteArray,
+        transferId: ByteArray,
+    ): Boolean =
+        sendAdvancedRecord(payload, AdvancedChannelBinding.Bulk(transferId)) {
+            transport.sendBulkRecord(payload)
+        }
+
     fun sendPing(sequence: Long): Boolean =
         sendApplicationControl {
             codec.encodePing(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, sequence)
+        }
+
+    private fun canSendControllerLocked(): Boolean =
+        acceptsTransportCallbackLocked() &&
+            acceptedSession &&
+            state == InternetProductSessionState.ACTIVE &&
+            currentVideoConfiguration != null &&
+            Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+
+    private fun canQueueControllerStructuralForRecoveryLocked(): Boolean =
+        acceptsTransportCallbackLocked() &&
+            acceptedSession &&
+            state in CONTROLLER_STRUCTURAL_STATES &&
+            currentVideoConfiguration != null &&
+            Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+
+    private fun drainControllerQueue(): Boolean {
+        val result =
+            controllerSendQueue.drain { event ->
+                val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return@drain false
+                val encoded =
+                    codec.encodeController(
+                        nextMessageId(),
+                        lease.protocolSessionId,
+                        lease.authoritativeSessionEpoch,
+                        streamId,
+                        event.inputId,
+                        event.sample,
+                    )
+                val sent = sendOptionalApplicationControl(encoded)
+                if (sent) {
+                    when (event.sample.kind) {
+                        ControllerEventKind.CONNECTED -> check(
+                            controllerConnectionAcks.recordConnected(
+                                event.inputId,
+                                event.sample.controllerId,
+                                event.sample.controllerEpoch,
+                            ),
+                        ) { "duplicate controller CONNECTED input id" }
+                        ControllerEventKind.DISCONNECTED -> {
+                            controllerConnectionAcks.recordDisconnected(event.sample.controllerId, event.sample.controllerEpoch)
+                        }
+                        ControllerEventKind.STATE -> Unit
+                    }
+                }
+                sent
+            }
+        result.failure?.let { fail(it) }
+        return !result.blocked && result.failure == null
+    }
+
+    private fun sendOptionalApplicationControl(payload: ByteArray): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                state == InternetProductSessionState.ACTIVE &&
+                transport.sendControl(payload)
         }
 
     override fun close() {
@@ -552,20 +703,7 @@ class InternetProductSession internal constructor(
             }
             is ProductControlMessage.VideoConfiguration -> handleVideoConfiguration(owner, message.value)
             is ProductControlMessage.Pong -> notifyPongIfOwned(owner, message.sequence)
-            is ProductControlMessage.InputAck -> {
-                val controllerWasNegotiated =
-                    synchronized(lock) {
-                        acceptsTransportCallbackLocked(owner) &&
-                            acceptedSession &&
-                            Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
-                    }
-                if (!controllerWasNegotiated) {
-                    failIfOwned(
-                        owner,
-                        IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
-                    )
-                }
-            }
+            is ProductControlMessage.InputAck -> notifyInputAckIfOwned(owner, message.inputId, message.accepted, message.rejectionReason)
             is ProductControlMessage.Ping -> {
                 val response =
                     codec.encodePong(
@@ -719,7 +857,10 @@ class InternetProductSession internal constructor(
                     true
                 }
             }
-        if (shouldResume) notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
+        if (shouldResume) {
+            controllerSendGate.withLock { drainControllerQueue() }
+            notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
+        }
     }
 
     private fun heartbeatTick() {
@@ -837,6 +978,7 @@ class InternetProductSession internal constructor(
                     effectiveDecision.rejectionReason,
                 )
             var sendFailed = false
+            var appliedConfiguration: ProductVideoConfiguration? = null
             synchronized(lock) {
                 if (!isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) return
                 pendingVideoConfiguration = null
@@ -845,6 +987,7 @@ class InternetProductSession internal constructor(
                 } else if (effectiveDecision.accepted) {
                     currentVideoConfiguration = configuration
                     frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
+                    appliedConfiguration = configuration
                 }
             }
             if (sendFailed) {
@@ -856,6 +999,8 @@ class InternetProductSession internal constructor(
                     owner,
                     IllegalStateException("Decoder rejected the active HEVC target"),
                 )
+            } else {
+                appliedConfiguration?.let(callbacks::onVideoConfigurationApplied)
             }
             Unit
         }
@@ -961,6 +1106,59 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun handleAudioRecord(
+        owner: TransportOwner,
+        payload: ByteArray,
+    ) {
+        val streamId = currentStreamId()
+        if (streamId <= 0) return
+        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Audio(INTERNET_DISPLAY_ID, streamId)) { record ->
+            callbacks.onAudioRecord(record.copyOf())
+        }
+    }
+
+    private fun handleBulkRecord(
+        owner: TransportOwner,
+        payload: ByteArray,
+    ) {
+        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Bulk(DEFAULT_BULK_TRANSFER_ID)) { record ->
+            callbacks.onBulkRecord(record.copyOf())
+        }
+    }
+
+    private fun handleAdvancedRecord(
+        owner: TransportOwner,
+        payload: ByteArray,
+        binding: AdvancedChannelBinding,
+        deliver: (ByteArray) -> Unit,
+    ) {
+        var admissionFailure: Throwable? = null
+        val admission =
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked(owner) || !acceptedSession || state != InternetProductSessionState.ACTIVE) {
+                    return
+                }
+                try {
+                    advancedChannelGate.reserve(payload.size, binding, advancedChannelOwner(owner))
+                } catch (failure: Throwable) {
+                    admissionFailure = failure
+                    null
+                }
+            } ?: run {
+                failIfOwned(owner, IllegalArgumentException("Protocol v1 advanced channel record was rejected", admissionFailure))
+                return
+            }
+        withLifecycleGate {
+            try {
+                if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession && state == InternetProductSessionState.ACTIVE }) {
+                    deliver(payload)
+                }
+            } finally {
+                finishAdvancedAdmission(admission)
+            }
+        }
+    }
+
     private fun requestFreshSessionIfAllowed(
         owner: TransportOwner,
         reason: String,
@@ -977,6 +1175,7 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         reason: String,
     ) {
+        var closeTransport = false
         withLifecycleGate {
             var stateChanged = false
             val reserved =
@@ -986,6 +1185,7 @@ class InternetProductSession internal constructor(
                     } else {
                         stateChanged = state != InternetProductSessionState.RECOVERING
                         freshSessionRequested = true
+                        closeTransport = true
                         invalidateTransportOwnerLocked()
                         state = InternetProductSessionState.RECOVERING
                         true
@@ -993,6 +1193,7 @@ class InternetProductSession internal constructor(
                 }
             if (!reserved) return
             if (stateChanged) callbacks.onStateChanged(InternetProductSessionState.RECOVERING)
+            if (closeTransport) transport.close()
             if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
                 callbacks.onFreshSessionRequired(reason)
             }
@@ -1059,6 +1260,47 @@ class InternetProductSession internal constructor(
             fail(IllegalStateException("Reliable control channel backlog rejected a state-changing message"))
         }
         return sent
+    }
+
+    private fun sendAdvancedRecord(
+        payload: ByteArray,
+        binding: AdvancedChannelBinding,
+        send: () -> Boolean,
+    ): Boolean {
+        var admissionFailure: Throwable? = null
+        val admission =
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked() || !acceptedSession || state != InternetProductSessionState.ACTIVE) {
+                    return false
+                }
+                try {
+                    advancedChannelGate.reserve(payload.size, binding, advancedChannelOwner(activeTransportOwner ?: transportOwner))
+                } catch (failure: Throwable) {
+                    admissionFailure = failure
+                    null
+                }
+            } ?: run {
+                fail(IllegalArgumentException("Protocol v1 advanced channel record was rejected", admissionFailure))
+                return false
+            }
+        val sent =
+            try {
+                send()
+            } finally {
+                finishAdvancedAdmission(admission)
+            }
+        if (!sent && synchronized(lock) { acceptsTransportCallbackLocked() }) {
+            fail(IllegalStateException("Protocol v1 advanced channel backlog rejected a product-session record"))
+        }
+        return sent
+    }
+
+    private fun finishAdvancedAdmission(admission: AdvancedChannelAdmission) {
+        try {
+            advancedChannelGate.finish(admission)
+        } catch (failure: Throwable) {
+            fail(IllegalStateException("Protocol v1 advanced channel admission could not be released", failure))
+        }
     }
 
     private fun sendRequiredControl(payload: ByteArray) {
@@ -1181,6 +1423,37 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun notifyInputAckIfOwned(
+        owner: TransportOwner,
+        inputId: Long,
+        accepted: Boolean,
+        rejectionReason: String,
+    ) {
+        withLifecycleGate {
+            if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
+                val controllerWasNegotiated =
+                    synchronized(lock) {
+                        acceptedSession && Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+                    }
+                if (!controllerWasNegotiated) {
+                    failIfOwned(
+                        owner,
+                        IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
+                    )
+                    return@withLifecycleGate
+                }
+                val connection = controllerConnectionAcks.acknowledge(inputId)
+                callbacks.onInputAck(
+                    inputId,
+                    connection?.controllerId,
+                    connection?.controllerEpoch,
+                    accepted,
+                    rejectionReason,
+                )
+            }
+        }
+    }
+
     private fun notifyFailureIfOwned(
         owner: TransportOwner,
         error: Throwable,
@@ -1240,11 +1513,22 @@ class InternetProductSession internal constructor(
         acceptedHostHello = false
         acceptedSession = false
         expectedNegotiatedCapabilities = emptySet()
+        controllerSendQueue.clear()
+        controllerConnectionAcks.reset()
         currentVideoConfiguration = null
         pendingVideoConfiguration = null
         nextHeartbeatAtMillis = Long.MAX_VALUE
         frameAssembler.reset()
     }
+
+    private fun advancedChannelOwner(owner: TransportOwner): AdvancedChannelOwner =
+        AdvancedChannelOwner(
+            sessionId = lease.signalingSessionId,
+            sessionEpoch = lease.authoritativeSessionEpoch,
+            generation = owner.generation,
+        )
+
+    private fun currentStreamId(): Long = synchronized(lock) { currentVideoConfiguration?.streamId ?: 0 }
 
     private data class TransportOwner(val generation: Long)
 
@@ -1269,6 +1553,15 @@ class InternetProductSession internal constructor(
         private const val MAX_HEARTBEAT_INTERVAL_MS = 60_000L
         private const val MEDIA_KEYFRAME_REASON_INVALID_FRAGMENT = "invalid_media_fragment"
         private const val VIDEO_CONFIGURATION_TIMEOUT_MS = 5_000L
+        private val CONTROLLER_STRUCTURAL_STATES =
+            setOf(
+                InternetProductSessionState.ACTIVE,
+                InternetProductSessionState.RECOVERING,
+                InternetProductSessionState.SUSPENDED,
+            )
+        private const val AUDIO_BACKLOG_RECORD_CAPACITY = 2
+        private const val INTERNET_DISPLAY_ID = "internet-display"
+        private val DEFAULT_BULK_TRANSFER_ID = "internet-bulk-v1".toByteArray(Charsets.UTF_8)
         internal fun create(
             storedSessionFactory: AndroidStoredInternetSessionFactory,
             localDeviceId: String,

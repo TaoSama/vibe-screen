@@ -33,10 +33,27 @@ class DisplayCapsulePolicyTest {
     }
 
     @Test
+    fun `capsule disables while a display switch is pending`() {
+        val displays = listOf(option("a"), option("b"))
+
+        assertTrue(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = null))
+        assertFalse(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = "b"))
+    }
+
+    @Test
     fun `active option resolves by selected id`() {
         val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
         assertEquals("Sidecar", DisplayCapsulePolicy.activeOption(displays, "b")?.name)
         assertNull(DisplayCapsulePolicy.activeOption(displays, "missing"))
+    }
+
+    @Test
+    fun `pending option resolves only known requested display`() {
+        val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
+
+        assertEquals("Sidecar", DisplayCapsulePolicy.pendingOption(displays, "b")?.name)
+        assertNull(DisplayCapsulePolicy.pendingOption(displays, null))
+        assertNull(DisplayCapsulePolicy.pendingOption(displays, "missing"))
     }
 
     @Test
@@ -82,6 +99,31 @@ class DisplayCapsulePolicyTest {
         assertEquals(
             DisplayCapsulePolicy.DisplayKind.EXTERNAL,
             DisplayCapsulePolicy.displayKind(option("external", "Studio Display")),
+        )
+    }
+
+    @Test
+    fun displayMenuIgnoresSelectionsBeforeItIsArmed() {
+        assertFalse(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = -1,
+                nowMs = 1_000,
+                armDelayMs = 300,
+            ),
+        )
+        assertFalse(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = 1_000,
+                nowMs = 1_299,
+                armDelayMs = 300,
+            ),
+        )
+        assertTrue(
+            DisplayMenuSelectionGuard.acceptsSelection(
+                menuShownAtMs = 1_000,
+                nowMs = 1_300,
+                armDelayMs = 300,
+            ),
         )
     }
 }
@@ -259,6 +301,17 @@ class ControlBarLayoutPolicyTest {
             ),
         )
         assertEquals(
+            ControlBarLayoutPolicy.Margins(0, 8, 0),
+            ControlBarLayoutPolicy.actionMargins(
+                ControlBarLayoutPolicy.Mode.COLUMN,
+                ControlBarLayoutPolicy.Action.FILE_TRANSFER,
+                hostActionsVisible = false,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
+            ),
+        )
+        assertEquals(
             ControlBarLayoutPolicy.Margins(0, 12, 0),
             ControlBarLayoutPolicy.actionMargins(
                 ControlBarLayoutPolicy.Mode.COLUMN,
@@ -276,6 +329,41 @@ class ControlBarLayoutPolicyTest {
                 hostActionsVisible = true,
                 clipboardVisible = true,
                 geometry = geometry,
+            ),
+        )
+    }
+
+    @Test
+    fun `file transfer control consumes action width only when visible`() {
+        val withoutFileTransfer = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withFileTransfer =
+            compactMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+            )
+        assertEquals(geometry.buttonSizePx + geometry.actionMarginPx * 2, withFileTransfer - withoutFileTransfer)
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COMPACT,
+            ControlBarLayoutPolicy.mode(
+                withFileTransfer,
+                displaySelectorVisible = false,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
+            ),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(
+                withFileTransfer - 1,
+                displaySelectorVisible = false,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
             ),
         )
     }
@@ -301,28 +389,32 @@ class ControlBarLayoutPolicyTest {
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             statusWidth(geometry) +
-            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
 
     private fun inlineMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
-        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible) + geometry.selectorMinimumWidthPx
+        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible, fileTransferVisible) +
+            geometry.selectorMinimumWidthPx
 
     private fun stackedMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible),
+                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible),
             )
 
     private fun statusWidth(geometry: ControlBarLayoutPolicy.Geometry): Int =

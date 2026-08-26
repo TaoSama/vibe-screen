@@ -1,0 +1,1 @@
+/sdcard/pr272-final-settings-portrait.xml: 1 file pulled, 0 skipped. 2.0 MB/s (16908 bytes in 0.008s)

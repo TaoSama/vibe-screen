@@ -81,6 +81,25 @@ struct NegotiatedDisplayConfiguration: Equatable {
     let rotation: Int
 }
 
+struct StreamFrameLifecycleStats: Equatable {
+    let latestPixelBufferRetained: Int
+    let latestPixelBufferCapacity: Int
+    let fallbackCaptureActive: Bool
+    let encoderPresent: Bool
+
+    init(
+        latestPixelBufferRetained: Int,
+        latestPixelBufferCapacity: Int = 1,
+        fallbackCaptureActive: Bool,
+        encoderPresent: Bool
+    ) {
+        self.latestPixelBufferRetained = latestPixelBufferRetained
+        self.latestPixelBufferCapacity = latestPixelBufferCapacity
+        self.fallbackCaptureActive = fallbackCaptureActive
+        self.encoderPresent = encoderPresent
+    }
+}
+
 final class ClientCallbackGenerationGate {
     private let lock = NSLock()
     private var currentGeneration: UInt64 = 0
@@ -247,6 +266,44 @@ final class LatestFrameMailbox<Element> {
     }
 }
 
+enum StreamStatsTelemetryBuilder {
+    static func attributes(
+        fps: Double,
+        mbps: Double,
+        averageFrameAgeMs: Double,
+        droppedFrames: UInt64,
+        queueDepth: Int,
+        queueCapacity: Int,
+        encoderStats: (inFlight: Int, capacity: Int, frameRegistryCount: Int)? = nil,
+        frameLifecycleStats: StreamFrameLifecycleStats? = nil
+    ) -> [String: TelemetryValue] {
+        var attributes: [String: TelemetryValue] = [
+            "fps": .double(fps),
+            "mbps": .double(mbps),
+            "average_frame_age_ms": .double(averageFrameAgeMs),
+            "dropped_frames": .unsigned(droppedFrames),
+            "queue_depth": .integer(Int64(queueDepth)),
+            "queue_capacity": .integer(Int64(queueCapacity))
+        ]
+        if let encoderStats {
+            attributes["encoder_in_flight"] = .integer(Int64(encoderStats.inFlight))
+            attributes["encoder_in_flight_capacity"] = .integer(Int64(encoderStats.capacity))
+            attributes["frame_registry_count"] = .integer(Int64(encoderStats.frameRegistryCount))
+        }
+        if let frameLifecycleStats {
+            attributes["latest_pixel_buffer_retained"] = .integer(
+                Int64(frameLifecycleStats.latestPixelBufferRetained)
+            )
+            attributes["latest_pixel_buffer_capacity"] = .integer(
+                Int64(frameLifecycleStats.latestPixelBufferCapacity)
+            )
+            attributes["fallback_capture_active"] = .boolean(frameLifecycleStats.fallbackCaptureActive)
+            attributes["encoder_present"] = .boolean(frameLifecycleStats.encoderPresent)
+        }
+        return attributes
+    }
+}
+
 class StreamingServer: EncodedFrameSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     // Wireless admission adds a full authentication round trip before the
@@ -314,7 +371,10 @@ class StreamingServer: EncodedFrameSink {
     /// capacity for the `stream_stats` telemetry record. The short-window host
     /// memory diagnostic uses these to assert the encoder never exceeds its
     /// admission budget. Optional so tests and non-capture builds can omit it.
-    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int)?)?
+    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int, frameRegistryCount: Int)?)?
+    /// Supplies capture-side retained-frame state for the same telemetry record.
+    /// Optional for tests and non-capture builds.
+    var frameLifecycleStatsProvider: (() -> StreamFrameLifecycleStats?)?
     var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
     // handled regardless. When false, incoming touch frames are dropped
@@ -406,11 +466,24 @@ class StreamingServer: EncodedFrameSink {
         let sessionEpoch: UInt64
         let packetChannel: InternetTransportChannel
     }
+    private struct PendingAudioPacket {
+        let serializedFrame: Data
+        let timestamp: UInt64
+        let connection: NWConnection
+        let generation: UInt64
+        let audioGeneration: UInt64
+        let sessionEpoch: UInt64
+    }
     /// At most one frame is inside Network.framework and one newer frame is
     /// retained. This prevents a transient USB/Wi-Fi slowdown from becoming a
     /// seconds-long FIFO of pictures the viewer no longer wants to see.
     private var sendInFlight = false
     private var pendingFrames: LatestFrameQueue<PendingFrame>
+    private var audioSendInFlight = false
+    private var audioGeneration: UInt64 = 0
+    private var pendingAudioPackets: [PendingAudioPacket] = []
+    private let maximumPendingAudioPackets = 2
+    private let audioStream: MacHostAudioStream
     private let frameMailbox = LatestFrameMailbox<FrameSubmission>(
         isKeyframe: { $0.isKeyframe }
     )
@@ -418,6 +491,7 @@ class StreamingServer: EncodedFrameSink {
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
     private var droppedFrames: UInt64 = 0
+    private var firstFrameSentTelemetryEpoch: UInt64?
     private var lastStatsTime = DispatchTime.now()
     private var displayWidth = 1920
     private var displayHeight = 1080
@@ -452,6 +526,7 @@ class StreamingServer: EncodedFrameSink {
     private let protocolV1FileTransferPolicy = ProtocolV1FileTransferPolicy.default
     private var inputBuffer = Data()
     private var expectedAuthToken: Data?
+    private var pendingAcceptedConnections: [ObjectIdentifier: NWConnection] = [:]
     private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
     private var pendingWirelessConnections: [ObjectIdentifier: NWConnection] = [:]
     private let sessionEpochGate = SessionEpochGate()
@@ -464,6 +539,8 @@ class StreamingServer: EncodedFrameSink {
     private let telemetry: TelemetryRecording?
     private let wakeHostAuthorizer: any WakeHostAuthorizing
     private let wakeHostPacketSender: any WakeHostPacketSending
+    private var acceptedConnectionObserverForSelfTest: ((NWConnection) -> Void)?
+    private let managedConfigurationProvider: ManagedConfigurationProvider
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
 
@@ -474,7 +551,9 @@ class StreamingServer: EncodedFrameSink {
         allowPlaintextWirelessLegacyFallback: Bool = false,
         protocolUpgradeGraceMillisecondsOverride: Int? = nil,
         wakeHostAuthorizer: any WakeHostAuthorizing = DenyWakeHostAuthorizer(),
-        wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender()
+        wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender(),
+        audioStream: MacHostAudioStream = MacHostAudioStream(),
+        managedConfigurationProvider: ManagedConfigurationProvider = ManagedConfigurationProvider()
     ) {
         self.port = port
         self.mode = mode
@@ -482,6 +561,8 @@ class StreamingServer: EncodedFrameSink {
         self.protocolUpgradeGraceMillisecondsOverride = protocolUpgradeGraceMillisecondsOverride
         self.wakeHostAuthorizer = wakeHostAuthorizer
         self.wakeHostPacketSender = wakeHostPacketSender
+        self.audioStream = audioStream
+        self.managedConfigurationProvider = managedConfigurationProvider
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -619,7 +700,9 @@ class StreamingServer: EncodedFrameSink {
 
     private func handleConnection(_ newConnection: NWConnection) {
         debugLog("New connection incoming...")
-        newConnection.stateUpdateHandler = { [weak self] state in
+        pendingAcceptedConnections[ObjectIdentifier(newConnection)] = newConnection
+        newConnection.stateUpdateHandler = { [weak self, weak newConnection] state in
+            guard let newConnection else { return }
             debugLog("Connection state: \(state)")
             switch state {
             case .ready:
@@ -639,6 +722,7 @@ class StreamingServer: EncodedFrameSink {
     }
 
     private func onConnectionReady(_ conn: NWConnection) {
+        pendingAcceptedConnections.removeValue(forKey: ObjectIdentifier(conn))
         switch mode {
         case .usb:
             guard conn.endpoint.isLoopback else {
@@ -695,6 +779,7 @@ class StreamingServer: EncodedFrameSink {
         let generation = activeConnectionGeneration
         clientCallbackGeneration.advance(to: generation)
         connection = conn
+        acceptedConnectionObserverForSelfTest?(conn)
         activeConnectionIsWireless = isWireless
         self.lanSecureRecordSession?.close()
         self.lanSecureRecordSession = lanRecordSession
@@ -705,6 +790,7 @@ class StreamingServer: EncodedFrameSink {
         clientIsAvcOnly = false
         codecNegotiationGeneration = nil
         connectionProtocolMode = .legacy
+        stopProtocolV1Audio(reason: "connection_admitted")
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
@@ -735,6 +821,7 @@ class StreamingServer: EncodedFrameSink {
             guard let self else { return }
             self.framePipelineGeneration &+= 1
             self.sendInFlight = false
+            self.firstFrameSentTelemetryEpoch = nil
             _ = self.pendingFrames.reset(requiresKeyframe: true)
         }
         recordTelemetry(
@@ -746,6 +833,7 @@ class StreamingServer: EncodedFrameSink {
         // Promote the authenticated candidate before cancelling the previous
         // session. Its stale cancellation callback then cannot mutate this one.
         if let oldConnection, oldConnection !== conn {
+            oldConnection.stateUpdateHandler = nil
             oldConnection.cancel()
         }
 
@@ -772,8 +860,11 @@ class StreamingServer: EncodedFrameSink {
     }
 
     private func connectionEnded(_ conn: NWConnection) {
+        pendingAcceptedConnections.removeValue(forKey: ObjectIdentifier(conn))
         cancelHandshakeTimeout(for: conn)
         pendingWirelessConnections.removeValue(forKey: ObjectIdentifier(conn))
+        conn.stateUpdateHandler = nil
+        conn.cancel()
         guard connection === conn else { return }
         connection = nil
         connectionReady = false
@@ -795,6 +886,7 @@ class StreamingServer: EncodedFrameSink {
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
         inputBuffer.removeAll(keepingCapacity: true)
         connectionProtocolMode = .legacy
+        stopProtocolV1Audio(reason: "connection_ended")
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
@@ -1131,10 +1223,10 @@ class StreamingServer: EncodedFrameSink {
         completion: (() -> Void)? = nil
     ) {
         let bytes = HandshakeCodec.encodeResponse(status: status)
-        conn.send(content: bytes, completion: .contentProcessed { _ in
+        conn.send(content: bytes, completion: .contentProcessed { [weak conn] _ in
             if thenClose {
                 debugLog("Auth rejected (\(status)), closing connection")
-                conn.cancel()
+                conn?.cancel()
             } else {
                 completion?()
             }
@@ -1478,10 +1570,12 @@ class StreamingServer: EncodedFrameSink {
         var creationResult: Result<ProtocolV1OutgoingFileTransfer, Error>!
         performOnNetworkQueue {
             creationResult = Result {
-                try ProtocolV1OutgoingFileTransfer(
+                let effectivePolicy = self.protocolV1Session?.negotiatedFileTransferPolicySnapshot()
+                    ?? self.protocolV1FileTransferPolicy
+                return try ProtocolV1OutgoingFileTransfer(
                     fileURL: fileURL,
                     mimeType: mimeType,
-                    policy: self.protocolV1FileTransferPolicy,
+                    policy: effectivePolicy,
                     remotePolicy: self.protocolV1RemoteManagedPolicy
                 )
             }
@@ -1496,6 +1590,10 @@ class StreamingServer: EncodedFrameSink {
                 return
             }
             let generation = self.activeConnectionGeneration
+            guard session.canTransferFiles else {
+                transfer.cancel()
+                return
+            }
             guard self.protocolV1OutgoingFiles.isEmpty else {
                 transfer.cancel()
                 self.applyProtocolV1Actions(
@@ -1634,6 +1732,13 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    var fileTransferAvailable: Bool {
+        withNetworkQueue {
+            connectionProtocolMode == .protocolV1
+                && (protocolV1Session?.canTransferFiles ?? false)
+        }
+    }
+
     /// The clipboard UI calls this through the `ClipboardServer` protocol.
     /// Returns the underlying `shareClipboard` result so the caller knows
     /// whether the offer was actually sent.
@@ -1710,6 +1815,14 @@ class StreamingServer: EncodedFrameSink {
         return snapshot
     }
 
+    func observeAcceptedConnectionsForSelfTest(
+        _ observer: ((NWConnection) -> Void)?
+    ) {
+        performOnNetworkQueue {
+            self.acceptedConnectionObserverForSelfTest = observer
+        }
+    }
+
     func sendDisplaySize() {
         guard connectionProtocolMode == .legacy,
               let connection = connection else { return }
@@ -1728,7 +1841,8 @@ class StreamingServer: EncodedFrameSink {
         isReceiving = true
         debugLog("Starting input receive loop... (touch=\(touchEnabled ? "on" : "off"))")
 
-        receiveQueue.async { [weak self] in
+        receiveQueue.async { [weak self, weak conn] in
+            guard let conn else { return }
             self?.touchReceiveLoop(on: conn, generation: generation)
         }
     }
@@ -1739,8 +1853,9 @@ class StreamingServer: EncodedFrameSink {
               isReceiving,
               !isStopped else { return }
 
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self, weak conn] data, _, isComplete, error in
             guard let self,
+                  let conn,
                   self.connection === conn,
                   self.activeConnectionGeneration == generation,
                   self.isReceiving,
@@ -1774,7 +1889,8 @@ class StreamingServer: EncodedFrameSink {
                 }
             }
 
-            self.receiveQueue.async {
+            self.receiveQueue.async { [weak self, weak conn] in
+                guard let self, let conn else { return }
                 self.touchReceiveLoop(on: conn, generation: generation)
             }
         }
@@ -1975,19 +2091,18 @@ class StreamingServer: EncodedFrameSink {
         }
         protocolV1IncomingFiles = incomingFiles
         protocolV1RemoteManagedPolicy = .unmanaged
-        let managedPolicy = ManagedPolicy.unmanaged
+        let managedPolicy = managedConfigurationProvider.loadPolicy()
         var hostCapabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: touchEnabled,
             controllerAvailable: controllerAvailable,
             managedPolicy: managedPolicy,
-            fileTransferAllowed: incomingFiles != nil && filePolicy.allowed
+            fileTransferAllowed: incomingFiles != nil && filePolicy.allowed,
+            audioCaptureAvailable: audioStream.canAdvertiseCapture,
+            wakeHostAvailable: wakeHostAuthorizer.wakeAllowed
         )
         if activeConnectionIsWireless && lanRecordProtectionState == .encrypted {
             hostCapabilities.insert(.endToEndEncryption)
             hostCapabilities.insert(.replayProtection)
-        }
-        if wakeHostAuthorizer.wakeAllowed {
-            hostCapabilities.insert(.wakeHost)
         }
         protocolV1Session = ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -2042,6 +2157,10 @@ class StreamingServer: EncodedFrameSink {
                     actions = session.rejectMalformedTransport(
                         "Client-to-host video frames are not valid in this session."
                     )
+                case .audio:
+                    actions = session.rejectMalformedTransport(
+                        "Client-to-host audio frames are not valid in this session."
+                    )
                 case .bulk:
                     actions = handleProtocolV1BulkFrame(frame.payload, session: session)
                 }
@@ -2066,7 +2185,7 @@ class StreamingServer: EncodedFrameSink {
         } catch {
             return session.rejectMalformedTransport("Invalid file transfer bulk frame: \(error)")
         }
-        guard let incomingFiles = protocolV1IncomingFiles else {
+        guard session.canTransferFiles, let incomingFiles = protocolV1IncomingFiles else {
             return session.makeFileTransferCancel(
                 transferID: chunk.header.transferID,
                 reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode
@@ -2149,8 +2268,8 @@ class StreamingServer: EncodedFrameSink {
             do {
                 let bytes = try ProtocolV1TransportFrame(channel: .control, payload: payload).encoded()
                 let closesAfterSend = shouldClose && index == controlPayloads.count - 1
-                sendSessionBytes(bytes, on: conn, completion: .contentProcessed { error in
-                    if closesAfterSend || error != nil { conn.cancel() }
+                sendSessionBytes(bytes, on: conn, completion: .contentProcessed { [weak conn] error in
+                    if closesAfterSend || error != nil { conn?.cancel() }
                 })
             } catch {
                 debugLog("Unable to encode Protocol v1 control frame: \(error)")
@@ -2396,6 +2515,31 @@ class StreamingServer: EncodedFrameSink {
             case .fileTransferProgress(let progress):
                 guard let transfer = protocolV1OutgoingFiles[progress.transferID],
                       let session = protocolV1Session else { break }
+                do {
+                    try transfer.validateAcknowledgedOffset(progress.receivedBytes)
+                } catch let error as ProtocolV1FileTransferError {
+                    protocolV1OutgoingFiles.removeValue(forKey: progress.transferID)?.cancel()
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: progress.transferID,
+                            reasonCode: error.reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                    break
+                } catch {
+                    protocolV1OutgoingFiles.removeValue(forKey: progress.transferID)?.cancel()
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: progress.transferID,
+                            reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                    break
+                }
                 sendNextProtocolV1FileChunk(
                     transfer,
                     session: session,
@@ -2408,9 +2552,45 @@ class StreamingServer: EncodedFrameSink {
                 protocolV1ApprovedIncomingFileOffers.remove(cancellation.transferID)
                 protocolV1OutgoingFiles.removeValue(forKey: cancellation.transferID)?.cancel()
             case .fileTransferComplete(let result):
-                protocolV1OutgoingFiles.removeValue(forKey: result.transferID)?.cancel()
+                guard let session = protocolV1Session,
+                      let transfer = protocolV1OutgoingFiles.removeValue(forKey: result.transferID) else { break }
+                defer { transfer.cancel() }
+                guard result.accepted else {
+                    debugLog("File transfer rejected by peer: \(result.rejectionReason)")
+                    break
+                }
+                do {
+                    try transfer.validateCompletionDigest(result.sha256)
+                } catch let error as ProtocolV1FileTransferError {
+                    debugLog("File transfer completion rejected for \(transfer.offer.fileName): \(error.reasonCode)")
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: result.transferID,
+                            reasonCode: error.reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                } catch {
+                    debugLog("File transfer completion rejected for \(transfer.offer.fileName): \(error.localizedDescription)")
+                    applyProtocolV1Actions(
+                        session.makeFileTransferCancel(
+                            transferID: result.transferID,
+                            reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                        ),
+                        connection: conn,
+                        generation: generation
+                    )
+                }
             case .remoteManagedPolicyChanged(let status):
                 protocolV1RemoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
+                if !protocolV1RemoteManagedPolicy.fileTransferAllowed {
+                    cancelProtocolV1ActiveFileTransfers()
+                }
+            case .startAudio(let config):
+                startProtocolV1Audio(config: config, connection: conn, generation: generation)
+            case .stopAudio(let reason):
+                stopProtocolV1Audio(reason: reason)
             case .wakeHost(let request, let correlationID):
                 dispatchWakeHostRequest(
                     request,
@@ -2583,6 +2763,205 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    private func startProtocolV1Audio(
+        config: VSAudioConfig,
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              connectionProtocolMode == .protocolV1,
+              !isStopped else { return }
+        stopProtocolV1Audio(reason: "audio_reconfigure")
+        audioGeneration &+= 1
+        let currentAudioGeneration = audioGeneration
+        do {
+            try audioStream.start(
+                config: config,
+                sessionEpoch: sessionEpochGate.current,
+                onPacket: { [weak self, weak conn] packet in
+                    guard let self, let conn else { return }
+                    self.networkQueue.async {
+                        self.enqueueProtocolV1AudioPacket(
+                            packet,
+                            connection: conn,
+                            generation: generation,
+                            audioGeneration: currentAudioGeneration
+                        )
+                    }
+                },
+                onError: { [weak self] error in
+                    self?.networkQueue.async {
+                        guard let self,
+                              self.connection === conn,
+                              self.activeConnectionGeneration == generation,
+                              self.audioGeneration == currentAudioGeneration else { return }
+                        self.recordTelemetry(
+                            "audio_capture_failed",
+                            epoch: self.sessionEpochGate.current,
+                            attributes: ["error": .string(error.localizedDescription)]
+                        )
+                        self.failProtocolV1Audio(
+                            reason: "audio_capture_failed",
+                            message: "Audio capture failed: \(error.localizedDescription)",
+                            connection: conn,
+                            generation: generation,
+                            audioGeneration: currentAudioGeneration
+                        )
+                    }
+                }
+            )
+            recordTelemetry(
+                "audio_capture_started",
+                epoch: sessionEpochGate.current,
+                attributes: [
+                    "stream_id": .unsigned(config.streamID),
+                    "config_epoch": .unsigned(config.configEpoch),
+                    "sample_rate_hz": .unsigned(UInt64(config.sampleRateHz)),
+                    "channel_count": .unsigned(UInt64(config.channelCount)),
+                    "frames_per_packet": .unsigned(UInt64(config.framesPerPacket))
+                ]
+            )
+        } catch {
+            recordTelemetry(
+                "audio_capture_start_failed",
+                epoch: sessionEpochGate.current,
+                attributes: ["error": .string(error.localizedDescription)]
+            )
+            failProtocolV1Audio(
+                reason: "audio_capture_start_failed",
+                message: "Audio capture failed to start: \(error.localizedDescription)",
+                connection: conn,
+                generation: generation,
+                audioGeneration: currentAudioGeneration
+            )
+        }
+    }
+
+    private func enqueueProtocolV1AudioPacket(
+        _ packet: MacHostAudioPacket,
+        connection conn: NWConnection,
+        generation: UInt64,
+        audioGeneration expectedAudioGeneration: UInt64
+    ) {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              audioGeneration == expectedAudioGeneration,
+              connectionProtocolMode == .protocolV1,
+              sessionEpochGate.accepts(packet.header.sessionEpoch),
+              !isStopped else { return }
+        pendingAudioPackets.append(PendingAudioPacket(
+            serializedFrame: packet.serializedFrame,
+            timestamp: packet.timestampMonotonicNs,
+            connection: conn,
+            generation: generation,
+            audioGeneration: expectedAudioGeneration,
+            sessionEpoch: packet.header.sessionEpoch
+        ))
+        var dropped = 0
+        while pendingAudioPackets.count > maximumPendingAudioPackets {
+            pendingAudioPackets.removeFirst()
+            dropped += 1
+        }
+        if dropped > 0 {
+            recordTelemetry(
+                "audio_queue_drop",
+                epoch: packet.header.sessionEpoch,
+                attributes: [
+                    "dropped": .integer(Int64(dropped)),
+                    "depth": .integer(Int64(pendingAudioPackets.count)),
+                    "capacity": .integer(Int64(maximumPendingAudioPackets))
+                ]
+            )
+        }
+        drainProtocolV1AudioQueue()
+    }
+
+    private func drainProtocolV1AudioQueue() {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard !audioSendInFlight, !pendingAudioPackets.isEmpty else { return }
+        let packet = pendingAudioPackets.removeFirst()
+        guard connection === packet.connection,
+              activeConnectionGeneration == packet.generation,
+              audioGeneration == packet.audioGeneration,
+              connectionProtocolMode == .protocolV1,
+              sessionEpochGate.accepts(packet.sessionEpoch),
+              !isStopped else { return }
+        let frame: Data
+        do {
+            frame = try ProtocolV1TransportFrame(channel: .audio, payload: packet.serializedFrame).encoded()
+        } catch {
+            recordTelemetry(
+                "audio_frame_encode_failed",
+                epoch: packet.sessionEpoch,
+                attributes: ["error": .string(error.localizedDescription)]
+            )
+            stopProtocolV1Audio(reason: "audio_frame_encode_failed")
+            return
+        }
+        audioSendInFlight = true
+        sendSessionBytes(frame, channel: .audio, on: packet.connection, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            self.networkQueue.async {
+                guard self.connection === packet.connection,
+                      self.activeConnectionGeneration == packet.generation,
+                      self.audioGeneration == packet.audioGeneration else { return }
+                self.audioSendInFlight = false
+                if let error {
+                    self.recordTelemetry(
+                        "audio_send_failed",
+                        epoch: packet.sessionEpoch,
+                        attributes: ["error": .string(error.localizedDescription)]
+                    )
+                    self.stopProtocolV1Audio(reason: "audio_send_failed")
+                    return
+                }
+                self.drainProtocolV1AudioQueue()
+            }
+        })
+    }
+
+    private func stopProtocolV1Audio(reason: String) {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        let wasRunning = audioStream.isRunning || !pendingAudioPackets.isEmpty || audioSendInFlight
+        audioGeneration &+= 1
+        audioStream.stop()
+        pendingAudioPackets.removeAll(keepingCapacity: true)
+        audioSendInFlight = false
+        guard wasRunning else { return }
+        recordTelemetry(
+            "audio_capture_stopped",
+            epoch: sessionEpochGate.current,
+            attributes: ["reason": .string(reason)]
+        )
+    }
+
+    private func failProtocolV1Audio(
+        reason: String,
+        message: String,
+        connection conn: NWConnection,
+        generation: UInt64,
+        audioGeneration expectedAudioGeneration: UInt64
+    ) {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              audioGeneration == expectedAudioGeneration,
+              connectionProtocolMode == .protocolV1,
+              !isStopped else { return }
+        stopProtocolV1Audio(reason: reason)
+        guard let session = protocolV1Session else {
+            conn.cancel()
+            return
+        }
+        applyProtocolV1Actions(
+            session.failAudioRuntime(message),
+            connection: conn,
+            generation: generation
+        )
+    }
+
     static func performWakeHostRequest(
         _ request: WakeHostRequestContext,
         authorizer: any WakeHostAuthorizing,
@@ -2603,6 +2982,18 @@ class StreamingServer: EncodedFrameSink {
             return (false, "invalid_mac_address")
         } catch WakeHostRequestError.invalidSecureOnPassword {
             return (false, "invalid_secure_on_password")
+        } catch WakeHostRequestError.invalidAuthorization {
+            return (false, "wake_host_unauthorized")
+        } catch WakeHostRequestError.expiredAuthorization {
+            return (false, "wake_host_authorization_expired")
+        } catch WakeHostRequestError.replayedRequest {
+            return (false, "wake_host_replay")
+        } catch WakeHostPacketSenderError.invalidBroadcastAddress {
+            return (false, "invalid_broadcast_target")
+        } catch WakeHostPacketSenderError.invalidPort {
+            return (false, "invalid_broadcast_target")
+        } catch WakeHostPacketSenderError.timedOut {
+            return (false, "wake_packet_send_timeout")
         } catch {
             return (false, "wake_packet_send_failed")
         }
@@ -2928,6 +3319,19 @@ class StreamingServer: EncodedFrameSink {
                 }
 
                 let sendAge = DispatchTime.now().uptimeNanoseconds - frame.timestamp
+                if self.firstFrameSentTelemetryEpoch != frame.sessionEpoch {
+                    self.firstFrameSentTelemetryEpoch = frame.sessionEpoch
+                    self.recordTelemetry(
+                        "first_frame_sent",
+                        epoch: frame.sessionEpoch,
+                        attributes: [
+                            "bytes": .integer(Int64(frame.data.count)),
+                            "keyframe": .boolean(frame.isKeyframe),
+                            "packet_channel": .string(frame.packetChannel.telemetryLabel),
+                            "client_generation": .unsigned(frame.clientGeneration)
+                        ]
+                    )
+                }
                 self.updateStats(
                     bytes: frame.data.count,
                     frameAgeNs: sendAge,
@@ -3014,22 +3418,16 @@ class StreamingServer: EncodedFrameSink {
             if profiledFrameCount > 0 {
                 let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
                 debugLog("Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
-                var attributes: [String: TelemetryValue] = [
-                    "fps": .double(fps),
-                    "mbps": .double(mbps),
-                    "average_frame_age_ms": .double(avgAgeMs),
-                    "dropped_frames": .unsigned(droppedFrames),
-                    "queue_depth": .integer(
-                        Int64(pendingFrames.count + (sendInFlight ? 1 : 0))
-                    ),
-                    "queue_capacity": .integer(
-                        Int64(pendingFrames.capacity + 1)
-                    )
-                ]
-                if let encoderStatsProvider, let stats = encoderStatsProvider() {
-                    attributes["encoder_in_flight"] = .integer(Int64(stats.inFlight))
-                    attributes["encoder_in_flight_capacity"] = .integer(Int64(stats.capacity))
-                }
+                let attributes = StreamStatsTelemetryBuilder.attributes(
+                    fps: fps,
+                    mbps: mbps,
+                    averageFrameAgeMs: avgAgeMs,
+                    droppedFrames: droppedFrames,
+                    queueDepth: pendingFrames.count + (sendInFlight ? 1 : 0),
+                    queueCapacity: pendingFrames.capacity + 1,
+                    encoderStats: encoderStatsProvider?(),
+                    frameLifecycleStats: frameLifecycleStatsProvider?()
+                )
                 recordTelemetry(
                     "stream_stats",
                     epoch: sessionEpochGate.current,
@@ -3076,7 +3474,13 @@ class StreamingServer: EncodedFrameSink {
                 timeout.cancel()
             }
             self.pendingHandshakeTimeouts.removeAll()
+            for (_, pendingConnection) in self.pendingAcceptedConnections {
+                pendingConnection.stateUpdateHandler = nil
+                pendingConnection.cancel()
+            }
+            self.pendingAcceptedConnections.removeAll()
             for (_, pendingConnection) in self.pendingWirelessConnections {
+                pendingConnection.stateUpdateHandler = nil
                 pendingConnection.cancel()
             }
             self.pendingWirelessConnections.removeAll()
@@ -3178,6 +3582,8 @@ class StreamingServer: EncodedFrameSink {
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
+        clearProtocolV1FileTransfers()
+        stopProtocolV1Audio(reason: "server_stop")
         if activeConnectionGeneration == generation {
             activeConnectionGeneration &+= 1
         }
@@ -3187,7 +3593,13 @@ class StreamingServer: EncodedFrameSink {
             timeout.cancel()
         }
         pendingHandshakeTimeouts.removeAll()
+        for (_, pendingConnection) in pendingAcceptedConnections {
+            pendingConnection.stateUpdateHandler = nil
+            pendingConnection.cancel()
+        }
+        pendingAcceptedConnections.removeAll()
         for (_, pendingConnection) in pendingWirelessConnections {
+            pendingConnection.stateUpdateHandler = nil
             pendingConnection.cancel()
         }
         pendingWirelessConnections.removeAll()
@@ -3209,6 +3621,7 @@ class StreamingServer: EncodedFrameSink {
         recoveryController.stop()
         receiveQueue.sync {}
 
+        stoppedConnection?.stateUpdateHandler = nil
         stoppedConnection?.cancel()
         listener?.cancel()
         if connection === stoppedConnection {
@@ -3219,8 +3632,33 @@ class StreamingServer: EncodedFrameSink {
         activeConnectionIsWireless = false
         completion?()
     }
+
+    private func clearProtocolV1FileTransfers() {
+        cancelProtocolV1ActiveFileTransfers()
+        protocolV1IncomingFiles = nil
+    }
+
+    private func cancelProtocolV1ActiveFileTransfers() {
+        protocolV1IncomingFiles?.cancelAll()
+        protocolV1PendingIncomingFileApprovals.removeAll()
+        protocolV1ApprovedIncomingFileOffers.removeAll()
+        protocolV1OutgoingFiles.values.forEach { $0.cancel() }
+        protocolV1OutgoingFiles.removeAll()
+    }
 }
 
 // MARK: - ClipboardServer conformance
 
 extension StreamingServer: ClipboardServer {}
+extension StreamingServer: FileTransferServer {}
+
+private extension InternetTransportChannel {
+    var telemetryLabel: String {
+        switch self {
+        case .control: return "control"
+        case .media: return "media"
+        case .audio: return "audio"
+        case .bulk: return "bulk"
+        }
+    }
+}

@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-real-media-current-base.schema.json",
+  "title": "Vibe Screen Phase 3 real-media current-base gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "verdict",
+    "gate_can_close_phase3_release",
+    "can_claim_current_base_real_media_continuity",
+    "owner",
+    "current_base",
+    "source",
+    "device",
+    "android_visible_ui",
+    "checks",
+    "continuity_summary",
+    "reasons",
+    "release_gate_effect",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_real_media_current_base_gate"},
+    "created_at": {"type": "string", "format": "date-time", "minLength": 1},
+    "verdict": {"enum": ["pass", "fail", "blocked"]},
+    "gate_can_close_phase3_release": {"const": false},
+    "can_claim_current_base_real_media_continuity": {"type": "boolean"},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "pull_request", "head_ref", "repository", "scope"],
+      "properties": {
+        "role": {"const": "phase3_real_media_current_base_owner"},
+        "pull_request": {"type": "string", "minLength": 1},
+        "head_ref": {"type": "string", "minLength": 1},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "current_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_commit",
+        "continuity_repository_revision",
+        "continuity_repository_dirty"
+      ],
+      "properties": {
+        "repository_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "continuity_repository_revision": {"type": ["string", "null"]},
+        "continuity_repository_dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "continuity_result",
+        "continuity_repository_revision",
+        "continuity_repository_branch",
+        "continuity_repository_dirty"
+      ],
+      "properties": {
+        "continuity_result": {"$ref": "#/$defs/input_record"},
+        "continuity_repository_revision": {"type": ["string", "null"]},
+        "continuity_repository_branch": {"type": ["string", "null"]},
+        "continuity_repository_dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "device": {"type": ["object", "null"]},
+    "android_visible_ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_kind", "operator_note", "artifacts"],
+      "properties": {
+        "artifact_kind": {
+          "enum": ["device_screenshot", "device_screen_recording", "external_camera_recording"]
+        },
+        "operator_note": {"type": ["string", "null"]},
+        "artifacts": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ui_input_record"}
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "continuity_schema",
+        "continuity_passed",
+        "current_base_commit",
+        "continuity_source_clean",
+        "android_device_identity",
+        "public_internet_path",
+        "identity_signed_host",
+        "screen_recording_granted",
+        "real_capture_first_frame",
+        "real_capture_source_metadata",
+        "videotoolbox_output",
+        "webrtc_media_channel",
+        "protocol_v1_epoch",
+        "shared_pipeline_epoch",
+        "android_mediacodec_decode",
+        "no_synthetic_media",
+        "visible_android_ui",
+        "no_decoder_errors",
+        "bounded_drops"
+      ],
+      "properties": {
+        "continuity_schema": {"$ref": "#/$defs/check"},
+        "continuity_passed": {"$ref": "#/$defs/check"},
+        "current_base_commit": {"$ref": "#/$defs/check"},
+        "continuity_source_clean": {"$ref": "#/$defs/check"},
+        "android_device_identity": {"$ref": "#/$defs/check"},
+        "public_internet_path": {"$ref": "#/$defs/check"},
+        "identity_signed_host": {"$ref": "#/$defs/check"},
+        "screen_recording_granted": {"$ref": "#/$defs/check"},
+        "real_capture_first_frame": {"$ref": "#/$defs/check"},
+        "real_capture_source_metadata": {"$ref": "#/$defs/check"},
+        "videotoolbox_output": {"$ref": "#/$defs/check"},
+        "webrtc_media_channel": {"$ref": "#/$defs/check"},
+        "protocol_v1_epoch": {"$ref": "#/$defs/check"},
+        "shared_pipeline_epoch": {"$ref": "#/$defs/check"},
+        "android_mediacodec_decode": {"$ref": "#/$defs/check"},
+        "no_synthetic_media": {"$ref": "#/$defs/check"},
+        "visible_android_ui": {"$ref": "#/$defs/check"},
+        "no_decoder_errors": {"$ref": "#/$defs/check"},
+        "bounded_drops": {"$ref": "#/$defs/check"}
+      }
+    },
+    "continuity_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "media_source",
+        "public_internet_path",
+        "selected_webrtc_route",
+        "capture_sources",
+        "shared_pipeline_epochs",
+        "continuous_output_frames",
+        "dropped_frames",
+        "decoder_error_count"
+      ],
+      "properties": {
+        "media_source": {"type": ["string", "null"]},
+        "public_internet_path": {"type": ["boolean", "null"]},
+        "selected_webrtc_route": {"type": ["string", "null"]},
+        "capture_sources": {"type": "array", "items": {"type": "string"}},
+        "shared_pipeline_epochs": {"type": "array", "items": {"type": "integer"}},
+        "continuous_output_frames": {"type": ["integer", "null"], "minimum": 0},
+        "dropped_frames": {"type": "integer", "minimum": 0},
+        "decoder_error_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "release_gate_effect": {"enum": ["none", "child_gate_only"]},
+    "interpretation": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_claim_current_base_real_media_continuity": {"const": true},
+          "release_gate_effect": {"const": "child_gate_only"},
+          "checks": {
+            "properties": {
+              "continuity_schema": {"properties": {"passed": {"const": true}}},
+              "continuity_passed": {"properties": {"passed": {"const": true}}},
+              "current_base_commit": {"properties": {"passed": {"const": true}}},
+              "continuity_source_clean": {"properties": {"passed": {"const": true}}},
+              "android_device_identity": {"properties": {"passed": {"const": true}}},
+              "public_internet_path": {"properties": {"passed": {"const": true}}},
+              "identity_signed_host": {"properties": {"passed": {"const": true}}},
+              "screen_recording_granted": {"properties": {"passed": {"const": true}}},
+              "real_capture_first_frame": {"properties": {"passed": {"const": true}}},
+              "real_capture_source_metadata": {"properties": {"passed": {"const": true}}},
+              "videotoolbox_output": {"properties": {"passed": {"const": true}}},
+              "webrtc_media_channel": {"properties": {"passed": {"const": true}}},
+              "protocol_v1_epoch": {"properties": {"passed": {"const": true}}},
+              "shared_pipeline_epoch": {"properties": {"passed": {"const": true}}},
+              "android_mediacodec_decode": {"properties": {"passed": {"const": true}}},
+              "no_synthetic_media": {"properties": {"passed": {"const": true}}},
+              "visible_android_ui": {"properties": {"passed": {"const": true}}},
+              "no_decoder_errors": {"properties": {"passed": {"const": true}}},
+              "bounded_drops": {"properties": {"passed": {"const": true}}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["blocked", "fail"]}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "can_claim_current_base_real_media_continuity": {"const": false},
+          "release_gate_effect": {"const": "none"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "expected", "evidence"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "expected": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "input_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "path", "extension", "exists", "sha256", "bytes"],
+      "properties": {
+        "category": {"enum": ["real_media_continuity", "android_visible_ui"]},
+        "path": {"type": "string", "minLength": 1},
+        "extension": {"type": "string"},
+        "exists": {"type": "boolean"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "ui_input_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "path", "extension", "exists", "sha256", "bytes", "artifact_kind"],
+      "properties": {
+        "category": {"const": "android_visible_ui"},
+        "path": {"type": "string", "minLength": 1},
+        "extension": {"type": "string"},
+        "exists": {"type": "boolean"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": ["integer", "null"], "minimum": 0},
+        "artifact_kind": {
+          "enum": ["device_screenshot", "device_screen_recording", "external_camera_recording"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,87 @@
+## portrait disconnected (window-disconnected-portrait.xml, density=560)
+packages=dev.telemachus.display:32
+hierarchy_rotation=0
+modeUSB: 274x168px = 78.3x48.0dp PASS; text="USB" desc="" clickable=true; bounds=[224,1432][498,1600]
+modeWireless: 275x168px = 78.6x48.0dp PASS; text="LAN" desc="" clickable=true; bounds=[494,1432][769,1600]
+modeInternet: 275x168px = 78.6x48.0dp PASS; text="INTERNET" desc="" clickable=true; bounds=[765,1432][1040,1600]
+connectButton: 816x196px = 233.1x56.0dp PASS; text="TRY AGAIN" desc="" clickable=true; bounds=[224,1656][1040,1852]
+showAdvanced: 816x168px = 233.1x48.0dp PASS; text="Connection details" desc="" clickable=true; bounds=[224,2137][1040,2305]
+connectionSettingsButton: 816x168px = 233.1x48.0dp PASS; text="DISPLAY SETTINGS" desc="Display settings" clickable=true; bounds=[224,2347][1040,2515]
+inputViewport: 1264x2800px = 361.1x800.0dp PASS; text="" desc="Show stream controls" clickable=true; bounds=[0,0][1264,2800]
+
+## portrait connection details/error (window-connection-details-portrait.xml, density=560)
+packages=dev.telemachus.display:43
+hierarchy_rotation=0
+modeUSB: 274x168px = 78.3x48.0dp PASS; text="USB" desc="" clickable=true; bounds=[224,1432][498,1600]
+modeWireless: 275x168px = 78.6x48.0dp PASS; text="LAN" desc="" clickable=true; bounds=[494,1432][769,1600]
+modeInternet: 275x168px = 78.6x48.0dp PASS; text="INTERNET" desc="" clickable=true; bounds=[765,1432][1040,1600]
+connectButton: 816x196px = 233.1x56.0dp PASS; text="TRY AGAIN" desc="" clickable=true; bounds=[224,2264][1040,2460]
+inputViewport: 1264x2800px = 361.1x800.0dp PASS; text="" desc="Show stream controls" clickable=true; bounds=[0,0][1264,2800]
+
+## portrait settings dialog top (window-settings-dialog-portrait.xml, density=560)
+packages=dev.telemachus.display:27
+hierarchy_rotation=0
+showStatsSwitch: 168x168px = 48.0x48.0dp PASS; text="" desc="Show Stats" clickable=true; bounds=[872,746][1040,914]
+scaleFitButton: 410x168px = 117.1x48.0dp PASS; text="FIT" desc="" clickable=true; bounds=[224,1848][634,2016]
+scaleFillButton: 410x168px = 117.1x48.0dp PASS; text="FILL" desc="" clickable=true; bounds=[630,1848][1040,2016]
+rotationFollow: 816x168px = 233.1x48.0dp PASS; text="FOLLOW MAC" desc="" clickable=true; bounds=[224,2044][1040,2212]
+rotation90: 816x168px = 233.1x48.0dp PASS; text="90°" desc="" clickable=true; bounds=[224,2208][1040,2376]
+rotation180: 816x168px = 233.1x48.0dp PASS; text="180°" desc="" clickable=true; bounds=[224,2372][1040,2540]
+
+## portrait settings dialog scrolled (window-settings-dialog-portrait-scrolled.xml, density=560)
+packages=dev.telemachus.display:27
+hierarchy_rotation=0
+showStatsSwitch: NOT_FOUND
+scaleFitButton: NOT_FOUND
+scaleFillButton: NOT_FOUND
+rotationFollow: NOT_FOUND
+rotation90: NOT_FOUND
+rotation180: NOT_FOUND
+rotation270: NOT_FOUND
+videoQualityAuto: 816x168px = 233.1x48.0dp PASS; text="AUTO" desc="" clickable=true; bounds=[224,943][1040,1111]
+videoQualityQuality: NOT_FOUND
+videoQualityBalanced: 816x168px = 233.1x48.0dp PASS; text="BALANCED" desc="" clickable=true; bounds=[224,1271][1040,1439]
+videoQualityPerformance: NOT_FOUND
+videoFpsAuto: NOT_FOUND
+videoFps30: 816x168px = 233.1x48.0dp PASS; text="30 FPS" desc="" clickable=true; bounds=[224,1749][1040,1917]
+videoFps60: 816x168px = 233.1x48.0dp PASS; text="60 FPS" desc="" clickable=true; bounds=[224,1913][1040,2081]
+
+## w632dp density-only disconnected (window-disconnected-w632dp-density-only-v2.xml, density=320)
+packages=dev.telemachus.display:33
+hierarchy_rotation=0
+modeUSB: 337x96px = 168.5x48.0dp PASS; text="USB" desc="" clickable=true; bounds=[128,1346][465,1442]
+modeWireless: 337x96px = 168.5x48.0dp PASS; text="LAN" desc="" clickable=true; bounds=[463,1346][800,1442]
+modeInternet: 338x96px = 169.0x48.0dp PASS; text="INTERNET" desc="" clickable=true; bounds=[798,1346][1136,1442]
+connectButton: 1008x112px = 504.0x56.0dp PASS; text="TRY AGAIN" desc="" clickable=true; bounds=[128,1474][1136,1586]
+showAdvanced: 1008x96px = 504.0x48.0dp PASS; text="Connection details" desc="" clickable=true; bounds=[128,1718][1136,1814]
+connectionSettingsButton: 1008x96px = 504.0x48.0dp PASS; text="DISPLAY SETTINGS" desc="Display settings" clickable=true; bounds=[128,1838][1136,1934]
+inputViewport: 1264x2800px = 632.0x1400.0dp PASS; text="" desc="Show stream controls" clickable=true; bounds=[0,0][1264,2800]
+
+## w632dp density-only settings (window-settings-dialog-w632dp-density-only-v3.xml, density=320)
+packages=dev.telemachus.display:54
+hierarchy_rotation=0
+showStatsSwitch: 96x96px = 48.0x48.0dp PASS; text="" desc="Show Stats" clickable=true; bounds=[1024,575][1120,671]
+scaleFitButton: 489x96px = 244.5x48.0dp PASS; text="FIT" desc="" clickable=true; bounds=[144,1113][633,1209]
+scaleFillButton: 489x96px = 244.5x48.0dp PASS; text="FILL" desc="" clickable=true; bounds=[631,1113][1120,1209]
+rotationFollow: 245x102px = 122.5x51.0dp PASS; text="FOLLOW MAC" desc="" clickable=true; bounds=[144,1234][389,1336]
+rotation90: 245x96px = 122.5x48.0dp PASS; text="90°" desc="" clickable=true; bounds=[387,1225][632,1321]
+rotation180: 246x96px = 123.0x48.0dp PASS; text="180°" desc="" clickable=true; bounds=[630,1225][876,1321]
+rotation270: 246x96px = 123.0x48.0dp PASS; text="270°" desc="" clickable=true; bounds=[874,1225][1120,1321]
+videoQualityAuto: 245x96px = 122.5x48.0dp PASS; text="AUTO" desc="" clickable=true; bounds=[144,1670][389,1766]
+videoQualityQuality: NOT_FOUND
+videoQualityBalanced: 246x96px = 123.0x48.0dp PASS; text="BALANCED" desc="" clickable=true; bounds=[630,1670][876,1766]
+videoQualityPerformance: NOT_FOUND
+videoFpsAuto: NOT_FOUND
+videoFps30: 326x96px = 163.0x48.0dp PASS; text="30 FPS" desc="" clickable=true; bounds=[144,1850][470,1946]
+videoFps60: 327x96px = 163.5x48.0dp PASS; text="60 FPS" desc="" clickable=true; bounds=[468,1850][795,1946]
+
+## landscape cmd-window attempt (window-disconnected-landscape-cmd-window.xml, density=560)
+packages=dev.telemachus.display:32
+hierarchy_rotation=0
+modeUSB: 274x168px = 78.3x48.0dp PASS; text="USB" desc="" clickable=true; bounds=[224,1432][498,1600]
+modeWireless: 275x168px = 78.6x48.0dp PASS; text="LAN" desc="" clickable=true; bounds=[494,1432][769,1600]
+modeInternet: 275x168px = 78.6x48.0dp PASS; text="INTERNET" desc="" clickable=true; bounds=[765,1432][1040,1600]
+connectButton: 816x196px = 233.1x56.0dp PASS; text="TRY AGAIN" desc="" clickable=true; bounds=[224,1656][1040,1852]
+showAdvanced: 816x168px = 233.1x48.0dp PASS; text="Connection details" desc="" clickable=true; bounds=[224,2137][1040,2305]
+connectionSettingsButton: 816x168px = 233.1x48.0dp PASS; text="DISPLAY SETTINGS" desc="Display settings" clickable=true; bounds=[224,2347][1040,2515]
+inputViewport: 1264x2800px = 361.1x800.0dp PASS; text="" desc="Show stream controls" clickable=true; bounds=[0,0][1264,2800]

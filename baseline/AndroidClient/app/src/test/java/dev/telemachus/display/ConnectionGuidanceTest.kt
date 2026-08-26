@@ -169,6 +169,30 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun everySessionFailureKindHasActionableGuidanceWithoutRawDetails() {
+        val rawDetail = "private-host.internal:65432 invalid_media_header host stacktrace"
+        val contexts =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                ConnectionGuidanceContext.trustedLan(54321),
+                ConnectionGuidanceContext.internet(),
+            )
+
+        SessionFailureKind.values().forEach { kind ->
+            contexts.forEach { context ->
+                val guidance = ConnectionGuidanceFactory.from(failureFor(kind, rawDetail), context)
+
+                assertTrue(kind.name + " " + context.mode + " status", guidance.status.resourceId != 0)
+                assertTrue(kind.name + " " + context.mode + " message", guidance.message.resourceId != 0)
+                assertNoRawArg(guidance, rawDetail)
+                assertNoRawArg(guidance, "invalid_media_header")
+                assertNoRawArg(guidance, "host stacktrace")
+                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
+            }
+        }
+    }
+
+    @Test
     fun heartbeatTransportAndWriteFailuresAreReclassifiedFromTheirDetail() {
         val refused = SessionFailure.heartbeat("Connection refused")
         val guidance =
@@ -357,6 +381,31 @@ class ConnectionGuidanceTest {
                 is ConnectionGuidanceText -> containsStringArg(arg, rawText)
                 else -> false
             }
+        }
+
+    private fun failureFor(
+        kind: SessionFailureKind,
+        detail: String,
+    ): SessionFailure =
+        when (kind) {
+            SessionFailureKind.TRANSPORT_CLOSED -> SessionFailure.transport(detail)
+            SessionFailureKind.HEARTBEAT_TIMEOUT -> SessionFailure.heartbeat(detail)
+            SessionFailureKind.WRITE_FAILED -> SessionFailure.write(detail)
+            SessionFailureKind.CODEC_CONFIGURATION -> SessionFailure.codec(detail)
+            SessionFailureKind.SERVER_SHUTDOWN -> SessionFailure.serverShutdown()
+            SessionFailureKind.USER_REQUESTED -> SessionFailure.userRequested()
+            SessionFailureKind.OUTBOUND_BACKPRESSURE ->
+                SessionFailure(kind, detail, retryable = true)
+            SessionFailureKind.INVALID_DISPLAY,
+            SessionFailureKind.INVALID_FRAME,
+            SessionFailureKind.INVALID_ENVELOPE,
+            SessionFailureKind.INVALID_MEDIA_PAYLOAD,
+            SessionFailureKind.INVALID_MEDIA_HEADER,
+            SessionFailureKind.INVALID_PEER_MESSAGE,
+            SessionFailureKind.SESSION_REJECTED,
+            SessionFailureKind.HOST_PROTOCOL_ERROR,
+            SessionFailureKind.UNKNOWN_MESSAGE,
+            -> SessionFailure.protocol(kind, detail)
         }
 
     private fun text(

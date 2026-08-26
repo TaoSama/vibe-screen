@@ -1,0 +1,21 @@
+
+dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest:
+Error in realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest):
+java.lang.AssertionError: Display label must not optimistically switch before the confirmed Host state is published
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:66)
+
+
+Time: 46.714
+There was 1 failure:
+1) realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest)
+java.lang.AssertionError: Display label must not optimistically switch before the confirmed Host state is published
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at dev.telemachus.display.RealHostDisplaySelectionInstrumentedTest.realHostDisplaySelectionUpdatesOnlyAfterConfirmedSessionState(RealHostDisplaySelectionInstrumentedTest.kt:66)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1

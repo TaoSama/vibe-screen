@@ -8,6 +8,7 @@
 // For information on using the generated types, please see the documentation:
 //   https://github.com/apple/swift-protobuf/
 
+import Foundation
 import SwiftProtobuf
 
 // If the compiler emits an error on this type, it is because this file
@@ -391,6 +392,42 @@ public struct VSControllerEvent: Sendable {
   public var hatX: Int32 = 0
 
   public var hatY: Int32 = 0
+
+  public var target: VSInputTarget {
+    get {return _target ?? VSInputTarget()}
+    set {_target = newValue}
+  }
+  /// Returns true if `target` has been explicitly set.
+  public var hasTarget: Bool {return self._target != nil}
+  /// Clears the value of `target`. Subsequent reads from it will return its default value.
+  public mutating func clearTarget() {self._target = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _target: VSInputTarget? = nil
+}
+
+/// Generic peripheral input requires CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK. This
+/// message is an admission boundary only: it does not define support for any
+/// concrete peripheral kind, Android input source, hardware path, or macOS
+/// injection behavior. input_id must be non-zero. peripheral_kind must encode to
+/// 1-128 UTF-8 bytes and is matched by explicit receiver policy; receivers must
+/// fail closed for every kind they do not implement by sending InputAck with
+/// accepted=false and a stable rejection_reason such as
+/// "unsupported_peripheral_kind". payload is opaque to the protocol contract and
+/// must be bounded by the receiver before any native handler is reached.
+public struct VSPeripheralEvent: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var inputID: UInt64 = 0
+
+  public var peripheralKind: String = String()
+
+  public var payload: Data = Data()
 
   public var target: VSInputTarget {
     get {return _target ?? VSInputTarget()}
@@ -822,6 +859,55 @@ extension VSControllerEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     if lhs.rightTrigger != rhs.rightTrigger {return false}
     if lhs.hatX != rhs.hatX {return false}
     if lhs.hatY != rhs.hatY {return false}
+    if lhs._target != rhs._target {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension VSPeripheralEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PeripheralEvent"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_id\0\u{3}peripheral_kind\0\u{1}payload\0\u{1}target\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.inputID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.peripheralKind) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.payload) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._target) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.inputID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.inputID, fieldNumber: 1)
+    }
+    if !self.peripheralKind.isEmpty {
+      try visitor.visitSingularStringField(value: self.peripheralKind, fieldNumber: 2)
+    }
+    if !self.payload.isEmpty {
+      try visitor.visitSingularBytesField(value: self.payload, fieldNumber: 3)
+    }
+    try { if let v = self._target {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: VSPeripheralEvent, rhs: VSPeripheralEvent) -> Bool {
+    if lhs.inputID != rhs.inputID {return false}
+    if lhs.peripheralKind != rhs.peripheralKind {return false}
+    if lhs.payload != rhs.payload {return false}
     if lhs._target != rhs._target {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

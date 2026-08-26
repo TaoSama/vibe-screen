@@ -31,12 +31,11 @@ class FileTransferSessionTest {
     @Test
     fun managedPolicyAndPeerLimitsResolveDenyWins() {
         val remoteStatus =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(5)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 5,
+            ).toStatus()
         val peerLimits =
             ResourceLimits
                 .newBuilder()
@@ -203,12 +202,11 @@ class FileTransferSessionTest {
         assertEquals(0, approvalCalls)
 
         val denied =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setFileTransferAllowed(false)
-                .setMaximumFileBytes(10)
-                .build()
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 10,
+            ).toStatus()
         assertFileTransferFailure("policy_denied") {
             manager.accept(
                 offer(payload = "hi".toByteArray()),
@@ -218,6 +216,55 @@ class FileTransferSessionTest {
             )
         }
         assertEquals(0, approvalCalls)
+    }
+
+    @Test
+    fun incomingManagerRejectsEmptyFileWhenRemoteManagedMaximumIsZeroBeforeApproval() {
+        var approvalCalls = 0
+        val manager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(),
+            directory = temporaryDirectory(),
+        ) {
+            approvalCalls += 1
+            true
+        }
+        val zeroMaximum =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 0,
+            ).toStatus()
+
+        assertFileTransferFailure("policy_denied") {
+            manager.accept(
+                offer(payload = ByteArray(0)),
+                remotePolicy = RemoteManagedPolicy(zeroMaximum),
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            )
+        }
+        assertEquals(0, approvalCalls)
+    }
+
+    @Test
+    fun outgoingTransferRejectsEmptyFileWhenRemoteManagedMaximumIsZero() {
+        val file = File(temporaryDirectory(), "empty.txt")
+        file.writeBytes(ByteArray(0))
+        val zeroMaximum =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 0,
+            ).toStatus()
+
+        assertFileTransferFailure("policy_denied") {
+            OutgoingFileTransfer(
+                file = file,
+                mimeType = "text/plain",
+                policy = FileTransferPolicy(),
+                remotePolicy = RemoteManagedPolicy(zeroMaximum),
+            )
+        }
     }
 
     @Test
@@ -247,6 +294,9 @@ class FileTransferSessionTest {
         assertEquals(2L, second.header.offset)
         assertArrayEquals("llo".toByteArray(), second.payload)
         assertTrue(second.header.final)
+        assertFalse(transfer.hasCompletedAcknowledgement())
+        assertEquals(null, transfer.acknowledgeOffset(5))
+        assertTrue(transfer.hasCompletedAcknowledgement())
         assertEquals(null, transfer.nextChunk(maximumBytes = 8, sessionEpoch = 7))
     }
 
@@ -260,11 +310,16 @@ class FileTransferSessionTest {
             policy = FileTransferPolicy(maximumChunkBytes = 3),
         )
 
+        assertEquals("incomplete_file", transfer.acknowledgeOffset(0))
+        assertFalse(transfer.hasCompletedAcknowledgement())
         val chunk = requireNotNull(transfer.nextChunk(maximumBytes = 2, sessionEpoch = 7))
         assertEquals(0L, chunk.header.offset)
         assertEquals(0, chunk.header.payloadLength)
         assertTrue(chunk.header.final)
         assertEquals(sha256(ByteArray(0)), chunk.header.chunkSha256)
+        assertFalse(transfer.hasCompletedAcknowledgement())
+        assertEquals(null, transfer.acknowledgeOffset(0))
+        assertTrue(transfer.hasCompletedAcknowledgement())
         val decoded = FileChunk.fromFrame(chunk.toFrame())
         assertEquals(chunk.header, decoded.header)
         assertArrayEquals(chunk.payload, decoded.payload)

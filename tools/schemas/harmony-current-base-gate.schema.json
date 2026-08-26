@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/harmony-current-base-gate.schema.json",
+  "title": "Vibe Screen HarmonyOS Phase 4 current-base aggregate owner gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "owner",
+    "source",
+    "source_docs",
+    "can_close_readme_phase4_owner_gates",
+    "can_claim_harmony_device_pass",
+    "checks",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "harmony_current_base_owner_gate"},
+    "derivation_status": {"const": "complete"},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "repository", "scope", "gate_owners"],
+      "properties": {
+        "aggregate": {"const": "current-base-harmony-phase4-owner-gates"},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "scope": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "deveco_build",
+              "hap_sign_install",
+              "hardware_decode_capability",
+              "huks_secure_pairing",
+              "authenticated_transport",
+              "host_resume_interop",
+              "matepad_acceptance"
+            ]
+          },
+          "minItems": 7,
+          "uniqueItems": true
+        },
+        "gate_owners": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "deveco_build",
+            "hap_sign_install",
+            "hardware_decode_capability",
+            "huks_secure_pairing",
+            "authenticated_transport",
+            "host_resume_interop",
+            "matepad_acceptance"
+          ],
+          "properties": {
+            "deveco_build": {"type": "string", "minLength": 1},
+            "hap_sign_install": {"type": "string", "minLength": 1},
+            "hardware_decode_capability": {"type": "string", "minLength": 1},
+            "huks_secure_pairing": {"type": "string", "minLength": 1},
+            "authenticated_transport": {"type": "string", "minLength": 1},
+            "host_resume_interop": {"type": "string", "minLength": 1},
+            "matepad_acceptance": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readiness", "device_gates", "evidence_root"],
+      "properties": {
+        "readiness": {"type": "string", "minLength": 1},
+        "device_gates": {"type": "string", "minLength": 1},
+        "evidence_root": {"type": "string", "minLength": 1}
+      }
+    },
+    "source_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "can_close_readme_phase4_owner_gates": {"type": "boolean"},
+    "can_claim_harmony_device_pass": {"type": "boolean"},
+    "checks": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

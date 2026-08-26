@@ -95,15 +95,63 @@ not prove private display creation/capture, actual mirroring, Accessibility or
 CGEvent effects, login-item approval, hot-plug, headless reboot, device input,
 latency, or sustained memory behavior.
 
+## Login/headless readiness diagnostics
+
+The shared read-only Host readiness target also records login/headless setup
+blockers:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The generated `host-readiness.json` includes a `login_headless` section with
+startup defaults, Launch at Login state, active display inventory, and recent
+Host startup/recovery log markers. The same JSON keeps
+`can_start_headless_login_gate=false` unless shared Host prerequisites are ready
+and those login/headless setup checks pass. This is preflight evidence only: it
+does not register Login Items, reboot, launch or stop Vibe Screen, grant
+permissions, touch Android state, or close the login/headless acceptance gate.
+
 ## Remaining gates
 
 - private normal/HiDPI extension creation and first captured frame;
 - true mirror state before start and cleared state after stop;
 - AX migration/restore of a disposable real window, including display removal;
 - Launch at Login approval plus logout/login relaunch;
+- headless Mac mini reboot with a usable physical, dummy, or Screen Sharing
+  display after login;
 - selected-display hot-plug while streaming;
 - Android touch/reconnect/keyboard/native-mouse checks after the device lease
   is released (keyboard/native mouse also require a future transport entry);
-- Phase 1 two-hour no-growth result and external input/glass-to-glass latency.
+- Phase 1 two-hour no-growth result, USB glass-to-glass
+  (`usb-glass-to-glass-sub50`), LAN glass-to-glass
+  (`lan-glass-to-glass-sub80`), and input P95 (`input-p95-sub50`) latency. The
+  glass-to-glass gates require external-camera evidence, and the input gate
+  requires external-camera evidence or a synchronized-clock package with a
+  sub-5 ms total error budget.
 
 None of these gates is inferred from compilation or private-symbol presence.
+
+## 2026-08-22 macOS startup/recovery evidence gate
+
+This follow-up records a fail-closed evidence package for the remaining Launch
+at Login, automatic startup, headless startup, unattended listener recovery, and
+Android reconnect endpoint evidence. The current gate consumes
+`macos-startup-recovery-evidence.json` and writes
+`macos-startup-recovery-gate.json`. A pass requires retained raw evidence for
+real macOS logout/login or reboot launch, non-approval-required Launch at Login,
+post-login automatic listener/stream startup, headless display identity and
+first capture, bounded recovery logs, and Android disconnect/reconnect plus
+post-reconnect render evidence.
+
+Validation performed for this tooling/readiness update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.macos_startup_recovery_gate ...`
+  against
+  [`evidence/2026-08-22-login-headless-recovery-gate-blocked`](evidence/2026-08-22-login-headless-recovery-gate-blocked/README.md)
+  wrote `macos-startup-recovery-gate.json` with `verdict=blocked`.
+
+No macOS logout/login, reboot, headless display capture, unattended listener
+failure/retry run, or Android reconnect timing run was performed for this
+package. The gate keeps all login item, headless Mac mini, unattended recovery,
+and Android reconnect acceptance claims open until those raw artifacts exist.

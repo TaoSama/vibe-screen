@@ -1,0 +1,4 @@
+timestamp=2026-08-24T07:59:04Z
+repo_head=b759d785898ede5bbd4370255b3d49e56457f0ef
+origin_main=b759d785898ede5bbd4370255b3d49e56457f0ef
+branch=codex/actionable-error-current-base-matrix

@@ -13,10 +13,10 @@
     "shutter_mode": "fixed"
   },
   "recording": {
-    "raw_video": "raw-camera-placeholder.mov",
+    "raw_video": "raw-camera-fixture.mov",
     "recorded_at": "2026-08-19T00:00:00Z",
     "operator": "fixture",
-    "sha256": "6da41ddaf06005de793b1b17b11fb8c3e91d5b64f633d7098fa66860334368eb"
+    "sha256": "32a49335961fadf449576f257d6d7b912a8c09ca5cb58e1450828e562592d967"
   },
   "samples": {
     "file": "samples.csv",
@@ -49,5 +49,12 @@
     "clock_domain": "single-external-camera-timebase",
     "max_frame_annotation_uncertainty_ms": 4.2,
     "notes": "Synthetic checker fixture only; not acceptance evidence."
+  },
+  "gate_artifacts": {
+    "usb_connection": {
+      "file": "usb-connection.txt",
+      "sha256": "613180f782bb4693f040c48cfb23755229159965b53011c831f1081e7eaf2f6b",
+      "description": "Synthetic USB active-stream proof for checker tests only."
+    }
   }
 }

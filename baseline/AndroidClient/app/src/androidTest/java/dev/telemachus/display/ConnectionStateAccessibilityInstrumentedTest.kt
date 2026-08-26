@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
@@ -37,6 +38,8 @@ class ConnectionStateAccessibilityInstrumentedTest {
             listOf(
                 R.id.connectionTitle,
                 R.id.connectionSubtitle,
+                R.id.connectionErrorTitle,
+                R.id.connectionErrorMessage,
                 R.id.statusText,
                 R.id.internetProfileSummary,
                 R.id.internetStateText,
@@ -57,6 +60,66 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE,
                 root.findViewById<View>(R.id.internetErrorText).accessibilityLiveRegion,
             )
+        }
+    }
+
+    @Test
+    fun connectionGuidanceRegionsExposeGroupedScreenReaderStatus() {
+        withProductionLayout { root ->
+            val views = connectionPanelViews(root)
+            ConnectionPanelLayoutApplier.apply(
+                resources = root.resources,
+                views = views,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+
+            assertTrue(ViewCompat.isAccessibilityHeading(root.findViewById(R.id.connectionTitle)))
+            listOf(
+                R.id.connectionErrorContainer,
+                R.id.wirelessConnecting,
+                R.id.internetProfileSummary,
+                R.id.internetStateText,
+                R.id.internetErrorText,
+            ).forEach { id ->
+                val region = root.findViewById<View>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    ViewCompat.isScreenReaderFocusable(region),
+                )
+                val clickableDescendants = clickableDescendantNames(region)
+                assertTrue(
+                    "${root.resources.getResourceEntryName(id)} clickable descendants: $clickableDescendants",
+                    clickableDescendants.isEmpty(),
+                )
+            }
+            listOf(
+                R.id.wirelessFirstTime to R.id.wirelessScanButton,
+                R.id.wirelessConnected to R.id.wirelessDisconnectButton,
+                R.id.wirelessConnected to R.id.wirelessForgetButton,
+                R.id.wirelessPairedIdle to R.id.wirelessReconnectButton,
+                R.id.wirelessPairedIdle to R.id.wirelessIdleForgetButton,
+                R.id.wirelessTokenMismatch to R.id.wirelessRescanButton,
+                R.id.wirelessPermDenied to R.id.wirelessOpenSettingsButton,
+            ).forEach { (regionId, buttonId) ->
+                val region = root.findViewById<View>(regionId)
+                val button = root.findViewById<MaterialButton>(buttonId)
+                assertFalse(
+                    root.resources.getResourceEntryName(regionId),
+                    ViewCompat.isScreenReaderFocusable(region),
+                )
+                assertTrue(root.resources.getResourceEntryName(buttonId), button.isClickable)
+                assertNotEquals(
+                    root.resources.getResourceEntryName(buttonId),
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO,
+                    button.importantForAccessibility,
+                )
+                assertNotEquals(
+                    root.resources.getResourceEntryName(buttonId),
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                    button.importantForAccessibility,
+                )
+            }
         }
     }
 
@@ -253,6 +316,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
         withProductionLayout { root ->
             listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
                 val button = root.findViewById<MaterialButton>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    button.autoSizeMinTextSize >= sp(root.context, 12),
+                )
                 val checkedBackground = stateColor(button.backgroundTintList, state_enabled, state_checked)
                 val checkedText = stateColor(button.textColors, state_enabled, state_checked)
                 val disabledBackground = stateColor(button.backgroundTintList, -state_enabled, state_checked)
@@ -261,6 +328,19 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 assertTrue(ColorUtils.calculateContrast(checkedText, checkedBackground) >= 4.5)
                 assertNotEquals(checkedBackground, disabledBackground)
                 assertNotEquals(checkedText, disabledText)
+            }
+        }
+    }
+
+    @Test
+    fun internetRouteToggleDoesNotAutosizeBelowReadableText() {
+        withProductionLayout { root ->
+            listOf(R.id.internetPreferDirect, R.id.internetForceRelay).forEach { id ->
+                val button = root.findViewById<MaterialButton>(id)
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    button.autoSizeMinTextSize >= sp(root.context, 12),
+                )
             }
         }
     }
@@ -412,10 +492,32 @@ class ConnectionStateAccessibilityInstrumentedTest {
         assertTrue("Expected accessibility action '$expectedLabel' in $actionLabels", expectedLabel in actionLabels)
     }
 
+    private fun clickableDescendantNames(view: View): List<String> {
+        val group = view as? ViewGroup ?: return emptyList()
+        return (0 until group.childCount).flatMap { index ->
+            val child = group.getChildAt(index)
+            val childName = viewName(child)
+            val self = if (child.isClickable) listOf(childName) else emptyList()
+            self + clickableDescendantNames(child)
+        }
+    }
+
+    private fun viewName(view: View): String =
+        if (view.id == View.NO_ID) {
+            view.javaClass.simpleName
+        } else {
+            view.resources.getResourceEntryName(view.id)
+        }
+
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).roundToInt()
+
+    private fun sp(context: Context, value: Int): Int =
+        TypedValue
+            .applyDimension(TypedValue.COMPLEX_UNIT_SP, value.toFloat(), context.resources.displayMetrics)
+            .roundToInt()
 
     private fun stateColor(colors: android.content.res.ColorStateList?, vararg states: Int): Int {
         checkNotNull(colors)

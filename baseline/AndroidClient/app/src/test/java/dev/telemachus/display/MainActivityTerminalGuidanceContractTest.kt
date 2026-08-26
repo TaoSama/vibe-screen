@@ -179,31 +179,110 @@ class MainActivityTerminalGuidanceContractTest {
 
     @Test
     fun disconnectedStreamUiKeepsSettingsReachableWithoutSmallScreenOcclusion() {
-        val disconnected = extractMethod(mainActivitySource(), "private fun showDisconnectedStreamUi")
+        val source = mainActivitySource()
+        val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
+        val entryPolicy = extractMethod(source, "private fun applyDisconnectedSettingsEntryPolicy")
+        val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+        val floatingSettingsBranch = extractBlockAfterMarker(entryPolicy, "if (!useInlineSettingsButton)")
 
         assertTrue(
             "Disconnected state should use the resource policy for inline settings",
-            disconnected.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
+            entryPolicy.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
         )
         assertTrue(
             "Narrow layouts should show the inline connection settings button",
-            disconnected.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
+            entryPolicy.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
         )
         assertTrue(
             "Narrow layouts should hide the floating settings button",
-            disconnected.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
+            entryPolicy.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
         )
         assertTrue(
             "Wide layouts should keep the floating button above the connection panel",
-            disconnected.contains("if (!useInlineSettingsButton)"),
+            entryPolicy.contains("if (!useInlineSettingsButton)"),
         )
         assertTrue(
             "Wide disconnected settings button must sit above the connection panel",
-            disconnected.contains("settingsButton.bringToFront()"),
+            floatingSettingsBranch.contains("settingsButton.bringToFront()"),
         )
         assertTrue(
             "Wide disconnected settings button must have a higher z-order than the connection panel",
-            disconnected.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+            floatingSettingsBranch.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+        )
+        assertTrue(
+            "Wide disconnected settings button must ignore overlay opacity and stay readable",
+            floatingSettingsBranch.contains("binding.settingsButton.alpha = 1f"),
+        )
+        assertTrue(
+            "Disconnected entry policy must apply when the disconnected panel is first shown",
+            disconnected.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+        assertTrue(
+            "Configuration changes must re-evaluate inline versus floating settings entry while disconnected",
+            configurationChanged.contains("if (!isConnected)") &&
+                configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+    }
+
+    @Test
+    fun floatingDisconnectedSettingsButtonExposesAccessibleClickTarget() {
+        val settingsButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsButton\"")
+
+        assertTrue(
+            "The clickable floating settings container needs the accessible label",
+            settingsButton.contains("android:contentDescription=\"@string/display_settings\""),
+        )
+        assertTrue(
+            "The floating settings container should be keyboard focusable",
+            settingsButton.contains("android:focusable=\"true\""),
+        )
+        assertTrue(
+            "The inner icon should not duplicate the parent accessibility node",
+            settingsButton.contains("android:importantForAccessibility=\"no\""),
+        )
+    }
+
+    @Test
+    fun overlayOpacityOnlyDimsTheStatsOverlay() {
+        val source = mainActivitySource()
+        val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
+        val updateOverlayOpacity = extractMethod(source, "private fun updateOverlayOpacity")
+        val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
+        val opacitySliderListener =
+            showSettingsDialog.substring(
+                showSettingsDialog.indexOf("opacitySlider.addOnChangeListener"),
+                showSettingsDialog.indexOf("scaleFitButton.setOnClickListener"),
+            )
+
+        assertTrue(
+            "Saved overlay opacity should still apply to the stats overlay",
+            restoreOverlayPosition.contains("updateOverlayOpacity(prefs.overlayOpacity)"),
+        )
+        assertTrue(
+            "Changing overlay opacity from Settings should still update the stats overlay",
+            opacitySliderListener.contains("updateOverlayOpacity(value)"),
+        )
+        assertTrue(
+            "Overlay opacity must target only the stream stats overlay",
+            updateOverlayOpacity.contains("binding.statusBar.alpha = opacity"),
+        )
+        assertFalse(
+            "Overlay opacity must not target the disconnected floating settings entry",
+            updateOverlayOpacity.contains("settingsButton"),
+        )
+        assertFalse(
+            "Restoring overlay state must not dim the disconnected floating settings entry",
+            restoreOverlayPosition.contains("settingsButton") ||
+                restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
+        )
+        assertFalse(
+            "Changing overlay opacity from Settings must not dim the disconnected floating settings entry",
+            opacitySliderListener.contains("settingsButton") ||
+                opacitySliderListener.contains("updateSettingsButtonOpacity"),
+        )
+        assertFalse(
+            "No settings-button opacity helper should re-bind the affordance to overlay opacity",
+            source.contains("private fun updateSettingsButtonOpacity"),
         )
     }
 
@@ -241,6 +320,81 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "The stats overlay should carry the same connection/security state as the control bar",
             compactSecurity.contains("binding.securityText.text=getString(R.string.stream_status_overlay_format,label,detail)"),
+        )
+        assertTrue(
+            "Streaming UI should render the negotiated LAN record protection state when available",
+            securityStatus.contains("streamClient?.currentLanProtectionState"),
+        )
+        assertTrue(
+            "Streaming UI should send the LAN protection state to the shared presentation policy",
+            compactSecurity.contains("lanProtectionState=lanProtectionState"),
+        )
+    }
+
+    @Test
+    fun controlMenusAnchorToTheirFullTouchTargets() {
+        val source = mainActivitySource()
+        val displaysMenu = extractMethod(source, "private fun showDisplaysMenu")
+        val hostActionsMenu = extractMethod(source, "private fun showHostActionsMenu")
+        val clipboardMenu = extractMethod(source, "private fun showClipboardMenu")
+        val popupPresenter = extractMethod(source, "private fun showControlPopupMenu")
+        val compactPresenter = popupPresenter.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "The display menu should anchor to the whole selector row, matching its actual tap target",
+            displaysMenu.contains("PopupMenu(this, binding.displayCapsuleGroup)"),
+        )
+        assertFalse(
+            "The display menu must not anchor to the small icon inside the selector",
+            displaysMenu.contains("PopupMenu(this, binding.controlDisplaysButton)"),
+        )
+        assertTrue(displaysMenu.contains("showDisplayPopupMenu(popup, binding.displayCapsuleGroup)"))
+        assertTrue(displaysMenu.contains("DisplayMenuSelectionGuard.acceptsSelection"))
+        assertTrue(displaysMenu.contains("DISPLAY_MENU_SELECTION_GUARD_MS"))
+        assertFalse(displaysMenu.contains("showControlPopupMenu(popup, binding.displayCapsuleGroup)"))
+        assertTrue(hostActionsMenu.contains("showControlPopupMenu(popup, binding.controlHostActionsButton)"))
+        assertTrue(clipboardMenu.contains("showControlPopupMenu(popup, binding.controlClipboardButton)"))
+        assertTrue(compactPresenter.contains("popup.gravity=Gravity.END"))
+        assertTrue(compactPresenter.contains("anchor.post{popup.show()}"))
+
+        val displayPopupPresenter = extractMethod(source, "private fun showDisplayPopupMenu")
+        val compactDisplayPresenter = displayPopupPresenter.replace(Regex("\\s+"), "")
+        assertTrue(compactDisplayPresenter.contains("popup.show()onShown(SystemClock.uptimeMillis())"))
+        assertTrue(compactDisplayPresenter.contains("DISPLAY_MENU_SHOW_DELAY_MS"))
+    }
+
+    @Test
+    fun displaySelectionMenuDoesNotOptimisticallyRelabelTheActiveDisplay() {
+        val displaysMenu = extractMethod(mainActivitySource(), "private fun showDisplaysMenu")
+        val clickHandler = extractCallback(displaysMenu, "popup.setOnMenuItemClickListener { item ->")
+
+        assertTrue(
+            "Selecting a menu item must still request the host-side switch",
+            clickHandler.contains("streamClient?.selectDisplay(option.id)"),
+        )
+        assertTrue(
+            "Selecting a menu item should surface pending UI only after the request is accepted for sending",
+            clickHandler.contains("markDisplaySelectionPending(previousDisplayId, option.id)"),
+        )
+        assertFalse(
+            "The capsule label must wait for the confirmed Host display state",
+            clickHandler.contains("selectedDisplayId = option.id"),
+        )
+    }
+
+    @Test
+    fun lanClipboardPromptsUseNegotiatedProtectionState() {
+        val source = mainActivitySource()
+        val send = extractMethod(source, "private fun beginSendLocalClipboard")
+        val receive = extractMethod(source, "private fun beginReceiveRemoteClipboard")
+        val directReceive = extractMethod(source, "private fun showDirectClipboardConfirmation")
+
+        assertTrue(send.contains("LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState)"))
+        assertTrue(receive.contains("LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState)"))
+        assertTrue(
+            directReceive.contains(
+                "LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)",
+            ),
         )
     }
 
@@ -464,6 +618,27 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun explicitVideoPreferenceControlsResetQualityUiToAuto() {
+        val setupVideoControls = extractMethod(mainActivitySource(), "private fun setupVideoControls")
+        val compact = setupVideoControls.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Programmatic quality reset should not send a second quality request",
+            compact.contains("if(suppressQualityListener)return@addOnButtonCheckedListener"),
+        )
+        assertTrue(
+            "Explicit frame-rate requests should make the quality buttons reflect preset-free wire semantics",
+            compact.contains("framesPerSecond=fps,qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoFrameRate=fps"),
+        )
+        assertTrue(
+            "Explicit bitrate requests should make the quality buttons reflect preset-free wire semantics",
+            compact.contains("qualityPreset=VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,resetQualityToAuto=true,") &&
+                compact.contains("syncQualityAutoForExplicitVideoSetting()prefs.videoBitrateMbps=mbps"),
+        )
+    }
+
+    @Test
     fun methodExtractionIgnoresBracesOutsideTheMethodStructure() {
         val source =
             """
@@ -658,6 +833,27 @@ class MainActivityTerminalGuidanceContractTest {
         error("Callback closing brace not found: $startMarker")
     }
 
+    private fun extractBlockAfterMarker(
+        source: String,
+        marker: String,
+    ): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "Block marker not found: $marker" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Block body not found: $marker" }
+        var depth = 0
+        for (index in bodyStart until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Block closing brace not found: $marker")
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -670,11 +866,45 @@ class MainActivityTerminalGuidanceContractTest {
         error("MainActivity.kt not found from " + System.getProperty("user.dir"))
     }
 
+    private fun mainActivityLayoutSource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            ACTIVITY_MAIN_LAYOUT_PATHS
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("activity_main.xml not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun extractXmlElement(
+        source: String,
+        idAttribute: String,
+    ): String {
+        val idIndex = source.indexOf(idAttribute)
+        require(idIndex >= 0) { "XML element not found: $idAttribute" }
+        val openStart = source.lastIndexOf('<', idIndex)
+        require(openStart >= 0) { "XML element start not found: $idAttribute" }
+        val elementName =
+            source.substring(openStart + 1)
+                .takeWhile { !it.isWhitespace() && it != '>' }
+        val closeMarker = "</$elementName>"
+        val closeEnd = source.indexOf(closeMarker, idIndex)
+        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, closeEnd + closeMarker.length)
+    }
+
     private companion object {
         val MAIN_ACTIVITY_PATHS =
             listOf(
                 "app/src/main/java/dev/telemachus/display/MainActivity.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+            )
+        val ACTIVITY_MAIN_LAYOUT_PATHS =
+            listOf(
+                "app/src/main/res/layout/activity_main.xml",
+                "baseline/AndroidClient/app/src/main/res/layout/activity_main.xml",
             )
     }
 }

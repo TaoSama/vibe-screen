@@ -69,6 +69,10 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
   /// Negotiates an encrypted WebRTC SCTP data channel for future bulk records.
   /// This does not imply clipboard or file-transfer product behavior.
   case bulkDataChannel // = 29
+
+  /// Negotiates the generic peripheral-input admission framework only. This does
+  /// not imply support for any concrete peripheral kind or hardware path.
+  case peripheralInputFramework // = 30
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -107,6 +111,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     case 27: self = .usbHidModifierByte
     case 28: self = .audioDataChannel
     case 29: self = .bulkDataChannel
+    case 30: self = .peripheralInputFramework
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -143,6 +148,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     case .usbHidModifierByte: return 27
     case .audioDataChannel: return 28
     case .bulkDataChannel: return 29
+    case .peripheralInputFramework: return 30
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -179,6 +185,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     .usbHidModifierByte,
     .audioDataChannel,
     .bulkDataChannel,
+    .peripheralInputFramework,
   ]
 
 }
@@ -399,7 +406,7 @@ public struct VSDisconnectNotice: Sendable {
 fileprivate let _protobuf_package = "vibescreen.protocol.v1"
 
 extension VSCapability: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CAPABILITY_UNSPECIFIED\0\u{1}CAPABILITY_DISPLAY_MIRROR\0\u{1}CAPABILITY_VIRTUAL_DISPLAY\0\u{1}CAPABILITY_TOUCH\0\u{1}CAPABILITY_KEYBOARD\0\u{1}CAPABILITY_POINTER\0\u{1}CAPABILITY_STYLUS\0\u{1}CAPABILITY_TELEMETRY\0\u{1}CAPABILITY_SESSION_RESUME\0\u{1}CAPABILITY_DEVICE_IDENTITY\0\u{1}CAPABILITY_END_TO_END_ENCRYPTION\0\u{1}CAPABILITY_KEY_ROTATION\0\u{1}CAPABILITY_REPLAY_PROTECTION\0\u{1}CAPABILITY_AUDIO\0\u{1}CAPABILITY_CLIPBOARD\0\u{1}CAPABILITY_FILE_TRANSFER\0\u{1}CAPABILITY_HDR_VIDEO\0\u{1}CAPABILITY_COLOR_MANAGEMENT\0\u{1}CAPABILITY_MULTI_DISPLAY\0\u{1}CAPABILITY_MULTI_CLIENT\0\u{1}CAPABILITY_HOST_ACTIONS\0\u{1}CAPABILITY_WAKE_HOST\0\u{1}CAPABILITY_MANAGED_CONFIGURATION\0\u{1}CAPABILITY_MEDIA_RECORD_FRAGMENTATION\0\u{1}CAPABILITY_CLIENT_VIDEO_CONTROL\0\u{1}CAPABILITY_STYLUS_EXTENDED\0\u{1}CAPABILITY_CONTROLLER\0\u{1}CAPABILITY_USB_HID_MODIFIER_BYTE\0\u{1}CAPABILITY_AUDIO_DATA_CHANNEL\0\u{1}CAPABILITY_BULK_DATA_CHANNEL\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CAPABILITY_UNSPECIFIED\0\u{1}CAPABILITY_DISPLAY_MIRROR\0\u{1}CAPABILITY_VIRTUAL_DISPLAY\0\u{1}CAPABILITY_TOUCH\0\u{1}CAPABILITY_KEYBOARD\0\u{1}CAPABILITY_POINTER\0\u{1}CAPABILITY_STYLUS\0\u{1}CAPABILITY_TELEMETRY\0\u{1}CAPABILITY_SESSION_RESUME\0\u{1}CAPABILITY_DEVICE_IDENTITY\0\u{1}CAPABILITY_END_TO_END_ENCRYPTION\0\u{1}CAPABILITY_KEY_ROTATION\0\u{1}CAPABILITY_REPLAY_PROTECTION\0\u{1}CAPABILITY_AUDIO\0\u{1}CAPABILITY_CLIPBOARD\0\u{1}CAPABILITY_FILE_TRANSFER\0\u{1}CAPABILITY_HDR_VIDEO\0\u{1}CAPABILITY_COLOR_MANAGEMENT\0\u{1}CAPABILITY_MULTI_DISPLAY\0\u{1}CAPABILITY_MULTI_CLIENT\0\u{1}CAPABILITY_HOST_ACTIONS\0\u{1}CAPABILITY_WAKE_HOST\0\u{1}CAPABILITY_MANAGED_CONFIGURATION\0\u{1}CAPABILITY_MEDIA_RECORD_FRAGMENTATION\0\u{1}CAPABILITY_CLIENT_VIDEO_CONTROL\0\u{1}CAPABILITY_STYLUS_EXTENDED\0\u{1}CAPABILITY_CONTROLLER\0\u{1}CAPABILITY_USB_HID_MODIFIER_BYTE\0\u{1}CAPABILITY_AUDIO_DATA_CHANNEL\0\u{1}CAPABILITY_BULK_DATA_CHANNEL\0\u{1}CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK\0")
 }
 
 extension VSClientHello: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

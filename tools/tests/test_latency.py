@@ -10,6 +10,7 @@ from tools.vibescreen_evidence.latency import (
     KIND_GLASS_TO_GLASS,
     KIND_INPUT,
     KIND_TELEMETRY_STAGE,
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
     GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_USB_GLASS_TO_GLASS_SUB50,
@@ -18,6 +19,7 @@ from tools.vibescreen_evidence.latency import (
     METHOD_HOST_TELEMETRY,
     METHOD_SYNCHRONIZED_CLOCK,
     METHOD_UNSYNCHRONIZED_CLOCKS,
+    TRANSPORT_INTERNET,
     TRANSPORT_LAN,
     TRANSPORT_USB,
     LatencyInputError,
@@ -91,6 +93,25 @@ class LatencySummaryTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "fail")
         self.assertIn("exceeds threshold", result["gate"]["reasons"][0])
 
+    def test_internet_glass_to_glass_gate_uses_public_internet_threshold(self) -> None:
+        result = summarize(
+            [
+                {"latency_ms": 90},
+                {"latency_ms": 100},
+                {"latency_ms": 110},
+                {"latency_ms": 120},
+                {"latency_ms": 130},
+            ],
+            kind=KIND_GLASS_TO_GLASS,
+            measurement_method=METHOD_EXTERNAL_CAMERA,
+            transport=TRANSPORT_INTERNET,
+            gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+        )
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(result["gate"]["threshold_ms"], 150.0)
+        self.assertEqual(result["transport"], TRANSPORT_INTERNET)
+
     def test_latency_gate_is_insufficient_with_too_few_samples(self) -> None:
         result = summarize(
             [{"latency_ms": 10}, {"latency_ms": 12}],
@@ -119,6 +140,14 @@ class LatencySummaryTest(unittest.TestCase):
                 measurement_method=METHOD_EXTERNAL_CAMERA,
                 transport=TRANSPORT_LAN,
                 gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+        with self.assertRaisesRegex(LatencyInputError, "requires --transport internet"):
+            summarize(
+                [{"latency_ms": 10}] * 5,
+                kind=KIND_GLASS_TO_GLASS,
+                measurement_method=METHOD_EXTERNAL_CAMERA,
+                transport=TRANSPORT_LAN,
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
             )
 
     def test_converts_camera_frames_on_one_timebase(self) -> None:
@@ -164,6 +193,15 @@ class LatencySummaryTest(unittest.TestCase):
             summarize(
                 [{"latency_ms": 12}],
                 kind=KIND_GLASS_TO_GLASS,
+                measurement_method=METHOD_SYNCHRONIZED_CLOCK,
+                transport=TRANSPORT_USB,
+            )
+
+    def test_rejects_synchronized_clock_frame_count_samples(self) -> None:
+        with self.assertRaisesRegex(LatencyInputError, "direct latency_ms values"):
+            summarize(
+                [{"start_frame": 100, "end_frame": 105, "camera_fps": 240}],
+                kind=KIND_INPUT,
                 measurement_method=METHOD_SYNCHRONIZED_CLOCK,
                 transport=TRANSPORT_USB,
             )
@@ -365,6 +403,27 @@ class LatencyCliTest(unittest.TestCase):
         self.assertEqual(output["verdict"], "fail")
         self.assertGreater(output["gate"]["observed_ms"], output["gate"]["threshold_ms"])
         self.assertIn("exceeds threshold", output["gate"]["reasons"][0])
+
+    def test_fixture_internet_glass_to_glass_profile_passes_at_summary_layer(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "internet-glass-to-glass-pass.csv"),
+            "--kind",
+            KIND_GLASS_TO_GLASS,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_INTERNET,
+            "--gate-profile",
+            GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            "--run-id",
+            "fixture-internet-glass-pass",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "pass")
+        self.assertEqual(output["gate"]["profile"], GATE_INTERNET_GLASS_TO_GLASS_SUB150)
+        self.assertAlmostEqual(output["statistics"]["p95"], 128.0)
 
     def test_fixture_usb_glass_to_glass_profile_is_insufficient(self) -> None:
         result = self.run_cli(

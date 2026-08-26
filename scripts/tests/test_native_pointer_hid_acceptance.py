@@ -181,6 +181,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[]),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
@@ -210,9 +211,49 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["device"]["fingerprint_sha256"], "redacted-build-fingerprint-sha256")
             self.assertEqual(result["host_log"], "host-log-appended.txt")
             self.assertEqual(result["external_mouse_devices"], [])
+            self.assertTrue(result["adb_was_run"])
+            self.assertEqual(result["requested_serial"], "redacted-requested-serial")
             self.assertIn("No external Android input device", result["reason"])
             self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
             self.assertTrue((evidence_dir / "README.md").exists())
+            summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+            self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
+
+    def test_main_writes_blocked_evidence_without_adb_when_device_lock_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            lock = acceptance.CoordinationLock("/tmp/vibe-screen-device-android.lock", "owner=other-run")
+            with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[lock]),
+                mock.patch.object(acceptance, "read_device_identity") as read_device_identity,
+                mock.patch.object(acceptance, "adb") as adb,
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--host-log",
+                        str(Path(temporary_directory) / "host.log"),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--write-blocked-on-lock",
+                    ]
+                )
+
+            self.assertEqual(exit_code, acceptance.BLOCKED_EXIT)
+            read_device_identity.assert_not_called()
+            adb.assert_not_called()
+            result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "blocked_device_coordination_lock")
+            self.assertFalse(result["adb_was_run"])
+            self.assertEqual(result["existing_locks"][0]["path"], "/tmp/vibe-screen-device-android.lock")
+            self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
+            summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["observations"]["adb_was_run"])
+            self.assertIn("/tmp/vibe-screen-device-android.lock: owner=other-run", summary["blocking_notes"])
 
     def test_main_passes_when_required_android_host_and_visible_evidence_are_observed(self) -> None:
         identity = acceptance.DeviceIdentity(
@@ -243,6 +284,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             )
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[]),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
@@ -272,6 +314,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                         "0",
                         "--visible-result-note",
                         "Mac cursor moved and the primary click focused TextEdit.",
+                        "--host-stable-signed-tcc-ready",
                     ]
                 )
 
@@ -282,6 +325,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["observed_android_pointer_events"], ["move", "press", "release"])
             self.assertEqual(result["external_mouse_devices"][0]["name"], "USB Optical Mouse")
             self.assertEqual(result["visible_mac_result"], "Mac cursor moved and the primary click focused TextEdit.")
+            summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "pass")
+            self.assertTrue(summary["can_close_native_pointer_hid_gate"])
             self.assertTrue((evidence_dir / "host-log-appended.txt").exists())
             self.assertTrue((evidence_dir / "android-logcat-native-pointer.txt").exists())
 
@@ -314,6 +360,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             )
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[]),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
@@ -341,6 +388,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                         str(evidence_dir),
                         "--observe-seconds",
                         "0",
+                        "--host-stable-signed-tcc-ready",
                     ]
                 )
 
@@ -348,6 +396,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result["status"], "failed")
             self.assertIn("visible Mac pointer/click result", result["reason"])
+            summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "insufficient")
+            self.assertFalse(summary["can_close_native_pointer_hid_gate"])
 
 
 class FakeLogcatCapture:

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "blocked",
+  "gate_closed": false,
+  "date": "2026-08-22",
+  "source_branch": "codex/clipboard-file-transfer-gate",
+  "origin_main_at_collection": "47207c5bc82f9931eb82ec886d2d55e96c3f3e5b",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36"
+  },
+  "passed": [
+    "Android focused file-transfer JVM tests passed, including negotiated peer file-size limit enforcement",
+    "Android assembleDebug assembleDebugAndroidTest passed",
+    "Android lintDebug passed",
+    "MacHost swift build passed",
+    "Protocol fixture tests passed: 16 tests",
+    "Evidence tools passed: 237 tests",
+    "P0110 APK install and ClipboardManagerInstrumentedTest OK (3 tests); device/app install readiness only"
+  ],
+  "blockers": [
+    "No valid macOS code-signing identity",
+    "xcodebuild unavailable because only Command Line Tools are selected",
+    "MacHost XCTest blocked before execution by missing XCTest module",
+    "No signed/TCC-authorized Host session for USB/LAN device file-transfer acceptance"
+  ],
+  "not_proven": [
+    "Android SAF picker to macOS saved file transfer",
+    "MacHost file picker to Android Downloads transfer",
+    "Receiver approval on both live endpoints",
+    "Live progress/cancel/backpressure behavior over USB or LAN",
+    "End-to-end SHA-256 equality from source file to saved destination"
+  ]
+}

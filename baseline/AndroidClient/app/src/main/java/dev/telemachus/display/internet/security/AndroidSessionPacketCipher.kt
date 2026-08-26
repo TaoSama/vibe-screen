@@ -253,6 +253,8 @@ class AndroidSessionPacketCipher internal constructor(
             return when (header.get().toInt() and 0xff) {
                 SecurityChannel.CONTROL.wireValue -> SessionChannel.CONTROL
                 SecurityChannel.MEDIA.wireValue -> SessionChannel.MEDIA
+                SecurityChannel.AUDIO.wireValue -> SessionChannel.AUDIO
+                SecurityChannel.BULK.wireValue -> SessionChannel.BULK
                 else -> null
             }
         }

@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-device-acceptance.schema.json",
+  "title": "Vibe Screen iOS device acceptance evidence v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "platform",
+    "status",
+    "repository",
+    "host",
+    "xcode",
+    "trusted_lan",
+    "signing",
+    "signing_readiness_gate",
+    "videotoolbox_readiness_gates",
+    "devices",
+    "gates",
+    "android_evidence_used_for_ios_gates"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_device_acceptance"},
+    "platform": {"const": "ios"},
+    "status": {"enum": ["open", "blocked", "complete", "failed"]},
+    "repository": {
+      "type": "object",
+      "required": ["commit", "branch", "dirty"],
+      "properties": {
+        "commit": {"type": "string", "minLength": 1},
+        "branch": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "host": {
+      "type": "object",
+      "required": ["commit", "macos_version", "permissions_changed_by_run"],
+      "properties": {
+        "commit": {"type": "string", "minLength": 1},
+        "macos_version": {"type": "string", "minLength": 1},
+        "permissions_changed_by_run": {"type": "boolean"}
+      }
+    },
+    "xcode": {
+      "type": "object",
+      "required": ["version", "selected_developer_dir", "ios_sdk"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "selected_developer_dir": {"type": "string", "minLength": 1},
+        "ios_sdk": {"type": "string", "minLength": 1}
+      }
+    },
+    "trusted_lan": {
+      "type": "object",
+      "required": ["mode", "encrypted_lan_claimed"],
+      "properties": {
+        "mode": {"const": "explicit_plaintext_legacy_fallback"},
+        "encrypted_lan_claimed": {"const": false}
+      }
+    },
+    "signing": {
+      "type": "object",
+      "required": [
+        "status",
+        "bundle_id",
+        "team_id_redacted",
+        "certificate_common_name_redacted",
+        "provisioning_profile_uuid_redacted",
+        "archive_sha256"
+      ],
+      "properties": {
+        "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "bundle_id": {"type": "string", "minLength": 1},
+        "team_id_redacted": {"type": "boolean"},
+        "certificate_common_name_redacted": {"type": "boolean"},
+        "provisioning_profile_uuid_redacted": {"type": "boolean"},
+        "archive_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
+      }
+    },
+    "signing_readiness_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "owner",
+        "source",
+        "current_base",
+        "verdict",
+        "signing_status",
+        "signing_summary",
+        "can_close_ios_app_signing_readiness",
+        "can_close_ios_device_acceptance",
+        "recorded_fields",
+        "missing",
+        "failures",
+        "evidence",
+        "interpretation"
+      ],
+      "properties": {
+        "schema_version": {"const": "vibescreen.evidence/v1"},
+        "kind": {"const": "ios_app_signing_readiness_gate"},
+        "owner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "head_ref", "repository", "scope"],
+          "properties": {
+            "role": {"const": "ios_app_signing_readiness_current_base_owner"},
+            "head_ref": {"const": "codex/phase5-ios-signing-readiness"},
+            "repository": {"const": "TaoSama/vibe-screen"},
+            "scope": {"type": "string", "minLength": 1}
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readiness", "evidence_root"],
+          "properties": {
+            "readiness": {"type": ["string", "null"]},
+            "evidence_root": {"type": "string", "minLength": 1}
+          }
+        },
+        "current_base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit", "branch", "dirty"],
+          "properties": {
+            "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+            "branch": {"type": ["string", "null"]},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "verdict": {"enum": ["pass", "blocked", "fail"]},
+        "signing_status": {"type": ["string", "null"]},
+        "signing_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "bundle_id",
+            "unique_bundle_id",
+            "team_id_recorded",
+            "codesign_identity_recorded",
+            "provisioning_profile_recorded",
+            "device_udid_hashes_recorded",
+            "entitlements_recorded",
+            "signed_artifact_sha256"
+          ],
+          "properties": {
+            "status": {"enum": ["pass", "blocked", "fail"]},
+            "bundle_id": {"type": ["string", "null"]},
+            "unique_bundle_id": {"type": "boolean"},
+            "team_id_recorded": {"type": "boolean"},
+            "codesign_identity_recorded": {"type": "boolean"},
+            "provisioning_profile_recorded": {"type": "boolean"},
+            "device_udid_hashes_recorded": {"type": "boolean"},
+            "entitlements_recorded": {"type": "boolean"},
+            "signed_artifact_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"}
+          }
+        },
+        "can_close_ios_app_signing_readiness": {"type": "boolean"},
+        "can_close_ios_device_acceptance": {"const": false},
+        "recorded_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "team_id",
+            "provisioning_profile",
+            "bundle_id",
+            "codesign_identity",
+            "device_udid",
+            "entitlements",
+            "signed_artifact",
+            "artifacts"
+          ],
+          "properties": {
+            "team_id": {"type": "boolean"},
+            "provisioning_profile": {"type": "boolean"},
+            "bundle_id": {"type": "boolean"},
+            "codesign_identity": {"type": "boolean"},
+            "device_udid": {"type": "boolean"},
+            "entitlements": {"type": "boolean"},
+            "signed_artifact": {"type": "boolean"},
+            "artifacts": {"type": "boolean"}
+          }
+        },
+        "missing": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "interpretation": {"type": "string", "minLength": 1}
+      }
+    },
+    "videotoolbox_readiness_gates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "schema_version",
+          "kind",
+          "profile",
+          "runtime_class",
+          "verdict",
+          "can_close_device_family_videotoolbox_gate",
+          "can_close_phase5_hardware_videotoolbox_gate",
+          "artifact_paths",
+          "artifact_checks"
+        ],
+        "properties": {
+          "schema_version": {"const": "vibescreen.evidence/v1"},
+          "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+          "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+          "runtime_class": {"enum": ["physical_iphone", "physical_ipad"]},
+          "verdict": {"const": "pass"},
+          "can_close_device_family_videotoolbox_gate": {"const": true},
+          "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+          "artifact_paths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "artifact_checks": {"type": "array", "minItems": 1}
+        }
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "product_name",
+          "hardware_model",
+          "os_version",
+          "build_number",
+          "install_status"
+        ],
+        "properties": {
+          "role": {"enum": ["iphone", "ipad"]},
+          "product_name": {"type": "string", "minLength": 1},
+          "hardware_model": {"type": "string", "minLength": 1},
+          "os_version": {"type": "string", "minLength": 1},
+          "build_number": {"type": "string", "minLength": 1},
+          "install_status": {"enum": ["open", "blocked", "complete", "failed"]}
+        }
+      }
+    },
+    "gates": {"type": "object"},
+    "broader_gates": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "hdr_output": {"$ref": "#/$defs/evidence_gate"},
+        "advanced_adapters": {"$ref": "#/$defs/evidence_gate"},
+        "host_advanced_adapters": {"$ref": "#/$defs/evidence_gate"},
+        "trusted_lan_secure_records": {"$ref": "#/$defs/evidence_gate"}
+      }
+    },
+    "android_evidence_used_for_ios_gates": {"const": false},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "evidence_gate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

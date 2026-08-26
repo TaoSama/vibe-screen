@@ -26,7 +26,7 @@ struct HostVideoColorNegotiator {
             encodedSize: encodedSize,
             framesPerSecond: framesPerSecond
         )
-        if Self.isHDR(color), !clientCapabilities.contains(.hdrVideo) {
+        if Self.isHDR(color), !clientCapabilities.isSuperset(of: [.colorManagement, .hdrVideo]) {
             return unsupportedDecision(supportsLegacySDR: supportsLegacySDR)
         }
         guard supports(color, codec: codec, encodedSize: encodedSize, framesPerSecond: framesPerSecond) else {
@@ -89,7 +89,8 @@ struct HostVideoColorNegotiator {
         encodedSize: VSDimensions,
         framesPerSecond: UInt32
     ) -> Bool {
-        decodeCapabilities.isEmpty || decodeCapabilities.contains(where: { capability in
+        guard !decodeCapabilities.isEmpty else { return !Self.isHDR(color) }
+        return decodeCapabilities.contains(where: { capability in
             let transfer = color.transferFunction == .unspecified ? .bt709 : color.transferFunction
             let sizeMatches = encodedSize.width <= capability.maximumWidth
                 && encodedSize.height <= capability.maximumHeight

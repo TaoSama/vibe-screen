@@ -13,7 +13,7 @@ from typing import Iterable
 
 
 SCHEMA = "dev.vibescreen.evidence-privacy-scan/v1"
-RULE_VERSION = "2026-08-06.4"
+RULE_VERSION = "2026-08-23.1"
 DERIVED_FILES = frozenset({"SHA256SUMS", "privacy-scan.json"})
 CATEGORIES = (
     "network_endpoint",
@@ -32,8 +32,9 @@ USER_PATH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 HARDWARE_IDENTIFIER_PATTERNS = (
+    re.compile(rb'"adb_serial"\s*:\s*"(?!\[?redacted\]?\")[^\"]+"', re.IGNORECASE),
     re.compile(rb'"hardware_serial"\s*:\s*"(?!\[?redacted\]?\")[^\"]+"', re.IGNORECASE),
-    re.compile(rb"\b(?:hardware|device) serial\s*:\s*(?!\[?redacted\]?\b)[^\r\n]+", re.IGNORECASE),
+    re.compile(rb"\b(?:adb|hardware|device) serial\s*:\s*(?!\[?redacted\]?\b)[^\r\n]+", re.IGNORECASE),
 )
 DIRECT_CREDENTIAL_PATTERNS = (
     re.compile(rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),

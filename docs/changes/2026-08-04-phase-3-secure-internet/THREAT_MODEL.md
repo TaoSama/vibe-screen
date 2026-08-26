@@ -39,7 +39,7 @@ boundary.
 | Pairing MITM / QR theft | short expiry, single redemption, random challenge, signed canonical transcript, both identities displayed | mutate every transcript field; redeem twice; use after expiry |
 | Algorithm/capability downgrade | signed protocol range, algorithms, capabilities, and roles; Internet mode never falls back to plaintext | strip/reorder offers and required capabilities |
 | Signaling impersonation | authenticated service plus independent peer identity proof | substitute SDP/candidates/peer ID |
-| Forged or epoch-poisoning session lease | paired-host signature covers all routing, epoch, transcript, signaling-token, ICE/TURN and policy fields; issuer ignores caller epoch and atomically reserves the next pairing-scoped durable value; receiver verifies before its durable high-watermark update | mutate each field, inject an abnormal high caller value, race issuers, restart authority, reuse an old host key |
+| Forged or epoch-poisoning session lease | paired-host signature covers all routing, epoch, transcript, signaling-token, ICE/TURN and policy fields; Authority admits a strictly monotonic per-device epoch, the Mac issuer reserves that exact Authority-supplied epoch in pairing-scoped durable state, and receivers verify before their durable high-watermark update | mutate each field, inject a stale or abnormal high authority value, race issuers, restart authority, reuse an old host key |
 | Signaling token retained after revoke | issuer-only idempotent invalidation destroys both role tokens, queued payloads, and active long polls | invalidate during offer/answer/candidate polling; retry invalidation; reuse both role tokens |
 | Relay content inspection | application AEAD over control and full media header+payload; traffic keys never sent to service | TURN capture contains no known plaintext or codec/frame header |
 | Packet tampering | header as AEAD AAD, fail closed before dispatch | flip every header/ciphertext class |
@@ -48,7 +48,7 @@ boundary.
 | Old-session injection | authenticated `session_epoch`; stale media/input dropped | reconnect and inject prior control/media/input |
 | Rotation rollback | current-key authorization, monotonic persisted epoch, bounded overlap | reordered/duplicate/old-key rotations and restart |
 | Revoked-device reconnect | durable signed tombstone, active disconnect, signaling/TURN credential invalidation | direct and relay reconnect before/after service restart |
-| Credential extraction | Keychain/Keystore protection, backup exclusion, redacted logs/evidence | backup/restore, log/crash/evidence scan |
+| Credential extraction | Keychain/Keystore/HUKS protection, non-exportable endpoint identity keys, backup exclusion, redacted logs/evidence | backup/restore, private-key export attempt, log/crash/evidence scan |
 | Memory/backlog exhaustion | strict envelope/frame/candidate/channel/allocation caps; latest-frame media queue | oversized/flood/fuzz and sustained slow consumer |
 | Relay cost abuse | short-lived scoped credentials, stable per-device coturn quota principal, auth rate limits, allocation/bandwidth caps and alerts; non-authoritative byte ledger is never an admission boundary | different-session/expiry concurrent allocations, 486 limit, allocation expiry/release, rate and billing drill |
 | TURN peer-address SSRF | production CREATE_PERMISSION denies loopback, RFC1918, CGNAT, link-local, ULA, mapped and provider-internal ranges; deployment inventory extends the deny set | authenticated CREATE_PERMISSION matrix plus allowed-public control |

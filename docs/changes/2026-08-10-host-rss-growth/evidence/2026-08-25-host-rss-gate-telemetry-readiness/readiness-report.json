@@ -1,0 +1,59 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_rss_gate_telemetry_readiness",
+  "created_at": "2026-08-25T00:00:00Z",
+  "baseline": {
+    "ref": "origin/main",
+    "commit_sha": "fed8ac0c891b610def1cb03cb8bfd5216af56784"
+  },
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "role": "general Android substitute",
+    "not_xiaomi_fuxi_evidence": true
+  },
+  "claims": {
+    "can_close_host_rss_no_growth_gate": false,
+    "ran_current_source_two_hour_soak": false,
+    "requires_exact_window_native_host_telemetry": true,
+    "legacy_log_telemetry_can_pass_formal_gate": false
+  },
+  "blockers": [
+    "An Android test lock was present, so starting a new formal soak would have conflicted with another device user.",
+    "Existing Host processes were not a fresh current-source launch with VIBE_SCREEN_TELEMETRY_PATH for this evidence window.",
+    "No stable-signed, TCC-authorized current-source Host run was established for a two-hour formal gate."
+  ],
+  "historical_replay": {
+    "source": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2",
+    "output": "historical-xiaomi-soak2h-current-gate.json",
+    "exit_code": 1,
+    "verdict": "insufficient",
+    "meaning": "The old two-hour package still cannot close the gate: RSS growth criteria fail and legacy telemetry lacks heartbeat and lifecycle counter coverage.",
+    "failed_rss_criteria": [
+      "second_half_ols_slope_ci_upper_kib_per_minute",
+      "second_half_theil_sen_slope_kib_per_minute",
+      "second_half_endpoint_median_drift_kib",
+      "full_window_endpoint_median_drift_kib"
+    ],
+    "insufficient_telemetry": [
+      "derivation_complete",
+      "source_summary_complete",
+      "heartbeat_present",
+      "accepted_heartbeat_present",
+      "queue_metrics_present",
+      "encoder_metrics_present",
+      "latest_pixel_buffer_metrics_present",
+      "capture_state_booleans_present"
+    ]
+  },
+  "artifacts": [
+    "README.md",
+    "commands.txt",
+    "preflight-output.txt",
+    "historical-xiaomi-soak2h-current-gate.json",
+    "historical-xiaomi-soak2h-current-gate.exit"
+  ]
+}

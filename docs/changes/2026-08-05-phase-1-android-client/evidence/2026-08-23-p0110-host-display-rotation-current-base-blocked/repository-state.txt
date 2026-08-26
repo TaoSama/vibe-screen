@@ -1,0 +1,29 @@
+Repository and PR state captured for this blocked current-base owner record.
+
+Initial read-only sampling happened before the owner change was rebased, then
+the branch was rebased onto the latest origin/main. The current-base manifest
+was refreshed after that rebase while the worktree was clean at:
+
+  88ff8dc74fe44ce2be392c502ea7de05a7eb375e
+
+That commit's parent was origin/main at:
+
+  c93a05069ede078a181e343497214d8bf9021853
+
+The final PR head can differ from the manifest revision because the retained
+evidence files themselves were updated after the manifest/gate refresh:
+README.md, commands.txt, repository-state.txt, SHA256SUMS, and the refreshed
+gate JSON/stdout files and refreshed read-only P0110 identity/package probes.
+No Host run, ADB reverse mutation, macOS display rotation, or input injection
+was performed after the manifest refresh.
+
+Remote PR state at sampling time:
+
+- PR #262: OPEN draft, head codex/rotated-host-display-readiness at
+  dd1e33327344c0234c28c66807d2dbc9d7f4653b, mergeStateStatus DIRTY.
+- PR #272: MERGED, Android display-selection UI confirmation.
+- PR #243: OPEN, mergeStateStatus BLOCKED, disconnected settings opacity.
+
+The target update is to force-with-lease push this branch to
+codex/rotated-host-display-readiness and keep PR #262 as the current-base
+owner for the rotated Host display gate.

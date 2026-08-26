@@ -56,6 +56,13 @@ func memoryStoreForTest(t *testing.T, service *Server) *MemoryStore {
 	return store
 }
 
+func authorityRoleResponse(role string) map[string]any {
+	return map[string]any{
+		"role":       role,
+		"expires_at": time.Now().Add(time.Hour).UTC(),
+	}
+}
+
 func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	var createCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -512,7 +519,7 @@ func TestAuthorityModePostMessageAuthorizesViaAuthority(t *testing.T) {
 				role = "host"
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": role})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse(role))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -539,6 +546,59 @@ func TestAuthorityModePostMessageAuthorizesViaAuthority(t *testing.T) {
 	}
 }
 
+func TestAuthorityModePostMessageAdoptsAuthorityIssuedSession(t *testing.T) {
+	var authorizeCalls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost {
+			authorizeCalls.Add(1)
+			var request struct {
+				RoleToken string `json:"role_token"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			if request.RoleToken != "host-token-1" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+
+	msgBody := `{"message_id":"offer-1","type":"offer","sdp":"v=0\r\n"}`
+	msgResp := performRequest(t, handler, http.MethodPost, "/v1/sessions/profile-issued-session/messages", "host-token-1", msgBody)
+	if msgResp.Code != http.StatusCreated {
+		t.Fatalf("post authority-issued message status = %d: %s", msgResp.Code, msgResp.Body.String())
+	}
+	if authorizeCalls.Load() != 2 {
+		t.Errorf("expected pre-parse and pre-commit authority checks, got %d", authorizeCalls.Load())
+	}
+
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	adopted := store.sessions["profile-issued-session"]
+	mappedSession := store.requestSessions[authoritySessionRequestID("profile-issued-session")]
+	store.mu.Unlock()
+	if adopted == nil {
+		t.Fatal("authority-issued session was not adopted as local routing metadata")
+	}
+	if adopted.hostToken != "" || adopted.deviceToken != "" || adopted.response.HostToken != "" || adopted.response.DeviceToken != "" {
+		t.Fatal("authority-issued session retained role tokens in the local store")
+	}
+	if mappedSession != "profile-issued-session" {
+		t.Fatalf("authority-issued request mapping=%q, want profile-issued-session", mappedSession)
+	}
+	if len(adopted.events) != 1 || adopted.events[0].MessageID != "offer-1" {
+		t.Fatalf("authority-issued offer was not routed locally: %#v", adopted.events)
+	}
+}
+
 func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) {
 	var authorizeCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -556,7 +616,7 @@ func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) 
 		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
 			if authorizeCalls.Add(1) == 1 {
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]string{"role": "host"})
+				_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
 				return
 			}
 			w.WriteHeader(http.StatusForbidden)
@@ -610,7 +670,7 @@ func TestAuthorityModePollAuthorizesViaAuthority(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
 			authorizeCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": "host"})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("host"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -659,7 +719,7 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 			}
 			signalFirstAuthorization.Do(func() { close(firstAuthorization) })
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"role": "client"})
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("client"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -710,6 +770,140 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("revoked poll did not return")
+	}
+}
+
+func TestAuthorityModeLongPollReauthorizesDuringWait(t *testing.T) {
+	var revoked atomic.Bool
+	firstAuthorization := make(chan struct{})
+	var signalFirstAuthorization sync.Once
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID:   "sess-1",
+				HostToken:   "host-token-1",
+				ClientToken: "client-token-1",
+				ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+				Created:     true,
+			})
+		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
+			if revoked.Load() {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			signalFirstAuthorization.Do(func() { close(firstAuthorization) })
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("client"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+
+	createBody := `{"request_id":"req-1","account_id":"acct-1","host_device_id":"host-1","client_device_id":"client-1","session_epoch":1,"ttl_seconds":60}`
+	create := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, createBody)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", create.Code, create.Body.String())
+	}
+
+	pollResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		request := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+			"/v1/sessions/sess-1/events?after=0&wait_seconds=1", nil)
+		request.Header.Set("Authorization", "Bearer client-token-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		pollResult <- response
+	}()
+	select {
+	case <-firstAuthorization:
+	case <-time.After(time.Second):
+		t.Fatal("poll did not reach authority authorization")
+	}
+	waitForWaiter(t, memoryStoreForTest(t, service), "sess-1", RoleDevice)
+	revoked.Store(true)
+	revokedAt := time.Now()
+
+	select {
+	case response := <-pollResult:
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("revoked long poll status=%d body=%s", response.Code, response.Body.String())
+		}
+		if elapsed := time.Since(revokedAt); elapsed >= 900*time.Millisecond {
+			t.Fatalf("revoked long poll waited %s; expected bounded refresh before the full wait timeout", elapsed)
+		}
+	case <-time.After(900 * time.Millisecond):
+		t.Fatal("revoked long poll did not return before the full wait timeout")
+	}
+}
+
+func TestAuthorityModeLongPollRetainsWaiterAcrossReauthorizationRefresh(t *testing.T) {
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID:   "sess-1",
+				HostToken:   "host-token-1",
+				ClientToken: "client-token-1",
+				ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+				Created:     true,
+			})
+		case strings.HasSuffix(r.URL.Path, "/authorize") && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(authorityRoleResponse("client"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+
+	createBody := `{"request_id":"req-1","account_id":"acct-1","host_device_id":"host-1","client_device_id":"client-1","session_epoch":1,"ttl_seconds":60}`
+	create := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, createBody)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", create.Code, create.Body.String())
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pollResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		request := httptest.NewRequestWithContext(ctx, http.MethodGet,
+			"/v1/sessions/sess-1/events?after=0&wait_seconds=1", nil)
+		request.Header.Set("Authorization", "Bearer client-token-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		pollResult <- response
+	}()
+	waitForWaiter(t, memoryStoreForTest(t, service), "sess-1", RoleDevice)
+	time.Sleep(authorityLongPollRefreshInterval + 75*time.Millisecond)
+
+	second := performRequest(t, handler, http.MethodGet, "/v1/sessions/sess-1/events?after=0&wait_seconds=1", "client-token-1", "")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second poll status=%d body=%s", second.Code, second.Body.String())
+	}
+	select {
+	case first := <-pollResult:
+		t.Fatalf("first poll returned early after refresh: status=%d body=%s", first.Code, first.Body.String())
+	default:
+	}
+	cancel()
+	select {
+	case <-pollResult:
+	case <-time.After(time.Second):
+		t.Fatal("first poll did not release after cancellation")
 	}
 }
 

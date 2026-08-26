@@ -8,6 +8,10 @@ used to claim a shipped latency result.
   `usb-glass-to-glass-sub50`.
 - `lan-glass-to-glass-fail.csv`: direct latency samples whose P95 fails
   `lan-glass-to-glass-sub80`.
+- `internet-glass-to-glass-pass.csv`: direct latency samples whose P95 passes
+  `internet-glass-to-glass-sub150` at the raw summary layer only. Formal
+  Internet gate closure still requires a manifest with public-route provenance
+  and raw artifacts.
 - `input-latency-pass.json`: JSON-wrapped external-camera input-latency samples
   whose P95 passes `input-p95-sub50`.
 - `usb-glass-to-glass-insufficient.csv`: too few samples to evaluate
@@ -16,6 +20,15 @@ used to claim a shipped latency result.
 - `telemetry-stage-informational.csv`: host telemetry-stage samples that remain
   informational and cannot close a performance gate.
 - external-camera-valid/: synthetic formal evidence package with manifest,
-  sample CSV, and placeholder raw-camera artifact for the provenance checker.
-- external-camera-missing-video/: same synthetic samples, but the manifest
-  references a missing raw-camera artifact and must remain insufficient.
+  sample CSV, a minimal readable ISO BMFF raw-camera fixture, and a USB
+  connection artifact for the provenance checker.
+- external-camera-missing-video/: same synthetic samples and USB artifact, but
+  the manifest references a missing raw-camera artifact and must remain
+  insufficient.
+- synchronized-clock-input-valid/: synthetic formal evidence package for the
+  `input-p95-sub50` gate using the synchronized-clock measurement method plus a
+  synthetic physical-input artifact and synchronization proof artifact. It
+  exercises the checker path without an external camera and is not real-device
+  evidence.
+- preflight-input.template.json: editable fail-closed readiness input template
+  for `vibescreen_evidence.latency_preflight`.

@@ -1,0 +1,1 @@
+macOS Host preflight did not write a report. See host-preflight-command.txt for command output.

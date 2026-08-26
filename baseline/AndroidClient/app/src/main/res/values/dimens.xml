@@ -3,6 +3,15 @@
     <!-- The dialog window already owns the outer safe-area margin. Keep the
          content padding compact enough for narrow phones. -->
     <dimen name="settings_content_padding">24dp</dimen>
+    <dimen name="settings_content_padding_top">24dp</dimen>
+    <dimen name="settings_content_padding_bottom">24dp</dimen>
+    <dimen name="settings_dialog_max_width">680dp</dimen>
+    <dimen name="settings_two_column_min_width">600dp</dimen>
+    <dimen name="settings_column_gap">0dp</dimen>
+    <dimen name="settings_header_margin_bottom">32dp</dimen>
+    <dimen name="settings_section_padding">16dp</dimen>
+    <dimen name="settings_section_margin_bottom">16dp</dimen>
+    <dimen name="settings_inner_group_margin_top">16dp</dimen>
 
     <!-- Tap-to-reveal control bar geometry. Compact and centered, with
          icon buttons held at the 48dp accessibility minimum so the

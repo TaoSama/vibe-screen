@@ -25,6 +25,7 @@ var (
 
 type Store interface {
 	Apply(context.Context, time.Time, UsageEvent) error
+	Duplicate(context.Context, time.Time, UsageEvent) (bool, error)
 	Snapshot(context.Context, time.Time, string) (uint64, uint64, int, error)
 	IsRevoked(context.Context, string) (bool, error)
 	Revoke(context.Context, string, time.Time) error
@@ -37,18 +38,20 @@ type UsageEvent struct {
 	EventID      string `json:"event_id"`
 	DeviceID     string `json:"device_id"`
 	SessionID    string `json:"session_id"`
+	AllocationID string `json:"allocation_id,omitempty"`
 	Kind         string `json:"kind"`
 	IngressBytes uint64 `json:"ingress_bytes"`
 	EgressBytes  uint64 `json:"egress_bytes"`
 }
 
 type deviceUsage struct {
-	Day          string          `json:"day"`
-	IngressBytes uint64          `json:"ingress_bytes"`
-	EgressBytes  uint64          `json:"egress_bytes"`
-	Sessions     map[string]bool `json:"sessions"`
-	EventIDs     map[string]bool `json:"event_ids"`
-	Revoked      bool            `json:"revoked,omitempty"`
+	Day          string            `json:"day"`
+	IngressBytes uint64            `json:"ingress_bytes"`
+	EgressBytes  uint64            `json:"egress_bytes"`
+	Sessions     map[string]bool   `json:"sessions"`
+	EventIDs     map[string]bool   `json:"event_ids"`
+	EventDigests map[string]string `json:"event_digests,omitempty"`
+	Revoked      bool              `json:"revoked,omitempty"`
 }
 
 type persistedState struct {
@@ -90,6 +93,9 @@ func NewUsageStore(path string, dailyLimit uint64, sessionLimit int) (*FileStore
 		if usage.EventIDs == nil {
 			usage.EventIDs = make(map[string]bool)
 		}
+		if usage.EventDigests == nil {
+			usage.EventDigests = make(map[string]string)
+		}
 	}
 	return s, nil
 }
@@ -100,7 +106,13 @@ func (s *FileStore) Apply(_ context.Context, now time.Time, event UsageEvent) er
 	day := now.UTC().Format(time.DateOnly)
 	current := s.state.Devices[event.DeviceID]
 	if current != nil && current.Day == day && current.EventIDs[event.EventID] {
-		return ErrDuplicateEvent
+		duplicate, err := duplicateUsageEvent(current, event)
+		if err != nil {
+			return err
+		}
+		if duplicate {
+			return ErrDuplicateEvent
+		}
 	}
 	if current != nil && current.Revoked {
 		return ErrDeviceRevoked
@@ -115,7 +127,7 @@ func (s *FileStore) Apply(_ context.Context, now time.Time, event UsageEvent) er
 			}
 			revoked = usage.Revoked
 		}
-		usage = &deviceUsage{Day: day, Sessions: sessions, EventIDs: make(map[string]bool), Revoked: revoked}
+		usage = &deviceUsage{Day: day, Sessions: sessions, EventIDs: make(map[string]bool), EventDigests: make(map[string]string), Revoked: revoked}
 	}
 	if event.IngressBytes > ^uint64(0)-usage.IngressBytes || event.EgressBytes > ^uint64(0)-usage.EgressBytes {
 		return ErrQuotaExceeded
@@ -152,6 +164,11 @@ func (s *FileStore) Apply(_ context.Context, now time.Time, event UsageEvent) er
 	usage.IngressBytes += event.IngressBytes
 	usage.EgressBytes += event.EgressBytes
 	usage.EventIDs[event.EventID] = true
+	payloadDigest, err := usageEventDigest(event)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidEvent, err)
+	}
+	usage.EventDigests[event.EventID] = fmt.Sprintf("%x", payloadDigest)
 	nextState := persistedState{Devices: make(map[string]*deviceUsage, len(s.state.Devices))}
 	for deviceID, existing := range s.state.Devices {
 		nextState.Devices[deviceID] = existing
@@ -162,6 +179,16 @@ func (s *FileStore) Apply(_ context.Context, now time.Time, event UsageEvent) er
 	}
 	s.state = nextState
 	return nil
+}
+
+func (s *FileStore) Duplicate(_ context.Context, now time.Time, event UsageEvent) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.state.Devices[event.DeviceID]
+	if current == nil || current.Day != now.UTC().Format(time.DateOnly) || !current.EventIDs[event.EventID] {
+		return false, nil
+	}
+	return duplicateUsageEvent(current, event)
 }
 
 func (s *FileStore) Snapshot(_ context.Context, now time.Time, deviceID string) (uint64, uint64, int, error) {
@@ -189,7 +216,7 @@ func (s *FileStore) Revoke(_ context.Context, deviceID string, now time.Time) er
 	defer s.mu.Unlock()
 	usage := cloneUsage(s.state.Devices[deviceID])
 	if usage == nil {
-		usage = &deviceUsage{Day: now.UTC().Format(time.DateOnly), Sessions: make(map[string]bool), EventIDs: make(map[string]bool)}
+		usage = &deviceUsage{Day: now.UTC().Format(time.DateOnly), Sessions: make(map[string]bool), EventIDs: make(map[string]bool), EventDigests: make(map[string]string)}
 	}
 	usage.Revoked = true
 	nextState := persistedState{Devices: make(map[string]*deviceUsage, len(s.state.Devices)+1)}
@@ -247,14 +274,32 @@ func cloneUsage(source *deviceUsage) *deviceUsage {
 	if source == nil {
 		return nil
 	}
-	copy := &deviceUsage{Day: source.Day, IngressBytes: source.IngressBytes, EgressBytes: source.EgressBytes, Sessions: make(map[string]bool), EventIDs: make(map[string]bool), Revoked: source.Revoked}
+	copy := &deviceUsage{Day: source.Day, IngressBytes: source.IngressBytes, EgressBytes: source.EgressBytes, Sessions: make(map[string]bool), EventIDs: make(map[string]bool), EventDigests: make(map[string]string), Revoked: source.Revoked}
 	for id, present := range source.Sessions {
 		copy.Sessions[id] = present
 	}
 	for id, present := range source.EventIDs {
 		copy.EventIDs[id] = present
 	}
+	for id, digest := range source.EventDigests {
+		copy.EventDigests[id] = digest
+	}
 	return copy
+}
+
+func duplicateUsageEvent(current *deviceUsage, event UsageEvent) (bool, error) {
+	existingDigest, hasDigest := current.EventDigests[event.EventID]
+	if !hasDigest {
+		return true, nil
+	}
+	payloadDigest, err := usageEventDigest(event)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrInvalidEvent, err)
+	}
+	if existingDigest != fmt.Sprintf("%x", payloadDigest) {
+		return false, ErrInvalidEvent
+	}
+	return true, nil
 }
 
 func (s *FileStore) persistLocked(state persistedState) error {

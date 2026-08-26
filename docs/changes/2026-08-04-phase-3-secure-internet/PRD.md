@@ -50,9 +50,16 @@ record proves only the dated source/device combination and must not be
 extrapolated to this working tree or later commits. It is not public-Internet,
 real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
 handoff, latency, or stability evidence. The services remain single-node
-development implementations; automatic authority issuance, cross-service
-revocation propagation, authoritative coturn byte accounting, and a production
-deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
+development implementations. Signaling and relay now have PostgreSQL-backed
+stores that remove their process-local routing and ledger state blockers for a
+production-shaped deployment, with local tests covering the shared store
+contracts. Authority now
+exposes an admin/operator session profile issuance primitive for already
+registered devices, but Mac/Android automatic invocation of that path,
+cross-service revocation propagation, real coturn exporter collection,
+production scheduled reconciliation, active-allocation disconnect execution,
+authoritative coturn byte accounting, production multi-replica rollout, public
+ingress, global rate limits, and a production deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
 transport: current macOS/Android peers protect the token-admitted TCP session
 with per-session application records, while explicit legacy fallback remains
 plaintext and is not Phase 3 security.
@@ -186,6 +193,16 @@ cryptographic primitive may be introduced.
   dimension, quota enforcement is tested, and spend alerts are actionable;
 - a two-hour mixed direct/relay/network-change soak shows bounded queues, bounded
   memory, no nonce reuse, and no steadily increasing latency.
+
+The current-base release package checker is
+`vibescreen_evidence.phase3_internet_release_gate`. It is deliberately
+fail-closed for the soak and latency gates: missing public-route proof, missing
+deployed remote TURN proof, missing external-camera raw video or annotated
+samples, missing exact-window two-hour soak telemetry, or any synthetic/local
+media marker keeps the gate blocked or insufficient. Local loopback, forced
+local coturn, host/client telemetry-only latency, and diagnostic-only Nubia
+P0110 runs can document readiness, but they cannot close Phase 3 public
+Internet soak or latency acceptance.
 
 ### Required device evidence
 

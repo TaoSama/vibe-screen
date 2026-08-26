@@ -15,11 +15,11 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
     /// headless CI runner: the runner has no login-keychain session, and the
     /// workers have repeatedly hung with no output and been reaped at their
     /// process deadline. The single-process
-    /// testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency
-    /// already proves the authority reserves strictly monotonic, unique epochs
-    /// across issuer restarts and 24-way in-process concurrency, so the durable
-    /// invariant stays covered. This test still runs on a real multi-process
-    /// host, where an interactive keychain session is available.
+    /// testAuthoritySignsCallerEpochAndRejectsStaleEpochAcrossRestart
+    /// already proves the issuer reserves the exact authority-proposed epoch and
+    /// rejects stale replays across issuer restarts, so the durable invariant
+    /// stays covered. This test still runs on a real multi-process host, where
+    /// an interactive keychain session is available.
     private static var isHeadlessContinuousIntegration: Bool {
         let environment = ProcessInfo.processInfo.environment
         return environment["CI"] != nil || environment["GITHUB_ACTIONS"] != nil
@@ -42,7 +42,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             Self.isHeadlessContinuousIntegration,
             "Cross-process lease worker harness is unreliable on headless CI; "
                 + "monotonic-unique epoch reservation is covered in-process by "
-                + "testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency."
+                + "testAuthoritySignsCallerEpochAndRejectsStaleEpochAcrossRestart."
         )
         let scope = UUID().uuidString
         let hostDeviceID = "lease-host-\(scope)"
@@ -153,6 +153,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         try Data().write(to: gateURL, options: .atomic)
 
         var epochs: Set<UInt64> = []
+        var successfulChildren = 0
+        var failedChildren = 0
         for child in children {
             let exited = TestProcessDeadline.waitForExit(
                 child.process,
@@ -172,16 +174,20 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                 )
                 continue
             }
-            XCTAssertEqual(
-                child.process.terminationStatus,
-                0,
-                String(decoding: error, as: UTF8.self)
-            )
             if child.process.terminationStatus == 0 {
+                successfulChildren += 1
                 epochs.insert(try issuedEpoch(output))
+            } else {
+                failedChildren += 1
+                XCTAssertTrue(
+                    String(decoding: error, as: UTF8.self).contains("stale or was not reserved"),
+                    String(decoding: error, as: UTF8.self)
+                )
             }
         }
-        XCTAssertEqual(epochs, Set(UInt64(1)...UInt64(childCount)))
+        XCTAssertEqual(successfulChildren, 1)
+        XCTAssertEqual(failedChildren, childCount - 1)
+        XCTAssertEqual(epochs, [99])
     }
 
     func testLeaseWorkerDeadlineTerminatesAndReapsHungProcess() throws {
@@ -206,7 +212,47 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
 
         XCTAssertEqual(payload.leaseDeviceKeyID, keyID)
     }
-    func testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency() throws {
+
+    func testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt() throws {
+        let service = "dev.vibescreen.lease-expiry-tests.\(UUID().uuidString)"
+        let identityStore = KeychainDeviceIdentityStore(service: service)
+        let identity = try identityStore.createIfMissing(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        try persistBinding(
+            identity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+        addTeardownBlock {
+            try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
+        }
+
+        XCTAssertThrowsError(
+            try InternetSessionLeaseCodec.decodeUnsigned(
+                try unsignedLease(epoch: 1, expiresAt: nil)
+            )
+        )
+        XCTAssertThrowsError(
+            try InternetSessionLeaseCodec.decodeUnsigned(
+                try unsignedLease(epoch: 1, expiresAt: UInt64(Int64.max))
+            )
+        )
+
+        let signed = try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 4_102_444_800),
+            now: { Date(timeIntervalSince1970: 2_000_000_000) },
+            validFor: 120,
+            identityStore: identityStore,
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore }
+        )
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
+        XCTAssertEqual((root["session_epoch"] as? NSNumber)?.uint64Value, 99)
+        XCTAssertEqual((root["expires_at"] as? NSNumber)?.uint64Value, 2_000_000_120)
+    }
+
+    func testAuthoritySignsCallerEpochAndRejectsStaleEpochAcrossRestart() throws {
         let service = "dev.vibescreen.lease-tests.\(UUID().uuidString)"
         let identityStore = KeychainDeviceIdentityStore(service: service)
         let identity = try identityStore.createIfMissing(deviceID: "lease-host")
@@ -220,10 +266,10 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
         }
         let stateStore = LeaseMemoryStateStore()
-        let untrustedHigh = try unsignedLease(epoch: UInt64(Int64.max) - 1)
+        let authorityEpoch = UInt64(99)
 
         let first = try InternetSessionLeaseIssuer.issue(
-            unsignedJSON: untrustedHigh,
+            unsignedJSON: try unsignedLease(epoch: authorityEpoch),
             identityStore: identityStore,
             secretStore: secretStore,
             stateStoreFactory: { scope in
@@ -231,36 +277,32 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                 return stateStore
             }
         )
-        XCTAssertEqual(try issuedEpoch(first), 1)
+        XCTAssertEqual(try issuedEpoch(first), authorityEpoch)
 
-        let restartedIssuerResult = try InternetSessionLeaseIssuer.issue(
-            unsignedJSON: try unsignedLease(epoch: 1),
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: authorityEpoch),
             identityStore: identityStore,
             secretStore: secretStore,
             stateStoreFactory: { _ in stateStore }
-        )
-        XCTAssertEqual(try issuedEpoch(restartedIssuerResult), 2)
+        ))
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: authorityEpoch - 1),
+            identityStore: identityStore,
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore }
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, authorityEpoch)
 
-        let lock = NSLock()
-        var epochs: [UInt64] = []
-        var failures: [Error] = []
-        DispatchQueue.concurrentPerform(iterations: 24) { index in
-            do {
-                let signed = try InternetSessionLeaseIssuer.issue(
-                    unsignedJSON: try unsignedLease(epoch: UInt64(index + 1)),
-                    identityStore: identityStore,
-                    secretStore: secretStore,
-                    stateStoreFactory: { _ in stateStore }
-                )
-                let epoch = try issuedEpoch(signed)
-                lock.lock(); epochs.append(epoch); lock.unlock()
-            } catch {
-                lock.lock(); failures.append(error); lock.unlock()
-            }
+        for nextEpoch in UInt64(100)...UInt64(123) {
+            let signed = try InternetSessionLeaseIssuer.issue(
+                unsignedJSON: try unsignedLease(epoch: nextEpoch),
+                identityStore: identityStore,
+                secretStore: secretStore,
+                stateStoreFactory: { _ in stateStore }
+            )
+            XCTAssertEqual(try issuedEpoch(signed), nextEpoch)
         }
-        XCTAssertTrue(failures.isEmpty)
-        XCTAssertEqual(Set(epochs), Set(UInt64(3)...UInt64(26)))
-        XCTAssertEqual(stateStore.state.sessionEpoch, 26)
+        XCTAssertEqual(stateStore.state.sessionEpoch, 123)
     }
 
     func testDifferentPairingsUseIndependentAuthorityEpochs() throws {
@@ -292,8 +334,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             secretStore: secretStore,
             stateStoreFactory: factory
         )
-        let secondA = try InternetSessionLeaseIssuer.issue(
-            unsignedJSON: try unsignedLease(epoch: 1, pairingIdentifier: "pairing-a"),
+        let nextA = try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 100, pairingIdentifier: "pairing-a"),
             identityStore: identityStore,
             secretStore: secretStore,
             stateStoreFactory: factory
@@ -305,9 +347,9 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             stateStoreFactory: factory
         )
 
-        XCTAssertEqual(try issuedEpoch(firstA), 1)
-        XCTAssertEqual(try issuedEpoch(secondA), 2)
-        XCTAssertEqual(try issuedEpoch(firstB), 1)
+        XCTAssertEqual(try issuedEpoch(firstA), 99)
+        XCTAssertEqual(try issuedEpoch(nextA), 100)
+        XCTAssertEqual(try issuedEpoch(firstB), 99)
     }
 
     func testIdentityBindingFailuresDoNotBurnLeaseEpoch() throws {
@@ -352,7 +394,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             identityStore: identityStore,
             secretStore: secretStore,
             stateStoreFactory: { _ in stateStore }
-        )), 5)
+        )), 99)
 
         let bindingName = try PairedHostIdentityBinding.keychainName(
             pairingIdentifier: "pairing-authority-test"
@@ -364,7 +406,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             secretStore: secretStore,
             stateStoreFactory: { _ in stateStore }
         ))
-        XCTAssertEqual(stateStore.state.sessionEpoch, 5)
+        XCTAssertEqual(stateStore.state.sessionEpoch, 99)
 
         var invalidBinding = try XCTUnwrap(
             JSONSerialization.jsonObject(
@@ -382,7 +424,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             secretStore: secretStore,
             stateStoreFactory: { _ in stateStore }
         ))
-        XCTAssertEqual(stateStore.state.sessionEpoch, 5)
+        XCTAssertEqual(stateStore.state.sessionEpoch, 99)
 
         try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
     }
@@ -406,9 +448,10 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
     private func unsignedLease(
         epoch: UInt64,
         pairingIdentifier: String = "pairing-authority-test",
-        pinnedHostID: String = "lease-host"
+        pinnedHostID: String = "lease-host",
+        expiresAt: UInt64? = 4_102_444_800
     ) throws -> Data {
-        let root: [String: Any] = [
+        var root: [String: Any] = [
             "version": 1,
             "pairing_id": pairingIdentifier,
             "pinned_host_id": pinnedHostID,
@@ -429,6 +472,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             ]],
             "allow_insecure_for_testing": false
         ]
+        if let expiresAt { root["expires_at"] = expiresAt }
         return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
     }
 

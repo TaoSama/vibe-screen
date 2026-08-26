@@ -207,4 +207,13 @@ message ManagedPolicyStatus {
   bool host_actions_allowed = 8;
   repeated string allowed_hosts = 9;
   bool allowed_hosts_restricted = 10;
+  repeated ManagedRestrictionResult restriction_results = 11;
+  repeated string denied_hosts = 12;
+}
+
+message ManagedRestrictionResult {
+  string restriction = 1;
+  bool allowed = 2;
+  string source = 3;
+  string reason = 4;
 }

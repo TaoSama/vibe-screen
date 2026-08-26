@@ -38,7 +38,7 @@ internal data class FileTransferPolicy(
             this
         } else {
             copy(
-                allowed = allowed && remote.fileTransferAllowed,
+                allowed = allowed && remote.fileTransferAllowed && remote.maximumFileBytes > 0L,
                 maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
             )
         }
@@ -83,6 +83,7 @@ internal data class RemoteManagedPolicy(
 internal data class CompletedIncomingFile(
     val transferId: ByteString,
     val fileName: String,
+    val mimeType: String,
     val stagingFile: File,
     val sha256: ByteString,
 )
@@ -226,7 +227,7 @@ internal class IncomingFileTransferManager(
             throw fileTransferFailure("io_failure", "Unable to close staging file", failure)
         }
         transfers.remove(transferId)
-        return CompletedIncomingFile(transferId, state.offer.fileName, state.file, digest)
+        return CompletedIncomingFile(transferId, state.offer.fileName, state.offer.mimeType, state.file, digest)
     }
 
     @Synchronized
@@ -255,6 +256,9 @@ internal class IncomingFileTransferManager(
         if (offer.transferId.isEmpty) throw fileTransferFailure("invalid_transfer_id", "File transfer id is missing")
         if (!isSafeFileName(offer.fileName)) throw fileTransferFailure("invalid_file_name", "Unsafe file name")
         if (offer.sha256.size() != SHA256_BYTES) throw fileTransferFailure("invalid_digest", "File digest must be SHA-256")
+        if (!effective.allowed || effective.maximumFileBytes <= 0L) {
+            throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        }
         if (offer.byteLength > effective.maximumFileBytes) {
             throw fileTransferFailure("file_too_large", "File exceeds negotiated maximum")
         }
@@ -281,6 +285,8 @@ internal class OutgoingFileTransfer(
     private val effectivePolicy = policy.applying(remotePolicy)
     private val handle: RandomAccessFile
     private var offset = 0L
+    private var acknowledgedOffset = 0L
+    private var receivedAcknowledgement = false
     private var cancelled = false
     private var emittedEmptyFileChunk = false
     private var acceptedMaximumChunkBytes: Int? = null
@@ -288,7 +294,9 @@ internal class OutgoingFileTransfer(
     val offer: FileOffer
 
     init {
-        if (!effectivePolicy.allowed) throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        if (!effectivePolicy.allowed || effectivePolicy.maximumFileBytes <= 0L) {
+            throw fileTransferFailure("policy_denied", "File transfer denied by policy")
+        }
         if (!file.isFile) throw fileTransferFailure("invalid_file_name", "Outgoing file must be a regular file")
         val byteLength = file.length()
         if (byteLength < 0 || byteLength > effectivePolicy.maximumFileBytes) {
@@ -375,6 +383,22 @@ internal class OutgoingFileTransfer(
 
     @Synchronized
     fun maximumChunkBytes(defaultBytes: Int): Int = acceptedMaximumChunkBytes ?: defaultBytes
+
+    @Synchronized
+    fun acknowledgeOffset(receivedBytes: Long): String? {
+        if (receivedBytes != offset) return "unexpected_progress"
+        if (receivedBytes == offer.byteLength && !isComplete()) return "incomplete_file"
+        acknowledgedOffset = receivedBytes
+        receivedAcknowledgement = true
+        return null
+    }
+
+    @Synchronized
+    fun hasCompletedAcknowledgement(): Boolean =
+        receivedAcknowledgement && isComplete() && acknowledgedOffset == offer.byteLength
+
+    private fun isComplete(): Boolean =
+        if (offer.byteLength == 0L) emittedEmptyFileChunk else offset == offer.byteLength
 
     companion object {
         private fun digest(file: File, chunkBytes: Int): ByteString {

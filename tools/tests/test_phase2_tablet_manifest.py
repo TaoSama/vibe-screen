@@ -28,6 +28,28 @@ DEVICE_INFO = {
     }
 }
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "phase2-tablet-manifest.schema.json"
+GATE_OWNERS = (
+    "stand_mounted_charging=phase2-device-environment,"
+    "thermal_power_sampling=phase2-device-environment,"
+    "posture_and_mount=phase2-device-environment,"
+    "eight_hour_sustained_stream=phase2-tablet-gate"
+)
+
+
+def tablet_device_info():
+    return {
+        "device": {
+            "adb_serial": "tablet-serial",
+            "device_serial": "tablet-serial",
+            "manufacturer": "example",
+            "model": "Tab 8 Pro",
+            "device": "tab8pro",
+            "android_release": "16",
+            "sdk": "36",
+            "build_fingerprint": "example/tab8pro/test",
+            "abi": "arm64-v8a",
+        }
+    }
 
 
 def assert_required_schema_fields(test_case: unittest.TestCase, value, schema):
@@ -45,7 +67,7 @@ def make_manifest(**overrides):
     arguments = {
         "command": ["make", "soak-8h"],
         "repo": Path("."),
-        "device_info": DEVICE_INFO,
+        "device_info": tablet_device_info(),
         "device_class": "physical_8_9_inch_tablet",
         "tablet_size_inches": "8.8",
         "stand_setup": "desktop stand portrait",
@@ -56,10 +78,20 @@ def make_manifest(**overrides):
         "video_preferences": "Balanced, 60 FPS, AUTO bitrate",
         "duration_seconds": 28800,
         "sample_interval_seconds": 30,
+        "host_pid": 4242,
+        "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+        "android_pss_source": "ADB dumpsys meminfo app TOTAL PSS",
+        "require_host_pid": True,
         "thermal_limit_status": 2,
         "battery_temperature_limit_celsius": 45.0,
         "maximum_net_battery_drain_percent": 5,
         "recovery_scenarios": ["background_foreground", "usb_reconnect"],
+        "gate_owners": {
+            "stand_mounted_charging": "phase2-device-environment",
+            "thermal_power_sampling": "phase2-device-environment",
+            "posture_and_mount": "phase2-device-environment",
+            "eight_hour_sustained_stream": "phase2-tablet-gate",
+        },
         "host_identity": "Mac mini M4, macOS 26.4.1",
         "host_build": "Vibe Screen release build abc123",
         "apk_sha256": "abc123",
@@ -78,14 +110,94 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], SCHEMA_VERSION)
         self.assertEqual(manifest["kind"], "phase2_tablet_sustained_use_manifest")
         uuid.UUID(manifest["run_id"])
-        self.assertEqual(manifest["device"]["identity"]["model"], "P0110")
-        self.assertEqual(manifest["device"]["identity"]["codename"], "pacific")
+        self.assertEqual(manifest["device"]["identity"]["model"], "Tab 8 Pro")
+        self.assertEqual(manifest["device"]["identity"]["codename"], "tab8pro")
         self.assertEqual(manifest["physical_setup"]["charger"], "vendor 45W USB-C charger")
         self.assertEqual(manifest["session"]["duration_seconds"], 28800)
         self.assertIn("stand_mounted_charging", manifest["required_gates"])
+        self.assertIn("device_memory_sampling", manifest["required_gates"])
+        self.assertEqual(
+            manifest["memory_sampling"]["android_pss_source"],
+            "ADB dumpsys meminfo app TOTAL PSS",
+        )
+        self.assertTrue(manifest["memory_sampling"]["require_host_pid"])
+        self.assertEqual(manifest["memory_sampling"]["host_pid"], 4242)
+        self.assertIn("portrait_landscape_ui", manifest["required_gates"])
+        self.assertIn("physical_stylus", manifest["required_gates"])
+        self.assertIn("hardware_keyboard", manifest["required_gates"])
+        self.assertEqual(
+            manifest["gate_owners"]["stand_mounted_charging"],
+            "phase2-device-environment",
+        )
         self.assertIn("phase2-tablet-manifest.json", manifest["required_artifacts"])
-        self.assertIn("samples.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/samples.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/host-telemetry.jsonl", manifest["required_artifacts"])
+        self.assertIn("soak-8h/phase2-device-memory-gate.json", manifest["required_artifacts"])
+        self.assertIn("screenshots/sustained-use-landscape.png", manifest["required_artifacts"])
+        self.assertIn("orientation-evidence.json", manifest["required_artifacts"])
+        self.assertIn("stylus-evidence.json", manifest["required_artifacts"])
+        self.assertIn("hardware-keyboard-evidence.json", manifest["required_artifacts"])
+        self.assertIn("phase2-tablet-preflight.json", manifest["required_artifacts"])
+        self.assertEqual(manifest["android_artifact"]["identity_status"], "present")
         self.assertTrue(any("does not close" in item for item in manifest["limitations"]))
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_allows_missing_preflight_apk_identity(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        manifest = make_manifest(apk_sha256=None)
+
+        self.assertIsNone(manifest["android_artifact"]["apk_sha256"])
+        self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_validates_direct_gate_owner_mapping(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+
+        invalid_cases = (
+            ({"stand_mounted_charging": "phase2-device-environment"}, "missing required owner"),
+            (
+                {
+                    "stand_mounted_charging": "phase2-device-environment",
+                    "thermal_power_sampling": "phase2-device-environment",
+                    "posture_and_mount": "phase2-device-environment",
+                    "eight_hour_sustained_stream": "phase2-tablet-gate",
+                    "unexpected_gate": "phase2-tablet-gate",
+                },
+                "unknown owner key",
+            ),
+            (
+                {
+                    "stand_mounted_charging": "phase2-device-environment",
+                    "thermal_power_sampling": "",
+                    "posture_and_mount": "phase2-device-environment",
+                    "eight_hour_sustained_stream": "phase2-tablet-gate",
+                },
+                "gate_owners.thermal_power_sampling must be non-empty",
+            ),
+        )
+
+        for owners, expected_error in invalid_cases:
+            with self.subTest(expected_error=expected_error):
+                with self.assertRaisesRegex(ManifestError, expected_error):
+                    make_manifest(gate_owners=owners)
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_normalizes_direct_gate_owner_mapping(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+
+        manifest = make_manifest(
+            gate_owners={
+                "stand_mounted_charging": "  phase2-device-environment  ",
+                "thermal_power_sampling": " phase2-device-environment ",
+                "posture_and_mount": " phase2-device-environment ",
+                "eight_hour_sustained_stream": " phase2-tablet-gate ",
+            }
+        )
+
+        self.assertEqual(
+            manifest["gate_owners"]["stand_mounted_charging"],
+            "phase2-device-environment",
+        )
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_build_manifest_matches_schema_required_fields(self, state):
@@ -95,13 +207,20 @@ class Phase2TabletManifestTests(unittest.TestCase):
 
         assert_required_schema_fields(self, manifest, schema)
         assert_required_schema_fields(
+            self, manifest["android_artifact"], schema["properties"]["android_artifact"]
+        )
+        assert_required_schema_fields(
             self, manifest["device"]["identity"], schema["properties"]["device"]["properties"]["identity"]
         )
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_android_substitute_manifest_carries_tablet_gate_limitation(self, state):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
-        manifest = make_manifest(device_class="android_substitute", tablet_size_inches=None)
+        manifest = make_manifest(
+            device_info=DEVICE_INFO,
+            device_class="android_substitute",
+            tablet_size_inches=None,
+        )
 
         self.assertEqual(manifest["device"]["device_class"], "android_substitute")
         self.assertIn(
@@ -118,10 +237,30 @@ class Phase2TabletManifestTests(unittest.TestCase):
             make_manifest(sample_interval_seconds=61)
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_physical_tablet_requires_size_in_range(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with self.assertRaisesRegex(ManifestError, "--tablet-size-inches"):
+            make_manifest(tablet_size_inches=None)
+        with self.assertRaisesRegex(ManifestError, "--tablet-size-inches"):
+            make_manifest(tablet_size_inches="6.7")
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_rejects_p0110_as_physical_tablet(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with self.assertRaisesRegex(ManifestError, "P0110/pacific"):
+            make_manifest(device_info=DEVICE_INFO)
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_rejects_incomplete_device_identity(self, state):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         with self.assertRaisesRegex(ManifestError, "codename"):
             make_manifest(device_info={"device": {"model": "P0110"}})
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_rejects_required_missing_host_pid(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with self.assertRaisesRegex(ManifestError, "host-pid"):
+            make_manifest(host_pid=None)
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_cli_writes_manifest_with_device_info(self, state):
@@ -151,6 +290,10 @@ class Phase2TabletManifestTests(unittest.TestCase):
                     "usb",
                     "--video-preferences",
                     "Balanced 60 FPS",
+                    "--host-pid",
+                    "4242",
+                    "--gate-owners",
+                    GATE_OWNERS,
                     "--host-identity",
                     "Mac mini",
                     "--host-build",
@@ -167,6 +310,50 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "soak-8h"])
         self.assertEqual(manifest["device"]["identity"]["codename"], "pacific")
+        self.assertEqual(
+            manifest["gate_owners"]["eight_hour_sustained_stream"],
+            "phase2-tablet-gate",
+        )
+
+    def test_cli_rejects_incomplete_gate_owners(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            device_info = directory / "device-info.json"
+            output = directory / "manifest.json"
+            device_info.write_text(json.dumps(DEVICE_INFO), encoding="utf-8")
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--output",
+                        str(output),
+                        "--device-info",
+                        str(device_info),
+                        "--device-class",
+                        "android_substitute",
+                        "--stand-setup",
+                        "bench stand",
+                        "--charger",
+                        "vendor charger",
+                        "--cable-or-dock",
+                        "USB-C cable",
+                        "--transport",
+                        "usb",
+                        "--video-preferences",
+                        "Balanced 60 FPS",
+                        "--gate-owners",
+                        "stand_mounted_charging=phase2-device-environment",
+                        "--host-identity",
+                        "Mac mini",
+                        "--host-build",
+                        "release build",
+                        "--apk-sha256",
+                        "abc123",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("missing required owner", stderr.getvalue())
 
     def test_cli_rejects_missing_device_info_file(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -192,6 +379,8 @@ class Phase2TabletManifestTests(unittest.TestCase):
                         "usb",
                         "--video-preferences",
                         "Balanced 60 FPS",
+                        "--gate-owners",
+                        GATE_OWNERS,
                         "--host-identity",
                         "Mac mini",
                         "--host-build",

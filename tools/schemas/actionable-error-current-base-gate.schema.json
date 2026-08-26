@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/actionable-error-current-base-gate.schema.json",
+  "title": "Vibe Screen Phase 1 actionable-error current-base gate summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "run_id",
+    "source",
+    "device_identity",
+    "required_state_ids",
+    "state_results",
+    "blocked_state_ids",
+    "insufficient_state_ids",
+    "errors",
+    "reasons",
+    "can_close_readme_phase1_actionable_errors_gate",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": { "const": "vibescreen.evidence/v1" },
+    "kind": { "const": "phase1_actionable_error_current_base_gate" },
+    "derivation_status": { "enum": ["complete", "failed"] },
+    "verdict": { "enum": ["pass", "blocked", "insufficient", "fail"] },
+    "run_id": { "type": ["string", "null"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest", "repository_name", "collected_at_commit", "evaluated_at_commit"],
+      "properties": {
+        "manifest": { "type": "string" },
+        "repository_name": { "type": "string" },
+        "collected_at_commit": { "type": "string" },
+        "evaluated_at_commit": { "type": "string" }
+      }
+    },
+    "device_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adb_serial", "manufacturer", "model", "codename", "android_release", "sdk"],
+      "properties": {
+        "adb_serial": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "model": { "type": "string" },
+        "codename": { "type": "string" },
+        "android_release": { "type": "string" },
+        "sdk": { "type": "string" }
+      }
+    },
+    "required_state_ids": { "type": "array", "items": { "type": "string" } },
+    "state_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "can_close_state", "observed_on_device", "artifact_count", "blockers"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string" },
+          "can_close_state": { "type": "boolean" },
+          "observed_on_device": { "type": "boolean" },
+          "artifact_count": { "type": "integer" },
+          "blockers": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "blocked_state_ids": { "type": "array", "items": { "type": "string" } },
+    "insufficient_state_ids": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "can_close_readme_phase1_actionable_errors_gate": { "type": "boolean" },
+    "interpretation": { "type": "string" }
+  }
+}

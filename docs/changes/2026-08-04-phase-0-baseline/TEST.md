@@ -12,12 +12,19 @@ make baseline-android-test
 make baseline-android-check
 make baseline-android-apk
 make evidence-tools-test
+make phase0-stable-release-gate
 make evidence-device-info
 ```
 
 Record `sw_vers`, `xcodebuild -version`, `swift --version`, `java -version`,
 Android SDK versions, `adb devices -l`, and the repository commit with every
 result.
+Before any README change that would describe Phase 0 as complete, shipped, or a
+stable release, run `make phase0-stable-release-gate
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1` and retain its generated summary. The
+default `make phase0-stable-release-gate` command is a consistency guard only;
+it is expected to report the current aggregate as blocked while required
+sub-gates remain open.
 
 ## Test matrix
 
@@ -262,11 +269,11 @@ Detailed commands, hashes, and artifact locations are recorded in
 
 Main commit 0844991ea6ca55905349abb5f57291990454f0ad completed a short
 current-tree USB smoke on the connected Nubia P0110 (pacific) device,
-serial EP0110PZ0B9110300B, Android 16 / SDK 36. The macOS Host and Android
-debug APK were rebuilt from that commit, a stale Host from another worktree was
-recorded and stopped, adb reverse tcp:54321 tcp:54321 was established for the
-P0110 serial, and the current-tree Host listened on 127.0.0.1:54321 as PID
-97995.
+recorded as a pseudonymous explicit ADB target, Android 16 / SDK 36. The macOS
+Host and Android debug APK were rebuilt from that commit, a stale Host from
+another worktree was recorded and stopped, adb reverse tcp:54321 tcp:54321 was
+established for the P0110 target, and the current-tree Host listened on
+127.0.0.1:54321 as PID 97995.
 
 The Android client connected over loopback USB, negotiated Protocol v1,
 received a three-display catalog with virtual display 6 selected, configured
@@ -281,6 +288,46 @@ latency, rotated host-display, or Accessibility/input gates.
 
 Evidence is retained under
 [evidence/2026-08-20-nubia-p0110-usb-smoke/](evidence/2026-08-20-nubia-p0110-usb-smoke/README.md).
+
+## Current-tree Nubia P0110 USB smoke refresh (2026-08-22)
+
+A 2026-08-22 lock-coordinated refresh was collected while this PR worktree was
+rebased to `321eb3918026184a1b26ba8509ddee5f2d99878f` on top of
+`origin/main` `baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38`. The installed
+Host/App binary provenance was not revalidated in this refresh. The connected
+Nubia P0110/pacific Android 16 device produced a 20-second current-window USB
+stream sample after clearing logcat. The app PID-scoped logcat window recorded
+20 `stream_stats` events, 19 decoder-stat samples, `dropped=0`, no
+AndroidRuntime/FATAL crash, and an empty `/data/tombstones` listing. The Host
+still listened on 127.0.0.1:54321 and the host-side loopback socket remained
+ESTABLISHED. This refresh is only short USB stream evidence and does not close
+the soak, host RSS no-growth, input, LAN/Internet, external latency, or
+headless Mac gates. Evidence is retained under
+[evidence/2026-08-22-nubia-p0110-usb-smoke-refresh/](evidence/2026-08-22-nubia-p0110-usb-smoke-refresh/README.md).
+
+## Current-base Nubia P0110 USB recheck (2026-08-23)
+
+Origin/main commit `50694049096783466481f418c41a5eb50740e871` was rechecked on
+the connected Nubia P0110 (pacific), serial `EP0110PZ0B9110300B`, Android 16 /
+SDK 36. The current Android debug APK installed successfully and the P0110 ADB
+target reported `UsbFfs tcp:54321 tcp:54321`, but this attempt did not establish
+a current-base USB stream.
+
+The supported stable Host preflight failed because the local keychain lacked the
+documented `Vibe Screen Dev` codesigning identity. An ad-hoc current-source
+`.app` could be launched, but no current-base `54321` listener was observed and
+the retained artifacts do not isolate Screen Recording/TCC state from local
+port/process state. The read-only `usb_live_smoke` collector then returned
+`insufficient`: the Android package was not running, was not foregrounded, and
+current-process logcat had no `stream_stats`, decoder setup, first output frame,
+or decoder counters.
+
+This is fail-closed readiness evidence only. It does not prove current-base USB
+streaming, Protocol v1 interoperability, decoder output, reconnect, or
+app-lifecycle recovery, and it does not change any two-hour soak, Host RSS,
+latency, native-pointer, stylus, controller, rotated-display, login-startup,
+headless, LAN, Internet, or AV1 gate. Evidence is retained under
+[evidence/2026-08-23-nubia-p0110-usb-current-base/](evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
 
 ## External latency readiness check (2026-08-20)
 
@@ -297,6 +344,27 @@ the synthetic `tools/fixtures/latency/` data. Therefore this record is blocked
 readiness evidence only and does not close any external latency gate. Evidence
 is retained under
 [evidence/2026-08-20-latency-gates-readiness-blocked/](evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+
+On 2026-08-21, origin/main commit
+`cc26a84c829016fa61c721f73a128284fdf64f92` refreshed the same gate boundary
+with the connected Nubia P0110/pacific Android 16 substitute recorded under a
+pseudonymous device id. The UTC machine timestamps correspond to the local
+2026-08-21 evidence date. The device identity preflight passed, but no
+high-frame-rate external-camera package or synchronized-clock input package was
+available, so `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
+`input-p95-sub50` all remain open. Evidence is retained under
+[evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/](evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
+
+On 2026-08-22, a worktree refreshed on origin/main commit
+`e9a8e447f4e8184ba0472def0d9d3c08888f907d` added a fail-closed latency
+preflight target and formal `gate_artifacts` checks for each README latency
+profile: USB connection proof for `usb-glass-to-glass-sub50`, LAN and
+stream proof for `lan-glass-to-glass-sub80`, and physical input actuation proof
+for `input-p95-sub50`. The connected Nubia P0110/pacific Android 16 substitute
+was reachable and recorded under a pseudonymous device id, but the external
+camera and synchronized-clock measurement packages were still unavailable. All
+three latency gates therefore remain open. Evidence is retained under
+[evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/README.md).
 
 ## Still unproved
 

@@ -1,0 +1,48 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "replace-with-run-id",
+  "gate_profiles": [
+    {
+      "profile": "usb-glass-to-glass-sub50",
+      "checks": {
+        "device_identity_recorded": false,
+        "host_build_identity_recorded": false,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "usb_transport_ready": false
+      }
+    },
+    {
+      "profile": "lan-glass-to-glass-sub80",
+      "checks": {
+        "device_identity_recorded": false,
+        "host_build_identity_recorded": false,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "lan_transport_ready": false
+      }
+    },
+    {
+      "profile": "input-p95-sub50",
+      "checks": {
+        "device_identity_recorded": false,
+        "host_build_identity_recorded": false,
+        "measurement_timebase_ready": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "physical_input_actuation_ready": false,
+        "visible_mac_input_result_ready": false
+      }
+    }
+  ],
+  "notes": [
+    "Replace false checks with true only when the retained artifacts exist in this evidence directory."
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-app-signing-readiness.schema.json",
+  "title": "Vibe Screen iOS app-signing readiness evidence v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "platform",
+    "status",
+    "repository",
+    "xcode",
+    "signing",
+    "artifacts",
+    "simulator_build",
+    "unsigned_build",
+    "android_evidence_used_for_ios_signing"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_app_signing_readiness"},
+    "platform": {"const": "ios"},
+    "status": {"enum": ["open", "blocked", "complete", "failed"]},
+    "repository": {
+      "type": "object",
+      "required": ["commit", "branch", "dirty"],
+      "properties": {
+        "commit": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "xcode": {
+      "type": "object",
+      "required": ["version", "selected_developer_dir", "ios_sdk"],
+      "properties": {
+        "version": {"type": "string"},
+        "selected_developer_dir": {"type": "string"},
+        "ios_sdk": {"type": "string"}
+      }
+    },
+    "signing": {
+      "type": "object",
+      "required": [
+        "status",
+        "team_id",
+        "provisioning_profile_uuid",
+        "bundle_id",
+        "codesign_identity",
+        "device_udids",
+        "entitlements",
+        "signed_artifact_sha256"
+      ],
+      "properties": {
+        "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "team_id": {"type": "string"},
+        "provisioning_profile_uuid": {"type": "string"},
+        "bundle_id": {"type": "string"},
+        "codesign_identity": {"type": "string"},
+        "device_udids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
+        },
+        "entitlements": {
+          "type": "object",
+          "required": [
+            "application_identifier",
+            "team_identifier",
+            "bundle_identifier",
+            "keychain_access_groups",
+            "raw_entitlements_sha256"
+          ],
+          "properties": {
+            "application_identifier": {"type": "string"},
+            "team_identifier": {"type": "string"},
+            "bundle_identifier": {"type": "string"},
+            "keychain_access_groups": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "raw_entitlements_sha256": {"type": "string"}
+          }
+        },
+        "signed_artifact_sha256": {"type": "string"}
+      }
+    },
+    "artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "simulator_build": {"const": false},
+    "unsigned_build": {"const": false},
+    "android_evidence_used_for_ios_signing": {"const": false},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

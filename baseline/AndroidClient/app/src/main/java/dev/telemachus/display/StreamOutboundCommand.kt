@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.FileChunk
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileOffer
 import java.util.concurrent.CompletableFuture
 
 internal sealed interface StreamOutboundCommand {
@@ -32,6 +33,11 @@ internal sealed interface StreamOutboundCommand {
         val build: (ProtocolV1Session) -> List<Envelope>,
     ) : StreamOutboundCommand
 
+    class ProtocolActionBatch(
+        val build: (ProtocolV1Session) -> List<ProtocolV1Session.Action>,
+        val onEmpty: ((ProtocolV1Session) -> Unit)? = null,
+    ) : StreamOutboundCommand
+
     data class ProtocolReceive(
         val envelope: Envelope,
         val completion: CompletableFuture<Unit>,
@@ -40,6 +46,13 @@ internal sealed interface StreamOutboundCommand {
     data class ProtocolBulk(
         val chunk: FileChunk,
         val completion: CompletableFuture<Unit>,
+    ) : StreamOutboundCommand
+
+    data class ProtocolFileOfferDecision(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val offer: FileOffer,
+        val acceptedByUser: Boolean,
     ) : StreamOutboundCommand
 
     data class ProtocolSendBulk(

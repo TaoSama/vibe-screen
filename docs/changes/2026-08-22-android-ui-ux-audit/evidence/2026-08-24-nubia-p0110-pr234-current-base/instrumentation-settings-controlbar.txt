@@ -1,0 +1,11 @@
+Performing Streamed Install
+Success
+Performing Streamed Install
+Success
+
+dev.telemachus.display.SettingsDialogLayoutInstrumentedTest:...........
+dev.telemachus.display.ControlBarLayoutInstrumentedTest:............
+
+Time: 48.852
+
+OK (23 tests)

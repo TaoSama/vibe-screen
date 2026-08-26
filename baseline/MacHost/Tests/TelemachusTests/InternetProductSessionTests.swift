@@ -172,6 +172,91 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(harness.waitForPong(sequence: 77))
     }
 
+    func testStreamingSessionSendsAndReceivesAudioAndBulkRecords() throws {
+        let harness = try Harness()
+        let audioReceived = expectation(description: "audio record received")
+        let bulkReceived = expectation(description: "bulk record received")
+        harness.session.onAudioRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xA1, 0xA2]))
+            audioReceived.fulfill()
+        }
+        harness.session.onBulkRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xB1, 0xB2, 0xB3]))
+            bulkReceived.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        XCTAssertTrue(harness.session.sendAudioRecord(Data([0x11, 0x12])))
+        XCTAssertTrue(harness.waitForSentAudioCount(1))
+        let sentAudio = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .audio })
+        XCTAssertEqual(sentAudio.payload, Data([0x11, 0x12]))
+
+        XCTAssertTrue(harness.session.sendBulkRecord(
+            Data([0x21, 0x22]),
+            transferID: Data(repeating: 0x33, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+        let sentBulk = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .bulk })
+        XCTAssertEqual(sentBulk.payload, Data([0x21, 0x22]))
+
+        harness.receiveAudio(Data([0xA1, 0xA2]))
+        harness.receiveBulk(Data([0xB1, 0xB2, 0xB3]))
+        wait(for: [audioReceived, bulkReceived], timeout: 1)
+    }
+
+    func testAdvancedChannelRecordsFailClosedWhenPayloadExceedsProductAdmissionLimit() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 1,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        let sent = harness.session.sendBulkRecord(
+            Data([0x41, 0x42]),
+            transferID: Data(repeating: 0x55, count: 16)
+        )
+
+        XCTAssertFalse(sent)
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected product admission rejection to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("payload is 2 bytes; maximum is 1"),
+            "Expected payload limit rejection, got: " + reason
+        )
+    }
+
+    func testAdvancedChannelGateInitializationErrorIsReportedOnFirstRecord() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 0,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        XCTAssertFalse(harness.session.sendBulkRecord(
+            Data([0x41]),
+            transferID: Data(repeating: 0x55, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected gate initialization failure to fail closed.")
+        }
+        XCTAssertTrue(
+            reason.contains("invalidLimits"),
+            "Expected gate initialization failure, got: " + reason
+        )
+    }
+
     func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {
         let harness = try Harness()
         let routed = expectation(description: "stylus routed")
@@ -829,16 +914,23 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertFalse(harness.engine.didClose)
     }
 
-    func testNetworkChangeRequestsFreshSessionInsteadOfSecondOffer() throws {
-        let harness = try Harness()
+    func testNetworkHandoffInstallsFreshSessionWithoutICERestart() throws {
+        let harness = try Harness(engineCount: 2, replacementSessionEpoch: 2)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
         let authenticating = expectation(description: "authenticating")
-        let recovery = expectation(description: "fresh recovery")
+        let recovery = expectation(description: "fresh-session recovery")
         harness.session.onStateChanged = { state in
             if state == .authenticating { authenticating.fulfill() }
         }
         harness.session.onFreshSessionRecoveryRequired = { attempt in
             XCTAssertEqual(attempt, 1)
-            recovery.fulfill()
+            do {
+                try harness.session.provideFreshSession(configuration: replacementConfiguration)
+                recovery.fulfill()
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
         }
 
         try harness.session.start(configuration: harness.configuration)
@@ -849,12 +941,51 @@ final class InternetProductSessionTests: XCTestCase {
 
         wait(for: [recovery], timeout: 1)
         XCTAssertEqual(harness.engine.restartICECount, 0)
-        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+    }
+
+    func testFreshSessionFallbackCanSynchronouslyInstallReplacementAfterICERestartUnsupported() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            engineRecoveryDispositions: [
+                .requiresFreshSession("fresh signaling session required"),
+                .peerReplacementStarted,
+            ]
+        )
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let recovery = expectation(description: "fresh recovery")
+        harness.session.onFreshSessionRecoveryRequired = { attempt in
+            XCTAssertEqual(attempt, 1)
+            do {
+                try harness.session.provideFreshSession(configuration: replacementConfiguration)
+                recovery.fulfill()
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
+        }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.engine.emitConnection(.disconnected)
+
+        wait(for: [recovery], timeout: 1)
+        XCTAssertEqual(harness.engine.restartICECount, 1)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
     }
 
     func testRecoveringStateCallbackCanSynchronouslyInstallFreshSession() throws {
         let harness = try Harness(
             engineCount: 2,
+            engineRecoveryDispositions: [
+                .peerReplacementStarted,
+                .requiresFreshSession("fresh signaling session required"),
+            ],
             freshSessionRecoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2)
         )
         let replacement = try XCTUnwrap(harness.replacementEngine)
@@ -874,7 +1005,7 @@ final class InternetProductSessionTests: XCTestCase {
         }
         harness.session.onFreshSessionRecoveryRequired = { attempt in
             freshSessionAttempts.append(attempt)
-            if attempt == 2 { secondRecoveryRequested.fulfill() }
+            if attempt == 1 { secondRecoveryRequested.fulfill() }
         }
 
         try harness.session.start(configuration: harness.configuration)
@@ -897,9 +1028,28 @@ final class InternetProductSessionTests: XCTestCase {
         replacement.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-d"))
 
         wait(for: [secondRecoveryRequested], timeout: 1)
-        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 2))
-        XCTAssertEqual(freshSessionAttempts, [2])
+        XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
+        XCTAssertEqual(freshSessionAttempts, [1])
         XCTAssertTrue(replacement.didClose)
+    }
+
+    func testNonResumableDisconnectNoticeClosesWithoutFreshSessionRequest() throws {
+        let harness = try Harness()
+        var recoveryRequests = 0
+        harness.session.onFreshSessionRecoveryRequired = { _ in recoveryRequests += 1 }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.receiveControl(harness.disconnectNotice(messageID: 3, mayResume: false))
+
+        XCTAssertEqual(harness.session.snapshotState(), .closed)
+        XCTAssertEqual(recoveryRequests, 0)
+        XCTAssertTrue(harness.engine.didClose)
     }
 
     func testRecoveringCallbackClosePreventsFreshProfileRequest() throws {
@@ -2115,8 +2265,15 @@ final class InternetProductSessionTests: XCTestCase {
         let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
         let replacementInstalled = expectation(description: "replacement session installed")
         let replacementAuthenticating = expectation(description: "replacement authenticating")
+        var didInstallReplacement = false
+        var didObserveReplacementAuthenticating = false
+        defer {
+            harness.session.onStateChanged = nil
+            harness.session.close()
+        }
         harness.session.onStateChanged = { state in
-            if state == .recovering(attempt: 1) {
+            if state == .recovering(attempt: 1), !didInstallReplacement {
+                didInstallReplacement = true
                 do {
                     try harness.session.provideFreshSession(
                         configuration: replacementConfiguration
@@ -2125,7 +2282,9 @@ final class InternetProductSessionTests: XCTestCase {
                 } catch {
                     XCTFail("Installing the replacement session failed: \(error)")
                 }
-            } else if state == .authenticating, replacement.didStart {
+            } else if state == .authenticating, replacement.didStart,
+                      !didObserveReplacementAuthenticating {
+                didObserveReplacementAuthenticating = true
                 replacementAuthenticating.fulfill()
             }
         }
@@ -2334,6 +2493,7 @@ private final class Harness {
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
         limits: InternetTransportLimits = .standard,
         engineCount: Int = 1,
+        engineRecoveryDispositions: [WebRTCEngineRecoveryDisposition] = [],
         freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
         videoConfigEpoch: UInt64 = 1,
         replacementSessionEpoch: UInt64? = nil,
@@ -2364,7 +2524,14 @@ private final class Harness {
                 packetCipher: pair.host
             )
         }
-        let engines = pairs.map { ProductFakeWebRTCEngine(remoteCipher: $0.device) }
+        let engines = pairs.enumerated().map { index, pair in
+            ProductFakeWebRTCEngine(
+                remoteCipher: pair.device,
+                recoveryDisposition: index < engineRecoveryDispositions.count
+                    ? engineRecoveryDispositions[index]
+                    : .peerReplacementStarted
+            )
+        }
         deviceCiphers = pairs.map(\.device)
         securitySession = securitySessions[0]
         engine = engines[0]
@@ -2434,6 +2601,16 @@ private final class Harness {
         let plaintext = try! envelope.serializedData()
         let record = try! deviceCiphers[engineIndex].seal(plaintext, channel: .control)
         selectedEngine(engineIndex).receive(record, channel: .control)
+    }
+
+    func receiveAudio(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .audio)
+        selectedEngine(engineIndex).receive(record, channel: .audio)
+    }
+
+    func receiveBulk(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .bulk)
+        selectedEngine(engineIndex).receive(record, channel: .bulk)
     }
 
     func clientHello(
@@ -2573,6 +2750,19 @@ private final class Harness {
         return envelope
     }
 
+    func disconnectNotice(
+        messageID: UInt64,
+        mayResume: Bool,
+        reasonCode: String = "test_disconnect"
+    ) -> VSEnvelope {
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = reasonCode
+        notice.mayResume = mayResume
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.disconnectNotice = notice
+        return envelope
+    }
+
     func waitForSentControlCount(_ count: Int, engineIndex: Int = 0) -> Bool {
         waitUntil {
             self.selectedEngine(engineIndex).sentPlaintext
@@ -2589,6 +2779,14 @@ private final class Harness {
 
     func waitForSentMediaCount(_ count: Int) -> Bool {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .media }.count >= count }
+    }
+
+    func waitForSentAudioCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .audio }.count >= count }
+    }
+
+    func waitForSentBulkCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .bulk }.count >= count }
     }
 
     func waitForPong(sequence: UInt64) -> Bool {
@@ -2733,6 +2931,7 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
 
     private let lock = NSLock()
     private let remoteCipher: PlatformSessionPacketCipher
+    private let recoveryDisposition: WebRTCEngineRecoveryDisposition
     private var callbacks: WebRTCEngineCallbacks?
     private var transmissionEpoch: UInt64 = 0
     private var activeTransmissionPath: InternetPathKind?
@@ -2764,8 +2963,12 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         lock.withLock { deferredControlSendCompletion != nil }
     }
 
-    init(remoteCipher: PlatformSessionPacketCipher) {
+    init(
+        remoteCipher: PlatformSessionPacketCipher,
+        recoveryDisposition: WebRTCEngineRecoveryDisposition = .peerReplacementStarted
+    ) {
         self.remoteCipher = remoteCipher
+        self.recoveryDisposition = recoveryDisposition
     }
 
     func invalidateTransmissionContextOnNextControlSend() {
@@ -2866,7 +3069,7 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         invalidateTransmissionContext()
         lock.withLock { storedRestartICECount += 1 }
         callbacks?.connectionStateChanged(.connecting)
-        return .peerReplacementStarted
+        return recoveryDisposition
     }
     func requestMediaKeyframe() {}
     func close() {

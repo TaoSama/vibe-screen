@@ -1,0 +1,14 @@
+device
+identity:
+nubia
+P0110
+pacific
+16
+36
+focus:
+  mCurrentFocus=Window{de91c2e u0 com.android.permissioncontroller/com.android.permissioncontroller.permissionplus.ui.InterceptJumpDialogActivity}
+  mFocusedApp=ActivityRecord{1507543 u0 com.android.permissioncontroller/.permissionplus.ui.InterceptJumpDialogActivity t569}
+packages:
+package:dev.telemachus.display
+package:dev.telemachus.display.test
+recent app log:

@@ -3,6 +3,59 @@ import VideoToolbox
 import CoreMedia
 import os
 
+enum VideoEncoderSDRColorMetadata {
+    static let compressionProperties: [(key: CFString, value: CFTypeRef)] = [
+        (
+            kVTCompressionPropertyKey_ColorPrimaries,
+            kCMFormatDescriptionColorPrimaries_ITU_R_709_2
+        ),
+        (
+            kVTCompressionPropertyKey_TransferFunction,
+            kCMFormatDescriptionTransferFunction_ITU_R_709_2
+        ),
+        (
+            kVTCompressionPropertyKey_YCbCrMatrix,
+            kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2
+        ),
+        (kVTCompressionPropertyKey_OutputBitDepth, 8 as CFNumber),
+        (kVTCompressionPropertyKey_HDRMetadataInsertionMode, kVTHDRMetadataInsertionMode_None),
+    ]
+
+    static func apply(to session: VTCompressionSession) -> [OSStatus] {
+        compressionProperties.map { property in
+            VTSessionSetProperty(session, key: property.key, value: property.value)
+        }
+    }
+}
+
+enum VideoEncoderSettingsPropertyApplier {
+    static let maximumAttempts = 5
+    static let retryDelay: TimeInterval = 0.02
+
+    static func apply(
+        maximumAttempts: Int = Self.maximumAttempts,
+        retryDelay: TimeInterval = Self.retryDelay,
+        setProperty: () -> OSStatus,
+        completeFrames: () -> OSStatus,
+        sleep: (TimeInterval) -> Void = Thread.sleep(forTimeInterval:)
+    ) -> OSStatus {
+        precondition(maximumAttempts > 0)
+        var lastStatus: OSStatus = noErr
+
+        for attempt in 1...maximumAttempts {
+            lastStatus = setProperty()
+            if lastStatus == noErr { return noErr }
+            guard attempt < maximumAttempts else { break }
+
+            let completionStatus = completeFrames()
+            if completionStatus != noErr { return completionStatus }
+            sleep(retryDelay)
+        }
+
+        return lastStatus
+    }
+}
+
 final class VideoEncoderInFlightAdmission {
     struct Snapshot: Equatable {
         let inFlight: Int
@@ -115,6 +168,54 @@ final class VideoEncoderInFlightAdmission {
     }
 }
 
+final class VideoEncoderKeyframeRequests {
+    private let lock = OSAllocatedUnfairLock(initialState: false)
+
+    func request() {
+        lock.withLock { $0 = true }
+    }
+
+    func consumePendingRequest() -> Bool {
+        lock.withLock { pending in
+            guard pending else { return false }
+            pending = false
+            return true
+        }
+    }
+
+    func restoreAfterSynchronousFailure(consumedRequest: Bool) {
+        guard consumedRequest else { return }
+        request()
+    }
+
+    func restoreAfterAsynchronousFailure(status: OSStatus) {
+        guard status != noErr else { return }
+        request()
+    }
+
+    func restoreAfterMissingSampleBuffer() {
+        request()
+    }
+
+    var isPending: Bool { lock.withLock { $0 } }
+}
+
+enum VideoEncoderCallbackFailureRecovery {
+    static func restoreAfterAsynchronousFailure(status: OSStatus, owner: VideoEncoderCallbackOwner) {
+        owner.claimEncoder()?.keyframeRequests.restoreAfterAsynchronousFailure(status: status)
+    }
+
+    static func restoreAfterMissingSampleBuffer(owner: VideoEncoderCallbackOwner) {
+        owner.claimEncoder()?.keyframeRequests.restoreAfterMissingSampleBuffer()
+    }
+}
+
+struct VideoEncoderRuntimeStats: Equatable {
+    let inFlight: Int
+    let capacity: Int
+    let frameRegistryCount: Int
+}
+
 final class VideoEncoderCallbackOwner {
     private let lock = NSLock()
     private weak var encoder: VideoEncoder?
@@ -216,6 +317,13 @@ final class VideoEncoderFrameRegistry {
         return entries.count
     }
 
+    func count(owner: VideoEncoderCallbackOwner) -> Int {
+        let ownerIdentifier = ObjectIdentifier(owner)
+        lock.lock()
+        defer { lock.unlock() }
+        return ticketsByOwner[ownerIdentifier]?.count ?? 0
+    }
+
     private func removeEntry(ticket: UInt) -> Entry? {
         guard let entry = entries.removeValue(forKey: ticket) else { return nil }
         let ownerIdentifier = ObjectIdentifier(entry.owner)
@@ -257,10 +365,6 @@ class VideoEncoder {
             admissionLease.release()
         }
     }
-    private struct EncoderState {
-        var pendingForceKeyframe = false
-    }
-
     private var compressionSession: VTCompressionSession?
     var onEncodedFrame: ((Data, UInt64, Bool, UInt64) -> Void)?
     private var width: Int
@@ -271,9 +375,19 @@ class VideoEncoder {
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
     private let sessionLock = NSLock()
-    private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
+    private var lastSettingsUpdateFailure: String?
+    fileprivate let keyframeRequests = VideoEncoderKeyframeRequests()
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
     private let callbackOwner = VideoEncoderCallbackOwner()
+
+    var runtimeStats: VideoEncoderRuntimeStats {
+        let snapshot = inFlightAdmission.snapshot
+        return VideoEncoderRuntimeStats(
+            inFlight: snapshot.inFlight,
+            capacity: snapshot.capacity,
+            frameRegistryCount: VideoEncoderFrameRegistry.shared.count(owner: callbackOwner)
+        )
+    }
 
     var inFlightSnapshot: VideoEncoderInFlightAdmission.Snapshot { inFlightAdmission.snapshot }
 
@@ -290,6 +404,14 @@ class VideoEncoder {
 
     /// Fixed upper bound on concurrently admitted VideoToolbox frames.
     var inFlightCapacity: Int { inFlightSnapshot.capacity }
+
+    var hasPendingKeyframeRequest: Bool { keyframeRequests.isPending }
+
+    var settingsUpdateFailureDescription: String? {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return lastSettingsUpdateFailure
+    }
 
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
@@ -318,9 +440,11 @@ class VideoEncoder {
 
         sessionLock.lock()
         defer { sessionLock.unlock() }
+        lastSettingsUpdateFailure = nil
         let updatedFrameRate = max(1, frameRate ?? self.frameRate)
 
         guard let session = compressionSession else {
+            lastSettingsUpdateFailure = "no active compression session"
             debugLog("VideoToolbox encoder settings rejected: no active compression session")
             return false
         }
@@ -333,7 +457,15 @@ class VideoEncoder {
 
         var appliedRollbacks: [(CFString, CFTypeRef)] = []
         func apply(_ key: CFString, value: CFTypeRef, rollbackValue: CFTypeRef) -> Bool {
-            let status = VTSessionSetProperty(session, key: key, value: value)
+            let status = VideoEncoderSettingsPropertyApplier.apply(
+                setProperty: { VTSessionSetProperty(session, key: key, value: value) },
+                completeFrames: {
+                    VTCompressionSessionCompleteFrames(
+                        session,
+                        untilPresentationTimeStamp: .invalid
+                    )
+                }
+            )
             guard status == noErr else {
                 for (rollbackKey, rollbackValue) in appliedRollbacks.reversed() {
                     let rollbackStatus = VTSessionSetProperty(
@@ -345,6 +477,7 @@ class VideoEncoder {
                         debugLog("VideoToolbox encoder settings rollback failed: \(rollbackStatus)")
                     }
                 }
+                lastSettingsUpdateFailure = "\(key) status=\(status)"
                 debugLog("VideoToolbox encoder settings rejected for \(key): \(status)")
                 return false
             }
@@ -382,7 +515,7 @@ class VideoEncoder {
         self.quality = updatedQuality
         self.gamingBoost = gamingBoost
         self.frameRate = updatedFrameRate
-        stateLock.withLock { $0.pendingForceKeyframe = true }
+        keyframeRequests.request()
 
         let mode = gamingBoost ? "GAMING BOOST" : updatedQuality.uppercased()
         debugLog(
@@ -425,6 +558,10 @@ class VideoEncoder {
             ? kVTProfileLevel_HEVC_Main_AutoLevel
             : kVTProfileLevel_H264_Main_AutoLevel
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
+
+        for status in VideoEncoderSDRColorMetadata.apply(to: session) where status != noErr {
+            debugLog("VideoToolbox SDR color metadata property rejected: \(status)")
+        }
 
         // The target SM-P610 has a USB-C connector but only a USB 2.0 data link.
         // Respect the configured bitrate instead of silently forcing 60 Mbps.
@@ -482,7 +619,35 @@ class VideoEncoder {
     /// Used when a fresh client connects so its decoder can start immediately
     /// instead of waiting up to one full GOP for the next scheduled keyframe.
     func requestKeyframe() {
-        stateLock.withLock { $0.pendingForceKeyframe = true }
+        keyframeRequests.request()
+    }
+
+    @discardableResult
+    func completeFrames(untilPresentationTimeStamp timestamp: CMTime = .invalid) -> OSStatus {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        guard let session = compressionSession else { return kVTInvalidSessionErr }
+        let status = VTCompressionSessionCompleteFrames(
+            session,
+            untilPresentationTimeStamp: timestamp
+        )
+        if status != noErr {
+            debugLog("VideoToolbox frame completion failed: \(status)")
+        }
+        return status
+    }
+
+    @discardableResult
+    func drainPendingFramesForSelfTest() -> Int {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        // Self-test warmup may see VideoToolbox accept frames and complete
+        // successfully without invoking callbacks while the encoder starts up.
+        let drainedFrames = VideoEncoderFrameRegistry.shared.drain(owner: callbackOwner)
+        if drainedFrames > 0 {
+            keyframeRequests.request()
+        }
+        return drainedFrames
     }
 
     func encode(
@@ -501,12 +666,10 @@ class VideoEncoder {
         // Use system uptime clock — MUST match DispatchTime.now().uptimeNanoseconds
         let captureNanos = DispatchTime.now().uptimeNanoseconds
         var sourceFrameRefcon: UnsafeMutableRawPointer?
+        var consumedForceKeyframe = false
         let submissionResult = inFlightAdmission.submit { admissionLease in
-            let shouldForceKeyframe = stateLock.withLock { state -> Bool in
-                guard state.pendingForceKeyframe else { return false }
-                state.pendingForceKeyframe = false
-                return true
-            }
+            let shouldForceKeyframe = keyframeRequests.consumePendingRequest()
+            consumedForceKeyframe = shouldForceKeyframe
             let frameProperties: CFDictionary? = shouldForceKeyframe
                 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
                 : nil
@@ -532,6 +695,7 @@ class VideoEncoder {
         }
         sessionLock.unlock()
         if case .submitted(let encodeStatus) = submissionResult, encodeStatus != noErr {
+            keyframeRequests.restoreAfterSynchronousFailure(consumedRequest: consumedForceKeyframe)
             // VideoToolbox does not invoke the output callback when submission
             // itself fails, so ownership of the retained context remains here.
             if let claimedFrame = VideoEncoderFrameRegistry.shared.claim(sourceFrameRefcon) {
@@ -545,10 +709,7 @@ class VideoEncoder {
         sessionLock.lock()
         callbackOwner.deactivate()
         if let session = compressionSession {
-            let completeStatus = VTCompressionSessionCompleteFrames(
-                session,
-                untilPresentationTimeStamp: .invalid
-            )
+            let completeStatus = VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             if completeStatus != noErr {
                 debugLog("VideoToolbox frame completion failed: \(completeStatus)")
             }
@@ -606,7 +767,7 @@ enum VideoEncoderAnnexBConverter {
     }
 }
 
-private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
+private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, infoFlags, sampleBuffer) in
     autoreleasepool {
         guard let outputCallbackRefCon else { return }
         let registry = Unmanaged<VideoEncoderFrameRegistry>
@@ -616,11 +777,20 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
             return
         }
         VideoEncoderCallbackLifecycle.process(claimedFrame) { claimedFrame in
-            guard status == noErr,
-                  let sampleBuffer = sampleBuffer else {
-                if status != noErr {
-                    debugLog("VideoToolbox encode callback failed: \(status)")
-                }
+            guard status == noErr else {
+                VideoEncoderCallbackFailureRecovery.restoreAfterAsynchronousFailure(
+                    status: status,
+                    owner: claimedFrame.owner
+                )
+                debugLog("VideoToolbox encode callback failed: \(status)")
+                return
+            }
+            guard let sampleBuffer = sampleBuffer else {
+                VideoEncoderCallbackFailureRecovery.restoreAfterMissingSampleBuffer(
+                    owner: claimedFrame.owner
+                )
+                let reason = infoFlags.contains(.frameDropped) ? "dropped frame" : "no sample buffer"
+                debugLog("VideoToolbox encode callback produced \(reason)")
                 return
             }
 

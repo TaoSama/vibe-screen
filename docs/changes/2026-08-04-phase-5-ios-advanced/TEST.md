@@ -47,14 +47,25 @@ a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
-fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-and every advanced Envelope branch used by the client.
+and feedback/digest rejection, managed deny-wins policy, explanatory
+restriction-result propagation, denylist-over-allowlist host matching, safe
+filenames, sequential chunks, file limits/final SHA-256/cleanup, HDR10 to SDR
+config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte
+WOL vector, WakeHost device-identity binding, and every advanced Envelope branch
+used by the client. Focused macOS/Android tests cover the shared HMAC golden
+vector, replay and unauthorized rejection, broadcast-target validation, and the
+Android Protocol v1 action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
+
+Native-input offline coverage also includes key-release modifier policy: an
+explicit key-up uses the release-time modifier mask supplied by SwiftUI, while
+session/focus cleanup sends zero modifiers for forced key-up events. The
+`VibeScreenAppUnitTests` Xcode target covers the `StreamViewModel` envelope
+path for Shift+A release ordering; this remains simulator/unit-test evidence
+only and does not close the real iOS native-input behavior gate.
 
 Project metadata also passes:
 
@@ -172,6 +183,23 @@ video encoder self-test passed
 Android Gradle: BUILD SUCCESSFUL, 70 actionable tasks
 ```
 
+The shared Android/iOS model contract adds an offline fail-closed verifier:
+
+```bash
+python3 scripts/verify_shared_protocol_model.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_shared_protocol_model -v
+```
+
+The verifier reads `contracts/shared-models/v1/manifest.json`, the Protocol v1
+proto sources, the cross-platform fixture manifest, Android Gradle/protocol
+session sources, and iOS generated-binding/protocol-session sources. It fails if
+the pinned ClientHello/session/display/video/input/policy fields, envelope
+payload numbers, capability values, required fixture names, Android generated
+binding source, iOS generated binding parity script, or advertised-capability
+boundaries drift without an explicit manifest update. This is source and fixture
+contract evidence only: it does not introduce KMP, boot an iOS app, run an
+Android device, or close any real-device gate.
+
 The added Mac/Android unit fixtures cover explicit approval default-reject,
 safe basenames, deny-wins managed policy, maximum byte and chunk limits,
 ordered offsets, per-chunk and final SHA-256, session-epoch rejection, empty
@@ -188,6 +216,175 @@ tests because the selected Command Line Tools SwiftPM environment could not
 import `XCTest`; the full-Xcode CI gate remains responsible for Mac XCTest
 execution.
 
+## Host-side advanced adapter readiness gate
+
+The Phase 5 host-side advanced adapter readiness owner is exercised by
+`make phase5-host-advanced-adapters-gate
+EVIDENCE_DIR=.build/evidence/phase5-host-advanced-adapters`.
+
+The gate writes
+`.build/evidence/phase5-host-advanced-adapters/phase5-host-advanced-adapters-readiness.json`
+with a machine-readable matrix for the MacHost and iOS advanced adapter
+families: host-side multi-client/display, audio capture/playback, clipboard,
+file transfer, HDR/color, host actions/gestures, wake host, and managed policy.
+It also verifies that production Host capability defaults keep unsupported or
+unaccepted advanced adapters unadvertised, unavailable by default, or explicitly
+gated by availability and deny-wins policy.
+
+This is source/readiness evidence only. It does not close iOS installation,
+hardware VideoToolbox, AVAudioEngine audible playback, HDR/EDR output,
+clipboard/file product-flow, native input, reconnect, Internet
+audio/bulk-DataChannel, or advanced real-device behavior gates.
+
+## Current-base aggregate readiness
+
+The current-base aggregate owner is #290. Merged #182 remains the historical
+sanitized iOS device-acceptance baseline, while #290 owns the aggregate iOS
+acceptance tracking entry point for the current base. The narrower readiness
+work remains scoped to the related PR/task owners: #196 gesture/action mapping,
+PR #207 managed policy, #208 trusted-LAN secure records, #209 AVAudioEngine/PCM,
+PR #238 reconnect, #251 VideoToolbox, #253 host advanced adapters, #257 native
+input, #279 key-release/native-input modifier behavior, and #282 Phase 5 host
+gate ownership. The aggregate must not pass by owner declaration alone; it
+passes only when the machine-readable gate can prove every required iOS hardware
+and broader Phase 5 gate from retained evidence.
+
+Use the fail-closed current-base collector before scheduling or reporting an iOS
+device run:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
+```
+
+That command writes `ios-current-base-manifest.json` and
+`ios-current-base-gate.json`. On the current development baseline without signed
+iPhone and iPad hardware evidence, the expected verdict is `blocked`, the
+command exits nonzero, and both `can_close_ios_device_acceptance` and
+`can_close_current_base_aggregate` remain false. A `pass` requires signing,
+device install, Protocol session, H.264 and HEVC VideoToolbox decode, input,
+reconnect, audio playback, HDR output, host advanced adapters, and trusted-LAN
+secure-record evidence. Simulator UI, unsigned archives, MacHost loopback,
+Android device evidence, and plaintext legacy fallback are readiness inputs
+only.
+
+The HDR output row now has its own fail-closed current-base verifier:
+
+```bash
+make ios-hdr-edr-gate EVIDENCE_DIR=.build/evidence/ios-hdr-edr
+```
+
+With no retained physical iOS HDR/EDR observations, the expected verdict is
+`blocked` and `can_close_ios_hdr_output_gate=false`. A pass requires physical
+iPhone/iPad HDR-capable display identity, measured EDR/HDR display capability,
+`CAPABILITY_HDR_VIDEO` negotiation, an accepted HDR config rather than SDR
+fallback, 10-bit PQ/HLG VideoToolbox output metadata, renderer-layer EDR
+enablement, visible HDR/EDR output diagnostics, same-revision SDR peer fallback,
+and retained artifacts. Simulator, unsigned archive, Android, SDR fallback,
+protocol-only, and macOS fallback evidence returns `fail` if it is used as an
+HDR claim.
+
+| Gate | Current-base state | Evidence boundary |
+| --- | --- | --- |
+| signing | blocked-readiness | Requires a signed archive, a unique bundle ID, a certificate, and a provisioning profile. |
+| VideoToolbox H.264/HEVC | open; owner #251 | Implementation and CI build evidence exist; hardware decode requires retained physical iPhone and iPad records for both H.264 and HEVC. |
+| iOS advanced adapters | open | Client/core slices are offline-tested; product-flow E2E remains separate. |
+| Host advanced adapters | open; owner #253 | MacHost multi-client/display stream allocation, audio capture, clipboard/file handlers, HDR/color retry, action catalog, wake helper, and managed policy need reviewed host/product evidence. |
+| AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
+| HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
+| native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
+| reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
+| trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
+
+The signing row is now backed by a dedicated app-signing readiness owner:
+
+```bash
+make ios-app-signing-readiness-gate \
+  IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
+```
+
+The gate is passive and fail-closed. It requires retained Team ID, provisioning
+profile UUID, unique bundle ID, non-ad-hoc codesign identity, physical-device
+UDID hashes, signed-app entitlements, signed artifact SHA-256, a clean
+current-base commit, and signing artifact paths for the archive command,
+codesign entitlements, and provisioning profile output. Missing any one of
+those fields returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived
+material returns `fail`. A pass only unblocks the app-signing prerequisite for
+`ios-current-base-gate` when the resulting
+`ios-app-signing-readiness-gate.json` is bound into the generated manifest. The
+aggregate checks both `dedicated_signing_readiness_gate` and
+`dedicated_signing_readiness_owner`, then derives the signing row from the gate
+sanitized `signing_summary`; hand-written manifest signing fields without that
+owner remain blocked. It still cannot close install, launch, VideoToolbox,
+input, reconnect, audio, or full iOS device acceptance.
+The current retained blocked owner record is
+[`2026-08-25-ios-signing-current-base-owner-blocked`](evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md).
+
+2026-08-23 current-base readiness smoke on this worktree ran:
+
+```bash
+make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base-smoke-20260823
+```
+
+The command wrote the manifest and gate report, then exited nonzero as expected
+with `verdict=blocked`. The retained gate JSON recorded
+`can_close_ios_device_acceptance=false`,
+`can_close_current_base_aggregate=false`, and
+`can_claim_device_pass=false`. Blocking reasons included full Xcode/iPhoneOS SDK
+unavailability in the active Command Line Tools environment, missing signing
+identity/profile/signed archive, missing physical iPhone and iPad install
+evidence, and missing E1-E7 gate evidence. The broader HDR, advanced-adapter,
+and trusted-LAN secure-record gates remained insufficient. The generated
+manifest also records the local Xcode/iPhoneOS SDK and Swift toolchain probes so
+that an environment-only readiness improvement cannot be mistaken for signed
+iOS hardware acceptance.
+
+## Phase 5 multi-client/display current-base gate
+
+The current-base owner for planned multiple clients/displays is the read-only
+`phase5-multi-client-current-base-gate` target. It is deliberately separate
+from single-client display-selection and display-switch records: one client
+switching between physical and virtual displays is not simultaneous
+multi-client concurrency and cannot close this gate.
+
+Use it after collecting a retained evidence package:
+
+```bash
+make phase5-multi-client-current-base-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The evidence package must include `multi-client-concurrency.json` plus retained
+Host routing, transport ownership, display identity, macOS Host, and two
+Android-client artifacts. Each retained artifact must be a JSON file with the
+expected Phase 5 artifact `kind`, the shared schema version, and the same
+`source_revision` as the manifest, plus true observations for that artifact's
+routing, transport, display, Host, or Android-client claim; Android-client
+artifacts must also include the device identity they exercised. A pass requires
+at least two simultaneous clients, distinct session IDs and epochs, independent
+transport connections, per-client route binding, per-client frame queue or
+broadcast ownership, per-client input target validation, a defined
+parallel/broadcast capture model, Host `CAPABILITY_MULTI_CLIENT` advertisement,
+and visible distinct streams on the Android clients. It also requires iOS and
+HarmonyOS owner status to be recorded, so the planned cross-platform
+destination does not silently lose ownership.
+
+The gate is fail-closed:
+
+- missing `multi-client-concurrency.json` is `blocked`;
+- single-client multi-display evidence is `insufficient`;
+- device identity relabeling is `fail`;
+- only a complete package returns `pass` with
+  `can_close_phase5_multi_client_display_gate=true`.
+
+The 2026-08-24 current-base smoke record is intentionally blocked because no
+two-device or multi-client run was available. It records the current production
+boundary found in source audit: MacHost `StreamingServer` still owns a single
+active `NWConnection`, a single `ProtocolV1SessionCoordinator`, a single
+capture pipeline, and one virtual display; `ProtocolV1SessionConfiguration`
+does not advertise `.multiClient` in production. PR #201 adds an offline Host
+routing boundary, but its own record keeps production capped at one active
+client/stream and does not close multi-device or parallel-capture acceptance.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.
@@ -199,18 +396,33 @@ The following remain unproved until their dedicated gates produce evidence:
 - iPad-class Simulator layout (the retained smoke run used an iPhone 17 Pro);
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
+  the fail-closed `ios-videotoolbox-readiness` owner now records Simulator,
+  unsigned archive, physical iPhone, and physical iPad readiness separately, but
+  no physical-device pass is recorded here;
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
   and disconnect/reconnect (the macOS Core loopback proves only the transport
   and Protocol v1 boundary listed above);
+- iOS trusted-LAN encrypted-session behavior; the current loopback exercises
+  explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
+  LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, UDP broadcast, and managed App Configuration injection;
+  file picker/export, UDP broadcast, real sleeping-host Wake-on-LAN over
+  router/NIC firmware paths, real Apple MDM profile delivery, and managed App
+  Configuration injection. The WakeHost current-base evidence owner is #199
+  after rebasing onto #225 and must use `make wake-host-current-base-gate` to
+  keep this gate blocked until hardware evidence exists; the offline managed
+  deny-wins source work and blocked evidence are tracked in
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TEST.md);
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
-- audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
-  real-network E2E behavior. The Android/macOS record-layer key, nonce, replay,
-  and fixed-vector checks are offline evidence only;
-- HDR/EDR output (the current client deliberately advertises SDR only).
+- audio capture/playback, clipboard, and file-transfer product flows over
+  audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
+  Android/macOS raw product-session record hooks, owner-scoped admission,
+  bounded backlog, record-layer key, nonce, replay, and fixed-vector checks are
+  offline evidence only;
+- HDR/EDR output (the current clients deliberately advertise SDR only, and
+  fallback/readiness tests do not prove visible HDR output).
 
 ## Required iOS acceptance run
 
@@ -222,6 +434,19 @@ envelopes, codec choice, stream/epoch telemetry, touch acknowledgement,
 network interruption, reconnect duration, and any owner-requested bounded
 memory/latency series. Raw logs belong under this change directory's
 `evidence/` subdirectory or an external release bundle after privacy review.
+Every committed run summary must include sanitized `acceptance.json`,
+`ios-device-acceptance-gate.json`, a hash manifest, and the privacy-reviewed
+artifact list. The aggregate gate is read-only and fails closed: missing
+metadata, environment, signing, device, or formal E1-E7 gate evidence returns
+`blocked`; missing broader Phase 5 HDR, advanced-adapter, or trusted-LAN
+secure-record evidence returns `insufficient`; Android-substituted evidence
+returns `fail`.
+The aggregate manifest must also preserve per-gate owner attribution. A hardware
+VideoToolbox pass without owner #251, or a Host advanced-adapter pass without
+owner #253, remains blocked or insufficient even when evidence paths are
+present. This keeps the merged #182 device validator and #290 current-base
+aggregate distinct from the still-open hardware and Host-adapter readiness
+gates.
 
 While the Phase 0 soak owns the controlled endpoint (redacted as
 `$ADB_ENDPOINT`), Phase 5 performs only
@@ -229,3 +454,32 @@ read-only `getprop`, `logcat`, `dumpsys`, or `ps` queries and does not change
 ADB, application, or session state. Any later Android Protocol v1 fixture run
 must be coordinated by Phase 0. Android evidence is never an iOS build,
 decode, UI, or device result.
+
+## Hardware VideoToolbox readiness gate
+
+The README Phase 5 hardware VideoToolbox behavior gate is now owned by a narrow
+readiness summary, separate from the broader iOS device-acceptance gate:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest \
+  tools.tests.test_ios_videotoolbox_readiness tools.tests.test_schemas -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
+```
+
+The schema distinguishes `simulator`, `unsigned_archive`, `physical_iphone`, and
+`physical_ipad`. Simulator and unsigned archive records are blocked by
+construction and cannot close hardware behavior; the strict gate exits nonzero
+for those records. A family-level physical-device pass requires signed
+installation, matching device identity, H.264/HEVC parameter sets, VideoToolbox
+sessions, output frames, hardware-path evidence, stream/config epoch telemetry,
+thermal and power state, and existing non-empty retained iOS VideoToolbox
+artifacts under the evidence directory.
+Even a passing family summary keeps
+`can_close_phase5_hardware_videotoolbox_gate=false`; the README gate remains open
+until both iPhone and iPad family summaries pass and are reviewed with the
+full device-acceptance evidence. No iOS device was run for this record.

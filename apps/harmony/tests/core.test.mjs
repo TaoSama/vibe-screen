@@ -225,6 +225,11 @@ test('USB HID modifier capability 27 preserves standard and legacy layouts', () 
     [Capability.TOUCH, Capability.USB_HID_MODIFIER_BYTE]), /invalid negotiated capability set/);
 });
 
+test('peripheral input framework capability is known but not advertised', () => {
+  assert.equal(Capability.PERIPHERAL_INPUT_FRAMEWORK, 30);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.PERIPHERAL_INPUT_FRAMEWORK), false);
+});
+
 test('product session suppresses unnegotiated pointer and keyboard input', () => {
   const session = touchOnlyStreamingSession();
   const input = { inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
@@ -489,13 +494,73 @@ test('resume result advances epoch and rejected or malformed results fail closed
   assert.throws(() => unexpectedPayload.receive(pingEnvelope, 11n), /Only ResumeSessionResult/);
 });
 
+test('resumed sessions reject prior epoch control and media before reopening input', () => {
+  const negotiated = [Capability.TOUCH, Capability.SESSION_RESUME];
+  const original = createStreamingSessionWithCapabilities(negotiated, negotiated);
+  const snapshot = original.resumableSnapshot(19n);
+  assert.equal(snapshot.sessionEpoch, 7n);
+
+  const resumed = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  confirmRequest(resumed, resumed.start(10n, snapshot)[0], 19n);
+  const acceptedResume = new ProtobufWriter().bool(1, true).uint64(2, 8n);
+  const resumeEnvelope = sessionEnvelope(16n, 27, acceptedResume, 8n, 19n);
+  const resumeActions = resumed.receive(resumeEnvelope, 11n);
+  assert.equal(resumed.epoch(), 8n);
+  assert.deepEqual(resumeActions.map((action) => action.kind), ['heartbeat', 'send']);
+
+  const oldControl = sessionEnvelope(17n, 24, new ProtobufWriter().uint64(1, 7n), 7n, 0n);
+  assert.throws(() => resumed.receive(oldControl, 12n), /another session epoch/);
+
+  confirmRequest(resumed, resumeActions[1], 20n);
+  const displaysPayload = new ProtocolDecoder().envelope(fixture('list_displays_response.binpb')).payload;
+  const displays = resumed.receive(sessionEnvelope(21n, 41, new ProtobufWriter().raw(displaysPayload), 8n, 20n), 13n);
+  confirmRequest(resumed, displays[0], 22n);
+  const startPayload = new ProtocolDecoder().envelope(fixture('start_display_response.binpb')).payload;
+  resumed.receive(sessionEnvelope(23n, 43, new ProtobufWriter().raw(startPayload), 8n, 22n), 14n);
+  const videoPayload = new ProtocolDecoder().envelope(fixture('video_config.binpb')).payload;
+  const configure = resumed.receive(sessionEnvelope(24n, 50, new ProtobufWriter().raw(videoPayload), 8n, 22n), 15n)[0];
+  finishVideoConfiguration(resumed, configure);
+  assert.equal(resumed.state(), ProductSessionState.STREAMING);
+
+  const parser = new MediaPacketParser();
+  const packet = parser.parse(fixture('media_packet.bin'));
+  assert.deepEqual(resumed.acceptMedia({ ...packet, header: { ...packet.header, sessionEpoch: 7n, frameId: 1002n } }), []);
+  assert.equal(resumed.acceptMedia({ ...packet, header: { ...packet.header, sessionEpoch: 8n, frameId: 1002n } })[0].kind, 'media');
+});
+
+test('resume rejection closes transport scope so host restart uses a fresh ClientHello', () => {
+  const negotiated = [Capability.TOUCH, Capability.SESSION_RESUME];
+  const original = createStreamingSessionWithCapabilities(negotiated, negotiated);
+  const snapshot = original.resumableSnapshot(19n);
+
+  const recovering = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  confirmRequest(recovering, recovering.start(10n, snapshot)[0], 19n);
+  const rejection = new ProtobufWriter().string(3, 'host_restarted');
+  assert.deepEqual(recovering.receive(sessionEnvelope(16n, 27, rejection, 7n, 19n), 11n), [
+    { kind: 'disconnect', reason: 'resume_rejected:host_restarted', retryable: true }
+  ]);
+  assert.equal(recovering.state(), ProductSessionState.CLOSED);
+
+  const fresh = recovering.start(12n)[0];
+  assert.equal(fresh.intent.kind, 'clientHello');
+  assert.equal(recovering.epoch(), 0n);
+  const decodedFresh = new ProtocolDecoder().envelope(encodeAction(recovering, fresh, 1n));
+  assert.equal(decodedFresh.payloadField, 20);
+  assert.equal(decodedFresh.sessionId.length, 0);
+  assert.equal(decodedFresh.sessionEpoch, 0n);
+});
+
 test('pairing request/result is single-use and credential replay/revoke is durable', async () => {
   const digest = (_value) => new Uint8Array(32);
   const devicePublic = new Uint8Array(65).fill(7); devicePublic[0] = 4;
   const hostPublic = new Uint8Array(65).fill(9); hostPublic[0] = 4;
+  const huksProfile = { backend: 'harmony_huks_v1', signingKeyStorage: 'huks_non_exportable_p256',
+    credentialStorage: 'asset_store_huks_bound_v1', privateKeyExportable: false, persistentIdentity: true,
+    authorityDeviceId: 'device' };
   const toHex = (value) => [...value].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   let destroyed = 0;
   const crypto = {
+    securityProfile: () => huksProfile,
     identity: () => ({ publicIdentity: { deviceId: 'device', keyId: toHex(digest(devicePublic)), keyEpoch: 1n,
       signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256, signingPublicKey: devicePublic }, sign: (value) => value }),
     ephemeral: () => ({ publicKey: new Uint8Array(65).fill(5), derive: () => new Uint8Array(32).fill(6),
@@ -512,6 +577,16 @@ test('pairing request/result is single-use and credential replay/revoke is durab
     aeadAlgorithms: [AeadAlgorithm.AES_256_GCM] };
   const pending = new PairingClient(crypto).begin(offer, 'Harmony tablet', 100n);
   assert.equal(pending.request.bootstrapMac.length, 32);
+  assert.throws(() => new PairingClient({ ...crypto, securityProfile: () => ({ ...huksProfile, backend: 'portable_test_double' }) })
+    .begin(offer, 'Harmony tablet', 100n), /HUKS-backed/);
+  assert.throws(() => new PairingClient({ ...crypto, securityProfile: () => ({ ...huksProfile, privateKeyExportable: undefined }) })
+    .begin(offer, 'Harmony tablet', 100n), /HUKS-backed/);
+  assert.throws(() => new PairingClient({ ...crypto, securityProfile: () => ({ ...huksProfile, privateKeyExportable: true }) })
+    .begin(offer, 'Harmony tablet', 100n), /HUKS-backed/);
+  assert.throws(() => new PairingClient({ ...crypto, securityProfile: () => undefined })
+    .begin(offer, 'Harmony tablet', 100n), /HUKS-backed/);
+  assert.throws(() => new PairingClient({ ...crypto, securityProfile: () => ({ ...huksProfile, authorityDeviceId: 'other-device' }) })
+    .begin(offer, 'Harmony tablet', 100n), /authority device identity mismatch/);
   const encoded = new ProtocolEncoder().pairingRequest(ProtocolEncoder.metadata(1n), pending.request);
   assert.equal(new ProtocolDecoder().envelope(encoded).payloadField, 31);
   const pairingResult = { accepted: true, deviceId: 'device', deviceCredential: new Uint8Array(),
@@ -520,10 +595,13 @@ test('pairing request/result is single-use and credential replay/revoke is durab
     sessionKeyId: '0'.repeat(64), sessionKeyEpoch: 1n };
   const completion = pending.complete(pairingResult, 150n);
   assert.equal(completion.credential.length, 32); assert.equal(destroyed, 1);
+  assert.equal(completion.securityProfile.backend, 'harmony_huks_v1');
   assert.throws(() => pending.complete(pairingResult, 150n), /already consumed/);
 
   const expiredPending = new PairingClient(crypto).begin(offer, 'Harmony tablet', 100n);
   assert.throws(() => expiredPending.complete(pairingResult, 200n), /Invalid PairingResult/);
+  const wrongEpochPending = new PairingClient(crypto).begin(offer, 'Harmony tablet', 100n);
+  assert.throws(() => wrongEpochPending.complete({ ...pairingResult, sessionKeyEpoch: 2n }, 150n), /Invalid PairingResult/);
 
   const writes = []; const store = { load: async () => undefined,
     save: async (record) => { writes.push({ ...record, credential: record.credential.slice() }); } };
@@ -535,6 +613,30 @@ test('pairing request/result is single-use and credential replay/revoke is durab
   await lifecycle.revoke('device', 'user_revoked');
   assert.throws(() => lifecycle.authorize(), /No authorized/);
   assert.equal(writes.at(-1).credential.length, 0); assert.equal(writes.at(-1).revoked, true);
+});
+
+test('credential lifecycle rejects legacy or non-HUKS security records fail-closed', async () => {
+  const hostIdentity = { deviceId: 'host', keyId: 'a'.repeat(64), keyEpoch: 1n,
+    signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256, signingPublicKey: new Uint8Array(65) };
+  const huksProfile = { backend: 'harmony_huks_v1', signingKeyStorage: 'huks_non_exportable_p256',
+    credentialStorage: 'asset_store_huks_bound_v1', privateKeyExportable: false, persistentIdentity: true,
+    authorityDeviceId: 'device' };
+  const validRecord = { version: 2, pairingId: 'a'.repeat(32), deviceId: 'device', securityProfile: huksProfile,
+    hostIdentity, credential: new Uint8Array(32), sessionKeyId: 'b'.repeat(64), sessionKeyEpoch: 1n,
+    highestControlSequence: 0n, revoked: false, revocationReason: '' };
+
+  await assert.rejects(new CredentialLifecycle({ load: async () => ({ ...validRecord, version: 1 }),
+    save: async () => {} }, () => true).restore(), /Invalid stored pairing credential/);
+  await assert.rejects(new CredentialLifecycle({ load: async () => ({ ...validRecord,
+    securityProfile: { ...huksProfile, signingKeyStorage: 'asset_store_exported_test_key' } }),
+    save: async () => {} }, () => true).restore(), /HUKS-backed/);
+  await assert.rejects(new CredentialLifecycle({ load: async () => ({ ...validRecord,
+    securityProfile: { ...huksProfile, authorityDeviceId: 'other-device' } }),
+    save: async () => {} }, () => true).restore(), /Invalid stored pairing credential/);
+  const revoked = new CredentialLifecycle({ load: async () => ({ ...validRecord, revoked: true,
+    credential: new Uint8Array(), revocationReason: 'user_revoked' }), save: async () => {} }, () => true);
+  await revoked.restore();
+  assert.throws(() => revoked.authorize(), /No authorized/);
 });
 
 test('superseded or failed credential writes cannot revive or retain pairing secrets', async () => {
@@ -550,9 +652,12 @@ test('superseded or failed credential writes cannot revive or retain pairing sec
   } };
   const identity = { deviceId: 'host', keyId: 'a'.repeat(64), keyEpoch: 1n,
     signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256, signingPublicKey: new Uint8Array(65) };
+  const huksProfile = { backend: 'harmony_huks_v1', signingKeyStorage: 'huks_non_exportable_p256',
+    credentialStorage: 'asset_store_huks_bound_v1', privateKeyExportable: false, persistentIdentity: true,
+    authorityDeviceId: 'device' };
   const lifecycle = new CredentialLifecycle(store);
   const completion = { credential: new Uint8Array(32).fill(7), deviceId: 'device', hostIdentity: identity,
-    sessionKeyId: 'b'.repeat(64), sessionKeyEpoch: 1n };
+    securityProfile: huksProfile, sessionKeyId: 'b'.repeat(64), sessionKeyEpoch: 1n };
   const install = lifecycle.install(lifecycle.owner(), 'c'.repeat(32), completion);
   await firstSaveStarted; lifecycle.supersede(); releaseFirstSave();
   await assert.rejects(install, /superseded/);
@@ -565,7 +670,8 @@ test('superseded or failed credential writes cannot revive or retain pairing sec
   await assert.rejects(failed.install(failed.owner(), 'd'.repeat(32), { ...completion, credential: failedSecret }), /disk full/);
   assert.equal(failedSecret.every((byte) => byte === 0), true);
 
-  const oldRecord = { version: 1, pairingId: 'e'.repeat(32), deviceId: 'device', hostIdentity: identity,
+  const oldRecord = { version: 2, pairingId: 'e'.repeat(32), deviceId: 'device', securityProfile: huksProfile,
+    hostIdentity: identity,
     credential: new Uint8Array(32).fill(9), sessionKeyId: 'f'.repeat(64), sessionKeyEpoch: 1n,
     highestControlSequence: 0n, revoked: false, revocationReason: '' };
   const replacing = new CredentialLifecycle({ load: async () => oldRecord,
@@ -579,7 +685,8 @@ test('superseded or failed credential writes cannot revive or retain pairing sec
   let markLoadStarted;
   const loadStarted = new Promise((resolve) => { markLoadStarted = resolve; });
   const loadGate = new Promise((resolve) => { releaseLoad = resolve; });
-  const restoredRecord = { version: 1, pairingId: 'e'.repeat(32), deviceId: 'device', hostIdentity: identity,
+  const restoredRecord = { version: 2, pairingId: 'e'.repeat(32), deviceId: 'device', securityProfile: huksProfile,
+    hostIdentity: identity,
     credential: new Uint8Array(32).fill(9), sessionKeyId: 'f'.repeat(64), sessionKeyEpoch: 1n,
     highestControlSequence: 0n, revoked: false, revocationReason: '' };
   const restoring = new CredentialLifecycle({ load: async () => { markLoadStarted(); await loadGate; return restoredRecord; },
@@ -620,6 +727,11 @@ function controlEnvelope(messageId, payloadField, payload, sessionScoped = true,
   const envelope = new ProtobufWriter().uint32(1, 1).uint64(2, messageId).uint64(3, correlationId);
   if (sessionScoped) envelope.bytesField(4, sessionId).uint64(5, 7n);
   return envelope.message(payloadField, payload).finish();
+}
+
+function sessionEnvelope(messageId, payloadField, payload, sessionEpoch, correlationId = 1n) {
+  return new ProtobufWriter().uint32(1, 1).uint64(2, messageId).uint64(3, correlationId)
+    .bytesField(4, sessionId).uint64(5, sessionEpoch).message(payloadField, payload).finish();
 }
 
 function touchOnlyStreamingSession() {

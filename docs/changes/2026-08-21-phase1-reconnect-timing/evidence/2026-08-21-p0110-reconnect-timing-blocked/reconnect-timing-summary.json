@@ -1,0 +1,33 @@
+{
+  "artifact_paths": [
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-21-p0110-reconnect-timing-blocked/host-54321-listener.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-21-p0110-reconnect-timing-blocked/macos-dev-host-preflight.txt"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Vibe Screen Dev signing identity is unavailable in the current keychain",
+    "Host is not listening on 127.0.0.1:54321 in this worktree"
+  ],
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B"
+  },
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Blocked readiness record only; no real Protocol v1 reconnect timing attempt was run.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Vibe Screen Dev signing identity is unavailable in the current keychain",
+    "Host is not listening on 127.0.0.1:54321 in this worktree"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "dc16b339-f79c-44c7-a2d9-9596629cb7b6",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}

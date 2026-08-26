@@ -6,12 +6,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAC_APP_DELEGATE = ROOT / "baseline/MacHost/Sources/AppDelegate.swift"
+MAC_MAIN = ROOT / "baseline/MacHost/Sources/main.swift"
 MAC_SCREEN_CAPTURE = ROOT / "baseline/MacHost/Sources/ScreenCapture.swift"
 MAC_ENCODED_FRAME_SINK = ROOT / "baseline/MacHost/Sources/EncodedFrameSink.swift"
 MAC_INTERNET_SESSION = (
     ROOT
     / "baseline/MacHost/Sources/Phase3/ProductSession/InternetProductSession.swift"
 )
+MAC_REAL_MEDIA_SELF_TEST = (
+    ROOT
+    / "baseline/MacHost/Sources/Phase3/ProductSession/InternetProductSessionRealMediaSelfTest.swift"
+)
+MAKEFILE = ROOT / "Makefile"
 ANDROID_MAIN_ACTIVITY = ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt"
 ANDROID_INTERNET_SESSION = (
     ROOT
@@ -33,6 +39,20 @@ def require_compact(haystack: str, needle: str, *, label: str) -> None:
 
 
 class Phase3RealMediaSourceContractTests(unittest.TestCase):
+    def test_real_media_self_test_is_registered_in_local_self_test_target(self) -> None:
+        main = source(MAC_MAIN)
+        self_test = source(MAC_REAL_MEDIA_SELF_TEST)
+        makefile = source(MAKEFILE)
+
+        self.assertIn("--phase3-real-media-self-test", main)
+        self.assertIn("InternetProductSessionRealMediaSelfTest.run()", main)
+        self.assertIn("enum InternetProductSessionRealMediaSelfTest", self_test)
+        self.assertIn("does not claim device decoder continuity", self_test)
+        self.assertIn(
+            '"baseline/MacHost/.build/release/Vibe Screen" --phase3-real-media-self-test',
+            makefile,
+        )
+
     def test_macos_internet_session_is_the_screen_capture_frame_sink(self) -> None:
         encoded_sink = source(MAC_ENCODED_FRAME_SINK)
         screen_capture = source(MAC_SCREEN_CAPTURE)
@@ -52,16 +72,32 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         require_compact(
             screen_capture,
             """
-            newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-                frameSink?.sendFrame(
-                    data,
-                    timestamp: timestamp,
-                    isKeyframe: isKeyframe,
-                    sessionEpoch: sessionEpoch
-                )
-            }
+            newEncoder.onEncodedFrame = makeEncodedFrameHandler(frameSink: frameSink)
             """,
-            label="VideoToolbox encoded frames are forwarded with their session epoch",
+            label="VideoToolbox encoded frames use the shared frame-sink handler",
+        )
+        require_compact(
+            screen_capture,
+            """
+            self?.recordEncodedOutput(
+                byteCount: data.count,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+            """,
+            label="VideoToolbox encoded frames are marked and forwarded with their session epoch",
+        )
+        require_compact(
+            screen_capture,
+            "VideoToolbox output frame media_epoch=\(sessionEpoch)",
+            label="Host logs a real VideoToolbox output epoch marker",
         )
 
         for snippet, label in (

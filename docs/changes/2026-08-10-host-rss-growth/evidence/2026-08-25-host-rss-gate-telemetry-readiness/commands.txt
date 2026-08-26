@@ -1,0 +1,153 @@
+$ git rev-parse HEAD
+549aa048d94e5131eb9f691a49a19a427fe2fe30
+$ git rev-parse origin/main
+549aa048d94e5131eb9f691a49a19a427fe2fe30
+$ git status --short --branch
+## codex/host-rss-diagnostics-readiness
+ M Makefile
+ M tools/tests/test_host_rss_gate.py
+ M tools/tests/test_soak_report.py
+ M tools/vibescreen_evidence/host_rss_gate.py
+ M tools/vibescreen_evidence/soak_report.py
+?? docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/
+$ adb -s <redacted-p0110-serial> get-state
+device
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.manufacturer
+nubia
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.model
+P0110
+$ adb -s <redacted-p0110-serial> shell getprop ro.product.device
+pacific
+$ adb -s <redacted-p0110-serial> shell getprop ro.build.version.release
+16
+$ adb -s <redacted-p0110-serial> shell getprop ro.build.version.sdk
+36
+$ ls -ld /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-android-test.lock
+ls: /tmp/vibe-screen-device-android.lock: No such file or directory
+ls: /tmp/vibe-screen-device-soak.lock: No such file or directory
+-rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+$ pgrep -af "Vibe Screen|Telemachus"
+10959
+22385
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 94 tests in 1.247s
+OK
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/summary.json --samples docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/samples.jsonl --exact-window-report docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/soak-report.json --output docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=1
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 102 tests in 1.531s
+OK
+$ make evidence-tools-test
+Ran 694 tests in 16.915s
+OK
+$ git diff --check
+exit_code=0
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/host-rss-diagnostics-readiness.
+$ git rev-parse HEAD
+4f016847be20f7f8ebbbd55e9b9244516e7e44dc
+$ git rev-parse origin/main
+fd15e0187bee7bd83b2d3938e301c2297bad4b5d
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 102 tests in 1.171s
+OK
+$ git diff --check origin/main..HEAD
+exit_code=0
+$ make evidence-tools-test
+Ran 694 tests in 9.759s
+OK
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+4a54439022d475d4e544d43c0e5aeab921d528db
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/host-rss-diagnostics-readiness.
+$ make evidence-tools-test
+Ran 693 tests in 9.357s
+OK
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+fd15e0187bee7bd83b2d3938e301c2297bad4b5d
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/readiness-report.json
+exit_code=0
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=0
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 101 tests in 1.348s
+OK
+$ make evidence-tools-test
+Ran 693 tests in 10.070s
+OK
+$ git diff --check
+exit_code=0
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/summary.json --samples docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/samples.jsonl --exact-window-report docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/soak-report.json --output docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=1
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/host-rss-diagnostics-readiness.
+$ git rev-parse HEAD
+d6b48ee40a70480900e18c63228f5014fde49822
+$ git merge-base HEAD origin/main
+942fee8d1b8a4495c24dbe3a5aacf538e04bb6f0
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/readiness-report.json
+exit_code=0
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=0
+$ gh pr view 342 --json body --jq .body | rg -n '<redacted-p0110-serial>|/Users/|<redacted-tcc-db-pattern>' || true
+exit_code=0
+$ git diff --check
+exit_code=0
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 102 tests in 1.332s
+OK
+$ make evidence-tools-test
+Ran 723 tests in 9.500s
+OK
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+c89ca07df91b3c892078260554f4a57e57122863
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/host-rss-diagnostics-readiness.
+$ git merge-base HEAD origin/main
+c89ca07df91b3c892078260554f4a57e57122863
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/readiness-report.json
+exit_code=0
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=0
+$ git diff --check
+exit_code=0
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 102 tests in 1.195s
+OK
+$ make evidence-tools-test
+Ran 723 tests in 10.188s
+OK
+$ git fetch origin --prune
+exit_code=0
+$ git rev-parse origin/main
+fed8ac0c891b610def1cb03cb8bfd5216af56784
+$ git rev-parse origin/codex/host-rss-diagnostics-readiness
+a632beca279b1a670efd8546b29fe73e5b05dd66
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/host-rss-diagnostics-readiness.
+$ git rev-parse HEAD
+4368263b248ab8a3eb07d9c70865f0bf3532851a
+$ git merge-base HEAD origin/main
+fed8ac0c891b610def1cb03cb8bfd5216af56784
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/readiness-report.json
+exit_code=0
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/historical-xiaomi-soak2h-current-gate.json
+exit_code=0
+$ git diff --check
+exit_code=0
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_soak tools.tests.test_soak_report tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic -v
+Ran 102 tests in 1.207s
+OK
+$ make evidence-tools-test
+Ran 733 tests in 9.258s
+OK

@@ -5,8 +5,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from tools.vibescreen_evidence.latency import GATE_USB_GLASS_TO_GLASS_SUB50
+from tools.vibescreen_evidence.latency import (
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+    GATE_INPUT_P95_SUB50,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
+)
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
 
 
@@ -20,8 +25,21 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         source = FIXTURE_DIR / "external-camera-valid"
         manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
         (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-        (root / "raw-camera-placeholder.mov").write_bytes(
-            (source / "raw-camera-placeholder.mov").read_bytes()
+        (root / "raw-camera-fixture.mov").write_bytes(
+            (source / "raw-camera-fixture.mov").read_bytes()
+        )
+        (root / "usb-connection.txt").write_bytes(
+            (source / "usb-connection.txt").read_bytes()
+        )
+        return manifest
+
+    def copy_synchronized_clock_package(self, root: Path) -> dict[str, object]:
+        source = FIXTURE_DIR / "synchronized-clock-input-valid"
+        manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+        (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+        (root / "input-actuation.txt").write_bytes((source / "input-actuation.txt").read_bytes())
+        (root / "synchronization-record.txt").write_bytes(
+            (source / "synchronization-record.txt").read_bytes()
         )
         return manifest
 
@@ -37,6 +55,54 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         assert isinstance(samples, dict)
         samples["sha256"] = hashlib.sha256(encoded).hexdigest()
 
+    def valid_internet_route(self) -> dict[str, object]:
+        return {
+            "route": "forced-public-turn",
+            "turn_deployment": {
+                "provider": "example provider",
+                "region": "us-west",
+                "public_hostname": "1.1.1.1",
+                "resolved_ip": "1.1.1.1",
+                "tls": "turns",
+                "credential_source": "authority-issued short-lived credential",
+            },
+            "remote_peer": {
+                "operator": "fixture",
+                "network": "remote carrier",
+                "public_ip_asn": "AS64500",
+                "location": "remote lab",
+            },
+            "candidate_pair": {
+                "local_candidate_type": "relay",
+                "remote_candidate_type": "relay",
+                "relay_protocol": "turn-tls",
+            },
+            "network_topology": {
+                "host_network": "home ISP",
+                "device_network": "remote carrier",
+                "same_private_network": False,
+            },
+        }
+
+    def make_internet_manifest(self, root: Path) -> dict[str, object]:
+        manifest = self.copy_valid_package(root)
+        manifest["transport"] = "internet"
+        manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+        route_artifact = root / "internet-public-route-record.txt"
+        route_artifact.write_text("fixture public Internet route proof\n", encoding="utf-8")
+        manifest["gate_artifacts"] = {
+            "internet_public_route_record": {
+                "file": route_artifact.name,
+                "sha256": hashlib.sha256(route_artifact.read_bytes()).hexdigest(),
+                "description": "Synthetic public Internet route proof.",
+            }
+        }
+        self.replace_samples(root, manifest, "latency_ms\n90\n100\n110\n120\n130\n")
+        samples = manifest["samples"]
+        assert isinstance(samples, dict)
+        samples["annotation_method"] = "direct-latency-ms"
+        return manifest
+
     def test_valid_external_camera_package_passes(self) -> None:
         report = build_latency_evidence_report(
             manifest_path=FIXTURE_DIR / "external-camera-valid" / "manifest.json",
@@ -47,6 +113,174 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertTrue(report["gate"]["can_close_performance_gate"])
         self.assertEqual(report["gate"]["sample_count"], 5)
         self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_requires_public_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertTrue(
+            any("internet_route is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_internet_latency_package_accepts_public_forced_turn_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            manifest["internet_route"] = self.valid_internet_route()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["transport"], "internet")
+        self.assertEqual(
+            report["internet_route"]["turn_deployment"]["resolved_ip"],
+            "1.1.1.1",
+        )
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_rejects_loopback_or_lan_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            turn = internet_route["turn_deployment"]
+            topology = internet_route["network_topology"]
+            assert isinstance(turn, dict)
+            assert isinstance(topology, dict)
+            turn["public_hostname"] = "127.0.0.1"
+            topology["same_private_network"] = True
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("public Internet TURN hostname" in reason for reason in reasons))
+        self.assertTrue(any("same_private_network must be false" in reason for reason in reasons))
+
+    def test_internet_latency_package_rejects_private_retained_turn_ip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            turn = internet_route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["resolved_ip"] = "10.0.0.10"
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "internet_route.turn_deployment.resolved_ip must record the retained resolved global IP for the TURN hostname",
+            report["gate"]["reasons"],
+        )
+
+    def test_internet_latency_package_resolves_turn_hostname_to_retained_ip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            turn = internet_route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["public_hostname"] = "turn.example.net"
+            turn["resolved_ip"] = "1.1.1.1"
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            with patch(
+                "socket.getaddrinfo",
+                side_effect=AssertionError("latency evidence verification must be offline"),
+            ):
+                report = build_latency_evidence_report(
+                    manifest_path=root / "manifest.json",
+                    gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+                )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(
+            report["internet_route"]["turn_deployment"]["resolved_ip"],
+            "1.1.1.1",
+        )
+
+    def test_internet_latency_package_accepts_archived_turn_hostname_without_live_dns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            turn = internet_route["turn_deployment"]
+            assert isinstance(turn, dict)
+            turn["public_hostname"] = "turn.example.net"
+            turn["resolved_ip"] = "1.1.1.1"
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            with patch(
+                "socket.getaddrinfo",
+                side_effect=OSError("offline fixture"),
+            ):
+                report = build_latency_evidence_report(
+                    manifest_path=root / "manifest.json",
+                    gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+                )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_package_rejects_missing_remote_peer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            internet_route = self.valid_internet_route()
+            del internet_route["remote_peer"]
+            self.write_manifest(root, manifest | {"internet_route": internet_route})
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        reasons = report["gate"]["reasons"]
+        self.assertTrue(any("manifest.internet_route.remote_peer is required" in reason for reason in reasons))
+        self.assertTrue(any("internet_route.remote_peer.operator is required" in reason for reason in reasons))
+
+    def test_non_internet_latency_package_rejects_internet_route_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["internet_route"] = self.valid_internet_route()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "internet_route is only allowed for the internet-glass-to-glass-sub150 profile",
+            report["gate"]["reasons"],
+        )
 
     def test_missing_raw_camera_artifact_is_insufficient(self) -> None:
         report = build_latency_evidence_report(
@@ -69,8 +303,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             manifest["camera"]["frame_rate_fps"] = 240
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
-            (root / "raw-camera-placeholder.mov").write_bytes(
-                (source / "raw-camera-placeholder.mov").read_bytes()
+            (root / "raw-camera-fixture.mov").write_bytes(
+                (source / "raw-camera-fixture.mov").read_bytes()
+            )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
             )
 
             report = build_latency_evidence_report(
@@ -88,7 +325,12 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             manifest["transport"] = "lan"
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
-            (root / "raw-camera-placeholder.mov").write_text("placeholder", encoding="utf-8")
+            (root / "raw-camera-fixture.mov").write_bytes(
+                (source / "raw-camera-fixture.mov").read_bytes()
+            )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
+            )
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -104,7 +346,10 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             source = FIXTURE_DIR / "external-camera-valid"
             (root / "manifest.json").write_bytes((source / "manifest.json").read_bytes())
             (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-            (root / "raw-camera-placeholder.mov").write_bytes(b"modified recording")
+            (root / "raw-camera-fixture.mov").write_bytes(b"modified recording")
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
+            )
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -118,6 +363,138 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_text_mov_placeholder_is_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-fixture.mov"
+            raw_video.write_text("synthetic camera placeholder\n", encoding="utf-8")
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
+    def test_ftyp_offset_without_media_samples_is_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-fixture.mov"
+            raw_video.write_bytes(b"\x00\x00\x00\x18ftypqt  \x00\x00\x00\x00qt  mp42" + (b"\x00" * 32))
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
+    def test_fake_iso_bmff_box_tree_without_media_chunk_is_insufficient(self) -> None:
+        def box(name: bytes, payload: bytes) -> bytes:
+            return (len(payload) + 8).to_bytes(4, "big") + name + payload
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-fixture.mov"
+            stsd = box(b"stsd", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + box(b"mp4v", b"\x00" * 16))
+            stsz = box(b"stsz", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + (1).to_bytes(4, "big"))
+            stbl = box(b"stbl", stsd + stsz)
+            minf = box(b"minf", stbl)
+            hdlr = box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 8)
+            mdia = box(b"mdia", hdlr + minf)
+            trak = box(b"trak", mdia)
+            moov = box(b"moov", trak)
+            ftyp = box(b"ftyp", b"qt  \x00\x00\x00\00qt  ")
+            raw_video.write_bytes(ftyp + box(b"mdat", b"X") + moov)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
+    def test_fragmented_iso_bmff_video_is_accepted(self) -> None:
+        def box(name: bytes, payload: bytes) -> bytes:
+            return (len(payload) + 8).to_bytes(4, "big") + name + payload
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-fixture.mov"
+            stsd = box(b"stsd", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + box(b"avc1", b"\x00" * 16))
+            stbl = box(b"stbl", stsd)
+            minf = box(b"minf", stbl)
+            hdlr = box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 8)
+            mdia = box(b"mdia", hdlr + minf)
+            trak = box(b"trak", mdia)
+            moov = box(b"moov", trak)
+            trun = box(b"trun", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big"))
+            traf = box(b"traf", trun)
+            moof = box(b"moof", traf)
+            ftyp = box(b"ftyp", b"qt  \x00\x00\x00\x00qt  ")
+            raw_video.write_bytes(ftyp + moov + moof + box(b"mdat", b"video-fragment"))
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_iso_bmff_ftyp_must_be_at_required_offset(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            raw_video = root / "raw-camera-fixture.mov"
+            raw_video.write_bytes(b"notesftyp" + (root / "raw-camera-fixture.mov").read_bytes())
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
     def test_malformed_recording_digest_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -126,8 +503,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             manifest["recording"]["sha256"] = "not-a-digest"
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-            (root / "raw-camera-placeholder.mov").write_bytes(
-                (source / "raw-camera-placeholder.mov").read_bytes()
+            (root / "raw-camera-fixture.mov").write_bytes(
+                (source / "raw-camera-fixture.mov").read_bytes()
+            )
+            (root / "usb-connection.txt").write_bytes(
+                (source / "usb-connection.txt").read_bytes()
             )
 
             report = build_latency_evidence_report(
@@ -267,6 +647,26 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_schema_requires_external_camera_annotation_uncertainty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            setup = manifest["measurement_setup"]
+            assert isinstance(setup, dict)
+            del setup["max_frame_annotation_uncertainty_ms"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.measurement_setup.max_frame_annotation_uncertainty_ms is required",
+            report["gate"]["reasons"],
+        )
+
     def test_schema_rejects_unknown_manifest_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -308,6 +708,348 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertIn(
             "samples.file must stay within the evidence directory",
             report["gate"]["reasons"],
+        )
+
+    def test_profile_artifact_is_required_for_usb_glass_to_glass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest.pop("gate_artifacts", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn("manifest.gate_artifacts is required", report["gate"]["reasons"])
+        self.assertIn(
+            "gate_artifacts must be an object containing profile-specific retained artifacts",
+            report["gate"]["reasons"],
+        )
+        self.assertTrue(
+            any("gate_artifacts.usb_connection is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_profile_artifact_must_stay_in_evidence_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "package"
+            root.mkdir()
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["file"] = "../outside-usb-connection.txt"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.file must stay within the evidence directory",
+            report["gate"]["reasons"],
+        )
+
+    def test_profile_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["sha256"] = "0" * 64
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
+        )
+
+    def test_profile_specific_artifact_key_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["gate_artifacts"] = {
+                "lan_network_preflight": {
+                    "file": "usb-connection.txt",
+                    "sha256": manifest["gate_artifacts"]["usb_connection"]["sha256"],
+                    "description": "Wrong profile artifact key.",
+                }
+            }
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any(
+                "gate_artifacts.usb_connection is required" in reason
+                for reason in report["gate"]["reasons"]
+            )
+        )
+
+    def test_lan_profile_requires_lan_preflight_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["transport"] = "lan"
+            manifest["gate_profile"] = "lan-glass-to-glass-sub80"
+            manifest["gate_artifacts"] = {
+                "lan_network_preflight": {
+                    "file": "missing-lan-preflight.txt",
+                    "sha256": "0" * 64,
+                    "description": "Synthetic LAN preflight proof.",
+                }
+            }
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile="lan-glass-to-glass-sub80",
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.lan_network_preflight.file does not exist" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_input_profile_requires_physical_actuation_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest.pop("gate_artifacts", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.input_actuation_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_requires_sync_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            gate_artifacts.pop("synchronization_record", None)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("gate_artifacts.synchronization_record is required" in reason for reason in report["gate"]["reasons"])
+        )
+
+    def test_synchronized_clock_sync_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            sync_record = gate_artifacts["synchronization_record"]
+            assert isinstance(sync_record, dict)
+            sync_record["sha256"] = "0" * 64
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.synchronization_record.sha256 does not match its referenced file",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_input_package_passes(self) -> None:
+        report = build_latency_evidence_report(
+            manifest_path=FIXTURE_DIR / "synchronized-clock-input-valid" / "manifest.json",
+            gate_profile=GATE_INPUT_P95_SUB50,
+        )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertTrue(report["gate"]["can_close_performance_gate"])
+        self.assertEqual(report["gate"]["sample_count"], 5)
+        self.assertEqual(report["measurement_method"], "synchronized-clock")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_synchronized_clock_requires_input_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["latency_kind"] = "glass-to-glass"
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronized-clock measurement_method requires latency_kind input",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_error_budget_must_be_below_5ms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["synchronization"]["total_error_budget_ms"] = 5.0
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("total_error_budget_ms must be less than 5 ms" in reason
+                for reason in report["gate"]["reasons"])
+        )
+        self.assertIn(
+            "manifest.synchronization.total_error_budget_ms must be less than 5",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_allows_budget_just_below_5ms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["synchronization"]["total_error_budget_ms"] = 4.999
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_synchronized_clock_rejects_manual_frame_count_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["samples"]["annotation_method"] = "manual-frame-count"
+            self.replace_samples(
+                root,
+                manifest,
+                "start_frame,end_frame,camera_fps\n"
+                "100,105,240\n200,205,240\n300,305,240\n"
+                "400,405,240\n500,505,240\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms",
+            report["gate"]["reasons"],
+        )
+        self.assertIn(
+            "manifest.samples.annotation_method must be direct-latency-ms",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_components_must_fit_total_budget(self) -> None:
+        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    manifest = self.copy_synchronized_clock_package(root)
+                    manifest["synchronization"]["total_error_budget_ms"] = 3.0
+                    manifest["synchronization"][field] = 3.1
+                    self.write_manifest(root, manifest)
+
+                    report = build_latency_evidence_report(
+                        manifest_path=root / "manifest.json",
+                        gate_profile=GATE_INPUT_P95_SUB50,
+                    )
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertIn(
+                    f"synchronization.{field} must be less than or equal to "
+                    "synchronization.total_error_budget_ms",
+                    report["gate"]["reasons"],
+                )
+
+    def test_synchronized_clock_component_sum_must_fit_total_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["synchronization"]["before_skew_ms"] = 1.4
+            manifest["synchronization"]["after_skew_ms"] = 1.4
+            manifest["synchronization"]["max_drift_ms"] = 1.3
+            manifest["synchronization"]["total_error_budget_ms"] = 4.0
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronization.before_skew_ms + synchronization.after_skew_ms + "
+            "synchronization.max_drift_ms must be less than or equal to "
+            "synchronization.total_error_budget_ms",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_budget_applied_to_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["synchronization"]["total_error_budget_ms"] = 4.5
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n45\n46\n47\n48\n49\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any("synchronization error budget exceeds the gate threshold" in reason
+                for reason in report["gate"]["reasons"])
         )
 
 

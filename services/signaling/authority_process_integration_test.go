@@ -212,8 +212,20 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 
 	// Relay credentials are issued only after relay asks the shared authority to
 	// reserve capacity for this signaling session/device/allocation tuple.
-	credentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
+	firstAllocationID := "allocation-before-session-invalidate"
+	credentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":%q}`, clientDeviceID, firstSession.SessionID, firstAllocationID)
 	assertCredential(credentialBody)
+	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
+		SourceID:     "turn-integration-1",
+		EventID:      "first-allocation-open",
+		AllocationID: firstAllocationID,
+		DeviceID:     clientDeviceID,
+		SessionID:    firstSession.SessionID,
+		Sequence:     1,
+		IngressBytes: 10,
+		EgressBytes:  20,
+		ObservedAt:   futureUsageTime().Format(time.RFC3339Nano),
+	}, http.StatusAccepted)
 
 	// Session-only invalidation must also propagate to relay admission. The
 	// device is still registered and not revoked, so this proves the authority
@@ -233,6 +245,18 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		http.StatusNotFound)
 	credentialAfterSessionInvalidate := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterSessionInvalidate, http.StatusForbidden)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialBody, http.StatusForbidden)
+	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
+		SourceID:     "turn-integration-1",
+		EventID:      "first-allocation-after-session-invalidate",
+		AllocationID: firstAllocationID,
+		DeviceID:     clientDeviceID,
+		SessionID:    firstSession.SessionID,
+		Sequence:     2,
+		IngressBytes: 12,
+		EgressBytes:  23,
+		ObservedAt:   futureUsageTime().Format(time.RFC3339Nano),
+	}, http.StatusForbidden)
 
 	secondRequestID := "req-" + randomSuffix(t)
 	const secondSessionEpoch uint64 = 2
@@ -253,8 +277,23 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	if secondSession.SessionID == "" || secondSession.HostToken == "" || secondSession.DeviceToken == "" {
 		t.Fatalf("incomplete second session response: %#v", secondSession)
 	}
-	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-device-revoke"}`, clientDeviceID, secondSession.SessionID)
+	secondAllocationID := "allocation-before-device-revoke"
+	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":%q}`, clientDeviceID, secondSession.SessionID, secondAllocationID)
 	assertCredential(secondCredentialBody)
+	secondRelayUsageBody := fmt.Sprintf(`{"event_id":"relay-usage-before-device-revoke","device_id":%q,"session_id":%q,"allocation_id":%q,"kind":"start","ingress_bytes":30,"egress_bytes":40}`,
+		clientDeviceID, secondSession.SessionID, secondAllocationID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/usage", run.relayUsageToken, secondRelayUsageBody, http.StatusAccepted)
+	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
+		SourceID:     "turn-integration-1",
+		EventID:      "second-allocation-open",
+		AllocationID: secondAllocationID,
+		DeviceID:     clientDeviceID,
+		SessionID:    secondSession.SessionID,
+		Sequence:     1,
+		IngressBytes: 30,
+		EgressBytes:  40,
+		ObservedAt:   futureUsageTime().Format(time.RFC3339Nano),
+	}, http.StatusAccepted)
 
 	// Revoke the client device through the authority admin API. The session
 	// epoch is the revocation epoch; the authority marks every session that
@@ -280,6 +319,21 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	// back to the relay-local JSON store.
 	credentialAfterRevokeBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-revoke"}`, clientDeviceID, secondSession.SessionID)
 	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterRevokeBody, http.StatusForbidden)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, secondCredentialBody, http.StatusForbidden)
+	secondRelayUsageAfterRevokeBody := fmt.Sprintf(`{"event_id":"relay-usage-after-device-revoke","device_id":%q,"session_id":%q,"allocation_id":%q,"kind":"update","ingress_bytes":35,"egress_bytes":45}`,
+		clientDeviceID, secondSession.SessionID, secondAllocationID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/usage", run.relayUsageToken, secondRelayUsageAfterRevokeBody, http.StatusForbidden)
+	reportCoturnUsage(t, authorityBase, run.authorityCoturnToken, coturnUsageReport{
+		SourceID:     "turn-integration-1",
+		EventID:      "second-allocation-after-device-revoke",
+		AllocationID: secondAllocationID,
+		DeviceID:     clientDeviceID,
+		SessionID:    secondSession.SessionID,
+		Sequence:     2,
+		IngressBytes: 35,
+		EgressBytes:  45,
+		ObservedAt:   futureUsageTime().Format(time.RFC3339Nano),
+	}, http.StatusForbidden)
 
 	// The issuer can still invalidate the session record, but the underlying
 	// authority admission is already revoked.
@@ -342,7 +396,7 @@ func resetAuthorityDatabase(t *testing.T, databaseURL string) {
 
 func resetSignalingDatabase(t *testing.T, databaseURL string) {
 	t.Helper()
-	const statement = "TRUNCATE signaling_waiters, signaling_role_rates, signaling_messages, signaling_sessions RESTART IDENTITY CASCADE"
+	const statement = "TRUNCATE signaling_waiter_leases, signaling_role_rates, signaling_messages, signaling_sessions RESTART IDENTITY CASCADE"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "psql", databaseURL, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", "--command", statement)
@@ -385,7 +439,7 @@ func buildRelay(t *testing.T, binaryPath string) {
 
 func migrateAuthority(t *testing.T, run *authorityProcessTest) {
 	t.Helper()
-	migrationPath, err := filepath.Abs("../authority/migrations/001_authority.sql")
+	migrationPath, err := filepath.Abs("../authority/migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,12 +571,13 @@ func startRelay(t *testing.T, run *authorityProcessTest) {
   "max_concurrent_sessions_per_device": 2,
   "daily_bytes_per_device": 21474836480,
   "max_usage_event_bytes": 1073741824,
-  "egress_microcents_per_gibibyte": 0,
-  "state_file": %q,
-  "authority_mode": "production_authority",
-  "authority_url": "http://%s",
-  "authority_source_id": "turn-integration-1"
-}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), run.authorityAddress)
+	  "egress_microcents_per_gibibyte": 0,
+	  "state_file": %q,
+	  "allocation_registry_file": %q,
+	  "authority_mode": "production_authority",
+	  "authority_url": "http://%s",
+	  "authority_source_id": "turn-integration-1"
+	}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), filepath.Join(t.TempDir(), "relay-allocation-registry.json"), run.authorityAddress)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -636,6 +691,32 @@ func relayRequest(t *testing.T, method, url, token, body string, expectedStatus 
 		t.Fatalf("relay %s %s status=%d want=%d body=%s", method, url, status, expectedStatus, responseBody)
 	}
 	return responseBody
+}
+
+type coturnUsageReport struct {
+	SourceID     string `json:"source_id"`
+	EventID      string `json:"event_id"`
+	AllocationID string `json:"allocation_id"`
+	DeviceID     string `json:"device_id"`
+	SessionID    string `json:"session_id"`
+	Sequence     uint64 `json:"sequence"`
+	IngressBytes uint64 `json:"ingress_bytes"`
+	EgressBytes  uint64 `json:"egress_bytes"`
+	Closed       bool   `json:"closed,omitempty"`
+	ObservedAt   string `json:"observed_at"`
+}
+
+func reportCoturnUsage(t *testing.T, authorityBase, token string, usage coturnUsageReport, expectedStatus int) {
+	t.Helper()
+	body, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorityRequest(t, http.MethodPost, authorityBase+"/v1/coturn/usage", token, string(body), expectedStatus)
+}
+
+func futureUsageTime() time.Time {
+	return time.Now().UTC().Add(time.Second)
 }
 
 // pollExpectStatus polls for events and asserts the HTTP status without

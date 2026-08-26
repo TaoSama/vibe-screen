@@ -32,3 +32,4 @@
 __pycache__/
 *.py[cod]
 local.properties
+deploy/phase3/coturn-state/

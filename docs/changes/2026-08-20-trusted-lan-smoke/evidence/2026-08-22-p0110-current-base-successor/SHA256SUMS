@@ -1,0 +1,14 @@
+eb57296498de75afc0296911b33998b516a88a45c481b4a53cbb8630726faedd  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/android-app-state.txt
+9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/android-lan-security-tests.exit
+9d93266a37532ab7e1f3ff293bfe7d35b598d5e7548d775642cc9fbacafe5032  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/android-lan-security-tests.txt
+4c1bb40960bc256f9a163cc40c1b565e40f44a73347db321b18e536a7c462e31  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/android-network-blocker-sanitized.txt
+8e39d92e069f05db7f7c641e01b1526e1834e68259e0ed7f9677f5e34470aab7  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/codesign-identities.txt
+7c6c992032e9de398e954ed856994ecf9ed0a48309be3429ed78d19d10127ae9  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/commands.txt
+dd1f197c8fa395dfae3a77fce2ab12a5f3ca7af042691ea4c04a16c534d3dedb  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/device-info.txt
+bc2a995703a5fcf6612fac1ca1e8fd51f42a486981c0bf1df16e3de7dd74cc48  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/host-binary-identity.txt
+78ee91fb59285efb0a91a7355de278e76dc1e96d8be93ef0bec0a189b8ad41b2  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/host-preflight-console.txt
+b2466c2b880aadcdd85a0e88ed04fd91667aa1c10c27ae3b2ded3e2657b70bc1  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/mac-lan-preflight.txt
+9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/make-protocol.exit
+8151359b94447ceac90b1b83a6b0e681b5a6d16cbb58e01f6cc9b5be68964cec  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/make-protocol.txt
+b02c83ef16ab16e415309797e2d5c5ec48ec65b41c9c1fbd72515bb50922eed4  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/README.md
+24611e48fb40c6b972c78aa94d7fe048fbad5ff5d241802932e87ba7c7e229fa  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor/trusted-lan-smoke-verdict.json

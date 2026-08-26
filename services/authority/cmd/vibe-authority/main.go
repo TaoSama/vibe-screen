@@ -28,7 +28,7 @@ func main() {
 }
 func run() error {
 	configPath := flag.String("config", "config.json", "path to authority JSON configuration")
-	migrationPath := flag.String("migrate", "", "apply one SQL migration file and exit")
+	migrationPath := flag.String("migrate", "", "apply a SQL migration file or directory and exit")
 	healthcheckURL := flag.String("healthcheck", "", "probe one authority health or readiness URL and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -44,13 +44,9 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		contents, err := os.ReadFile(*migrationPath)
-		if err != nil {
-			return fmt.Errorf("read migration: %w", err)
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return authority.ApplyMigration(ctx, databaseURL, string(contents))
+		return authority.ApplyMigrationPath(ctx, databaseURL, *migrationPath)
 	}
 	cfg, err := authority.LoadConfig(*configPath)
 	if err != nil {

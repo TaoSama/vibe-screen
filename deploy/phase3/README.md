@@ -7,14 +7,17 @@ This directory contains two deliberately separate deployment slices:
 - `docker-compose.authority.production.yml` is a production-shaped Authority
   profile that requires an external PostgreSQL, immutable image digest, and
   runtime secret files.
-- `docker-compose.yml` and `docker-compose.production.yml` run the experimental
-  relay credential service beside coturn.
+- `docker-compose.yml` runs the experimental relay credential service beside
+  coturn for local testing.
+- `docker-compose.production.yml` is a production-shaped profile for signaling,
+  relay credential issuance, and coturn. It requires external PostgreSQL
+  databases, immutable image digests, and runtime secret files.
 
 They are not an integrated public Internet stack. Authority-backed signaling and
 relay credential admission can both call the shared Authority service, but these
 profiles still do not provide automatic account/session issuance, public ingress,
-multi-instance routing, or active revocation of an established PeerConnection/TURN
-allocation.
+validated multi-instance throughput, or active revocation of an established
+PeerConnection/TURN allocation.
 
 ## Authority local profile
 
@@ -109,6 +112,57 @@ persistence, database-outage failure, runtime hardening, and secret-log scan. It
 does not prove production TLS, NTP, backup/restore, public ingress, or multi-node
 behavior.
 
+## Signaling production configuration
+
+The production profile now includes `signaling-migrate` and `signaling` services
+that use the same external PostgreSQL and immutable-image pattern as the relay
+profile. Copy `config/signaling.production.example.json` to the ignored
+`config/signaling.production.json`, point `authority_url` at the private
+Authority endpoint, and keep `authority_mode=production_authority` with
+`store_backend=postgres`.
+
+Provide `VIBE_SIGNALING_IMAGE_REPOSITORY` and
+`VIBE_SIGNALING_IMAGE_SHA256`, independent migration/runtime PostgreSQL URL
+secret files, and independent issuer, metrics, and Authority client token files.
+The migration and runtime PostgreSQL URLs may use different credentials, but
+they must target the same PostgreSQL database and schema so the migration job
+creates the exact schema used by runtime readiness and traffic.
+
+```bash
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/etc/vibe-secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/etc/vibe-secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/etc/vibe-secrets/signaling-authority-token
+docker compose -f docker-compose.production.yml config --quiet
+docker compose -f docker-compose.production.yml pull signaling
+docker compose -f docker-compose.production.yml up -d --wait signaling
+curl --fail http://127.0.0.1:8088/readyz
+```
+
+The migration job applies `001_signaling.sql` behind an advisory lock and a
+checksum ledger. `/readyz` requires PostgreSQL reachability, exact schema,
+database/application clock-skew proof, and Authority readiness. With PostgreSQL,
+any signaling instance can authorize, publish, poll, and invalidate any
+short-lived session row. Long-poll waiters are stored as connection-scoped
+leases keyed by PostgreSQL backend PID and backend start time, so a replacement
+instance can reclaim a waiter slot after the failed instance database backend
+disappears.
+
+The signaling runtime role must either be shared by all signaling instances or
+have `pg_read_all_stats`/`pg_monitor` so live listener backend start times are
+visible in `pg_stat_activity`. If a pooler sits between signaling and
+PostgreSQL, use session pooling; transaction pooling breaks `LISTEN` and stable
+backend identity.
+
+Place signaling behind a private TLS 1.2+ reverse proxy or service mesh and route
+only client role endpoints publicly. Keep issuer and metrics endpoints internal.
+No sticky sessions are required for rendezvous correctness, but this profile has
+not proved multi-replica throughput, global create-rate enforcement, production
+load-balancer behavior, or multi-region consistency.
+
 ## Relay data plane
 
 This directory runs the Vibe Screen relay credential service beside a real
@@ -172,7 +226,10 @@ Linux host:
    Authority endpoint, and set `authority_source_id` to a stable identifier for
    this TURN source. The production example selects `storage_backend: postgres`;
    do not change it to the file backend for a multi-process or public
-   deployment.
+   deployment. Keep `allocation_registry_file` on the writable
+   `/var/lib/vibe-coturn` mount so relay can persist the Authority
+   `allocation_id` to TURN REST username mapping used by operator coturn
+   control helpers.
 2. Set `VIBE_RELAY_IMAGE_REPOSITORY` and the exact 64-character
    `VIBE_RELAY_IMAGE_SHA256`; Compose constructs a digest-only image reference
    and the production profile intentionally has no local relay build fallback.
@@ -187,15 +244,21 @@ Linux host:
    `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
    account while retaining `0600` permissions. Store/rotate all secrets through
    the deployment secret manager, not source control.
-5. Install the public certificate chain as ignored `tls/fullchain.pem` and its
+5. Create the ignored `coturn-state` directory, or set
+   `VIBE_COTURN_ALLOCATION_REGISTRY_DIR` to another pre-created host path, and
+   make it writable by relay UID/GID `65532`. The Compose bind mount sets
+   `create_host_path: false` so a missing directory fails startup instead of
+   being created with root ownership. Relay `/readyz` fails closed if the
+   configured allocation registry cannot be read or atomically updated.
+6. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
-6. Set `COTURN_REALM` to the certificate DNS hostname and
+7. Set `COTURN_REALM` to the certificate DNS hostname and
    `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
    the public IP on a directly addressed host.
-7. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
+8. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
    on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
    controls before these host rules.
-8. Validate the effective configuration, start, and inspect health/logs:
+9. Validate the effective configuration, start, and inspect health/logs:
 
 ```bash
 export COTURN_REALM=relay.example.com
@@ -204,12 +267,54 @@ export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
 export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
+
+Before treating this as public NAT/TURN release evidence, write a sanitized
+connectivity JSON outside the repository and run the fail-closed preflight:
+
+```bash
+python3 ../../scripts/phase3/public_nat_turn_preflight.py \
+  --relay-config ./config/relay.production.json \
+  --coturn-config ./coturn/production.conf \
+  --turn-secret-file ./secrets/turn_secret.txt \
+  --tls-certificate ./tls/fullchain.pem \
+  --tls-private-key ./tls/privkey.pem \
+  --coturn-external-ip "$COTURN_EXTERNAL_IP" \
+  --authority-ready-url https://authority.example.com/readyz \
+  --relay-ready-url https://relay.example.com/readyz \
+  --connectivity-evidence /protected/evidence/public-nat-turn-connectivity.json \
+  --deployment-evidence /protected/evidence/public-nat-turn-deployment.json \
+  --output /protected/evidence/public-nat-turn-preflight.json \
+  --connectivity-command /usr/local/bin/vibe-public-turn-canary
+```
+
+The preflight returns non-zero and records `blocked` when any public address,
+runtime secret, TLS material, readiness probe, quota/ACL invariant, or remote
+connectivity artifact is missing. A saved `--connectivity-evidence` file is only
+reviewed context; pass evidence requires `--connectivity-command` to run an
+external observer during the preflight and emit a matching sanitized JSON record
+on stdout. `--deployment-evidence` is a separate production-readiness record: it
+must prove the public STUN endpoint, UDP/TCP TURN, TLS TURN, certificate hostname
+validation, TLS 1.2 or newer, quota enforcement, credential rotation with old
+credential rejection after TTL, allocation/auth-failure/relay-byte/quota
+monitoring, alert rules, and at least two remote observers outside the host
+network. Use `--allow-blocked` only to archive a readiness blocker. The
+checked-in example config, local coturn profile, loopback runs, and synthetic
+peers are expected to remain blocked and cannot close the public Internet or
+remote TURN gates.
 
 The `relay-migrate` job applies `001_relay.sql` behind an advisory lock and a
 checksum ledger. Relay starts only after that job exits successfully. `/readyz`
@@ -217,6 +322,15 @@ requires the database, schema checksum, required relations/columns/constraints,
 and database clock skew to be inside the configured bound. A database outage or
 schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
+
+After production readiness passes, record the public Internet soak boundary from
+the source revision under test with `make phase3-internet-soak-manifest`, then
+evaluate it with `make phase3-internet-soak-gate` after the remote TURN, media
+continuity, network handoff, revocation propagation, and two-hour soak summaries
+have been privacy reviewed. The gate rejects local-only TURN, missing TLS or
+secret-source declarations, absent readiness probes, missing remote peers, and
+partial report families as `blocked`; it never converts this production profile
+or the local Compose profile into public Internet evidence by itself.
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
@@ -261,12 +375,22 @@ atomically counts all session/expiry credentials under one device principal.
 `user-quota=12` is therefore a per-device allocation cap. In
 `production_authority` mode, relay also asks Authority to admit each
 `device_id/session_id/allocation_id/source_id` tuple before returning that TURN
-credential; revoked or expired Authority sessions and revoked devices fail closed
-before coturn sees a credential. Revalidate `user-quota` against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
-no coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
-per-device concurrent-session accounting is not authoritative for this
-deployment; coturn's own limits remain the immediate enforcement boundary.
+credential and before accepting each non-duplicate relay usage event; revoked or
+expired Authority sessions, revoked devices, and conflicting allocation identity
+fail closed before coturn sees a credential or before the relay ledger advances.
+Accepted credential grants are recorded in the relay allocation registry so
+operator tooling can correlate Authority allocation IDs with coturn sessions.
+Revalidate `user-quota` against legitimate UDP/TCP/TLS ICE allocation counts
+before changing it. The repository now has a current-base local structured
+exporter adapter, bounded reconciliation loop, local active-allocation state
+disconnect executor, and coturn CLI control helper for exact registry-matched
+allocations. These helpers are not deployed by this profile: there is still no
+production-deployed coturn-to-`/v1/usage` collector, no production scheduler for
+the bounded reconciliation loop, and no concrete live coturn active-allocation
+disconnect evidence.
+Therefore the control plane's daily-byte and per-device concurrent-session
+accounting is not authoritative for this deployment; coturn's own limits remain
+the immediate enforcement boundary.
 Postgres removes the previous local-state blocker for multiple relay
 control-plane processes, but it does not provide TURN usage collection, billing
 reconciliation, production database backups, NTP monitoring, or multi-region

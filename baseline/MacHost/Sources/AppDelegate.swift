@@ -35,7 +35,7 @@ private enum TelemachusLog {
                     try? FileManager.default.removeItem(at: rotatedURL)
                     try? FileManager.default.moveItem(at: url, to: rotatedURL)
                 }
-                let timestamp = ISO8601DateFormatter().string(from: Date())
+                let timestamp = TelemetryTimestamp.string(from: Date())
                 let data = Data("\(timestamp) \(message)\n".utf8)
                 if !FileManager.default.fileExists(atPath: url.path) {
                     FileManager.default.createFile(
@@ -228,6 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// state machine. Created in setupMenuBar; bound to the active server
     /// on client connect and unbound on disconnect/teardown.
     private var clipboardController: ClipboardUIController?
+    private var fileTransferController: FileTransferUIController?
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -745,6 +746,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             shareMenuItem: shareClipboardItem,
             receiveMenuItem: receiveClipboardItem
         )
+        let sendFileItem = NSMenuItem(
+            title: "Send File to Android",
+            action: nil,
+            keyEquivalent: ""
+        )
+        menu.addItem(sendFileItem)
+        fileTransferController = FileTransferUIController(sendMenuItem: sendFileItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -1931,12 +1939,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Setup server. USB is loopback-only; wireless authenticates every
             // candidate before it can replace the active client.
             let serverMode: StreamingServerMode
+            let wakeHostAuthorizer: any WakeHostAuthorizing
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
             if configuration.connectionMode == .wireless {
                 do {
+                    let authToken = try WirelessAuth.loadOrCreate()
                     serverMode = .wireless(
-                        authToken: try WirelessAuth.loadOrCreate()
+                        authToken: authToken
                     )
+                    wakeHostAuthorizer = SharedSecretWakeHostAuthorizer(secret: authToken)
                     settings.wirelessTokenError = nil
                 } catch {
                     settings.wirelessTokenError = error.localizedDescription
@@ -1945,10 +1956,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else {
                 serverMode = .usb
+                wakeHostAuthorizer = DenyWakeHostAuthorizer()
             }
             streamingServer = StreamingServer(
                 port: settings.port,
-                mode: serverMode
+                mode: serverMode,
+                wakeHostAuthorizer: wakeHostAuthorizer
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
@@ -2093,21 +2106,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.clipboardController?.handleDirectContent(content, generation: generation)
                 }
             }
+            streamingServer?.onFileTransferApprovalRequested = { [weak self, weak configuredServer] offer in
+                guard let self, let configuredServer,
+                      self.streamingServer === configuredServer else { return false }
+                return self.fileTransferController?.approveIncomingFileOffer(offer) ?? false
+            }
+            streamingServer?.onIncomingFileCompleted = { [weak self, weak configuredServer] completed in
+                DispatchQueue.main.async { [weak self, weak configuredServer] in
+                    guard let self, let configuredServer,
+                          self.streamingServer === configuredServer else { return }
+                    self.fileTransferController?.handleIncomingFileCompleted(completed)
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
                 DispatchQueue.main.async { [weak self, weak configuredServer, weak configuredCapture] in
                     guard let self, let configuredServer, let configuredCapture,
                           self.screenCapture === configuredCapture else { return }
-                    let clipboardAvailable = configuredServer.clipboardAvailable
+                    let activeServer = configuredServer
+                    let clipboardAvailable = activeServer.clipboardAvailable
+                    let fileTransferAvailable = activeServer.fileTransferAvailable
                     self.performSessionCallback(
                             token: startToken,
-                            server: configuredServer,
+                            server: activeServer,
                             clientGeneration: clientGeneration
                     ) {
                         if let clipboardTransport {
                             self.clipboardController?.bind(
-                                server: configuredServer,
+                                server: activeServer,
                                 generation: clientGeneration,
                                 transport: clipboardTransport,
                                 clipboardAvailable: clipboardAvailable
@@ -2115,6 +2142,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         } else {
                             self.clipboardController?.unbind()
                         }
+                        self.fileTransferController?.bind(
+                            server: activeServer,
+                            fileTransferAvailable: fileTransferAvailable
+                        )
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0
                         // Clear before the new client's type-11 arrives so a
@@ -2185,6 +2216,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     ) {
                         self.cancelSessionInput(releaseDrag: true)
                         self.clipboardController?.unbind()
+                        self.fileTransferController?.unbind()
                         self.reportWindowRecovery(
                             self.windowRecoveryManager.restoreManagedWindows()
                         )
@@ -2368,8 +2400,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             streamingServer?.encoderStatsProvider = { [weak configuredCapture] in
                 configuredCapture?.encoderStats.map { stats in
-                    (inFlight: stats.inFlight, capacity: stats.capacity)
+                    (
+                        inFlight: stats.inFlight,
+                        capacity: stats.capacity,
+                        frameRegistryCount: stats.frameRegistryCount
+                    )
                 }
+            }
+            streamingServer?.frameLifecycleStatsProvider = { [weak configuredCapture] in
+                guard let stats = configuredCapture?.frameLifecycleStats else { return nil }
+                return StreamFrameLifecycleStats(
+                    latestPixelBufferRetained: stats.latestPixelBufferRetained,
+                    latestPixelBufferCapacity: stats.latestPixelBufferCapacity,
+                    fallbackCaptureActive: stats.fallbackCaptureActive,
+                    encoderPresent: stats.encoderPresent
+                )
             }
 
             streamingServer?.onServerFailed = {
@@ -3431,6 +3476,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// partial combination of display, capture, listener, or ADB setup.
     private func teardownStreamingComponents() async {
         clipboardController?.unbind()
+        fileTransferController?.unbind()
         if let teardownTask {
             await teardownTask.value
             return

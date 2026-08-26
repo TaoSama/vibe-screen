@@ -3,7 +3,9 @@ package authority
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,7 +14,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
+
+var integrationSchemaCounter atomic.Uint64
 
 func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	t.Helper()
@@ -20,17 +26,15 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if databaseURL == "" {
 		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
 	}
-	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	migrationPath := filepath.Join("..", "..", "migrations")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := ApplyMigration(ctx, databaseURL, string(migration)); err != nil {
+	databaseURL = openIsolatedIntegrationSchema(t, ctx, databaseURL)
+	if err := ApplyMigrationPath(ctx, databaseURL, migrationPath); err != nil {
 		t.Fatal(err)
 	}
 	// A second application proves the checksum ledger makes migration retries safe.
-	if err := ApplyMigration(ctx, databaseURL, string(migration)); err != nil {
+	if err := ApplyMigrationPath(ctx, databaseURL, migrationPath); err != nil {
 		t.Fatal(err)
 	}
 	cfg := testAuthorityConfig()
@@ -39,12 +43,46 @@ func openIntegrationStore(t *testing.T) (*PostgresStore, Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `TRUNCATE authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_signaling_sessions,authority_devices,authority_accounts,authority_audit_events RESTART IDENTITY CASCADE`); err != nil {
-		store.Close()
-		t.Fatal(err)
-	}
 	t.Cleanup(store.Close)
 	return store, cfg
+}
+
+func openIsolatedIntegrationSchema(t *testing.T, ctx context.Context, databaseURL string) string {
+	t.Helper()
+	schemaName := fmt.Sprintf("authority_test_%d_%d", time.Now().UnixNano(), integrationSchemaCounter.Add(1))
+	schemaIdentifier := pgx.Identifier{schemaName}.Sanitize()
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("connect for integration schema: %v", err)
+	}
+	if _, err := connection.Exec(ctx, "CREATE SCHEMA "+schemaIdentifier); err != nil {
+		_ = connection.Close(ctx)
+		t.Fatalf("create integration schema: %v", err)
+	}
+	if err := connection.Close(ctx); err != nil {
+		t.Fatalf("close integration schema connection: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		connection, err := pgx.Connect(cleanupCtx, databaseURL)
+		if err != nil {
+			t.Logf("connect for integration schema cleanup: %v", err)
+			return
+		}
+		defer func() { _ = connection.Close(cleanupCtx) }()
+		if _, err := connection.Exec(cleanupCtx, "DROP SCHEMA IF EXISTS "+schemaIdentifier+" CASCADE"); err != nil {
+			t.Logf("drop integration schema %s: %v", schemaName, err)
+		}
+	})
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatalf("parse integration database URL: %v", err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", schemaName)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func TestPostgresDenyWinsAndPersistsRevocation(t *testing.T) {
@@ -138,14 +176,74 @@ func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
 	if _, err := restarted.CreateSignaling(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed idempotency replay error=%v, want ErrConflict", err)
 	}
-	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+	if err := restarted.InvalidateSignaling(ctx, created.SessionID, now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, request, now.Add(4*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("idempotent replay after invalidation error=%v, want ErrRevoked", err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(5*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable host epoch floor error=%v, want ErrConflict", err)
 	}
 	if err := restarted.RegisterDevice(ctx, "account", "other-host"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(6*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
+func TestPostgresSessionProfileIssuanceReplayIsDurableAndDigestOnly(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	profile := testSessionProfileRequest(t, "profile-request", 7)
+	if err := store.EnsureAccount(ctx, profile.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{profile.HostIdentity.DeviceID, profile.ClientIdentity.DeviceID} {
+		if err := store.RegisterDevice(ctx, profile.AccountID, deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	created, err := store.IssueSessionProfile(ctx, profile, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created || len(created.UnsignedAndroidLease) == 0 {
+		t.Fatalf("unexpected profile response: %#v", created)
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.IssueSessionProfile(ctx, profile, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Created || replayed.SignalingSessionID != created.SignalingSessionID || replayed.HostSignalingToken != created.HostSignalingToken {
+		t.Fatalf("durable profile replay changed stable fields: replay=%#v created=%#v", replayed, created)
+	}
+	var profileRows, tokenColumns int
+	if err := restarted.pool.QueryRow(ctx, `SELECT count(*) FROM authority_session_profile_issuance`).Scan(&profileRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='authority_session_profile_issuance' AND (column_name ILIKE '%token%' OR column_name ILIKE '%credential%' OR column_name ILIKE '%lease%')`).Scan(&tokenColumns); err != nil {
+		t.Fatal(err)
+	}
+	if profileRows != 1 || tokenColumns != 0 {
+		t.Fatalf("profile issuance table rows=%d token-like columns=%d", profileRows, tokenColumns)
+	}
+	changed := profile
+	changed.SessionEpoch = 8
+	if _, err := restarted.IssueSessionProfile(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed profile replay error=%v, want ErrConflict", err)
+	}
+	stale := testSessionProfileRequest(t, "stale-profile-request", 6)
+	if _, err := restarted.IssueSessionProfile(ctx, stale, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale profile epoch error=%v, want ErrConflict", err)
 	}
 }
 
@@ -295,6 +393,9 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if err := store.RevokeDevice(ctx, "client", 1, now); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AdmitRelay(ctx, exactRetry, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("exact relay retry after device revocation error=%v, want ErrRevoked", err)
+	}
 	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
 	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("final usage after revocation error=%v, want ErrRevoked", err)
@@ -329,6 +430,9 @@ func TestPostgresSignalingInvalidationClosesRelayAllocationLedgerOnly(t *testing
 	}
 	if err := store.InvalidateSignaling(ctx, session.SessionID, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("exact relay retry after signaling invalidation error=%v, want ErrRevoked", err)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "blocked", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("invalidated session relay admission error=%v", err)
@@ -408,6 +512,62 @@ func TestPostgresRevocationClosesRelayAllocationsForLedgerOnly(t *testing.T) {
 	}
 }
 
+func TestPostgresReconcileDoesNotReportSourceClosedAllocationsAsRevoked(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 2
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "source-close", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "source-closed", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	closed := CoturnUsage{SourceID: "node", EventID: "source-close", AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now.Add(time.Second), Closed: true}
+	if _, err := store.ApplyCoturnUsage(ctx, closed); err != nil {
+		t.Fatal(err)
+	}
+	var reason *string
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, "node", "source-closed").Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason == nil || *reason != allocationClosedBySource {
+		t.Fatalf("closure_reason=%v, want %s", reason, allocationClosedBySource)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyAhead != 1 || len(result.RevokedAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 {
+		t.Fatalf("source-closed reconcile result=%+v, want already ahead without revoked/conflict", result)
+	}
+	result, err = store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.ConflictAllocationIDs, []string{"source-closed"}) || len(result.RevokedAllocationIDs) != 0 {
+		t.Fatalf("source-closed advanced reconcile result=%+v, want conflict without revoked", result)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(4*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, "node", "source-closed").Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason == nil || *reason != allocationClosedBySource {
+		t.Fatalf("source-closed allocation reason changed to %v after later revoke", reason)
+	}
+}
+
 func TestPostgresCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
 	store, _ := openIntegrationStore(t)
 	store.allocationLimit = 6
@@ -482,6 +642,86 @@ func TestPostgresReadinessRejectsChecksumMismatch(t *testing.T) {
 	})
 	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
 		t.Fatalf("readiness checksum error=%v", err)
+	}
+}
+
+func TestPostgresMigrationUpgradesPublishedV1ToCurrentSchema(t *testing.T) {
+	databaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connection.Close(ctx) }()
+	if _, err := connection.Exec(ctx, `DROP TABLE IF EXISTS authority_audit_events,authority_coturn_events,authority_relay_allocations,authority_relay_daily_usage,authority_session_profile_issuance,authority_signaling_sessions,authority_session_epoch_floors,authority_devices,authority_accounts,authority_schema_migrations CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_authority.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyMigration(ctx, databaseURL, string(legacy)); err != nil {
+		t.Fatal(err)
+	}
+	closedAt := time.Now().UTC().Add(-time.Minute)
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_accounts(account_id) VALUES ('legacy-account')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_devices(device_id,account_id) VALUES ('legacy-host','legacy-account'),('legacy-client','legacy-account')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_signaling_sessions(session_id,request_id,account_id,host_device_id,client_device_id,session_epoch,expires_at) VALUES ('legacy-session','legacy-request','legacy-account','legacy-host','legacy-client',1,$1::timestamptz + interval '1 hour')`, closedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,admitted_at,last_observed_at,closed_at) VALUES ('legacy-closed','turn-prod-1','legacy-client','legacy-session',1,10,5,$1::timestamptz,$1::timestamptz,$1::timestamptz)`, closedAt); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testAuthorityConfig()
+	cfg.DatabaseURL = databaseURL
+	if legacyOnly, err := OpenPostgres(ctx, cfg); err == nil {
+		legacyOnly.Close()
+		t.Fatal("legacy v1 schema unexpectedly passed current readiness")
+	} else if !errors.Is(err, ErrStorage) {
+		t.Fatalf("legacy v1 readiness error=%v, want ErrStorage", err)
+	}
+	if err := ApplyMigrationPath(ctx, databaseURL, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var versions []int64
+	rows, err := store.pool.Query(ctx, `SELECT version FROM authority_schema_migrations ORDER BY version`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version int64
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(versions, []int64{1, 2}) {
+		t.Fatalf("migration versions=%v, want [1 2]", versions)
+	}
+	var closureReason string
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE allocation_id='legacy-closed'`).Scan(&closureReason); err != nil {
+		t.Fatal(err)
+	}
+	if closureReason != allocationClosedBySource {
+		t.Fatalf("legacy closed allocation closure_reason=%q, want %q", closureReason, allocationClosedBySource)
 	}
 }
 
@@ -615,11 +855,15 @@ func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
 		{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21},
 		{AllocationID: "after-revoked", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 99},
 	}}, time.Minute)
-	if !errors.Is(err, ErrRevoked) {
-		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	if err != nil {
+		t.Fatalf("reconcile after device revoke error=%v", err)
 	}
-	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 {
-		t.Fatalf("partial reconcile result before fail-closed stop=%+v", result)
+	if result.Applied != 1 || result.AlreadyAhead != 0 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result before revoked assertions=%+v", result)
+	}
+	wantRevoked := []string{"after-revoked", "allocation", "already-applied"}
+	if !slices.Equal(result.RevokedAllocationIDs, wantRevoked) {
+		t.Fatalf("revoked allocation ids=%v, want %v", result.RevokedAllocationIDs, wantRevoked)
 	}
 	var ingress, egress string
 	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&ingress, &egress); err != nil {

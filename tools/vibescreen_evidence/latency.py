@@ -31,9 +31,11 @@ METHOD_CLIENT_TELEMETRY = "client-telemetry"
 METHOD_UNSYNCHRONIZED_CLOCKS = "unsynchronized-host-device-clocks"
 TRANSPORT_USB = "usb"
 TRANSPORT_LAN = "lan"
+TRANSPORT_INTERNET = "internet"
 TELEMETRY_STAGE_METHODS = (METHOD_HOST_TELEMETRY, METHOD_CLIENT_TELEMETRY)
 GATE_USB_GLASS_TO_GLASS_SUB50 = "usb-glass-to-glass-sub50"
 GATE_LAN_GLASS_TO_GLASS_SUB80 = "lan-glass-to-glass-sub80"
+GATE_INTERNET_GLASS_TO_GLASS_SUB150 = "internet-glass-to-glass-sub150"
 GATE_INPUT_P95_SUB50 = "input-p95-sub50"
 MIN_GATE_SAMPLE_COUNT = 5
 GATE_PROFILES = {
@@ -46,6 +48,11 @@ GATE_PROFILES = {
         "kind": KIND_GLASS_TO_GLASS,
         "transport": TRANSPORT_LAN,
         "threshold_ms": 80.0,
+    },
+    GATE_INTERNET_GLASS_TO_GLASS_SUB150: {
+        "kind": KIND_GLASS_TO_GLASS,
+        "transport": TRANSPORT_INTERNET,
+        "threshold_ms": 150.0,
     },
     GATE_INPUT_P95_SUB50: {
         "kind": KIND_INPUT,
@@ -234,6 +241,16 @@ def summarize(
             "glass-to-glass latency requires an external-camera measurement on one timebase; "
             "host/device timestamps are not glass-to-glass evidence"
         )
+    if measurement_method == METHOD_SYNCHRONIZED_CLOCK:
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise LatencyInputError(f"sample {index}: expected an object/CSV row")
+            frame_fields = ("start_frame", "end_frame", "camera_fps")
+            if any(row.get(field) not in (None, "") for field in frame_fields):
+                raise LatencyInputError(
+                    "synchronized-clock samples must provide direct latency_ms values; "
+                    "frame-count samples require external-camera measurement"
+                )
     if kind == KIND_TELEMETRY_STAGE and measurement_method not in TELEMETRY_STAGE_METHODS:
         raise LatencyInputError(
             "telemetry-stage latency requires --measurement-method host-telemetry "
@@ -248,7 +265,7 @@ def summarize(
         METHOD_CLIENT_TELEMETRY,
     ):
         raise LatencyInputError(f"unsupported measurement method: {measurement_method}")
-    if transport not in (TRANSPORT_USB, TRANSPORT_LAN):
+    if transport not in (TRANSPORT_USB, TRANSPORT_LAN, TRANSPORT_INTERNET):
         raise LatencyInputError(f"unsupported transport: {transport}")
 
     latencies = [_latency_from_sample(row, index) for index, row in enumerate(rows, start=1)]
@@ -272,8 +289,8 @@ def summarize(
         evidence_kind = "input_latency"
         gate_summary = {
             "can_close_performance_gate": True,
-            "requires_external_hardware": measurement_method == METHOD_EXTERNAL_CAMERA,
-            "reason": "input samples use an accepted single timebase",
+            "requires_external_hardware": True,
+            "reason": "input samples require physical input and use external-camera or calibrated synchronized clocks",
         }
         status = "complete"
     else:
@@ -400,7 +417,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--kind", choices=(KIND_GLASS_TO_GLASS, KIND_INPUT, KIND_TELEMETRY_STAGE), required=True
     )
-    parser.add_argument("--transport", choices=(TRANSPORT_USB, TRANSPORT_LAN), required=True)
+    parser.add_argument(
+        "--transport", choices=(TRANSPORT_USB, TRANSPORT_LAN, TRANSPORT_INTERNET), required=True
+    )
     parser.add_argument(
         "--measurement-method",
         choices=(
@@ -421,7 +440,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=tuple(GATE_PROFILES),
         help=(
             "optional performance gate to evaluate: usb-glass-to-glass-sub50, "
-            "lan-glass-to-glass-sub80, or input-p95-sub50"
+            "lan-glass-to-glass-sub80, internet-glass-to-glass-sub150, "
+            "or input-p95-sub50"
         ),
     )
     return parser

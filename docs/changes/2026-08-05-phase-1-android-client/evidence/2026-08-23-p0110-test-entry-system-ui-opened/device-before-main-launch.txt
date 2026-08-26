@@ -1,0 +1,4 @@
+time=2026-08-23T07:26:12+0800
+--- focus-before-main-launch ---
+  mCurrentFocus=Window{842c367 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}
+  mFocusedApp=ActivityRecord{134662133 u0 dev.telemachus.display.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity t570}

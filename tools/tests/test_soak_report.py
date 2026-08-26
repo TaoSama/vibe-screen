@@ -61,6 +61,7 @@ def write_inputs(directory: Path):
                         "status": 2,
                         "temperature": 370 + minute,
                         "voltage": 4200 - minute,
+                        "AC_powered": True,
                     },
                     "power": {"current_now_ua": -500000 + minute},
                 },
@@ -89,6 +90,15 @@ def write_inputs(directory: Path):
                 # Historical host-log telemetry used these short aliases.
                 "avg_frame_age_ms": 5.0,
                 "dropped": 0,
+                "queue_depth": 1,
+                "queue_capacity": 2,
+                "encoder_in_flight": 1,
+                "encoder_in_flight_capacity": 2,
+                "frame_registry_count": 1,
+                "latest_pixel_buffer_retained": 1,
+                "latest_pixel_buffer_capacity": 1,
+                "fallback_capture_active": False,
+                "encoder_present": True,
             },
         },
         {
@@ -107,6 +117,15 @@ def write_inputs(directory: Path):
                 "fps": 61.0,
                 "average_frame_age_ms": 7.0,
                 "dropped_frames": 2,
+                "queue_depth": 0,
+                "queue_capacity": 2,
+                "encoder_in_flight": 0,
+                "encoder_in_flight_capacity": 2,
+                "frame_registry_count": 0,
+                "latest_pixel_buffer_retained": 1,
+                "latest_pixel_buffer_capacity": 1,
+                "fallback_capture_active": False,
+                "encoder_present": True,
             },
         },
         {
@@ -164,8 +183,36 @@ class SoakReportTest(unittest.TestCase):
         self.assertEqual(
             report["metrics"]["stream"]["reported_dropped_frames"]["sum"], 2.0
         )
+        self.assertEqual(report["metrics"]["stream"]["queue_depth"]["max"], 1.0)
+        self.assertEqual(report["metrics"]["stream"]["queue_capacity"]["min"], 2.0)
+        self.assertEqual(
+            report["metrics"]["stream"]["encoder_in_flight"]["max"], 1.0
+        )
+        self.assertEqual(
+            report["metrics"]["stream"]["encoder_in_flight_capacity"]["min"],
+            2.0,
+        )
+        self.assertEqual(
+            report["metrics"]["stream"]["frame_registry_count"]["max"], 1.0
+        )
+        self.assertEqual(
+            report["metrics"]["stream"]["latest_pixel_buffer_retained"]["max"],
+            1.0,
+        )
+        self.assertEqual(
+            report["metrics"]["stream"]["latest_pixel_buffer_capacity"]["min"],
+            1.0,
+        )
         self.assertEqual(
             report["metrics"]["telemetry"]["accepted_heartbeat_count"], 2
+        )
+        self.assertEqual(
+            report["metrics"]["telemetry"]["fallback_capture_active_values"],
+            [False],
+        )
+        self.assertEqual(
+            report["metrics"]["telemetry"]["encoder_present_values"],
+            [True],
         )
         self.assertEqual(
             report["metrics"]["telemetry"]["stream_stats_gaps"][
@@ -192,6 +239,9 @@ class SoakReportTest(unittest.TestCase):
         self.assertEqual(report["metrics"]["battery"]["plugged_counts"], {"1": 5})
         self.assertEqual(report["metrics"]["battery"]["status"]["max"], 2.0)
         self.assertEqual(report["metrics"]["battery"]["status_counts"], {"2": 5})
+        self.assertEqual(
+            report["metrics"]["battery"]["charging_or_full"]["min"], 1.0
+        )
         self.assertIn("not a no-leak", report["interpretation"])
 
     def test_invalid_lines_and_missing_window_data_are_partial(self):
@@ -221,6 +271,27 @@ class SoakReportTest(unittest.TestCase):
             )
         )
         self.assertTrue(any("invalid timestamp" in error for error in report["errors"]))
+
+    def test_stream_lifecycle_boolean_fields_are_type_checked(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            summary, samples, telemetry = write_inputs(Path(raw_directory))
+            records = [
+                json.loads(line)
+                for line in telemetry.read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+            records[1]["attributes"]["encoder_present"] = "yes"
+            telemetry.write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n",
+                encoding="utf-8",
+            )
+            report = derive_report(summary, samples, telemetry)
+
+        self.assertEqual(report["derivation_status"], "partial")
+        self.assertIn(
+            "host telemetry: stream_stats encoder_present must be boolean",
+            report["errors"],
+        )
 
     def test_rejects_invalid_summary_window(self):
         with tempfile.TemporaryDirectory() as raw_directory:

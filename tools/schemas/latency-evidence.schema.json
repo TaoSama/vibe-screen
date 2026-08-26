@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibe-screen.dev/schemas/evidence/v1/latency-evidence.schema.json",
-  "title": "Vibe Screen external-camera latency evidence package v1",
+  "title": "Vibe Screen latency evidence package v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,22 +11,26 @@
     "transport",
     "measurement_method",
     "gate_profile",
-    "camera",
-    "recording",
     "samples",
     "device",
     "host",
     "build",
-    "measurement_setup"
+    "measurement_setup",
+    "gate_artifacts"
   ],
   "properties": {
     "schema_version": {"const": "vibescreen.evidence/v1"},
     "run_id": {"type": "string", "minLength": 1},
     "latency_kind": {"enum": ["glass-to-glass", "input"]},
-    "transport": {"enum": ["usb", "lan"]},
-    "measurement_method": {"const": "external-camera"},
+    "transport": {"enum": ["usb", "lan", "internet"]},
+    "measurement_method": {"enum": ["external-camera", "synchronized-clock"]},
     "gate_profile": {
-      "enum": ["usb-glass-to-glass-sub50", "lan-glass-to-glass-sub80", "input-p95-sub50"]
+      "enum": [
+        "usb-glass-to-glass-sub50",
+        "lan-glass-to-glass-sub80",
+        "internet-glass-to-glass-sub150",
+        "input-p95-sub50"
+      ]
     },
     "camera": {
       "type": "object",
@@ -51,6 +55,32 @@
         "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
       }
     },
+    "synchronization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_clock_source",
+        "device_clock_source",
+        "sync_procedure",
+        "before_skew_ms",
+        "after_skew_ms",
+        "max_drift_ms",
+        "total_error_budget_ms",
+        "input_timestamp_method",
+        "result_timestamp_method"
+      ],
+      "properties": {
+        "host_clock_source": {"type": "string", "minLength": 1},
+        "device_clock_source": {"type": "string", "minLength": 1},
+        "sync_procedure": {"type": "string", "minLength": 1},
+        "before_skew_ms": {"type": "number", "minimum": 0},
+        "after_skew_ms": {"type": "number", "minimum": 0},
+        "max_drift_ms": {"type": "number", "minimum": 0},
+        "total_error_budget_ms": {"type": "number", "minimum": 0, "exclusiveMaximum": 5},
+        "input_timestamp_method": {"type": "string", "minLength": 1},
+        "result_timestamp_method": {"type": "string", "minLength": 1}
+      }
+    },
     "samples": {
       "type": "object",
       "additionalProperties": false,
@@ -61,6 +91,63 @@
         "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
         "annotation_method": {"enum": ["manual-frame-count", "direct-latency-ms"]},
         "annotator": {"type": "string", "minLength": 1}
+      }
+    },
+    "gate_artifacts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "usb_connection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
+        "lan_network_preflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
+        "internet_public_route_record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
+        "input_actuation_record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
+        "synchronization_record": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "description"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+            "description": {"type": "string", "minLength": 1}
+          }
+        }
       }
     },
     "device": {
@@ -103,7 +190,6 @@
         "lighting",
         "mounting",
         "clock_domain",
-        "max_frame_annotation_uncertainty_ms",
         "notes"
       ],
       "properties": {
@@ -112,10 +198,138 @@
         "end_event_definition": {"type": "string", "minLength": 1},
         "lighting": {"type": "string", "minLength": 1},
         "mounting": {"type": "string", "minLength": 1},
-        "clock_domain": {"const": "single-external-camera-timebase"},
+        "clock_domain": {
+          "enum": ["single-external-camera-timebase", "synchronized-host-device-clocks"]
+        },
         "max_frame_annotation_uncertainty_ms": {"type": "number", "minimum": 0},
         "notes": {"type": "string", "minLength": 1}
       }
+    },
+    "internet_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "turn_deployment",
+        "remote_peer",
+        "candidate_pair",
+        "network_topology"
+      ],
+      "properties": {
+        "route": {"enum": ["direct-public-internet", "forced-public-turn"]},
+        "turn_deployment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "region", "public_hostname", "resolved_ip", "tls", "credential_source"],
+          "properties": {
+            "provider": {"type": "string", "minLength": 1},
+            "region": {"type": "string", "minLength": 1},
+            "public_hostname": {"type": "string", "minLength": 1},
+            "resolved_ip": {"type": "string", "minLength": 1},
+            "tls": {"type": "string", "minLength": 1},
+            "credential_source": {"type": "string", "minLength": 1}
+          }
+        },
+        "remote_peer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "network", "public_ip_asn", "location"],
+          "properties": {
+            "operator": {"type": "string", "minLength": 1},
+            "network": {"type": "string", "minLength": 1},
+            "public_ip_asn": {"type": "string", "minLength": 1},
+            "location": {"type": "string", "minLength": 1}
+          }
+        },
+        "candidate_pair": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["local_candidate_type", "remote_candidate_type", "relay_protocol"],
+          "properties": {
+            "local_candidate_type": {"type": "string", "minLength": 1},
+            "remote_candidate_type": {"type": "string", "minLength": 1},
+            "relay_protocol": {"type": "string", "minLength": 1}
+          }
+        },
+        "network_topology": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host_network", "device_network", "same_private_network"],
+          "properties": {
+            "host_network": {"type": "string", "minLength": 1},
+            "device_network": {"type": "string", "minLength": 1},
+            "same_private_network": {"type": "boolean"}
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"measurement_method": {"const": "external-camera"}},
+        "required": ["measurement_method"]
+      },
+      "then": {
+        "required": ["camera", "recording"],
+        "properties": {
+          "measurement_setup": {
+            "required": ["max_frame_annotation_uncertainty_ms"],
+            "properties": {
+              "clock_domain": {"const": "single-external-camera-timebase"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"measurement_method": {"const": "synchronized-clock"}},
+        "required": ["measurement_method"]
+      },
+      "then": {
+        "required": ["synchronization"],
+        "properties": {
+          "latency_kind": {"const": "input"},
+          "samples": {
+            "properties": {
+              "annotation_method": {"const": "direct-latency-ms"}
+            }
+          },
+          "measurement_setup": {
+            "properties": {
+              "clock_domain": {"const": "synchronized-host-device-clocks"}
+            }
+          },
+          "gate_artifacts": {
+            "required": ["synchronization_record"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transport": {"const": "internet"}},
+        "required": ["transport"]
+      },
+      "then": {
+        "required": ["internet_route"],
+        "properties": {
+          "gate_profile": {"const": "internet-glass-to-glass-sub150"},
+          "gate_artifacts": {
+            "required": ["internet_public_route_record"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transport": {"enum": ["usb", "lan"]}},
+        "required": ["transport"]
+      },
+      "then": {
+        "not": {"required": ["internet_route"]}
+      }
+    }
+  ]
 }

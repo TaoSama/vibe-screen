@@ -1,0 +1,61 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "nubia_p0110_root_usb_smoke",
+  "result": "pass",
+  "scope": "short_usb_stream_smoke_only",
+  "collected_at_local": "2026-08-21T22:35:00+08:00",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "recorded_as_fuxi": false
+  },
+  "preconditions": {
+    "adb_reverse_54321": true,
+    "adb_reverse_entry": "UsbFfs tcp:54321 tcp:54321",
+    "host_pid": 92943,
+    "host_listener": "127.0.0.1:54321",
+    "host_listener_observed": true
+  },
+  "android_app": {
+    "package": "dev.telemachus.display",
+    "activity": "dev.telemachus.display/.MainActivity",
+    "pid": 22447,
+    "foreground_after_sampling": false,
+    "foreground_after_sampling_observed": "com.android.launcher3/com.obric.feature.ObricLauncher"
+  },
+  "connection": {
+    "adb_pid": 11477,
+    "host_pid": 92943,
+    "observed_seconds": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+    "established_all_samples": true
+  },
+  "stream_telemetry": {
+    "stream_stats_count": 9,
+    "fps_min": 56.97,
+    "fps_max": 60.22,
+    "mbps_min": 0.36,
+    "mbps_max": 0.37,
+    "decoder_dropped_frames": 0,
+    "fatal_or_androidruntime_crash_observed": false
+  },
+  "followups": {
+    "ui_lifecycle": "activity_top_after.txt and screen.png show the Nubia launcher foreground while the app process streamed in the background",
+    "host_socket_cleanup": "host_lsof_before.txt and host-socket-fd.json show 45 CLOSED TCP 54321 descriptors retained by Host PID 92943 before the smoke"
+  },
+  "claims": {
+    "p0110_usb_short_stream_smoke_passed": true,
+    "host_listener_blocker_cleared_for_this_run": true,
+    "usb_connection_observed": true,
+    "stream_stats_observed": true,
+    "ui_foreground_passed": false,
+    "input_passed": false,
+    "latency_passed": false,
+    "long_soak_passed": false,
+    "host_rss_no_growth_passed": false,
+    "xiaomi_fuxi_evidence": false
+  }
+}

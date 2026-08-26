@@ -173,13 +173,15 @@ class RepositoryPrivacyTests(unittest.TestCase):
         fixtures = {
             "network_endpoint": b"peer=" + b"100." + b"72.1.2:5555",
             "hardware_identifier": b'"hardware_serial": "DEVICE-UNIQUE-123"',
+            "adb_identifier": b'"adb_serial": "DEVICE-UNIQUE-123"',
             "credential_material": b'"token": "sensitive-token-value"',
             "url": b"https://private.example.invalid/session",
             "user_absolute_path": b"/Users/private-account/work/evidence.log",
         }
         for category, content in fixtures.items():
             with self.subTest(category=category):
-                self.assertIn(category, scan_content(content))
+                expected_category = "hardware_identifier" if category == "adb_identifier" else category
+                self.assertIn(expected_category, scan_content(content))
         self.assertEqual(scan_content(b"swiftlang-6.3.1.1.2 and <redacted-ip>"), {})
 
     def test_phase3_privacy_rules_reject_project_credential_schemas(self) -> None:
@@ -274,6 +276,20 @@ class RepositoryPrivacyTests(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("EVIDENCE_SERIAL ?=\n", makefile)
         self.assertIn("error: set EVIDENCE_SERIAL explicitly", makefile)
+
+    def test_makefile_exposes_fail_closed_phase3_internet_soak_gate(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        for phrase in (
+            "phase3-internet-soak-manifest:",
+            "phase3-internet-soak-gate:",
+            "vibescreen_evidence.phase3_internet_soak manifest",
+            "vibescreen_evidence.phase3_internet_soak gate",
+            "PHASE3_INTERNET_ALLOW_BLOCKED",
+            "PHASE3_INTERNET_REMOTE_TURN_REPORT",
+            "PHASE3_INTERNET_REVOCATION_REPORT",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, makefile)
 
 
 if __name__ == "__main__":

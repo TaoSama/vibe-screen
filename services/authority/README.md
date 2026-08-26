@@ -8,8 +8,10 @@ or application traffic keys.
 
 This service replaces process-local admission decisions. It does not replace the
 existing signaling message broker or coturn data plane. Signaling can call this
-internal API before returning a session, while relay/coturn integration remains
-open. Production callers must fail closed when the authority is unavailable.
+internal API before returning a session or when adopting an admin-issued session
+profile, and relay credential admission can call it before returning TURN
+credentials. Production callers must fail closed when the authority is
+unavailable.
 
 The signaling service (`vibe-signaling`) in `production_authority` mode
 delegates session creation, per-request role-token authorization, and session
@@ -33,7 +35,7 @@ export VIBE_AUTHORITY_SIGNALING_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_RELAY_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_COTURN_TOKEN="$(openssl rand -base64 48)"
 export VIBE_AUTHORITY_ROLE_TOKEN_SECRET="$(openssl rand -base64 48)"
-go run ./cmd/vibe-authority --config config.json --migrate migrations/001_authority.sql
+go run ./cmd/vibe-authority --config config.json --migrate migrations
 go run ./cmd/vibe-authority --config config.json
 ```
 
@@ -41,15 +43,17 @@ Each environment variable above also supports an exclusive `_FILE` form, such
 as `VIBE_AUTHORITY_ADMIN_TOKEN_FILE`, for container secret mounts. Do not set
 both forms of the same value.
 
-Migration execution is an explicit one-shot operation. Application replicas
+Migration execution is an explicit one-shot operation. Pass the migration
+directory so every numbered SQL migration runs in order and existing versioned
+ledgers can upgrade without mutating earlier checksums. Application replicas
 must not receive DDL permission. Back up the database and record the migration
-checksum before applying it.
+checksums before applying them.
 
 ## Container and Compose
 
 `Dockerfile` uses the pinned Go 1.25.5 Alpine build image, verifies
 the locked modules, and copies only the static binary, CA bundle, container
-config, and versioned migration into a `scratch` runtime. The runtime
+config, and versioned migrations into a `scratch` runtime. The runtime
 uses UID/GID 65532. Its health check calls the binary's strict
 `--healthcheck` probe against `/readyz`, so schema or
 database failure makes the container unready while `/healthz` remains
@@ -111,8 +115,19 @@ Before a production rollout, require all of the following:
 Authority remains the durable source of truth for accepted per-device session
 epoch floors in production. Callers must never mint a local fallback epoch or
 credential when Authority is unavailable. This Compose profile does not add
-automatic account/session issuance, relay/coturn integration, active transport
-disconnect, public ingress, or horizontally shared signaling state.
+Mac/Android automatic profile issuance, a production coturn exporter or
+disconnect executor, active transport disconnect, public ingress, or
+horizontally shared signaling state.
+
+HarmonyOS secure pairing must use the same production authority boundary. A
+Harmony client presents a HUKS-backed device identity to the paired Host, but it
+must not receive the admin, signaling, relay, coturn, role-token, or issuer
+service credentials. The backend that binds a Harmony device to an account must
+register the Authority device ID before Signaling asks for a session, and every
+fresh session must advance the Authority session epoch. If Authority is
+unavailable, reports a revoked device, or rejects an old epoch, Signaling and
+the Host-facing pairing controller must fail closed rather than issuing a local
+credential or falling back to a legacy plaintext peer.
 
 ## Internal API
 
@@ -143,10 +158,10 @@ derived from the session ID and a server secret, so an exact idempotency replay
 returns the same credentials without storing raw bearer tokens.
 
 `POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
-a role token against the session. It returns `{"role":"host"}` or
-`{"role":"client"}`. A revoked session, revoked device, suspended account, or
-expired admission returns `403`; signaling maps that to `404` so it does not
-disclose whether the session exists.
+a role token against the session. It returns `{"role":"host","expires_at":"..."}`
+or `{"role":"client","expires_at":"..."}`. A revoked session, revoked device,
+suspended account, or expired admission returns `403`; signaling maps that to
+`404` so it does not disclose whether the session exists.
 
 `DELETE /v1/signaling/sessions/{session_id}` (signaling or admin token) revokes
 the admission. Subsequent role authorizations fail. The authority API returns
@@ -179,6 +194,29 @@ raised to the admitted epoch. This prevents replay of an old session epoch after
 revocation. Note that this per-device floor is scoped to the authority's device
 identifiers, which is a different scope from the Mac pairing-scoped epoch; the
 two are not yet unified.
+
+### Session profile issuance
+
+`POST /v1/session-authority/profiles` (admin token) issues an operator-provided
+session profile for already registered account and device IDs. The request
+includes the pairing ID, host and client public identities, signaling URL,
+authority-selected `session_epoch`, TTL, transcript context, protocol session
+ID, and ICE server list. HTTP signaling URLs are accepted only when
+`allow_insecure_for_testing` is true and the host is loopback; production input
+must use HTTPS.
+
+On success the authority creates or replays the underlying signaling admission,
+returns the host signaling token, and returns an unsigned Android lease containing
+the client signaling token and routing material. The Mac host must verify its
+local pairing bindings, reserve that exact Authority-supplied `session_epoch`,
+and sign the lease before Android imports it. The authority ledger stores only a
+request digest and identifiers; it does not store role tokens, TURN credentials,
+or signed/unsigned lease JSON.
+
+This endpoint is an admin/operator control-plane primitive. It does not register
+accounts or devices automatically, does not make Mac or Android call the
+authority automatically, and does not prove Android UI import, public Internet,
+or real media transport.
 
 Reserve relay capacity before returning a TURN credential:
 
@@ -214,37 +252,50 @@ revoked session, expired session, or already closed allocation fails closed and
 does not advance counters. Revocation does not prove the coturn data plane
 disconnected an already running allocation. Relay admission retries with the
 same source, allocation, device and session identity return the original
-reservation without consuming quota again; reuse with different identity is a
-conflict.
+reservation only while the allocation, device, account, and session are still
+active; replay after revocation or expiry fails closed, and reuse with different
+identity is a conflict.
 
 `POST /v1/coturn/reconcile` accepts one source snapshot (maximum 10,000
 allocations). Its `observed_at` cannot be in the future, including for an empty
 snapshot. The service applies newer counters and returns ledger allocations missing
 from a source beyond `reconciliation_grace_seconds`. The response separately
-lists `unauthorized_allocation_ids` that exist only at the source and
-`conflict_allocation_ids` whose identity or counters conflict with the ledger;
-one conflict does not stop processing the rest of the snapshot. A revoked device
-or session fails the snapshot closed rather than silently advancing its ledger;
-allocations applied earlier in that request remain committed and replay as
-duplicates or already-ahead entries on retry. Operators must disconnect
-unauthorized allocations and close ledger-only allocations only after the
-configured consecutive-snapshot policy in their collector.
+lists `unauthorized_allocation_ids` that exist only at the source,
+`conflict_allocation_ids` whose identity or counters conflict with the ledger,
+and `revoked_allocation_ids` for source-observed allocations whose Authority
+ledger has already been closed by account suspension, device revocation,
+signaling invalidation, or quota policy, or whose bound session has expired. One
+conflict or revoked allocation does not stop processing the rest of the snapshot.
+Revoked or expired allocation observations fail closed by refusing to advance
+counters, while still giving the operator's disconnect executor an exact
+allocation ID to terminate. Allocations
+applied earlier in that request remain committed and replay as duplicates or
+already-ahead entries on retry. Operators must disconnect unauthorized,
+conflicting, and revoked source allocations, and close ledger-only allocations
+only after the configured consecutive-snapshot policy in their collector.
 
-The repository does **not** yet contain a production-proven coturn exporter.
-Launch remains blocked until the pinned coturn build or provider API proves it
-exports a stable allocation ID, the complete REST username mapping, monotonic
-cumulative counters, close events, boot identity and snapshot support. Parsing
-human-oriented coturn logs may run in shadow mode but is not an authoritative
-quota or billing source.
+The repository now contains a current-base structured exporter adapter for a
+reviewed machine collector, but it is **not** a production-proven coturn
+exporter. Launch remains blocked until the pinned coturn build or provider API
+proves it exports a stable allocation ID, the complete REST username mapping,
+monotonic cumulative counters, close events, boot identity and snapshot support.
+Parsing human-oriented coturn logs may run in shadow mode but is not an
+authoritative quota or billing source.
 
 `scripts/phase3/coturn_reconcile.py` is the current operator-side contract for a
-future trusted exporter. It accepts only the structured snapshot shape above,
-submits it to `/v1/coturn/reconcile`, and requires a configured idempotent
-disconnect executor for every unauthorized or conflicting source allocation. A
-missing ledger-only allocation exits non-zero so the caller's consecutive-snapshot
-policy must decide whether to close the ledger record. This helper does not parse
-coturn logs, does not create a durable collector cursor/WAL, and does not prove a
-production disconnect mechanism.
+trusted exporter. It accepts either the structured snapshot shape above or an
+external `--exporter-command` whose stdout is that same strict JSON object,
+submits it to `/v1/coturn/reconcile`, retries transient failures when explicitly
+configured, and requires a configured idempotent disconnect executor for every
+unauthorized, conflicting, or revoked source allocation. The local product slice
+adds `scripts/phase3/coturn_reconciliation_loop.py` for bounded durable
+consecutive-snapshot tracking and `scripts/phase3/coturn_disconnect_executor.py`
+for local active-allocation state removal plus audit output. A missing
+ledger-only allocation exits non-zero until the loop observes it for the
+configured threshold and reports a ledger-close candidate. These helpers do not
+parse coturn logs, do not create a production collector cursor/WAL, do not install
+a production scheduler, and do not prove a live coturn or provider disconnect
+mechanism.
 
 ## Clock synchronization and TTL consistency
 
@@ -284,29 +335,37 @@ separate production requirement.
   credentials from a secret manager;
 - signaling and relay integration that fails closed on authority errors
   (signaling `production_authority` mode is implemented and covered by a
-  two-process PostgreSQL test; relay/coturn integration remains open);
+  two-process PostgreSQL test; relay credential admission is wired to Authority,
+  while production deployment of the coturn exporter/reconciliation loop and live
+  active disconnect path remain open);
 - ledger-side closure of relay allocations when an account is suspended, a
   device is revoked, or a signaling admission is invalidated is implemented;
   later coturn usage for revoked, suspended, expired, or closed allocations
   fails closed without advancing daily counters;
-- collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
-  close reconciliation;
+- production collector durable cursor/WAL, node heartbeat, gap detection,
+  scheduling, and live close reconciliation; the local bounded loop only persists
+  consecutive missing-allocation observations and emits close candidates;
 - mapping from issued allocation IDs to complete coturn REST usernames;
-- active-allocation disconnect executor and outbox delivery;
+- production active-allocation disconnect executor and outbox delivery; the local
+  executor only mutates reviewed local active-allocation state and writes audit
+  records;
 - edge authentication, DDoS/rate limiting, audit retention/deletion policy,
   dashboards, cost reconciliation and public-region canaries.
 
 ### Remaining open items
 
-- Mac and Android automatic profile/account/session issuance is not wired to
-  the authority; local flows still require operator-supplied credentials.
+- Mac and Android automatic invocation of session-profile issuance is not wired;
+  local flows still require an operator to request the profile, pass the
+  unsigned lease through the Mac signer, and import the signed lease.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the admin API before a signaling admission can be
   created.
 - Relay credential admission is wired to the authority, and the structured
-  reconcile helper is locally tested. The coturn exporter, scheduled
-  reconciliation loop, active-allocation disconnect executor, and production
-  coturn enforcement remain open.
+  exporter, bounded reconciliation loop, and local disconnect executor now cover
+  the current-base operator contract for stale allocations, revoked devices, and
+  quota-closed allocation remediation. The repository still has no production
+  deployment proof for those components, no concrete live coturn/provider
+  allocation termination, and production coturn enforcement remains open.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a device is revoked or a signaling admission is invalidated; the current
   closure is an authority-ledger boundary, not a data-plane kill path.

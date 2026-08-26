@@ -3,14 +3,14 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     app:cardCornerRadius="28dp"
     app:cardBackgroundColor="#E6000000"
     app:cardElevation="24dp">
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:fillViewport="true"
         android:fadeScrollbars="true"
         android:scrollIndicators="bottom"
@@ -21,7 +21,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/settings_content_padding">
+        android:paddingStart="@dimen/settings_content_padding"
+        android:paddingTop="@dimen/settings_content_padding_top"
+        android:paddingEnd="@dimen/settings_content_padding"
+        android:paddingBottom="@dimen/settings_content_padding_bottom">
 
         <!-- Header -->
         <TextView
@@ -32,116 +35,130 @@
             android:textSize="28sp"
             android:textStyle="bold"
             android:gravity="center"
-            android:layout_marginBottom="32dp" />
+            android:layout_marginBottom="@dimen/settings_header_margin_bottom" />
 
-        <!-- Show Stats Toggle -->
         <LinearLayout
+            android:id="@+id/settingsAdaptiveColumns"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:baselineAligned="false"
+            android:orientation="vertical">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:id="@+id/settingsPrimaryColumn"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
+
+                <!-- Show Stats Toggle -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/show_stats"
-                    android:textColor="#FFFFFF"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:layout_width="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/settings_item_bg"
+                    android:padding="@dimen/settings_section_padding"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/show_stats"
+                            android:textColor="#FFFFFF"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/stats_description"
+                            android:textColor="#999999"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/showStatsSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="false"
+                        android:contentDescription="@string/show_stats"
+                        app:thumbTint="@color/switch_thumb_color"
+                        app:trackTint="@color/switch_track_color" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/deviceHealthSection"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/stats_description"
-                    android:textColor="#999999"
-                    android:textSize="13sp" />
-            </LinearLayout>
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom"
+                    android:background="@drawable/settings_item_bg"
+                    android:orientation="vertical"
+                    android:padding="@dimen/settings_section_padding">
 
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/showStatsSwitch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="false"
-                android:contentDescription="@string/show_stats"
-                app:thumbTint="@color/switch_thumb_color"
-                app:trackTint="@color/switch_track_color" />
-        </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/device_health_title"
+                        android:textColor="@color/on_surface"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
 
-        <LinearLayout
-            android:id="@+id/deviceHealthSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/settings_item_bg"
-            android:orientation="vertical"
-            android:padding="16dp">
+                    <TextView
+                        android:id="@+id/deviceHealthStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/device_health_checking"
+                        android:textColor="@color/accent"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/device_health_title"
-                android:textColor="@color/on_surface"
-                android:textSize="17sp"
-                android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/deviceHealthSummary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/device_health_summary_unknown"
+                        android:textColor="@color/on_surface_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
-            <TextView
-                android:id="@+id/deviceHealthStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:accessibilityLiveRegion="polite"
-                android:text="@string/device_health_checking"
-                android:textColor="@color/accent"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                <LinearLayout
+                    android:id="@+id/viewportSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom"
+                    android:background="@drawable/settings_item_bg"
+                    android:orientation="vertical"
+                    android:padding="@dimen/settings_section_padding">
 
-            <TextView
-                android:id="@+id/deviceHealthSummary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/device_health_summary_unknown"
-                android:textColor="@color/on_surface_muted"
-                android:textSize="13sp" />
-        </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/viewport"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/settings_item_bg"
-            android:orientation="vertical"
-            android:padding="16dp">
+                    <TextView
+                        android:id="@+id/displayCapability"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="12dp"
+                        android:textColor="#A8B0B6"
+                        android:textSize="13sp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/viewport"
-                android:textColor="#FFFFFF"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/displayCapability"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="12dp"
-                android:textColor="#A8B0B6"
-                android:textSize="13sp" />
-
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:selectionRequired="true"
-                app:singleSelection="true">
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:selectionRequired="true"
+                        app:singleSelection="true">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/scaleFitButton"
@@ -162,16 +179,16 @@
                     android:layout_weight="1"
                     android:checkable="true"
                     android:text="@string/scale_fill" />
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
 
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/rotationGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:contentDescription="@string/rotation_description"
-                app:selectionRequired="true"
-                app:singleSelection="true">
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/rotationGroup"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:contentDescription="@string/rotation_description"
+                        app:selectionRequired="true"
+                        app:singleSelection="true">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/rotationFollow"
@@ -222,16 +239,23 @@
                     android:insetLeft="0dp"
                     android:insetRight="0dp"
                     android:text="@string/rotation_270" />
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
 
-            <TextView
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/input_capability_touch_only"
+                        android:textColor="#FFCC80"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/settingsControlsColumn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/input_capability_touch_only"
-                android:textColor="#FFCC80"
-                android:textSize="13sp" />
-        </LinearLayout>
+                android:orientation="vertical">
 
         <!-- Video Section -->
         <LinearLayout
@@ -240,8 +264,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -330,7 +354,7 @@
                 android:text="@string/video_frame_rate_label"
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
                 android:layout_marginBottom="8dp" />
 
             <com.google.android.material.button.MaterialButtonToggleGroup
@@ -375,7 +399,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
                 android:baselineAligned="false">
 
                 <TextView
@@ -417,6 +441,137 @@
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
                 android:visibility="gone" />
+                </LinearLayout>
+
+        <!-- Gesture Shortcuts Section -->
+        <LinearLayout
+            android:id="@+id/gestureShortcutSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/settings_item_bg"
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/gesture_shortcuts_title"
+                android:textColor="@color/on_surface"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:text="@string/gesture_shortcuts_description"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/gesture_swipe_up_label"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/gestureSwipeUpGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeUpDefault"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_default" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeUpMoveWindow"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_move_window" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeUpReturnWindows"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_return_windows" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/gesture_swipe_down_label"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:layout_marginTop="@dimen/settings_inner_group_margin_top"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/gestureSwipeDownGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeDownDefault"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_default" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeDownMoveWindow"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_move_window" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/gestureSwipeDownReturnWindows"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="@string/gesture_action_return_windows" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <TextView
+                android:id="@+id/gestureShortcutUnavailable"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/gesture_shortcuts_unavailable"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- Opacity Section -->
@@ -425,8 +580,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:id="@+id/opacityLabel"
@@ -460,7 +615,7 @@
                 app:trackColorActive="#4CAF50"
                 app:trackColorInactive="#33FFFFFF"
                 app:trackHeight="4dp" />
-        </LinearLayout>
+                </LinearLayout>
 
         <!-- Settings Button Position - 8 directions -->
         <LinearLayout
@@ -468,8 +623,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/settings_item_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="@dimen/settings_section_padding"
+            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -641,6 +796,8 @@
 
             </LinearLayout>
 
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Action Buttons Row 1 -->

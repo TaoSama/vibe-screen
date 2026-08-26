@@ -14,6 +14,7 @@ import java.nio.ByteOrder
 internal enum class ProtocolChannel(val wireValue: Int) {
     CONTROL(1),
     VIDEO(2),
+    AUDIO(3),
     BULK(4),
     ;
 

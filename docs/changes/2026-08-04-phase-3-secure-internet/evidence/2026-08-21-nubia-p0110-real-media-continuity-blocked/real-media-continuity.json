@@ -1,0 +1,161 @@
+{
+  "android_observation": {
+    "decoder_configured": false,
+    "decoder_error_lines": [],
+    "drop_count": 0,
+    "first_input_frame": false,
+    "first_output_frame": false,
+    "internet_stream_active": false,
+    "maximum_output_frame_index": 0,
+    "observed_output_frame_count": 0,
+    "reported_output_frame_count": 0,
+    "route": null,
+    "session_epoch": null,
+    "synthetic_markers": [],
+    "transport_closed_count": 72
+  },
+  "conditions": {
+    "host_signing": "identity_signed",
+    "maximum_dropped_frames": 0,
+    "minimum_output_frames": 120,
+    "network_path": "unknown",
+    "screen_recording": "blocked"
+  },
+  "continuity_summary": {
+    "capture_frame_count": 0,
+    "continuous_output_frames": 0,
+    "decoder_error_count": 0,
+    "dropped_frames": 0,
+    "media_source": "absent",
+    "mediacodec_first_input_frame": false,
+    "mediacodec_first_output_frame": false,
+    "protocol_v1_media_epochs": [],
+    "protocol_v1_session_epoch": null,
+    "public_internet_path": false,
+    "selected_webrtc_route": null,
+    "videotoolbox_output_frames": 0
+  },
+  "created_at": "2026-08-21T05:24:15.559820+00:00",
+  "device": {
+    "android_version": "16",
+    "codename": "pacific",
+    "hardware_serial": "[redacted]",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "gate_can_close_phase3_release": false,
+  "host_observation": {
+    "blocking_lines": [
+      "2026-08-17T16:11:40Z Screen recording permission not granted yet"
+    ],
+    "capture_marker_count": 0,
+    "capture_started": false,
+    "internet_product_session_started": false,
+    "media_epochs": [],
+    "media_source": "absent",
+    "real_capture_first_frame": false,
+    "screen_recording_blocked": true,
+    "synthetic_markers": [],
+    "videotoolbox_configured": false,
+    "videotoolbox_error_lines": [],
+    "videotoolbox_output_frame_count": 0,
+    "videotoolbox_output_observed": false,
+    "webrtc_transport_observed": false
+  },
+  "inputs": [
+    {
+      "bytes": 451,
+      "category": "host_log",
+      "path": "docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-18-nubia-p0110-current-main-real-media-blocked/host-permission-window.log",
+      "sha256": "92533cc3a6933f768d9c8965f3e0b5ce9ecc54a6c351efae5124edc5365c4122"
+    },
+    {
+      "bytes": 5338,
+      "category": "android_log",
+      "path": "docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-18-nubia-p0110-current-main-real-media-blocked/android-blocked-window.log",
+      "sha256": "d36612016f8851f304e6b8cb99c4d9810130863f1bb3babdd55fd67e7c3aa60b"
+    },
+    {
+      "bytes": 299,
+      "category": "device_info",
+      "path": "docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/device-info.json",
+      "sha256": "c6201b10adeb11a72a0f54d1e297be68a039eca54e9dc6b8af25ecd1257d9c11"
+    }
+  ],
+  "kind": "phase3_real_media_continuity_preflight",
+  "reasons": [
+    "public Internet route evidence is required for this continuity gate",
+    "macOS Screen Recording permission is not proven granted",
+    "Host InternetProductSession start evidence is missing",
+    "ICE/DTLS/DataChannel or Internet stream-active evidence is missing",
+    "Android Internet stream-active route evidence is missing",
+    "Protocol v1 media/session epoch evidence is missing",
+    "ScreenCaptureKit/CGDisplayStream first-frame evidence is missing",
+    "VideoToolbox encoded-output evidence is missing",
+    "Android MediaCodec decoder configuration evidence is missing",
+    "Android first encoded-frame input evidence is missing",
+    "Android MediaCodec first output frame evidence is missing",
+    "Android output frame count is below 120"
+  ],
+  "release_gate_effect": "none",
+  "repository": {
+    "branch": "codex/phase3-real-media-continuity",
+    "dirty": true,
+    "revision": "1e5308fb82dfca9dd0fdee34d7e54569e694e438"
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "stages": [
+    {
+      "key": "host_internet_product_session",
+      "observed": false,
+      "reason": "Host InternetProductSession start evidence is missing"
+    },
+    {
+      "key": "ice_dtls_datachannel",
+      "observed": false,
+      "reason": "ICE/DTLS/DataChannel or Internet stream-active evidence is missing"
+    },
+    {
+      "key": "android_internet_stream_active",
+      "observed": false,
+      "reason": "Android Internet stream-active route evidence is missing"
+    },
+    {
+      "key": "protocol_v1_media_epoch",
+      "observed": false,
+      "reason": "Protocol v1 media/session epoch evidence is missing"
+    },
+    {
+      "key": "real_capture_first_frame",
+      "observed": false,
+      "reason": "ScreenCaptureKit/CGDisplayStream first-frame evidence is missing"
+    },
+    {
+      "key": "videotoolbox_output",
+      "observed": false,
+      "reason": "VideoToolbox encoded-output evidence is missing"
+    },
+    {
+      "key": "android_decoder_configured",
+      "observed": false,
+      "reason": "Android MediaCodec decoder configuration evidence is missing"
+    },
+    {
+      "key": "android_first_input_frame",
+      "observed": false,
+      "reason": "Android first encoded-frame input evidence is missing"
+    },
+    {
+      "key": "android_first_output_frame",
+      "observed": false,
+      "reason": "Android MediaCodec first output frame evidence is missing"
+    },
+    {
+      "key": "android_continuous_output_frames",
+      "observed": false,
+      "reason": "Android output frame count is below 120"
+    }
+  ],
+  "verdict": "blocked"
+}

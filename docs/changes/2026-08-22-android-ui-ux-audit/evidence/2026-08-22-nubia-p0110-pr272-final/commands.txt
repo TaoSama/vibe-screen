@@ -1,0 +1,27 @@
+# command transcript
+2026-08-22T20:47:12+0800
+## lock
+pid=18644
+agent=root
+task=android-ui-ux-p0110-e2e-pr272-final
+created=2026-08-22T20:47:02+0800
+## device
+manufacturer=nubia
+model=P0110
+device=pacific
+release=16
+sdk=36
+Physical size: 1264x2800
+Physical density: 560
+  AC powered: true
+  level: 100
+  Capacity level: -1
+## packages
+package:/data/app/~~J9VeFHBS-HMpB9ohxvigfg==/dev.telemachus.display-kqCJIJD6ouUMbjb2jNHPwQ==/base.apk
+package:/data/app/~~VThC1AX7oEHRi0cJRGTimA==/dev.telemachus.display.test-kJYlRYvi9eI2MoQa4K7sAQ==/base.apk
+## reverse
+UsbFfs tcp:54321 tcp:54321
+## targeted route-toggle instrumentation rerun
+2026-08-22T21:45:22+0800
+adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+OK (1 test)

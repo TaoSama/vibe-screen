@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -27,10 +28,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_PATH = REPOSITORY_ROOT / "tools"
+if str(TOOLS_PATH) not in sys.path:
+    sys.path.insert(0, str(TOOLS_PATH))
+
+from vibescreen_evidence.native_pointer_hid import summarize as summarize_native_pointer_hid
+
 
 BLOCKED_EXIT = 2
 DEFAULT_HOST_LOG = Path.home() / "Library/Logs/Telemachus/telemachus.log"
 DEFAULT_OBSERVATION_SECONDS = 20.0
+DEVICE_LOCKS = (
+    Path("/tmp/vibe-screen-device-soak.lock"),
+    Path("/tmp/vibe-screen-device-android.lock"),
+)
 POINTER_PATTERNS = {
     "move": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?changed\b|Pointer injected: phase=changed\b"),
     "press": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?began\b|Pointer injected: phase=began\b"),
@@ -104,6 +116,12 @@ class HostLogCursor:
 
 
 @dataclass(frozen=True)
+class CoordinationLock:
+    path: str
+    detail: str
+
+
+@dataclass(frozen=True)
 class AcceptanceResult:
     status: str
     reason: str
@@ -114,12 +132,16 @@ class AcceptanceResult:
     host_log: str
     host_log_appended_bytes: int
     host_log_appended_sha256: str
+    host_stable_signed_tcc_ready: bool
     android_logcat_bytes: int
     android_logcat_sha256: str
     required_pointer_events: list[str]
     observed_host_pointer_events: list[str]
     observed_android_pointer_events: list[str]
     visible_mac_result: str
+    existing_locks: list[CoordinationLock]
+    adb_was_run: bool
+    requested_serial: str
 
 
 def redacted_device_identity(identity: DeviceIdentity) -> RedactedDeviceIdentity:
@@ -137,6 +159,10 @@ def redacted_device_identity(identity: DeviceIdentity) -> RedactedDeviceIdentity
         battery_summary=identity.battery_summary,
         boot_completed=identity.boot_completed,
     )
+
+
+def redacted_requested_serial(serial: str) -> str:
+    return "redacted-requested-serial" if serial.strip() else "not provided"
 
 
 def run_command(command: Sequence[str], *, timeout: float = 15.0) -> CommandResult:
@@ -167,6 +193,69 @@ def adb(serial: str, args: Sequence[str], *, timeout: float = 15.0) -> CommandRe
 
 def adb_shell(serial: str, *args: str, timeout: float = 15.0) -> str:
     return adb(serial, ["shell", *args], timeout=timeout).stdout.strip()
+
+
+def describe_device_locks() -> list[CoordinationLock]:
+    locks = []
+    for path in DEVICE_LOCKS:
+        try:
+            if path.is_dir():
+                locks.append(CoordinationLock(str(path), "present as directory"))
+                continue
+            detail = path.read_text(encoding="utf-8", errors="replace").strip()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            try:
+                mode = stat.filemode(path.stat().st_mode)
+            except OSError:
+                mode = "unknown mode"
+            detail = f"present but unreadable ({mode}): {error}"
+        locks.append(CoordinationLock(str(path), detail or "present"))
+    return locks
+
+
+def lock_blocked_result(
+    *,
+    created_at: str,
+    requested_serial: str,
+    locks: Sequence[CoordinationLock],
+    required_events: Sequence[str],
+) -> AcceptanceResult:
+    return AcceptanceResult(
+        status="blocked_device_coordination_lock",
+        reason="Android device coordination lock exists; no ADB command was run and native pointer HID acceptance could not start.",
+        created_at=created_at,
+        observation_seconds=0.0,
+        device=RedactedDeviceIdentity(
+            serial="not-collected-device-lock",
+            endpoint="not collected because a device coordination lock exists",
+            manufacturer="not collected",
+            model="not collected",
+            device="device-lock-blocked",
+            android_release="not collected",
+            sdk="not collected",
+            fingerprint_sha256="not collected",
+            display_size="not collected",
+            display_density="not collected",
+            battery_summary="not collected",
+            boot_completed="not collected",
+        ),
+        external_mouse_devices=[],
+        host_log="host-log-appended.txt",
+        host_log_appended_bytes=0,
+        host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
+        host_stable_signed_tcc_ready=False,
+        android_logcat_bytes=0,
+        android_logcat_sha256=hashlib.sha256(b"").hexdigest(),
+        required_pointer_events=list(required_events),
+        observed_host_pointer_events=[],
+        observed_android_pointer_events=[],
+        visible_mac_result="",
+        existing_locks=list(locks),
+        adb_was_run=False,
+        requested_serial=redacted_requested_serial(requested_serial),
+    )
 
 
 def read_device_identity(serial: str) -> DeviceIdentity:
@@ -328,7 +417,14 @@ def evidence_text(text: str) -> str:
 
 def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> None:
     path.mkdir(parents=True, exist_ok=True)
-    (path / "result.json").write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    result_path = path / "result.json"
+    result_payload = asdict(result)
+    result_path.write_text(json.dumps(result_payload, indent=2) + "\n", encoding="utf-8")
+    gate_summary = summarize_native_pointer_hid(result_payload, run_id=result.created_at, source_path=result_path)
+    (path / "native-pointer-hid-summary.json").write_text(
+        json.dumps(gate_summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     (path / "dumpsys-input.txt").write_text(evidence_text(dumpsys_input), encoding="utf-8")
     summary = [
         f"# Native pointer HID acceptance: {result.status}",
@@ -336,21 +432,30 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         f"Created: {result.created_at}",
         f"Reason: {result.reason}",
         f"Device: {result.device.manufacturer} {result.device.model} / {result.device.device} / Android {result.device.android_release} / serial {result.device.serial}",
+        f"Requested serial: {result.requested_serial}",
+        f"ADB was run: {str(result.adb_was_run).lower()}",
         f"External mouse devices: {len(result.external_mouse_devices)}",
         f"Observed Android pointer events: {', '.join(result.observed_android_pointer_events) or 'none'}",
         f"Observed Host pointer events: {', '.join(result.observed_host_pointer_events) or 'none'}",
+        f"Stable signed/TCC Host ready: {str(result.host_stable_signed_tcc_ready).lower()}",
         f"Visible Mac result: {result.visible_mac_result or 'not recorded'}",
         "",
         "## Artifacts",
         "",
         "- `result.json`: structured gate result, device identity, source devices, and checksums.",
+        "- `native-pointer-hid-summary.json`: independent gate summary with `can_close_native_pointer_hid_gate`.",
         "- `dumpsys-input.txt`: Android input-device snapshot with line-ending whitespace normalized.",
         "- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.",
         "- `host-log-appended.txt`: bounded Host log window for pointer injection.",
         "",
+        "A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.",
         "This evidence must remain scoped to the exact device identity above.",
         "Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.",
     ]
+    if result.existing_locks:
+        summary.extend(["", "## Device coordination locks", ""])
+        for existing_lock in result.existing_locks:
+            summary.append(f"- {existing_lock.path}: {existing_lock.detail}")
     (path / "README.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
 
 
@@ -393,6 +498,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Operator note describing the visible Mac pointer movement and click result.",
     )
     parser.add_argument(
+        "--host-stable-signed-tcc-ready",
+        action="store_true",
+        help=(
+            "Set only after scripts/macos_dev_host.py preflight passes for a stable signed Host "
+            "with Screen Recording and Accessibility permissions."
+        ),
+    )
+    parser.add_argument(
         "--require-events",
         choices=sorted(POINTER_PATTERNS),
         nargs="+",
@@ -403,6 +516,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--no-wait",
         action="store_true",
         help="Only perform prerequisite checks and write evidence. Useful for blocked dry runs.",
+    )
+    parser.add_argument(
+        "--allow-existing-device-lock",
+        action="store_true",
+        help="Continue despite a shared Android device coordination lock. Use only when you own that lock.",
+    )
+    parser.add_argument(
+        "--write-blocked-on-lock",
+        action="store_true",
+        help="When a shared Android device lock exists, write blocked evidence instead of running ADB.",
     )
     return parser.parse_args(argv)
 
@@ -418,6 +541,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     created_at = utc_timestamp()
     try:
+        existing_locks = describe_device_locks()
+        if existing_locks and not args.allow_existing_device_lock:
+            if not args.write_blocked_on_lock:
+                raise AcceptanceError(
+                    "device coordination lock exists; no ADB command was run: "
+                    + ", ".join(lock.path for lock in existing_locks)
+                )
+            result = lock_blocked_result(
+                created_at=created_at,
+                requested_serial=args.serial,
+                locks=existing_locks,
+                required_events=args.require_events,
+            )
+            write_result(args.evidence_dir, result, "")
+            (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
+            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(b"")
+            print(result.reason, file=sys.stderr)
+            return BLOCKED_EXIT
+
         identity = read_device_identity(args.serial)
         dumpsys_input = adb(args.serial, ["shell", "dumpsys", "input"], timeout=30.0).stdout
         input_devices = parse_input_devices(dumpsys_input)
@@ -433,12 +575,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 host_log="host-log-appended.txt",
                 host_log_appended_bytes=0,
                 host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
+                host_stable_signed_tcc_ready=False,
                 android_logcat_bytes=0,
                 android_logcat_sha256=hashlib.sha256(b"").hexdigest(),
                 required_pointer_events=list(args.require_events),
                 observed_host_pointer_events=[],
                 observed_android_pointer_events=[],
                 visible_mac_result="",
+                existing_locks=existing_locks,
+                adb_was_run=True,
+                requested_serial=redacted_requested_serial(args.serial),
             )
             write_result(args.evidence_dir, result, dumpsys_input)
             (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
@@ -466,15 +612,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         observed_android = observed_android_events(android_text)
         missing_host = [name for name in args.require_events if name not in observed_host]
         missing_android = [name for name in args.require_events if name not in observed_android]
+        missing_host_ready = not args.host_stable_signed_tcc_ready
         missing_visible_result = not args.visible_result_note.strip()
         missing_reasons = []
         if missing_android:
             missing_reasons.append("missing Android native pointer log events: " + ", ".join(missing_android))
         if missing_host:
             missing_reasons.append("missing Host pointer injection events: " + ", ".join(missing_host))
+        if missing_host_ready:
+            missing_reasons.append("missing stable signed/TCC-ready Host preflight evidence")
         if missing_visible_result:
             missing_reasons.append("missing visible Mac pointer/click result note")
-        status = "passed" if not missing_reasons else "failed"
+        status = "passed" if not missing_reasons else ("blocked" if missing_host_ready else "failed")
         reason = "All required native pointer evidence was observed." if not missing_reasons else "; ".join(missing_reasons)
         result = AcceptanceResult(
             status=status,
@@ -486,19 +635,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             host_log="host-log-appended.txt",
             host_log_appended_bytes=len(appended_log),
             host_log_appended_sha256=hashlib.sha256(appended_log).hexdigest(),
+            host_stable_signed_tcc_ready=bool(args.host_stable_signed_tcc_ready),
             android_logcat_bytes=len(android_logcat),
             android_logcat_sha256=hashlib.sha256(android_logcat).hexdigest(),
             required_pointer_events=list(args.require_events),
             observed_host_pointer_events=observed_host,
             observed_android_pointer_events=observed_android,
             visible_mac_result=args.visible_result_note.strip(),
+            existing_locks=existing_locks,
+            adb_was_run=True,
+            requested_serial=redacted_requested_serial(args.serial),
         )
         write_result(args.evidence_dir, result, dumpsys_input)
         (args.evidence_dir / "host-log-appended.txt").write_bytes(appended_log)
         (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
         if status != "passed":
             print(reason, file=sys.stderr)
-            return 1
+            return BLOCKED_EXIT if status == "blocked" else 1
         print(reason)
         return 0
     except AcceptanceError as error:

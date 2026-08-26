@@ -1,0 +1,37 @@
+{
+  "schema": "dev.vibescreen.phase3-revocation-propagation/v1",
+  "observed_at": "2026-08-25T00:00:00Z",
+  "source": {
+    "commit": "ad2c52c10ac41a8ee58087ad92401b54f29013c0",
+    "topology": "blocked",
+    "authority_url_kind": "local-service-tests",
+    "coturn_source_id": "turn-node-1",
+    "deployment_id": "no-production-coturn-disconnect-or-data-plane-proof"
+  },
+  "authority_revocation": {
+    "device_revoked": true,
+    "session_revoked": true,
+    "revocation_status": 204
+  },
+  "signaling": {
+    "active_session_rejected": true,
+    "rejection_status": 404,
+    "long_poll_woke_fail_closed": true
+  },
+  "relay_admission": {
+    "new_grant_rejected": true,
+    "new_grant_status": 403,
+    "same_allocation_retry_rejected": true,
+    "same_allocation_retry_status": 403,
+    "grant_ttl_seconds": 60
+  },
+  "coturn_allocation": {
+    "active_before_revocation": true,
+    "allocation_id": "allocation-before-device-revoke"
+  },
+  "data_plane": {},
+  "notes": [
+    "Local service tests cover Authority-backed signaling revocation, relay credential admission rejection, relay usage admission rejection, allocation registry persistence, and coturn CLI helper fail-closed mapping.",
+    "Live Authority audit inspection, stale issued TURN credential denial, active coturn allocation disconnect, and post-revocation data-plane packet denial remain unproved."
+  ]
+}

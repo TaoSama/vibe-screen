@@ -1,8 +1,10 @@
 package dev.telemachus.display
 
 import dev.telemachus.display.protocol.MotionPointer
+import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.telemachus.display.protocol.TouchSample
 import dev.vibescreen.protocol.v1.InputPhase
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicLong
 
 internal data class StreamInputSessionState(
@@ -14,6 +16,7 @@ internal data class StreamInputSessionState(
     val canSendStylus: Boolean = false,
     val canSendExtendedStylus: Boolean = false,
     val canSendController: Boolean = false,
+    val canSendPeripheral: Boolean = false,
 )
 
 internal class StreamInputDispatcher(
@@ -116,42 +119,44 @@ internal class StreamInputDispatcher(
         if (!current.connected || !current.protocolV1 || !current.canSendStylus) return false
         val copied = samples.toList()
         if (copied.isEmpty()) return false
-        submitOutbound(
-            if (copied.all { it.delivery == StylusDelivery.MOTION }) {
-                OutboundCommandScheduler.Kind.MOVE
-            } else {
-                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-            },
-            StreamOutboundCommand.ProtocolBatch { activeSession ->
-                copied.map { sample ->
-                    activeSession.stylus(
-                        inputId = nextInputId.getAndIncrement(),
-                        pointerId = sample.pointerId,
-                        phase = sample.phase,
-                        x = sample.x,
-                        y = sample.y,
-                        pressure = sample.pressure,
-                        tiltXDegrees = sample.tiltXDegrees,
-                        tiltYDegrees = sample.tiltYDegrees,
-                        toolKind =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.toolKind.toProtocol()
-                            } else {
-                                null
-                            },
-                        buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
-                        contactState =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.contactState.toProtocol()
-                            } else {
-                                null
-                            },
-                    )
-                }
-            },
-            0,
-        )
-        return true
+        val submission =
+            submitOutbound(
+                if (copied.all { it.delivery == StylusDelivery.MOTION }) {
+                    OutboundCommandScheduler.Kind.MOVE
+                } else {
+                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                },
+                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    copied.map { sample ->
+                        activeSession.stylus(
+                            inputId = nextInputId.getAndIncrement(),
+                            pointerId = sample.pointerId,
+                            phase = sample.phase,
+                            x = sample.x,
+                            y = sample.y,
+                            pressure = sample.pressure,
+                            tiltXDegrees = sample.tiltXDegrees,
+                            tiltYDegrees = sample.tiltYDegrees,
+                            toolKind =
+                                if (activeSession.canSendExtendedStylus) {
+                                    sample.toolKind.toProtocol()
+                                } else {
+                                    null
+                                },
+                            buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
+                            contactState =
+                                if (activeSession.canSendExtendedStylus) {
+                                    sample.contactState.toProtocol()
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                },
+                0,
+            )
+        val admitted = submission.wasAdmitted()
+        return admitted
     }
 
     fun sendPointer(
@@ -306,6 +311,32 @@ internal class StreamInputDispatcher(
                         }
                         activeSession.controller(inputId = inputId, sample = sample)
                     }
+                },
+                0,
+            )
+        return submission.wasAdmitted()
+    }
+
+    fun sendPeripheral(
+        peripheralKind: String,
+        payload: ByteArray,
+    ): Boolean {
+        val current = state()
+        if (!current.connected || !current.protocolV1 || !current.canSendPeripheral) return false
+        val kindBytes = peripheralKind.toByteArray(StandardCharsets.UTF_8)
+        if (peripheralKind.isBlank() || kindBytes.size > ProtocolV1Session.MAX_PERIPHERAL_KIND_BYTES) return false
+        if (payload.size > ProtocolV1Session.MAX_PERIPHERAL_PAYLOAD_BYTES) return false
+        val submission =
+            submitOutbound(
+                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    listOf(
+                        activeSession.peripheral(
+                            inputId = nextInputId.getAndIncrement(),
+                            peripheralKind = peripheralKind,
+                            payload = payload,
+                        ),
+                    )
                 },
                 0,
             )

@@ -64,6 +64,14 @@ internal object ControlRevealGesturePolicy {
     fun endsGesture(phase: StreamTouchPhase): Boolean = phase == StreamTouchPhase.END || phase == StreamTouchPhase.CANCEL
 }
 
+internal object DisplayMenuSelectionGuard {
+    fun acceptsSelection(
+        menuShownAtMs: Long,
+        nowMs: Long,
+        armDelayMs: Long,
+    ): Boolean = menuShownAtMs >= 0L && nowMs - menuShownAtMs >= armDelayMs
+}
+
 internal object ConnectionSecurityPresentationPolicy {
     data class Presentation(
         val labelResource: Int,
@@ -71,7 +79,10 @@ internal object ConnectionSecurityPresentationPolicy {
         val warning: Boolean,
     )
 
-    fun presentation(mode: ConnectionMode): Presentation =
+    fun presentation(
+        mode: ConnectionMode,
+        lanProtectionState: LanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE,
+    ): Presentation =
         when (mode) {
             ConnectionMode.USB ->
                 Presentation(
@@ -82,8 +93,15 @@ internal object ConnectionSecurityPresentationPolicy {
             ConnectionMode.WIRELESS ->
                 Presentation(
                     labelResource = R.string.stream_status_lan_label,
-                    detailResource = R.string.stream_status_lan_detail,
-                    warning = false,
+                    detailResource =
+                        when (lanProtectionState) {
+                            LanRecordProtectionState.ENCRYPTED -> R.string.stream_status_lan_encrypted_detail
+                            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK ->
+                                R.string.stream_status_lan_legacy_plaintext_detail
+                            LanRecordProtectionState.NEGOTIATING -> R.string.stream_status_lan_negotiating_detail
+                            LanRecordProtectionState.NOT_APPLICABLE -> R.string.stream_status_lan_unknown_detail
+                        },
+                    warning = lanProtectionState != LanRecordProtectionState.ENCRYPTED,
                 )
             ConnectionMode.INTERNET ->
                 Presentation(
@@ -91,6 +109,35 @@ internal object ConnectionSecurityPresentationPolicy {
                     detailResource = R.string.stream_status_internet_detail,
                     warning = false,
                 )
+        }
+}
+
+internal object LanClipboardProtectionMessagePolicy {
+    fun sendMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_confirm_message
+        }
+
+    fun receiveMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_receive_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_receive_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_receive_confirm_message
+        }
+
+    fun directReceiveMessage(state: LanRecordProtectionState): Int =
+        when (state) {
+            LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_lan_direct_receive_confirm_message
+            LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_lan_legacy_direct_receive_confirm_message
+            LanRecordProtectionState.NEGOTIATING,
+            LanRecordProtectionState.NOT_APPLICABLE,
+            -> R.string.clipboard_lan_unknown_direct_receive_confirm_message
         }
 }
 
@@ -362,8 +409,11 @@ data class ClientSessionCapabilities(
     val keyboard: Boolean,
     val nativePointer: Boolean,
     val controller: Boolean,
+    val customGestures: Boolean,
     val hostActions: Boolean,
     val clipboard: Boolean,
+    val fileTransfer: Boolean,
+    val peripheralInputFramework: Boolean = false,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -373,8 +423,11 @@ data class ClientSessionCapabilities(
                 keyboard = false,
                 nativePointer = false,
                 controller = false,
+                customGestures = false,
                 hostActions = false,
                 clipboard = false,
+                fileTransfer = false,
+                peripheralInputFramework = false,
             )
     }
 }
@@ -384,7 +437,9 @@ internal enum class ClientControl {
     KEYBOARD,
     NATIVE_POINTER,
     HOST_ACTIONS,
+    CUSTOM_GESTURES,
     CLIPBOARD,
+    FILE_TRANSFER,
 }
 
 /** A host display the client can select, surfaced to the UI without protocol imports. */
@@ -418,11 +473,23 @@ internal object DisplayCapsulePolicy {
         displays: List<StreamDisplayOption>,
     ): Boolean = displaySelection && displays.size > 1
 
+    /** Disable the selector while a host-side display switch is still settling. */
+    fun isEnabled(
+        displaySelection: Boolean,
+        displays: List<StreamDisplayOption>,
+        pendingDisplayId: String?,
+    ): Boolean = isSelectable(displaySelection, displays) && pendingDisplayId == null
+
     /** Resolve the option currently marked active, if any. */
     fun activeOption(
         displays: List<StreamDisplayOption>,
         selectedId: String,
     ): StreamDisplayOption? = displays.firstOrNull { it.id == selectedId }
+
+    fun pendingOption(
+        displays: List<StreamDisplayOption>,
+        pendingId: String?,
+    ): StreamDisplayOption? = pendingId?.let { id -> displays.firstOrNull { it.id == id } }
 
     /**
      * Label shown on the capsule. Falls back to the primary/first display when
@@ -454,7 +521,7 @@ internal object DisplayCapsulePolicy {
 
 internal object ControlBarLayoutPolicy {
     enum class Mode { COMPACT, INLINE, STACKED, COLUMN }
-    enum class Action { HOST, CLIPBOARD, SETTINGS, DISCONNECT }
+    enum class Action { HOST, CLIPBOARD, FILE_TRANSFER, SETTINGS, DISCONNECT }
 
     data class Geometry(
         val horizontalContentPaddingPx: Int,
@@ -480,12 +547,14 @@ internal object ControlBarLayoutPolicy {
         fun horizontalActionsWidthPx(
             hostActionsVisible: Boolean,
             clipboardVisible: Boolean,
+            fileTransferVisible: Boolean = false,
         ): Int {
             val settingsWidth = buttonSizePx + actionMarginPx * 2
             val disconnectWidth = buttonSizePx + disconnectSeparationPx
             val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
             val clipboardWidth = if (clipboardVisible) buttonSizePx + actionMarginPx * 2 else 0
-            return hostWidth + clipboardWidth + settingsWidth + disconnectWidth
+            val fileTransferWidth = if (fileTransferVisible) buttonSizePx + actionMarginPx * 2 else 0
+            return hostWidth + clipboardWidth + fileTransferWidth + settingsWidth + disconnectWidth
         }
     }
 
@@ -502,8 +571,9 @@ internal object ControlBarLayoutPolicy {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         geometry: Geometry,
+        fileTransferVisible: Boolean = false,
     ): Mode {
-        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
         val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
             val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx
@@ -539,23 +609,34 @@ internal object ControlBarLayoutPolicy {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         geometry: Geometry,
+        fileTransferVisible: Boolean = false,
     ): Margins =
         if (mode == Mode.COLUMN) {
             when (action) {
                 Action.HOST -> Margins(0, 0, 0)
                 Action.CLIPBOARD ->
                     Margins(0, if (hostActionsVisible) geometry.columnActionSpacingPx else 0, 0)
-                Action.SETTINGS ->
+                Action.FILE_TRANSFER ->
                     Margins(
                         0,
                         if (hostActionsVisible || clipboardVisible) geometry.columnActionSpacingPx else 0,
+                        0,
+                    )
+                Action.SETTINGS ->
+                    Margins(
+                        0,
+                        if (hostActionsVisible || clipboardVisible || fileTransferVisible) {
+                            geometry.columnActionSpacingPx
+                        } else {
+                            0
+                        },
                         0,
                     )
                 Action.DISCONNECT -> Margins(0, geometry.disconnectSeparationPx, 0)
             }
         } else {
             when (action) {
-                Action.HOST, Action.CLIPBOARD, Action.SETTINGS ->
+                Action.HOST, Action.CLIPBOARD, Action.FILE_TRANSFER, Action.SETTINGS ->
                     Margins(geometry.actionMarginPx, 0, geometry.actionMarginPx)
                 Action.DISCONNECT -> Margins(geometry.disconnectSeparationPx, 0, 0)
             }
@@ -572,7 +653,9 @@ internal object ClientControlAvailability {
             ClientControl.KEYBOARD -> capabilities.keyboard
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
             ClientControl.HOST_ACTIONS -> capabilities.hostActions
+            ClientControl.CUSTOM_GESTURES -> capabilities.customGestures
             ClientControl.CLIPBOARD -> capabilities.clipboard
+            ClientControl.FILE_TRANSFER -> capabilities.fileTransfer
         }
 }
 
@@ -602,6 +685,34 @@ internal sealed class GestureHostActionMappingAction {
     data class InvokeHostAction(val actionId: String) : GestureHostActionMappingAction()
 }
 
+enum class GestureHostActionChoice {
+    DEFAULT,
+    MOVE_WINDOW,
+    RETURN_WINDOWS,
+    ;
+
+    internal fun toMappingAction(): GestureHostActionMappingAction =
+        when (this) {
+            DEFAULT -> GestureHostActionMappingAction.Default
+            MOVE_WINDOW -> GestureHostActionMappingAction.InvokeHostAction(HostActionMenuPolicy.ACTION_MOVE_WINDOW)
+            RETURN_WINDOWS -> GestureHostActionMappingAction.InvokeHostAction(HostActionMenuPolicy.ACTION_RETURN_WINDOWS)
+        }
+
+    companion object {
+        fun fromName(value: String?): GestureHostActionChoice = entries.firstOrNull { it.name == value } ?: DEFAULT
+    }
+}
+
+internal fun GestureHostActionChoice.isSupportedByHostActions(availableHostActions: Iterable<HostActionOption>): Boolean =
+    when (val action = toMappingAction()) {
+        GestureHostActionMappingAction.Default -> true
+        GestureHostActionMappingAction.Deny -> false
+        is GestureHostActionMappingAction.InvokeHostAction -> availableHostActions.any { it.id == action.actionId }
+    }
+
+internal fun GestureHostActionChoice.effectiveForHostActions(availableHostActions: Iterable<HostActionOption>): GestureHostActionChoice =
+    if (isSupportedByHostActions(availableHostActions)) this else GestureHostActionChoice.DEFAULT
+
 internal data class GestureHostActionMapping(
     val trigger: GestureHostActionTrigger,
     val action: GestureHostActionMappingAction,
@@ -612,6 +723,24 @@ internal data class GestureHostActionProfile(
 ) {
     companion object {
         val DEFAULT = GestureHostActionProfile()
+
+        fun fromChoices(
+            swipeUp: GestureHostActionChoice,
+            swipeDown: GestureHostActionChoice,
+        ): GestureHostActionProfile =
+            GestureHostActionProfile(
+                mappings =
+                    listOf(
+                        GestureHostActionMapping(
+                            trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_UP,
+                            action = swipeUp.toMappingAction(),
+                        ),
+                        GestureHostActionMapping(
+                            trigger = GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN,
+                            action = swipeDown.toMappingAction(),
+                        ),
+                    ),
+            )
     }
 }
 
@@ -629,6 +758,8 @@ internal sealed class GestureHostActionDecision {
 }
 
 internal object GestureHostActionPolicy {
+    fun knownActionIds(): Set<String> = HostActionMenuPolicy.KNOWN_ACTION_IDS
+
     fun shouldInterceptThreeFingerGestures(profile: GestureHostActionProfile): Boolean =
         profile.mappings.any { mapping ->
             when (mapping.action) {
@@ -654,6 +785,7 @@ internal object GestureHostActionPolicy {
                 if (context.customGesturesAllowed &&
                     context.hostActionsAllowed &&
                     context.hostActionsNegotiated &&
+                    action.actionId in knownActionIds() &&
                     action.actionId in context.availableHostActionIds
                 ) {
                     GestureHostActionDecision.InvokeHostAction(action.actionId)
@@ -701,19 +833,18 @@ internal class ThreeFingerGestureClassifier(
                 null
             }
             ThreeFingerGesturePhase.MOVE -> {
-                if (startCentroidY == null) startCentroidY = sample.centroidY
-                null
+                val startY = startCentroidY
+                if (startY == null) {
+                    startCentroidY = sample.centroidY
+                    null
+                } else {
+                    resolveCompletedSwipe(sample, startY, resetAfterMatch = true)
+                }
             }
             ThreeFingerGesturePhase.END -> {
                 val startY = startCentroidY ?: sample.centroidY
-                val deltaY = sample.centroidY - startY
                 reset()
-                val threshold = sample.viewportHeight * minimumSwipeFraction
-                when {
-                    deltaY <= -threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_UP
-                    deltaY >= threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN
-                    else -> null
-                }
+                resolveCompletedSwipe(sample, startY, resetAfterMatch = false)
             }
             ThreeFingerGesturePhase.CANCEL,
             ThreeFingerGesturePhase.OTHER,
@@ -726,6 +857,23 @@ internal class ThreeFingerGestureClassifier(
 
     fun reset() {
         startCentroidY = null
+    }
+
+    private fun resolveCompletedSwipe(
+        sample: ThreeFingerGestureSample,
+        startY: Float,
+        resetAfterMatch: Boolean,
+    ): GestureHostActionTrigger? {
+        val deltaY = sample.centroidY - startY
+        val threshold = sample.viewportHeight * minimumSwipeFraction
+        val trigger =
+            when {
+                deltaY <= -threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_UP
+                deltaY >= threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN
+                else -> null
+            }
+        if (trigger != null && resetAfterMatch) reset()
+        return trigger
     }
 
     private companion object {
@@ -742,10 +890,17 @@ internal class ThreeFingerGestureClassifier(
  * it never adds a dead tap target to the compact capsule.
  */
 internal object HostActionMenuPolicy {
+    fun supportedActions(actions: List<HostActionOption>): List<HostActionOption> {
+        val seen = mutableSetOf<String>()
+        return actions.filter { option ->
+            option.id in KNOWN_ACTION_IDS && seen.add(option.id)
+        }
+    }
+
     fun isAvailable(
         hostActions: Boolean,
         actions: List<HostActionOption>,
-    ): Boolean = hostActions && actions.isNotEmpty()
+    ): Boolean = hostActions && supportedActions(actions).isNotEmpty()
 
     fun selectionMode(option: HostActionOption): HostActionSelectionMode =
         if (option.requiresConfirmation) HostActionSelectionMode.CONFIRM else HostActionSelectionMode.INVOKE
@@ -771,6 +926,7 @@ internal object HostActionMenuPolicy {
 
     const val ACTION_MOVE_WINDOW = "move-window"
     const val ACTION_RETURN_WINDOWS = "return-windows"
+    internal val KNOWN_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
 }
 
 /**
