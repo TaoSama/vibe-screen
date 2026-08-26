@@ -36,7 +36,7 @@ platform scaffolding under active development.
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
-| HarmonyOS/Internet | In development; not part of the current runnable baseline |
+| HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
 ## Quick start
 
@@ -780,14 +780,22 @@ increase it.
   control/media fixtures, display/video negotiation, strict session epochs,
   bounded media queues, input encoding (including shared Protocol v1 base and
   extended stylus encoding and capability gating), fail-closed resume results,
-  and a portable pairing/credential/replay/revocation core. The secure-pairing
-  portable path now requires an explicit Harmony HUKS-backed profile before it
-  can emit `PairingRequest`, persists only version-2 credential records carrying
-  that profile, and rejects legacy records, non-HUKS providers, replayed control
+  a portable pairing/credential/replay/revocation core, and a transport-neutral
+  authenticated-record verifier that reproduces the macOS/Android AES-256-GCM
+  fixture for control, media, audio, and bulk channels. That verifier covers
+  directional key derivation, `session_id` hashing, strict session/key epochs,
+  channel-bound nonces, replay windows, wrong-key/tamper rejection, and explicit
+  legacy plaintext fallback marking. The secure-pairing portable path now
+  requires an explicit Harmony HUKS-backed profile before it can emit
+  `PairingRequest`, persists only version-2 credential records carrying that
+  profile, and rejects legacy records, non-HUKS providers, replayed control
   records, expired pairing results, and revoked credentials fail-closed. ArkUI
   now wires TCP, XComponent, AVCodec, Asset Store, foreground suspension, and
-  bounded reconnect in source. The portable core encodes both base stylus
-  (position, pressure, tilt)
+  bounded reconnect in source. The production Harmony TCP path still uses the
+  explicit plaintext Protocol v1 upgrade and must not be reported as encrypted
+  until the HUKS-backed provider and transport integration pass DevEco, Host,
+  and MatePad gates. The portable core encodes both base stylus (position,
+  pressure, tilt)
   and the extended stylus fields (tool kind, barrel buttons, contact/proximity
   state) under capability negotiation, but the production Harmony client
   advertises only CAPABILITY_STYLUS and not CAPABILITY_STYLUS_EXTENDED until
@@ -805,6 +813,8 @@ increase it.
   The HUKS secure-pairing evidence verifier and blocked manifest are recorded
   under
   [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/README.md).
+  The authenticated-record portable-verifier blocked record is recorded under
+  [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-harmony-lan-secure-record-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-harmony-lan-secure-record-blocked/README.md).
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - Gate ownership is explicit while those records are open: the HarmonyOS client
