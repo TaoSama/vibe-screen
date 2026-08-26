@@ -2,7 +2,7 @@
   "schema_version": "vibescreen.evidence/v1",
   "kind": "macos_startup_recovery_evidence",
   "run_id": "2026-08-22-login-headless-recovery-gate-blocked",
-  "source_commit": "1abc03b0287feba7b932f175a9e8ff1280495606",
+  "source_commit": "408c17e3b0652e1fc89018d5ddd97689082b47d2",
   "mac_host": {
     "model": "",
     "architecture": "",
