@@ -1015,6 +1015,16 @@ increase it.
   separate device gates. Android results are never treated as iOS evidence; see
   the [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
   and [iOS device acceptance runbook](docs/runbook/ios-device-acceptance.md).
+- The current owner for the iOS native-input behavior gate is
+  `phase5-ios-native-input-behavior`. Its read-only readiness/evidence summary
+  is `make ios-native-input-gate EVIDENCE_DIR=...`, which consumes a sanitized
+  `ios-native-input-observations.json` from scheduled iPhone and iPad runs. A
+  pass requires real signed iOS app sessions, selected display/stream routing,
+  touch tap/drag, hardware keyboard press/release plus modifier cleanup, hover
+  or pointer accessory movement, Host acknowledgements, and retained iOS/Host
+  logs for both device classes. Simulator, Android, and offline test results
+  remain readiness-only and
+  cannot close this gate.
 
 ## Device Strategy
 

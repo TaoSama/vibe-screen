@@ -18,6 +18,7 @@
     "local_environment",
     "build_evidence",
     "signing_readiness_gate",
+    "native_input_gate",
     "signing",
     "videotoolbox_readiness_gates",
     "devices",
@@ -128,6 +129,75 @@
         "can_close_ios_app_signing_readiness": {"type": "boolean"},
         "missing": {"type": "array", "items": {"type": "string"}},
         "failures": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "native_input_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provided",
+        "path",
+        "owner",
+        "current_base",
+        "kind",
+        "profile",
+        "gate_owner",
+        "verdict",
+        "can_close_ios_native_input_gate",
+        "requires_real_ios_device",
+        "requires_signed_app",
+        "requires_physical_keyboard",
+        "requires_hover_or_pointer_accessory",
+        "android_evidence_is_not_ios_input_evidence",
+        "simulator_is_not_ios_input_evidence",
+        "offline_tests_are_readiness_only",
+        "observations",
+        "missing_requirements",
+        "blocking_reasons",
+        "disallowed_evidence",
+        "artifact_paths"
+      ],
+      "properties": {
+        "provided": {"type": "boolean"},
+        "path": {"type": ["string", "null"]},
+        "owner": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["role", "head_ref", "pull_request", "repository", "scope"],
+          "properties": {
+            "role": {"const": "ios_native_input_behavior_current_base_owner"},
+            "head_ref": {"const": "codex/ios-native-input-readiness-gate"},
+            "pull_request": {"const": "#257"},
+            "repository": {"const": "TaoSama/vibe-screen"},
+            "scope": {"type": "string", "minLength": 1}
+          }
+        },
+        "current_base": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["commit", "dirty"],
+          "properties": {
+            "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "kind": {"type": ["string", "null"]},
+        "profile": {"type": ["string", "null"]},
+        "gate_owner": {"type": ["string", "null"]},
+        "verdict": {"type": ["string", "null"]},
+        "can_close_ios_native_input_gate": {"type": "boolean"},
+        "requires_real_ios_device": {"type": "boolean"},
+        "requires_signed_app": {"type": "boolean"},
+        "requires_physical_keyboard": {"type": "boolean"},
+        "requires_hover_or_pointer_accessory": {"type": "boolean"},
+        "android_evidence_is_not_ios_input_evidence": {"type": "boolean"},
+        "simulator_is_not_ios_input_evidence": {"type": "boolean"},
+        "offline_tests_are_readiness_only": {"type": "boolean"},
+        "observations": {"type": "object"},
+        "missing_requirements": {"type": "array", "items": {"type": ["string", "object"]}},
+        "blocking_reasons": {"type": "array", "items": {"type": ["string", "object"]}},
+        "disallowed_evidence": {"type": "array", "items": {"type": ["string", "object"]}},
+        "artifact_paths": {"type": "array", "items": {"type": "string"}}
       }
     },
     "signing": {

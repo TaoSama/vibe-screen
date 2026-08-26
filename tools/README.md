@@ -195,6 +195,23 @@ retained artifacts under the evidence directory. Loopback, synthetic,
 Android-only, or plaintext legacy records return `blocked` or `insufficient` and keep
 `can_close_android_audio_playback_gate=false`.
 
+iOS native-input behavior is owned by the
+`phase5-ios-native-input-behavior` gate. Summarize a sanitized device-run
+observation file with:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.ios_native_input \
+  docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-observations.json \
+  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json
+```
+
+The CLI is deliberately fail-closed. It requires real iPhone and iPad signed app
+runs, physical keyboard, hover or pointer accessory, Protocol v1 session
+and capability evidence, selected display/stream routing, Host
+acknowledgements, and retained iOS/Host logs. Android evidence, Simulator
+evidence, and offline input tests are readiness signals only and cannot close
+the iOS native-input behavior gate.
+
 Run the tests without installing third-party packages:
 
 ```sh
