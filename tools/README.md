@@ -185,6 +185,21 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## Touch rerun evidence
+
+The fixed-binary touch-gesture rerun uses two fail-closed helpers. First collect a
+read-only preflight with the expected Host SHA-256 and, when the target device is
+known, expected Android identity fields. The preflight records `blocked` if the
+installed Host binary, TCC grants, or device identity are not ready. It does not
+start the Host, run instrumentation, change ADB reverse mappings, modify privacy
+databases or Keychain state, or clear Android app data.
+
+After the opt-in gesture driver, run `make evidence-touch-rerun-summary` against
+the retained preflight, instrumentation output, Host log, and listen-only event
+tap log. It exits zero only when all artifacts support the pass claim; otherwise
+it writes a blocked `result-summary.json`. A Nubia P0110/pacific pass is scoped to
+general Android substitute evidence and must not be relabeled as Xiaomi 13/fuxi.
+
 ## HarmonyOS current-base owner gate
 
 The HarmonyOS Phase 4 owner gate is a read-only aggregate for the README

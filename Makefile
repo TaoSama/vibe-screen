@@ -64,6 +64,15 @@ PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
 PHASE2_SOAK_INTERVAL ?= 30s
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER ?=
+TOUCH_RERUN_EXPECTED_ANDROID_MODEL ?=
+TOUCH_RERUN_EXPECTED_ANDROID_DEVICE ?=
+TOUCH_RERUN_EXPECTED_ANDROID_RELEASE ?=
+TOUCH_RERUN_EXPECTED_ANDROID_SDK ?=
+TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
+TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
+TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
+TOUCH_RERUN_EVENT_TAP ?= $(EVIDENCE_DIR)/listen-only-event-tap.log
 RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / <device-serial>
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
 RECONNECT_TIMING_ARTIFACT_ARGS ?=
@@ -147,6 +156,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-device-info \
 	evidence-usb-live-smoke \
 	evidence-touch-rerun-preflight \
+	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
@@ -408,7 +418,27 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		python3 -m vibescreen_evidence.touch_rerun_preflight \
 		--serial $(EVIDENCE_SERIAL) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
-		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER)),--expected-android-manufacturer $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL)),--expected-android-model $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		--output $(TOUCH_RERUN_PREFLIGHT)
+
+evidence-touch-rerun-summary:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a touch rerun evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.touch_rerun_summary \
+		--preflight $(TOUCH_RERUN_PREFLIGHT) \
+		--instrumentation $(TOUCH_RERUN_INSTRUMENTATION) \
+		--host-log $(TOUCH_RERUN_HOST_LOG) \
+		--event-tap $(TOUCH_RERUN_EVENT_TAP) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER)),--expected-android-manufacturer $(TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL)),--expected-android-model $(TOUCH_RERUN_EXPECTED_ANDROID_MODEL),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		--output $(EVIDENCE_DIR)/result-summary.json
 
 evidence-trusted-lan-preflight: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
