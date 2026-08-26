@@ -58,6 +58,29 @@ REQUIRED_SIGNING_GATE_FIELDS = {
     "missing",
     "failures",
 }
+REQUIRED_NATIVE_INPUT_GATE_FIELDS = {
+    "provided",
+    "path",
+    "owner",
+    "current_base",
+    "kind",
+    "profile",
+    "gate_owner",
+    "verdict",
+    "can_close_ios_native_input_gate",
+    "requires_real_ios_device",
+    "requires_signed_app",
+    "requires_physical_keyboard",
+    "requires_hover_or_pointer_accessory",
+    "android_evidence_is_not_ios_input_evidence",
+    "simulator_is_not_ios_input_evidence",
+    "offline_tests_are_readiness_only",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "disallowed_evidence",
+    "artifact_paths",
+}
 REQUIRED_VIDEOTOOLBOX_READINESS_FIELDS = {
     "schema_version",
     "kind",
@@ -203,6 +226,24 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
         REQUIRED_SIGNING_GATE_FIELDS,
         "signing_readiness_gate",
     )
+    if "native_input_gate" in manifest:
+        native_input_gate = _require_object(manifest.get("native_input_gate"), "native_input_gate")
+        _require_fields(
+            native_input_gate,
+            REQUIRED_NATIVE_INPUT_GATE_FIELDS,
+            "native_input_gate",
+        )
+        for field in (
+            "observations",
+            "missing_requirements",
+            "blocking_reasons",
+            "disallowed_evidence",
+            "artifact_paths",
+        ):
+            if not isinstance(native_input_gate.get(field), list if field != "observations" else dict):
+                raise IOSCurrentBaseGateError(
+                    f"manifest schema violation: native_input_gate.{field} has an invalid shape"
+                )
     videotoolbox_readiness_gates = manifest.get("videotoolbox_readiness_gates")
     if not isinstance(videotoolbox_readiness_gates, list):
         raise IOSCurrentBaseGateError(
