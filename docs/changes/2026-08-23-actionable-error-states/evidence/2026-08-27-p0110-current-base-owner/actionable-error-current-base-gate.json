@@ -1,7 +1,6 @@
 {
   "blocked_state_ids": [
     "accessibility_denied_or_limited",
-    "adb_reverse_missing",
     "host_screen_recording_denied",
     "lan_route_unavailable",
     "tcp_54321_unavailable"
@@ -18,6 +17,7 @@
   },
   "errors": [],
   "insufficient_state_ids": [
+    "adb_reverse_missing",
     "stale_epoch_or_session_errors",
     "usb_disconnected"
   ],
@@ -25,10 +25,10 @@
   "kind": "phase1_actionable_error_current_base_gate",
   "reasons": [
     "blocked: accessibility_denied_or_limited",
-    "blocked: adb_reverse_missing",
     "blocked: host_screen_recording_denied",
     "blocked: lan_route_unavailable",
     "blocked: tcp_54321_unavailable",
+    "insufficient: adb_reverse_missing",
     "insufficient: stale_epoch_or_session_errors",
     "insufficient: usb_disconnected"
   ],
@@ -41,12 +41,12 @@
     "lan_route_unavailable",
     "stale_epoch_or_session_errors"
   ],
-  "run_id": "2026-08-24-p0110-current-base-owner",
+  "run_id": "2026-08-27-p0110-current-base-owner",
   "schema_version": "vibescreen.evidence/v1",
   "source": {
-    "collected_at_commit": "b759d785898ede5bbd4370255b3d49e56457f0ef",
-    "evaluated_at_commit": "6bcf185094bb2a9c77abb7c642833b7ac03b5835",
-    "manifest": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base.json",
+    "collected_at_commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "evaluated_at_commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "manifest": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/actionable-error-current-base.json",
     "repository_name": "TaoSama/vibe-screen"
   },
   "state_results": [
@@ -71,29 +71,29 @@
       "status": "blocked"
     },
     {
-      "artifact_count": 7,
+      "artifact_count": 2,
       "blockers": [
-        "Host was not listening on TCP 54321, but the retained Android UI artifact only proves pre-session waiting guidance and retry logs, not a full per-state UI matrix pass"
+        "A local Vibe Screen process was already listening on TCP 54321 during the current-base run, so the missing-listener state could not be reproduced without interrupting a shared Host process."
       ],
       "can_close_state": false,
       "id": "tcp_54321_unavailable",
-      "observed_on_device": true,
-      "status": "blocked"
-    },
-    {
-      "artifact_count": 2,
-      "blockers": [
-        "tcp:54321 reverse was present; removing it would mutate shared device transport state during this read-mostly current-base run"
-      ],
-      "can_close_state": false,
-      "id": "adb_reverse_missing",
       "observed_on_device": false,
       "status": "blocked"
     },
     {
+      "artifact_count": 4,
+      "blockers": [
+        "The current-source device run removed tcp:54321 reverse and restored it afterwards, but the retained UI still showed the generic USB waiting/checklist surface rather than the ADB route unavailable recovery copy."
+      ],
+      "can_close_state": false,
+      "id": "adb_reverse_missing",
+      "observed_on_device": true,
+      "status": "insufficient"
+    },
+    {
       "artifact_count": 1,
       "blockers": [
-        "A physical USB disconnect drops the only ADB control channel, so this run could not retain reliable same-window UI/log evidence without external capture"
+        "A physical USB disconnect drops the only ADB control channel, so this run could not retain reliable same-window UI/log evidence without external capture."
       ],
       "can_close_state": false,
       "id": "usb_disconnected",
@@ -103,7 +103,7 @@
     {
       "artifact_count": 2,
       "blockers": [
-        "P0110 Wi-Fi was disconnected with no wlan0 IPv4 address and no route, so no trusted-LAN connection attempt could exercise the full UI matrix"
+        "P0110 had no retained usable trusted-LAN route evidence, so no full LAN connection attempt could exercise the complete UI matrix."
       ],
       "can_close_state": false,
       "id": "lan_route_unavailable",
@@ -113,7 +113,7 @@
     {
       "artifact_count": 1,
       "blockers": [
-        "No Protocol v1 stream or stale epoch/session fault was available in the current environment"
+        "No Protocol v1 stream or stale epoch/session fault was available in the current environment."
       ],
       "can_close_state": false,
       "id": "stale_epoch_or_session_errors",
