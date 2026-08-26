@@ -911,8 +911,14 @@ increase it.
   close this gate.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
-  interoperability commit. Signing, iPhone/iPad installation, hardware
-  VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
+  interoperability commit. The hardware VideoToolbox behavior gate now has a
+  fail-closed offline owner: `make ios-videotoolbox-readiness` summarizes
+  `ios-videotoolbox-observations.json` into a schema-checked readiness result
+  that distinguishes Simulator, unsigned archive, physical iPhone, and physical
+  iPad records. Simulator and unsigned archive summaries remain blocked by
+  construction; closing Phase 5 still requires reviewed passing records from
+  both real iPhone and iPad hardware. Signing, iPhone/iPad installation,
+  host-side advanced adapters, AVAudioEngine playback,
   HDR output, audio/bulk product flows over Internet DataChannels, native input
   behavior, reconnect behavior, and all advanced real-device behavior remain
   separate device gates. Android results are never treated as iOS evidence; see

@@ -58,6 +58,8 @@ IOS_HDR_EDR_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-hdr-edr-observations.json
 IOS_HDR_EDR_GATE_JSON ?= $(dir $(IOS_HDR_EDR_OBSERVATIONS_JSON))ios-hdr-edr-gate.json
 IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
+IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-videotoolbox-observations.json
+IOS_VIDEOTOOLBOX_READINESS_JSON ?= $(dir $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON))ios-videotoolbox-readiness.json
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
@@ -177,6 +179,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	ios-app-signing-readiness-gate \
 	ios-device-acceptance-gate \
 	ios-hdr-edr-gate \
+	ios-videotoolbox-readiness \
 	ios-current-base-manifest \
 	ios-current-base-gate \
 	phase5-multi-client-current-base-gate \
@@ -691,6 +694,11 @@ phase2-tablet-gate: phase2-device-memory-gate
 hardware-keyboard-gate:
 	@test -f "$(EVIDENCE_DIR)/hardware-keyboard-observations.json" || (echo "error: collect $(EVIDENCE_DIR)/hardware-keyboard-observations.json before hardware-keyboard-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json --require-pass
+
+ios-videotoolbox-readiness:
+	@test -f "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" || (echo "error: collect $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON) before ios-videotoolbox-readiness" >&2; exit 2)
+	mkdir -p "$(dir $(IOS_VIDEOTOOLBOX_READINESS_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_videotoolbox_readiness "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" --output "$(IOS_VIDEOTOOLBOX_READINESS_JSON)"
 
 hardware-keyboard-readiness: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/hardware_keyboard_readiness.py \
