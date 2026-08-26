@@ -1,0 +1,266 @@
+{
+  "android_device": {
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "<device-serial>",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "device": "pacific",
+      "device_serial": "<device-serial>",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "product": "pacific",
+      "sdk": 36
+    },
+    "network": {
+      "has_route": false,
+      "route_to_mac": {
+        "<redacted-cgnat-ipv4>": {
+          "command": [
+            "adb",
+            "-s",
+            "<device-serial>",
+            "shell",
+            "ip",
+            "route",
+            "get",
+            "<redacted-cgnat-ipv4>"
+          ],
+          "returncode": 2,
+          "stderr": "RTNETLINK answers: Network is unreachable",
+          "stdout": "",
+          "timed_out": false
+        }
+      },
+      "routes": {
+        "command": [
+          "adb",
+          "-s",
+          "<device-serial>",
+          "shell",
+          "ip",
+          "route"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false
+      },
+      "wifi_associated": false,
+      "wifi_status": {
+        "command": [
+          "adb",
+          "-s",
+          "<device-serial>",
+          "shell",
+          "cmd",
+          "wifi",
+          "status"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "Wifi is enabled\nWifi scanning is always available\n==== ClientModeManager instance: ConcreteClientModeManager{id=623838927 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====\nWifi is not connected",
+        "timed_out": false
+      },
+      "wlan0": {
+        "command": [
+          "adb",
+          "-s",
+          "<device-serial>",
+          "shell",
+          "ip",
+          "addr",
+          "show",
+          "wlan0"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000\n    link/ether <redacted> brd <redacted-broadcast-mac>",
+        "timed_out": false
+      },
+      "wlan0_ipv4": [],
+      "wlan0_up": false
+    }
+  },
+  "blockers": [
+    "android_wifi_association: Wi-Fi is not associated",
+    "android_wlan_ipv4: wlan0 is down, has no carrier, or has no IPv4 address",
+    "route_to_mac_lan: Android has no wlan0 route to any Mac LAN IPv4 candidate",
+    "host_stable_signing: Host stable signing is blocked before trusted-LAN evidence can start"
+  ],
+  "claims": {
+    "can_start_trusted_lan_smoke": false,
+    "latency": false,
+    "legacy_plaintext": false,
+    "real_lan_stream": false,
+    "reconnect": false,
+    "stability": false,
+    "trusted_lan_encrypted": false
+  },
+  "collected_at": "2026-08-26T23:07:06.934414+00:00",
+  "host": {
+    "host_preflight_command": [
+      "/opt/homebrew/opt/python@3.11/bin/python3.11",
+      "scripts/macos_dev_host.py",
+      "preflight"
+    ],
+    "network": {
+      "default_interface": "en0",
+      "default_route": {
+        "command": [
+          "route",
+          "-n",
+          "get",
+          "default"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "<omitted; parsed into default_interface>",
+        "timed_out": false
+      },
+      "has_lan_listener": false,
+      "has_loopback_listener": true,
+      "host_port": 54321,
+      "ifconfig": {
+        "command": [
+          "ifconfig"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "<omitted; parsed into mac_ipv4_candidates>",
+        "timed_out": false
+      },
+      "listener": {
+        "command": [
+          "lsof",
+          "-nP",
+          "-iTCP:54321",
+          "-sTCP:LISTEN"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 22385 <redacted-user>    7u  IPv4 0x1b798f5fc60f9b70      0t0  TCP 127.0.0.1:54321 (LISTEN)",
+        "timed_out": false
+      },
+      "mac_ipv4_candidates": [
+        "<redacted-cgnat-ipv4>"
+      ],
+      "machine": "arm64",
+      "platform": "macOS-26.4.1-arm64-arm-64bit"
+    },
+    "preflight": {
+      "command": [
+        "/opt/homebrew/opt/python@3.11/bin/python3.11",
+        "scripts/macos_dev_host.py",
+        "preflight"
+      ],
+      "returncode": 2,
+      "stderr": "Host bundle\n-----------\nPath: /Applications/Vibe Screen.app\nIdentifier: dev.telemachus.display\nIdentity: Vibe Screen Dev\nAuthority: Vibe Screen Dev\nAuthority: Vibe Screen Dev Root\nTeamIdentifier: not set\nCertificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C\nCDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2\nBinary SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996\nDesignated requirement: identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"\nSource commit: missing\nSource tree: missing\nSource dirty: missing\nCurrent source commit: 3b2ba11e832a3618eaedfc67f92414b161423a00\nCurrent source tree: a36d465ea8a20a42b561b1e453bcad7957ffce15\nCurrent source dirty: False\nSource mismatch allowed: False\nVerification: valid on disk (codesign --verify --deep --strict)\n\nRead-only TCC capture\n---------------------\nDatabase: <user-tcc-db>; <system-tcc-db>\nField order: service|client|client_type|auth_value|auth_reason|last_modified\n(no matching rows)\n\nInterpretation: unverified (<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file)\n\nPreflight result\n----------------\nStatus: FAIL\nBlocking issues:\n- installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py\n- cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility\n\nKeychain and TCC handling\n-------------------------\nThis tool does not reset Keychain, import certificates, request passwords, update\npartition lists, modify macOS privacy databases, or request/override macOS privacy authorization.\nIt only uses the configured codesign identity and reads privacy databases in read-only mode.",
+      "stdout": "Wrote /private<clean-origin-main-worktree>/repo/.build/dev-macos-host/host-signing-and-permissions.txt",
+      "timed_out": false
+    },
+    "require_host_listener": false
+  },
+  "kind": "trusted_lan_preflight",
+  "profile": "trusted-lan-current-worktree-preflight",
+  "repository": {
+    "dirty": false,
+    "revision": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "status_porcelain": []
+  },
+  "result": "blocked",
+  "safety": {
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "modifies_wifi_credentials": false,
+    "read_only": true,
+    "runs_instrumentation": false,
+    "starts_host": false,
+    "writes_pairing_token": false,
+    "writes_qr_payload": false
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "stages": [
+    {
+      "details": {
+        "expected_serial": "<device-serial>"
+      },
+      "name": "device_identity",
+      "status": "pass",
+      "summary": "Nubia P0110/pacific/Android 16 identity confirmed"
+    },
+    {
+      "name": "android_wifi_association",
+      "status": "blocked",
+      "summary": "Wi-Fi is not associated"
+    },
+    {
+      "name": "android_wlan_ipv4",
+      "status": "blocked",
+      "summary": "wlan0 is down, has no carrier, or has no IPv4 address"
+    },
+    {
+      "name": "mac_lan_ipv4_candidate",
+      "status": "pass",
+      "summary": "Mac LAN IPv4 candidate(s): <redacted-cgnat-ipv4>"
+    },
+    {
+      "name": "route_to_mac_lan",
+      "status": "blocked",
+      "summary": "Android has no wlan0 route to any Mac LAN IPv4 candidate"
+    },
+    {
+      "details": {
+        "host_preflight_returncode": 2
+      },
+      "name": "host_stable_signing",
+      "status": "blocked",
+      "summary": "Host stable signing is blocked before trusted-LAN evidence can start"
+    },
+    {
+      "name": "screen_recording_tcc",
+      "status": "not_run",
+      "summary": "TCC authorization was not evaluated because stable signing failed"
+    },
+    {
+      "name": "accessibility_tcc",
+      "status": "not_run",
+      "summary": "TCC authorization was not evaluated because stable signing failed"
+    },
+    {
+      "name": "host_listener",
+      "status": "not_run",
+      "summary": "TCP 54321 LAN listener was not required for this pre-launch preflight; loopback listener was observed and is not LAN evidence"
+    },
+    {
+      "name": "qr_token_admission",
+      "status": "not_run",
+      "summary": "Preflight stopped before QR/token admission"
+    },
+    {
+      "name": "secure_record_negotiation",
+      "status": "not_run",
+      "summary": "Preflight stopped before secure-record negotiation"
+    },
+    {
+      "name": "protocol_v1_lan",
+      "status": "not_run",
+      "summary": "Preflight stopped before Protocol v1 LAN upgrade"
+    },
+    {
+      "name": "first_decoder_output",
+      "status": "not_run",
+      "summary": "Preflight stopped before stream decode"
+    },
+    {
+      "name": "reconnect_preserved_host_pid",
+      "status": "not_run",
+      "summary": "Preflight stopped before reconnect exercise"
+    },
+    {
+      "name": "latency_external_camera",
+      "status": "not_run",
+      "summary": "External-camera LAN latency is a separate gate"
+    }
+  ]
+}
