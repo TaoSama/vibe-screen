@@ -195,3 +195,10 @@ SPS/PPS or VPS/SPS/PPS. CoreVideo pixel buffers retain platform color
 attachments. The current renderer uses Core Image for correctness and aspect
 fit. A Metal zero-copy renderer is a future optimization and requires measured
 latency, color, power, and HDR comparison before replacement.
+Hardware decode behavior is tracked by the fail-closed
+`ios-videotoolbox-readiness` evidence summary. Simulator and unsigned archive
+runs may verify build and schema readiness, but they remain blocked for hardware
+claims; physical iPhone and physical iPad records must separately prove signed
+installation, codec parameter sets, VideoToolbox sessions, output frames,
+hardware-path evidence, stream/config epochs, and thermal/power state before the
+README Phase 5 gate can be reviewed.
