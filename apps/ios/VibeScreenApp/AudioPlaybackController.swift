@@ -118,17 +118,14 @@ enum AudioPlaybackSelfTest {
         config.codec = .pcmS16Le
         config.sampleRateHz = 48_000
         config.channelCount = 2
-        config.framesPerPacket = PCMStreamFormat.maximumFramesPerPacket
+        config.framesPerPacket = 480
 
         let controller = AudioPlaybackController()
         do {
             let format = try controller.configure(config)
 
-            let first = try packet(sequence: 0, config: config, format: format)
-            guard try controller.schedule(first) else { throw AudioPlaybackSelfTestError.initialScheduleDropped }
-
-            var filled = 1
-            for sequence in UInt64(1)...UInt64(AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers + 2) {
+            var filled = 0
+            for sequence in UInt64(0)..<UInt64(AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers + 3) {
                 let accepted = try controller.schedule(packet(sequence: sequence, config: config, format: format))
                 if accepted { filled += 1 }
             }
@@ -138,8 +135,13 @@ enum AudioPlaybackSelfTest {
             guard controller.snapshot.overrunDropCount > 0 else {
                 throw AudioPlaybackSelfTestError.missingOverrunObservation
             }
+            let firstPass = try await waitForPlaybackDrain(
+                controller: controller,
+                playedAfter: 0,
+                queueEmptyAfter: 0,
+                timeout: .seconds(3)
+            )
 
-            try await Task.sleep(for: .milliseconds(50))
             _ = controller.stop()
 
             let nextConfigEpoch: UInt64 = config.configEpoch + 1
@@ -148,7 +150,12 @@ enum AudioPlaybackSelfTest {
             guard try controller.schedule(packet(sequence: 0, config: config, format: restartedFormat)) else {
                 throw AudioPlaybackSelfTestError.restartScheduleDropped
             }
-            try await Task.sleep(for: .milliseconds(20))
+            _ = try await waitForPlaybackDrain(
+                controller: controller,
+                playedAfter: firstPass.playedBufferTotal,
+                queueEmptyAfter: firstPass.queueEmptyCount,
+                timeout: .seconds(3)
+            )
             _ = controller.stop()
             return controller.snapshot
         } catch {
@@ -168,6 +175,25 @@ enum AudioPlaybackSelfTest {
         header.payloadLength = UInt32(payload.count)
         let headerBytes = try header.serializedData()
         return try AudioPacket(serializedFrame: encodeVarint(headerBytes.count) + headerBytes + payload)
+    }
+
+    private static func waitForPlaybackDrain(
+        controller: AudioPlaybackController,
+        playedAfter playedBaseline: UInt64,
+        queueEmptyAfter queueEmptyBaseline: UInt64,
+        timeout: Duration
+    ) async throws -> AudioPlaybackQueueSnapshot {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            let snapshot = controller.snapshot
+            if snapshot.playedBufferTotal > playedBaseline,
+               snapshot.queueEmptyCount > queueEmptyBaseline,
+               snapshot.scheduledBufferCount == 0 {
+                return snapshot
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        throw AudioPlaybackSelfTestError.playbackCompletionTimedOut(controller.snapshot)
     }
 
     private static func encodeVarint(_ value: Int) -> Data {
@@ -199,19 +225,19 @@ enum AudioPlaybackSelfTest {
 }
 
 enum AudioPlaybackSelfTestError: Error, LocalizedError {
-    case initialScheduleDropped
     case queueLimitNotEnforced(Int)
     case missingOverrunObservation
+    case playbackCompletionTimedOut(AudioPlaybackQueueSnapshot)
     case restartScheduleDropped
 
     var errorDescription: String? {
         switch self {
-        case .initialScheduleDropped:
-            "首个 PCM 缓冲未能进入 AVAudioPlayerNode 队列"
         case let .queueLimitNotEnforced(count):
             "音频播放队列上限未按预期生效：accepted=\(count)"
         case .missingOverrunObservation:
             "音频播放队列满载时未记录 overrun/drop"
+        case let .playbackCompletionTimedOut(snapshot):
+            "等待 PCM 缓冲播放完成超时：played=\(snapshot.playedBufferTotal) queued=\(snapshot.scheduledBufferCount) queue_empty=\(snapshot.queueEmptyCount)"
         case .restartScheduleDropped:
             "停止重启后 PCM 缓冲未能重新进入播放队列"
         }

@@ -73,8 +73,8 @@ xcodebuild -project apps/ios/VibeScreen.xcodeproj \
 The verifier launches the app with `--audio-playback-self-test`, builds a
 synthetic PCM S16LE stream, starts playback-only AVAudioSession/AVAudioEngine,
 schedules buffers through AVAudioPlayerNode, observes the bounded playback queue,
-forces an overrun/drop, reports queue-empty and late-completion counters, stops,
-restarts on a newer config epoch, and reports a
+forces an overrun/drop, waits for played-buffer and queue-empty counters to
+advance before stopping, restarts on a newer config epoch, and reports a
 single `AUDIO_PLAYBACK_SELF_TEST=PASS` line in the UI. This is an executable
 playback-path check, not audible-device evidence; an iPhone/iPad run with
 external audible confirmation is still required before closing the Phase 5 audio
@@ -235,8 +235,8 @@ currently no key migration step.
   unsupported or policy-denied features intentionally stay off.
 - **Audio silent:** only PCM S16LE is accepted; verify sample rate, channels,
   frame count, session epoch, config epoch, the playback self-test result,
-  queued/queue-empty/late-completion/overrun counters, and iPhone/iPad output
-  route.
+  played/queued/queue-empty/overrun counters, any late-completion diagnostics,
+  and iPhone/iPad output route.
 - **File rejected:** verify basename safety, declared size, negotiated chunk
   limit, sequential offsets, and chunk/final SHA-256.
 

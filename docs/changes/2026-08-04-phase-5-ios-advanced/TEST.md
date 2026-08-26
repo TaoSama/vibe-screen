@@ -115,11 +115,14 @@ The app target adds a focused `AVAudioSession`/`AVAudioEngine` verifier through
 `VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts`. The
 test launches the app with `--audio-playback-self-test`, configures PCM S16LE,
 schedules synthetic audio through `AVAudioPlayerNode`, observes bounded queue
-overrun/drop behavior, reports queue-empty and late-completion counters, stops,
-restarts on a newer config epoch, and waits for
+overrun/drop behavior, waits for played-buffer and queue-empty counters to
+advance, stops, restarts on a newer config epoch, waits for playback completion
+again, and waits for
 `AUDIO_PLAYBACK_SELF_TEST=PASS` in the UI. This closes only the executable
 playback-path check when run by full Xcode on a Simulator or signed device; it
 does not prove audible iPhone/iPad output without external audio confirmation.
+Late-completion accounting remains covered by the offline queue tests and is
+reported by the app verifier as diagnostic telemetry.
 
 Project metadata also passes:
 

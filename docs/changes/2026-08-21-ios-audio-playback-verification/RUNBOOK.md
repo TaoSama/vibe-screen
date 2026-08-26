@@ -36,15 +36,18 @@ xcodebuild -project apps/ios/VibeScreen.xcodeproj \
 The test launches `VibeScreen` with `--audio-playback-self-test`. The app
 then configures playback-only `AVAudioSession`, starts `AVAudioEngine`,
 schedules synthetic PCM S16LE buffers through `AVAudioPlayerNode`, fills the
-bounded queue until an overrun/drop is observed, reports the queue counters,
-stops, restarts with a newer config epoch, and displays a single result line:
+bounded queue until an overrun/drop is observed, waits until played-buffer and
+queue-empty counters advance, stops, restarts with a newer config epoch, waits
+for playback completion again, and displays a single result line:
 
 ```text
 AUDIO_PLAYBACK_SELF_TEST=PASS scheduled=<n> played=<n> queued=<n> queue_empty=<n> late_completions=<n> overruns=<n> stops=<n>
 ```
 
-A failing result, launch timeout, missing counter, or queue-limit miss keeps the
-playback-path verifier open.
+A failing result, launch timeout, missing counter, queue-limit miss, zero played
+buffers, or missing queue-empty transition keeps the playback-path verifier
+open. The `late_completions` field is reported as a diagnostic; controlled
+late-completion accounting is covered by the offline queue tests.
 
 ## Audible iPhone/iPad gate
 
