@@ -597,6 +597,23 @@ class ReleaseGateManifestTests(unittest.TestCase):
             errors,
         )
 
+    def test_evidence_files_symlink_loop_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "loop-a.log").symlink_to("loop-b.log")
+            (root / "loop-b.log").symlink_to("loop-a.log")
+
+            manifest = passing_manifest()
+            gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
+            gate["evidence_files"] = ["loop-a.log"]
+
+            errors = validate_manifest(manifest, evidence_root=root)
+
+        self.assertIn(
+            "gates.public_internet_direct_path.evidence_files[0]: expected file under evidence root",
+            errors,
+        )
+
     def test_cli_prints_matrix_and_validates_manifest(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):

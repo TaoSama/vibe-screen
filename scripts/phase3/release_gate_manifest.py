@@ -549,6 +549,13 @@ def _validate_evidence_files(
     if not files:
         errors.append(f"{path}.evidence_files: expected at least one evidence file")
         return
+    root: Path | None = None
+    if evidence_root is not None:
+        try:
+            root = evidence_root.resolve()
+        except (OSError, RuntimeError):
+            errors.append(f"{path}.evidence_files: evidence root could not be resolved")
+            return
     for index, item in enumerate(files):
         file_path = _require_nonempty_string(item, f"{path}.evidence_files[{index}]", errors)
         if not file_path:
@@ -557,9 +564,12 @@ def _validate_evidence_files(
         if candidate.is_absolute() or ".." in candidate.parts:
             errors.append(f"{path}.evidence_files[{index}]: expected repository-relative file path")
             continue
-        if evidence_root is not None:
-            root = evidence_root.resolve()
-            resolved_candidate = (root / candidate).resolve()
+        if root is not None:
+            try:
+                resolved_candidate = (root / candidate).resolve()
+            except (OSError, RuntimeError):
+                errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
+                continue
             try:
                 resolved_candidate.relative_to(root)
             except ValueError:
