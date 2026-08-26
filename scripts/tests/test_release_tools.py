@@ -242,7 +242,7 @@ Input Reader State:
                 args,
                 [],
                 {},
-                "Input Reader State:  \n  UniqueId:  \n",
+                "Input Reader State:  \n  UniqueId:  \n  token=0xb400007b62b3a410 applicationInfo.token=<null>  \n",
                 [candidate],
                 "Stylus forwarded: samples=1 extended=true rawSource=0x4002 rawAction=2 rawTools=[stylus] phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.5 tiltX=1 tiltY=-1  \n",
                 None,
@@ -253,6 +253,9 @@ Input Reader State:
             dumpsys_text = (output_dir / "dumpsys-input.txt").read_text(encoding="utf-8")
             self.assertTrue(dumpsys_text.endswith("\n"))
             self.assertFalse(any(line.endswith(" ") for line in dumpsys_text.splitlines()))
+            self.assertIn("token=<redacted>", dumpsys_text)
+            self.assertNotIn("0xb400007b62b3a410", dumpsys_text)
+            self.assertNotIn("applicationInfo.token=<null>", dumpsys_text)
             self.assertIn("tiltY=-1  ", (output_dir / "android-diag.log").read_text(encoding="utf-8"))
             self.assertIn("tiltY=-45.0  ", (output_dir / "host-stylus.log").read_text(encoding="utf-8"))
 
@@ -578,7 +581,11 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [f"evidence/{gate_id}.txt"],
+            "evidence": [
+                "evidence/harmony-avcodec-preflight.json"
+                if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
+                else f"evidence/{gate_id}.txt"
+            ],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {

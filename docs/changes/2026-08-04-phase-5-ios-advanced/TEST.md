@@ -525,7 +525,8 @@ The following remain unproved until their dedicated gates produce evidence:
   `make wake-host-current-base-gate` to keep this gate blocked until hardware
   evidence exists;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
-  color retry, actions, and wake helper;
+  color retry, actions, and wake helper. The Host-side advanced adapter readiness gate does not close
+  host-side multi-client/display device acceptance;
 - audio capture/playback, clipboard, and file-transfer product flows over
   audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
   Android/macOS raw product-session record hooks, owner-scoped admission,

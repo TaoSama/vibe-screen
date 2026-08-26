@@ -38,6 +38,7 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)")
 REQUIRED_STYLUS_AXES = ("PRESSURE", "TILT")
 STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
 NUMBER_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
@@ -531,6 +532,10 @@ def evidence_text(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
 
 
+def redact_android_dumpsys_text(text: str) -> str:
+    return ANDROID_DUMPSYS_TOKEN_RE.sub(lambda match: match.group(0).split("=", 1)[0] + "=<redacted>", text)
+
+
 def write_evidence(
     output_dir: Path,
     args: argparse.Namespace,
@@ -544,7 +549,7 @@ def write_evidence(
     status: str,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "dumpsys-input.txt").write_text(evidence_text(dumpsys_input), encoding="utf-8")
+    (output_dir / "dumpsys-input.txt").write_text(evidence_text(redact_android_dumpsys_text(dumpsys_input)), encoding="utf-8")
     if diag_log:
         (output_dir / "android-diag.log").write_text(diag_log, encoding="utf-8")
     if host_log_excerpt:

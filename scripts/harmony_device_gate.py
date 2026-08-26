@@ -238,6 +238,13 @@ def validate_manifest(
             if manifest.get("status") != status:
                 raise ManifestError(f"gates[{index}].secure_pairing_manifest.status: must match gate status")
             _string(manifest.get("path"), f"gates[{index}].secure_pairing_manifest.path")
+        if evidence_root is not None and not allow_blocked and status == "pass":
+            for evidence_index, reference in enumerate(evidence):
+                _validate_evidence_reference(
+                    reference,
+                    evidence_root,
+                    f"gates[{index}].evidence[{evidence_index}]",
+                )
         if gate_id in AVCODEC_GATE_IDS and status == "pass" and not any(AVCODEC_MANIFEST_NAME in item for item in evidence):
             raise ManifestError(f"{gate_id}: expected evidence to include {AVCODEC_MANIFEST_NAME}")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":
@@ -246,13 +253,6 @@ def validate_manifest(
                 warnings.append(message)
             else:
                 raise ManifestError(message)
-        if evidence_root is not None and not allow_blocked and status == "pass":
-            for evidence_index, reference in enumerate(evidence):
-                _validate_evidence_reference(
-                    reference,
-                    evidence_root,
-                    f"gates[{index}].evidence[{evidence_index}]",
-                )
 
     missing = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in by_id]
     if missing:

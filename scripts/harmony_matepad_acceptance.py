@@ -179,12 +179,12 @@ def validate_device_manifest(manifest: dict[str, Any], *, evidence_root: Path) -
     except harmony_device_gate.ManifestError as strict_error:
         try:
             warnings = harmony_device_gate.validate_manifest(manifest, allow_blocked=True)
-        except harmony_device_gate.ManifestError as blocked_error:
+        except harmony_device_gate.ManifestError:
             return GateValidation(
                 strict_valid=False,
                 allow_blocked_valid=False,
                 warnings=[],
-                error=str(blocked_error),
+                error=str(strict_error),
             )
         return GateValidation(
             strict_valid=False,
@@ -419,13 +419,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise AcceptanceError(f"device gate manifest is missing: {device_manifest_path}")
         device_manifest = _read_json(device_manifest_path, "device gate manifest")
         validation = validate_device_manifest(device_manifest, evidence_root=evidence_dir)
-        if not validation.allow_blocked_valid and "fail" not in _gate_statuses(device_manifest).values():
-            raise AcceptanceError(validation.error or "device gate manifest is invalid")
-        current_base_report = harmony_current_base_gate.derive_gate(
-            readiness_path,
-            device_manifest_path,
-            evidence_root=evidence_dir,
-        )
+        try:
+            current_base_report = harmony_current_base_gate.derive_gate(
+                readiness_path,
+                device_manifest_path,
+                evidence_root=evidence_dir,
+            )
+        except Exception as error:  # current-base validation is summarized in the blocked package.
+            current_base_report = {
+                "schema_version": SCHEMA_VERSION,
+                "kind": CURRENT_BASE_GATE_KIND,
+                "verdict": "blocked",
+                "can_close_readme_phase4_owner_gates": False,
+                "can_claim_harmony_device_pass": False,
+                "reasons": [str(error)],
+            }
         _write_json(current_base_path, current_base_report)
         current_base_validation = validate_current_base_gate(current_base_report)
         package = build_package(

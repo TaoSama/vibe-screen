@@ -1,0 +1,163 @@
+{
+  "controller_devices": [],
+  "created_at": "2026-08-26T23:05:39Z",
+  "device": {
+    "android_release": "16",
+    "battery_summary": "Current Battery Service state:; AC powered: true; USB powered: false; Wireless powered: false; Dock powered: false; Max charging current: 3000000; Time when the latest updated value of the Max charging current was sent via battery changed broadcast: +20d3h7m4s467ms; Max charging voltage: 5000000; Charge counter: 6228000; status: 5; health: 2; present: true",
+    "boot_completed": "1",
+    "device": "pacific",
+    "display_density": "Physical density: 560",
+    "display_size": "Physical size: 1264x2800",
+    "endpoint": "redacted adb endpoint product:pacific model:P0110 device:pacific",
+    "fingerprint_sha256": "redacted-build-fingerprint-sha256",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36",
+    "serial": "<device-serial>"
+  },
+  "host_availability": {
+    "host_log": "redacted-host-log",
+    "last_controller_line": "",
+    "unavailable_reason": "",
+    "virtual_gamepad_available": false
+  },
+  "host_signing": {
+    "codesign_summary": "redacted codesign summary",
+    "entitlement_summary": "redacted entitlement summary",
+    "host_app": "redacted-host-app",
+    "identity_signed": false,
+    "team_identifier": "not set",
+    "virtual_hid_entitlement_present": false
+  },
+  "observations": {
+    "android_controller_source_observed": false,
+    "android_production_forwarding_observed": false,
+    "apk_identity_recorded": true,
+    "artifact_paths": [
+      "README.md",
+      "docs/testing.md",
+      "docs/runbook/android-client.md",
+      "docs/runbook/macos-host.md",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+      "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
+      "baseline/MacHost/Sources/GameControllerInput.swift"
+    ],
+    "controller_connected_state_disconnected_observed": false,
+    "device_identity_recorded": true,
+    "host_identity_signed": false,
+    "host_virtual_gamepad_available": false,
+    "host_virtual_hid_entitlement_present": false,
+    "mac_side_controller_response_observed": false,
+    "neutral_release_on_disconnect_observed": false,
+    "physical_controller_attached": false,
+    "protocol_controller_capability_negotiated": false
+  },
+  "package": {
+    "first_install_time": "2026-08-25 13:54:23",
+    "last_update_time": "2026-08-27 05:46:02",
+    "package_name": "dev.telemachus.display",
+    "raw_summary": "redacted package signature summary",
+    "version_code": "100000",
+    "version_name": "0.0.0"
+  },
+  "source_commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+  "summary": {
+    "artifact_paths": [
+      "README.md",
+      "docs/testing.md",
+      "docs/runbook/android-client.md",
+      "docs/runbook/macos-host.md",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt",
+      "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+      "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
+      "baseline/MacHost/Sources/GameControllerInput.swift"
+    ],
+    "blocking_reasons": [
+      {
+        "field": "physical_controller_attached",
+        "requirement": "attach and name a physical Android controller"
+      },
+      {
+        "field": "host_identity_signed",
+        "requirement": "run an Apple identity-signed Host build, not ad-hoc"
+      },
+      {
+        "field": "host_virtual_hid_entitlement_present",
+        "requirement": "include the approved virtual HID entitlement"
+      },
+      {
+        "field": "host_virtual_gamepad_available",
+        "requirement": "record Host virtual-gamepad runtime availability"
+      }
+    ],
+    "can_close_runtime_gate": false,
+    "inconsistent_observations": [],
+    "kind": "controller_runtime_acceptance",
+    "missing_requirements": [
+      {
+        "field": "physical_controller_attached",
+        "requirement": "attach and name a physical Android controller"
+      },
+      {
+        "field": "android_controller_source_observed",
+        "requirement": "observe SOURCE_GAMEPAD or SOURCE_JOYSTICK in Android logs"
+      },
+      {
+        "field": "protocol_controller_capability_negotiated",
+        "requirement": "negotiate Protocol v1 controller capability"
+      },
+      {
+        "field": "android_production_forwarding_observed",
+        "requirement": "observe MainActivity/StreamClient production controller forwarding"
+      },
+      {
+        "field": "controller_connected_state_disconnected_observed",
+        "requirement": "record connected, state, and disconnected samples"
+      },
+      {
+        "field": "host_identity_signed",
+        "requirement": "run an Apple identity-signed Host build, not ad-hoc"
+      },
+      {
+        "field": "host_virtual_hid_entitlement_present",
+        "requirement": "include the approved virtual HID entitlement"
+      },
+      {
+        "field": "host_virtual_gamepad_available",
+        "requirement": "record Host virtual-gamepad runtime availability"
+      },
+      {
+        "field": "mac_side_controller_response_observed",
+        "requirement": "observe the virtual controller in a Mac-side target"
+      },
+      {
+        "field": "neutral_release_on_disconnect_observed",
+        "requirement": "record neutral release on disconnect"
+      }
+    ],
+    "notes": "No physical Android gamepad/joystick source is visible in dumpsys input. This is readiness evidence only; a pass still requires live controller samples, Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect.",
+    "observations": {
+      "android_controller_source_observed": false,
+      "android_production_forwarding_observed": false,
+      "apk_identity_recorded": true,
+      "controller_connected_state_disconnected_observed": false,
+      "device_identity_recorded": true,
+      "host_identity_signed": false,
+      "host_virtual_gamepad_available": false,
+      "host_virtual_hid_entitlement_present": false,
+      "mac_side_controller_response_observed": false,
+      "neutral_release_on_disconnect_observed": false,
+      "physical_controller_attached": false,
+      "protocol_controller_capability_negotiated": false
+    },
+    "profile": "controller-runtime-acceptance",
+    "requires_entitled_host": true,
+    "requires_external_hardware": true,
+    "run_id": "20260826T230539Z",
+    "schema_version": "vibescreen.evidence/v1",
+    "verdict": "blocked"
+  }
+}

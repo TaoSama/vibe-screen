@@ -98,6 +98,11 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             self.assertEqual(gate["owner_pr"], GATE_OWNERS[name])
         self.assertFalse(manifest["signing_readiness_gate"]["provided"])
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertFalse(manifest["native_input_gate"]["provided"])
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertTrue(manifest["native_input_gate"]["requires_real_ios_device"])
+        self.assertTrue(manifest["native_input_gate"]["offline_tests_are_readiness_only"])
         self.assertEqual(
             {gate["runtime_class"] for gate in manifest["videotoolbox_readiness_gates"]},
             {"physical_iphone", "physical_ipad"},
@@ -112,6 +117,65 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
         self.assertTrue(any("Team ID" in item for item in manifest["limitations"]))
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_binds_ios_native_input_gate_summary(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = root / "ios-native-input-gate.json"
+            native_input_gate.write_text(
+                json.dumps(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "run_id": "native-input-fixture",
+                        "kind": "ios_native_input_behavior",
+                        "profile": "ios-native-input-behavior",
+                        "gate_owner": "phase5-ios-native-input-behavior",
+                        "owner": {
+                            "role": "ios_native_input_behavior_current_base_owner",
+                            "head_ref": "codex/ios-native-input-readiness-gate",
+                            "pull_request": "#257",
+                            "repository": "TaoSama/vibe-screen",
+                            "scope": "README Phase 5 iOS native-input behavior gate",
+                        },
+                        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
+                        "verdict": "pass",
+                        "can_close_ios_native_input_gate": True,
+                        "requires_real_ios_device": True,
+                        "requires_signed_app": True,
+                        "requires_physical_keyboard": True,
+                        "requires_hover_or_pointer_accessory": True,
+                        "android_evidence_is_not_ios_input_evidence": True,
+                        "simulator_is_not_ios_input_evidence": True,
+                        "offline_tests_are_readiness_only": True,
+                        "observations": {"iphone_native_input_observed": True},
+                        "missing_requirements": [],
+                        "blocking_reasons": [],
+                        "disallowed_evidence": [],
+                        "artifact_paths": ["ios-native-input-evidence.json"],
+                        "blocking_notes": [],
+                        "notes": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertTrue(manifest["native_input_gate"]["provided"])
+        self.assertEqual(manifest["native_input_gate"]["kind"], "ios_native_input_behavior")
+        self.assertEqual(manifest["native_input_gate"]["profile"], "ios-native-input-behavior")
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "pass")
+        self.assertTrue(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertEqual(
+            manifest["native_input_gate"]["owner"]["role"],
+            "ios_native_input_behavior_current_base_owner",
+        )
+        self.assertEqual(manifest["native_input_gate"]["artifact_paths"], ["ios-native-input-evidence.json"])
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

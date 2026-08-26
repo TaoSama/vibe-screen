@@ -228,6 +228,56 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
+    def test_xctest_preflight_command_passes_with_full_xcode(self) -> None:
+        outputs = {
+            ("/usr/bin/xcode-select", "-p"): (0, "/Applications/Xcode.app/Contents/Developer"),
+            ("/usr/bin/xcrun", "--find", "swift"): (0, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"),
+            ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
+            ("/usr/bin/xcrun", "--find", "xcodebuild"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"),
+            ("/usr/bin/xcodebuild", "-version"): (0, "Xcode 16.4\nBuild version 16F6"),
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=lambda *command, **_: outputs[command]),
+                redirect_stdout(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 0)
+            self.assertIn("Status: PASS", report_text)
+            self.assertIn("Xcode 16.4", report_text)
+            self.assertIn("Blocking issues\n---------------\n(none)", report_text)
+
+    def test_xctest_preflight_command_fails_closed_with_command_line_tools(self) -> None:
+        outputs = {
+            ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
+            ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
+            ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
+            ("/usr/bin/xcrun", "--find", "xcodebuild"): (72, "xcrun: error: unable to find utility xcodebuild"),
+            ("/usr/bin/xcodebuild", "-version"): (1, "xcode-select: error: tool xcodebuild requires Xcode"),
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=lambda *command, **_: outputs[command]),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("active developer directory is Command Line Tools", report_text)
+            self.assertIn("xcrun --find xcodebuild failed", report_text)
+            self.assertIn("xcodebuild -version failed", report_text)
+
     def test_preflight_command_writes_report_and_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"

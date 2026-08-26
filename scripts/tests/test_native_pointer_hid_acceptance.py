@@ -76,6 +76,16 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             "UniqueId:\nConfigurationFile:\nLast line\n",
         )
 
+    def test_android_dumpsys_redaction_removes_window_tokens(self) -> None:
+        redacted = acceptance.redact_android_dumpsys_text(
+            "token=0xb400007b62b3a410 applicationInfo.token=<null>\n"
+        )
+
+        self.assertEqual(
+            redacted,
+            "token=<redacted> applicationInfo.token=<redacted>\n",
+        )
+
     def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:
         redacted = acceptance.redacted_device_identity(
             acceptance.DeviceIdentity(

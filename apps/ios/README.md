@@ -255,7 +255,9 @@ currently no key migration step.
   stops after five attempts; protocol, authentication, and validation failures
   remain terminal;
 - one host connection can route up to four negotiated display streams; actual
-  multi-client admission and virtual-display allocation remain host work;
+  multi-client admission and virtual-display allocation remain host work.
+  Advanced host integrations are tracked by the
+  phase5-host-advanced-adapters-gate readiness contract;
 - touch, hardware-keyboard capture, and hover-pointer input are exposed in the
   app, but have no signed iPhone/iPad or physical-accessory evidence yet;
 - PCM S16LE playback has deterministic core queue coverage and an iOS app

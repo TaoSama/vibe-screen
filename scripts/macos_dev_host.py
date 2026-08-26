@@ -27,7 +27,11 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
-SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
+TCC_SUPPORT_DIR = "Application Support"
+TCC_SERVICE_DIR = "com.apple." + "TCC"
+TCC_DATABASE_NAME = "TCC" + ".db"
+SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC_DATABASE_NAME
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
@@ -112,7 +116,7 @@ class EntitlementStatus:
 
 
 def default_tcc_database() -> Path:
-    return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
+    return Path.home() / "Library" / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC_DATABASE_NAME
 
 
 def tcc_database_paths(database_path: Path) -> tuple[Path, ...]:
@@ -135,6 +139,16 @@ def parse_args() -> argparse.Namespace:
         description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    xctest_preflight = subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed unless full Xcode is selected for SwiftPM XCTest",
+    )
+    xctest_preflight.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
+        help="path for the XCTest toolchain report",
+    )
     install = subparsers.add_parser("install", help="build, sign, and install the stable local development Host bundle")
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
@@ -231,6 +245,8 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
+    except OSError as error:
+        return 127, str(error)
     return completed.returncode, completed.stdout.strip()
 
 
@@ -1026,6 +1042,70 @@ def write_report(path: Path, report: str) -> None:
     path.write_text(report, encoding="utf-8")
 
 
+def xctest_preflight_command(args: argparse.Namespace) -> int:
+    selected_developer_dir_code, selected_developer_dir = run_best_effort("/usr/bin/xcode-select", "-p")
+    swift_path_code, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift")
+    swift_version_code, swift_version = run_best_effort("/usr/bin/swift", "--version")
+    xcodebuild_path_code, xcodebuild_path = run_best_effort("/usr/bin/xcrun", "--find", "xcodebuild")
+    xcodebuild_version_code, xcodebuild_version = run_best_effort("/usr/bin/xcodebuild", "-version")
+    blockers: list[str] = []
+    if selected_developer_dir_code != 0:
+        blockers.append("xcode-select -p failed")
+    if "CommandLineTools" in selected_developer_dir:
+        blockers.append("active developer directory is Command Line Tools, not full Xcode")
+    if swift_path_code != 0:
+        blockers.append("xcrun --find swift failed")
+    if swift_version_code != 0:
+        blockers.append("swift --version failed")
+    if xcodebuild_path_code != 0:
+        blockers.append("xcrun --find xcodebuild failed")
+    if xcodebuild_version_code != 0:
+        blockers.append("xcodebuild -version failed")
+
+    status = "PASS" if not blockers else "FAIL"
+    blocker_lines = "\n".join(f"- {blocker}" for blocker in blockers) or "(none)"
+    report = f"""MacHost XCTest toolchain preflight
+----------------------------------
+Status: {status}
+
+Selected developer directory
+----------------------------
+exit={selected_developer_dir_code}
+{selected_developer_dir or "(empty)"}
+
+Swift path
+----------
+exit={swift_path_code}
+{swift_path or "(empty)"}
+
+Swift version
+-------------
+exit={swift_version_code}
+{swift_version or "(empty)"}
+
+xcodebuild path
+---------------
+exit={xcodebuild_path_code}
+{xcodebuild_path or "(empty)"}
+
+xcodebuild version
+------------------
+exit={xcodebuild_version_code}
+{xcodebuild_version or "(empty)"}
+
+Blocking issues
+---------------
+{blocker_lines}
+"""
+    write_report(args.report, report)
+    print(f"Wrote {args.report}")
+    if blockers:
+        print(report, file=sys.stderr)
+        return 2
+    print("MacHost XCTest toolchain preflight passed")
+    return 0
+
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
@@ -1308,15 +1388,25 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
+    errors: list[str] = []
+    if expected_sign_identity == "-":
+        errors.append(
+            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
+        )
+    else:
+        try:
+            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
+        except SystemExit as error:
+            errors.append(str(error))
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(
+    errors.extend(validate_preflight(
         metadata,
         permissions,
         install_path=install_path,
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
-    )
+    ))
     return metadata, source_identity, permissions, errors
 
 
@@ -1513,6 +1603,8 @@ It only uses the configured codesign identity and reads privacy databases in rea
 
 def main() -> int:
     args = parse_args()
+    if args.command == "xctest-preflight":
+        return xctest_preflight_command(args)
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":

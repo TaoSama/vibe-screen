@@ -31,6 +31,8 @@ Machine-readable artifacts in this directory:
 - `commands.txt`, `privacy-scan.json`, and `SHA256SUMS`: retained command log,
   privacy scan, and checksum manifest for this blocked owner record.
 
+Schema-forward refresh on 2026-08-27: ios-current-base-manifest.json and ios-current-base-gate.json now include the dedicated iOS native-input gate binding. The refreshed files preserve this evidence bundle blocked verdict and do not add any passing iOS input, install, signing, or hardware decode claim.
+
 Required retained evidence remains open for:
 
 - Apple Team ID recording

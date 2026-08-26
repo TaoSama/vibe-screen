@@ -66,6 +66,12 @@ SOURCE_DOCS = [
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
 SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+NATIVE_INPUT_GATE_KIND = "ios_native_input_behavior"
+NATIVE_INPUT_GATE_PROFILE = "ios-native-input-behavior"
+NATIVE_INPUT_GATE_OWNER = "phase5-ios-native-input-behavior"
+NATIVE_INPUT_OWNER_ROLE = "ios_native_input_behavior_current_base_owner"
+NATIVE_INPUT_OWNER_BRANCH = "codex/ios-native-input-readiness-gate"
+NATIVE_INPUT_OWNER_PR = "#257"
 VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
 VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
 VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
@@ -306,6 +312,113 @@ def _signing_from_readiness_gate(gate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _native_input_summary_subset(document: dict[str, Any], *, path: str | None, provided: bool) -> dict[str, Any]:
+    owner = document.get("owner") if isinstance(document.get("owner"), dict) else None
+    current_base = (
+        document.get("current_base")
+        if isinstance(document.get("current_base"), dict)
+        else None
+    )
+    observations = document.get("observations") if isinstance(document.get("observations"), dict) else {}
+    missing = document.get("missing_requirements") if isinstance(document.get("missing_requirements"), list) else []
+    blocking = document.get("blocking_reasons") if isinstance(document.get("blocking_reasons"), list) else []
+    disallowed = document.get("disallowed_evidence") if isinstance(document.get("disallowed_evidence"), list) else []
+    artifact_paths = document.get("artifact_paths") if isinstance(document.get("artifact_paths"), list) else []
+    return {
+        "provided": provided,
+        "path": path,
+        "owner": owner,
+        "current_base": current_base,
+        "kind": document.get("kind") if isinstance(document.get("kind"), str) else None,
+        "profile": document.get("profile") if isinstance(document.get("profile"), str) else None,
+        "gate_owner": document.get("gate_owner") if isinstance(document.get("gate_owner"), str) else None,
+        "verdict": document.get("verdict") if isinstance(document.get("verdict"), str) else "blocked",
+        "can_close_ios_native_input_gate": document.get("can_close_ios_native_input_gate") is True,
+        "requires_real_ios_device": document.get("requires_real_ios_device") is True,
+        "requires_signed_app": document.get("requires_signed_app") is True,
+        "requires_physical_keyboard": document.get("requires_physical_keyboard") is True,
+        "requires_hover_or_pointer_accessory": document.get("requires_hover_or_pointer_accessory") is True,
+        "android_evidence_is_not_ios_input_evidence": document.get("android_evidence_is_not_ios_input_evidence") is True,
+        "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
+        "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
+        "observations": observations,
+        "missing_requirements": missing,
+        "blocking_reasons": blocking,
+        "disallowed_evidence": disallowed,
+        "artifact_paths": artifact_paths,
+    }
+
+
+def _default_native_input_gate() -> dict[str, Any]:
+    return _native_input_summary_subset(
+        {
+            "kind": NATIVE_INPUT_GATE_KIND,
+            "profile": NATIVE_INPUT_GATE_PROFILE,
+            "gate_owner": NATIVE_INPUT_GATE_OWNER,
+            "owner": None,
+            "current_base": None,
+            "verdict": "blocked",
+            "can_close_ios_native_input_gate": False,
+            "requires_real_ios_device": True,
+            "requires_signed_app": True,
+            "requires_physical_keyboard": True,
+            "requires_hover_or_pointer_accessory": True,
+            "android_evidence_is_not_ios_input_evidence": True,
+            "simulator_is_not_ios_input_evidence": True,
+            "offline_tests_are_readiness_only": True,
+            "observations": {},
+            "missing_requirements": [
+                {
+                    "field": "ios_native_input_gate",
+                    "requirement": "bind ios-native-input-gate.json from the dedicated current-base owner",
+                }
+            ],
+            "blocking_reasons": [
+                {
+                    "field": "ios_native_input_gate",
+                    "requirement": "bind ios-native-input-gate.json from the dedicated current-base owner",
+                }
+            ],
+            "disallowed_evidence": [],
+            "artifact_paths": [],
+        },
+        path=None,
+        provided=False,
+    )
+
+
+def _load_native_input_gate(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return _default_native_input_gate()
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        gate = _default_native_input_gate()
+        gate["provided"] = True
+        gate["path"] = str(path)
+        gate["missing_requirements"] = [
+            {
+                "field": "ios_native_input_gate",
+                "requirement": f"ios native-input gate unreadable: {error}",
+            }
+        ]
+        gate["blocking_reasons"] = list(gate["missing_requirements"])
+        return gate
+    if not isinstance(document, dict):
+        gate = _default_native_input_gate()
+        gate["provided"] = True
+        gate["path"] = str(path)
+        gate["missing_requirements"] = [
+            {
+                "field": "ios_native_input_gate",
+                "requirement": "ios native-input gate must be a JSON object",
+            }
+        ]
+        gate["blocking_reasons"] = list(gate["missing_requirements"])
+        return gate
+    return _native_input_summary_subset(document, path=str(path), provided=True)
+
+
 def default_videotoolbox_readiness_gates() -> list[dict[str, Any]]:
     common = {
         "schema_version": SCHEMA_VERSION,
@@ -524,6 +637,7 @@ def build_manifest(
     repo: Path,
     device_acceptance_owner_pr: str = DEVICE_ACCEPTANCE_OWNER_PR,
     signing_readiness_gate: Path | None = None,
+    native_input_gate: Path | None = None,
     videotoolbox_readiness_gates: Sequence[Path] | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
@@ -532,6 +646,7 @@ def build_manifest(
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
     repository = repository_state(repo)
     signing_readiness = _load_signing_readiness_gate(signing_readiness_gate, repository)
+    native_input_gate = _load_native_input_gate(native_input_gate)
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -557,6 +672,7 @@ def build_manifest(
             "unsigned_archive": {"status": "open", "evidence": []},
         },
         "signing_readiness_gate": signing_readiness,
+        "native_input_gate": native_input_gate,
         "signing": _signing_from_readiness_gate(signing_readiness),
         "videotoolbox_readiness_gates": _merge_videotoolbox_readiness_gates(videotoolbox_readiness_gates),
         "devices": default_devices(),
@@ -592,6 +708,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional ios-app-signing-readiness-gate.json to bind into current-base readiness",
     )
     parser.add_argument(
+        "--native-input-gate",
+        type=Path,
+        help="optional ios-native-input-gate.json to bind into current-base readiness",
+    )
+    parser.add_argument(
         "--videotoolbox-readiness-gate",
         type=Path,
         action="append",
@@ -617,6 +738,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo=args.repo,
             device_acceptance_owner_pr=args.device_acceptance_owner_pr,
             signing_readiness_gate=args.signing_readiness_gate,
+            native_input_gate=args.native_input_gate,
             videotoolbox_readiness_gates=args.videotoolbox_readiness_gate,
             notes=args.notes,
         )

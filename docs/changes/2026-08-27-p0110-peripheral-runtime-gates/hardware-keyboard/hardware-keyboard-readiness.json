@@ -1,0 +1,218 @@
+{
+  "created_at": "2026-08-26T23:05:44Z",
+  "device": {
+    "abi": "arm64-v8a",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "device": "pacific",
+    "device_serial": "<device-serial>",
+    "endpoint": "<device-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:25",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "product": "pacific",
+    "sdk": "36",
+    "serial": "<device-serial>"
+  },
+  "device_lock": {
+    "acquired": true,
+    "existing_locks": [],
+    "path": "<device-lock>"
+  },
+  "host": {
+    "codesign_identities_output": "$ security find-identity -v -p codesigning\n     0 valid identities found\nexit_code=0\n",
+    "listener_observed": true,
+    "listener_output": "$ lsof -nP -iTCP:54321 -sTCP:LISTEN\nCOMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 22385 <user> 7u IPv4 0x1b798f5fc60f9b70 0t0 TCP 127.0.0.1:54321 (LISTEN)\nexit_code=0\n",
+    "preflight_output": "$ <python3.11> <repo-root>/scripts/macos_dev_host.py preflight --report <tmp-evidence> <tmp-evidence> bundle\n-----------\nPath: /Applications/Vibe Screen.app\nIdentifier: dev.telemachus.display\nIdentity: Vibe Screen Dev\nAuthority: Vibe Screen Dev\nAuthority: Vibe Screen Dev Root\nTeamIdentifier: not set\nCertificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C\nCDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2\nBinary SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996\nDesignated requirement: identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"\nSource commit: missing\nSource tree: missing\nSource dirty: missing\nCurrent source commit: 3b2ba11e832a3618eaedfc67f92414b161423a00\nCurrent source tree: a36d465ea8a20a42b561b1e453bcad7957ffce15\nCurrent source dirty: False\nSource mismatch allowed: False\nVerification: valid on disk (codesign --verify --deep --strict)\n\nRead-only TCC capture\n---------------------\nDatabase: <user-tcc-db>; <system-tcc-db>\nField order: service|client|client_type|auth_value|auth_reason|last_modified\n(no matching rows)\n\nInterpretation: unverified (<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file)\n\nPreflight result\n----------------\nStatus: FAIL\nBlocking issues:\n- installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py\n- cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility\n\nKeychain and TCC handling\n-------------------------\nThis tool does not reset Keychain, import certificates, request passwords, update\npartition lists, modify macOS privacy databases, or request/override macOS privacy authorization.\nIt only uses the configured codesign identity and reads privacy databases in read-only mode.\nexit_code=2\n",
+    "preflight_returncode": 2,
+    "signing_tcc_ready": false
+  },
+  "keyboard_devices": [],
+  "observations": {
+    "android_device_lock_acquired": true,
+    "android_focus_ime_boundary_observed": false,
+    "android_keyboard_source_observed": false,
+    "android_logs_retained": false,
+    "android_production_forwarding_observed": false,
+    "apk_identity_recorded": true,
+    "artifact_paths": [
+      "README.md",
+      "hardware-keyboard-readiness.json",
+      "hardware-keyboard-observations.json",
+      "hardware-keyboard-summary.json",
+      "device-lock.txt",
+      "adb-devices.txt",
+      "device-info.json",
+      "dumpsys-input.txt",
+      "dumpsys-package.txt",
+      "host-listener.txt",
+      "codesign-identities.txt",
+      "host-preflight-command.txt",
+      "host-signing-and-permissions.txt"
+    ],
+    "blocking_notes": [
+      "Observed device must be recorded as nubia P0110 / pacific / Android 16, not another device identity or tablet hardware.",
+      "No external Android-attached physical keyboard is visible in dumpsys input.",
+      "Stable signed Host Screen Recording/Accessibility readiness was not established by macOS Host preflight.",
+      "This readiness collector does not synthesize key events; a pass still requires physical key presses, an active selected-display stream, Android production forwarding/focus-boundary logs, Host key-injection or acknowledgement/CGEvent logs, modifier press/release and cleanup evidence, and a visible Mac-side result."
+    ],
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "host_ack_cgevent_log_observed": false,
+    "host_key_injection_observed": false,
+    "host_listener_observed": true,
+    "host_logs_retained": false,
+    "host_stable_signed_tcc_ready": false,
+    "key_press_release_observed": false,
+    "modifier_press_release_observed": false,
+    "modifier_release_no_leak_observed": false,
+    "notes": "Observed device must be recorded as nubia P0110 / pacific / Android 16, not another device identity or tablet hardware. No external Android-attached physical keyboard is visible in dumpsys input. Stable signed Host Screen Recording/Accessibility readiness was not established by macOS Host preflight. This readiness collector does not synthesize key events; a pass still requires physical key presses, an active selected-display stream, Android production forwarding/focus-boundary logs, Host key-injection or acknowledgement/CGEvent logs, modifier press/release and cleanup evidence, and a visible Mac-side result.",
+    "physical_keyboard_attached": false,
+    "protocol_keyboard_capability_negotiated": false,
+    "protocol_usb_hid_modifier_capability_negotiated": false,
+    "run_id": "20260826T230544Z",
+    "selected_display_stream_observed": false,
+    "shortcut_combo_observed": false,
+    "visible_mac_result_observed": false
+  },
+  "package": {
+    "first_install_time": "2026-08-25 13:54:23",
+    "last_update_time": "2026-08-27 05:46:02",
+    "package_name": "dev.telemachus.display",
+    "version_code": 100000,
+    "version_name": "0.0.0"
+  },
+  "summary": {
+    "adb_input_is_not_physical_keyboard_evidence": true,
+    "artifact_paths": [
+      "README.md",
+      "hardware-keyboard-readiness.json",
+      "hardware-keyboard-observations.json",
+      "hardware-keyboard-summary.json",
+      "device-lock.txt",
+      "adb-devices.txt",
+      "device-info.json",
+      "dumpsys-input.txt",
+      "dumpsys-package.txt",
+      "host-listener.txt",
+      "codesign-identities.txt",
+      "host-preflight-command.txt",
+      "host-signing-and-permissions.txt"
+    ],
+    "blocking_notes": [
+      "Observed device must be recorded as nubia P0110 / pacific / Android 16, not another device identity or tablet hardware.",
+      "No external Android-attached physical keyboard is visible in dumpsys input.",
+      "Stable signed Host Screen Recording/Accessibility readiness was not established by macOS Host preflight.",
+      "This readiness collector does not synthesize key events; a pass still requires physical key presses, an active selected-display stream, Android production forwarding/focus-boundary logs, Host key-injection or acknowledgement/CGEvent logs, modifier press/release and cleanup evidence, and a visible Mac-side result."
+    ],
+    "blocking_reasons": [
+      {
+        "field": "physical_keyboard_attached",
+        "requirement": "attach and name a real external, non-virtual Android hardware keyboard"
+      },
+      {
+        "field": "host_stable_signed_tcc_ready",
+        "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+      }
+    ],
+    "can_close_hardware_keyboard_gate": false,
+    "inconsistent_observations": [],
+    "kind": "phase2_hardware_keyboard_workflow",
+    "missing_requirements": [
+      {
+        "field": "physical_keyboard_attached",
+        "requirement": "attach and name a real external, non-virtual Android hardware keyboard"
+      },
+      {
+        "field": "android_keyboard_source_observed",
+        "requirement": "observe a physical keyboard input source in Android input/log evidence"
+      },
+      {
+        "field": "protocol_keyboard_capability_negotiated",
+        "requirement": "negotiate Protocol v1 keyboard capability on the active session"
+      },
+      {
+        "field": "protocol_usb_hid_modifier_capability_negotiated",
+        "requirement": "negotiate the USB HID modifier-byte capability for standard modifier semantics"
+      },
+      {
+        "field": "android_production_forwarding_observed",
+        "requirement": "observe MainActivity/StreamClient production keyboard forwarding, not only adb input dispatch"
+      },
+      {
+        "field": "android_focus_ime_boundary_observed",
+        "requirement": "prove the Android Activity foreground/focus path accepts the hardware keyboard while IME or system-key boundaries do not masquerade as forwarded keys"
+      },
+      {
+        "field": "selected_display_stream_observed",
+        "requirement": "prove the Protocol v1 session was actively streaming the selected display while the keyboard workflow ran"
+      },
+      {
+        "field": "host_stable_signed_tcc_ready",
+        "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+      },
+      {
+        "field": "key_press_release_observed",
+        "requirement": "prove key-down and key-up semantics for the same HID usage"
+      },
+      {
+        "field": "modifier_press_release_observed",
+        "requirement": "prove modifier key press and release semantics, not only a shortcut side effect"
+      },
+      {
+        "field": "shortcut_combo_observed",
+        "requirement": "prove at least one shortcut/modifier combination reaches the Host"
+      },
+      {
+        "field": "modifier_release_no_leak_observed",
+        "requirement": "prove modifiers clear after shortcut release and do not leak into a later plain key"
+      },
+      {
+        "field": "visible_mac_result_observed",
+        "requirement": "record the visible Mac-side result of the hardware keyboard workflow"
+      },
+      {
+        "field": "host_logs_retained",
+        "requirement": "retain Host logs covering the keyboard workflow"
+      },
+      {
+        "field": "android_logs_retained",
+        "requirement": "retain Android logs/input snapshots covering the keyboard workflow"
+      },
+      {
+        "field": "host_key_injection_observed|host_ack_cgevent_log_observed",
+        "requirement": "retain Host-side `Key injected:` CGEvent logs or Host acknowledgement/CGEvent logs for every claimed key and shortcut event"
+      }
+    ],
+    "notes": "Observed device must be recorded as nubia P0110 / pacific / Android 16, not another device identity or tablet hardware. No external Android-attached physical keyboard is visible in dumpsys input. Stable signed Host Screen Recording/Accessibility readiness was not established by macOS Host preflight. This readiness collector does not synthesize key events; a pass still requires physical key presses, an active selected-display stream, Android production forwarding/focus-boundary logs, Host key-injection or acknowledgement/CGEvent logs, modifier press/release and cleanup evidence, and a visible Mac-side result.",
+    "observations": {
+      "android_device_lock_acquired": true,
+      "android_focus_ime_boundary_observed": false,
+      "android_keyboard_source_observed": false,
+      "android_logs_retained": false,
+      "android_production_forwarding_observed": false,
+      "apk_identity_recorded": true,
+      "device_identity_matches_claim": true,
+      "device_identity_recorded": true,
+      "host_ack_cgevent_log_observed": false,
+      "host_key_injection_observed": false,
+      "host_listener_observed": true,
+      "host_logs_retained": false,
+      "host_stable_signed_tcc_ready": false,
+      "key_press_release_observed": false,
+      "modifier_press_release_observed": false,
+      "modifier_release_no_leak_observed": false,
+      "physical_keyboard_attached": false,
+      "protocol_keyboard_capability_negotiated": false,
+      "protocol_usb_hid_modifier_capability_negotiated": false,
+      "selected_display_stream_observed": false,
+      "shortcut_combo_observed": false,
+      "visible_mac_result_observed": false
+    },
+    "profile": "phase2-hardware-keyboard-workflow",
+    "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as another device.",
+    "requires_physical_keyboard": true,
+    "run_id": "20260826T230544Z",
+    "schema_version": "vibescreen.evidence/v1",
+    "verdict": "blocked"
+  }
+}

@@ -16,13 +16,19 @@ evidence, but they do not close the gate.
 
 ## 2026-08-20 readiness result
 
-The target Android serial was `EP0110PZ0B9110300B`, which was previously
+The target Android serial was `<device-serial>`, which was previously
 identified in this change as nubia P0110 / pacific / Android 16 / SDK 36. This
 run did not execute ADB capability collection because
 `/tmp/vibe-screen-device-android.lock` already existed before the acceptance
 script could start.
 
 Evidence:
+
+- `evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/`:
+  refreshed current-base fail-closed evidence; status is
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate but no physical drawing observation, Host stylus injection excerpt,
+  same-session Android stylus forwarding sample, or visible drawing-app output.
 
 - `evidence/2026-08-19-nubia-p0110-pacific-stylus-blocked/`: existing device
   capability snapshot; P0110 exposes `goodix_stylus_input` with pressure and
@@ -62,7 +68,7 @@ Evidence:
 ## 2026-08-22 P0110 drawing-app closure attempt
 
 The latest `origin/main` snapshot at `ebd2e3a2` was rechecked on the same target
-serial with explicit `adb -s EP0110PZ0B9110300B ...` commands. The device again
+serial with explicit `adb -s <device-serial> ...` commands. The device again
 identified as nubia P0110 / pacific / Android 16 / SDK 36, with no active
 device coordination lock. `dumpsys input` still exposes a pass-eligible
 `goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus
@@ -155,3 +161,18 @@ Results:
 No general docs verifier target was found in `Makefile`, `scripts`, `tools`, or
 `.github`; the existing `evidence_privacy.py` verifier is scoped to Phase 3
 Internet evidence and was not applicable to this stylus-readiness record.
+
+## 2026-08-27 P0110 current-base refresh
+
+The latest `origin/main` snapshot at
+`3b2ba11e832a3618eaedfc67f92414b161423a00` was rechecked from a clean detached
+worktree. Android commands used `adb -s <device-serial>` and the connected
+device was recorded as nubia P0110 / pacific / Android 16 / SDK 36. The input
+snapshot still exposes `goodix_stylus_input`, including one pass-eligible
+candidate with `KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure, orientation,
+tilt, X, and Y axes. No physical stylus drawing observation was performed, no
+same-session Android `Stylus forwarded:` samples appeared, no Host
+`Stylus injected:` excerpt was captured, and no visible macOS drawing-app output
+was recorded. The README physical-stylus drawing-app gate remains open.
+
+Evidence:

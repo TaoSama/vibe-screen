@@ -32,7 +32,7 @@ creating a virtual gamepad. The evidence summary is therefore intentionally
 - [2026-08-23-current-base-controller-runtime-readiness/controller-runtime-readiness.json](evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-readiness.json)
 
 The 2026-08-20 P0110 readiness run was collected under the shared Android device
-lock with `adb -s EP0110PZ0B9110300B`. It recorded the connected Nubia P0110
+lock with `adb -s <device-serial>`. It recorded the connected Nubia P0110
 identity and installed APK metadata, but `dumpsys input` did not expose a
 physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` device. The running
 `/Applications/Vibe Screen.app` was signed without an Apple team identifier and
@@ -41,7 +41,7 @@ log still reported controller forwarding unavailable for that reason. The gate
 therefore remains blocked.
 
 The 2026-08-23 current-base readiness run was also collected under
-`/tmp/vibe-screen-device-android.lock` with `adb -s EP0110PZ0B9110300B`. It
+`/tmp/vibe-screen-device-android.lock` with `adb -s <device-serial>`. It
 again recorded the connected device as Nubia P0110 / pacific / Android 16 / SDK
 36 and found no physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` controller. The
 installed APK metadata was unavailable because `dumpsys package
@@ -98,3 +98,19 @@ resulting `controller-runtime-summary.json` is `blocked` with
 
 - [2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json](evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json)
 - [2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-readiness.json](evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-readiness.json)
+
+## 2026-08-27 current-base refresh
+
+The 2026-08-27 current-base readiness run refreshed the controller runtime gate
+from `origin/main` commit `3b2ba11e832a3618eaedfc67f92414b161423a00` using a
+clean detached worktree. Android commands used `adb -s <device-serial>` and the
+connected device was recorded as Nubia P0110 / pacific / Android 16 / SDK 36.
+No physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` controller was visible. The
+installed Host listener was present, but Host readiness remained blocked by
+missing source provenance, unavailable read-only TCC verification, missing
+`com.apple.developer.hid.virtual.device`, and missing virtual-gamepad
+availability. The summary is intentionally `blocked` with
+`can_close_runtime_gate=false`; it is not controller runtime acceptance.
+
+- [2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-summary.json](evidence/2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-summary.json)
+- [2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-readiness.json](evidence/2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-readiness.json)

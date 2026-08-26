@@ -43,6 +43,7 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)")
 POINTER_PATTERNS = {
     "move": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?changed\b|Pointer injected: phase=changed\b"),
     "press": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?began\b|Pointer injected: phase=began\b"),
@@ -415,6 +416,10 @@ def evidence_text(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
 
 
+def redact_android_dumpsys_text(text: str) -> str:
+    return ANDROID_DUMPSYS_TOKEN_RE.sub(lambda match: match.group(0).split("=", 1)[0] + "=<redacted>", text)
+
+
 def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> None:
     path.mkdir(parents=True, exist_ok=True)
     result_path = path / "result.json"
@@ -425,7 +430,7 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         json.dumps(gate_summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    (path / "dumpsys-input.txt").write_text(evidence_text(dumpsys_input), encoding="utf-8")
+    (path / "dumpsys-input.txt").write_text(evidence_text(redact_android_dumpsys_text(dumpsys_input)), encoding="utf-8")
     summary = [
         f"# Native pointer HID acceptance: {result.status}",
         "",
