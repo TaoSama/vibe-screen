@@ -47,11 +47,15 @@ ClipboardContent {
 
 ## Managed Policy 剪贴板门控
 
-该候选只实现 clipboard 所需的最小 deny-wins 协议互锁，不读取系统 MDM 配置，也
-不替代独立 managed-policy 产品化任务。
+该候选最初只实现 clipboard 所需的最小 deny-wins 协议互锁；完整 managed-policy
+deny-wins 已在
+[2026-08-21-managed-policy-deny-wins](../2026-08-21-managed-policy-deny-wins/TECH.md)
+中推进。clipboard 现在消费同一 `ManagedPolicyStatus` 与 `restriction_results`，
+但真实 Apple MDM profile / managed App Configuration 注入仍是独立阻塞证据。
 
-- 双方协商 `CAPABILITY_MANAGED_CONFIGURATION` 后，各自发送本地未受管
-  `ManagedPolicyStatus(managed=false, clipboard_allowed=true)`。
+- 双方协商 `CAPABILITY_MANAGED_CONFIGURATION` 后，各自发送本地
+  `ManagedPolicyStatus`，其中 managed peer 必须携带完整且一致的
+  `restriction_results`。
 - 收到远端 `managed=true && clipboard_allowed=false` 时，当前 session 的 clipboard
   effective policy 立即变为 denied。
 - denied 状态会清空本地 snapshot、pending offer/request 和 UI pending 状态；本地

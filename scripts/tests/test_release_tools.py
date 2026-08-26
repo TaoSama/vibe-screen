@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
-import os
 import plistlib
 import re
 import subprocess
@@ -16,14 +15,13 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
 import harmony_device_gate
+import harmony_host_interop_preflight
 import package_macos
 import prepare_release
 import android_stylus_acceptance
-from vibescreen_evidence import harmony_avcodec_preflight
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -535,7 +533,7 @@ Input Reader State:
                 "device": "pacific",
                 "os_release": "16",
                 "api_level": "36",
-                "serialno": "EP0110PZ0B9110300B",
+                "serialno": "AB0123CD456789EF",
                 "fingerprint": "test",
                 "wm_size": "Physical size: 1264x2800",
                 "wm_density": "Physical density: 560",
@@ -558,7 +556,7 @@ Input Reader State:
     def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:
         summary = {
             "status": "blocked_device_coordination_lock",
-            "requested_serial": "EP0110PZ0B9110300B",
+            "requested_serial": "AB0123CD456789EF",
             "device_identity": {},
             "existing_locks": [{"path": "/tmp/vibe-screen-device-android.lock", "detail": "present"}],
             "stylus_candidates": [],
@@ -566,7 +564,7 @@ Input Reader State:
 
         readme = android_stylus_acceptance.render_readme(summary)
 
-        self.assertIn("ADB was not run. Requested serial: EP0110PZ0B9110300B.", readme)
+        self.assertIn("ADB was not run. Requested serial: AB0123CD456789EF.", readme)
         self.assertIn("## Device coordination locks", readme)
         self.assertIn("/tmp/vibe-screen-device-android.lock", readme)
         self.assertIn("## Stylus input devices", readme)
@@ -580,11 +578,7 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [
-                "evidence/harmony-avcodec-preflight.json"
-                if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
-                else f"evidence/{gate_id}.txt"
-            ],
+            "evidence": [f"evidence/{gate_id}.txt"],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
@@ -643,6 +637,22 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
             self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
 
+    def test_harmony_device_manifest_accepts_explicit_directory_evidence(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["gates"][0]["evidence"] = ["screenshots/"]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for gate in manifest["gates"]:
+                for reference in gate["evidence"]:
+                    artifact = evidence_root / reference
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    if reference.endswith("/"):
+                        artifact.mkdir(exist_ok=True)
+                    else:
+                        artifact.write_text(f"{gate['id']} evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
+
     def test_harmony_device_manifest_rejects_missing_evidence_file_when_root_is_set(self) -> None:
         manifest = self.passing_manifest()
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -678,15 +688,6 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(harmony_device_gate.ManifestError, "Android evidence"):
-            harmony_device_gate.validate_manifest(manifest)
-
-    def test_harmony_device_manifest_requires_avcodec_manifest_for_decode_gates(self) -> None:
-        manifest = self.passing_manifest()
-        for gate in manifest["gates"]:
-            if gate["id"] == "h264_hardware_decode":
-                gate["evidence"] = ["evidence/h264-hilog.txt"]
-
-        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "harmony-avcodec-preflight.json"):
             harmony_device_gate.validate_manifest(manifest)
 
     def test_harmony_device_manifest_rejects_blocked_gate_unless_readiness_mode(self) -> None:
@@ -788,23 +789,10 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
 
 
-class HarmonyAvcodecPreflightTests(unittest.TestCase):
+class HarmonyHostInteropPreflightTests(unittest.TestCase):
     def passing_manifest(self) -> dict[str, object]:
-        manifest = harmony_avcodec_preflight.template_manifest()
-        manifest["repository"] = {
-            "revision": "a" * 40,
-            "tree": "b" * 40,
-            "dirty": False,
-            "status_porcelain": [],
-        }
-        manifest["toolchain"] = {
-            "deveco_studio_version": "DevEco Studio 6.0",
-            "harmony_sdk_api": "API 12",
-            "harmony_sdk_version": "5.0.0(12)",
-            "hvigor_version": "5.0.2",
-            "ohpm_version": "5.0.2",
-            "hdc_version": "Ver: 3.1.0",
-        }
+        manifest = harmony_host_interop_preflight.template_manifest()
+        manifest["repository"] = {"commit": "a" * 40, "tree": "b" * 40, "status": "clean"}
         manifest["artifact"] = {
             "bundle_name": "dev.vibescreen.harmony",
             "version_name": "0.1.0",
@@ -824,20 +812,72 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
             "commit": "c" * 40,
             "build_sha256": "4" * 64,
             "protocol": "Protocol v1",
+            "resume_registry": "resume-capable",
         }
-        for codec in manifest["codecs"]:
-            codec["status"] = "pass"
-            codec["decoder_name"] = f"avcodec.hardware.{codec['codec']}"
-            codec["gates"] = {
-                gate: "pass" for gate in harmony_avcodec_preflight.REQUIRED_CODEC_GATE_KEYS
-            }
-            codec["artifacts"] = [f"evidence/{codec['codec']}-hilog.txt"]
+        manifest["transport"] = {"mode": "trusted_lan", "encrypted_records": True}
+        manifest["reconnect"] = {
+            "maximum_attempts": 8,
+            "maximum_delay_ms": 8000,
+            "maximum_observed_recovery_ms": 2500,
+        }
+        manifest["flows"] = [
+            {"id": flow_id, "status": "pass", "evidence": [f"evidence/{flow_id}.txt"]}
+            for flow_id in harmony_host_interop_preflight.REQUIRED_FLOW_IDS
+        ]
         return manifest
 
-    def test_harmony_avcodec_manifest_passes_with_both_hardware_codecs(self) -> None:
-        self.assertEqual(harmony_avcodec_preflight.validate_manifest(self.passing_manifest()), [])
+    def test_harmony_host_interop_manifest_passes_when_all_flows_pass(self) -> None:
+        self.assertEqual(harmony_host_interop_preflight.validate_manifest(self.passing_manifest()), [])
 
-    def test_harmony_avcodec_manifest_rejects_android_or_p0110_identity(self) -> None:
+    def test_harmony_host_interop_manifest_requires_evidence_files_under_root(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for flow in manifest["flows"]:
+                artifact = evidence_root / flow["evidence"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                flow_id = flow["id"]
+                artifact.write_text(f"{flow_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(
+                harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root),
+                [],
+            )
+
+    def test_harmony_host_interop_manifest_rejects_evidence_references_outside_root(self) -> None:
+        blocked_references = ("/tmp/harmony.log", "../harmony.log", "https://example.test/harmony.log", ".")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for reference in blocked_references:
+                manifest = self.passing_manifest()
+                manifest["flows"][0]["evidence"] = [reference]
+                with self.subTest(reference=reference):
+                    with self.assertRaisesRegex(
+                        harmony_host_interop_preflight.InteropManifestError,
+                        "evidence root|got URL|escape evidence root|artifact below evidence root",
+                    ):
+                        harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root)
+
+    def test_harmony_host_interop_cli_strict_mode_defaults_evidence_root_to_manifest_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-host-interop.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_host_interop_preflight.py"),
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing evidence artifact", result.stderr)
+
+    def test_harmony_host_interop_rejects_android_substitute(self) -> None:
         manifest = self.passing_manifest()
         manifest["device"] = {
             "platform": "Android",
@@ -849,61 +889,98 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
             "serial_hash": "3" * 64,
         }
 
-        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "Android or simulator"):
-            harmony_avcodec_preflight.validate_manifest(manifest)
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "Android evidence"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
 
-    def test_harmony_avcodec_manifest_rejects_software_decoder_claim(self) -> None:
+    def test_harmony_host_interop_requires_resume_capable_host(self) -> None:
         manifest = self.passing_manifest()
-        manifest["codecs"][0]["decoder_name"] = "software h264 decoder"
+        manifest["host"]["resume_registry"] = "client-hello-only"
 
-        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "hardware decoder identity"):
-            harmony_avcodec_preflight.validate_manifest(manifest)
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "resume-capable"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
 
-    def test_harmony_avcodec_manifest_rejects_missing_lifecycle_gate(self) -> None:
+    def test_harmony_host_interop_requires_old_epoch_rejection_flows(self) -> None:
         manifest = self.passing_manifest()
-        del manifest["codecs"][1]["gates"]["release_completed"]
+        manifest["flows"] = [flow for flow in manifest["flows"] if flow["id"] != "old_epoch_media_rejected"]
 
-        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "release_completed"):
-            harmony_avcodec_preflight.validate_manifest(manifest)
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "old_epoch_media_rejected"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
 
-    def test_harmony_avcodec_template_is_blocked_only(self) -> None:
-        manifest = harmony_avcodec_preflight.template_manifest()
+    def test_harmony_host_interop_allows_blocked_structure_without_acceptance(self) -> None:
+        manifest = harmony_host_interop_preflight.template_manifest()
 
-        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "placeholder zero value"):
-            harmony_avcodec_preflight.validate_manifest(manifest)
-        warnings = harmony_avcodec_preflight.validate_manifest(manifest, allow_blocked=True)
-        self.assertGreaterEqual(len(warnings), len(harmony_avcodec_preflight.REQUIRED_CODEC_GATE_KEYS) * 2)
-
-    def test_harmony_avcodec_cli_allow_blocked_never_prints_acceptance_pass(self) -> None:
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "placeholder zero value"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
         with tempfile.TemporaryDirectory() as temporary_directory:
-            manifest_path = Path(temporary_directory) / "harmony-avcodec-preflight.json"
-            manifest_path.write_text(json.dumps(harmony_avcodec_preflight.template_manifest()), encoding="utf-8")
-
-            result = subprocess.run(
-                [
-                    "python3",
-                    "-m",
-                    "vibescreen_evidence.harmony_avcodec_preflight",
-                    "--allow-blocked",
-                    "--validate",
-                    str(manifest_path),
-                ],
-                cwd=str(REPOSITORY_ROOT),
-                env={**dict(os.environ), "PYTHONPATH": str(REPOSITORY_ROOT / "tools")},
-                capture_output=True,
-                text=True,
-                check=True,
+            warnings = harmony_host_interop_preflight.validate_manifest(
+                manifest,
+                allow_blocked=True,
+                evidence_root=Path(temporary_directory),
             )
+            self.assertEqual(len(warnings), len(harmony_host_interop_preflight.REQUIRED_FLOW_IDS))
 
-        self.assertIn("not acceptance evidence", result.stdout)
-        self.assertNotIn("passes H.264/HEVC hardware decode gates", result.stdout)
+    def test_harmony_host_interop_rejects_unencrypted_trusted_lan(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["transport"]["encrypted_records"] = False
 
-    def test_harmony_avcodec_make_targets_are_wired(self) -> None:
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "authenticated records"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_rejects_slow_reconnect(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["reconnect"]["maximum_observed_recovery_ms"] = 3001
+
+        with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "<= 3000"):
+            harmony_host_interop_preflight.validate_manifest(manifest)
+
+    def test_harmony_host_interop_preflight_writes_blocked_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with mock.patch.object(
+                harmony_host_interop_preflight,
+                "probe_command",
+                side_effect=lambda name, _version_args: harmony_host_interop_preflight.CommandProbe(
+                    name, None, "not found"
+                ),
+            ):
+                exit_code = harmony_host_interop_preflight.main(
+                    ["--evidence-dir", str(evidence_dir), "--run-id", "run-test"]
+                )
+
+            self.assertEqual(exit_code, harmony_host_interop_preflight.BLOCKED_EXIT)
+            summary = json.loads((evidence_dir / "harmony-host-interop-preflight.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["run_id"], "run-test")
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertFalse(summary["can_close_harmony_host_interop_gate"])
+            self.assertTrue((evidence_dir / "harmony-host-interop-manifest-template.json").exists())
+            self.assertIn("not acceptance evidence", (evidence_dir / "README.md").read_text(encoding="utf-8"))
+
+    def test_harmony_host_interop_preflight_accepts_either_hvigor_binary(self) -> None:
+        def fake_probe(name: str, _version_args: list[str]) -> harmony_host_interop_preflight.CommandProbe:
+            path = "/usr/local/bin/hvigorw" if name == "hvigorw" else "/usr/local/bin/tool" if name in {"ohpm", "hdc"} else None
+            return harmony_host_interop_preflight.CommandProbe(name, path, "version")
+
+        with mock.patch.object(harmony_host_interop_preflight, "probe_command", side_effect=fake_probe):
+            summary = harmony_host_interop_preflight.local_preflight("run-test")
+
+        missing = next(
+            (reason["reason"] for reason in summary["blocking_reasons"] if reason["field"] == "missing_commands"),
+            "",
+        )
+        self.assertNotIn("hvigor", missing)
+        probes = {probe["name"]: probe for probe in summary["command_probes"]}
+        self.assertEqual(probes["hvigorw"]["path"], "hvigorw")
+        self.assertEqual(probes["ohpm"]["path"], "tool")
+        self.assertNotIn("/usr/local/bin", json.dumps(summary))
+
+    def test_harmony_host_interop_make_targets_use_manifest_validator(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
-        self.assertIn("harmony-avcodec-preflight", makefile)
-        self.assertIn("harmony-avcodec-validate", makefile)
-        self.assertIn("vibescreen_evidence.harmony_avcodec_preflight", makefile)
+        self.assertIn("harmony-host-interop-preflight", makefile)
+        self.assertIn("harmony-host-interop-gate", makefile)
+        self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
+        self.assertIn("--evidence-root", makefile)
+        self.assertIn("$(HARMONY_HOST_INTEROP_JSON)", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):
@@ -1194,7 +1271,7 @@ class PrepareReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             artifacts = root / "artifacts"
-            self.write_artifacts(artifacts, archive_content=b"/Users/release-runner/private/file")
+            self.write_artifacts(artifacts, archive_content=b"/home/release-runner/private/file")
 
             result = subprocess.run(
                 self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),

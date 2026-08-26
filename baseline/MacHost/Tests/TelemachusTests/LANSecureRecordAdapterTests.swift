@@ -98,6 +98,15 @@ final class LANSecureRecordAdapterTests: XCTestCase {
         XCTAssertEqual(try pair.host.openDeclaredChannel(bulk), Data([4]))
     }
 
+    func testRecordLengthAllowsMaximumInnerProtocolV1Frame() throws {
+        XCTAssertEqual(
+            LANSecureRecordStreamFramer.maximumRecordBytes,
+            ProtocolV1Framer.headerBytes
+                + ProtocolV1Framer.maximumPayloadBytes
+                + PlatformSessionPacketCipher.recordOverhead
+        )
+    }
+
     private func makePair(
         sessionIdentifier: String = "lan-session-1"
     ) throws -> (host: LANSecureRecordSession, device: LANSecureRecordSession) {

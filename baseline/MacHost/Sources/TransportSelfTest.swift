@@ -339,6 +339,12 @@ enum TransportSelfTest {
             let sessionEpoch = session.sessionEpoch
             try client.sendEnvelope(envelope(
                 id: 2,
+                payload: .managedPolicyStatus(ManagedPolicy.unmanaged.protocolStatus),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            try client.sendEnvelope(envelope(
+                id: 3,
                 payload: .listDisplaysRequest(VSListDisplaysRequest()),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
@@ -350,7 +356,7 @@ enum TransportSelfTest {
             var start = VSStartDisplayRequest()
             start.mode = .existing
             try client.sendEnvelope(envelope(
-                id: 3,
+                id: 4,
                 payload: .startDisplayRequest(start),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
@@ -366,7 +372,7 @@ enum TransportSelfTest {
             result.streamID = video.streamID
             result.accepted = true
             try client.sendEnvelope(envelope(
-                id: 4,
+                id: 5,
                 payload: .videoConfigResult(result),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
@@ -389,7 +395,7 @@ enum TransportSelfTest {
                 return false
             }
             try client.sendEnvelope(envelope(
-                id: 5,
+                id: 6,
                 payload: .ping(ping),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
@@ -422,7 +428,7 @@ enum TransportSelfTest {
                 return false
             }
             try client.sendEnvelope(envelope(
-                id: 6,
+                id: 7,
                 payload: .ping(ping),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
@@ -515,12 +521,18 @@ enum TransportSelfTest {
                         }
                         sessionID = session.sessionID
                         sessionEpoch = session.sessionEpoch
+                        try client.sendEnvelope(envelope(
+                            id: 2,
+                            payload: .managedPolicyStatus(ManagedPolicy.unmanaged.protocolStatus),
+                            sessionID: sessionID,
+                            sessionEpoch: sessionEpoch
+                        ))
                     }
                 }
 
                 if stage == .awaitingVideoResult {
                     try client.sendEnvelope(envelope(
-                        id: 2,
+                        id: 3,
                         payload: .listDisplaysRequest(VSListDisplaysRequest()),
                         sessionID: sessionID,
                         sessionEpoch: sessionEpoch
@@ -529,7 +541,7 @@ enum TransportSelfTest {
                     var start = VSStartDisplayRequest()
                     start.mode = .existing
                     try client.sendEnvelope(envelope(
-                        id: 3,
+                        id: 4,
                         payload: .startDisplayRequest(start),
                         sessionID: sessionID,
                         sessionEpoch: sessionEpoch

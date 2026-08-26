@@ -1,0 +1,72 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "macos_startup_recovery_evidence",
+  "run_id": "2026-08-22-login-headless-recovery-gate-blocked",
+  "source_commit": "408c17e3b0652e1fc89018d5ddd97689082b47d2",
+  "mac_host": {
+    "model": "",
+    "architecture": "",
+    "macos_version": "",
+    "macos_build": "",
+    "host_bundle_identifier": "",
+    "host_signing": "not_verified",
+    "host_cdhash": "",
+    "host_binary_sha256": "",
+    "screen_recording_permission": "not_recorded",
+    "accessibility_permission": "not_recorded"
+  },
+  "login_item": {
+    "status": "not_recorded",
+    "requires_approval": null,
+    "reboot_or_logout_login_performed": false,
+    "login_launch_observed": false,
+    "manual_launch_used": false
+  },
+  "automatic_startup": {
+    "auto_start_enabled": false,
+    "startup_mode": "",
+    "onboarding_completed": false,
+    "first_server_start_observed": false,
+    "client_render_observed": false
+  },
+  "display": {
+    "topology": "",
+    "capturable_display_observed": false,
+    "first_frame_observed": false,
+    "display_uuid": "",
+    "claims_headless_from_attached_monitor": false,
+    "dimensions": {}
+  },
+  "unattended_recovery": {
+    "trigger": "",
+    "observed": false,
+    "retry_delays_seconds": [],
+    "full_speed_loop_observed": false,
+    "restart_succeeded": false,
+    "bounded_exhaustion_observed": false,
+    "logs_retained": false
+  },
+  "window_recovery": {
+    "move_observed": false,
+    "disconnect_or_failure_trigger_observed": false,
+    "restored_observed": false,
+    "accessibility_error_observed": false,
+    "original_frame": {},
+    "restored_frame": {}
+  },
+  "remote_access": {
+    "method": "",
+    "operator_intervention_path_verified": false,
+    "filevault_or_first_login_blocker_absent": false,
+    "requires_unavailable_local_intervention": false
+  },
+  "android_device": {},
+  "android_reconnect": {
+    "trigger": "",
+    "disconnect_observed": false,
+    "reconnect_attempt_observed": false,
+    "reconnect_succeeded": false,
+    "client_render_after_reconnect_observed": false
+  },
+  "notes": "Blocked evidence package for the macOS startup/recovery gate verifier. It records current-base insufficiency only and does not close login item, headless Mac mini, unattended listener recovery, or Android reconnect acceptance."
+}

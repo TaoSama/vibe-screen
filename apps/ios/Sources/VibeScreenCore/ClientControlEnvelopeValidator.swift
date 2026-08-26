@@ -22,6 +22,7 @@ public struct ClientControlEnvelopeValidator: Sendable {
     private enum Phase: Sendable {
         case awaitingHostHello
         case awaitingSessionAccepted
+        case awaitingManagedPolicy(sessionID: Data, sessionEpoch: UInt64)
         case active(sessionID: Data, sessionEpoch: UInt64)
     }
 
@@ -33,6 +34,20 @@ public struct ClientControlEnvelopeValidator: Sendable {
     public mutating func reset() {
         phase = .awaitingHostHello
         lastMessageID = 0
+    }
+
+    public mutating func awaitManagedPolicyStatus() throws {
+        guard case let .active(sessionID, sessionEpoch) = phase else {
+            throw ClientControlEnvelopeError.unexpectedHandshakeMessage
+        }
+        phase = .awaitingManagedPolicy(sessionID: sessionID, sessionEpoch: sessionEpoch)
+    }
+
+    @discardableResult
+    public mutating func completeManagedPolicyStatus() throws -> Bool {
+        guard case let .awaitingManagedPolicy(sessionID, sessionEpoch) = phase else { return false }
+        phase = .active(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        return true
     }
 
     public mutating func validate(_ envelope: VSEnvelope) throws {
@@ -74,6 +89,19 @@ public struct ClientControlEnvelopeValidator: Sendable {
                 phase = .active(sessionID: accepted.sessionID, sessionEpoch: accepted.sessionEpoch)
             case .sessionRejected, .protocolError, .disconnectNotice:
                 break
+            default:
+                throw ClientControlEnvelopeError.unexpectedHandshakeMessage
+            }
+
+        case let .awaitingManagedPolicy(sessionID, sessionEpoch):
+            guard envelope.sessionID == sessionID, envelope.sessionEpoch == sessionEpoch else {
+                throw ClientControlEnvelopeError.invalidSession
+            }
+            switch payload {
+            case .managedPolicyStatus, .protocolError, .disconnectNotice, .ping, .pong:
+                break
+            case .hostHello, .sessionAccepted, .clientHello:
+                throw ClientControlEnvelopeError.unexpectedHandshakeMessage
             default:
                 throw ClientControlEnvelopeError.unexpectedHandshakeMessage
             }

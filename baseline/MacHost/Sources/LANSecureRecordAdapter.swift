@@ -208,7 +208,9 @@ final class LANSecureRecordSession {
 
 struct LANSecureRecordStreamFramer {
     static let lengthPrefixBytes = 4
-    static let maximumRecordBytes = ProtocolV1Framer.maximumPayloadBytes + PlatformSessionPacketCipher.recordOverhead
+    static let maximumRecordBytes = ProtocolV1Framer.headerBytes
+        + ProtocolV1Framer.maximumPayloadBytes
+        + PlatformSessionPacketCipher.recordOverhead
 
     private var buffer = Data()
 

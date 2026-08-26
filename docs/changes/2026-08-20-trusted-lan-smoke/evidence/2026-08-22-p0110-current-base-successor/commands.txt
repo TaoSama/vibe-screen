@@ -1,0 +1,8 @@
+$ date -u +%Y-%m-%dT%H:%M:%SZ
+2026-08-21T22:33:33Z
+$ git rev-parse HEAD
+79ef30ac7d3b50d3e0129f88823e7be238417bc0
+$ test ! -e /tmp/vibe-screen-device-android.lock
+absent
+$ mkdir /tmp/vibe-screen-device-android.lock
+$ rmdir /tmp/vibe-screen-device-android.lock

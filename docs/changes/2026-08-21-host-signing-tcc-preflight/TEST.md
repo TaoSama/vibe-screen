@@ -42,6 +42,15 @@ the configured signing identity, installed source-bound Host, TCC grants,
 listener, or virtual HID entitlement. That blocked output is valid readiness
 evidence only; it does not close README-facing runtime gates.
 
+## Public artifact redaction
+
+Current-base readiness artifacts must keep macOS privacy-store locations behind
+the stable `<user-tcc-db>` and `<system-tcc-db>` labels in both the text report
+and `host-readiness.json`. This allows blocked Host/TCC evidence to be attached
+to PRs and docs without exposing local account paths or machine-specific privacy
+database locations. The focused `macos_dev_host` test suite includes a regression
+check for that public-artifact boundary.
+
 ## Open gates
 
 - Real trusted-LAN stream and trusted-LAN reconnect on a current-source Host.
