@@ -22,6 +22,9 @@ from .ios_current_base_manifest import (
     SOURCE_DOCS,
     SIGNING_READINESS_OWNER_BRANCH,
     SIGNING_READINESS_OWNER_ROLE,
+    VIDEOTOOLBOX_READINESS_KIND,
+    VIDEOTOOLBOX_READINESS_PROFILE,
+    VIDEOTOOLBOX_RUNTIME_CLASSES,
 )
 
 GATE_KIND = "ios_current_base_readiness_gate"
@@ -53,6 +56,18 @@ REQUIRED_SIGNING_GATE_FIELDS = {
     "can_close_ios_app_signing_readiness",
     "missing",
     "failures",
+}
+REQUIRED_VIDEOTOOLBOX_READINESS_FIELDS = {
+    "schema_version",
+    "kind",
+    "profile",
+    "runtime_class",
+    "verdict",
+    "can_close_device_family_videotoolbox_gate",
+    "can_close_phase5_hardware_videotoolbox_gate",
+    "artifact_paths",
+    "artifact_checks",
+    "blocking_reasons",
 }
 REQUIRED_DEVICE_FIELDS = {"role", "runtime_class", "install_status", "evidence"}
 REQUIRED_GATE_FIELDS = {
@@ -158,6 +173,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             "build_evidence",
             "signing_readiness_gate",
             "signing",
+            "videotoolbox_readiness_gates",
             "devices",
             "gates",
             "android_evidence_used_for_ios_gates",
@@ -185,6 +201,30 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
         REQUIRED_SIGNING_GATE_FIELDS,
         "signing_readiness_gate",
     )
+    videotoolbox_readiness_gates = manifest.get("videotoolbox_readiness_gates")
+    if not isinstance(videotoolbox_readiness_gates, list):
+        raise IOSCurrentBaseGateError(
+            "manifest schema violation: videotoolbox_readiness_gates must be an array"
+        )
+    for index, gate in enumerate(videotoolbox_readiness_gates):
+        gate_record = _require_object(gate, f"videotoolbox_readiness_gates[{index}]")
+        _require_fields(
+            gate_record,
+            REQUIRED_VIDEOTOOLBOX_READINESS_FIELDS,
+            f"videotoolbox_readiness_gates[{index}]",
+        )
+        if not isinstance(gate_record.get("artifact_paths"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: videotoolbox_readiness_gates[{index}].artifact_paths must be an array"
+            )
+        if not isinstance(gate_record.get("artifact_checks"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: videotoolbox_readiness_gates[{index}].artifact_checks must be an array"
+            )
+        if not isinstance(gate_record.get("blocking_reasons"), list):
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: videotoolbox_readiness_gates[{index}].blocking_reasons must be an array"
+            )
 
     devices = manifest.get("devices")
     if not isinstance(devices, list):
@@ -481,6 +521,62 @@ def _device_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return checks
 
 
+def _artifact_checks_pass(artifact_checks: Any) -> bool:
+    if not isinstance(artifact_checks, list) or not artifact_checks:
+        return False
+    required_flags = ("exists", "non_empty", "under_evidence_dir", "valid_ios_videotoolbox_source")
+    return all(
+        isinstance(check, dict) and all(check.get(flag) is True for flag in required_flags)
+        for check in artifact_checks
+    )
+
+
+def _videotoolbox_readiness_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    gates = (
+        manifest.get("videotoolbox_readiness_gates")
+        if isinstance(manifest.get("videotoolbox_readiness_gates"), list)
+        else []
+    )
+    by_runtime = {gate.get("runtime_class"): gate for gate in gates if isinstance(gate, dict)}
+    checks: dict[str, dict[str, Any]] = {}
+    retained_artifacts: set[str] = set()
+
+    for runtime_class in VIDEOTOOLBOX_RUNTIME_CLASSES:
+        gate = by_runtime.get(runtime_class) if isinstance(by_runtime.get(runtime_class), dict) else {}
+        artifact_paths = _string_list(gate.get("artifact_paths"))
+        passed = (
+            gate.get("schema_version") == SCHEMA_VERSION
+            and gate.get("kind") == VIDEOTOOLBOX_READINESS_KIND
+            and gate.get("profile") == VIDEOTOOLBOX_READINESS_PROFILE
+            and gate.get("runtime_class") == runtime_class
+            and gate.get("verdict") == "pass"
+            and gate.get("can_close_device_family_videotoolbox_gate") is True
+            and gate.get("can_close_phase5_hardware_videotoolbox_gate") is False
+            and bool(artifact_paths)
+            and _artifact_checks_pass(gate.get("artifact_checks"))
+        )
+        checks[f"{runtime_class}_videotoolbox_readiness"] = _check(
+            passed,
+            f"{runtime_class} VideoToolbox readiness summary is a physical-device pass with retained artifacts",
+            evidence=artifact_paths or [reason.get("requirement", "") for reason in gate.get("blocking_reasons", []) if isinstance(reason, dict)],
+            blocking=True,
+        )
+        if passed:
+            retained_artifacts.update(artifact_paths)
+
+    gates_by_name = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
+    for gate_name in ("videotoolbox_h264", "videotoolbox_hevc"):
+        gate_record = gates_by_name.get(gate_name) if isinstance(gates_by_name.get(gate_name), dict) else {}
+        evidence = set(_string_list(gate_record.get("evidence")))
+        checks[f"{gate_name}_links_to_readiness"] = _check(
+            bool(retained_artifacts) and bool(evidence & retained_artifacts),
+            f"{gate_name} evidence references retained VideoToolbox readiness artifacts",
+            evidence=sorted(evidence),
+            blocking=True,
+        )
+    return checks
+
+
 def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     gates = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
     formal: dict[str, dict[str, Any]] = {}
@@ -541,11 +637,12 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     environment = _environment_checks(manifest)
     signing = _signing_checks(manifest)
     devices = _device_checks(manifest)
+    videotoolbox_readiness = _videotoolbox_readiness_checks(manifest)
     formal, broader = _gate_checks(manifest)
     substitutions = _substitution_checks(manifest)
 
     invalid_substitution = any(not item["passed"] for item in substitutions.values())
-    blocking_groups = {**environment, **signing, **devices, **formal}
+    blocking_groups = {**environment, **signing, **devices, **videotoolbox_readiness, **formal}
     blocking_missing = [name for name, item in blocking_groups.items() if not item["passed"]]
     metadata_missing = [name for name, item in metadata.items() if not item["passed"]]
     broader_missing = [name for name, item in broader.items() if not item["passed"]]
@@ -586,6 +683,7 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
             "environment": environment,
             "signing": signing,
             "devices": devices,
+            "videotoolbox_readiness": videotoolbox_readiness,
             "formal_device_gates": formal,
             "broader_phase5_gates": broader,
             "evidence_substitution": substitutions,

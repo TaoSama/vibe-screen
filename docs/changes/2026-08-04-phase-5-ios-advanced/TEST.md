@@ -47,12 +47,13 @@ a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
-config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-WakeHost device-identity binding, and every advanced Envelope branch used by
-the client. Focused macOS/Android tests cover the shared HMAC golden vector,
-replay and unauthorized rejection, broadcast-target validation, and the
+and feedback/digest rejection, managed deny-wins policy, explanatory
+restriction-result propagation, denylist-over-allowlist host matching, safe
+filenames, sequential chunks, file limits/final SHA-256/cleanup, HDR10 to SDR
+config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte
+WOL vector, WakeHost device-identity binding, and every advanced Envelope branch
+used by the client. Focused macOS/Android tests cover the shared HMAC golden
+vector, replay and unauthorized rejection, broadcast-target validation, and the
 Android Protocol v1 action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
@@ -350,6 +351,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - iPad-class Simulator layout (the retained smoke run used an iPhone 17 Pro);
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
+  the fail-closed `ios-videotoolbox-readiness` owner now records Simulator,
+  unsigned archive, physical iPhone, and physical iPad readiness separately, but
+  no physical-device pass is recorded here;
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
   and disconnect/reconnect (the macOS Core loopback proves only the transport
   and Protocol v1 boundary listed above);
@@ -358,11 +362,13 @@ The following remain unproved until their dedicated gates produce evidence:
   LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection. The WakeHost current-base
-  evidence owner is #199 after rebasing onto #225 and must use
-  `make wake-host-current-base-gate` to keep this gate blocked until hardware
-  evidence exists;
+  file picker/export, UDP broadcast, real sleeping-host Wake-on-LAN over
+  router/NIC firmware paths, real Apple MDM profile delivery, and managed App
+  Configuration injection. The WakeHost current-base evidence owner is #199
+  after rebasing onto #225 and must use `make wake-host-current-base-gate` to
+  keep this gate blocked until hardware evidence exists; the offline managed
+  deny-wins source work and blocked evidence are tracked in
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TEST.md);
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over
@@ -397,3 +403,32 @@ read-only `getprop`, `logcat`, `dumpsys`, or `ps` queries and does not change
 ADB, application, or session state. Any later Android Protocol v1 fixture run
 must be coordinated by Phase 0. Android evidence is never an iOS build,
 decode, UI, or device result.
+
+## Hardware VideoToolbox readiness gate
+
+The README Phase 5 hardware VideoToolbox behavior gate is now owned by a narrow
+readiness summary, separate from the broader iOS device-acceptance gate:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest \
+  tools.tests.test_ios_videotoolbox_readiness tools.tests.test_schemas -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
+```
+
+The schema distinguishes `simulator`, `unsigned_archive`, `physical_iphone`, and
+`physical_ipad`. Simulator and unsigned archive records are blocked by
+construction and cannot close hardware behavior; the strict gate exits nonzero
+for those records. A family-level physical-device pass requires signed
+installation, matching device identity, H.264/HEVC parameter sets, VideoToolbox
+sessions, output frames, hardware-path evidence, stream/config epoch telemetry,
+thermal and power state, and existing non-empty retained iOS VideoToolbox
+artifacts under the evidence directory.
+Even a passing family summary keeps
+`can_close_phase5_hardware_videotoolbox_gate=false`; the README gate remains open
+until both iPhone and iPad family summaries pass and are reviewed with the
+full device-acceptance evidence. No iOS device was run for this record.

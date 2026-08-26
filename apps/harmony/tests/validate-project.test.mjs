@@ -324,6 +324,18 @@ test('semantic validator rejects legacy security-record persistence', (t) => {
     failure.includes('secure pairing records must persist the version-2 HUKS profile')));
 });
 
+test('semantic validator rejects removal of the authenticated record open path', (t) => {
+  const fixture = projectFixture(t);
+  const recordPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/security/ChannelRecordSecurity.ts');
+  const source = readFileSync(recordPath, 'utf8');
+  const modified = source.replace('this.options.crypto.openAes256Gcm', 'this.options.crypto.sha256');
+  assert.notEqual(modified, source);
+  writeFileSync(recordPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('ChannelRecordSession.open() must call this.options.crypto.openAes256Gcm()')));
+});
+
 test('semantic validator rejects removal of the bounded control backlog', (t) => {
   const fixture = projectFixture(t);
   const writerPath = resolve(fixture.fixtureHarmony,

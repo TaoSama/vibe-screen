@@ -234,6 +234,53 @@ QR/controller UX, authenticated transport packets, production Authority
 deployment, public-network behavior, Host interoperability, or MatePad Mini
 acceptance.
 
+## 2026-08-21 Host resume interop preflight and protocol recovery coverage
+
+The Harmony portable product-session tests now cover the missing recovery
+edges around Host interoperability without claiming a device pass:
+
+```text
+cd apps/harmony && pnpm run test
+  PASS: 117/117 portable tests
+```
+
+New protocol/session assertions cover:
+
+- accepted `ResumeSessionResult` must correlate to the request, preserve the
+  session ID, and advance both the payload and envelope `session_epoch` before
+  display/video re-entry;
+- after a successful resume, old-epoch control envelopes fail closed and
+  old-epoch media is dropped before current-epoch media is admitted;
+- rejected resume results report a retryable structured reason and close the
+  transport scope;
+- a Host restart or lost resume registry is represented as a rejected resume,
+  after which the next connection starts with a fresh ClientHello, empty
+  session ID, and epoch zero rather than falling through on the same transport.
+
+A new fail-closed Host interop evidence verifier records the remaining external
+gate shape:
+
+```text
+python3 scripts/harmony_host_interop_preflight.py --template
+  PASS: prints a redaction-safe manifest template only
+make harmony-host-interop-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-host-resume-interop-blocked
+  BLOCKED: writes local readiness evidence and exits 2 when DevEco/HDC/HAP/
+  HarmonyOS device/Host resume-registry evidence are unavailable
+make harmony-host-interop-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when /path/to/evidence/harmony-host-interop.json has every required
+  resume-capable Host interop flow marked pass with repository-local evidence
+  files below the evidence directory
+```
+
+The blocked readiness record is committed under
+[`evidence/2026-08-21-host-resume-interop-blocked`](evidence/2026-08-21-host-resume-interop-blocked/README.md).
+It does not establish DevEco ArkTS compilation, a signed HAP, a HarmonyOS NEXT
+device run, MatePad Mini behavior, authenticated LAN records, Mac Host resume
+registry compatibility, real media rendering, or recovery timing. Android
+device evidence, including Nubia P0110/pacific evidence, remains explicitly
+insufficient for this Phase 4 gate.
+
 ## 2026-08-23 current-base owner gate
 
 The Phase 4 README owner surface for DevEco build, signed-HAP install,

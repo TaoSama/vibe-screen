@@ -11,170 +11,6 @@ struct ProtocolV1DisplayInfo: Equatable {
     let isVirtual: Bool
 }
 
-struct ManagedPolicy: Equatable {
-    static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
-    static let defaultMaximumAudioStreams: UInt32 = 1
-    static let defaultMaximumClipboardBytes: UInt64 = 1 * 1_024 * 1_024
-    static let defaultMaximumFileChunkBytes: UInt32 = 64 * 1_024
-
-    let isManaged: Bool
-    let clipboardAllowed: Bool
-    let fileTransferAllowed: Bool
-    let audioAllowed: Bool
-    let wakeAllowed: Bool
-    let customGesturesAllowed: Bool
-    let hostActionsAllowed: Bool
-    let maximumFileBytes: UInt64
-    let allowedHosts: Set<String>
-    let allowedHostsRestricted: Bool
-
-    static let unmanaged = ManagedPolicy(
-        isManaged: false,
-        clipboardAllowed: true,
-        fileTransferAllowed: true,
-        audioAllowed: true,
-        wakeAllowed: true,
-        customGesturesAllowed: true,
-        hostActionsAllowed: true,
-        maximumFileBytes: defaultMaximumFileBytes,
-        allowedHosts: [],
-        allowedHostsRestricted: false
-    )
-
-    init(
-        isManaged: Bool,
-        clipboardAllowed: Bool,
-        fileTransferAllowed: Bool,
-        audioAllowed: Bool,
-        wakeAllowed: Bool,
-        customGesturesAllowed: Bool,
-        hostActionsAllowed: Bool,
-        maximumFileBytes: UInt64,
-        allowedHosts: Set<String>,
-        allowedHostsRestricted: Bool? = nil
-    ) {
-        let normalizedHosts = Self.normalizedHosts(allowedHosts)
-        self.isManaged = isManaged
-        self.clipboardAllowed = clipboardAllowed
-        self.fileTransferAllowed = fileTransferAllowed
-        self.audioAllowed = audioAllowed
-        self.wakeAllowed = wakeAllowed
-        self.customGesturesAllowed = customGesturesAllowed
-        self.hostActionsAllowed = hostActionsAllowed
-        self.maximumFileBytes = maximumFileBytes
-        self.allowedHosts = normalizedHosts
-        self.allowedHostsRestricted = allowedHostsRestricted ?? !normalizedHosts.isEmpty
-    }
-
-    init(remoteStatus: VSManagedPolicyStatus) {
-        guard remoteStatus.managed else {
-            self = .unmanaged
-            return
-        }
-        let hosts = Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
-        self.init(
-            isManaged: true,
-            clipboardAllowed: remoteStatus.clipboardAllowed,
-            fileTransferAllowed: remoteStatus.fileTransferAllowed,
-            audioAllowed: remoteStatus.audioAllowed,
-            wakeAllowed: remoteStatus.wakeAllowed,
-            customGesturesAllowed: remoteStatus.customGesturesAllowed,
-            hostActionsAllowed: remoteStatus.hostActionsAllowed,
-            maximumFileBytes: remoteStatus.maximumFileBytes,
-            allowedHosts: hosts,
-            allowedHostsRestricted: remoteStatus.allowedHostsRestricted || !hosts.isEmpty
-        )
-    }
-
-    var protocolStatus: VSManagedPolicyStatus {
-        var status = VSManagedPolicyStatus()
-        status.managed = isManaged
-        status.clipboardAllowed = clipboardAllowed
-        status.fileTransferAllowed = fileTransferAllowed
-        status.audioAllowed = audioAllowed
-        status.wakeAllowed = wakeAllowed
-        status.customGesturesAllowed = customGesturesAllowed
-        status.hostActionsAllowed = hostActionsAllowed
-        status.maximumFileBytes = maximumFileBytes
-        status.allowedHosts = allowedHosts.sorted()
-        status.allowedHostsRestricted = allowedHostsRestricted
-        return status
-    }
-
-    func applying(remote: ManagedPolicy) -> ManagedPolicy {
-        guard remote.isManaged else { return self }
-        let restricted = allowedHostsRestricted || remote.allowedHostsRestricted
-        let hosts: Set<String>
-        switch (allowedHostsRestricted, remote.allowedHostsRestricted) {
-        case (true, true): hosts = allowedHosts.intersection(remote.allowedHosts)
-        case (true, false): hosts = allowedHosts
-        case (false, true): hosts = remote.allowedHosts
-        case (false, false): hosts = []
-        }
-        return ManagedPolicy(
-            isManaged: true,
-            clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
-            fileTransferAllowed: fileTransferAllowed && remote.fileTransferAllowed,
-            audioAllowed: audioAllowed && remote.audioAllowed,
-            wakeAllowed: wakeAllowed && remote.wakeAllowed,
-            customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
-            hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
-            maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
-            allowedHosts: hosts,
-            allowedHostsRestricted: restricted
-        )
-    }
-
-    func allows(hostID: String) -> Bool {
-        guard let normalized = Self.normalizedHost(hostID) else { return !allowedHostsRestricted }
-        return !allowedHostsRestricted || allowedHosts.contains(normalized)
-    }
-
-    private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
-        Set(hosts.compactMap(normalizedHost))
-    }
-
-    private static func isBlankHost(_ host: String) -> Bool {
-        normalizedHost(host) == nil
-    }
-
-    private static func normalizedHost(_ host: String) -> String? {
-        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed.lowercased()
-    }
-
-    static let advertisedCapabilities: Set<VSCapability> = [.managedConfiguration]
-
-    func applyingResourceLimits(to limits: inout VSResourceLimits) {
-        limits.maximumAudioStreams = audioAllowed ? limits.maximumAudioStreams : 0
-        limits.maximumClipboardBytes = clipboardAllowed ? limits.maximumClipboardBytes : 0
-        limits.maximumFileBytes = fileTransferAllowed ? min(limits.maximumFileBytes, maximumFileBytes) : 0
-        limits.maximumFileChunkBytes = fileTransferAllowed ? limits.maximumFileChunkBytes : 0
-    }
-}
-
-struct ManagedPolicyResolver: Equatable {
-    private(set) var localPolicy: ManagedPolicy
-    private(set) var remotePolicy: ManagedPolicy?
-
-    var effectivePolicy: ManagedPolicy {
-        remotePolicy.map { localPolicy.applying(remote: $0) } ?? localPolicy
-    }
-
-    init(localPolicy: ManagedPolicy = .unmanaged, remotePolicy: ManagedPolicy? = nil) {
-        self.localPolicy = localPolicy
-        self.remotePolicy = remotePolicy
-    }
-
-    mutating func setRemote(_ policy: ManagedPolicy?) {
-        remotePolicy = policy
-    }
-
-    mutating func clearRemote() {
-        remotePolicy = nil
-    }
-}
-
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
@@ -241,6 +77,7 @@ struct ProtocolV1SessionConfiguration {
 enum ProtocolV1SessionPhase: Equatable {
     case awaitingClientHello
     case preparingCodec(correlationID: UInt64)
+    case awaitingManagedPolicy
     case awaitingDisplayStart
     case awaitingVideoConfig(configEpoch: UInt64, streamID: UInt64)
     case streaming(configEpoch: UInt64, streamID: UInt64)
@@ -732,7 +569,8 @@ final class ProtocolV1SessionCoordinator {
             accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
             accepted.negotiatedResourceLimits = negotiatedResourceLimits()
 
-            phase = .awaitingDisplayStart
+            let awaitsManagedPolicy = negotiatedCapabilities.contains(.managedConfiguration)
+            phase = awaitsManagedPolicy ? .awaitingManagedPolicy : .awaitingDisplayStart
             do {
                 var actions: [ProtocolV1SessionAction] = [
                     .sendControl(try encode(
@@ -742,29 +580,13 @@ final class ProtocolV1SessionCoordinator {
                     )),
                     .sendControl(try encode(payload: .sessionAccepted(accepted), correlationID: correlationID))
                 ]
-                // Advertise the host action catalog immediately after the
-                // session is accepted, but only when the client negotiated
-                // HOST_ACTIONS. An ungated client never learns the catalog and
-                // its invocations are rejected as unsupported.
-                if negotiatedCapabilities.contains(.hostActions) {
-                    var catalog = VSHostActionCatalog()
-                    catalog.actions = Self.hostActionCatalog.map { entry in
-                        var descriptor = VSHostActionDescriptor()
-                        descriptor.actionID = entry.id
-                        descriptor.localizedName = entry.name
-                        descriptor.requiresConfirmation = entry.requiresConfirmation
-                        return descriptor
-                    }
-                    actions.append(.sendControl(try encode(
-                        payload: .hostActionCatalog(catalog),
-                        correlationID: correlationID
-                    )))
-                }
-                if negotiatedCapabilities.contains(.managedConfiguration) {
+                if awaitsManagedPolicy {
                     actions.append(.sendControl(try encode(
                         payload: .managedPolicyStatus(managedPolicyResolver.localPolicy.protocolStatus),
                         correlationID: correlationID
                     )))
+                } else {
+                    actions.append(contentsOf: try hostActionCatalogActions(correlationID: correlationID))
                 }
                 return actions
             } catch {
@@ -1477,7 +1299,7 @@ final class ProtocolV1SessionCoordinator {
 
     private var isNegotiated: Bool {
         switch phase {
-        case .awaitingClientHello, .preparingCodec, .closed, .failed:
+        case .awaitingClientHello, .preparingCodec, .awaitingManagedPolicy, .closed, .failed:
             return false
         case .awaitingDisplayStart, .awaitingVideoConfig, .streaming:
             return true
@@ -1704,6 +1526,19 @@ final class ProtocolV1SessionCoordinator {
         return [.codecNegotiated(streamCodec)]
     }
 
+    private func hostActionCatalogActions(correlationID: UInt64) throws -> [ProtocolV1SessionAction] {
+        guard negotiatedCapabilities.contains(.hostActions) else { return [] }
+        var catalog = VSHostActionCatalog()
+        catalog.actions = Self.hostActionCatalog.map { entry in
+            var descriptor = VSHostActionDescriptor()
+            descriptor.actionID = entry.id
+            descriptor.localizedName = entry.name
+            descriptor.requiresConfirmation = entry.requiresConfirmation
+            return descriptor
+        }
+        return [.sendControl(try encode(payload: .hostActionCatalog(catalog), correlationID: correlationID))]
+    }
+
     private func negotiatedResourceLimits() -> VSResourceLimits {
         var limits = VSResourceLimits()
         limits.maximumClients = 1
@@ -1735,7 +1570,7 @@ final class ProtocolV1SessionCoordinator {
     ) -> Set<VSCapability> {
         var filtered = capabilities
         if !policy.clipboardAllowed { filtered.remove(.clipboard) }
-        if !policy.fileTransferAllowed { filtered.remove(.fileTransfer) }
+        if !policy.fileTransferAllowed || policy.maximumFileBytes == 0 { filtered.remove(.fileTransfer) }
         if !policy.audioAllowed { filtered.remove(.audio) }
         if !policy.wakeAllowed { filtered.remove(.wakeHost) }
         if !policy.hostActionsAllowed { filtered.remove(.hostActions) }
@@ -1838,18 +1673,6 @@ final class ProtocolV1SessionCoordinator {
         display.isPrimary = activeDisplayInfo()?.isPrimary ?? true
         display.isVirtual = configuration.displayIsVirtual
         return display
-    }
-
-    private static func unmanagedPolicyStatus() -> VSManagedPolicyStatus {
-        var status = VSManagedPolicyStatus()
-        status.managed = false
-        status.clipboardAllowed = true
-        status.fileTransferAllowed = true
-        status.audioAllowed = true
-        status.wakeAllowed = true
-        status.customGesturesAllowed = true
-        status.hostActionsAllowed = true
-        return status
     }
 
     /// The full catalog to advertise. Falls back to a single synthesized entry
@@ -1997,11 +1820,19 @@ final class ProtocolV1SessionCoordinator {
         _ status: VSManagedPolicyStatus,
         correlationID: UInt64
     ) -> [ProtocolV1SessionAction] {
-        guard isNegotiated else {
+        let completesInitialPolicyHandshake = phase == .awaitingManagedPolicy
+        guard completesInitialPolicyHandshake || isNegotiated else {
             return invalidState("ManagedPolicyStatus arrived before session negotiation.", correlationID)
         }
         guard baseNegotiatedCapabilities.contains(.managedConfiguration) else {
             return unsupportedCapability("Managed policy was not negotiated.", correlationID)
+        }
+        guard ManagedPolicy.validateRestrictionResults(status) else {
+            return fail(
+                code: .malformedMessage,
+                message: "ManagedPolicyStatus requires complete, consistent restriction_results.",
+                correlationID: correlationID
+            )
         }
         managedPolicyResolver.setRemote(ManagedPolicy(remoteStatus: status))
         let effectivePolicy = managedPolicyResolver.effectivePolicy
@@ -2030,6 +1861,14 @@ final class ProtocolV1SessionCoordinator {
            !negotiatedCapabilities.contains(.audio),
            audioState.disable(reason: "managed_policy_audio_denied") {
             actions.append(.stopAudio(reason: "managed_policy_audio_denied"))
+        }
+        if completesInitialPolicyHandshake {
+            phase = .awaitingDisplayStart
+            do {
+                actions.append(contentsOf: try hostActionCatalogActions(correlationID: correlationID))
+            } catch {
+                return serializationFailure()
+            }
         }
         return actions
     }

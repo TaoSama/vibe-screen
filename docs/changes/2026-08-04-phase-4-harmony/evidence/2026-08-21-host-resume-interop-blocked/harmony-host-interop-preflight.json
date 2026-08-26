@@ -1,0 +1,60 @@
+{
+  "blocking_reasons": [
+    {
+      "field": "signed_hap",
+      "reason": "a DevEco-built signed HAP and signature hash must be recorded"
+    },
+    {
+      "field": "harmony_device",
+      "reason": "hdc and a HarmonyOS NEXT MatePad Mini are required for Host interop evidence"
+    },
+    {
+      "field": "host_resume_registry",
+      "reason": "a resume-capable Mac Host run must be recorded before this gate can pass"
+    },
+    {
+      "field": "missing_commands",
+      "reason": "hvigor or hvigorw, ohpm, hdc"
+    }
+  ],
+  "can_close_harmony_host_interop_gate": false,
+  "command_probes": [
+    {
+      "name": "hvigor",
+      "path": null,
+      "version": "not found"
+    },
+    {
+      "name": "hvigorw",
+      "path": null,
+      "version": "not found"
+    },
+    {
+      "name": "ohpm",
+      "path": null,
+      "version": "not found"
+    },
+    {
+      "name": "hdc",
+      "path": null,
+      "version": "not found"
+    }
+  ],
+  "created_at": "2026-08-21T05:08:38Z",
+  "required_flows": [
+    "host_hello_session_display_video",
+    "control_channel_after_resume",
+    "media_channel_after_resume",
+    "background_foreground_resume",
+    "wifi_loss_restore_resume",
+    "bounded_reconnect",
+    "host_restart_fresh_session",
+    "resume_result_success_reported",
+    "resume_result_failure_reported",
+    "old_epoch_control_rejected",
+    "old_epoch_media_rejected"
+  ],
+  "run_id": "2026-08-21-host-resume-interop-blocked",
+  "schema": "dev.vibescreen.harmony-host-interop/v1/preflight",
+  "verdict": "blocked"
+}

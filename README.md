@@ -807,12 +807,18 @@ increase it.
   advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
   Host InputAck acceptance before sending controller state, validates lifecycle
   bounds, and releases active controllers through all-zero neutral DISCONNECTED
-  events before teardown or resume. No DevEco SDK was available for this
-  record, so the repository does not claim ArkTS compilation, a HAP, signing,
-  installation, hardware decode, production HUKS API behavior, authenticated
-  transport, resume-capable Host interoperability, or real-device behavior.
-  The HUKS secure-pairing evidence verifier and blocked manifest are recorded
-  under
+  events before teardown or resume. The 2026-08-21 portable recovery pass adds explicit coverage for
+  resume success/failure reporting, old-epoch control/media rejection after
+  resume, and host-restart fallback to a fresh ClientHello session. A dedicated
+  HarmonyOS Host interop preflight now writes blocked evidence and a strict
+  manifest template for HostHello/session/display/video/control/media,
+  background/foreground, Wi-Fi loss/restore, bounded reconnect, host restart,
+  and old-epoch rejection runs. No DevEco SDK or HarmonyOS device was available
+  for this record, so the repository does not claim ArkTS compilation, a HAP,
+  signing, installation, hardware decode, production HUKS API behavior,
+  authenticated transport, resume-capable Host interoperability, or real-device
+  behavior. The HUKS secure-pairing evidence verifier and blocked manifest are
+  recorded under
   [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/README.md).
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
