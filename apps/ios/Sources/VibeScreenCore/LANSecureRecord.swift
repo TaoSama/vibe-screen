@@ -275,7 +275,9 @@ public final class LANSecureRecordSession: @unchecked Sendable {
 
 public struct LANSecureRecordStreamFramer: Sendable {
     public static let lengthPrefixBytes = 4
-    public static let maximumRecordBytes = TransportFramer.maximumPayloadBytes + LANSessionPacketCipher.recordOverhead
+    public static let maximumRecordBytes = TransportFramer.headerLength
+        + TransportFramer.maximumPayloadBytes
+        + LANSessionPacketCipher.recordOverhead
 
     private var buffer = Data()
 
