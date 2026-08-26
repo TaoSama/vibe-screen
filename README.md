@@ -778,9 +778,14 @@ increase it.
   control/media fixtures, display/video negotiation, strict session epochs,
   bounded media queues, input encoding (including shared Protocol v1 base and
   extended stylus encoding and capability gating), fail-closed resume results,
-  and a portable pairing/credential/replay/revocation core. ArkUI now wires TCP,
-  XComponent, AVCodec, Asset Store, foreground suspension, and bounded reconnect in
-  source. The portable core encodes both base stylus (position, pressure, tilt)
+  and a portable pairing/credential/replay/revocation core. The secure-pairing
+  portable path now requires an explicit Harmony HUKS-backed profile before it
+  can emit `PairingRequest`, persists only version-2 credential records carrying
+  that profile, and rejects legacy records, non-HUKS providers, replayed control
+  records, expired pairing results, and revoked credentials fail-closed. ArkUI
+  now wires TCP, XComponent, AVCodec, Asset Store, foreground suspension, and
+  bounded reconnect in source. The portable core encodes both base stylus
+  (position, pressure, tilt)
   and the extended stylus fields (tool kind, barrel buttons, contact/proximity
   state) under capability negotiation, but the production Harmony client
   advertises only CAPABILITY_STYLUS and not CAPABILITY_STYLUS_EXTENDED until
@@ -793,8 +798,11 @@ increase it.
   controllers through all-zero neutral DISCONNECTED events before teardown or
   resume. No DevEco SDK was available for this
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
-  installation, hardware decode, HUKS-backed secure pairing, authenticated
+  installation, hardware decode, production HUKS API behavior, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.
+  The HUKS secure-pairing evidence verifier and blocked manifest are recorded
+  under
+  [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/README.md).
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - Gate ownership is explicit while those records are open: the HarmonyOS client

@@ -11,11 +11,12 @@ keyboard, pointer, and stylus entry points. The portable core supports the share
 Protocol v1 base stylus (position, pressure, tilt) and extended stylus
 (tool kind, barrel buttons, contact/proximity state) encoding and capability
 gating. This is still a development preview. The portable core also implements
-fail-closed ResumeSessionResult,
-single-use PairingOffer/Request/Result processing, and durable credential,
-control-replay, and revocation state. No DevEco SDK was available for this
-record, so ArkTS compilation, HAP output, platform API behavior, and device
-interoperability are not claimed.
+fail-closed ResumeSessionResult, HUKS-profile-gated single-use
+PairingOffer/Request/Result processing, and durable credential, control-replay,
+and revocation state. Legacy security records and crypto providers that cannot
+prove a non-exportable Harmony HUKS identity fail closed before authorization.
+No DevEco SDK was available for this record, so ArkTS compilation, HAP output,
+platform API behavior, and device interoperability are not claimed.
 
 ## Requirements
 
@@ -101,9 +102,12 @@ This mode is authenticated neither by the imported link nor by the current
 Harmony controller and is not encrypted. Use it only on a trusted LAN. The
 portable security core validates PairingOffer/PairingRequest/PairingResult,
 consumes every offer once even on failure, and can persist either a verified
-credential or a revocation tombstone. The production Harmony cryptography
-provider, controller/UI exchange, record layer, and compatible Mac host remain
-integration gates; the UI does not present address import as secure pairing.
+credential or a revocation tombstone only when the supplied cryptography profile
+declares `harmony_huks_v1`, non-exportable P-256 signing keys, HUKS-bound
+credential storage, a persistent identity, and an Authority device ID matching
+the signed device identity. The production Harmony HUKS provider,
+controller/UI exchange, record layer, and compatible Mac host remain integration
+gates; the UI does not present address import as secure pairing.
 
 ## Architecture
 
@@ -174,7 +178,8 @@ incomplete.
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
-  authenticated record layer, QR camera import, and Mac interoperability;
+  authenticated record layer, QR camera import, Authority/Signaling admission,
+  and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
 - Mac Host resume registry/first-message support and resume interoperability;
 - controller-specific input on-device confirmation, extended stylus (eraser,

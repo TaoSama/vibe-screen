@@ -112,6 +112,21 @@ def passing_device_gates() -> dict[str, object]:
         "eight_hour_soak": "harmony-matepad-acceptance.json",
         "external_latency": "harmony-matepad-acceptance.json",
     }
+    gates = []
+    for gate_id in gate_ids:
+        gate: dict[str, object] = {
+            "id": gate_id,
+            "status": "pass",
+            "evidence": [f"evidence/{marker_by_gate[gate_id]}"],
+        }
+        if gate_id == "huks_backed_secure_pairing":
+            gate["secure_pairing_manifest"] = {
+                "schema": "dev.vibescreen.harmony-secure-pairing-gate/v1",
+                "path": "harmony-secure-pairing.json",
+                "status": "pass",
+            }
+        gates.append(gate)
+
     return {
         "schema": "dev.vibescreen.harmony-device-gates/v1",
         "repository": {
@@ -148,10 +163,7 @@ def passing_device_gates() -> dict[str, object]:
             "build_sha256": "4" * 64,
             "protocol": "Protocol v1",
         },
-        "gates": [
-            {"id": gate_id, "status": "pass", "evidence": [f"evidence/{marker_by_gate[gate_id]}"]}
-            for gate_id in gate_ids
-        ],
+        "gates": gates,
     }
 
 

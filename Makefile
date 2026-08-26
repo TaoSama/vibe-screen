@@ -159,6 +159,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	actionable-error-current-base-owner-record \
 	harmony-readiness \
 	harmony-device-gate \
+	harmony-secure-pairing-gate \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -534,6 +535,10 @@ harmony-readiness:
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py --evidence-root "$(EVIDENCE_DIR)" "$(EVIDENCE_DIR)/harmony-device-gates.json"
+
+harmony-secure-pairing-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)
