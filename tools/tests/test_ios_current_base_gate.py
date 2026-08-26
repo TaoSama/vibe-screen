@@ -454,6 +454,11 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         )
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
         self.assertIn("blocked: signing", report["reasons"])
+        retained_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertIn(
+            "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
+            retained_manifest["limitations"],
+        )
 
     def test_dedicated_signing_readiness_owner_is_required(self):
         with tempfile.TemporaryDirectory() as directory_name:

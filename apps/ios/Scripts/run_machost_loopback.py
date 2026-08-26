@@ -22,6 +22,7 @@ MAC_HOST_PACKAGE = REPOSITORY_ROOT / "baseline" / "MacHost"
 IOS_PACKAGE = REPOSITORY_ROOT / "apps" / "ios"
 LOOPBACK_PORT_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_PORT"
 LOOPBACK_SCENARIO_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"
+LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_LEGACY_PLAINTEXT"
 LOOPBACK_SCENARIOS = frozenset({"lifecycle", "invalid-target"})
 HOST_READY_PATTERN = re.compile(r"IOS_LOOPBACK_HOST_READY port=([0-9]+)")
 PROCESS_TERMINATION_TIMEOUT = 3.0
@@ -50,6 +51,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=20.0,
         help="seconds to wait for each integration process (default: 20)",
+    )
+    parser.add_argument(
+        "--legacy-plaintext",
+        action="store_true",
+        help="explicitly exercise the old plaintext trusted-LAN fallback instead of secure records",
     )
     return parser.parse_args()
 
@@ -147,15 +153,21 @@ def loopback_environment(
     port: int,
     *,
     allow_ephemeral: bool,
+    legacy_plaintext: bool = False,
 ) -> dict[str, str]:
     if scenario not in LOOPBACK_SCENARIOS:
         raise ValueError(f"unknown loopback scenario: {scenario}")
     validate_loopback_port(port, allow_ephemeral=allow_ephemeral)
-    return {
+    environment = {
         **os.environ,
         LOOPBACK_SCENARIO_ENVIRONMENT: scenario,
         LOOPBACK_PORT_ENVIRONMENT: str(port),
     }
+    if legacy_plaintext:
+        environment[LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT] = "1"
+    else:
+        environment.pop(LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT, None)
+    return environment
 
 
 def wait_for_listener_shutdown(
@@ -187,6 +199,7 @@ def run_case(
     startup_timeout: float,
     test_timeout: float,
     invalid_target: bool,
+    legacy_plaintext: bool,
 ) -> int:
     scenario = "invalid-target" if invalid_target else "lifecycle"
     host_command = [str(host_binary)]
@@ -205,7 +218,12 @@ def run_case(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            env=loopback_environment(scenario, 0, allow_ephemeral=True),
+            env=loopback_environment(
+                scenario,
+                0,
+                allow_ephemeral=True,
+                legacy_plaintext=legacy_plaintext,
+            ),
         )
         host_reader = threading.Thread(
             target=stream_lines,
@@ -226,6 +244,7 @@ def run_case(
                 scenario,
                 listening_port,
                 allow_ephemeral=False,
+                legacy_plaintext=legacy_plaintext,
             ),
         )
         client_stdout, client_stderr = client.communicate(timeout=test_timeout)
@@ -334,6 +353,7 @@ def main() -> int:
         args.startup_timeout,
         args.test_timeout,
         invalid_target=False,
+        legacy_plaintext=args.legacy_plaintext,
     )
     invalid_target_port = run_case(
         host_binary,
@@ -341,10 +361,13 @@ def main() -> int:
         args.startup_timeout,
         args.test_timeout,
         invalid_target=True,
+        legacy_plaintext=args.legacy_plaintext,
     )
     print(
         "MacHost loopback: PASS "
         "(external lifecycle + invalid-target production-process integration, "
+        f"encryptedRecords:{str(not args.legacy_plaintext).lower()},"
+        f"explicitLegacyFallback:{str(args.legacy_plaintext).lower()},"
         f"ports=lifecycle:{lifecycle_port},invalid-target:{invalid_target_port})"
     )
     return 0

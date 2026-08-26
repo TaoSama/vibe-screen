@@ -6,6 +6,7 @@ import Foundation
 enum IOSClientLoopbackHost {
     static let defaultPort: UInt16 = 54_321
     static let portEnvironmentVariable = "VIBE_SCREEN_IOS_LOOPBACK_PORT"
+    static let legacyPlaintextEnvironmentVariable = "VIBE_SCREEN_IOS_LOOPBACK_LEGACY_PLAINTEXT"
     static let token = Data((0..<32).map(UInt8.init))
     static let displayID = "loopback-display-1"
     static let mediaPayload = Data([0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21])
@@ -26,6 +27,7 @@ enum IOSClientLoopbackHost {
         let lock = NSLock()
         var touchReceived = false
         var clientDisconnected = false
+        var protection = LANRecordProtectionState.notApplicable
         var failure: String?
 
         func fail(_ message: String) {
@@ -59,11 +61,12 @@ enum IOSClientLoopbackHost {
             return false
         }
 
+        let allowLegacyPlaintext = environment[legacyPlaintextEnvironmentVariable] == "1"
         let state = State()
         let server = StreamingServer(
             port: requestedPort,
             mode: .wireless(authToken: token),
-            allowPlaintextWirelessLegacyFallback: true
+            allowPlaintextWirelessLegacyFallback: allowLegacyPlaintext
         )
         server.setDisplaySize(width: 1_920, height: 1_080)
         server.setProtocolV1VideoConfiguration(
@@ -77,6 +80,7 @@ enum IOSClientLoopbackHost {
             completion(NegotiatedDisplayConfiguration(width: 1_920, height: 1_080, rotation: 0))
         }
         server.onClientConnected = { _ in
+            state.lock.withLock { state.protection = server.currentLANRecordProtectionState }
             server.sendFrame(
                 mediaPayload,
                 timestamp: DispatchTime.now().uptimeNanoseconds,
@@ -133,17 +137,18 @@ enum IOSClientLoopbackHost {
         // production protocol error path.
         server.stop()
         let snapshot = state.lock.withLock {
-            (state.touchReceived, state.clientDisconnected, state.failure)
+            (state.touchReceived, state.clientDisconnected, state.protection, state.failure)
         }
         let passed = (expectsInvalidTarget ? (snapshot.1 && !snapshot.0) : snapshot.0) &&
-            snapshot.2 == nil
+            snapshot.3 == nil
         print(
             "iOS MacHost loopback: \(passed ? "PASS" : "FAIL") " +
             "(scenario=\(expectsInvalidTarget ? "invalid-target" : "lifecycle"), " +
-            "port=\(listeningPort), wirelessAuth=true, encryptedRecords=false, " +
-            "explicitLegacyFallback=true, protocolV1=true, " +
+            "port=\(listeningPort), wirelessAuth=true, " +
+            "encryptedRecords=\(snapshot.2 == .encrypted), " +
+            "explicitLegacyFallback=\(snapshot.2 == .explicitLegacyFallback), protocolV1=true, " +
             "media=true, touch=\(snapshot.0), " +
-            "clientDisconnected=\(snapshot.1), error=\(snapshot.2 ?? "none"))"
+            "clientDisconnected=\(snapshot.1), error=\(snapshot.3 ?? "none"))"
         )
         return passed
     }

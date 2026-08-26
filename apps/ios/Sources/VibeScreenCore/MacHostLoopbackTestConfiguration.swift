@@ -14,6 +14,7 @@ package enum MacHostLoopbackTestConfigurationError: Error, Equatable, LocalizedE
 
 package enum MacHostLoopbackTestConfiguration {
     package static let portEnvironmentVariable = "VIBE_SCREEN_IOS_LOOPBACK_PORT"
+    package static let legacyPlaintextEnvironmentVariable = "VIBE_SCREEN_IOS_LOOPBACK_LEGACY_PLAINTEXT"
 
     package static func port(environment: [String: String]) throws -> UInt16 {
         guard let value = environment[portEnvironmentVariable] else {
@@ -26,5 +27,9 @@ package enum MacHostLoopbackTestConfiguration {
             throw MacHostLoopbackTestConfigurationError.invalidPort(value)
         }
         return port
+    }
+
+    package static func allowsLegacyPlaintext(environment: [String: String]) -> Bool {
+        environment[legacyPlaintextEnvironmentVariable] == "1"
     }
 }
