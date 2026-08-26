@@ -286,6 +286,7 @@ that a headless machine still exposes a capturable display.
 
 | Gate | Covered by offline checks | Required integration evidence | Blocking conditions |
 | --- | --- | --- | --- |
+| Host identity and source provenance | `scripts/package_macos.py` embeds source commit/tree metadata and `baseline-macos-host-readiness` records signing/TCC state. | Identity-signed installed Host whose retained source commit/tree match the evidence `source_commit`, with `source_dirty=false`, current Screen Recording, and Accessibility grants. | Missing stable signing identity, missing source provenance, dirty or mismatched source, stale TCC grant, unreadable TCC stores. |
 | Login item registration state | `DaemonManager` distinguishes enabled, approval-required, unavailable, and unregistered states. | Reboot after enabling **Launch at Login**; capture a timestamped app launch log and System Settings state showing the item is enabled, not approval-required. | Login item awaiting approval, app moved to a different path, ad-hoc rebuild/resign changing macOS privacy identity. |
 | Automatic startup policy | `HostStartupPolicy` and `AutomaticLaunchCoordinator` prove auto-start waits for Screen Recording/onboarding and consumes one launch intent once. | After login launch, verify the configured Startup mode starts without user interaction and the Android client can connect/render. | Screen Recording missing or stale, onboarding incomplete outside explicit benchmark mode, no reachable USB/LAN client path. |
 | Unattended listener recovery | `UnattendedRecoveryPolicy` proves retry delays of 1, 2, 4, 8, 16, 30, 30, and 30 seconds, and stops after eight attempts. | Force a listener/capture failure during an unattended run; preserve logs showing scheduled retries, no full-speed loop, and either successful restart or bounded exhaustion. | Auto-start disabled, Screen Recording unavailable, interactive/manual run, repeated port conflict, ADB/LAN unavailable. |
@@ -325,9 +326,10 @@ Phase 2 aggregate owner as `PHASE2_LOGIN_HEADLESS`. It exits nonzero and keeps
 `can_close_login_headless_gate=false` unless every integration boundary in the
 matrix above is backed by retained real-machine evidence. This is expected for
 readiness or blocked packages gathered without a rebootable Mac mini, stable
-signing/TCC grants, approved Login Item, dummy/headless or Screen Sharing
-display, client-rendered first frame, bounded recovery logs, window restoration
-artifacts, and a reachable administrator intervention path.
+signing/TCC grants, installed Host source provenance matching the evidence
+commit, approved Login Item, dummy/headless or Screen Sharing display,
+client-rendered first frame, bounded recovery logs, window restoration artifacts,
+and a reachable administrator intervention path.
 
 ## Upgrade and rollback
 

@@ -29,6 +29,9 @@ def complete_evidence() -> dict:
             "host_signing": "identity_signed",
             "host_cdhash": "abcd1234",
             "host_binary_sha256": "f" * 64,
+            "source_commit": "6cdb34a1",
+            "source_tree": "a" * 40,
+            "source_dirty": False,
             "screen_recording_permission": "granted",
             "accessibility_permission": "granted",
             "signing_report": "host-signing-and-permissions.txt",
@@ -190,6 +193,45 @@ class MacOSStartupRecoveryGateTest(unittest.TestCase):
         )
         self.assertIn(
             "headless_or_dummy_display_capture: display.capturable_display_observed must be true",
+            report["open_reasons"],
+        )
+
+    def test_missing_or_dirty_host_source_provenance_blocks(self) -> None:
+        evidence = complete_evidence()
+        del evidence["mac_host"]["source_commit"]
+        evidence["mac_host"]["source_dirty"] = True
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "host_identity_permissions: mac_host.source_commit is required",
+            report["open_reasons"],
+        )
+        self.assertIn(
+            "host_identity_permissions: mac_host.source_dirty must be false",
+            report["open_reasons"],
+        )
+
+    def test_host_source_commit_must_match_evidence_source_commit(self) -> None:
+        evidence = complete_evidence()
+        evidence["mac_host"]["source_commit"] = "different"
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "host_identity_permissions: mac_host.source_commit must match source_commit",
             report["open_reasons"],
         )
 

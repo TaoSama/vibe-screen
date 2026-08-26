@@ -403,10 +403,10 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("missing identity", report_text)
-            self.assertIn("Identity: Missing Dev", report_text)
+            self.assertIn("Configured identity: Missing Dev", report_text)
         resolve_mock.assert_called_once_with("Missing Dev")
-        metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
-        tcc_mock.assert_called_once()
+        metadata_mock.assert_not_called()
+        tcc_mock.assert_not_called()
 
     def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
         with mock.patch.object(
@@ -722,6 +722,37 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         blockers = macos_dev_host.login_headless_blockers(settings, login_item, displays, logs)
 
         self.assertEqual(blockers, [])
+
+    def test_read_display_readiness_counts_system_profiler_online_displays_as_active(self) -> None:
+        profiler_displays = (
+            {
+                "id": "1",
+                "name": "Color LCD",
+                "main": "1",
+                "logical": "1512 x 982 @ 120.00Hz",
+                "physical": "3024 x 1964",
+                "source": "system_profiler",
+            },
+        )
+
+        with (
+            mock.patch.object(
+                macos_dev_host,
+                "run_best_effort",
+                return_value=(0, ""),
+            ),
+            mock.patch.object(
+                macos_dev_host,
+                "read_system_profiler_displays",
+                return_value=list(profiler_displays),
+            ),
+        ):
+            readiness = macos_dev_host.read_display_readiness()
+
+        self.assertTrue(readiness.readable)
+        self.assertEqual(readiness.display_count, 1)
+        self.assertEqual(readiness.active_display_count, 1)
+        self.assertEqual(readiness.displays, profiler_displays)
 
     def test_readiness_document_blocks_all_start_flags_when_signing_or_tcc_is_missing(self) -> None:
         inspection = macos_dev_host.HostInspection(
