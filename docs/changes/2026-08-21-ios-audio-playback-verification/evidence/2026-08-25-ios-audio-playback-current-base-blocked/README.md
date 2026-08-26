@@ -2,8 +2,10 @@
 
 Date: 2026-08-27
 Repository: `TaoSama/vibe-screen`
-Branch: `codex/ios-audio-pcm-verifier`
-Current base: `origin/main` at `74a539c0`
+Local validation branch: `codex/pr209-current-base-20260827`
+PR branch: `codex/ios-audio-pcm-verifier`
+Current base: `origin/main` at `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0`
+Verified source commit: `839f1fc9520c8ea6ca18e6782aa3fa0f6458e838`
 
 ## Status
 

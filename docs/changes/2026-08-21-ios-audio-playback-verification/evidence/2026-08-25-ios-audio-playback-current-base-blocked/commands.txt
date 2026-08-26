@@ -1,8 +1,14 @@
-$ git rebase origin/main
-Successfully rebased and updated refs/heads/codex/pr209-current-base-20260827.
+$ git branch --show-current
+codex/pr209-current-base-20260827
+
+$ git rev-parse HEAD
+839f1fc9520c8ea6ca18e6782aa3fa0f6458e838
+
+$ git rev-parse --abbrev-ref --symbolic-full-name @{u}
+origin/codex/ios-audio-pcm-verifier
 
 $ git rev-parse origin/main
-74a539c033b67733af72e651f81d6364603a8a07
+e94d3a051e683d2a7d6f34fd03badd1b4ef264d0
 
 $ xcode-select -p
 /Library/Developer/CommandLineTools

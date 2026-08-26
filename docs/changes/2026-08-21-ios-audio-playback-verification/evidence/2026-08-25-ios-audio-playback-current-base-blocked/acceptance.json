@@ -4,8 +4,10 @@
   "platform": "ios",
   "status": "blocked",
   "repository": {
-    "base_commit": "74a539c0",
-    "branch": "codex/ios-audio-pcm-verifier",
+    "base_commit": "e94d3a051e683d2a7d6f34fd03badd1b4ef264d0",
+    "branch": "codex/pr209-current-base-20260827",
+    "pr_branch": "codex/ios-audio-pcm-verifier",
+    "verified_source_commit": "839f1fc9520c8ea6ca18e6782aa3fa0f6458e838",
     "dirty_at_capture": false
   },
   "environment": {
@@ -71,7 +73,7 @@
   },
   "android_evidence_used_for_ios_gates": false,
   "notes": [
-    "Current-base verification reran after rebasing onto origin/main 74a539c0.",
+    "Current-base verification reran after rebasing onto origin/main e94d3a051e683d2a7d6f34fd03badd1b4ef264d0.",
     "The verification commands used TMPDIR=$PWD/.build/tmp for SwiftPM, SwiftProtobuf, Go, and Python temporary files.",
     "This record does not claim real audible iPhone/iPad playback."
   ]

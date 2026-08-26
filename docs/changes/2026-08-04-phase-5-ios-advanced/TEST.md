@@ -8,9 +8,10 @@ Selected developer directory: `/Library/Developer/CommandLineTools`
 ## Passed
 
 2026-08-27 local Command Line Tools run from rebased branch
-`codex/ios-audio-pcm-verifier` added and verified the core playback queue
-policy used by the iOS AVFoundation adapter against current `origin/main`
-`74a539c0`:
+local branch `codex/pr209-current-base-20260827` verified the core
+playback queue policy used by the iOS AVFoundation adapter against current
+`origin/main` `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0` at source commit
+`839f1fc9520c8ea6ca18e6782aa3fa0f6458e838`:
 
 ```bash
 swift build --package-path apps/ios --configuration release

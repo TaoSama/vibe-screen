@@ -23,12 +23,16 @@ instantiate `AVAudioSession` or prove audible output.
 
 ## App playback verifier
 
-With full Xcode and an available iOS Simulator or signed device, run:
+With full Xcode and an available iOS Simulator or signed device, choose a
+destination and run the focused UI test:
 
 ```bash
+IOS_DESTINATION="platform=iOS Simulator,name=<installed-iPhone-simulator>"
+# Signed device example: IOS_DESTINATION="platform=iOS,id=<device-udid>"
+
 xcodebuild -project apps/ios/VibeScreen.xcodeproj \
   -scheme VibeScreen \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination "$IOS_DESTINATION" \
   test \
   -only-testing:VibeScreenAppTests/VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts
 ```
