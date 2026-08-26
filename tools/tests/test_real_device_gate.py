@@ -15,6 +15,7 @@ from vibescreen_evidence.real_device_gate import (
     collect_stream_telemetry,
     main,
     sanitize_document,
+    summarize_requested_gates,
     write_json,
 )
 
@@ -251,6 +252,85 @@ class RealDeviceGateTests(unittest.TestCase):
             "Host RSS gate requires --soak-summary and --soak-samples",
             "\n".join(document["insufficiencies"]),
         )
+
+    def test_requested_gate_report_with_false_closure_flag_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "latency.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "verdict": "pass",
+                        "gate": {
+                            "summary_verdict": "pass",
+                            "can_close_performance_gate": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[report],
+                input_summaries=[],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertIn("latency gate report does not contain a passing gate closure verdict", insufficiencies)
+        self.assertFalse(requested["latency"][0]["can_close"])
+        self.assertEqual(requested["latency"][0]["closure_flags"], [False])
+
+    def test_requested_gate_report_without_closure_flag_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "latency.json"
+            report.write_text(json.dumps({"verdict": "pass"}), encoding="utf-8")
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[report],
+                input_summaries=[],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertIn("latency gate report does not contain a passing gate closure verdict", insufficiencies)
+        self.assertFalse(requested["latency"][0]["can_close"])
+        self.assertEqual(requested["latency"][0]["closure_flags"], [])
+
+    def test_requested_gate_report_accepts_explicit_closure_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "native-pointer.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "verdict": "pass",
+                        "can_close_native_pointer_hid_gate": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[],
+                input_summaries=[report],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertEqual(insufficiencies, [])
+        self.assertTrue(requested["input"][0]["can_close"])
+        self.assertEqual(requested["input"][0]["closure_flags"], [True])
 
     def test_cli_exits_two_for_blocked_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory, mock.patch(

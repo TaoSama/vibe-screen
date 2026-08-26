@@ -512,6 +512,21 @@ def collect_stream_telemetry(
     return telemetry, blockers
 
 
+def _collect_gate_closure_flags(value: Any) -> list[bool]:
+    flags: list[bool] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            is_closure_flag = key.startswith("can_close") or key.startswith("gate_can_close")
+            if is_closure_flag and isinstance(item, bool):
+                flags.append(item)
+            else:
+                flags.extend(_collect_gate_closure_flags(item))
+    elif isinstance(value, list):
+        for item in value:
+            flags.extend(_collect_gate_closure_flags(item))
+    return flags
+
+
 def _gate_status_from_report(path: Path, *, label: str) -> tuple[dict[str, Any], list[str], list[str]]:
     errors: list[str] = []
     insufficiencies: list[str] = []
@@ -520,16 +535,19 @@ def _gate_status_from_report(path: Path, *, label: str) -> tuple[dict[str, Any],
     except EvidenceInputError as error:
         return {"path": str(path), "readable": False}, [], [f"{label} is missing or invalid: {error}"]
     verdict = report.get("verdict") or report.get("result") or report.get("status")
-    can_close = any(
-        value is True
-        for key, value in report.items()
-        if key.startswith("can_close") and isinstance(value, bool)
-    ) or verdict in ("pass", "ready")
+    closure_flags = _collect_gate_closure_flags(report)
+    can_close = bool(closure_flags) and all(closure_flags)
     if verdict in ("blocked", "failed", "fail"):
         errors.append(f"{label} reports {verdict}")
     elif not can_close:
-        insufficiencies.append(f"{label} does not contain a passing gate verdict")
-    return {"path": str(path), "readable": True, "verdict": verdict, "can_close": can_close}, errors, insufficiencies
+        insufficiencies.append(f"{label} does not contain a passing gate closure verdict")
+    return {
+        "path": str(path),
+        "readable": True,
+        "verdict": verdict,
+        "can_close": can_close,
+        "closure_flags": closure_flags,
+    }, errors, insufficiencies
 
 
 def _soak_status_from_summary(path: Path) -> tuple[dict[str, Any], list[str]]:
