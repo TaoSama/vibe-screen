@@ -29,7 +29,7 @@
     "--output",
     "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json"
   ],
-  "created_at": "2026-08-21T18:50:06Z",
+  "created_at": "2026-08-26T16:20:27Z",
   "device": null,
   "device_gate_prefill": {
     "artifact": {
@@ -46,9 +46,9 @@
       "protocol": "Protocol v1"
     },
     "repository": {
-      "commit": "55a78526b7616a8bbb7631dcccde350bebc342d3",
+      "commit": "b815d8dda7c6c06edfd41473f56e6b4fccf56d72",
       "status": "dirty",
-      "tree": "d93494da03a5af82d47753f9fff9601bc10dae61"
+      "tree": "4a2ee399dd5384f2b7464fc27f5063157076ab5e"
     },
     "toolchain": {
       "deveco_studio_version": null,
@@ -74,34 +74,16 @@
   ],
   "repository": {
     "dirty": true,
-    "revision": "55a78526b7616a8bbb7631dcccde350bebc342d3",
+    "revision": "b815d8dda7c6c06edfd41473f56e6b4fccf56d72",
     "status_porcelain": [
-      "M  .github/workflows/harmony.yml",
-      "M  Makefile",
-      "M  README.md",
-      "M  docs/changes/2026-08-04-phase-4-harmony/TEST.md",
-      "M  docs/runbook/harmony-matepad-mini.md",
-      "M  scripts/harmony_device_gate.py",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/README.md",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/SHA256SUMS",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-allow-blocked.err",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-allow-blocked.exit",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-allow-blocked.txt",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-strict.err",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-strict.exit",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gate-strict.txt",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gates.json",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-matepad-acceptance-command.err",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-matepad-acceptance-command.txt",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-matepad-acceptance.exit",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-matepad-acceptance.json",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness-command.err",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness-command.txt",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.exit",
-      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json",
-      "?? scripts/harmony_matepad_acceptance.py",
-      "?? scripts/tests/test_harmony_matepad_acceptance.py",
-      "?? tools/schemas/harmony-matepad-acceptance.schema.json"
+      "M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness-command.txt",
+      " M scripts/harmony_device_gate.py",
+      " M scripts/harmony_matepad_acceptance.py",
+      " M scripts/tests/test_harmony_matepad_acceptance.py",
+      " M scripts/tests/test_release_tools.py",
+      " M tools/schemas/harmony-matepad-acceptance.schema.json",
+      " M tools/tests/test_harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_current_base_gate.py"
     ]
   },
   "schema_version": "vibescreen.evidence/v1",

@@ -66,9 +66,11 @@
         "resume_background_foreground",
         "resume_network_roam",
         "resume_host_restart",
+        "resume_capable_host_interop",
         "no_old_epoch_render"
       ],
       "expected_raw_artifacts": [
+        "harmony-host-interop-preflight.json",
         "host.log",
         "harmony-hilog.txt",
         "resume-events.jsonl",
@@ -175,6 +177,11 @@
       "status": "present"
     },
     {
+      "gate_id": "resume_capable_host_interop",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
       "gate_id": "no_old_epoch_render",
       "reference": "harmony-readiness.json",
       "status": "present"
@@ -202,7 +209,8 @@
   ],
   "blocking_reasons": [
     "HarmonyOS readiness preflight is not pass",
-    "repository.status: expected clean",
+    "artifact.hap_sha256: placeholder zero value is not evidence",
+    "HarmonyOS current-base owner gate is not pass",
     "blocked acceptance domains: toolchain_and_source, hap_install_signing, avcodec_decode, secure_pairing_huks, host_resume_interop, ui_device_identity, sustained_operation"
   ],
   "command": [
@@ -211,14 +219,38 @@
     "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked",
     "--write-blocked"
   ],
-  "created_at": "2026-08-21T18:50:06Z",
+  "created_at": "2026-08-26T16:20:27Z",
+  "current_base_gate": {
+    "can_claim_harmony_device_pass": false,
+    "can_close_readme_phase4_owner_gates": false,
+    "error": null,
+    "path": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-current-base-gate.json",
+    "present": true,
+    "reasons": [
+      "blocked: readiness.readiness_manifest",
+      "blocked: readiness.deveco",
+      "blocked: readiness.hap",
+      "blocked: readiness.matepad",
+      "blocked: readiness.host",
+      "blocked: device_manifest.strict_device_gate",
+      "blocked: device_manifest.protocol_v1_host",
+      "blocked: device_manifest.signed_hap_artifact",
+      "blocked: owner_gate.deveco_build",
+      "blocked: owner_gate.hap_sign_install",
+      "blocked: owner_gate.hardware_decode_capability",
+      "blocked: owner_gate.huks_secure_pairing",
+      "blocked: owner_gate.authenticated_transport",
+      "blocked: owner_gate.host_resume_interop",
+      "blocked: owner_gate.matepad_acceptance"
+    ],
+    "verdict": "blocked"
+  },
   "device_gate_manifest": {
     "allow_blocked_valid": true,
-    "error": "repository.status: expected clean",
+    "error": "artifact.hap_sha256: placeholder zero value is not evidence",
     "path": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gates.json",
     "strict_valid": false,
     "warnings": [
-      "repository.status: dirty",
       "deveco_sdk_and_api_checker: blocked",
       "signed_release_hap: blocked",
       "hap_install_launch: blocked",
@@ -232,6 +264,7 @@
       "resume_background_foreground: blocked",
       "resume_network_roam: blocked",
       "resume_host_restart: blocked",
+      "resume_capable_host_interop: blocked",
       "no_old_epoch_render: blocked",
       "ui_device_identity_record: blocked",
       "input_touch_keyboard_pointer_stylus: blocked",

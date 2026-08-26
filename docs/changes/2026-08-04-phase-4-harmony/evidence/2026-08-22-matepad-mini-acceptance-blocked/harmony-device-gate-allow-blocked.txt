@@ -1,5 +1,4 @@
 HarmonyOS device manifest is structurally valid but not acceptance evidence:
-- repository.status: dirty
 - deveco_sdk_and_api_checker: blocked
 - signed_release_hap: blocked
 - hap_install_launch: blocked
@@ -13,6 +12,7 @@ HarmonyOS device manifest is structurally valid but not acceptance evidence:
 - resume_background_foreground: blocked
 - resume_network_roam: blocked
 - resume_host_restart: blocked
+- resume_capable_host_interop: blocked
 - no_old_epoch_render: blocked
 - ui_device_identity_record: blocked
 - input_touch_keyboard_pointer_stylus: blocked

@@ -86,11 +86,18 @@ OWNER_GATES = {
         "owner": "HarmonyOS MatePad Mini aggregate acceptance evidence",
         "required_device_gates": (
             "permission_denial_retry",
+            "ui_device_identity_record",
             "input_touch_keyboard_pointer_stylus",
             "eight_hour_soak",
             "external_latency",
         ),
-        "required_evidence_markers": ("harmony-matepad-acceptance.json", "harmony-device-gates.json"),
+        "required_evidence_markers": {
+            "permission_denial_retry": ("permission-denial-retry", "permission_denial_retry"),
+            "ui_device_identity_record": ("device-identity", "ui-tree", "screenshot"),
+            "input_touch_keyboard_pointer_stylus": ("input-observations", "input", "stylus"),
+            "eight_hour_soak": ("samples", "soak-summary", "eight-hour", "8h"),
+            "external_latency": ("external-camera", "latency-report", "latency"),
+        },
         "requirement": "Complete MatePad Mini UI/input/lifecycle/soak/latency acceptance evidence",
     },
 }
@@ -135,6 +142,14 @@ def _string_list(value: Any) -> list[str]:
 
 def _strings_from_values(values: Sequence[Any]) -> list[str]:
     return [str(value) for value in values if _non_empty_string(value)]
+
+
+def _required_markers(config: dict[str, Any], gate_id: str) -> tuple[str, ...]:
+    markers = config["required_evidence_markers"]
+    if isinstance(markers, dict):
+        gate_markers = markers.get(gate_id, ())
+        return tuple(str(marker) for marker in gate_markers)
+    return tuple(str(marker) for marker in markers)
 
 
 def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, blocking: bool = True) -> dict[str, Any]:
@@ -316,17 +331,21 @@ def _device_gate_checks(
             if not isinstance(gate, dict):
                 missing.append(f"{required_id}:missing")
                 continue
-            if gate.get("status") != "pass":
-                missing.append(f"{required_id}:{gate.get('status', 'missing')}")
+            status = gate.get("status")
+            if status != "pass":
+                missing.append(f"{required_id}:{status or 'missing'}")
             gate_evidence = _string_list(gate.get("evidence"))
             if not gate_evidence:
                 missing.append(f"{required_id}:no-evidence")
+            required_markers = _required_markers(config, required_id)
+            if not required_markers:
+                missing.append(f"{required_id}:no-required-evidence-marker")
             elif not any(
                 marker in item
-                for marker in config["required_evidence_markers"]
+                for marker in required_markers
                 for item in gate_evidence
             ):
-                markers = ",".join(config["required_evidence_markers"])
+                markers = ",".join(required_markers)
                 missing.append(f"{required_id}:missing-evidence-marker:{markers}")
             evidence.extend(gate_evidence)
         owner[gate_id] = _check(
@@ -377,6 +396,13 @@ def derive_gate(readiness_path: Path, device_gates_path: Path, evidence_root: Pa
     invalid_substitution = any(not check["passed"] for check in substitutions.values())
     if invalid_substitution:
         reasons.extend(f"fail: {name}" for name, check in substitutions.items() if not check["passed"])
+    failed_device_gates = []
+    device_gates_value = device_gates.get("gates") if isinstance(device_gates, dict) else None
+    if isinstance(device_gates_value, list):
+        for gate in device_gates_value:
+            if isinstance(gate, dict) and gate.get("status") == "fail" and _non_empty_string(gate.get("id")):
+                failed_device_gates.append(str(gate["id"]))
+    reasons.extend(f"fail: device_gate.{gate_id}" for gate_id in failed_device_gates)
 
     readiness_missing = [name for name, check in readiness_checks.items() if not check["passed"]]
     metadata_missing = [name for name, check in device_metadata.items() if not check["passed"]]
@@ -385,7 +411,7 @@ def derive_gate(readiness_path: Path, device_gates_path: Path, evidence_root: Pa
     reasons.extend(f"blocked: device_manifest.{name}" for name in metadata_missing)
     reasons.extend(f"blocked: owner_gate.{name}" for name in owner_missing)
 
-    if invalid_substitution:
+    if invalid_substitution or failed_device_gates:
         verdict = "fail"
     elif readiness_error or device_error or readiness_missing or metadata_missing or owner_missing:
         verdict = "blocked"

@@ -14,6 +14,7 @@
     "evidence_dir",
     "readiness",
     "device_gate_manifest",
+    "current_base_gate",
     "acceptance_domains",
     "artifact_references",
     "limitations"
@@ -23,7 +24,7 @@
     "kind": {"const": "harmony_matepad_mini_acceptance_package"},
     "created_at": {"type": "string", "format": "date-time"},
     "command": {"type": "array", "items": {"type": "string"}},
-    "verdict": {"enum": ["pass", "blocked"]},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
     "blocking_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "evidence_dir": {"type": "string", "minLength": 1},
     "readiness": {
@@ -46,6 +47,28 @@
         "strict_valid": {"type": "boolean"},
         "allow_blocked_valid": {"type": "boolean"},
         "warnings": {"type": "array", "items": {"type": "string"}},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "current_base_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "present",
+        "verdict",
+        "can_close_readme_phase4_owner_gates",
+        "can_claim_harmony_device_pass",
+        "reasons",
+        "error"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "present": {"type": "boolean"},
+        "verdict": {"type": ["string", "null"]},
+        "can_close_readme_phase4_owner_gates": {"type": "boolean"},
+        "can_claim_harmony_device_pass": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string"}},
         "error": {"type": ["string", "null"]}
       }
     },
@@ -74,7 +97,7 @@
         "properties": {
           "gate_id": {"type": "string", "minLength": 1},
           "reference": {"type": "string", "minLength": 1},
-          "status": {"enum": ["present", "missing", "invalid", "external"]},
+          "status": {"enum": ["present", "missing", "invalid"]},
           "detail": {"type": "string", "minLength": 1}
         }
       }

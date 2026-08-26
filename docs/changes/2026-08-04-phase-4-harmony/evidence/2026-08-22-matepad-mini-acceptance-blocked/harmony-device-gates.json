@@ -49,6 +49,11 @@
         "harmony-readiness.json"
       ],
       "id": "huks_backed_secure_pairing",
+      "secure_pairing_manifest": {
+        "path": "harmony-secure-pairing.json",
+        "schema": "dev.vibescreen.harmony-secure-pairing-gate/v1",
+        "status": "blocked"
+      },
       "status": "blocked"
     },
     {
@@ -111,6 +116,13 @@
       "evidence": [
         "harmony-readiness.json"
       ],
+      "id": "resume_capable_host_interop",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
       "id": "no_old_epoch_render",
       "status": "blocked"
     },
@@ -154,9 +166,9 @@
     "Replace each blocked gate with redacted raw MatePad Mini evidence before strict validation."
   ],
   "repository": {
-    "commit": "55a78526b7616a8bbb7631dcccde350bebc342d3",
-    "status": "dirty",
-    "tree": "d93494da03a5af82d47753f9fff9601bc10dae61"
+    "commit": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+    "status": "clean",
+    "tree": "9e6240031d5f3a5a6b35e7d32f48676aed5111e4"
   },
   "schema": "dev.vibescreen.harmony-device-gates/v1",
   "toolchain": {

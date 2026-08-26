@@ -1,7 +1,7 @@
 # MatePad Mini acceptance package: blocked
 
-Date: 2026-08-22 Asia/Shanghai
-Source commit: `55a78526b7616a8bbb7631dcccde350bebc342d3`
+Date: 2026-08-22 Asia/Shanghai; regenerated on 2026-08-26 against the
+current-base branch state.
 
 This is a blocked readiness package for the HarmonyOS NEXT MatePad Mini
 real-device acceptance gate. It does not claim HAP installation, AVCodec
@@ -18,6 +18,12 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_readiness.py \
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_matepad_acceptance.py \
   --evidence-dir "$EVIDENCE_DIR" \
   --write-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.harmony_current_base_gate \
+  --readiness "$EVIDENCE_DIR/harmony-readiness.json" \
+  --device-gates "$EVIDENCE_DIR/harmony-device-gates.json" \
+  --evidence-root "$EVIDENCE_DIR" \
+  --output "$EVIDENCE_DIR/harmony-current-base-gate.json"
 python3 scripts/harmony_device_gate.py "$EVIDENCE_DIR/harmony-device-gates.json"
 python3 scripts/harmony_device_gate.py --allow-blocked "$EVIDENCE_DIR/harmony-device-gates.json"
 ```
@@ -28,6 +34,7 @@ Exit codes recorded in this directory:
 | --- | ---: | --- |
 | `harmony_readiness.py` | 2 | Blocked: DevEco, Hvigor/OHPM/HDC, signed HAP, certificate hash, checksum manifest, Host commit, Host build hash, and MatePad Mini target are unavailable here |
 | `harmony_matepad_acceptance.py --write-blocked` | 2 | Blocked package written; no acceptance pass |
+| `harmony_current_base_gate` | 1 | Blocked: the current-base owner gate cannot close README Phase 4 or claim Harmony device pass |
 | `harmony_device_gate.py` | 1 | Strict verifier rejected blocked evidence as required |
 | `harmony_device_gate.py --allow-blocked` | 0 | Structure-only blocked manifest validation passed |
 
@@ -36,6 +43,9 @@ Exit codes recorded in this directory:
 - `harmony-readiness.json`: read-only readiness preflight result.
 - `harmony-device-gates.json`: generated blocked device-gate manifest; every
   required real-device gate remains blocked.
+- `harmony-current-base-gate.json`: derived current-base owner-gate summary;
+  verdict is `blocked`, `can_close_readme_phase4_owner_gates=false`, and
+  `can_claim_harmony_device_pass=false`.
 - `harmony-matepad-acceptance.json`: aggregate acceptance package; verdict is
   `blocked` and every acceptance domain is blocked.
 - `*-command.txt`, `*.err`, and `*.exit`: command stdout, stderr, and exit

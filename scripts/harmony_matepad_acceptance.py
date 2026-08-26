@@ -17,13 +17,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+SCRIPTS_ROOT = Path(__file__).resolve().parent
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
 import harmony_device_gate
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_ROOT = REPO_ROOT / "tools"
+if str(TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLS_ROOT))
+
+from vibescreen_evidence import harmony_current_base_gate
 
 
 SCHEMA_VERSION = "vibescreen.evidence/v1"
 KIND = "harmony_matepad_mini_acceptance_package"
 BLOCKED_EXIT = 2
-EXTERNAL_REFERENCE_PREFIXES = ("artifact://", "release://")
+CURRENT_BASE_GATE_KIND = "harmony_current_base_owner_gate"
 
 DOMAIN_GATES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...] = (
     (
@@ -62,9 +73,16 @@ DOMAIN_GATES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...] = (
             "resume_background_foreground",
             "resume_network_roam",
             "resume_host_restart",
+            "resume_capable_host_interop",
             "no_old_epoch_render",
         ),
-        ("host.log", "harmony-hilog.txt", "resume-events.jsonl", "old-epoch-rejection.log"),
+        (
+            "harmony-host-interop-preflight.json",
+            "host.log",
+            "harmony-hilog.txt",
+            "resume-events.jsonl",
+            "old-epoch-rejection.log",
+        ),
     ),
     (
         "ui_device_identity",
@@ -86,6 +104,16 @@ class GateValidation:
     strict_valid: bool
     allow_blocked_valid: bool
     warnings: list[str]
+    error: str | None
+
+
+@dataclass(frozen=True)
+class CurrentBaseValidation:
+    present: bool
+    verdict: str | None
+    can_close_readme_phase4_owner_gates: bool
+    can_claim_harmony_device_pass: bool
+    reasons: list[str]
     error: str | None
 
 
@@ -132,6 +160,7 @@ def _merge_prefill(template: dict[str, Any], readiness: dict[str, Any] | None) -
 
 def blocked_device_manifest(readiness: dict[str, Any] | None) -> dict[str, Any]:
     manifest = _merge_prefill(harmony_device_gate.template_manifest(), readiness)
+    manifest["repository"]["status"] = "clean"
     for gate in manifest["gates"]:
         gate["status"] = "blocked"
         gate["evidence"] = ["harmony-readiness.json"]
@@ -143,9 +172,9 @@ def blocked_device_manifest(readiness: dict[str, Any] | None) -> dict[str, Any]:
     return manifest
 
 
-def validate_device_manifest(manifest: dict[str, Any]) -> GateValidation:
+def validate_device_manifest(manifest: dict[str, Any], *, evidence_root: Path) -> GateValidation:
     try:
-        harmony_device_gate.validate_manifest(manifest)
+        harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
         return GateValidation(strict_valid=True, allow_blocked_valid=True, warnings=[], error=None)
     except harmony_device_gate.ManifestError as strict_error:
         try:
@@ -163,6 +192,36 @@ def validate_device_manifest(manifest: dict[str, Any]) -> GateValidation:
             warnings=warnings,
             error=str(strict_error),
         )
+
+
+def validate_current_base_gate(document: dict[str, Any] | None) -> CurrentBaseValidation:
+    if document is None:
+        return CurrentBaseValidation(
+            present=False,
+            verdict=None,
+            can_close_readme_phase4_owner_gates=False,
+            can_claim_harmony_device_pass=False,
+            reasons=["harmony-current-base-gate.json is missing"],
+            error=None,
+        )
+    if document.get("schema_version") != SCHEMA_VERSION or document.get("kind") != CURRENT_BASE_GATE_KIND:
+        return CurrentBaseValidation(
+            present=True,
+            verdict=str(document.get("verdict")) if document.get("verdict") is not None else None,
+            can_close_readme_phase4_owner_gates=False,
+            can_claim_harmony_device_pass=False,
+            reasons=[],
+            error="harmony-current-base-gate.json has unexpected schema or kind",
+        )
+    reasons = [reason for reason in document.get("reasons", []) if isinstance(reason, str)]
+    return CurrentBaseValidation(
+        present=True,
+        verdict=str(document.get("verdict")) if document.get("verdict") is not None else None,
+        can_close_readme_phase4_owner_gates=document.get("can_close_readme_phase4_owner_gates") is True,
+        can_claim_harmony_device_pass=document.get("can_claim_harmony_device_pass") is True,
+        reasons=reasons,
+        error=None,
+    )
 
 
 def _gate_statuses(device_manifest: dict[str, Any]) -> dict[str, str]:
@@ -185,6 +244,29 @@ def _domain_status(gate_statuses: dict[str, str], gate_ids: Sequence[str]) -> st
     return "blocked"
 
 
+def _package_verdict(
+    *,
+    validation: GateValidation,
+    readiness_verdict: Any,
+    current_base: CurrentBaseValidation,
+    domain_statuses: Sequence[str],
+    missing_artifacts: Sequence[str],
+) -> str:
+    if "fail" in domain_statuses:
+        return "fail"
+    if (
+        validation.strict_valid
+        and readiness_verdict == "pass"
+        and current_base.verdict == "pass"
+        and current_base.can_close_readme_phase4_owner_gates
+        and current_base.can_claim_harmony_device_pass
+        and all(status == "pass" for status in domain_statuses)
+        and not missing_artifacts
+    ):
+        return "pass"
+    return "blocked"
+
+
 def _artifact_references(evidence_dir: Path, device_manifest: dict[str, Any]) -> list[dict[str, Any]]:
     gates = device_manifest.get("gates")
     if not isinstance(gates, list):
@@ -198,14 +280,17 @@ def _artifact_references(evidence_dir: Path, device_manifest: dict[str, Any]) ->
             if not isinstance(reference, str) or not reference.strip():
                 continue
             normalized = reference.strip()
-            if normalized.startswith(EXTERNAL_REFERENCE_PREFIXES):
-                references.append({"gate_id": gate["id"], "reference": normalized, "status": "external"})
-                continue
             path = Path(normalized)
             if path.is_absolute():
                 references.append({"gate_id": gate["id"], "reference": normalized, "status": "invalid", "detail": "absolute paths are not allowed"})
                 continue
+            if harmony_device_gate.URL_RE.match(normalized):
+                references.append({"gate_id": gate["id"], "reference": normalized, "status": "invalid", "detail": "URLs and external artifact references are not accepted"})
+                continue
             resolved = (resolved_evidence_dir / path).resolve()
+            if resolved == resolved_evidence_dir:
+                references.append({"gate_id": gate["id"], "reference": normalized, "status": "invalid", "detail": "expected an evidence artifact below evidence directory"})
+                continue
             try:
                 resolved.relative_to(resolved_evidence_dir)
             except ValueError:
@@ -229,6 +314,8 @@ def build_package(
     readiness: dict[str, Any] | None,
     device_manifest: dict[str, Any],
     validation: GateValidation,
+    current_base_path: Path,
+    current_base: CurrentBaseValidation,
 ) -> dict[str, Any]:
     statuses = _gate_statuses(device_manifest)
     artifact_references = _artifact_references(evidence_dir, device_manifest)
@@ -251,6 +338,10 @@ def build_package(
         blocking_reasons.append("HarmonyOS readiness preflight is not pass")
     if validation.error is not None:
         blocking_reasons.append(validation.error)
+    if current_base.error is not None:
+        blocking_reasons.append(current_base.error)
+    if current_base.verdict != "pass":
+        blocking_reasons.append("HarmonyOS current-base owner gate is not pass")
     if domain_blockers:
         blocking_reasons.append("blocked acceptance domains: " + ", ".join(domain_blockers))
     missing_artifacts = [
@@ -258,10 +349,16 @@ def build_package(
         for item in artifact_references
         if item["status"] in {"missing", "invalid"}
     ]
-    if validation.strict_valid and missing_artifacts:
+    if missing_artifacts:
         blocking_reasons.append("missing or invalid local evidence references: " + ", ".join(missing_artifacts))
 
-    verdict = "pass" if validation.strict_valid and readiness_verdict == "pass" and not domain_blockers and not missing_artifacts else "blocked"
+    verdict = _package_verdict(
+        validation=validation,
+        readiness_verdict=readiness_verdict,
+        current_base=current_base,
+        domain_statuses=[str(domain["status"]) for domain in domains],
+        missing_artifacts=missing_artifacts,
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -280,6 +377,10 @@ def build_package(
             "path": str(device_manifest_path),
             **asdict(validation),
         },
+        "current_base_gate": {
+            "path": str(current_base_path),
+            **asdict(current_base),
+        },
         "acceptance_domains": domains,
         "artifact_references": artifact_references,
         "limitations": [
@@ -295,6 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--evidence-dir", type=Path, required=True, help="Directory containing HarmonyOS acceptance evidence.")
     parser.add_argument("--readiness", type=Path, help="harmony-readiness.json path; defaults under --evidence-dir.")
     parser.add_argument("--device-gates", type=Path, help="harmony-device-gates.json path; defaults under --evidence-dir.")
+    parser.add_argument("--current-base-gate", type=Path, help="harmony-current-base-gate.json path; defaults under --evidence-dir.")
     parser.add_argument("--output", type=Path, help="Acceptance package output path; defaults under --evidence-dir.")
     parser.add_argument("--write-blocked", action="store_true", help="Write a blocked device-gate manifest when one is missing.")
     return parser
@@ -305,19 +407,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     evidence_dir = args.evidence_dir
     readiness_path = args.readiness or evidence_dir / "harmony-readiness.json"
     device_manifest_path = args.device_gates or evidence_dir / "harmony-device-gates.json"
+    current_base_path = args.current_base_gate or evidence_dir / "harmony-current-base-gate.json"
     output_path = args.output or evidence_dir / "harmony-matepad-acceptance.json"
     command = ["scripts/harmony_matepad_acceptance.py", *(argv if argv is not None else sys.argv[1:])]
 
     try:
         readiness = _read_json(readiness_path, "readiness report") if readiness_path.exists() else None
-        if args.write_blocked:
+        if args.write_blocked and not device_manifest_path.exists():
             _write_json(device_manifest_path, blocked_device_manifest(readiness))
         elif not device_manifest_path.exists():
             raise AcceptanceError(f"device gate manifest is missing: {device_manifest_path}")
         device_manifest = _read_json(device_manifest_path, "device gate manifest")
-        validation = validate_device_manifest(device_manifest)
-        if not validation.allow_blocked_valid:
+        validation = validate_device_manifest(device_manifest, evidence_root=evidence_dir)
+        if not validation.allow_blocked_valid and "fail" not in _gate_statuses(device_manifest).values():
             raise AcceptanceError(validation.error or "device gate manifest is invalid")
+        current_base_report = harmony_current_base_gate.derive_gate(
+            readiness_path,
+            device_manifest_path,
+            evidence_root=evidence_dir,
+        )
+        _write_json(current_base_path, current_base_report)
+        current_base_validation = validate_current_base_gate(current_base_report)
         package = build_package(
             command=command,
             evidence_dir=evidence_dir,
@@ -326,6 +436,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             readiness=readiness,
             device_manifest=device_manifest,
             validation=validation,
+            current_base_path=current_base_path,
+            current_base=current_base_validation,
         )
         _write_json(output_path, package)
     except AcceptanceError as error:
