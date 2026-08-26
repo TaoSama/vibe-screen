@@ -38,9 +38,10 @@ is supplied:
 make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base
 ```
 
-That default record confirms only the current offline baseline inputs and must
-not be used as sleeping-Mac wake evidence. A real run should pass an explicit
-observations file with `WAKE_HOST_CURRENT_BASE_JSON=...`.
+That default record is only a fail-closed placeholder: all evidence booleans
+default to false, including current-main and offline-baseline observations. It
+must not be used as sleeping-Mac wake evidence. A real run should pass an
+explicit observations file with `WAKE_HOST_CURRENT_BASE_JSON=...`.
 
 ## Why #199 remains the owner
 

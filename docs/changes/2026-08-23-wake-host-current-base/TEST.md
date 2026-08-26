@@ -6,7 +6,8 @@ Run from the repository root:
 
 ```bash
 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base tools.tests.test_schemas
-make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base-smoke-20260823
+make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base-smoke-20260823; test $? -eq 2
+jq -e '.verdict == "blocked" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' .build/evidence/wake-host-current-base-smoke-20260823/wake-host-current-base-gate.json
 python3 -m unittest contracts.tests.test_security_contract
 cd baseline/MacHost && swift build -c release
 cd baseline/MacHost && .build/release/Vibe\ Screen --protocol-v1-self-test
