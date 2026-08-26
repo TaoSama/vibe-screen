@@ -10,10 +10,13 @@
 > Android builds now upgrade the main USB/LAN session to Protocol v1 while
 > retaining an explicit legacy fallback. Protocol v1 is now exercised on device
 > (display selection/switch, HiDPI capture, keyboard/scroll input,
-> auto-reconnect) and the cross-platform offline gates pass. A two-hour soak has
-> run with a stable stream, but the host resident-memory no-growth gate and a
-> native-pointer HID confirmation remain open. Do not treat roadmap items below
-> as shipped features.
+> auto-reconnect) and the cross-platform offline gates pass. Protocol v1
+> clipboard forwarding is implemented for explicit Android/macOS text transfers
+> and covered by offline gates, but real Android ClipboardManager <-> macOS
+> NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
+> stable stream, but the host resident-memory no-growth gate and a native-pointer
+> HID confirmation remain open. Do not treat roadmap items below as shipped
+> features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -32,9 +35,10 @@ platform scaffolding under active development.
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
+| Clipboard | Protocol v1 text clipboard forwarding is wired for Android <-> macOS with explicit send/get/overwrite actions, strict UTF-8 `text/plain`, SHA-256/origin/session-epoch validation, deny-wins managed-policy gating, and a 1 MiB negotiated size ceiling. Android JVM tests, Protocol v1 fixtures, and the Mac Protocol v1 self-test pass on current main, but no real Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E evidence is recorded, so this remains an open device gate |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
-| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard is implemented and offline-tested, but its real device/system-pasteboard E2E gate is still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
@@ -439,6 +443,20 @@ the
 and the
 [P0110 passed rerun evidence](docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-20-p0110-pacific-fixed-binary-rerun/README.md).
 
+Android and MacHost also expose explicit Protocol v1 `text/plain` clipboard
+transfer for USB/LAN sessions: each side sends only an offer until the receiver
+chooses to fetch, direct content requires an overwrite confirmation, trusted LAN
+shows a plaintext-risk confirmation before body transfer, and both peers enforce
+the negotiated 1 MiB ceiling plus origin, session epoch, UTF-8 and SHA-256
+checks. This path is covered by Android JVM tests, protocol fixtures, MacHost
+clipboard XCTest sources, and the Mac Protocol v1 executable self-test; the
+MacHost clipboard XCTest run itself is blocked in this local Command Line Tools
+environment. The real Android ClipboardManager <-> macOS NSPasteboard USB/LAN
+E2E gate remains open pending a signed Host/device run; see the
+[clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
+and the current-main audit evidence under
+[2026-08-27-current-base-clipboard-audit](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-current-base-clipboard-audit/README.md).
+
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
   manual video configuration (bitrate/quality/frame-rate presets). Network-driven
@@ -634,6 +652,10 @@ The trusted-LAN path is still separate from Internet mode. Its current
 macOS/Android peers use application records on the admitted private-network TCP
 session, while explicit legacy fallback remains plaintext and must not be
 presented as encrypted or as Internet E2EE evidence.
+The Android/macOS clipboard implementation currently belongs to the USB/LAN
+Protocol v1 session path and has only offline/self-test evidence on current
+main; no public-Internet, WebRTC DataChannel, real Android ClipboardManager, or
+real macOS NSPasteboard E2E result is claimed for clipboard.
 
 Adaptive video profiles are scoped to the WebRTC Internet transport only; USB and
 trusted-LAN sessions keep manual client-driven bitrate/quality/frame-rate presets
