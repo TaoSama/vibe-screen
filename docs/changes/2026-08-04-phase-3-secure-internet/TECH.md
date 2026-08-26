@@ -152,7 +152,8 @@ PostgreSQL-backed authority, while SDP/ICE routing is stored in the signaling
 PostgreSQL backend until TTL cleanup. Authority failure, malformed response,
 storage failure, or a session-ID collision fails closed without local token
 fallback or state overwrite. Real PostgreSQL tests cover migration/readiness,
-restart-durable routing, expiry and concurrent capacity; a two-process
+restart-durable routing, expiry, concurrent capacity, cross-instance routing,
+LISTEN/NOTIFY long-poll wakeup, and invalidation tombstones; a two-process
 PostgreSQL test covers account/device registration, admission, offer/poll,
 device revocation rejecting both roles, bounded shutdown, and secret-log
 scanning. This is a signaling admission boundary, not automatic product
@@ -161,7 +162,7 @@ Authority can also issue an admin/operator session profile for already
 registered devices; signaling adopts that authority-issued session as local
 routing metadata only after a successful role authorization, without retaining
 the role token. This is still a service-control-plane path, not Mac/Android
-automatic product invocation.
+automatic product invocation or production multi-replica evidence.
 
 The service still rejects a second offer. The product transport now enters a
 bounded ICE-recovery window for ordinary disconnects on transports whose

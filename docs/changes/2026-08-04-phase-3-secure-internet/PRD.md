@@ -50,13 +50,16 @@ record proves only the dated source/device combination and must not be
 extrapolated to this working tree or later commits. It is not public-Internet,
 real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
 handoff, latency, or stability evidence. The services remain single-node
-development implementations. Authority now exposes an admin/operator session
-profile issuance primitive for already registered devices, but Mac/Android
-automatic invocation of that path, cross-service revocation propagation, real
-coturn exporter collection, production scheduled reconciliation,
-active-allocation disconnect execution, authoritative coturn byte accounting,
-and a production deployment remain open. Trusted-LAN remains separate from
-Phase 3 Internet
+development implementations. Signaling and relay now have PostgreSQL-backed
+stores that remove their process-local routing and ledger state blockers for a
+production-shaped deployment, with local tests covering the shared store
+contracts. Authority now
+exposes an admin/operator session profile issuance primitive for already
+registered devices, but Mac/Android automatic invocation of that path,
+cross-service revocation propagation, real coturn exporter collection,
+production scheduled reconciliation, active-allocation disconnect execution,
+authoritative coturn byte accounting, production multi-replica rollout, public
+ingress, global rate limits, and a production deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
 transport: current macOS/Android peers protect the token-admitted TCP session
 with per-session application records, while explicit legacy fallback remains
 plaintext and is not Phase 3 security.

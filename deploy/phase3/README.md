@@ -267,11 +267,19 @@ export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
 export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
 
 Before treating this as public NAT/TURN release evidence, write a sanitized
