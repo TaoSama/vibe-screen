@@ -24,6 +24,8 @@ STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG ?=
 STYLUS_HOST_READY_ARG ?=
 ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
 ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
+HARMONY_AVCODEC_HDC_TARGET ?=
+HARMONY_AVCODEC_HAP ?=
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -173,6 +175,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-readiness \
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
+	harmony-avcodec-preflight \
+	harmony-avcodec-validate \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -576,6 +580,19 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
+
+harmony-avcodec-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+		--output "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json" \
+		$(if $(strip $(HARMONY_AVCODEC_HDC_TARGET)),--hdc-target "$(HARMONY_AVCODEC_HDC_TARGET)",) \
+		$(if $(strip $(HARMONY_AVCODEC_HAP)),--hap "$(HARMONY_AVCODEC_HAP)",)
+
+harmony-avcodec-validate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+		--validate "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)

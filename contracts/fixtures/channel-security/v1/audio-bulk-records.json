@@ -1,0 +1,83 @@
+{
+  "schema": "vibescreen.channel-security-fixture.v1",
+  "fixture_scope": "TEST_ONLY_SYNTHETIC_MATERIAL_DO_NOT_USE_IN_PRODUCTION",
+  "session": {
+    "session_identifier": "vibescreen-channel-security-fixture-v1",
+    "session_epoch": 7,
+    "key_epoch": 1,
+    "key_id": "fixture-channel-security-key-v1",
+    "session_id_hash": "be8671c99ec9d21b57875ca5b05cd4a1",
+    "key_derivation": {
+      "shared_secret": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "bootstrap_secret": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+      "context": "4142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60"
+    },
+    "keys": {
+      "host_control": "302d148fda87fd622f393d4580153fda4317b048f1e254ce5ac86ac2e1f17a56",
+      "device_control": "18093d42a4402dc6c71fb10eeaad9fc9ed1fde3febf045900d14b161993ad7e4",
+      "host_media": "31d3af5e022351d9e1e51690891c0ea3721048908e766b3d47cb60e6400b50e4",
+      "device_media": "60b9664909f4a32e7070a0c4d91877468b6d7aba157d4740d3849053b9600638",
+      "host_audio": "a34b329c483375bd718eeb3ed7b0f0f51a2b1b54f845792a1c667917a3807ef6",
+      "device_audio": "409116577d2fc95fb1bb8e3ced9b95187d9be7374cb455d9a91ec6cda3ebcb3b",
+      "host_bulk": "b41c898d081b5bab765a367e6d2c40bc45b7489fe73db3e3ab7fdfe2d9f72be8",
+      "device_bulk": "df06670275521acaf6ac80de29e032aa505ad5ee4a257df59195d76c5909d978"
+    }
+  },
+  "record_format": {
+    "magic": "0x56534352",
+    "version": 1,
+    "header_bytes": 51,
+    "nonce_bytes": 12,
+    "tag_bytes": 16,
+    "nonce_layout": "uint32_be(channel) || uint64_be(sequence)",
+    "header_layout": "uint32_be(magic) || uint8(version) || bytes16(session_id_hash) || uint64_be(session_epoch) || uint64_be(key_epoch) || uint8(sender) || uint8(channel) || bytes12(nonce)",
+    "aead": "AES-256-GCM",
+    "record_layout": "header || ciphertext || tag(16)"
+  },
+  "records": [
+    {
+      "name": "host_audio_seq1",
+      "channel": "AUDIO",
+      "sender": "HOST",
+      "sequence": 1,
+      "plaintext": "aabbccdd",
+      "nonce": "000000030000000000000001",
+      "header": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010103000000030000000000000001",
+      "ciphertext_and_tag": "f749a4d1d189d52a1e2ad6e1e65e8236190d88b5",
+      "record": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010103000000030000000000000001f749a4d1d189d52a1e2ad6e1e65e8236190d88b5"
+    },
+    {
+      "name": "device_audio_seq1",
+      "channel": "AUDIO",
+      "sender": "DEVICE",
+      "sequence": 1,
+      "plaintext": "1122334455",
+      "nonce": "000000030000000000000001",
+      "header": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010203000000030000000000000001",
+      "ciphertext_and_tag": "ddf7863b6cedbca572f700fb14ff192aeb504052e7",
+      "record": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010203000000030000000000000001ddf7863b6cedbca572f700fb14ff192aeb504052e7"
+    },
+    {
+      "name": "host_bulk_seq1",
+      "channel": "BULK",
+      "sender": "HOST",
+      "sequence": 1,
+      "plaintext": "000102030405060708090a0b0c0d0e0f",
+      "nonce": "000000040000000000000001",
+      "header": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010104000000040000000000000001",
+      "ciphertext_and_tag": "9ffadfd1aca37cf47cf1d97a5c5f8dcc9706f1ae9e36aded0232d4bcfa11bf2c",
+      "record": "5653435201be8671c99ec9d21b57875ca5b05cd4a10000000000000007000000000000000101040000000400000000000000019ffadfd1aca37cf47cf1d97a5c5f8dcc9706f1ae9e36aded0232d4bcfa11bf2c"
+    },
+    {
+      "name": "device_bulk_seq1",
+      "channel": "BULK",
+      "sender": "DEVICE",
+      "sequence": 1,
+      "plaintext": "202122232425262728292a2b2c2d2e2f",
+      "nonce": "000000040000000000000001",
+      "header": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010204000000040000000000000001",
+      "ciphertext_and_tag": "575fcc323efe5f65820ec2e5f68595838cb7763b5588b4fff3f5847b79412e0b",
+      "record": "5653435201be8671c99ec9d21b57875ca5b05cd4a1000000000000000700000000000000010204000000040000000000000001575fcc323efe5f65820ec2e5f68595838cb7763b5588b4fff3f5847b79412e0b"
+    }
+  ]
+}

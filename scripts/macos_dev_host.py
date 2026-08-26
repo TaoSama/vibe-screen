@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,22 +40,6 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
-DEFAULT_XCTEST_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
-PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = package_macos.PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS
-DEFAULT_IDENTITY_REMEDIATION = """Required remediation
---------------------
-1. Confirm the configured signing identity is available:
-   security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
-2. If it is missing, create a self-signed Code Signing certificate named
-   'Vibe Screen Dev' in Keychain Access, or set VIBE_SCREEN_SIGN_IDENTITY to an
-   existing stable codesigning identity.
-3. Rebuild and install the Host with make baseline-macos-dev-install, grant
-   Screen Recording and Accessibility to /Applications/Vibe Screen.app, then
-   rerun this preflight.
-Ad-hoc signing is intentionally rejected for local device reruns because it
-changes the code-signing identity that macOS TCC grants are bound to.
-"""
-
 
 @dataclass(frozen=True)
 class SigningMetadata:
@@ -145,19 +130,6 @@ def tcc_database_report_label(database_path: Path) -> str:
     return str(database_path)
 
 
-@dataclass(frozen=True)
-class XCTestToolchainStatus:
-    developer_dir: str | None
-    swift_path: str | None
-    swift_version: str | None
-    xcodebuild_path: str | None
-    xcodebuild_version: str | None
-    xctest_path: str | None
-    xctest_framework_path: str | None
-    path_xcrun_warning: str | None
-    errors: tuple[str, ...]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
@@ -167,16 +139,6 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
-    xctest = subparsers.add_parser(
-        "xctest-preflight",
-        help="fail closed with actionable diagnostics unless full Xcode is selected for SwiftPM XCTest",
-    )
-    xctest.add_argument(
-        "--report",
-        type=Path,
-        default=DEFAULT_XCTEST_REPORT_PATH,
-        help="path for the XCTest toolchain report",
-    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -242,7 +204,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
 
-def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+def run(*command: str, cwd: Path | None = None) -> str:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -250,23 +212,11 @@ def run(*command: str, cwd: Path | None = None, timeout: float | None = None) ->
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        timeout=timeout,
     )
     return completed.stdout.strip()
 
 
-def command_text(command: tuple[str, ...] | list[str] | str) -> str:
-    return package_macos.command_text(command)
-
-
-def timeout_message(command: tuple[str, ...] | list[str] | str, timeout: float) -> str:
-    return f"timed out after {timeout:g}s while running {command_text(command)}"
-
-
-def command_status(
-    *command: str,
-    timeout: float = PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
-) -> tuple[int, str]:
+def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
     try:
         completed = subprocess.run(
             command,
@@ -274,11 +224,312 @@ def command_status(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=timeout,
+            timeout=timeout_seconds,
         )
-    except subprocess.TimeoutExpired:
-        return 124, timeout_message(command, timeout)
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout if isinstance(error.stdout, str) else ""
+        detail = output.strip()
+        suffix = f": {detail}" if detail else ""
+        return 124, f"command timed out after {timeout_seconds}s{suffix}"
     return completed.returncode, completed.stdout.strip()
+
+
+TCC_QUERY_TIMEOUT_SECONDS = 5
+DEFAULTS_PREFIX = "Telemachus_"
+STARTUP_MODES = {"usb", "wireless", "lan"}
+DEFAULT_HOST_LOG_PATH = Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log"
+
+
+def redact_local_report_text(value: str) -> str:
+    redacted = value.replace(str(default_tcc_database()), USER_TCC_DATABASE_LABEL)
+    redacted = redacted.replace(str(SYSTEM_TCC_DATABASE), SYSTEM_TCC_DATABASE_LABEL)
+    redacted = redacted.replace(str(DEFAULT_HOST_LOG_PATH), "<user-host-log>")
+    home = str(Path.home())
+    if home != "/":
+        redacted = redacted.replace(home, "<user-home>")
+    return redacted
+
+
+def parse_defaults_output(output: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if " = " not in line:
+            continue
+        key, value = line.split(" = ", 1)
+        values[key.strip()] = value.strip().rstrip(";")
+    return values
+
+
+def parse_defaults_export(output: str) -> dict[str, object]:
+    try:
+        value = plistlib.loads(output.encode("utf-8"))
+    except (plistlib.InvalidFileException, ValueError):
+        return parse_defaults_output(output)
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
+def defaults_bool(value: object | None, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if not isinstance(value, str):
+        return default
+    return value.strip().strip('"').lower() in {"1", "true", "yes"}
+
+
+def defaults_int(value: object | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return int(value.strip().strip('"'))
+    except ValueError:
+        return None
+
+
+def defaults_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return str(value)
+    return value.strip().strip('"')
+
+
+def read_startup_settings(bundle_id: str = EXPECTED_BUNDLE_ID) -> HostStartupSettings:
+    exit_code, output = run_best_effort("/usr/bin/defaults", "export", bundle_id, "-", timeout_seconds=10)
+    if exit_code != 0:
+        return HostStartupSettings(
+            domain=bundle_id,
+            readable=False,
+            auto_start_streaming_on_launch=True,
+            startup_mode="usb",
+            has_completed_onboarding=False,
+            display_source="currentMain",
+            selected_display_uuid=None,
+            selected_display_id=None,
+            stored_keys=(),
+            defaults_used=(
+                "autoStartStreamingOnLaunch=True",
+                "startupMode=usb",
+                "hasCompletedOnboarding=False",
+                "displaySource=currentMain",
+            ),
+            error=redact_local_report_text(output or "defaults domain not found"),
+        )
+    parsed = parse_defaults_export(output)
+    startup_mode = defaults_string(parsed.get(DEFAULTS_PREFIX + "startupMode"))
+    connection_mode = defaults_string(parsed.get(DEFAULTS_PREFIX + "connectionMode"))
+    if startup_mode not in STARTUP_MODES:
+        startup_mode = connection_mode if connection_mode in STARTUP_MODES else "usb"
+    display_source = defaults_string(parsed.get(DEFAULTS_PREFIX + "displaySource")) or "currentMain"
+    defaults_used = []
+    for key, default_value in (
+        ("autoStartStreamingOnLaunch", "True"),
+        ("startupMode", "usb"),
+        ("displaySource", "currentMain"),
+    ):
+        if DEFAULTS_PREFIX + key not in parsed:
+            defaults_used.append(f"{key}={default_value}")
+    if DEFAULTS_PREFIX + "hasCompletedOnboarding" not in parsed:
+        defaults_used.append("hasCompletedOnboarding=False")
+    return HostStartupSettings(
+        domain=bundle_id,
+        readable=True,
+        auto_start_streaming_on_launch=defaults_bool(parsed.get(DEFAULTS_PREFIX + "autoStartStreamingOnLaunch"), True),
+        startup_mode=startup_mode,
+        has_completed_onboarding=defaults_bool(parsed.get(DEFAULTS_PREFIX + "hasCompletedOnboarding"), False),
+        display_source=display_source,
+        selected_display_uuid=defaults_string(parsed.get(DEFAULTS_PREFIX + "selectedDisplayUUID")),
+        selected_display_id=defaults_int(parsed.get(DEFAULTS_PREFIX + "selectedDisplayID")),
+        stored_keys=tuple(sorted(key for key in parsed if key.startswith(DEFAULTS_PREFIX))),
+        defaults_used=tuple(defaults_used),
+    )
+
+
+def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> LoginItemReadiness:
+    lines = output.splitlines()
+    matches: list[str] = []
+    for index, line in enumerate(lines):
+        if bundle_id not in line and APP_NAME not in line:
+            continue
+        start = max(0, index - 8)
+        end = min(len(lines), index + 12)
+        matches.append(ascii_report_text("\n".join(lines[start:end])))
+    if not matches:
+        return LoginItemReadiness(
+            state="not_found",
+            matched=False,
+            detail="No matching login item entry found in sfltool dumpbtm output.",
+            evidence=(),
+        )
+    combined = "\n---\n".join(matches)
+    lowered = combined.lower()
+    if any(marker in lowered for marker in ("requires approval", "approval required", "not approved", "allowed = 0")):
+        return LoginItemReadiness(
+            state="requires_approval",
+            matched=True,
+            detail="Matching login item appears to need user approval; verify in System Settings.",
+            evidence=tuple(matches),
+        )
+    if any(marker in lowered for marker in ("disabled", "not enabled", "state = 0")):
+        return LoginItemReadiness(
+            state="disabled",
+            matched=True,
+            detail="Matching login item appears present but disabled.",
+            evidence=tuple(matches),
+        )
+    if any(marker in lowered for marker in ("enabled", "allowed = 1", "state = 1")):
+        return LoginItemReadiness(
+            state="enabled",
+            matched=True,
+            detail="Matching login item appears enabled in read-only sfltool output.",
+            evidence=tuple(matches),
+        )
+    return LoginItemReadiness(
+        state="present_unknown",
+        matched=True,
+        detail="Matching login item was found, but the enabled/approval state was not machine-parsable.",
+        evidence=tuple(matches),
+    )
+
+
+def read_login_item_readiness() -> LoginItemReadiness:
+    exit_code, output = run_best_effort("/usr/bin/sfltool", "dumpbtm", timeout_seconds=15)
+    if exit_code != 0:
+        return LoginItemReadiness(
+            state="unverified",
+            matched=False,
+            detail=redact_local_report_text(output or "sfltool dumpbtm failed"),
+            evidence=(),
+        )
+    return parse_login_item_state(output)
+
+
+def read_display_readiness() -> HostDisplayReadiness:
+    script = r"""
+import CoreGraphics
+let maxDisplays: UInt32 = 32
+let active = UnsafeMutablePointer<CGDirectDisplayID>.allocate(capacity: Int(maxDisplays))
+defer { active.deallocate() }
+var count: UInt32 = 0
+let error = CGGetActiveDisplayList(maxDisplays, active, &count)
+if error != .success {
+    print("ERROR:\(error.rawValue)")
+    exit(2)
+}
+for index in 0..<Int(count) {
+    let id = active[index]
+    let bounds = CGDisplayBounds(id)
+    let mode = CGDisplayCopyDisplayMode(id)
+    let main = CGDisplayIsMain(id) != 0 ? 1 : 0
+    print("id=\(id)|main=\(main)|logical=\(Int(bounds.width))x\(Int(bounds.height))|physical=\(mode?.pixelWidth ?? 0)x\(mode?.pixelHeight ?? 0)")
+}
+"""
+    exit_code, output = run_best_effort("/usr/bin/swift", "-e", script, timeout_seconds=20)
+    displays: list[dict[str, object]] = []
+    if exit_code == 0:
+        for line in output.splitlines():
+            fields = dict(part.split("=", 1) for part in line.split("|") if "=" in part)
+            if fields:
+                fields["source"] = "CoreGraphics"
+                displays.append(fields)
+        if displays:
+            return HostDisplayReadiness(True, len(displays), tuple(displays), active_display_count=len(displays))
+    profiler_displays = read_system_profiler_displays()
+    if profiler_displays:
+        return HostDisplayReadiness(
+            True,
+            len(profiler_displays),
+            tuple(profiler_displays),
+            error=None if exit_code == 0 else redact_local_report_text(output),
+            active_display_count=0,
+        )
+    if exit_code != 0:
+        return HostDisplayReadiness(False, 0, (), redact_local_report_text(output or "display inventory command failed"))
+    return HostDisplayReadiness(True, 0, (), active_display_count=0)
+
+
+def read_system_profiler_displays() -> list[dict[str, object]]:
+    exit_code, output = run_best_effort(
+        "/usr/sbin/system_profiler",
+        "SPDisplaysDataType",
+        "-json",
+        timeout_seconds=20,
+    )
+    if exit_code != 0:
+        return []
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return []
+    displays: list[dict[str, object]] = []
+    for gpu in payload.get("SPDisplaysDataType", []):
+        if not isinstance(gpu, dict):
+            continue
+        for display in gpu.get("spdisplays_ndrvs", []):
+            if not isinstance(display, dict):
+                continue
+            if display.get("spdisplays_online") not in (None, "spdisplays_yes"):
+                continue
+            displays.append(
+                {
+                    "id": str(display.get("_spdisplays_displayID", "unknown")),
+                    "name": str(display.get("_name", "unknown")),
+                    "main": "1" if display.get("spdisplays_main") == "spdisplays_yes" else "0",
+                    "logical": str(display.get("_spdisplays_resolution", "unknown")),
+                    "physical": str(display.get("_spdisplays_pixels", "unknown")),
+                    "source": "system_profiler",
+                }
+            )
+    return displays
+
+
+def host_log_path_label(log_path: Path) -> str:
+    if log_path.resolve() == DEFAULT_HOST_LOG_PATH.resolve():
+        return "<user-host-log>"
+    return redact_local_report_text(str(log_path))
+
+
+def summarize_host_log(log_path: Path, marker_limit: int = 40) -> LogReadiness:
+    if not log_path.exists():
+        return LogReadiness(host_log_path_label(log_path), False, (), "Host log not found")
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-2000:]
+    except OSError as error:
+        return LogReadiness(host_log_path_label(log_path), False, (), str(error))
+    markers = [
+        ascii_report_text(line)
+        for line in lines
+        if any(
+            token in line
+            for token in (
+                "Launch at Login",
+                "Auto-start",
+                "automatic",
+                "Unattended",
+                "recovery",
+                "retry",
+                "Screen Recording",
+                "CGPreflight",
+                "Server started",
+                "Streaming listener stopped",
+            )
+        )
+    ]
+    return LogReadiness(host_log_path_label(log_path), True, tuple(markers[-marker_limit:]))
+
+
+def ascii_report_text(value: str) -> str:
+    return redact_local_report_text(value).encode("ascii", errors="backslashreplace").decode("ascii")
 
 
 def sha256(path: Path) -> str:
@@ -379,41 +630,56 @@ def inspect_entitlements(app_path: Path) -> EntitlementStatus:
     )
 
 
+@dataclass(frozen=True)
+class HostStartupSettings:
+    domain: str
+    readable: bool
+    auto_start_streaming_on_launch: bool
+    startup_mode: str
+    has_completed_onboarding: bool
+    display_source: str
+    selected_display_uuid: str | None
+    selected_display_id: int | None
+    stored_keys: tuple[str, ...]
+    defaults_used: tuple[str, ...]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class LoginItemReadiness:
+    state: str
+    matched: bool
+    detail: str
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HostDisplayReadiness:
+    readable: bool
+    display_count: int
+    displays: tuple[dict[str, object], ...]
+    error: str | None = None
+    active_display_count: int | None = None
+
+
+@dataclass(frozen=True)
+class LogReadiness:
+    path: str
+    readable: bool
+    markers: tuple[str, ...]
+    error: str | None = None
+
+
 def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
     plist = read_bundle_plist(app_path)
     try:
-        run(
-            "/usr/bin/codesign",
-            "--verify",
-            "--deep",
-            "--strict",
-            "--verbose=2",
-            str(app_path),
-            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
-        )
-        details = run(
-            "/usr/bin/codesign",
-            "-dvvv",
-            str(app_path),
-            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
-        )
-        requirement_output = run(
-            "/usr/bin/codesign",
-            "-d",
-            "-r-",
-            str(app_path),
-            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
-        )
+        run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
+        details = run("/usr/bin/codesign", "-dvvv", str(app_path))
+        requirement_output = run("/usr/bin/codesign", "-d", "-r-", str(app_path))
     except subprocess.CalledProcessError as error:
         output = (error.stdout or str(error)).strip()
         raise SystemExit(f"codesign inspection failed for {app_path}: {output}") from error
-    except subprocess.TimeoutExpired as error:
-        raise SystemExit(
-            f"codesign inspection timed out after "
-            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s while running "
-            f"{command_text(error.cmd)}; refusing to treat the installed Host as verified."
-        ) from error
     fields = parse_codesign_details(details)
     requirement = parse_designated_requirement(requirement_output)
     executable_name = str(plist.get("CFBundleExecutable", EXECUTABLE_NAME))
@@ -446,132 +712,6 @@ def bool_or_none(value: object) -> bool | None:
 
 def current_source_identity(source_root: Path) -> package_macos.SourceIdentity:
     return package_macos.collect_source_identity(source_root.resolve())
-
-
-def collect_xctest_toolchain_status() -> XCTestToolchainStatus:
-    developer_dir_status, developer_dir_output = command_status("/usr/bin/xcode-select", "-p")
-    developer_dir = developer_dir_output if developer_dir_status == 0 and developer_dir_output else None
-
-    swift_status, swift_path_output = command_status("/usr/bin/xcrun", "--find", "swift")
-    swift_path = swift_path_output if swift_status == 0 and swift_path_output else None
-    swift_version_status, swift_version_output = command_status("/usr/bin/swift", "--version")
-    swift_version = swift_version_output.splitlines()[0] if swift_version_status == 0 and swift_version_output else None
-
-    xcodebuild_status, xcodebuild_path_output = command_status("/usr/bin/xcrun", "--find", "xcodebuild")
-    xcodebuild_path = xcodebuild_path_output if xcodebuild_status == 0 and xcodebuild_path_output else None
-    xcodebuild_version_status, xcodebuild_version_output = command_status("/usr/bin/xcodebuild", "-version")
-    xcodebuild_version = (
-        xcodebuild_version_output.replace("\n", "; ")
-        if xcodebuild_version_status == 0 and xcodebuild_version_output
-        else None
-    )
-    xctest_status, xctest_path_output = command_status("/usr/bin/xcrun", "--find", "xctest")
-    xctest_path = xctest_path_output if xctest_status == 0 and xctest_path_output else None
-    xctest_framework_path = find_xctest_framework_path(developer_dir)
-    path_xcrun_warning = detect_path_xcrun_wrapper()
-
-    errors: list[str] = []
-    if developer_dir is None:
-        errors.append(f"xcode-select -p failed: {developer_dir_output or 'no output'}")
-    elif developer_dir.endswith("/CommandLineTools"):
-        errors.append("active developer directory is Command Line Tools; SwiftPM XCTest for MacHost requires full Xcode")
-    elif not developer_dir.endswith("/Contents/Developer"):
-        errors.append(f"active developer directory is not a full Xcode Contents/Developer path: {developer_dir}")
-    if swift_path is None:
-        errors.append(f"xcrun --find swift failed: {swift_path_output or 'no output'}")
-    if swift_version is None:
-        errors.append(f"swift --version failed: {swift_version_output or 'no output'}")
-    if xcodebuild_path is None:
-        errors.append(f"xcrun --find xcodebuild failed: {xcodebuild_path_output or 'no output'}")
-    if xcodebuild_version is None:
-        errors.append(f"xcodebuild -version failed: {xcodebuild_version_output or 'no output'}")
-    if xctest_path is None:
-        errors.append(f"xcrun --find xctest failed: {xctest_path_output or 'no output'}")
-    if developer_dir is not None and xctest_framework_path is None:
-        errors.append(f"XCTest.framework not found under active developer directory: {developer_dir}")
-    return XCTestToolchainStatus(
-        developer_dir=developer_dir,
-        swift_path=swift_path,
-        swift_version=swift_version,
-        xcodebuild_path=xcodebuild_path,
-        xcodebuild_version=xcodebuild_version,
-        xctest_path=xctest_path,
-        xctest_framework_path=xctest_framework_path,
-        path_xcrun_warning=path_xcrun_warning,
-        errors=tuple(errors),
-    )
-
-
-def find_xctest_framework_path(developer_dir: str | None) -> str | None:
-    if developer_dir is None:
-        return None
-    candidates = (
-        Path(developer_dir) / "Platforms" / "MacOSX.platform" / "Developer" / "Library" / "Frameworks" / "XCTest.framework",
-        Path(developer_dir) / "Library" / "Developer" / "Frameworks" / "XCTest.framework",
-    )
-    for candidate in candidates:
-        if candidate.is_dir():
-            return str(candidate)
-    return None
-
-
-def detect_path_xcrun_wrapper() -> str | None:
-    path_value = os.environ.get("PATH", "")
-    for directory in path_value.split(os.pathsep):
-        if not directory:
-            continue
-        candidate = Path(directory) / "xcrun"
-        if not candidate.exists():
-            continue
-        resolved = candidate.resolve()
-        if resolved != Path("/usr/bin/xcrun"):
-            return f"PATH resolves xcrun to {candidate}; preflight uses /usr/bin/xcrun for deterministic diagnostics"
-        return None
-    return None
-
-
-def format_xctest_toolchain_report(status: XCTestToolchainStatus) -> str:
-    result = "PASS" if not status.errors else "FAIL"
-    error_lines = "\n".join(f"- {error}" for error in status.errors) or "(none)"
-    return f"""MacHost XCTest toolchain
---------------------------
-Status: {result}
-Developer directory: {status.developer_dir or 'missing'}
-Swift path: {status.swift_path or 'missing'}
-Swift version: {status.swift_version or 'missing'}
-Xcodebuild path: {status.xcodebuild_path or 'missing'}
-Xcodebuild version: {status.xcodebuild_version or 'missing'}
-XCTest path: {status.xctest_path or 'missing'}
-XCTest.framework: {status.xctest_framework_path or 'missing'}
-PATH xcrun warning: {status.path_xcrun_warning or 'none'}
-
-Blocking issues:
-{error_lines}
-
-Required remediation
---------------------
-Install full Xcode if /Applications/Xcode.app is absent, then select it before
-running MacHost XCTest:
-
-sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
-xcodebuild -version
-make baseline-macos-test
-
-Command Line Tools may build the Host executable, but this repository records
-MacHost XCTest as blocked unless full Xcode is selected and xcodebuild resolves.
-"""
-
-
-def xctest_preflight_command(args: argparse.Namespace) -> int:
-    status = collect_xctest_toolchain_status()
-    report = format_xctest_toolchain_report(status)
-    write_report(args.report, report)
-    print(f"Wrote {args.report}")
-    if status.errors:
-        print(report, file=sys.stderr)
-        return 2
-    print("MacHost XCTest toolchain preflight passed")
-    return 0
 
 
 def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> PermissionStatus:
@@ -634,7 +774,7 @@ def query_tcc_database(bundle_id: str, database_path: Path, *, timeout_seconds: 
             database_path=report_label,
             rows=(),
             readable=False,
-            error=str(payload),
+            error=redact_local_report_text(str(payload)),
         )
     finally:
         result_queue.close()
@@ -652,7 +792,7 @@ def _query_tcc_database_worker(result_queue: Any, bundle_id: str, database_path:
     try:
         result_queue.put(("ok", _query_tcc_database_direct(bundle_id, database_path)))
     except Exception as error:
-        result_queue.put(("error", repr(error)))
+        result_queue.put(("error", redact_local_report_text(repr(error))))
 
 
 def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> PermissionStatus:
@@ -698,7 +838,7 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
         finally:
             connection.close()
     except sqlite3.Error as error:
-        return PermissionStatus(database_path=report_label, rows=(), readable=False, error=str(error))
+        return PermissionStatus(database_path=report_label, rows=(), readable=False, error=redact_local_report_text(str(error)))
 
 
 def inspect_listener(port: int) -> ListenerStatus:
@@ -721,9 +861,8 @@ def validate_preflight(
     expected_sign_identity: str | None = None,
     source_identity: package_macos.SourceIdentity | None = None,
     allow_source_mismatch: bool = False,
-    signing_identity_errors: list[str] | None = None,
 ) -> list[str]:
-    errors: list[str] = list(signing_identity_errors or [])
+    errors: list[str] = []
     if not is_default_install_path(install_path):
         errors.append(f"Host must be installed at the stable path: {DEFAULT_INSTALL_PATH}")
     if metadata.identifier != EXPECTED_BUNDLE_ID:
@@ -764,26 +903,6 @@ def validate_preflight(
     return errors
 
 
-def validate_source_identity(metadata: SigningMetadata, expected_source: package_macos.SourceIdentity) -> list[str]:
-    errors: list[str] = []
-    if expected_source.dirty:
-        errors.append("repository source root is dirty; refusing to treat an installed Host as current-source evidence")
-    if metadata.source_commit is None or metadata.source_tree is None or metadata.source_dirty is None:
-        errors.append("installed Host does not record its source commit/tree identity")
-        return errors
-    if metadata.source_dirty:
-        errors.append("installed Host was packaged from a dirty source tree")
-    if metadata.source_commit != expected_source.commit:
-        errors.append(
-            f"installed Host source commit {metadata.source_commit} does not match current HEAD {expected_source.commit}"
-        )
-    if metadata.source_tree != expected_source.tree:
-        errors.append(
-            f"installed Host source tree {metadata.source_tree} does not match current tree {expected_source.tree}"
-        )
-    return errors
-
-
 def value_or_missing(value: int | None) -> str:
     return "missing" if value is None else str(value)
 
@@ -818,21 +937,10 @@ def format_report(
         rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
-    expected_commit = source_identity.commit if source_identity else "not checked"
-    expected_tree = source_identity.tree if source_identity else "not checked"
-    expected_dirty = str(source_identity.dirty).lower() if source_identity else "not checked"
-    source_policy = "warning-only" if allow_source_mismatch else "fail-closed"
     return f"""Host bundle
 -----------
 Path: {metadata.app_path}
 Identifier: {metadata.identifier}
-Source commit: {metadata.source_commit or 'missing'}
-Source tree: {metadata.source_tree or 'missing'}
-Source dirty: {'missing' if metadata.source_dirty is None else str(metadata.source_dirty).lower()}
-Expected source commit: {expected_commit}
-Expected source tree: {expected_tree}
-Expected source dirty: {expected_dirty}
-Source match policy: {source_policy}
 Identity: {metadata.identity_name}
 {authorities}
 TeamIdentifier: {metadata.team_identifier or 'not set'}
@@ -840,6 +948,13 @@ Certificate SHA-1: {metadata.leaf_certificate_hash or 'not available'}
 CDHash: {metadata.cdhash or 'missing'}
 Binary SHA-256: {metadata.binary_sha256}
 Designated requirement: {metadata.designated_requirement or 'missing'}
+Source commit: {metadata.source_commit or 'missing'}
+Source tree: {metadata.source_tree or 'missing'}
+Source dirty: {metadata.source_dirty if metadata.source_dirty is not None else 'missing'}
+Current source commit: {source_identity.commit if source_identity else 'not checked'}
+Current source tree: {source_identity.tree if source_identity else 'not checked'}
+Current source dirty: {source_identity.dirty if source_identity else 'not checked'}
+Source mismatch allowed: {allow_source_mismatch}
 Verification: valid on disk (codesign --verify --deep --strict)
 
 Read-only TCC capture
@@ -857,12 +972,10 @@ Blocking issues:
 {error_lines}
 System permission path: {SYSTEM_SETTINGS_PATH}
 
-{DEFAULT_IDENTITY_REMEDIATION}
-
 Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
-partition lists, modify TCC.db, or request/override macOS privacy authorization.
+partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
 
@@ -1023,32 +1136,133 @@ def readiness_prerequisites_ready(errors: list[str], listener: ListenerStatus) -
     return not errors and listener.observed
 
 
+def login_headless_blockers(
+    settings: HostStartupSettings,
+    login_item: LoginItemReadiness,
+    displays: HostDisplayReadiness,
+    logs: LogReadiness,
+) -> list[str]:
+    blockers: list[str] = []
+    if not settings.readable:
+        blockers.append(f"cannot read startup defaults: {settings.error}")
+    if login_item.state != "enabled":
+        blockers.append(f"Launch at Login is not verified enabled: {login_item.state}")
+    if not settings.auto_start_streaming_on_launch:
+        blockers.append("Start streaming automatically is disabled")
+    if settings.startup_mode not in STARTUP_MODES:
+        expected = ", ".join(sorted(STARTUP_MODES))
+        blockers.append(f"startupMode is '{settings.startup_mode}', expected one of {expected} for local headless readiness")
+    if not settings.has_completed_onboarding:
+        blockers.append("onboarding has not completed; automatic startup waits for onboarding outside explicit benchmark mode")
+    if not displays.readable:
+        blockers.append(f"cannot read active display inventory: {displays.error}")
+    elif (displays.active_display_count if displays.active_display_count is not None else displays.display_count) < 1:
+        blockers.append("no active display is visible to the current WindowServer session")
+    if not logs.readable:
+        blockers.append(f"cannot summarize Host startup/recovery log: {logs.error}")
+    return blockers
+
+
+def login_headless_record(
+    settings: HostStartupSettings,
+    login_item: LoginItemReadiness,
+    displays: HostDisplayReadiness,
+    logs: LogReadiness,
+    blockers: list[str],
+) -> dict[str, Any]:
+    return {
+        "status": "ready" if not blockers else "blocked",
+        "blockers": blockers,
+        "does_not_prove": [
+            "macOS launched Vibe Screen after logout/login or reboot",
+            "a headless Mac mini exposes a capturable display after reboot",
+            "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+            "USB or LAN streaming rendered on an Android client",
+            "unattended recovery succeeded or exhausted during a real listener/capture/display failure",
+        ],
+        "recommended_next_evidence": [
+            "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+            "record the intended headless display setup and first successful capture after login",
+            "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs",
+        ],
+        "startup_settings": {
+            "domain": settings.domain,
+            "readable": settings.readable,
+            "error": settings.error,
+            "auto_start_streaming_on_launch": settings.auto_start_streaming_on_launch,
+            "startup_mode": settings.startup_mode,
+            "has_completed_onboarding": settings.has_completed_onboarding,
+            "display_source": settings.display_source,
+            "selected_display_uuid": settings.selected_display_uuid,
+            "selected_display_id": settings.selected_display_id,
+            "stored_keys": list(settings.stored_keys),
+            "defaults_used": list(settings.defaults_used),
+        },
+        "login_item": {
+            "state": login_item.state,
+            "matched": login_item.matched,
+            "detail": login_item.detail,
+            "evidence": list(login_item.evidence),
+        },
+        "display_inventory": {
+            "readable": displays.readable,
+            "display_count": displays.display_count,
+            "active_display_count": displays.active_display_count if displays.active_display_count is not None else displays.display_count,
+            "error": displays.error,
+            "displays": list(displays.displays),
+        },
+        "host_log": {
+            "path": logs.path,
+            "readable": logs.readable,
+            "error": logs.error,
+            "startup_recovery_markers": list(logs.markers),
+        },
+    }
+
+
 def build_readiness_document(
     inspection: HostInspection,
     listener: ListenerStatus,
     entitlements: EntitlementStatus,
+    settings: HostStartupSettings | None = None,
+    login_item: LoginItemReadiness | None = None,
+    displays: HostDisplayReadiness | None = None,
+    logs: LogReadiness | None = None,
 ) -> dict[str, Any]:
+    if settings is None:
+        settings = read_startup_settings()
+    if login_item is None:
+        login_item = read_login_item_readiness()
+    if displays is None:
+        displays = read_display_readiness()
+    if logs is None:
+        logs = summarize_host_log(DEFAULT_HOST_LOG_PATH)
     shared_ready = readiness_prerequisites_ready(inspection.errors, listener)
     controller_ready = shared_ready and entitlements.virtual_hid
+    login_blockers = login_headless_blockers(settings, login_item, displays, logs)
+    headless_login_ready = shared_ready and not login_blockers
     blockers = list(inspection.errors)
     if not listener.observed:
         blockers.append(f"Host listener is not observed on TCP port {listener.port}")
     if not entitlements.virtual_hid:
         blockers.append(f"Host is missing {VIRTUAL_HID_ENTITLEMENT} entitlement")
+    blockers.extend(f"login/headless readiness: {blocker}" for blocker in login_blockers)
     return {
         "schema_version": "vibescreen.host-readiness/v1",
         "kind": "macos_host_shared_prerequisite_readiness",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "ready" if not blockers else "blocked",
         "signing_tcc_status": "ready" if not inspection.errors else "blocked",
         "listener_status": "ready" if listener.observed else "blocked",
         "virtual_hid_status": "ready" if entitlements.virtual_hid else "blocked",
+        "login_headless_status": "ready" if headless_login_ready else "blocked",
         "can_start_host_rss_gate": shared_ready,
         "can_start_trusted_lan_gate": shared_ready,
         "can_start_native_hid_gate": shared_ready,
         "can_start_stylus_gate": shared_ready,
         "can_start_hardware_keyboard_gate": shared_ready,
         "can_start_controller_runtime_gate": controller_ready,
-        "can_start_headless_login_gate": shared_ready,
+        "can_start_headless_login_gate": headless_login_ready,
         "can_close_runtime_gates": False,
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
@@ -1065,6 +1279,7 @@ def build_readiness_document(
             "keys": list(entitlements.keys),
             "error": entitlements.error,
         },
+        "login_headless": login_headless_record(settings, login_item, displays, logs, login_blockers),
         "safety": {
             "read_only": True,
             "starts_host": False,
@@ -1088,18 +1303,11 @@ def metadata_and_permissions(
     tcc_db: Path,
     *,
     expected_sign_identity: str | None = None,
-    signing_identity_errors: list[str] | None = None,
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
-) -> tuple[SigningMetadata, package_macos.SourceIdentity | None, PermissionStatus, list[str]]:
+) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
-    source_identity: package_macos.SourceIdentity | None
-    source_errors: list[str] = []
-    try:
-        source_identity = current_source_identity(source_root)
-    except SystemExit as error:
-        source_identity = None
-        source_errors.append(str(error))
+    source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
     errors = validate_preflight(
         metadata,
@@ -1108,9 +1316,7 @@ def metadata_and_permissions(
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
-        signing_identity_errors=signing_identity_errors,
     )
-    errors = [*source_errors, *errors]
     return metadata, source_identity, permissions, errors
 
 
@@ -1122,22 +1328,6 @@ def refuse_ad_hoc_identity(sign_identity: str) -> None:
             "the documented 'Vibe Screen Dev' self-signed identity, then grant permissions "
             "in System Settings."
         )
-
-
-def collect_signing_identity_errors(sign_identity: str) -> list[str]:
-    if sign_identity == "-":
-        return [
-            "local device reruns require a stable signing identity; refusing --sign-identity - because ad-hoc signatures invalidate macOS privacy grants"
-        ]
-    try:
-        package_macos.resolve_sign_identity(sign_identity)
-    except SystemExit as error:
-        message = str(error).replace(
-            ", or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
-            ". Ad-hoc signing is not allowed for local device reruns because it changes the code-signing identity that macOS privacy grants are bound to.",
-        )
-        return [message]
-    return []
 
 
 def package_dev_app(output_dir: Path, sign_identity: str) -> Path:
@@ -1245,12 +1435,10 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
-    signing_identity_errors = collect_signing_identity_errors(args.sign_identity)
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
-        signing_identity_errors=signing_identity_errors,
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
@@ -1308,7 +1496,7 @@ System permission path: {SYSTEM_SETTINGS_PATH}
 Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
-partition lists, modify TCC.db, or request/override macOS privacy authorization.
+partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
@@ -1329,8 +1517,6 @@ def main() -> int:
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
-    if args.command == "xctest-preflight":
-        return xctest_preflight_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")

@@ -325,6 +325,38 @@ make native-pointer-hid-gate \
   EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<run-dir>
 ```
 
+### iOS hardware VideoToolbox gate
+
+Phase 5 hardware VideoToolbox behavior is an iOS-device gate, not a Simulator or
+archive gate. Use the fail-closed readiness summary before and after any future
+physical run so missing prerequisites are machine-readable instead of implied:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
+```
+
+The observations file must set `runtime_class` to `simulator`,
+`unsigned_archive`, `physical_iphone`, or `physical_ipad`. Simulator and unsigned
+archive records always produce `verdict=blocked` and
+`can_close_device_family_videotoolbox_gate=false`; they are useful for readiness
+tracking only. The Makefile gate and `--require-pass` mode return nonzero unless
+the family gate can close. A physical iPhone or iPad family pass requires a
+signed installed app, matching real device identity, H.264 SPS/PPS, HEVC
+VPS/SPS/PPS, VideoToolbox session creation for both codecs, output frames for
+both codecs, hardware-path evidence, stream/config epoch telemetry,
+thermal/power state, and existing non-empty retained iOS VideoToolbox artifacts
+under the evidence directory.
+retained artifacts. The summary keeps
+`can_close_phase5_hardware_videotoolbox_gate=false` because README Phase 5 should
+close only after both iPhone and iPad family records are reviewed with the wider
+iOS device-acceptance evidence. Android MediaCodec evidence, synthetic media,
+Simulator decode, or a decoded still image cannot close this gate.
+
 ## Pass criteria
 
 - APK installs and cold-starts without fatal exception.
@@ -424,3 +456,21 @@ metadata, Host listener state, and stable signed/TCC Host preflight. It exits
 nonzero for blocked or insufficient readiness; a pass still requires physical
 keyboard input through the production Protocol v1 path, Host `Key injected:`
 logs, modifier cleanup evidence, and a visible Mac-side result.
+
+For HarmonyOS HAP lifecycle readiness, collect the environment and device
+pre-state before claiming build/sign/install progress. Missing DevEco, HDC,
+signing material, HAP output, or lifecycle observations intentionally returns a
+blocked or insufficient result and writes evidence instead of passing:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+python3 scripts/harmony_device_gate.py --allow-blocked \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+```
+
+Android acceptance devices still use explicit ADB serials, for example
+`adb -s <device-serial> ...` for the Nubia P0110 / pacific / Android 16 /
+SDK 36 device. That Android evidence must not be used as HarmonyOS or MatePad
+Mini evidence.

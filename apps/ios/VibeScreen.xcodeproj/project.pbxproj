@@ -23,10 +23,20 @@
 		A10000000000000000000013 /* VibeScreenVideo in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* VibeScreenVideo */; };
 		A10000000000000000000021 /* SwiftProtobuf-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */; };
 		B10000000000000000000001 /* StreamViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* StreamViewModelTests.swift */; };
+		C10000000000000000000001 /* StreamViewModelNativeInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* StreamViewModelNativeInputTests.swift */; };
+		C10000000000000000000011 /* VibeScreenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* VibeScreenCore */; };
+		C10000000000000000000012 /* VibeScreenProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* VibeScreenProtocol */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		B30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A70000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = VibeScreen;
+		};
+		C30000000000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A70000000000000000000001 /* Project object */;
 			proxyType = 1;
@@ -52,6 +62,8 @@
 		A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftProtobuf-LICENSE.txt"; sourceTree = "<group>"; };
 		B20000000000000000000001 /* StreamViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamViewModelTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* VibeScreenAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibeScreenAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000001 /* StreamViewModelNativeInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamViewModelNativeInputTests.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* VibeScreenAppUnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibeScreenAppUnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +83,15 @@
 			files = ();
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000011 /* VibeScreenCore in Frameworks */,
+				C10000000000000000000012 /* VibeScreenProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -79,6 +100,7 @@
 			children = (
 				A40000000000000000000002 /* VibeScreenApp */,
 				B50000000000000000000001 /* VibeScreenAppTests */,
+				C50000000000000000000001 /* VibeScreenAppUnitTests */,
 				A40000000000000000000004 /* ThirdPartyLicenses */,
 				A40000000000000000000003 /* Products */,
 			);
@@ -108,6 +130,7 @@
 			children = (
 				A20000000000000000000010 /* VibeScreen.app */,
 				B20000000000000000000002 /* VibeScreenAppTests.xctest */,
+				C20000000000000000000002 /* VibeScreenAppUnitTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -122,6 +145,12 @@
 			isa = PBXGroup;
 			children = (B20000000000000000000001 /* StreamViewModelTests.swift */);
 			path = VibeScreenAppTests;
+			sourceTree = "<group>";
+		};
+		C50000000000000000000001 /* VibeScreenAppUnitTests */ = {
+			isa = PBXGroup;
+			children = (C20000000000000000000001 /* StreamViewModelNativeInputTests.swift */);
+			path = VibeScreenAppUnitTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -162,6 +191,25 @@
 			productReference = B20000000000000000000002 /* VibeScreenAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		C60000000000000000000001 /* VibeScreenAppUnitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C80000000000000000000001 /* Build configuration list for PBXNativeTarget "VibeScreenAppUnitTests" */;
+			buildPhases = (
+				C40000000000000000000002 /* Sources */,
+				C40000000000000000000001 /* Frameworks */,
+				C40000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (C70000000000000000000001 /* PBXTargetDependency */);
+			name = VibeScreenAppUnitTests;
+			packageProductDependencies = (
+				A90000000000000000000001 /* VibeScreenCore */,
+				A90000000000000000000002 /* VibeScreenProtocol */,
+			);
+			productName = VibeScreenAppUnitTests;
+			productReference = C20000000000000000000002 /* VibeScreenAppUnitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -174,6 +222,7 @@
 				TargetAttributes = {
 					A50000000000000000000001 = {CreatedOnToolsVersion = 26.0; };
 					B60000000000000000000001 = {CreatedOnToolsVersion = 26.0; TestTargetID = A50000000000000000000001; };
+					C60000000000000000000001 = {CreatedOnToolsVersion = 26.0; TestTargetID = A50000000000000000000001; };
 				};
 			};
 			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "VibeScreen" */;
@@ -189,6 +238,7 @@
 			targets = (
 				A50000000000000000000001 /* VibeScreen */,
 				B60000000000000000000001 /* VibeScreenAppTests */,
+				C60000000000000000000001 /* VibeScreenAppUnitTests */,
 			);
 		};
 /* End PBXProject section */
@@ -201,6 +251,12 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C40000000000000000000003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = ();
@@ -234,6 +290,12 @@
 			files = (B10000000000000000000001 /* StreamViewModelTests.swift in Sources */);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C40000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (C10000000000000000000001 /* StreamViewModelNativeInputTests.swift in Sources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -241,6 +303,11 @@
 			isa = PBXTargetDependency;
 			target = A50000000000000000000001 /* VibeScreen */;
 			targetProxy = B30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		C70000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000000000000000000001 /* VibeScreen */;
+			targetProxy = C30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -254,6 +321,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Vibe Screen";
@@ -312,12 +380,41 @@
 			};
 			name = Release;
 		};
+		CC0000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios.unit-tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeScreen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VibeScreen";
+			};
+			name = Debug;
+		};
+		CC0000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios.unit-tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeScreen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VibeScreen";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		A80000000000000000000001 /* Build configuration list for PBXProject "VibeScreen" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000001, AA0000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "VibeScreen" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000011, AA0000000000000000000012); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		B80000000000000000000001 /* Build configuration list for PBXNativeTarget "VibeScreenAppTests" */ = {isa = XCConfigurationList; buildConfigurations = (BB0000000000000000000001, BB0000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		C80000000000000000000001 /* Build configuration list for PBXNativeTarget "VibeScreenAppUnitTests" */ = {isa = XCConfigurationList; buildConfigurations = (CC0000000000000000000001, CC0000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */

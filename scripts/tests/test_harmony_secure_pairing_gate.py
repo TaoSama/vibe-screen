@@ -151,7 +151,11 @@ class HarmonySecurePairingGateTest(unittest.TestCase):
         manifest["host"] = {"commit": "7" * 40, "build_sha256": "8" * 64, "protocol": "Protocol v1"}
         for gate in manifest["gates"]:
             gate["status"] = "pass"
-            gate["evidence"] = [f"redacted/{gate['id']}.txt"]
+            gate["evidence"] = [
+                "redacted/harmony-avcodec-preflight.json"
+                if gate["id"] in device_gate.AVCODEC_GATE_IDS
+                else f"redacted/{gate['id']}.txt"
+            ]
             if gate["id"] == "huks_backed_secure_pairing":
                 gate["secure_pairing_manifest"]["status"] = "pass"
         broken = copy.deepcopy(manifest)

@@ -1,0 +1,62 @@
+{
+  "date": "2026-08-27",
+  "branch": "codex/clipboard-protocol-v1-e2e",
+  "head_sha": null,
+  "head_sha_note": "The PR branch tip moves as review fixes land; use GitHub PR checks/status for the latest pushed head.",
+  "origin_main_sha": "e94d3a051e683d2a7d6f34fd03badd1b4ef264d0",
+  "scope": "source audit and offline verification for Android <-> macOS Protocol v1 clipboard",
+  "implementation_status": "present_on_main",
+  "e2e_status": "blocked_not_run",
+  "device_lock_taken": false,
+  "target_device_tests_run": false,
+  "local_android_lock_preflight": "no android device lock present",
+  "local_codesigning_preflight": "0 valid identities found",
+  "related_prs": [
+    {
+      "number": 157,
+      "url": "https://github.com/TaoSama/vibe-screen/pull/157",
+      "status": "closed_unmerged_draft",
+      "closed_at": "2026-08-24T06:26:26Z",
+      "note": "runbook/evidence branch; not a merged E2E pass"
+    }
+  ],
+  "verification": [
+    {
+      "command": "gh pr view 231 --repo TaoSama/vibe-screen --json url,state,isDraft,headRefOid,baseRefOid",
+      "result": "pass",
+      "summary": "PR metadata was available locally through GitHub CLI"
+    },
+    {
+      "command": "(cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest)",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL"
+    },
+    {
+      "command": "mkdir -p .tmp && TMPDIR=\"$PWD/.tmp\" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v",
+      "result": "pass",
+      "summary": "Ran 16 tests OK"
+    },
+    {
+      "command": "(cd baseline/MacHost && swift build -c release && \".build/release/Vibe Screen\" --protocol-v1-self-test)",
+      "result": "pass",
+      "summary": "Build complete; Protocol v1 self-test PASS"
+    },
+    {
+      "command": "(cd baseline/MacHost && swift test --filter Clipboard)",
+      "result": "blocked",
+      "summary": "Command Line Tools environment lacks XCTest; xcrun --find xcodebuild exits 72"
+    },
+    {
+      "command": "security find-identity -v -p codesigning",
+      "result": "blocked",
+      "summary": "0 valid identities found, so a stable-signed Host/device E2E run was not available"
+    }
+  ],
+  "not_proven": [
+    "real Android ClipboardManager to macOS NSPasteboard transfer",
+    "real macOS NSPasteboard to Android ClipboardManager transfer",
+    "USB or trusted-LAN clipboard E2E on a real device",
+    "TalkBack and trusted-LAN warning behavior",
+    "public Internet/WebRTC clipboard transfer"
+  ]
+}

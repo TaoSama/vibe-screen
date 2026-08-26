@@ -48,6 +48,67 @@ Additional current-source checks for this recheck:
 | `make protocol` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Protocol v1 schemas, fixtures, and security contract checks. |
 | `python3 scripts/macos_dev_host.py preflight` | BLOCKED | Stable Host bundle validation cannot proceed without the configured `Vibe Screen Dev` signing identity. |
 
+## 2026-08-22 current-base successor recheck
+
+A fresh branch from `origin/main` (`codex/trusted-lan-p0110-current-base-successor`,
+source commit `79ef30ac7d3b50d3e0129f88823e7be238417bc0`) rechecked the
+same Nubia P0110 / pacific / Android 16 device (`<device-serial>`). The
+check did not install, force-stop, or reconnect the Android app. It first
+confirmed `/tmp/vibe-screen-device-android.lock` was absent, then acquired and
+released that lock around read-only `adb -s <device-serial>` probes.
+
+The real trusted-LAN smoke remained blocked before Host launch, pairing, or
+streaming. The device was USB-reachable and its identity was recorded, but
+`cmd wifi status` reported `Wifi is not connected`, `wlan0` reported
+`NO-CARRIER` and `state DOWN`, `ip route` returned no route, and pinging the
+Mac LAN candidate failed with `Network is unreachable`. The Mac had a local
+Vibe Screen listener only on loopback TCP 54321, and
+`scripts/macos_dev_host.py preflight` failed because the required stable
+`Vibe Screen Dev` codesigning identity was still absent from the keychain.
+
+No trusted-LAN socket admission, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS no-growth evidence was observed.
+The retained artifact bundle is
+[`evidence/2026-08-22-p0110-current-base-successor/README.md`](evidence/2026-08-22-p0110-current-base-successor/README.md).
+This bundle is now historical blocker evidence because the later 2026-08-24
+main preflight below records the newer current-main blocker state. It is kept
+to exercise the fail-closed smoke evidence checker, not as the latest
+authoritative trusted-LAN readiness record.
+
+Additional current-base successor checks:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Verifies the evidence package is explicitly blocked, cannot close stream/reconnect gates, and retains the Nubia P0110/pacific/Android 16 / SDK 36 identity boundary. |
+
+## 2026-08-27 current-base rebase verification
+
+After `git fetch origin --prune`, this PR was rebased onto `origin/main`
+revision `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0`. The retained
+2026-08-22 P0110 evidence bundle remains historical blocked evidence only. The
+current blocker facts are covered by the later 2026-08-24 main record below,
+and no fresh trusted-LAN stream, reconnect, latency, soak, or Host RSS no-growth
+evidence was collected for this rebase.
+The fail-closed checker now requires the Device label to carry SDK 36 so future
+P0110 blocked or passing records match the current Android identity contract.
+
+Focused current-base checks were rerun on the rebased branch:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_smoke -v` | PASS, 12 tests | Covers blocked/pass/insufficient classification, Nubia identity enforcement, serial and pairing-token rejection, legacy plaintext rejection, and contradictory encryption telemetry rejection. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-22-p0110-current-base-successor` | PASS as `blocked` | Confirms the retained artifact package still cannot close trusted-LAN stream or reconnect gates. |
+| `make evidence-tools-test` | PASS, 851 tests | Keeps the evidence tooling suite green on the rebased branch. |
+| `make protocol` | PASS, 37 tests | Covers current Protocol v1 schema, fixtures, TCP framing, and security contract checks. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest` | PASS | Focused Android LAN secure-record, token admission, and handshake unit tests. |
+| `git diff --check` | PASS | No whitespace errors in the PR diff. |
+
+The public PR body and patch were scanned for the real device serial, local user
+paths, TCC database paths, pairing payloads, token-like values, private IP
+addresses, and MAC addresses before updating the PR. The only token-pattern
+match in the patch is the checker's redaction regex literal, not a retained
+credential or pairing payload.
+
 ## 2026-08-22 fail-closed preflight
 
 The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`

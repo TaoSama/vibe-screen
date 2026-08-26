@@ -1,0 +1,182 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256sums_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "version_name": "0.1.0"
+  },
+  "device": {
+    "hdc_target": "recorded hdc list targets -v target",
+    "manufacturer": "Huawei",
+    "model": "MatePad Mini",
+    "os_build": "recorded Settings build",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "gates": [
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "deveco_sdk_and_api_checker",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "signed_release_hap",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "hap_install_launch",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "permission_denial_retry",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "huks_backed_secure_pairing",
+      "secure_pairing_manifest": {
+        "path": "harmony-secure-pairing.json",
+        "schema": "dev.vibescreen.harmony-secure-pairing-gate/v1",
+        "status": "blocked"
+      },
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "authenticated_transport_records",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "credential_revocation_replay",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "h264_hardware_decode",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "hevc_hardware_decode",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "host_protocol_v1_interop",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "resume_background_foreground",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "resume_network_roam",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "resume_host_restart",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "resume_capable_host_interop",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "no_old_epoch_render",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "ui_device_identity_record",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "input_touch_keyboard_pointer_stylus",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "eight_hour_soak",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "harmony-readiness.json"
+      ],
+      "id": "external_latency",
+      "status": "blocked"
+    }
+  ],
+  "host": {
+    "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "commit": "0000000000000000000000000000000000000000",
+    "protocol": "Protocol v1"
+  },
+  "notes": [
+    "Blocked readiness record only; no real MatePad Mini acceptance is claimed.",
+    "Android, simulator, or portable CI output cannot close this HarmonyOS gate.",
+    "Replace each blocked gate with redacted raw MatePad Mini evidence before strict validation."
+  ],
+  "repository": {
+    "commit": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+    "status": "clean",
+    "tree": "9e6240031d5f3a5a6b35e7d32f48676aed5111e4"
+  },
+  "schema": "dev.vibescreen.harmony-device-gates/v1",
+  "toolchain": {
+    "deveco_studio_version": "recorded from DevEco Studio",
+    "harmony_sdk_api": "API 12",
+    "harmony_sdk_version": "recorded SDK version",
+    "hdc_version": "recorded hdc -v",
+    "hvigor_version": "recorded hvigor --version",
+    "ohpm_version": "recorded ohpm --version"
+  }
+}
