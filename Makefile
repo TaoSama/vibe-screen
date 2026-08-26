@@ -225,6 +225,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	ios-videotoolbox-readiness \
 	ios-current-base-manifest \
 	ios-current-base-gate \
+	phase5-host-advanced-adapters-gate \
 	phase5-multi-client-current-base-gate \
 	macos-hardware-compatibility-gate \
 	phase2-tablet-soak-preflight \
@@ -466,6 +467,11 @@ evidence-tools-test:
 
 release-tools-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
+
+phase5-host-advanced-adapters-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 5 host advanced adapters evidence directory" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase5_host_advanced_adapters.py --output "$(EVIDENCE_DIR)/phase5-host-advanced-adapters-readiness.json"
 
 phase0-stable-release-gate:
 	@test -f "$(PHASE0_STABLE_RELEASE_MANIFEST)" || (echo "error: missing Phase 0 stable-release manifest: $(PHASE0_STABLE_RELEASE_MANIFEST)" >&2; exit 2)
