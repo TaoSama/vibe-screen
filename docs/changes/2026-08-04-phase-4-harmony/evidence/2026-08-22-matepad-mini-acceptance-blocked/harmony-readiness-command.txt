@@ -1,0 +1,13 @@
+HarmonyOS readiness: blocked
+report: docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json
+- DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app
+- hvigor not found on PATH
+- ohpm not found on PATH
+- hdc not found on PATH
+- hdc is unavailable
+- signed HAP not found; pass --hap or create exactly one apps/harmony/dist/*/*.hap
+- signature certificate SHA-256 is required and must be non-zero 64-hex
+- SHA256SUMS manifest not found beside the HAP; pass --sha256sums
+- repository has uncommitted changes; final device evidence must bind a clean tree
+- Protocol v1 Host commit is required
+- Protocol v1 Host build SHA-256 is required

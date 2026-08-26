@@ -23,6 +23,26 @@ After coordination grants a short Android lease, atomically create
 immediately after stopping the test client/server and report the release so
 other tasks can proceed.
 
+Before starting any acceptance sequence, collect the unified real-device
+readiness record from the repository root:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=<device-serial> \
+  REAL_DEVICE_GATE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+The default command is read-only. It fails closed when a device lock is present,
+the explicit Android identity does not match the claimed device, ADB reverse is
+missing, the client is not foregrounded, the macOS Host is not listening on TCP
+54321, Host signing/TCC preflight fails, or fresh structured `stream_stats`
+telemetry is absent. If the device owner wants the runner to prepare
+Android-side state, add
+`REAL_DEVICE_GATE_EXTRA_ARGS="--configure-adb-reverse --launch-android-app"`;
+this still does not start the Host, modify TCC, change Keychain state, or clear
+app data. A `ready` result is only a precondition for the formal gate runners;
+it is not USB/LAN stream, latency, soak, Host RSS, or physical-input acceptance.
+
 ## Offline gate
 
 Run this without a device or Mac host:
@@ -217,13 +237,34 @@ read-only fixed-binary preflight and keep it with the evidence directory:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=<evidence-dir> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 Do not run the gesture driver if the preflight result is `blocked`. Record the
 actual device identity from the preflight output; the Nubia P0110/pacific is a
 valid Android substitute for general client dispatch, but it is not Xiaomi
 13/fuxi evidence.
+
+After a rerun, summarize the retained artifacts with the fail-closed checker:
+
+```bash
+make evidence-touch-rerun-summary \
+  EVIDENCE_DIR=<evidence-dir> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
+```
+
+The summary exits zero only when preflight, instrumentation output, Host gesture
+logs, and listen-only event-tap logs together prove the gate. A nonzero summary
+is blocked evidence, not a pass.
 
 ### Legacy compatibility path
 

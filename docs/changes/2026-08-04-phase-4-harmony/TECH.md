@@ -73,9 +73,24 @@ the assigned message-ID high-water and sends ResumeSessionRequest. A result must
 correlate, retain the exact session ID, and advance both payload and envelope
 epoch. Rejection or malformed metadata closes the connection rather than falling
 through to ClientHello on the same transport. Accepted recovery re-enters display
-selection and decoder configuration before input or media reopen. The current
-Mac Host still requires ClientHello first, so this portable state machine does
-not establish resume interoperability.
+selection and decoder configuration before input or media reopen. Post-resume
+old-epoch control envelopes fail closed, while post-resume old-epoch media is
+dropped before current-epoch media is admitted. A rejected resume closes the
+transport scope; host restart is therefore represented by a fresh ClientHello
+on a new transport rather than a same-socket downgrade. These portable checks do
+not establish resume interoperability until the Mac Host has a recorded
+resume-capable run.
+
+`scripts/harmony_host_interop_preflight.py` is the fail-closed evidence boundary
+for that run. It validates a redacted manifest that binds a clean source tree,
+DevEco/Harmony SDK versions, a signed `dev.vibescreen.harmony` HAP, a MatePad
+Mini HarmonyOS identity, a Protocol v1 Host build with a resume-capable
+registry, authenticated transport mode, bounded recovery timing, and explicit
+pass artifacts for HostHello/session/display/video/control/media,
+background/foreground, Wi-Fi loss/restore, host restart fresh-session,
+resume-result success/failure, and old-epoch control/media rejection. Its local
+preflight mode writes blocked readiness evidence when those external
+prerequisites are missing.
 
 Transport close plus decoder stop/release are all attempted even if a sibling
 operation fails. Aggregated cleanup errors remain visible in status diagnostics
@@ -118,15 +133,14 @@ still unwritten.
 Wheel/trackpad axis delivery and the complete physical-key map remain gates
 rather than claims. Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a
 lifecycle-scoped `ControllerEvent` wire contract, and the Harmony portable
-protocol model now mirrors `Capability.CONTROLLER = 26`. The production client
-does not advertise that capability and has no `ControllerEvent` encoder,
-controller lifecycle implementation, or platform routing. The receiver-side
-contract requires synthesizing the same all-zero neutral state for the button
-mask, stick axes, triggers, and hat axes before discarding an active controller
-on disconnect, session teardown, ownership takeover, or transport loss. Harmony
-does not implement that rule, and its portable checks do not prove it.
-DevEco/API-checker, HAP, and device evidence for that path are also absent, so
-controller-specific input remains a gate rather than a claim.
+protocol model now mirrors `Capability.CONTROLLER = 26`. The production source
+advertises that capability, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting controller state, validates lifecycle bounds, and
+sends all-zero neutral `DISCONNECTED` releases before active controller teardown
+or resume. The platform controller route is still a source boundary rather than
+a device result: DevEco/API-checker, HAP, Host interoperability, and MatePad
+evidence for that path remain absent, so controller-specific input remains a
+device acceptance gate rather than a shipped claim.
 
 ## Pairing, privacy, and upgrades
 
@@ -162,6 +176,40 @@ non-exportable key/cryptography provider, controller/UI exchange, authenticated
 record layer, production Authority/Signaling deployment, and compatible Mac Host
 remain required. Existing TCP stays plaintext, and unauthenticated DeviceRevoked
 is deliberately not admitted.
+
+## Authenticated transport contract
+
+Harmony now has a portable record-layer verifier in
+apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts. It is
+transport-neutral TypeScript-compatible ArkTS and takes its SHA-256, HKDF, and
+AES-256-GCM primitives through an injected provider so the production build can
+later bind the same state machine to HUKS-backed non-exportable keys. The Node
+test provider is only a local verifier; it is not production cryptography.
+
+The verifier mirrors the macOS/Android LAN record contract:
+
+- secure-record negotiation uses VSLS request and VSLR response frames, version
+  1, one uncompressed P-256 public key, and mutually exclusive encrypted versus
+  explicit legacy-fallback response flags;
+- session_id is hashed to 16 bytes inside each record header, session_epoch is
+  part of the authenticated header, and key epoch starts at 1 then advances
+  exactly one step per rotation;
+- the 51-byte record header is VSCR, version, session hash, session epoch, key
+  epoch, sender, channel, and nonce, and is always AES-256-GCM AAD;
+- nonce format is channel as big-endian UInt32 plus sequence as big-endian
+  UInt64, reserved from a monotonic per channel/sender/key-epoch counter;
+- control and bulk reject any non-increasing sequence, while media and audio use
+  the same 64-bit replay window as the Host and Android layers;
+- malformed records, wrong channel/sender/session/key epoch, stale session
+  epoch, wrong key, tamper, replay, non-positive nonce sequence, and closed
+  cipher state fail closed before dispatch.
+
+This is still not production authenticated Harmony transport. HarmonyTransport
+continues to offer the plaintext 0x0d Protocol v1 upgrade and five-byte frame
+format. Closing the gate requires a HUKS-backed provider, secure-pairing
+controller/UI exchange, socket wrapping that refuses implicit plaintext, Host
+interop logs, and MatePad Mini evidence proving encrypted control/media records
+on the wire.
 
 Alias operations are serialized. Existing records use `asset.update`; missing
 records use `asset.add`, so an update failure never deletes the prior host or

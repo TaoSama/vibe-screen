@@ -256,6 +256,38 @@ func testNativeInputAndBoundedReconnect() throws {
     )
     try require(keyboardState.pressedKeys.isEmpty, "successful key release stayed active")
     try require(!keyboardState.contains(usbHIDUsage: 0x04), "released key remained captured")
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0,
+            standardByteNegotiated: true
+        ) == 0,
+        "explicit key release kept press-time modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: true
+        ) == USBHIDModifierWire.leftShift,
+        "explicit key release lost current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: false
+        ) == USBHIDModifierWire.leftControl,
+        "legacy explicit key release lost remapped current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0x100,
+            standardByteNegotiated: true
+        ) == nil,
+        "explicit key release accepted reserved modifier bit"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForCleanupRelease == 0,
+        "cleanup key release did not clear modifiers"
+    )
 
     try require(
         try NativeInputTargetResolver.target(selectedStreamID: nil, bindings: []) == nil,
@@ -320,6 +352,14 @@ func testNativeInputAndBoundedReconnect() throws {
     try require(
         ReconnectFailure.classify(TCPTransportError.authenticationRequired) == .permanent,
         "authentication failure was retryable"
+    )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: true) == .transientTransport,
+        "resumable disconnect notice was not retryable"
+    )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: false) == .permanent,
+        "terminal disconnect notice was retryable"
     )
 }
 
@@ -904,11 +944,17 @@ func testClipboardAndManagedPolicy() throws {
         "managed custom gestures deny must not disable host actions"
     )
 
-    var remoteDeniedStatus = ManagedPolicy.unmanaged.protocolStatus
-    remoteDeniedStatus.managed = true
-    remoteDeniedStatus.clipboardAllowed = false
-    remoteDeniedStatus.hostActionsAllowed = false
-    remoteDeniedStatus.maximumFileBytes = 128
+    let remoteDeniedStatus = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: false,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: false,
+        maximumFileBytes: 128,
+        allowedHosts: []
+    ).protocolStatus
     var resolver = ManagedPolicyResolver(localPolicy: managed)
     resolver.setRemote(ManagedPolicy(remoteStatus: remoteDeniedStatus))
     try require(
@@ -918,9 +964,17 @@ func testClipboardAndManagedPolicy() throws {
         "managed remote deny was not applied"
     )
 
-    var remoteAllowedStatus = ManagedPolicy.unmanaged.protocolStatus
-    remoteAllowedStatus.managed = true
-    remoteAllowedStatus.maximumFileBytes = 4_096
+    let remoteAllowedStatus = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: true,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: true,
+        maximumFileBytes: 4_096,
+        allowedHosts: []
+    ).protocolStatus
     resolver.setRemote(ManagedPolicy(remoteStatus: remoteAllowedStatus))
     try require(
         resolver.effectivePolicy.clipboardAllowed

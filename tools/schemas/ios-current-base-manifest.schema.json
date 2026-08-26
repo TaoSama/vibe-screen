@@ -19,6 +19,7 @@
     "build_evidence",
     "signing_readiness_gate",
     "signing",
+    "videotoolbox_readiness_gates",
     "devices",
     "gates",
     "android_evidence_used_for_ios_gates",
@@ -155,6 +156,49 @@
         "signed_archive_sha256": {"type": ["string", "null"]}
       }
     },
+    "videotoolbox_readiness_gates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "kind",
+          "profile",
+          "runtime_class",
+          "verdict",
+          "can_close_device_family_videotoolbox_gate",
+          "can_close_phase5_hardware_videotoolbox_gate",
+          "artifact_paths",
+          "artifact_checks",
+          "blocking_reasons"
+        ],
+        "properties": {
+          "schema_version": {"const": "vibescreen.evidence/v1"},
+          "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+          "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+          "runtime_class": {"enum": ["physical_iphone", "physical_ipad"]},
+          "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+          "can_close_device_family_videotoolbox_gate": {"type": "boolean"},
+          "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+          "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "artifact_checks": {"type": "array"},
+          "blocking_reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "requirement"],
+              "properties": {
+                "field": {"type": "string", "minLength": 1},
+                "requirement": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    },
     "devices": {
       "type": "array",
       "items": {
@@ -183,6 +227,7 @@
         "audio_playback",
         "hdr_output",
         "advanced_adapters",
+        "host_advanced_adapters",
         "trusted_lan_secure_records"
       ],
       "properties": {
@@ -196,6 +241,7 @@
         "audio_playback": {"$ref": "#/$defs/gate_record"},
         "hdr_output": {"$ref": "#/$defs/gate_record"},
         "advanced_adapters": {"$ref": "#/$defs/gate_record"},
+        "host_advanced_adapters": {"$ref": "#/$defs/gate_record"},
         "trusted_lan_secure_records": {"$ref": "#/$defs/gate_record"}
       }
     },
@@ -207,10 +253,11 @@
     "gate_record": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "required": ["status", "category", "owner_pr", "requirement", "blocking", "evidence", "notes"],
       "properties": {
         "status": {"type": "string"},
         "category": {"enum": ["device_acceptance", "broader_phase5"]},
+        "owner_pr": {"type": "string", "pattern": "^#[0-9]+$"},
         "requirement": {"type": "string", "minLength": 1},
         "blocking": {"type": "boolean"},
         "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},

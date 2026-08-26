@@ -417,9 +417,17 @@ enum ProtocolV1SelfTest {
                 return
             }
 
-            var denied = ManagedPolicy.unmanaged.protocolStatus
-            denied.managed = true
-            denied.allowedHosts = ["other-host"]
+            let denied = ManagedPolicy(
+                isManaged: true,
+                clipboardAllowed: true,
+                fileTransferAllowed: true,
+                audioAllowed: true,
+                wakeAllowed: true,
+                customGesturesAllowed: true,
+                hostActionsAllowed: true,
+                maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+                allowedHosts: ["other-host"]
+            ).protocolStatus
             let deniedActions = session.handleControl(try envelope(
                 id: 2,
                 payload: .managedPolicyStatus(denied)

@@ -12,11 +12,15 @@ Protocol v1 base stylus (position, pressure, tilt) and extended stylus
 (tool kind, barrel buttons, contact/proximity state) encoding and capability
 gating. This is still a development preview. The portable core also implements
 fail-closed ResumeSessionResult, HUKS-profile-gated single-use
-PairingOffer/Request/Result processing, and durable credential, control-replay,
-and revocation state. Legacy security records and crypto providers that cannot
-prove a non-exportable Harmony HUKS identity fail closed before authorization.
-No DevEco SDK was available for this record, so ArkTS compilation, HAP output,
-platform API behavior, and device interoperability are not claimed.
+PairingOffer/Request/Result processing, durable credential, control-replay, and
+revocation state, plus a transport-neutral AES-256-GCM application-record
+verifier that matches the macOS/Android security fixture for directional
+control/media/audio/bulk keys, session/key epochs, channel-bound nonces, replay
+windows, wrong-key rejection, and explicit legacy fallback handling. Legacy
+security records and crypto providers that cannot prove a non-exportable Harmony
+HUKS identity fail closed before authorization. No DevEco SDK was available for
+this record, so ArkTS compilation, HAP output, platform API behavior,
+production authenticated transport, and device interoperability are not claimed.
 
 ## Requirements
 
@@ -76,14 +80,30 @@ make build-debug
 make build-release
 ```
 
-Both targets call real `ohpm install` and Hvigor `assembleHap`; there is no Node
-packaging substitute. A release profile and signing certificate must be
-configured locally. `make release` accepts exactly one signed release HAP,
-copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The build must be repeated
-from a clean checkout in DevEco before any release claim. The HAP raw resources
-carry the repository MIT license and Harmony runtime notice; `make release`
-also copies the root license/notices beside the HAP and includes them in the
-checksum manifest.
+The Host resume interop evidence gate is separate from the portable source
+checks and from producing a HAP. For a local readiness bundle that remains
+blocked until DevEco, HDC, a signed HAP, a HarmonyOS NEXT MatePad Mini, and a
+resume-capable Host run are available:
+
+```bash
+make harmony-host-interop-preflight EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+For a real acceptance package, fill `harmony-host-interop.json` from the raw
+HarmonyOS device and Host logs, then run:
+
+```bash
+make harmony-host-interop-gate EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+`build-debug` and `build-release` call real `ohpm install` and Hvigor
+`assembleHap`; there is no Node packaging substitute. A release profile and
+signing certificate must be configured locally. `make release` accepts exactly
+one signed release HAP, copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The
+build must be repeated from a clean checkout in DevEco before any release claim.
+The HAP raw resources carry the repository MIT license and Harmony runtime
+notice; `make release` also copies the root license/notices beside the HAP and
+includes them in the checksum manifest.
 
 ## Run in trusted-LAN development mode
 
@@ -101,19 +121,24 @@ checksum manifest.
 This mode is authenticated neither by the imported link nor by the current
 Harmony controller and is not encrypted. Use it only on a trusted LAN. The
 portable security core validates PairingOffer/PairingRequest/PairingResult,
-consumes every offer once even on failure, and can persist either a verified
+consumes every offer once even on failure, can persist either a verified
 credential or a revocation tombstone only when the supplied cryptography profile
 declares `harmony_huks_v1`, non-exportable P-256 signing keys, HUKS-bound
 credential storage, a persistent identity, and an Authority device ID matching
-the signed device identity. The production Harmony HUKS provider,
-controller/UI exchange, record layer, and compatible Mac host remain integration
-gates; the UI does not present address import as secure pairing.
+the signed device identity, and now verifies the shared AES-256-GCM record-layer
+contract against the macOS/Android fixture. The production Harmony HUKS
+cryptography provider, controller/UI exchange, record-layer socket integration,
+and compatible Mac host remain integration gates; the UI does not present
+address import as secure pairing and legacy plaintext fallback must be reported
+separately from encrypted LAN evidence.
 
 ## Architecture
 
 - `core/protocol`: dependency-free Protocol v1 codec with formal golden vectors;
 - `core/session`: product negotiation, message/epoch validation, and backoff;
 - `core/transport`: streaming upgrade parser and control/video framing;
+- `core/security`: pairing/credential lifecycle plus transport-neutral
+  authenticated-record contracts for the shared AES-256-GCM record format;
 - `core/media`: media packet parser and capacity-one latest-frame queue;
 - `core/input`: letterbox/rotation mapping and USB HID helpers;
 - `platform`: TCP, Asset Store, AVCodec, lifecycle, and session controller seams;
@@ -178,8 +203,8 @@ incomplete.
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
-  authenticated record layer, QR camera import, Authority/Signaling admission,
-  and Mac interoperability;
+  authenticated record-layer socket integration, QR camera import,
+  Authority/Signaling admission, and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
 - Mac Host resume registry/first-message support and resume interoperability;
 - controller-specific input on-device confirmation, extended stylus (eraser,

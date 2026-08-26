@@ -32,17 +32,7 @@ final class ManagedConfigurationProvider: ObservableObject {
             policy = resolver.effectivePolicy
             errorMessage = nil
         } catch {
-            resolver.setLocal(ManagedPolicy(
-                isManaged: true,
-                clipboardAllowed: false,
-                fileTransferAllowed: false,
-                audioAllowed: false,
-                wakeAllowed: false,
-                customGesturesAllowed: false,
-                hostActionsAllowed: false,
-                maximumFileBytes: 0,
-                allowedHosts: []
-            ))
+            resolver.setLocal(.failClosed)
             policy = resolver.effectivePolicy
             errorMessage = error.localizedDescription
         }

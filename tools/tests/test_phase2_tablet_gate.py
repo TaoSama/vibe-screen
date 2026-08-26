@@ -281,8 +281,33 @@ def write_manifest(
             "battery_temperature_limit_celsius": battery_temperature_limit_celsius,
             "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
         },
+        "gate_owners": {
+            "stand_mounted_charging": "phase2-device-environment",
+            "thermal_power_sampling": "phase2-device-environment",
+            "posture_and_mount": "phase2-device-environment",
+            "eight_hour_sustained_stream": "phase2-tablet-gate",
+        },
     }
     path = directory / "phase2-tablet-manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def write_tablet_manifest(directory: Path, **overrides) -> Path:
+    path = write_manifest(directory, **overrides)
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["device"]["identity"] = {
+        "adb_serial": "tablet-serial",
+        "device_serial": "tablet-serial",
+        "manufacturer": "example",
+        "model": "Tab 8 Pro",
+        "codename": "tab8pro",
+        "android_release": "16",
+        "sdk": "36",
+        "build_fingerprint": "example/tab8pro/test",
+        "abi": "arm64-v8a",
+    }
+    manifest["device"]["tablet_size_inches"] = "8.8"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
 
@@ -388,7 +413,7 @@ class Phase2TabletGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             report_path = write_report(directory)
-            write_manifest(directory)
+            write_tablet_manifest(directory)
             write_evidence_artifacts(directory)
             write_device_environment_summary(directory)
             gate = derive_gate(
@@ -400,12 +425,15 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["verdict"], "pass")
         self.assertEqual(gate["reasons"], [])
         self.assertTrue(gate["evidence_package"]["passed"])
+        self.assertTrue(
+            gate["evidence_package"]["gate_owners"]["stand_mounted_charging"]["passed"]
+        )
 
     def test_missing_optional_host_log_does_not_block_package(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             report_path = write_report(directory)
-            write_manifest(directory)
+            write_tablet_manifest(directory)
             write_evidence_artifacts(directory)
             write_device_environment_summary(directory)
             (directory / "host.log").unlink()
@@ -439,11 +467,58 @@ class Phase2TabletGateTest(unittest.TestCase):
             gate["reasons"],
         )
 
-    def test_missing_raw_evidence_package_artifact_is_insufficient(self):
+    def test_p0110_cannot_be_mislabeled_as_physical_tablet(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             report_path = write_report(directory)
             write_manifest(directory)
+            write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertFalse(
+            gate["evidence_package"]["manifest"]["not_nubia_p0110_substitute"]["passed"]
+        )
+        self.assertIn(
+            "insufficient evidence package: manifest.not_nubia_p0110_substitute",
+            gate["reasons"],
+        )
+
+    def test_physical_tablet_requires_size_in_range(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            manifest_path = write_tablet_manifest(directory)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["device"]["tablet_size_inches"] = None
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            write_evidence_artifacts(directory)
+            write_device_environment_summary(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=manifest_path,
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertFalse(
+            gate["evidence_package"]["manifest"]["tablet_size_inches"]["passed"]
+        )
+        self.assertIn(
+            "insufficient evidence package: manifest.tablet_size_inches",
+            gate["reasons"],
+        )
+
+    def test_missing_raw_evidence_package_artifact_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_tablet_manifest(directory)
             write_evidence_artifacts(directory)
             write_device_environment_summary(directory)
             (directory / "adb-power-after.txt").unlink()
@@ -515,7 +590,7 @@ class Phase2TabletGateTest(unittest.TestCase):
                 battery_level_first=90.0,
                 battery_level_final=84.0,
             )
-            write_manifest(
+            write_tablet_manifest(
                 directory,
                 thermal_limit_status=1,
                 battery_temperature_limit_celsius=40.0,
@@ -544,7 +619,7 @@ class Phase2TabletGateTest(unittest.TestCase):
                 battery_status_counts={"2": 960, "3": 1},
                 plugged_counts={"0": 1, "1": 960},
             )
-            write_manifest(directory)
+            write_tablet_manifest(directory)
             write_evidence_artifacts(directory)
             write_device_environment_summary(directory)
             gate = derive_gate(
@@ -645,7 +720,7 @@ class Phase2TabletGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             report_path = write_report(directory)
-            manifest_path = write_manifest(directory)
+            manifest_path = write_tablet_manifest(directory)
             write_evidence_artifacts(directory)
             write_device_environment_summary(directory)
             output = directory / "gate.json"

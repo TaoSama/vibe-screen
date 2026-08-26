@@ -12,6 +12,7 @@ from vibescreen_evidence.ios_current_base_gate import derive_gate
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
+    GATE_OWNERS,
     SOURCE_DOCS,
     build_manifest,
 )
@@ -20,6 +21,8 @@ from vibescreen_evidence.ios_current_base_manifest import (
 MODULE = "vibescreen_evidence.ios_current_base_gate"
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "ios-current-base-gate.schema.json"
 CURRENT_BASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+IPHONE_VIDEOTOOLBOX_ARTIFACT = "physical_iphone-videotoolbox-h264-hevc-frames-telemetry.json"
+IPAD_VIDEOTOOLBOX_ARTIFACT = "physical_ipad-videotoolbox-h264-hevc-frames-telemetry.json"
 BLOCKED_OWNER_EVIDENCE = (
     Path(__file__).resolve().parents[2]
     / "docs"
@@ -51,6 +54,29 @@ def write_manifest(root: Path, manifest: dict[str, object]) -> Path:
     path = root / "ios-current-base-manifest.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
+
+
+def make_videotoolbox_readiness_gate(runtime_class: str, artifact_path: str) -> dict[str, object]:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "ios_hardware_videotoolbox_readiness",
+        "profile": "ios-hardware-videotoolbox-readiness",
+        "runtime_class": runtime_class,
+        "verdict": "pass",
+        "can_close_device_family_videotoolbox_gate": True,
+        "can_close_phase5_hardware_videotoolbox_gate": False,
+        "artifact_paths": [artifact_path],
+        "artifact_checks": [
+            {
+                "path": artifact_path,
+                "exists": True,
+                "non_empty": True,
+                "under_evidence_dir": True,
+                "valid_ios_videotoolbox_source": True,
+            }
+        ],
+        "blocking_reasons": [],
+    }
 
 
 def complete_manifest(root: Path) -> dict[str, object]:
@@ -125,6 +151,14 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "evidence": ["ipad-install.log"],
         },
     ]
+    manifest["videotoolbox_readiness_gates"] = [
+        make_videotoolbox_readiness_gate(
+            "physical_iphone", IPHONE_VIDEOTOOLBOX_ARTIFACT
+        ),
+        make_videotoolbox_readiness_gate(
+            "physical_ipad", IPAD_VIDEOTOOLBOX_ARTIFACT
+        ),
+    ]
     gates = manifest["gates"]
     assert isinstance(gates, dict)
     for name in [*FORMAL_DEVICE_GATES, *BROADER_GATES]:
@@ -132,6 +166,8 @@ def complete_manifest(root: Path) -> dict[str, object]:
         assert isinstance(gate, dict)
         gate["status"] = "pass"
         gate["evidence"] = [f"{name}.json"]
+    gates["videotoolbox_h264"]["evidence"] = [IPHONE_VIDEOTOOLBOX_ARTIFACT]
+    gates["videotoolbox_hevc"]["evidence"] = [IPAD_VIDEOTOOLBOX_ARTIFACT]
     hdr_gate = gates["hdr_output"]
     assert isinstance(hdr_gate, dict)
     hdr_gate["evidence"] = [
@@ -205,6 +241,27 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_ios_device_acceptance"])
         self.assertFalse(report["can_close_current_base_aggregate"])
         self.assertIn("insufficient: hdr_output", report["reasons"])
+        self.assertIn("insufficient: host_advanced_adapters", report["reasons"])
+
+    def test_wrong_gate_owner_cannot_pass_even_with_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            gate = gates["videotoolbox_h264"]
+            assert isinstance(gate, dict)
+            gate["owner_pr"] = "#290"
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: videotoolbox_h264", report["reasons"])
+        h264 = report["checks"]["formal_device_gates"]["videotoolbox_h264"]
+        self.assertFalse(h264["passed"])
+        self.assertEqual(GATE_OWNERS["videotoolbox_h264"], "#251")
 
     def test_hdr_output_requires_dedicated_owner_gate_evidence(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -236,6 +293,8 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_ios_device_acceptance"])
         self.assertTrue(report["can_close_current_base_aggregate"])
         self.assertTrue(report["can_claim_device_pass"])
+        self.assertEqual(report["gate_owners"]["videotoolbox_h264"], "#251")
+        self.assertEqual(report["gate_owners"]["host_advanced_adapters"], "#253")
 
     def test_manifest_contract_violation_cannot_pass(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -293,6 +352,85 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+
+    def test_videotoolbox_readiness_gates_required_for_device_pass(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            del manifest["videotoolbox_readiness_gates"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["derivation_status"], "failed")
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("videotoolbox_readiness_gates", report["reasons"][0])
+
+    def test_videotoolbox_readiness_requires_both_iphone_and_ipad(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest["videotoolbox_readiness_gates"] = [
+                make_videotoolbox_readiness_gate(
+                    "physical_iphone", IPHONE_VIDEOTOOLBOX_ARTIFACT
+                )
+            ]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: physical_ipad_videotoolbox_readiness", report["reasons"])
+
+    def test_videotoolbox_readiness_rejects_blocked_verdict(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            readiness_gates = manifest["videotoolbox_readiness_gates"]
+            assert isinstance(readiness_gates, list)
+            ipad_gate = readiness_gates[1]
+            assert isinstance(ipad_gate, dict)
+            ipad_gate["verdict"] = "blocked"
+            ipad_gate["can_close_device_family_videotoolbox_gate"] = False
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("blocked: physical_ipad_videotoolbox_readiness", report["reasons"])
+
+    def test_videotoolbox_readiness_rejects_phase5_close_claim(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            readiness_gates = manifest["videotoolbox_readiness_gates"]
+            assert isinstance(readiness_gates, list)
+            iphone_gate = readiness_gates[0]
+            assert isinstance(iphone_gate, dict)
+            iphone_gate["can_close_phase5_hardware_videotoolbox_gate"] = True
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("blocked: physical_iphone_videotoolbox_readiness", report["reasons"])
+
+    def test_videotoolbox_codec_gates_must_link_to_readiness_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            vt_h264 = gates["videotoolbox_h264"]
+            assert isinstance(vt_h264, dict)
+            vt_h264["evidence"] = ["unlinked-h264.json"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("blocked: videotoolbox_h264_links_to_readiness", report["reasons"])
 
     def test_retained_blocked_signing_owner_record_is_consumed_but_cannot_close(self):
         manifest_path = BLOCKED_OWNER_EVIDENCE / "ios-current-base-manifest.json"
@@ -389,6 +527,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             "signing_entitlements": lambda manifest: manifest["signing"].pop("entitlements_recorded"),
             "device": lambda manifest: manifest["devices"][0].pop("runtime_class"),
             "gate": lambda manifest: manifest["gates"]["signing"].pop("status"),
+            "gate_owner": lambda manifest: manifest["gates"]["signing"].pop("owner_pr"),
         }
         for label, mutate in cases.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory_name:
