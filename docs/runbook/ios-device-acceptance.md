@@ -85,7 +85,7 @@ below passes on real iPhone and iPad hardware:
 | Device install | E2 | F2 |
 | Protocol session | E3 | F3 |
 | VideoToolbox decode | E4 | F4 |
-| Input | E5 | F5 |
+| Native input | E5 | F5 |
 | Reconnect | E6 | F6 |
 | Audio | E7 | F7 |
 
@@ -103,8 +103,11 @@ Evidence requirements:
 - E4: H.264 and HEVC runs with codec choice, SPS/PPS or VPS/SPS/PPS evidence,
   stream/config epoch telemetry, dropped frames, decoder error logs, thermal
   state, and power state.
-- E5: Touch, drag, hardware keyboard modifiers, and hover or pointer accessory
-  behavior with host acknowledgements and selected display/stream IDs.
+- E5: Native-input behavior is owned by
+  `phase5-ios-native-input-behavior`. The run must record touch tap, touch
+  drag, hardware keyboard press/release, hardware keyboard modifier cleanup,
+  hover or pointer accessory movement, Host acknowledgements, and selected
+  display/stream IDs from signed iPhone and iPad app runs.
 - E6: Transient network interruption and heartbeat timeout cases with reconnect
   attempt timestamps, final state, no stale-epoch render, and measured reconnect
   duration.
@@ -119,7 +122,8 @@ Fail-closed rules:
 - F3: The macOS loopback gate cannot satisfy app/device session evidence.
 - F4: Android MediaCodec, synthetic media, or a decoded still image is not
   hardware VideoToolbox evidence.
-- F5: Offline input encoding tests or Android CGEvent evidence do not close iOS
+- F5: Offline input encoding tests, iPhone Simulator UI tests, Android CGEvent
+  evidence, or ADB/HID evidence from another platform do not close iOS native
   input behavior.
 - F6: Manual relaunch, auth/protocol validation failure, or missing epoch
   telemetry leaves reconnect open.
@@ -329,3 +333,58 @@ secure-record gates all carry retained evidence.
 Store raw logs under the active Phase 5 evidence directory or an external
 release bundle, depending on privacy review. Commit only sanitized summaries,
 hash manifests, and privacy scans.
+
+## Native input gate
+
+For the E5 native-input slice, write a sanitized
+`ios-native-input-observations.json` next to the retained logs, then derive the
+fail-closed summary:
+
+```bash
+make ios-native-input-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The command writes `ios-native-input-gate.json`. It is a readiness/evidence
+owner for the iOS native-input behavior gate, not a collector. A `pass` closes
+only the native-input behavior gate for the recorded iOS device, signed app,
+Host build, input accessories, and retained logs. `blocked`, `insufficient`, or
+`fail` keeps the gate open. The gate fails if the observations try to use
+Android evidence, Simulator evidence, or offline tests as real iOS input
+behavior.
+
+Minimal observation template:
+
+~~~json
+{
+  "run_id": "ios-native-input-<date>-<device>",
+  "ios_device_lock_acquired": false,
+  "device_identity_recorded": false,
+  "device_is_iphone_or_ipad": false,
+  "iphone_native_input_observed": false,
+  "ipad_native_input_observed": false,
+  "app_revision_recorded": false,
+  "signed_app_installed": false,
+  "local_network_permission_recorded": false,
+  "baseline_machost_listener_observed": false,
+  "protocol_session_negotiated": false,
+  "input_capabilities_negotiated": false,
+  "display_stream_binding_recorded": false,
+  "touch_tap_observed": false,
+  "touch_drag_observed": false,
+  "hardware_keyboard_attached": false,
+  "keyboard_press_release_observed": false,
+  "keyboard_modifier_observed": false,
+  "keyboard_modifier_release_no_leak_observed": false,
+  "hover_pointer_accessory_attached": false,
+  "hover_pointer_move_observed": false,
+  "host_input_acknowledgements_retained": false,
+  "ios_logs_retained": false,
+  "host_logs_retained": false,
+  "android_evidence_used_for_ios_input": false,
+  "simulator_evidence_used_for_ios_input": false,
+  "offline_tests_used_as_device_evidence": false,
+  "artifact_paths": [],
+  "blocking_notes": [],
+  "notes": ""
+}
+~~~

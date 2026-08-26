@@ -10,6 +10,9 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
+    NATIVE_INPUT_DISALLOWED_OBSERVATIONS,
+    NATIVE_INPUT_REQUIRED_OBSERVATIONS,
+    NATIVE_INPUT_REQUIRED_TRUE_FIELDS,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -27,6 +30,43 @@ def make_docs(root: Path) -> None:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("fixture\n", encoding="utf-8")
+
+
+def make_native_input_artifacts(root: Path) -> list[str]:
+    artifacts = ["logs/ios-native-input.log", "logs/host-native-input.log"]
+    for artifact in artifacts:
+        target = root / artifact
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture\n", encoding="utf-8")
+    return artifacts
+
+
+def native_input_gate_summary(root: Path) -> dict[str, object]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "ios_native_input_behavior",
+        "profile": "ios-native-input-behavior",
+        "gate_owner": "phase5-ios-native-input-behavior",
+        "verdict": "pass",
+        "can_close_ios_native_input_gate": True,
+        **{field: True for field in NATIVE_INPUT_REQUIRED_TRUE_FIELDS},
+        "observations": {
+            **{field: True for field in NATIVE_INPUT_REQUIRED_OBSERVATIONS},
+            **{field: False for field in NATIVE_INPUT_DISALLOWED_OBSERVATIONS},
+        },
+        "owner": {
+            "role": "ios_native_input_behavior_current_base_owner",
+            "head_ref": "codex/ios-native-input-readiness-gate",
+            "pull_request": "#257",
+            "repository": "TaoSama/vibe-screen",
+            "scope": "README Phase 5 iOS native-input behavior gate",
+        },
+        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
+        "missing_requirements": [],
+        "blocking_reasons": [],
+        "disallowed_evidence": [],
+        "artifact_paths": make_native_input_artifacts(root),
+    }
 
 
 class IOSCurrentBaseManifestTests(unittest.TestCase):
@@ -51,6 +91,8 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
         self.assertFalse(manifest["signing_readiness_gate"]["provided"])
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertFalse(manifest["native_input_gate"]["provided"])
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertEqual(manifest["signing"]["status"], "blocked")
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
@@ -307,6 +349,124 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             },
         )
         self.assertIn("docs/runbook/hdr-color-acceptance.md", manifest["source_docs"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_binds_ios_native_input_gate_summary(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = root / "ios-native-input-gate.json"
+            native_input_gate.write_text(
+                json.dumps(native_input_gate_summary(root)),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertTrue(manifest["native_input_gate"]["provided"])
+        self.assertEqual(manifest["native_input_gate"]["kind"], "ios_native_input_behavior")
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "pass")
+        self.assertTrue(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_contradictory_native_input_summary_fails_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = root / "ios-native-input-gate.json"
+            summary = native_input_gate_summary(root)
+            observations = summary["observations"]
+            assert isinstance(observations, dict)
+            observations["simulator_evidence_used_for_ios_input"] = True
+            summary["disallowed_evidence"] = [
+                {
+                    "field": "simulator_evidence_used_for_ios_input",
+                    "reason": "Simulator evidence cannot close real iOS native-input behavior",
+                }
+            ]
+            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertIn(
+            "ios native-input gate disallowed_evidence is not empty",
+            manifest["native_input_gate"]["missing_requirements"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_summary_requires_retained_artifact_files(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = root / "ios-native-input-gate.json"
+            summary = native_input_gate_summary(root)
+            summary["artifact_paths"] = ["logs/missing-native-input.log"]
+            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertIn(
+            "ios native-input gate artifact_paths[0] is missing from the evidence bundle",
+            manifest["native_input_gate"]["missing_requirements"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_summary_requires_dedicated_owner_pr(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = root / "ios-native-input-gate.json"
+            summary = native_input_gate_summary(root)
+            owner = summary["owner"]
+            assert isinstance(owner, dict)
+            owner["pull_request"] = "#999"
+            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertIn(
+            "ios native-input gate owner PR is not #257",
+            manifest["native_input_gate"]["missing_requirements"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_summary_requires_iphone_and_ipad_observations(self, state, environment):
+        for field in ("iphone_native_input_observed", "ipad_native_input_observed"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory_name:
+                state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+                environment.return_value = {}
+                root = Path(directory_name)
+                make_docs(root)
+                native_input_gate = root / "ios-native-input-gate.json"
+                summary = native_input_gate_summary(root)
+                observations = summary["observations"]
+                assert isinstance(observations, dict)
+                observations[field] = False
+                native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
+
+                manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+            self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+            self.assertIn(
+                "ios native-input observation " + field + " is not true",
+                manifest["native_input_gate"]["missing_requirements"],
+            )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
