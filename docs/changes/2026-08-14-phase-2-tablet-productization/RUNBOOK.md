@@ -274,6 +274,7 @@ make phase2-tablet-soak-preflight \
   PHASE2_VIDEO_PREFERENCES="preflight only" \
   PHASE2_HOST_IDENTITY="$(uname -a)" \
   PHASE2_HOST_BUILD="not stable-signed formal Host for 8h gate" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate" \
   PHASE2_SOAK_PREFLIGHT_DURATION=2s \
   PHASE2_SOAK_INTERVAL=1s
 ```
@@ -306,6 +307,7 @@ make phase2-tablet-soak-run \
   PHASE2_VIDEO_PREFERENCES="Balanced, 60 FPS, AUTO bitrate" \
   PHASE2_HOST_IDENTITY="Mac model and macOS version" \
   PHASE2_HOST_BUILD="signed Host build, signing identity, and SHA" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate" \
   PHASE2_HOST_PID="$HOST_PID" \
   PHASE2_HOST_TELEMETRY_JSONL="$PHASE2_HOST_TELEMETRY_JSONL" \
   PHASE2_APK_PATH=baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk

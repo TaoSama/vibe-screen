@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from vibescreen_evidence.phase2_tablet_soak import (
     DeviceLock,
+    Phase2SoakError,
     acquire_device_locks,
     archive_host_telemetry,
     append_preflight_blockers,
@@ -389,6 +390,30 @@ class Phase2TabletSoakTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
         runner.assert_called_once()
+
+    def test_preflight_rejects_gate_owners_before_device_collection(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            with (
+                patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", directory / "soak.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.ANDROID_LOCK", directory / "android.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.collect_static_artifacts") as collect,
+                patch("vibescreen_evidence.phase2_tablet_soak.acquire_device_locks") as acquire_locks,
+            ):
+                with self.assertRaisesRegex(
+                    Phase2SoakError,
+                    "missing required owner",
+                ):
+                    run_or_preflight(
+                        make_args(
+                            directory,
+                            gate_owners="stand_mounted_charging=phase2-device-environment",
+                        ),
+                        ["phase2-tablet-soak"],
+                    )
+
+        acquire_locks.assert_not_called()
+        collect.assert_not_called()
 
     def test_formal_run_logcat_failure_blocks_and_skips_gate(self):
         device_info = {

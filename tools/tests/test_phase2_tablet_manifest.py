@@ -150,6 +150,56 @@ class Phase2TabletManifestTests(unittest.TestCase):
         self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
 
     @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_validates_direct_gate_owner_mapping(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+
+        invalid_cases = (
+            ({"stand_mounted_charging": "phase2-device-environment"}, "missing required owner"),
+            (
+                {
+                    "stand_mounted_charging": "phase2-device-environment",
+                    "thermal_power_sampling": "phase2-device-environment",
+                    "posture_and_mount": "phase2-device-environment",
+                    "eight_hour_sustained_stream": "phase2-tablet-gate",
+                    "unexpected_gate": "phase2-tablet-gate",
+                },
+                "unknown owner key",
+            ),
+            (
+                {
+                    "stand_mounted_charging": "phase2-device-environment",
+                    "thermal_power_sampling": "",
+                    "posture_and_mount": "phase2-device-environment",
+                    "eight_hour_sustained_stream": "phase2-tablet-gate",
+                },
+                "gate_owners.thermal_power_sampling must be non-empty",
+            ),
+        )
+
+        for owners, expected_error in invalid_cases:
+            with self.subTest(expected_error=expected_error):
+                with self.assertRaisesRegex(ManifestError, expected_error):
+                    make_manifest(gate_owners=owners)
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
+    def test_build_manifest_normalizes_direct_gate_owner_mapping(self, state):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+
+        manifest = make_manifest(
+            gate_owners={
+                "stand_mounted_charging": "  phase2-device-environment  ",
+                "thermal_power_sampling": " phase2-device-environment ",
+                "posture_and_mount": " phase2-device-environment ",
+                "eight_hour_sustained_stream": " phase2-tablet-gate ",
+            }
+        )
+
+        self.assertEqual(
+            manifest["gate_owners"]["stand_mounted_charging"],
+            "phase2-device-environment",
+        )
+
+    @patch("vibescreen_evidence.phase2_tablet_manifest.repository_state")
     def test_build_manifest_matches_schema_required_fields(self, state):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         manifest = make_manifest()

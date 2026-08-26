@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import json
 import sys
 import uuid
@@ -129,15 +130,34 @@ def _gate_owners(value: str) -> dict[str, str]:
         if normalized_key in owners:
             raise ManifestError(f"--gate-owners repeats {normalized_key}")
         owners[normalized_key] = owner.strip()
+    try:
+        return _validated_gate_owners(owners)
+    except ManifestError as error:
+        raise ManifestError(str(error).replace("gate_owners", "--gate-owners", 1)) from error
+
+
+def _validated_gate_owners(value: Mapping[str, Any]) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise ManifestError("gate_owners must be a mapping")
+    owners: dict[str, str] = {}
+    for key, owner in value.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            raise ManifestError("gate_owners contains an empty owner key")
+        if normalized_key in owners:
+            raise ManifestError(f"gate_owners repeats {normalized_key}")
+        if not isinstance(owner, str) or not owner.strip():
+            raise ManifestError(f"gate_owners.{normalized_key} must be non-empty")
+        owners[normalized_key] = owner.strip()
     missing = [key for key in REQUIRED_GATE_OWNER_KEYS if key not in owners]
     if missing:
         raise ManifestError(
-            "--gate-owners is missing required owner(s): " + ", ".join(missing)
+            "gate_owners is missing required owner(s): " + ", ".join(missing)
         )
     unknown = [key for key in owners if key not in REQUIRED_GATE_OWNER_KEYS]
     if unknown:
         raise ManifestError(
-            "--gate-owners contains unknown owner key(s): " + ", ".join(unknown)
+            "gate_owners contains unknown owner key(s): " + ", ".join(unknown)
         )
     return owners
 
@@ -234,6 +254,7 @@ def build_manifest(
     if require_host_pid and host_pid is None:
         raise ManifestError("--host-pid is required and must be positive for Phase 2 device-memory evidence")
 
+    normalized_gate_owners = _validated_gate_owners(gate_owners)
     identity = _device_identity(device_info)
     limitations = list(DEFAULT_LIMITATIONS)
     normalized_class = device_class.strip()
@@ -307,7 +328,7 @@ def build_manifest(
             "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
         },
         "recovery_scenarios": list(recovery_scenarios),
-        "gate_owners": dict(gate_owners),
+        "gate_owners": normalized_gate_owners,
         "required_gates": REQUIRED_GATES,
         "required_artifacts": REQUIRED_ARTIFACTS,
         "limitations": limitations,

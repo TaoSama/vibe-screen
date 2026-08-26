@@ -584,6 +584,10 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
     gate: dict[str, Any] | None = None
     manifest: dict[str, Any] | None = None
     android_log_metrics: dict[str, int] = {}
+    try:
+        gate_owners = _gate_owners(arguments.gate_owners)
+    except ManifestError as error:
+        raise Phase2SoakError(str(error)) from error
 
     owner = {"pid": os.getpid(), "serial": arguments.serial, "created_at": utc_now(), "output_dir": str(output_dir)}
     if arguments.allow_existing_device_lock:
@@ -660,7 +664,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     battery_temperature_limit_celsius=arguments.battery_temperature_limit_celsius,
                     maximum_net_battery_drain_percent=arguments.maximum_net_battery_drain_percent,
                     recovery_scenarios=[item.strip() for item in arguments.recovery_scenarios.split(",") if item.strip()],
-                    gate_owners=_gate_owners(arguments.gate_owners),
+                    gate_owners=gate_owners,
                     host_identity=arguments.host_identity,
                     host_build=arguments.host_build,
                     apk_sha256=apk_sha256,
