@@ -67,6 +67,12 @@ codesign:
 security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 ```
 
+In Keychain Access, use **Certificate Assistant -> Create a Certificate**, set
+the name to `Vibe Screen Dev`, identity type to **Self Signed Root**, and
+certificate type to **Code Signing**. Missing this identity blocks rebuilding or
+installing a new stable Host, but a read-only preflight can still inspect an
+already-installed bundle and report its actual signing/TCC state.
+
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current
@@ -110,18 +116,23 @@ make baseline-macos-host-preflight
 
 `baseline-macos-host-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity, the designated requirement, source commit/tree
-provenance embedded by `scripts/package_macos.py`, a clean current source tree,
-and read-only Screen Recording plus Accessibility rows in the user's TCC
-database. `baseline-macos-touch-preflight` is a compatibility alias for the same
-check. Both targets exit non-zero if any check is missing. When blocked, keep
-the generated report as readiness evidence, open **System Settings → Privacy &
-Security → Screen & System Audio Recording** and **Accessibility**, grant the
-installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again. A report produced without a stable signing identity, TCC
-authorization, or matching source provenance cannot close USB, LAN, Host RSS,
-native-pointer, stylus, controller, rotation, login/headless, or compatibility
-gates.
+ad-hoc signing identity matching `VIBE_SCREEN_SIGN_IDENTITY` or `Vibe Screen Dev`,
+the designated requirement, source commit/tree provenance embedded by
+`scripts/package_macos.py`, a clean current source tree, and read-only Screen
+Recording plus Accessibility rows in the user's and system TCC databases. It
+does not require the signing identity to still be present in the current
+Keychain; that requirement belongs to `baseline-macos-dev-install`, where a
+missing `Vibe Screen Dev` identity means the Host cannot be rebuilt or
+reinstalled as a stable signed binary. `baseline-macos-touch-preflight` is a
+compatibility alias for the same check. Both targets exit non-zero if any
+installed-bundle, source-provenance, or permission check is missing. When
+blocked, keep the generated report as readiness evidence, open **System Settings
+-> Privacy & Security -> Screen & System Audio Recording** and
+**Accessibility**, grant the installed `/Applications/Vibe Screen.app`, quit and
+reopen Vibe Screen, then run the preflight again. A report produced without a
+stable installed Host identity, TCC authorization, or matching source provenance
+cannot close USB, LAN, Host RSS, native-pointer, stylus, controller, rotation,
+login/headless, or compatibility gates.
 
 ## Shared Host readiness snapshot
 
@@ -162,7 +173,6 @@ If that gate's prerequisite flag is false, leave the downstream runtime stages
 as not-run and fix the missing signing identity, source provenance, TCC grant,
 listener, or gate-specific entitlement before claiming LAN, reconnect, Host RSS,
 native-pointer, stylus, controller, login/headless, or compatibility acceptance.
-
 ## USB quick start
 
 1. Enable Android developer options and USB debugging, authorize the Mac, and
@@ -408,13 +418,22 @@ the opt-in Android gesture driver:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=<evidence-dir> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 The preflight must report the expected Host binary SHA-256 and authorized
 Screen Recording plus Accessibility for `dev.telemachus.display`. If it reports
 `blocked`, keep that JSON as the evidence output and do not reset TCC, reset
 Keychain state, clear Android app data, or run a long soak to force the gate.
+After a rerun, use `make evidence-touch-rerun-summary EVIDENCE_DIR=<evidence-dir>`
+with the same expected Android identity variables to verify that the retained
+preflight, instrumentation, Host log, and listen-only event-tap log can close the
+touch rerun gate.
 
 ### Logs and diagnostics
 
