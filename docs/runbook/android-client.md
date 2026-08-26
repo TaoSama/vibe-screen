@@ -217,13 +217,34 @@ read-only fixed-binary preflight and keep it with the evidence directory:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=<evidence-dir> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 Do not run the gesture driver if the preflight result is `blocked`. Record the
 actual device identity from the preflight output; the Nubia P0110/pacific is a
 valid Android substitute for general client dispatch, but it is not Xiaomi
 13/fuxi evidence.
+
+After a rerun, summarize the retained artifacts with the fail-closed checker:
+
+```bash
+make evidence-touch-rerun-summary \
+  EVIDENCE_DIR=<evidence-dir> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
+```
+
+The summary exits zero only when preflight, instrumentation output, Host gesture
+logs, and listen-only event-tap logs together prove the gate. A nonzero summary
+is blocked evidence, not a pass.
 
 ### Legacy compatibility path
 
