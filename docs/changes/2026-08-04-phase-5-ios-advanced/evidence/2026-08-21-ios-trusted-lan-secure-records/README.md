@@ -70,7 +70,7 @@ The iOS self-test and XCTest target cover the trusted-LAN record contract:
 
 ## Blocked device evidence
 
-No iPhone or iPad with signing credentials was available in this environment.
+No iPhone or iPad with signing prerequisites was available in this environment.
 The following Phase 5 gates remain open until a real iOS run records device and
 host identifiers, Local Network permission behavior, negotiated protection
 state, decoded video, touch/input acknowledgement, disconnect/reconnect, and

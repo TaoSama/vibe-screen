@@ -290,7 +290,7 @@ HDR claim.
 | HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
-| trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
+| trusted LAN secure records | open | Current iOS Core loopback covers secure records plus explicit legacy fallback; signed iOS app/device and real-network LAN evidence are not recorded. |
 
 The signing row is now backed by a dedicated app-signing readiness owner:
 
