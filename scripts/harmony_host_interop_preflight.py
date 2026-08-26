@@ -16,7 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -45,6 +45,7 @@ REQUIRED_FLOW_IDS = (
 )
 HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+URL_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 class InteropManifestError(ValueError):
@@ -108,7 +109,32 @@ def _string_list(value: Any, path: str) -> list[str]:
     return value
 
 
-def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) -> list[str]:
+def _validate_evidence_reference(reference: str, root: Path, path: str) -> None:
+    if URL_RE.match(reference):
+        raise InteropManifestError(f"{path}: expected repository-local evidence path, got URL")
+    reference_path = Path(reference)
+    if reference_path.is_absolute():
+        raise InteropManifestError(f"{path}: expected path relative to evidence root")
+    if any(part == ".." for part in reference_path.parts):
+        raise InteropManifestError(f"{path}: must not escape evidence root")
+    resolved_root = root.resolve()
+    resolved_path = (resolved_root / reference_path).resolve()
+    if resolved_path == resolved_root:
+        raise InteropManifestError(f"{path}: expected an evidence artifact below evidence root")
+    if resolved_root not in resolved_path.parents:
+        raise InteropManifestError(f"{path}: must stay within evidence root")
+    if not resolved_path.exists():
+        raise InteropManifestError(f"{path}: missing evidence artifact {reference}")
+    if not resolved_path.is_file():
+        raise InteropManifestError(f"{path}: expected evidence artifact file {reference}")
+
+
+def validate_manifest(
+    document: dict[str, Any],
+    *,
+    allow_blocked: bool = False,
+    evidence_root: Path | None = None,
+) -> list[str]:
     warnings: list[str] = []
     if document.get("schema") != SCHEMA:
         raise InteropManifestError(f"schema: expected {SCHEMA}")
@@ -180,13 +206,20 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
         status = flow.get("status")
         if status not in {"pass", "blocked", "fail"}:
             raise InteropManifestError(f"flows[{index}].status: expected pass, blocked, or fail")
-        _string_list(flow.get("evidence"), f"flows[{index}].evidence")
+        evidence = _string_list(flow.get("evidence"), f"flows[{index}].evidence")
         if flow_id in REQUIRED_FLOW_IDS and status != "pass":
             message = f"{flow_id}: {status}"
             if allow_blocked and status == "blocked":
                 warnings.append(message)
             else:
                 raise InteropManifestError(message)
+        if evidence_root is not None and not allow_blocked and status == "pass":
+            for evidence_index, reference in enumerate(evidence):
+                _validate_evidence_reference(
+                    reference,
+                    evidence_root,
+                    f"flows[{index}].evidence[{evidence_index}]",
+                )
 
     missing = [flow_id for flow_id in REQUIRED_FLOW_IDS if flow_id not in by_id]
     if missing:
@@ -287,10 +320,15 @@ def local_preflight(run_id: str) -> dict[str, Any]:
         "created_at": utc_timestamp(),
         "verdict": "blocked",
         "can_close_harmony_host_interop_gate": False,
-        "command_probes": [asdict(probe) for probe in probes],
+        "command_probes": [redacted_command_probe(probe) for probe in probes],
         "required_flows": list(REQUIRED_FLOW_IDS),
         "blocking_reasons": blocking,
     }
+
+
+def redacted_command_probe(probe: CommandProbe) -> dict[str, str | None]:
+    path = Path(probe.path).name if probe.path is not None else None
+    return {"name": probe.name, "path": path, "version": probe.version}
 
 
 def write_preflight_bundle(evidence_dir: Path, run_id: str) -> int:
@@ -333,6 +371,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-blocked", action="store_true", help="Validate blocked readiness manifests without closing the gate.")
     parser.add_argument("--template", action="store_true", help="Print a redaction-safe interop manifest template.")
     parser.add_argument("--evidence-dir", type=Path, help="Write a local blocked preflight evidence bundle.")
+    parser.add_argument("--evidence-root", type=Path, help="Directory that contains referenced acceptance artifacts.")
     parser.add_argument("--run-id", default="harmony-host-interop-preflight", help="Run identifier for --evidence-dir output.")
     return parser.parse_args(argv)
 
@@ -347,7 +386,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.manifest is None:
         raise SystemExit("manifest is required unless --template or --evidence-dir is used")
     document = json.loads(args.manifest.read_text(encoding="utf-8"))
-    warnings = validate_manifest(_mapping(document, "manifest"), allow_blocked=args.allow_blocked)
+    evidence_root = args.evidence_root if args.evidence_root is not None else args.manifest.parent
+    warnings = validate_manifest(_mapping(document, "manifest"), allow_blocked=args.allow_blocked, evidence_root=evidence_root)
     if args.allow_blocked:
         print("HarmonyOS Host interop manifest is structurally valid but not acceptance evidence:")
         for warning in warnings or ["allow-blocked mode does not close the Host interop gate"]:

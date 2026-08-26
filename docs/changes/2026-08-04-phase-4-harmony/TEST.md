@@ -173,51 +173,6 @@ by `tools/schemas/harmony-readiness.schema.json`. The Harmony workflow runs a
 blocked dry run and rejects script or schema drift, but it still labels the job
 as portable/no-HAP evidence only.
 
-## 2026-08-21 Host resume interop preflight and protocol recovery coverage
-
-The Harmony portable product-session tests now cover the missing recovery
-edges around Host interoperability without claiming a device pass:
-
-```text
-cd apps/harmony && pnpm run test
-  PASS: 118/118 portable tests
-```
-
-New protocol/session assertions cover:
-
-- accepted `ResumeSessionResult` must correlate to the request, preserve the
-  session ID, and advance both the payload and envelope `session_epoch` before
-  display/video re-entry;
-- after a successful resume, old-epoch control envelopes fail closed and
-  old-epoch media is dropped before current-epoch media is admitted;
-- rejected resume results report a retryable structured reason and close the
-  transport scope;
-- a Host restart or lost resume registry is represented as a rejected resume,
-  after which the next connection starts with a fresh ClientHello, empty
-  session ID, and epoch zero rather than falling through on the same transport.
-
-A new fail-closed Host interop evidence verifier records the remaining external
-gate shape:
-
-```text
-python3 scripts/harmony_host_interop_preflight.py --template
-  PASS: prints a redaction-safe manifest template only
-make harmony-host-interop-preflight \
-  EVIDENCE_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-host-resume-interop-blocked
-  BLOCKED: writes local readiness evidence and exits 2 when DevEco/HDC/HAP/
-  HarmonyOS device/Host resume-registry evidence are unavailable
-make harmony-host-interop-gate EVIDENCE_DIR=/path/to/evidence
-  PASS only when /path/to/evidence/harmony-host-interop.json has every required
-  resume-capable Host interop flow marked pass with redacted evidence references
-```
-
-The blocked readiness record is committed under
-[`evidence/2026-08-21-host-resume-interop-blocked`](evidence/2026-08-21-host-resume-interop-blocked/README.md).
-It does not establish DevEco ArkTS compilation, a signed HAP, a HarmonyOS NEXT
-device run, MatePad Mini behavior, authenticated LAN records, Mac Host resume
-registry compatibility, real media rendering, or recovery timing. Android
-device evidence, including Nubia P0110/pacific evidence, remains explicitly
-insufficient for this Phase 4 gate.
 ## 2026-08-21 HUKS secure-pairing source gate
 
 The Harmony secure-pairing portable path now requires a HUKS-backed security
@@ -256,58 +211,52 @@ QR/controller UX, authenticated transport packets, production Authority
 deployment, public-network behavior, Host interoperability, or MatePad Mini
 acceptance.
 
-## 2026-08-21 authenticated-record portable verifier
+## 2026-08-21 Host resume interop preflight and protocol recovery coverage
 
-The Harmony source now includes a transport-neutral AES-256-GCM record-layer
-contract in apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts
-and Node-backed portable tests in apps/harmony/tests/channel-record-security.test.mjs.
-The tests consume the same contracts/fixtures/security/v1/channel-records.json
-fixture used by the macOS Host and Android client security suites.
-
-The verifier was replayed on current base on 2026-08-26:
+The Harmony portable product-session tests now cover the missing recovery
+edges around Host interoperability without claiming a device pass:
 
 ```text
-cd apps/harmony && pnpm run verify
-  PASS: 36 semantic project files; 130/130 portable tests
+cd apps/harmony && pnpm run test
+  PASS: 117/117 portable tests
 ```
 
-The added checks cover:
+New protocol/session assertions cover:
 
-- exact initial and rotated key IDs plus 256 bytes of split directional key
-  material for host/device control, media, audio, and bulk channels;
-- byte-for-byte record sealing against the shared fixed AES-256-GCM fixture;
-- opening the corresponding Host/Android fixture records on the opposite role;
-- fail-closed replay, channel relabeling, wrong key, stale session epoch,
-  tampering, non-positive nonce sequence, wrong nonce channel, invalid sender or
-  channel arguments, closed session, and active-epoch rejection;
-- explicit legacy plaintext response encoding, and rejection of that response by
-  the secure-verifier path when fallback was not explicitly allowed.
+- accepted `ResumeSessionResult` must correlate to the request, preserve the
+  session ID, and advance both the payload and envelope `session_epoch` before
+  display/video re-entry;
+- after a successful resume, old-epoch control envelopes fail closed and
+  old-epoch media is dropped before current-epoch media is admitted;
+- rejected resume results report a retryable structured reason and close the
+  transport scope;
+- a Host restart or lost resume registry is represented as a rejected resume,
+  after which the next connection starts with a fresh ClientHello, empty
+  session ID, and epoch zero rather than falling through on the same transport.
 
-This is source/contract evidence only. It does not prove a production Harmony
-socket sends encrypted records, does not exercise HUKS, does not run the DevEco
-ArkTS/API checker, does not build or sign a HAP, and does not interoperate with
-a Mac Host or MatePad device. The production Harmony trusted-LAN path remains
-plaintext until those gates pass.
-
-Additional focused checks replayed on current base on 2026-08-26:
+A new fail-closed Host interop evidence verifier records the remaining external
+gate shape:
 
 ```text
-make protocol
-  PASS: Buf format/lint/build/breaking and 37/37 protocol contract tests
-make evidence-tools-test release-tools-test
-  PASS: 826/826 evidence-tool tests and 153/153 release-tool tests
-cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
-  --tests dev.telemachus.display.LanSecureRecordAdapterTest \
-  --tests dev.telemachus.display.StreamClientWirelessSecurityTest \
-  --tests dev.telemachus.display.AuthHandshakeTest \
-  --tests dev.telemachus.display.internet.security.ChannelRecordSecurityTest
-  PASS: focused Android trusted-LAN and shared channel-record tests
-cd apps/harmony && make doctor
-  BLOCKED: hvigor: not found; ohpm: not found; hdc: not found
-cd baseline/MacHost && swift test --filter LANSecureRecordAdapterTests
-  BLOCKED: active developer directory is CommandLineTools; test target cannot
-  import XCTest (`no such module 'XCTest'`)
+python3 scripts/harmony_host_interop_preflight.py --template
+  PASS: prints a redaction-safe manifest template only
+make harmony-host-interop-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-host-resume-interop-blocked
+  BLOCKED: writes local readiness evidence and exits 2 when DevEco/HDC/HAP/
+  HarmonyOS device/Host resume-registry evidence are unavailable
+make harmony-host-interop-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when /path/to/evidence/harmony-host-interop.json has every required
+  resume-capable Host interop flow marked pass with repository-local evidence
+  files below the evidence directory
 ```
+
+The blocked readiness record is committed under
+[`evidence/2026-08-21-host-resume-interop-blocked`](evidence/2026-08-21-host-resume-interop-blocked/README.md).
+It does not establish DevEco ArkTS compilation, a signed HAP, a HarmonyOS NEXT
+device run, MatePad Mini behavior, authenticated LAN records, Mac Host resume
+registry compatibility, real media rendering, or recovery timing. Android
+device evidence, including Nubia P0110/pacific evidence, remains explicitly
+insufficient for this Phase 4 gate.
 
 ## 2026-08-23 current-base owner gate
 

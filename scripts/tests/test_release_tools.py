@@ -813,6 +813,54 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
     def test_harmony_host_interop_manifest_passes_when_all_flows_pass(self) -> None:
         self.assertEqual(harmony_host_interop_preflight.validate_manifest(self.passing_manifest()), [])
 
+    def test_harmony_host_interop_manifest_requires_evidence_files_under_root(self) -> None:
+        manifest = self.passing_manifest()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for flow in manifest["flows"]:
+                artifact = evidence_root / flow["evidence"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                flow_id = flow["id"]
+                artifact.write_text(f"{flow_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(
+                harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root),
+                [],
+            )
+
+    def test_harmony_host_interop_manifest_rejects_evidence_references_outside_root(self) -> None:
+        blocked_references = ("/tmp/harmony.log", "../harmony.log", "https://example.test/harmony.log", ".")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for reference in blocked_references:
+                manifest = self.passing_manifest()
+                manifest["flows"][0]["evidence"] = [reference]
+                with self.subTest(reference=reference):
+                    with self.assertRaisesRegex(
+                        harmony_host_interop_preflight.InteropManifestError,
+                        "evidence root|got URL|escape evidence root|artifact below evidence root",
+                    ):
+                        harmony_host_interop_preflight.validate_manifest(manifest, evidence_root=evidence_root)
+
+    def test_harmony_host_interop_cli_strict_mode_defaults_evidence_root_to_manifest_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-host-interop.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_host_interop_preflight.py"),
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing evidence artifact", result.stderr)
+
     def test_harmony_host_interop_rejects_android_substitute(self) -> None:
         manifest = self.passing_manifest()
         manifest["device"] = {
@@ -847,8 +895,13 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
 
         with self.assertRaisesRegex(harmony_host_interop_preflight.InteropManifestError, "placeholder zero value"):
             harmony_host_interop_preflight.validate_manifest(manifest)
-        warnings = harmony_host_interop_preflight.validate_manifest(manifest, allow_blocked=True)
-        self.assertEqual(len(warnings), len(harmony_host_interop_preflight.REQUIRED_FLOW_IDS))
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            warnings = harmony_host_interop_preflight.validate_manifest(
+                manifest,
+                allow_blocked=True,
+                evidence_root=Path(temporary_directory),
+            )
+            self.assertEqual(len(warnings), len(harmony_host_interop_preflight.REQUIRED_FLOW_IDS))
 
     def test_harmony_host_interop_rejects_unencrypted_trusted_lan(self) -> None:
         manifest = self.passing_manifest()
@@ -899,6 +952,10 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
             "",
         )
         self.assertNotIn("hvigor", missing)
+        probes = {probe["name"]: probe for probe in summary["command_probes"]}
+        self.assertEqual(probes["hvigorw"]["path"], "hvigorw")
+        self.assertEqual(probes["ohpm"]["path"], "tool")
+        self.assertNotIn("/usr/local/bin", json.dumps(summary))
 
     def test_harmony_host_interop_make_targets_use_manifest_validator(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
@@ -906,7 +963,8 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
         self.assertIn("harmony-host-interop-preflight", makefile)
         self.assertIn("harmony-host-interop-gate", makefile)
         self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
-        self.assertIn("$(EVIDENCE_DIR)/harmony-host-interop.json", makefile)
+        self.assertIn("--evidence-root", makefile)
+        self.assertIn("$(HARMONY_HOST_INTEROP_JSON)", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):

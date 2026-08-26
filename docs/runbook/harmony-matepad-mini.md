@@ -68,32 +68,18 @@ make harmony-host-interop-preflight EVIDENCE_DIR=/path/to/evidence
    rejection, replay rejection, old-peer rejection, no-HUKS rejection, and
    Authority/Signaling admission. Then connect over LAN and verify the device
    can be revoked and cannot reuse the credential.
-   The committed portable verifier must already pass against
-   contracts/fixtures/security/v1/channel-records.json, but that verifier is not
-   device evidence.
-6. Require authenticated transport markers before accepting the LAN run:
-   secure-record negotiation must choose encrypted, logs must identify the
-   negotiated AES-256-GCM application-record session, and any telemetry summary
-   must report trusted_lan_encrypted=true and
-   trusted_lan_legacy_plaintext=false. An explicit legacy plaintext fallback is
-   a useful compatibility result but must be filed separately and cannot close
-   the HarmonyOS authenticated-transport gate.
-7. Exercise fail-closed record-layer probes with non-sensitive fixtures or a
-   dedicated test harness: nonce reuse, replay, wrong key, stale session epoch,
-   wrong channel, and tamper must all close or reject before payload dispatch.
-   Capture the exact command, sanitized logs, and final state for each rejection.
-8. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
+6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
-9. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
+7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
    keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
-10. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
+8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
    and wake the Mac, and restart the host. Confirm reconnect within the target
    and that no prior-epoch frame or control is accepted. Record both an accepted
    `ResumeSessionResult` path and a rejected resume path that falls back to a
    fresh ClientHello after Host restart.
-11. Run eight hours at the target mode. Archive timestamped logs and metrics;
+9. Run eight hours at the target mode. Archive timestamped logs and metrics;
    reject any unbounded latency, queue, RSS, or thermal throttling trend.
-12. Measure glass-to-glass and input latency with an external high-frame-rate
+10. Measure glass-to-glass and input latency with an external high-frame-rate
     camera; do not compare unsynchronized host/device clocks.
 
 Store raw evidence under an ignored local directory or attach it to the release;
