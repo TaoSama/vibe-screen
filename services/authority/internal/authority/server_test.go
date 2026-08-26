@@ -677,6 +677,26 @@ func TestDenyWinsAcrossConcurrentSignalingAdmissionAndRevocation(t *testing.T) {
 	}
 }
 
+func TestCreatedSignalingAdmissionFailsClosedAfterDeviceRevocation(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now()
+	admission := createMemorySession(t, store, "account", "host", "client", 1, now)
+	if _, err := store.AuthorizeSignaling(ctx, admission.SessionID, admission.ClientToken, now); err != nil {
+		t.Fatalf("initial authorization failed: %v", err)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AuthorizeSignaling(ctx, admission.SessionID, admission.ClientToken, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("revoked client authorization error=%v, want ErrRevoked", err)
+	}
+	if _, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "after-revoke", AccountID: "account",
+		HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("new admission after revoke error=%v, want ErrRevoked", err)
+	}
+}
+
 func TestDeviceRevocationIsIdempotentAtTheSameEpoch(t *testing.T) {
 	store := newMemoryStore()
 	ctx := context.Background()

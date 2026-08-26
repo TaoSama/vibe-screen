@@ -144,6 +144,16 @@ loses all routing state, so operators must issue a fresh `request_id`. In
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
 
+HarmonyOS HUKS-backed secure pairing uses this same `production_authority`
+path. The Harmony client proves its HUKS-backed device identity to the Host,
+but service credentials stay server-side: clients receive only their
+session-scoped role token after the paired Host/backend has created the
+Authority admission. A revoked Harmony device, expired admission, stale session
+epoch, unreachable Authority, malformed Authority response, old peer, or
+no-HUKS device path must fail closed; Signaling must not mint local replacement
+tokens in production mode and the Harmony app must not treat trusted-LAN address
+import as secure pairing.
+
 ```bash
 curl --fail-with-body -X DELETE \
   -H "Authorization: Bearer $VIBE_SIGNALING_ISSUER_TOKEN" \
@@ -379,6 +389,8 @@ slice, not accepted production behavior:
   after an instance loses its database backend. Multi-instance throughput, public
   ingress behavior, and rolling deployment behavior are still not proven.
   `session_creates_per_minute` remains a process-local cap.
+  Local integration tests cover two store instances sharing routing, long-poll
+  wakeups, and invalidation tombstones.
 - Per-message remote authorization against the authority and the global
   PostgreSQL advisory lock serialization of creates are deliberate fail-closed
   correctness choices, not a high-throughput design. Do not claim multi-instance

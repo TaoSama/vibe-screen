@@ -1,0 +1,127 @@
+{
+  "artifact": {
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "checks": [
+    {
+      "evidence": [
+        "blocked: no DevEco/HUKS runtime, signed HAP, or MatePad Mini export-attempt log is available"
+      ],
+      "id": "huks_non_exportable_identity",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "blocked: no HUKS-backed credential persistence run or Asset Store inspection from MatePad Mini is available"
+      ],
+      "id": "huks_credential_storage",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: portable tests cover Protocol v1 structure; blocked on Mac Host plus HarmonyOS device exchange"
+      ],
+      "id": "pairing_offer_request_result",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: portable verifier requires host proof; blocked on real host identity display and device-side verification log"
+      ],
+      "id": "host_signature_verification",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: lifecycle tests cover install; blocked on Authority-issued device identity and HUKS-backed store run"
+      ],
+      "id": "credential_issue_and_install",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: lifecycle tests cover tombstone; blocked on cross-service revoke propagation and device persistence evidence"
+      ],
+      "id": "credential_revoke_tombstone",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: portable tests cover expired PairingResult and Go offer expiry boundary; blocked on device clock/offer TTL evidence"
+      ],
+      "id": "expiry_rejection",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: portable and Go tests cover offer/control replay; blocked on real authenticated transport packet replay capture"
+      ],
+      "id": "replay_rejection",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: verifier requires explicit rejection evidence; blocked on old-peer interop attempt with HarmonyOS HAP"
+      ],
+      "id": "legacy_peer_rejection",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: PairingClient rejects non-HUKS crypto profile; blocked on device no-HUKS/HUKS-error injection log"
+      ],
+      "id": "no_huks_rejection",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "source-only: Authority/Signaling tests cover production_authority fail-closed paths; blocked on deployed service integration for HarmonyOS"
+      ],
+      "id": "authority_signaling_admission",
+      "status": "blocked"
+    }
+  ],
+  "crypto": {
+    "credential_record_backend": "Asset Store + HUKS-bound secret",
+    "private_key_export_attempt": "rejected",
+    "provider": "HUKS",
+    "signing_key_exportable": false
+  },
+  "device": {
+    "manufacturer": "Huawei",
+    "model": "MatePad Mini",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "notes": [
+    "This is a blocked readiness record, not HarmonyOS acceptance evidence.",
+    "The current environment has no DevEco Studio, HarmonyOS SDK/HDC, signed HAP, MatePad Mini, HUKS runtime, production Authority deployment, or public network path.",
+    "Android devices, including nubia P0110 / pacific / Android 16 / SDK 36, cannot close HarmonyOS HUKS-backed secure-pairing gates.",
+    "Do not commit raw serials, credentials, IP addresses, pairing URLs, tokens, or screen content."
+  ],
+  "repository": {
+    "commit": "22da26816465257b4a09f95de47be8567e448b74",
+    "status": "clean",
+    "tree": "a50bfe2961cd404dc42a5ce716dcf3066230fa52"
+  },
+  "schema": "dev.vibescreen.harmony-secure-pairing-gate/v1",
+  "services": {
+    "authority": {
+      "commit": "22da26816465257b4a09f95de47be8567e448b74",
+      "mode": "local_blocked"
+    },
+    "signaling": {
+      "commit": "22da26816465257b4a09f95de47be8567e448b74",
+      "mode": "local_blocked"
+    }
+  },
+  "toolchain": {
+    "deveco_studio_version": "blocked: DevEco Studio unavailable in this Codex environment",
+    "harmony_sdk_api": "API 12 planned; blocked because HarmonyOS NEXT SDK unavailable",
+    "hdc_version": "blocked: hdc unavailable in this Codex environment",
+    "hvigor_version": "blocked: hvigor unavailable in this Codex environment",
+    "ohpm_version": "blocked: ohpm unavailable in this Codex environment"
+  }
+}

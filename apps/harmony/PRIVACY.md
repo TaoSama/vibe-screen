@@ -15,10 +15,11 @@ do not use it on public or untrusted networks.
 - The selected host address, port, pairing-offer identifier, and record version
   are stored in Asset Store so the address can be restored after relaunch.
 - One-time link credentials are parsed in memory and deliberately not persisted.
-- The secure-pairing lifecycle has a separate Asset Store record for a verified
-  device credential, pinned host identity, session-key metadata, and accepted
-  control-sequence high-water. Revocation replaces the credential with a
-  tombstone; it does not retain the revoked secret.
+- The secure-pairing lifecycle has a separate version-2 Asset Store record for a
+  verified device credential, pinned host identity, HUKS security profile,
+  session-key metadata, and accepted control-sequence high-water. Revocation
+  replaces the credential with a tombstone; it does not retain the revoked
+  secret. Records without the HUKS profile are rejected rather than migrated.
 - Video frames and input events are processed in memory and are not recorded.
 - The app contains no analytics, advertising SDK, cloud sync, or crash uploader.
 

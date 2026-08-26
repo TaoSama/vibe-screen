@@ -228,7 +228,7 @@ func (session *DevicePairingSession) Complete(result PairingResult) (SessionKeys
 }
 
 func validateOffer(offer PairingOffer, now time.Time) error {
-	if now.After(offer.ExpiresAt) {
+	if !now.Before(offer.ExpiresAt) {
 		return ErrExpiredOffer
 	}
 	if len(offer.OfferID) != pairingIDSize || len(offer.OneTimeCredential) != pairingSecretSize ||

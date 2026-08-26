@@ -267,11 +267,19 @@ export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
 export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
 
 Before treating this as public NAT/TURN release evidence, write a sanitized
@@ -314,6 +322,15 @@ requires the database, schema checksum, required relations/columns/constraints,
 and database clock skew to be inside the configured bound. A database outage or
 schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
+
+After production readiness passes, record the public Internet soak boundary from
+the source revision under test with `make phase3-internet-soak-manifest`, then
+evaluate it with `make phase3-internet-soak-gate` after the remote TURN, media
+continuity, network handoff, revocation propagation, and two-hour soak summaries
+have been privacy reviewed. The gate rejects local-only TURN, missing TLS or
+secret-source declarations, absent readiness probes, missing remote peers, and
+partial report families as `blocked`; it never converts this production profile
+or the local Compose profile into public Internet evidence by itself.
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s

@@ -32,7 +32,9 @@ the older build is shown to understand every stored record version.
 
 An unknown or corrupt security-record version also fails closed, but is not
 silently deleted: removal could erase a revocation tombstone and revive an old
-credential. Recovery requires an explicit forget-and-repair flow.
+credential. Version-1 security records from the pre-HUKS portable pairing core
+are also rejected because they do not prove non-exportable HUKS key storage or
+Authority device binding. Recovery requires an explicit forget-and-repair flow.
 
 The pre-versioning development build stored the same validated `harmony-UUID`
 as a bare string. On first read the current client atomically wraps that value

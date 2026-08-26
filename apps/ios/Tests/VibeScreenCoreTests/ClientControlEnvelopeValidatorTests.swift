@@ -113,6 +113,35 @@ final class ClientControlEnvelopeValidatorTests: XCTestCase {
         XCTAssertNoThrow(try validator.validate(validPong))
     }
 
+    func testAwaitingManagedPolicyRejectsOrdinaryMessagesUntilPolicyStatusCompletes() throws {
+        var validator = try makeActiveValidator()
+        try validator.awaitManagedPolicyStatus()
+
+        var list = VSEnvelope()
+        list.protocolVersion = SessionState.protocolVersion
+        list.messageID = 3
+        list.sessionID = sessionID
+        list.sessionEpoch = sessionEpoch
+        list.listDisplaysResponse = VSListDisplaysResponse()
+        XCTAssertThrowsError(try validator.validate(list)) { error in
+            XCTAssertEqual(error as? ClientControlEnvelopeError, .unexpectedHandshakeMessage)
+        }
+
+        var status = VSEnvelope()
+        status.protocolVersion = SessionState.protocolVersion
+        status.messageID = 3
+        status.sessionID = sessionID
+        status.sessionEpoch = sessionEpoch
+        status.managedPolicyStatus = VSManagedPolicyStatus()
+        XCTAssertNoThrow(try validator.validate(status))
+        XCTAssertTrue(try validator.completeManagedPolicyStatus())
+        XCTAssertFalse(try validator.completeManagedPolicyStatus())
+
+        var activeList = list
+        activeList.messageID = 4
+        XCTAssertNoThrow(try validator.validate(activeList))
+    }
+
     func testControllerEventWithUnknownFieldsIsForwardCompatible() throws {
         var validator = try makeActiveValidator()
 

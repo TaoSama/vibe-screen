@@ -95,12 +95,20 @@ Negotiation rules:
   HMAC-SHA256 proof over request ID, target MAC, host/device identity, key ID,
   authorization window, and nonce; wireless pairing tokens are the current
   shared secret source, while USB/default sessions remain deny-only. A request
-  that passes the proof, replay, device-identity, and broadcast-target gates is
-  converted to a standard UDP Wake-on-LAN magic packet. Wake-on-LAN remains
-  transport behavior, not authentication, and sleeping-host/router/firmware
-  behavior is still a real-device acceptance gate.
-- **Managed devices:** Apple MDM configuration is read locally. The protocol
-  carries product restrictions/results, not vendor-specific MDM payloads.
+  transport behavior, not authentication. #199 owns the current-base evidence
+  gate for this area after being rebased onto the merged #225 baseline, and
+  sleeping-host/router/firmware behavior is still a real-device acceptance
+  gate.
+- **Managed devices:** Apple MDM configuration is read locally from
+  `com.apple.configuration.managed`. The protocol carries product
+  restrictions/results, not vendor-specific MDM payloads. Managed peers include
+  complete `restriction_results` for `clipboard`, `file_transfer`, `audio`,
+  `wake`, `custom_gestures`, `host_actions`, `maximum_file_bytes`,
+  `allowed_hosts`, and `denied_hosts`; incomplete or inconsistent results fail
+  closed. The effective policy is recomputed deny-wins: booleans use local AND
+  remote, file bytes use the minimum, restricted allowlists intersect, and
+  `DeniedHosts` removes hosts after allowlist merging. See
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TECH.md).
 
 ## Implemented client mechanics
 
@@ -158,8 +166,12 @@ Negotiation rules:
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
-  action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
-  produces the standard 102-byte packet only after local authorization/policy.
+  action IDs. Managed policy is parsed fail-closed, carries explanatory
+  restriction results, and merges deny-wins, including denylist-over-allowlist
+  host matching. WOL produces the standard 102-byte packet only after local
+  HMAC authorization, nonce replay, device-identity, broadcast-target, and
+  policy checks pass. The current-base closure gate remains blocked without
+  real sleeping Mac and WOL network evidence.
 
 ## Host and security TODO
 
@@ -190,3 +202,10 @@ SPS/PPS or VPS/SPS/PPS. CoreVideo pixel buffers retain platform color
 attachments. The current renderer uses Core Image for correctness and aspect
 fit. A Metal zero-copy renderer is a future optimization and requires measured
 latency, color, power, and HDR comparison before replacement.
+Hardware decode behavior is tracked by the fail-closed
+`ios-videotoolbox-readiness` evidence summary. Simulator and unsigned archive
+runs may verify build and schema readiness, but they remain blocked for hardware
+claims; physical iPhone and physical iPad records must separately prove signed
+installation, codec parameter sets, VideoToolbox sessions, output frames,
+hardware-path evidence, stream/config epochs, and thermal/power state before the
+README Phase 5 gate can be reviewed.

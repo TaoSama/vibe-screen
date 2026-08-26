@@ -218,6 +218,96 @@ device run, MatePad Mini behavior, authenticated LAN records, Mac Host resume
 registry compatibility, real media rendering, or recovery timing. Android
 device evidence, including Nubia P0110/pacific evidence, remains explicitly
 insufficient for this Phase 4 gate.
+## 2026-08-21 HUKS secure-pairing source gate
+
+The Harmony secure-pairing portable path now requires a HUKS-backed security
+profile before it can produce a `PairingRequest`. The accepted profile is
+fixed to non-exportable P-256 signing keys, HUKS-bound credential storage, a
+persistent identity, and an Authority device ID matching the signed device
+identity. Stored secure-pairing records are version 2 and must persist that
+profile; legacy version-1 records, no-HUKS providers, exported-key profiles,
+profile/device mismatches, expired pairing results, replayed control records,
+and revoked credentials fail closed in portable tests.
+
+A separate redacted evidence contract now validates the future MatePad Mini
+HUKS run:
+
+```text
+python3 scripts/harmony_secure_pairing_gate.py --template
+  PASS: prints a redaction-safe manifest template only
+python3 scripts/harmony_secure_pairing_gate.py --allow-blocked docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/harmony-secure-pairing.json
+  STRUCTURE-ONLY: blocked HUKS/DevEco/MatePad/Authority evidence is well formed
+make harmony-secure-pairing-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when /path/to/evidence/harmony-secure-pairing.json marks every
+  HUKS, PairingOffer/Request/Result, issue/revoke, expiry/replay, old-peer,
+  no-HUKS, and Authority/Signaling check as pass with redacted evidence
+```
+
+The top-level Harmony device manifest also requires the
+`huks_backed_secure_pairing` gate to reference a nested
+`harmony-secure-pairing.json` with a matching status. This keeps generic device
+logs from closing the security gate without the specific HUKS and
+service-admission proof. The blocked record for this work is under
+`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/`.
+
+This is still not DevEco or device evidence. It does not establish HUKS API
+behavior, private-key non-exportability on a real tablet, signed HAP install,
+QR/controller UX, authenticated transport packets, production Authority
+deployment, public-network behavior, Host interoperability, or MatePad Mini
+acceptance.
+
+## 2026-08-21 authenticated-record portable verifier
+
+The Harmony source now includes a transport-neutral AES-256-GCM record-layer
+contract in apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts
+and Node-backed portable tests in apps/harmony/tests/channel-record-security.test.mjs.
+The tests consume the same contracts/fixtures/security/v1/channel-records.json
+fixture used by the macOS Host and Android client security suites.
+
+The verifier was replayed on current base on 2026-08-26:
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 36 semantic project files; 130/130 portable tests
+```
+
+The added checks cover:
+
+- exact initial and rotated key IDs plus 256 bytes of split directional key
+  material for host/device control, media, audio, and bulk channels;
+- byte-for-byte record sealing against the shared fixed AES-256-GCM fixture;
+- opening the corresponding Host/Android fixture records on the opposite role;
+- fail-closed replay, channel relabeling, wrong key, stale session epoch,
+  tampering, non-positive nonce sequence, wrong nonce channel, invalid sender or
+  channel arguments, closed session, and active-epoch rejection;
+- explicit legacy plaintext response encoding, and rejection of that response by
+  the secure-verifier path when fallback was not explicitly allowed.
+
+This is source/contract evidence only. It does not prove a production Harmony
+socket sends encrypted records, does not exercise HUKS, does not run the DevEco
+ArkTS/API checker, does not build or sign a HAP, and does not interoperate with
+a Mac Host or MatePad device. The production Harmony trusted-LAN path remains
+plaintext until those gates pass.
+
+Additional focused checks replayed on current base on 2026-08-26:
+
+```text
+make protocol
+  PASS: Buf format/lint/build/breaking and 37/37 protocol contract tests
+make evidence-tools-test release-tools-test
+  PASS: 826/826 evidence-tool tests and 153/153 release-tool tests
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.LanSecureRecordAdapterTest \
+  --tests dev.telemachus.display.StreamClientWirelessSecurityTest \
+  --tests dev.telemachus.display.AuthHandshakeTest \
+  --tests dev.telemachus.display.internet.security.ChannelRecordSecurityTest
+  PASS: focused Android trusted-LAN and shared channel-record tests
+cd apps/harmony && make doctor
+  BLOCKED: hvigor: not found; ohpm: not found; hdc: not found
+cd baseline/MacHost && swift test --filter LANSecureRecordAdapterTests
+  BLOCKED: active developer directory is CommandLineTools; test target cannot
+  import XCTest (`no such module 'XCTest'`)
+```
 
 ## 2026-08-23 current-base owner gate
 

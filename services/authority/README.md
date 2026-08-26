@@ -119,6 +119,16 @@ Mac/Android automatic profile issuance, a production coturn exporter or
 disconnect executor, active transport disconnect, public ingress, or
 horizontally shared signaling state.
 
+HarmonyOS secure pairing must use the same production authority boundary. A
+Harmony client presents a HUKS-backed device identity to the paired Host, but it
+must not receive the admin, signaling, relay, coturn, role-token, or issuer
+service credentials. The backend that binds a Harmony device to an account must
+register the Authority device ID before Signaling asks for a session, and every
+fresh session must advance the Authority session epoch. If Authority is
+unavailable, reports a revoked device, or rejects an old epoch, Signaling and
+the Host-facing pairing controller must fail closed rather than issuing a local
+credential or falling back to a legacy plaintext peer.
+
 ## Internal API
 
 Tokens are independent and route-scoped:

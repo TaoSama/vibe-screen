@@ -29,13 +29,18 @@ VideoConfig, transport upgrade/channel framing, media fixture parsing, stale
 epoch filtering, bounded queues, input envelope encoding, reconnect policy,
 resume result success/failure handling, post-resume old-epoch control/media
 rejection, host-restart fresh-session fallback, and the expected DevEco project
-file graph. A Host interop preflight/manifest verifier now records the exact
+file graph. They also prove a portable
+transport-neutral authenticated-record contract against the shared
+macOS/Android AES-256-GCM fixture, including nonce/replay, wrong-key, tamper,
+stale-epoch, and explicit legacy-fallback behavior. A Host interop preflight/manifest verifier now records the exact
 external evidence required for HostHello/session/display/video/control/media,
 background/foreground, Wi-Fi loss/restore, bounded reconnect, host restart, and
 old-epoch rejection. ArkUI/platform sources connect those seams, but they have
-not been compiled by DevEco. None of the acceptance criteria requiring a HAP,
-Harmony SDK behavior, Mac interoperability, signing, secure pairing, or a device
-is complete.
+not been compiled by DevEco and the
+production TCP path still sends plaintext Protocol v1 frames. None of the
+acceptance criteria requiring a HAP, Harmony SDK behavior, Mac interoperability,
+signing, HUKS-backed secure pairing, production authenticated transport, or a
+device is complete.
 
 ## Explicit contract gaps
 
@@ -62,4 +67,5 @@ controller-specific input remains open.
 Physical keyboards and mice use the existing key/pointer messages. Wheel axis
 delivery still needs DevEco/device confirmation before it is advertised as
 accepted behavior. Address-link import is not secure pairing: Pairing proof,
-credential issue/revoke, and replay protection remain separate gates.
+credential issue/revoke, HUKS-backed traffic keys, record-layer socket wrapping,
+and real Host replay protection remain separate gates.

@@ -150,6 +150,18 @@ the first decoded output frame before it is used to close a codec gate. AV1 is
 currently a planned codec only: offline fail-closed/admission tests and blocked
 runbooks do not prove an AV1 stream.
 
+Trusted-LAN smoke evidence must be checked before changing README or release
+notes based on a LAN run. A passing real-device record must include non-legacy
+encrypted LAN markers from both peers, Protocol v1 over TRANSPORT_KIND_LAN,
+HEVC decode with real output frames, and reconnect with the Host PID preserved.
+A blocked record is valid only when it names the Nubia P0110 / pacific /
+Android 16 / SDK 36 device, records concrete Wi-Fi/route and Host signing/preflight
+blockers, and explicitly states that no real trusted-LAN stream was observed.
+
+Run the checker with:
+
+    make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/<run-dir>
+
 Native pointer HID mouse evidence is hardware-gated in the same way. The Android
 device must expose a real external mouse-like source (`MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), and the same observation
@@ -185,6 +197,21 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## Touch rerun evidence
+
+The fixed-binary touch-gesture rerun uses two fail-closed helpers. First collect a
+read-only preflight with the expected Host SHA-256 and, when the target device is
+known, expected Android identity fields. The preflight records `blocked` if the
+installed Host binary, TCC grants, or device identity are not ready. It does not
+start the Host, run instrumentation, change ADB reverse mappings, modify privacy
+databases or Keychain state, or clear Android app data.
+
+After the opt-in gesture driver, run `make evidence-touch-rerun-summary` against
+the retained preflight, instrumentation output, Host log, and listen-only event
+tap log. It exits zero only when all artifacts support the pass claim; otherwise
+it writes a blocked `result-summary.json`. A Nubia P0110/pacific pass is scoped to
+general Android substitute evidence and must not be relabeled as Xiaomi 13/fuxi.
+
 ## HarmonyOS current-base owner gate
 
 The HarmonyOS Phase 4 owner gate is a read-only aggregate for the README
@@ -207,6 +234,25 @@ Protocol v1 Host build, H.264/HEVC hardware-decode evidence, HAP install
 evidence, HUKS secure-pairing evidence, authenticated transport evidence,
 Host resume evidence, eight-hour soak, or external-camera latency returns
 `blocked`; Android substitution returns `fail`.
+
+## WakeHost current-base gate
+
+After rebasing onto the merged PR #225 authenticated magic-packet baseline, PR
+#199 owns the WakeHost current-base evidence boundary. Use the gate to summarize
+retained sleeping-Mac Wake-on-LAN evidence without treating offline HMAC/protocol
+tests as a hardware pass:
+
+```sh
+make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base
+```
+
+With no explicit `WAKE_HOST_CURRENT_BASE_JSON`, the target writes a default
+blocked observation file plus `wake-host-current-base-gate.json`. A pass requires
+real Mac sleep/wake evidence, identity-signed Host/TCC readiness, Wake for
+network access or NIC WOL settings, verified router broadcast or directed WOL
+delivery, packet capture or router logs, post-wake Host availability, and
+negative rejected attempts for unpaired, expired, replayed, and wrong-signature
+requests.
 
 ## iOS device acceptance gate
 
@@ -672,6 +718,43 @@ signed/TCC-ready Host, active selected-display stream, production Protocol v1
 forwarding plus focus/IME boundary logs, Host `Key injected:` or
 acknowledgement/CGEvent logs, modifier press/release and cleanup proof, or
 visible Mac-side result are missing.
+
+## Phase 3 Internet Soak Gate
+
+The Phase 3 Internet soak gate composes separately collected production evidence
+instead of running the public service by itself. First write a manifest from the
+reviewed production inputs:
+
+```sh
+make phase3-internet-soak-manifest PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak \
+  PHASE3_INTERNET_TURN_URIS="turns:relay.prod.your-domain.com:5349?transport=tcp" \
+  PHASE3_INTERNET_SIGNALING_ORIGIN=https://signaling.prod.your-domain.com \
+  PHASE3_INTERNET_RELAY_ORIGIN=https://relay.prod.your-domain.com \
+  PHASE3_INTERNET_AUTHORITY_SOURCE_ID=turn-prod-1 \
+  PHASE3_INTERNET_REMOTE_PEER=peer.prod.your-domain.com \
+  PHASE3_INTERNET_TLS_CERTIFICATE_SHA256=... \
+  PHASE3_INTERNET_DEPLOYMENT_READINESS=authority-readyz,relay-readyz,coturn-tls \
+  PHASE3_INTERNET_PLANNED_HANDOFFS=wifi-to-cellular \
+  PHASE3_INTERNET_HOST_BUILD="Vibe Screen release build and SHA" \
+  PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256=...
+```
+
+Then evaluate the gate after placing privacy-reviewed summaries in that same
+directory:
+
+```sh
+make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak
+```
+
+The default filenames are `remote-turn-verifier.json`, `media-continuity.json`,
+`network-handoff.json`, `revocation-propagation.json`, and
+`soak-exact-window-report.json`. The gate passes only with public remote TURN
+packet exchange, real ScreenCaptureKit-to-Android decode continuity, fresh-session
+handoff recovery, revocation propagation through active coturn allocation
+disconnect and post-revocation packet denial, and a clean two-hour mixed
+direct/relay soak. Missing reports are `blocked`; observed plaintext fallback or
+secret-like fields in report inputs are `fail`. Set
+`PHASE3_INTERNET_ALLOW_BLOCKED=1` only to archive a blocked record.
 
 ### Short Host memory regression gate
 
