@@ -341,7 +341,10 @@ device: because macOS 26.4.1 rejects hardware-mirroring a physical display onto
 a virtual display (CGError 1001), mirror mode now degrades gracefully to direct
 main-display capture, so the client shows the Mac's main screen at 60 FPS with
 zero drops instead of looping unattended recovery (see Phase 1). Login-item
-approval and headless reboot still require gated macOS integration evidence.
+approval and headless reboot still require gated macOS integration evidence;
+the shared Host readiness preflight now records login/headless setup blockers,
+but those diagnostics do not prove reboot launch, headless capture, Android
+rendering, or unattended recovery.
 Real CGEvent
 injection under Accessibility is now exercised on device for keyboard and
 mouse-wheel scroll (see Phase 1). The legacy compatibility session
