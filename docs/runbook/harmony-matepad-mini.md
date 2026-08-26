@@ -15,6 +15,7 @@ python3 scripts/harmony_secure_pairing_gate.py --template > /tmp/harmony-secure-
 make harmony-secure-pairing-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
 ```
 
 `make harmony-readiness` writes `/path/to/evidence/harmony-readiness.json` and
@@ -30,12 +31,19 @@ manifest shape, but the resulting output is not acceptance evidence and must not
 close the README gate.
 Strict `make harmony-device-gate` validation also resolves every `pass` gate's
 evidence references under `EVIDENCE_DIR`; absolute paths, URLs, `..` traversal,
-directories, and missing files fail closed. Direct strict script invocations use
-the manifest directory as the evidence root. Keep all referenced logs, summaries,
-metrics, and checksums inside the evidence package before asking the gate to pass.
+missing files, and directory/file type mismatches fail closed. References ending
+in `/` must resolve to directories; other references must resolve to files. Direct
+strict script invocations use the manifest directory as the evidence root. Keep
+all referenced logs, summaries, metrics, and checksums inside the evidence
+package before asking the gate to pass.
 `make harmony-current-base-gate` is the aggregate owner check for the current
 README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
 must stay blocked until the strict device gate and readiness preflight both pass.
+`make harmony-matepad-acceptance` writes the final redacted
+`harmony-matepad-acceptance.json` package after readiness, strict device-gate,
+and current-base owner manifests exist. It may also write a blocked package for
+readiness tracking, but that package is not acceptance evidence and does not
+replace the current-base owner gate.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
@@ -68,7 +76,10 @@ must stay blocked until the strict device gate and readiness preflight both pass
 8. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
 9. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
-   keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
+   keyboard/modifiers, mouse buttons, stylus pressure, and controller input
+   (button mask, left/right stick axes, left/right triggers, hat,
+   CONNECTED/STATE/DISCONNECTED lifecycle, up to four active controllers, and
+   all-zero neutral release on disconnect) in both orientations.
 10. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
    and wake the Mac, and restart the host. Confirm reconnect within the target
    and that no prior-epoch frame renders.

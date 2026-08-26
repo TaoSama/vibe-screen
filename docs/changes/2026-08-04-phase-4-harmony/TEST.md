@@ -113,6 +113,29 @@ HUKS-backed secure pairing, Host interoperability on a HarmonyOS device, or
 MatePad behavior. Controller-specific input still needs the MatePad Mini
 acceptance matrix before being claimed as device-verified.
 
+## 2026-08-21 controller input documentation drift guard
+
+The Phase 4 PRD and technical design now match the already-merged Harmony
+controller portable closure: the production Harmony source advertises
+`CAPABILITY_CONTROLLER`, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting state, validates lifecycle bounds, and sends
+all-zero neutral `DISCONNECTED` releases before teardown or resume. A new static
+validator check rejects the older pre-closure wording so README, app README, PRD,
+TECH, and TEST cannot drift back to claiming the source still lacks the
+capability, encoder, lifecycle, or platform route.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 36 semantic project files; 134/134 portable tests
+```
+
+This remains source and portable-test evidence only. It does not establish
+DevEco ArkTS/API-checker compatibility, a debug or release HAP, signing,
+installation, hardware decode, HUKS-backed secure pairing, Host interoperability
+on a HarmonyOS device, or MatePad behavior. Controller-specific input still
+requires the MatePad Mini acceptance matrix before it can be claimed as
+device-verified.
+
 ## 2026-08-20 HarmonyOS device-gate manifest validator
 
 The MatePad Mini runbook now requires a redacted `harmony-device-gates.json`
@@ -312,6 +335,36 @@ media, interoperate with the Host, or create MatePad Mini evidence. Without
 DevEco, MatePad Mini hardware, signed HAP metadata, HUKS/authenticated
 transport artifacts, and Host resume evidence, its correct result is `blocked`
 and the README gates remain open.
+
+## 2026-08-22 MatePad Mini acceptance package readiness
+
+The MatePad Mini path now has a final redacted package validator layered after
+the readiness, strict device-gate, and current-base owner manifests:
+
+```text
+make harmony-readiness EVIDENCE_DIR=/path/to/evidence
+make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
+```
+
+`scripts/harmony_matepad_acceptance.py` groups the strict device-gate IDs into
+the acceptance domains needed for a MatePad Mini release decision: toolchain and
+source identity, HAP install/signing, AVCodec H.264/HEVC decode, HUKS-backed
+secure pairing and revocation, Protocol v1 Host resume interoperability, UI and
+device identity, sustained soak, and external-camera latency. It exits 0 only
+when readiness is `pass`, the strict device manifest passes with local
+evidence files under the evidence root, the current-base owner gate is `pass`,
+and every required domain is `pass`. Otherwise it exits 2 with a blocked
+`harmony-matepad-acceptance.json`.
+
+`--write-blocked` creates a structurally valid blocked
+`harmony-device-gates.json`, derives a blocked `harmony-current-base-gate.json`,
+and writes a blocked acceptance package when no MatePad Mini or signing
+environment exists. That path is for evidence tracking only. It is not HAP
+installation, streaming, secure pairing, hardware decode, Host interop, soak,
+latency, or MatePad Mini acceptance evidence, and it must not close the README
+HarmonyOS gate.
 
 ## Clean cross-repository gates
 

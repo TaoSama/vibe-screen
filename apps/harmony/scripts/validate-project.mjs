@@ -467,6 +467,72 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     return creation !== undefined && install !== undefined && start !== undefined &&
       creation.end <= install.pos && install.end <= start.pos;
   };
+  const methodWritesBufferPtsBeforePush = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let ptsAssignment;
+    let pushCall;
+    const visit = (node) => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        node.left.getText(sourceFile) === 'slot.buffer.pts' &&
+        node.right.getText(sourceFile) === 'Number(frame.timestampNs / 1000n)' && isReachableInMethod(node, method)) ptsAssignment = node;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.getText(sourceFile) === 'candidate' && node.expression.name.text === 'pushInputData' &&
+        isReachableInMethod(node, method)) pushCall = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return ptsAssignment !== undefined && pushCall !== undefined && ptsAssignment.end <= pushCall.pos;
+  };
+  const methodWritesBufferFlag = (relative, className, methodName, expectedFlag) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        node.left.getText(sourceFile) === 'slot.buffer.flag' && node.right.getText(sourceFile) === expectedFlag &&
+        isReachableInMethod(node, method)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasDecoderEvent = (relative, className, methodName, eventName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && node.arguments.length > 0 &&
+        ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'on' &&
+        node.expression.expression.getText(sourceFile) === 'candidate' &&
+        node.arguments[0].getText(sourceFile) === `'${eventName}'` && isReachableInMethod(node, method)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasPromiseCallBefore = (relative, className, methodName, firstReceiver, firstMethod, secondReceiver, secondMethod) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let firstCall;
+    let secondCall;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && isReachableInMethod(node, method)) {
+        const receiver = node.expression.expression.getText(sourceFile);
+        const name = node.expression.name.text;
+        if (receiver === firstReceiver && name === firstMethod) firstCall = node;
+        if (receiver === secondReceiver && name === secondMethod) secondCall = node;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return firstCall !== undefined && secondCall !== undefined && firstCall.end <= secondCall.pos;
+  };
+  const sourceContainsAll = (relative, snippets) => snippets.every((snippet) => read(relative).includes(snippet));
   const methodHasDominatingCapabilityGuard = (relative, className, methodName, capability, protectedCall) => {
     const sourceFile = portableSourceFiles.get(relative);
     const method = classMethod(relative, className, methodName);
@@ -660,21 +726,47 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderCandidateLease');
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderTransitionOwner');
+  requireImport(decoderPath, '@kit.AVCodecKit', 'media');
+  check(sourceContainsAll(decoderPath, ["VIDEO_MIME_H264: string = 'video/avc'", "VIDEO_MIME_HEVC: string = 'video/hevc'"]),
+    `${decoderPath}: HarmonyVideoDecoder must declare H.264 and HEVC AVCodec MIME strings`);
   check(classPropertyUsesCleanupOwner(decoderPath, 'HarmonyVideoDecoder', 'candidates'),
     `${decoderPath}: HarmonyVideoDecoder.candidates must construct DecoderTransitionOwner with releaseDetached cleanup`);
   check(methodHasConstructorCall(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must construct a reachable per-candidate DecoderLifecycle`);
   check(methodHasOrderedCreationReservation(decoderPath, 'HarmonyVideoDecoder', 'configure'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must reserve DecoderCandidateLease before awaiting native creation`);
+  check(sourceContainsAll(decoderPath, ['const owner: number = ++this.generation', 'this.candidates.detachAndCleanup()']),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must be reconfigurable through a generation bump and decoder cleanup barrier`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'configure', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must await the decoder cleanup transition`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'lifecycle', 'initialize');
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this', 'clearCandidateIfCurrent');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'configure');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'setOutputSurface');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'prepare');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'start');
+  check(methodHasDecoderEvent(decoderPath, 'HarmonyVideoDecoder', 'configure', 'needInputData'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must register the AVCodec needInputData buffer callback`);
+  check(methodHasDecoderEvent(decoderPath, 'HarmonyVideoDecoder', 'configure', 'newOutputData'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must register the AVCodec newOutputData render callback`);
+  check(methodHasPromiseCallBefore(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'freeOutputBuffer', 'listener', 'onFrameRendered'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must render/free output buffers before reporting a rendered frame`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'drain', 'candidate', 'pushInputData');
+  check(methodWritesBufferPtsBeforePush(decoderPath, 'HarmonyVideoDecoder', 'drain'),
+    `${decoderPath}: HarmonyVideoDecoder.drain() must preserve frame PTS before pushInputData()`);
+  check(methodWritesBufferFlag(decoderPath, 'HarmonyVideoDecoder', 'drain', 'media.BufferFlag.NONE'),
+    `${decoderPath}: HarmonyVideoDecoder.drain() must mark regular input buffers as BufferFlag.NONE`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'release', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'release', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.release() must await the decoder cleanup transition`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.lease', 'cancelAndCleanup');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'flush', 'active.decoder', 'flush');
+  check(sourceContainsAll(decoderPath, ['async flush(): Promise<void>', 'this.consecutiveInputFailures = 0;', 'await active.decoder.flush();']),
+    `${decoderPath}: HarmonyVideoDecoder.flush() must reset input-failure state before flushing AVCodec`);
+  check(methodWritesBufferFlag(decoderPath, 'HarmonyVideoDecoder', 'signalEndOfStream', 'media.BufferFlag.EOS'),
+    `${decoderPath}: HarmonyVideoDecoder.signalEndOfStream() must send BufferFlag.EOS`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'signalEndOfStream', 'active.decoder', 'pushInputData');
 
   const transportPath = 'entry/src/main/ets/platform/HarmonyTransport.ets';
   requireImport(transportPath, '../core/transport/TransportCloseOwner', 'TransportCloseOwner');
@@ -765,6 +857,58 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   const notices = read('entry/src/main/resources/rawfile/third_party_notices.md');
   check(notices.includes('no third-party runtime') && notices.includes('not compiled into or distributed'),
     'entry/src/main/resources/rawfile/third_party_notices.md: runtime/build boundary notice missing');
+
+  const readRepositoryFile = (relative) => {
+    try { return readFileSync(resolve(repositoryRoot, relative), 'utf8'); }
+    catch (error) { fail(relative + ': ' + error.message); return ''; }
+  };
+  const staleControllerGapPatterns = [
+    /does\s+not\s+advertise[^.\n]*(CAPABILITY_CONTROLLER|controller\s+capability|that\s+capability)/i,
+    /no\s+`?ControllerEvent`?\s+encoder/i,
+    /lacks?[^.\n]*`?ControllerEvent`?[^.\n]*encoder/i,
+    /no\s+controller\s+lifecycle/i,
+    /no\s+platform\s+routing/i,
+    /Harmony\s+does\s+not\s+implement\s+that\s+rule/i
+  ];
+  const controllerParagraphs = (source) => source.split(/\n\s*\n/)
+    .filter((paragraph) => /CAPABILITY_CONTROLLER|ControllerEvent|controller-specific input|controller portable/i.test(paragraph));
+  const controllerClosureParagraph = (relative, source) => {
+    const paragraph = controllerParagraphs(source).find((candidate) =>
+      candidate.includes('CAPABILITY_CONTROLLER') && candidate.includes('ControllerEvent')) ?? '';
+    check(paragraph.length > 0,
+      relative + ': Phase 4 controller portable boundary must mention CAPABILITY_CONTROLLER and ControllerEvent');
+    return paragraph;
+  };
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TEST.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const controllerScope = controllerParagraphs(source).join('\n\n');
+    const closureParagraph = controllerClosureParagraph(relative, source);
+    check(!staleControllerGapPatterns.some((pattern) => pattern.test(controllerScope)),
+      relative + ': Phase 4 controller docs must not describe the pre-closure controller gap');
+    check(['CAPABILITY_CONTROLLER', 'ControllerEvent', 'InputAck', 'lifecycle', 'all-zero neutral', 'DISCONNECTED']
+      .every((token) => closureParagraph.includes(token)),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+  }
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const normalized = source.toLowerCase();
+    check(normalized.includes('portable') && normalized.includes('source') &&
+      normalized.includes('advertises') && normalized.includes('capability'),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+    check((source.includes('DevEco/API-checker') || source.includes('DevEco SDK')) &&
+      source.includes('HAP') && source.includes('Host interoperability') && source.includes('MatePad') &&
+      (/device\s+evidence|real-device\s+behavior|device\s+acceptance|device\s+result/i).test(source),
+      relative + ': Phase 4 controller docs must keep DevEco/HAP/MatePad gates explicit');
+  }
+  const matePadRunbook = readRepositoryFile('docs/runbook/harmony-matepad-mini.md');
+  check(matePadRunbook.includes('controller input') && matePadRunbook.includes('CONNECTED/STATE/DISCONNECTED') &&
+    matePadRunbook.includes('all-zero neutral release'),
+  'docs/runbook/harmony-matepad-mini.md: device matrix must include controller lifecycle and neutral-release checks');
 
   const makeResult = spawnSync('make', ['-n', '--no-print-directory', '-f', resolve(root, 'Makefile'), 'release',
     'HVIGOR=__HVIGOR__', 'OHPM=__OHPM__'], { cwd: root, encoding: 'utf8' });

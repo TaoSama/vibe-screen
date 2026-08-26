@@ -21,17 +21,34 @@ UIKit, SwiftUI, or VideoToolbox.
 
 For the baseline MacHost on TCP `54321`, the client first sends authenticated
 `SSWA` admission using the pairing token and validates the `SSWR` result. It
-then sends the legacy upgrade marker `0D`, requires the `0D01` acknowledgement,
-and switches the same connection to the Protocol v1 framed main session below.
-Neither admission nor the upgrade marker is treated as an application message.
-Malformed/truncated admission responses, rejected authentication, or an
-invalid upgrade acknowledgement fail the connection before ClientHello.
-Startup and frame sends have bounded timeouts and explicit cancellation; a
-new connection cannot leave an older startup continuation suspended. Host
-control envelopes must keep Protocol v1, strictly increasing message IDs, and
-the negotiated session ID/epoch. Stale or cross-session control fails closed.
-The pairing URL carries a 32-byte bearer token and is connection input only;
-the iOS UI does not persist it and requires the user to paste it again for each
+then sends a `VSLS` secure-record request carrying an ephemeral uncompressed
+P-256 public key. A compatible MacHost returns `VSLR` with its ephemeral public
+key and the secure-record-accepted flag; any malformed response, rejected
+authentication, or missing secure-record acknowledgement fails the default
+trusted-LAN connection before ClientHello. The old plaintext path is available
+only through the explicit legacy startup mode, sets the legacy flag on test
+reports, and is never reached through timeout or parse-error downgrade.
+
+The secure-record transcript derives `session_id = SHA256(
+"vibescreen/trusted-lan-session/v1" || host_public || device_public)` and
+`context = SecurityTranscript("vibescreen/trusted-lan-records/v1",
+session_id, host_public, device_public)`. HKDF-SHA256 expands the ECDH shared
+secret with the 32-byte pairing token as salt and the transcript context as
+info. The resulting 256 bytes split into host/device keys for control, video,
+audio, and bulk in the same order as the macOS/Android record layer. Each
+record carries the `VSCR` header, record version, 16-byte session hash, session
+epoch, key epoch, sender role, logical channel, and a 12-byte nonce encoded as
+`channel:uint32 || sequence:uint64`. Control and bulk are strictly ordered;
+video and audio allow bounded reordering while rejecting replay. The `0D`
+upgrade marker, `0D01` acknowledgement, and all subsequent Protocol v1 TCP
+frames travel inside this record stream on the secure path.
+
+Startup and frame sends have bounded timeouts and explicit cancellation; a new
+connection cannot leave an older startup continuation suspended. Host control
+envelopes must keep Protocol v1, strictly increasing message IDs, and the
+negotiated session ID/epoch. Stale or cross-session control fails closed. The
+pairing URL carries a 32-byte bearer token and is connection input only; the iOS
+UI does not persist it and requires the user to paste it again for each
 connection.
 
 Each TCP frame is `channel: uint8`, `payload_length: uint32 big-endian`, then
@@ -42,10 +59,11 @@ payload length declared in that header. Payloads larger than 16 MiB are
 rejected before their body is buffered.
 
 This adapter preserves logical channel identity; QUIC or WebRTC can replace it
-without changing session/product messages. The current iOS adapter is
-development-only plaintext and works with the MacHost only through explicit
-legacy fallback; it must never be presented as secure Internet transport or as
-evidence for the macOS/Android secure-record LAN path.
+without changing session/product messages. The current iOS adapter is secure by
+default for trusted LAN, while explicit plaintext legacy fallback remains a
+separately reported compatibility mode. The local two-process loopback is
+Core/transport evidence only and must not be presented as iOS-device, UI,
+hardware VideoToolbox, public Internet, or real-network LAN evidence.
 
 ## Protocol v1 backward-compatible advanced negotiation
 
@@ -145,6 +163,13 @@ Negotiation rules:
 - PCM S16LE audio validates format and exact frame bytes, rejects old session
   or config epochs, reorders a bounded packet window, and feeds a bounded
   `AVAudioPlayerNode` schedule through playback-only `AVAudioSession`.
+  The queue policy is shared between the SwiftPM-verifiable core self-test and
+  the AVFoundation app adapter: it records scheduled, played, queue-empty,
+  late-completion, overrun/drop, and stop/restart counters without letting
+  audio backlog block control, video, or bulk delivery. The app exposes a
+  launch-argument playback verifier for Simulator or signed-device runs, but
+  audible output still requires separate iPhone/iPad speaker or route-capture
+  evidence.
 - Clipboard data is read or written only inside explicit button handlers.
   Change IDs suppress loops; MIME, byte limit, and SHA-256 are checked before
   system pasteboard writes.
@@ -176,24 +201,52 @@ Negotiation rules:
 ## Host and security TODO
 
 The minimal MacHost compatibility boundary composes its existing authenticated
-port `54321` admission/upgrade with the Protocol v1 session for iOS. The real
-two-process loopback uses the production iOS Core control outbox and covers
-Hello/capability negotiation, display list/start,
-video configuration acknowledgement and media framing, heartbeat, targeted
-touch, protocol error, and disconnect. It does not implement or prove advanced
-host behavior. A compatible advanced host still must provide per-client
-resource allocation, multi-display stream IDs, PCM capture, advanced control
-handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
-an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
-`4`; the Android and macOS Internet record layers now derive independent
-directional keys, durable nonce counters, and replay windows for all four
-channels. Shared fixed vectors prove offline record interoperability only. The
-macOS and Android Internet product sessions now expose raw audio/bulk
-DataChannel record hooks with owner-scoped admission and bounded backlog
-behavior. Audio capture/playback, clipboard/file-transfer product flows over
-these channels, public-network E2E, and the client's plaintext trusted-LAN
-implementation remain separate gates and are not evidence of the
-macOS/Android secure-record LAN path.
+port `54321` admission with the trusted-LAN secure-record negotiation and the
+Protocol v1 session for iOS. The real two-process loopback uses the production
+iOS Core control outbox and covers Hello/capability negotiation, display
+list/start, video configuration acknowledgement and media framing, heartbeat,
+targeted touch, protocol error, and disconnect on the secure-record path; a
+separate `--legacy-plaintext` loopback proves the old-peer fallback stays
+explicit and labelled. It does not implement or prove advanced host behavior. A
+compatible advanced host still must provide per-client resource allocation,
+multi-display stream IDs, PCM capture, advanced control handlers, WebRTC bulk
+streaming, color retry, a finite host-action catalog, and an authenticated wake
+helper. `SecureChannel` now allocates audio `3` and bulk `4`; the Android,
+macOS, and iOS record layers derive independent directional keys, nonce
+counters, and replay windows for all four channels. Shared fixed vectors prove
+offline record interoperability only. The macOS and Android Internet product
+sessions now expose raw audio/bulk DataChannel record hooks with owner-scoped
+admission and bounded backlog behavior. Audio capture/playback,
+clipboard/file-transfer product flows over these channels, iOS real-device
+execution, and public-network E2E remain open.
+
+## Host-side advanced adapter readiness owner
+
+The Phase 5 host-side advanced adapter readiness owner is the
+phase5-host-advanced-adapters-gate source gate. It owns the minimum MacHost
+and iOS adapter contract matrix below and fails closed when documentation or
+production Host capability defaults drift toward claiming unsupported behavior.
+It is not a device-acceptance gate and cannot close iPhone/iPad installation,
+hardware VideoToolbox, AVAudioEngine audible playback, HDR/EDR output,
+clipboard/file product-flow, native input, reconnect, or Internet
+audio/bulk-DataChannel gates.
+
+| Adapter family | Minimum interface | Fail-closed contract | Current shipped surface |
+| --- | --- | --- | --- |
+| Multi-client/display | Per-client session_id + session_epoch, unique display/stream IDs, targeted input routing, bounded client/display/stream limits | Do not advertise CAPABILITY_MULTI_CLIENT; reject duplicate, stale, or over-limit bindings before capture allocation | Single-client multi-display Protocol v1 host path is offline/self-test covered; multi-client host allocation remains open |
+| Audio capture/playback | AudioConfig/AudioConfigResult, PCM S16LE packets on channel 3 or negotiated audio DataChannel, current session/config epoch validation, bounded jitter/backlog | Do not advertise audio capabilities by default; require explicit availability plus managed policy before native capture/playback; reject unsupported codecs and malformed byte counts | MacHost capture and iOS playback cores are offline-tested; audible device playback and host/iOS product flow remain open |
+| Clipboard | ClipboardOffer/ClipboardRequest/ClipboardContent, origin/change-ID loop suppression, MIME/byte-limit/SHA-256 validation, explicit local read/write action | Managed denial removes clipboard from negotiation; oversize, digest-mismatched, or unmatched content never reaches native pasteboard | Protocol and local adapters are self-tested; iOS prompt/write behavior and host/iOS flow remain open |
+| File transfer | Offer/accept/progress/cancel/complete control flow, ordered bulk chunks with per-chunk/final SHA-256, safe basename staging, aggregate/chunk/concurrency limits | Production Host advertises files only behind fileTransferAllowed and policy; receivers default to reject; policy, digest, disk, backpressure, disconnect, or cancel cleans staging | MacHost/Android USB/LAN file domain is offline-tested; host/iOS and Internet bulk product flows remain open |
+| HDR/color | Video color metadata, explicit fallback/retry with a new config_epoch, structured rejection for unsupported Main10/PQ/HLG | Do not advertise CAPABILITY_HDR_VIDEO by default; require explicit HDR availability; fallback must be 8-bit BT.709 SDR and must not mutate the current stream silently | 8-bit SDR color management/fallback is offline-tested; HDR/EDR output remains open |
+| Host actions/gestures | Finite HostActionCatalog, correlated HostActionInvoke, session target validation, local gesture mapping to catalogued IDs only | Require capability plus deny-wins policy; unknown, over-limit, pre-stream, or foreign-target actions return structured failure | Host action catalog and iOS gesture persistence are offline-tested; device gesture behavior remains open |
+| Wake host | WakeHostRequest/WakeHostResult, paired-device authorization, replay-safe host proof, local policy check before Magic Packet | Advertise wake only when the helper is available and policy allows it; default authorizer denies; host mismatch fails | WOL packet construction is self-tested; authenticated wake helper acceptance remains open |
+| Managed policy | ManagedPolicyStatus, deny-wins merge, normalized allowed-host restriction | Unset managed fields default denied; disjoint allowed hosts deny all; policy denial disables native side effects | Local and remote policy merge semantics are offline-tested; managed App Configuration injection remains open |
+
+The gate writes phase5-host-advanced-adapters-readiness.json with the same
+matrix, device_evidence="not_collected", and an empty device_gates_closed
+list. The JSON is release-readiness evidence only: unsupported adapters must
+stay unadvertised or explicitly policy-gated until their product path and
+device-specific acceptance records exist.
 
 ## Rendering and color
 

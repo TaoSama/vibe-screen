@@ -543,6 +543,12 @@ class StreamingServer: EncodedFrameSink {
     private let managedConfigurationProvider: ManagedConfigurationProvider
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
+    var currentLANRecordProtectionState: LANRecordProtectionState {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            return lanRecordProtectionState
+        }
+        return networkQueue.sync { lanRecordProtectionState }
+    }
 
     init(
         port: UInt16,

@@ -256,6 +256,38 @@ func testNativeInputAndBoundedReconnect() throws {
     )
     try require(keyboardState.pressedKeys.isEmpty, "successful key release stayed active")
     try require(!keyboardState.contains(usbHIDUsage: 0x04), "released key remained captured")
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0,
+            standardByteNegotiated: true
+        ) == 0,
+        "explicit key release kept press-time modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: true
+        ) == USBHIDModifierWire.leftShift,
+        "explicit key release lost current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: false
+        ) == USBHIDModifierWire.leftControl,
+        "legacy explicit key release lost remapped current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0x100,
+            standardByteNegotiated: true
+        ) == nil,
+        "explicit key release accepted reserved modifier bit"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForCleanupRelease == 0,
+        "cleanup key release did not clear modifiers"
+    )
 
     try require(
         try NativeInputTargetResolver.target(selectedStreamID: nil, bindings: []) == nil,
@@ -320,6 +352,14 @@ func testNativeInputAndBoundedReconnect() throws {
     try require(
         ReconnectFailure.classify(TCPTransportError.authenticationRequired) == .permanent,
         "authentication failure was retryable"
+    )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: true) == .transientTransport,
+        "resumable disconnect notice was not retryable"
+    )
+    try require(
+        ReconnectFailure.fromDisconnectNotice(mayResume: false) == .permanent,
+        "terminal disconnect notice was retryable"
     )
 }
 
@@ -759,6 +799,63 @@ func testAudioPlaybackSessionFailClosed() throws {
         !AudioStreamError.nonIncreasingConfigEpoch(previous: 4, received: 4).isDroppableMediaPacketError,
         "audio config control-plane error was classified as droppable"
     )
+}
+
+func testAudioPlaybackQueuePolicy() throws {
+    var config = VSAudioConfig()
+    config.streamID = 7
+    config.configEpoch = 2
+    config.codec = .pcmS16Le
+    config.sampleRateHz = 48_000
+    config.channelCount = 2
+    config.framesPerPacket = 4
+    let format = try PCMStreamFormat(config: config)
+    let payload = Data(repeating: 0x01, count: format.bytesPerPacket)
+
+    func packet(sequence: UInt64, framesPerPacket: UInt32? = nil) throws -> AudioPacket {
+        var header = VSAudioPacketHeader()
+        header.streamID = 7
+        header.sessionEpoch = 9
+        header.configEpoch = 2
+        header.sequence = sequence
+        header.frameCount = framesPerPacket ?? format.framesPerPacket
+        header.payloadLength = UInt32(payload.count)
+        let bytes = try header.serializedData()
+        return try AudioPacket(serializedFrame: encodeVarint(bytes.count) + bytes + payload)
+    }
+
+    var queue = AudioPlaybackQueueState(policy: AudioPlaybackQueuePolicy(maximumScheduledBuffers: 2))
+    do {
+        _ = try queue.schedule(packet(sequence: 0), format: format)
+        throw SelfTestError.failed("audio playback queue scheduled while stopped")
+    } catch AudioPlaybackQueueError.notConfigured { }
+
+    queue.configure(format: format)
+    try require(try queue.schedule(packet(sequence: 0), format: format) == .scheduled, "audio playback schedule")
+    try require(try queue.schedule(packet(sequence: 1), format: format) == .scheduled, "audio playback second schedule")
+    try require(
+        try queue.schedule(packet(sequence: 2), format: format) == .overrunDropped,
+        "audio playback overrun drop"
+    )
+    try require(queue.snapshot.scheduledBufferCount == 2, "audio playback queue count")
+    try require(queue.snapshot.overrunDropCount == 1, "audio playback overrun counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.playedBufferTotal == 1, "audio playback completion counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.queueEmptyCount == 1, "audio playback queue-empty counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.queueEmptyCount == 1, "audio playback queue-empty counter changed on late completion")
+    try require(queue.snapshot.lateCompletionCount == 1, "audio playback late completion counter")
+
+    do {
+        _ = try queue.schedule(packet(sequence: 3, framesPerPacket: format.framesPerPacket + 1), format: format)
+        throw SelfTestError.failed("audio playback accepted wrong PCM frame count")
+    } catch AudioPlaybackQueueError.invalidPCMByteCount { }
+
+    queue.stop()
+    try require(!queue.snapshot.isConfigured && queue.snapshot.scheduledBufferCount == 0, "audio playback stop reset")
+    queue.configure(format: format)
+    try require(try queue.schedule(packet(sequence: 4), format: format) == .scheduled, "audio playback restart schedule")
 }
 
 func testClipboardAndManagedPolicy() throws {
@@ -1206,6 +1303,100 @@ func testTrustedLANStartupCodecs() throws {
     } catch SessionStateError.invalidSessionIdentifier { }
 }
 
+func testTrustedLANSecureRecords() throws {
+    let token = Data((0..<32).map(UInt8.init))
+    let hostKey = P256.KeyAgreement.PrivateKey()
+    let deviceKey = P256.KeyAgreement.PrivateKey()
+    let hostPublic = hostKey.publicKey.x963Representation
+    let devicePublic = deviceKey.publicKey.x963Representation
+    let sessionIdentifier = LANSecureRecordSession.sessionIdentifier(
+        hostPublicKey: hostPublic,
+        devicePublicKey: devicePublic
+    )
+    let context = LANSecureRecordSession.transcriptContext(
+        sessionIdentifier: sessionIdentifier,
+        hostPublicKey: hostPublic,
+        devicePublicKey: devicePublic
+    )
+    let hostSecret = try hostKey.sharedSecretFromKeyAgreement(
+        with: P256.KeyAgreement.PublicKey(x963Representation: devicePublic)
+    ).withUnsafeBytes { Data($0) }
+    let deviceSecret = try deviceKey.sharedSecretFromKeyAgreement(
+        with: P256.KeyAgreement.PublicKey(x963Representation: hostPublic)
+    ).withUnsafeBytes { Data($0) }
+    try require(hostSecret == deviceSecret, "LAN ECDH shared secret mismatch")
+    let host = try LANSecureRecordSession(
+        role: .host,
+        sessionIdentifier: sessionIdentifier,
+        sharedSecret: hostSecret,
+        bootstrapToken: token,
+        context: context
+    )
+    let device = try LANSecureRecordSession(
+        role: .device,
+        sessionIdentifier: sessionIdentifier,
+        sharedSecret: deviceSecret,
+        bootstrapToken: token,
+        context: context
+    )
+
+    let controlFrame = try TransportFrame(channel: .control, payload: Data([1, 2])).encoded()
+    let mediaFrame = try TransportFrame(channel: .video, payload: Data([3, 4])).encoded()
+    var protected = try LANSecureRecordStreamFramer.encode(try device.seal(controlFrame, channel: .control))
+    protected.append(try LANSecureRecordStreamFramer.encode(try host.seal(mediaFrame, channel: .video)))
+    var recordFramer = LANSecureRecordStreamFramer()
+    var transportFramer = TransportFramer()
+    let opened = try recordFramer.append(protected) { record in
+        if let opened = try? host.openDeclaredChannel(record) { return opened }
+        return try device.openDeclaredChannel(record)
+    }
+    let frames = try opened.flatMap { try transportFramer.append($0.payload) }
+    try require(frames.map(\.channel) == [.control, .video], "secure record channel routing")
+    try require(frames.map(\.payload) == [Data([1, 2]), Data([3, 4])], "secure record payloads")
+
+    let mismatchedInnerFrame = try TransportFrame(channel: .control, payload: Data([0xaa])).encoded()
+    let mismatchedRecord = try host.openDeclaredChannel(
+        try device.seal(mismatchedInnerFrame, channel: .video)
+    )
+    var mismatchedTransportFramer = TransportFramer()
+    let mismatchedFrames = try mismatchedTransportFramer.append(mismatchedRecord.payload)
+    try require(
+        mismatchedFrames.count == 1 && mismatchedFrames[0].channel != mismatchedRecord.channel,
+        "secure record mismatch fixture did not preserve the declared channel"
+    )
+
+    do {
+        _ = try device.open(try host.seal(Data([5]), channel: .video), channel: .control)
+        throw SelfTestError.failed("wrong secure record channel accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+    let replay = try host.seal(Data([6]), channel: .video)
+    _ = try device.open(replay, channel: .video)
+    do {
+        _ = try device.open(replay, channel: .video)
+        throw SelfTestError.failed("replayed secure record accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+    var tampered = try host.seal(Data([9]), channel: .video)
+    tampered[tampered.index(before: tampered.endIndex)] ^= 1
+    do {
+        _ = try device.open(tampered, channel: .video)
+        throw SelfTestError.failed("tampered secure record accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+
+    let key = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+    let request = try LANSecureRecordNegotiation.encodeRequest(publicKey: key, allowLegacyFallback: false)
+    try require(request.prefix(4) == Data("VSLS".utf8), "VSLS request magic")
+    let decodedRequest = try LANSecureRecordNegotiation.decodeRequest(request)
+    try require(!decodedRequest.allowLegacyFallback, "default secure request allowed legacy fallback")
+    do {
+        _ = try LANSecureRecordNegotiation.encodeResponse(
+            publicKey: key,
+            encrypted: false,
+            explicitLegacyFallback: false
+        )
+        throw SelfTestError.failed("implicit plaintext legacy response accepted")
+    } catch LANSecureRecordError.invalidHandshake { }
+}
+
 func testTransportStartupCancellation() throws {
     let queue = DispatchQueue(label: "vibescreen-ios-selftest.transport")
     let listener = try NWListener(using: .tcp, on: .any)
@@ -1311,6 +1502,7 @@ do {
     try testMultiDisplaySessions()
     try testAudioQueue()
     try testAudioPlaybackSessionFailClosed()
+    try testAudioPlaybackQueuePolicy()
     FileHandle.standardError.write(Data("RUN: clipboard/file/policy\n".utf8))
     try testClipboardAndManagedPolicy()
     try testFileTransfer()
@@ -1319,6 +1511,7 @@ do {
     try testAdvancedProtocolRoundTrip()
     FileHandle.standardError.write(Data("RUN: trusted-LAN startup codecs\n".utf8))
     try testTrustedLANStartupCodecs()
+    try testTrustedLANSecureRecords()
     try testTransportStartupCancellation()
     FileHandle.standardError.write(Data("RUN: owner/media/heartbeat generation gates\n".utf8))
     try runOwnerGenerationSelfTests()

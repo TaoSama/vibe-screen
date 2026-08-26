@@ -26,16 +26,16 @@ responsibilities separate.
 
 Portable checks now prove the independent codec and session sequence through
 VideoConfig, transport upgrade/channel framing, media fixture parsing, stale
-epoch filtering, bounded queues, input envelope encoding, reconnect policy, and
-the expected DevEco project file graph. They also prove a portable
-transport-neutral authenticated-record contract against the shared
-macOS/Android AES-256-GCM fixture, including nonce/replay, wrong-key, tamper,
-stale-epoch, and explicit legacy-fallback behavior. ArkUI/platform sources
-connect those seams, but they have not been compiled by DevEco and the
-production TCP path still sends plaintext Protocol v1 frames. None of the
-acceptance criteria requiring a HAP, Harmony SDK behavior, Mac interoperability,
-signing, HUKS-backed secure pairing, production authenticated transport, or a
-device is complete.
+epoch filtering, bounded queues, input envelope encoding, reconnect policy,
+resume result success/failure handling, post-resume old-epoch control/media
+rejection, host-restart fresh-session fallback, and the expected DevEco project
+file graph. A Host interop preflight/manifest verifier now records the exact
+external evidence required for HostHello/session/display/video/control/media,
+background/foreground, Wi-Fi loss/restore, bounded reconnect, host restart, and
+old-epoch rejection. ArkUI/platform sources connect those seams, but they have
+not been compiled by DevEco. None of the acceptance criteria requiring a HAP,
+Harmony SDK behavior, Mac interoperability, signing, secure pairing, or a device
+is complete.
 
 ## Explicit contract gaps
 
@@ -49,18 +49,16 @@ peer lacks stylus support; eraser, proximity/hover, and barrel buttons cannot
 be losslessly downgraded and are suppressed when the extended capability is not
 negotiated. Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a
 lifecycle-scoped `ControllerEvent` wire contract, and the Harmony portable
-protocol model now mirrors `Capability.CONTROLLER = 26`. The production client
-does not advertise that capability and has no `ControllerEvent` encoder,
-controller lifecycle implementation, or platform routing. The protocol requires
-a receiver to synthesize the same all-zero neutral state for the button mask,
-stick axes, triggers, and hat axes before discarding an active controller on
-disconnect, session teardown, ownership takeover, or transport loss. Harmony
-does not implement that rule, and its portable checks do not prove it. No
-DevEco/API-checker, HAP, or MatePad evidence exists for this path, so
-controller-specific input remains open.
+protocol model now mirrors `Capability.CONTROLLER = 26`. The production source
+advertises that capability, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting controller state, validates lifecycle bounds, and
+sends all-zero neutral `DISCONNECTED` releases before active controller teardown
+or resume. This closes the portable source contract only. No DevEco/API-checker,
+HAP, Host interoperability, or MatePad evidence exists for this path, so
+controller-specific input remains a device acceptance gate rather than a shipped
+claim.
 
 Physical keyboards and mice use the existing key/pointer messages. Wheel axis
 delivery still needs DevEco/device confirmation before it is advertised as
 accepted behavior. Address-link import is not secure pairing: Pairing proof,
-credential issue/revoke, HUKS-backed traffic keys, record-layer socket wrapping,
-and real Host replay protection remain separate gates.
+credential issue/revoke, and replay protection remain separate gates.

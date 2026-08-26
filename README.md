@@ -10,10 +10,13 @@
 > Android builds now upgrade the main USB/LAN session to Protocol v1 while
 > retaining an explicit legacy fallback. Protocol v1 is now exercised on device
 > (display selection/switch, HiDPI capture, keyboard/scroll input,
-> auto-reconnect) and the cross-platform offline gates pass. A two-hour soak has
-> run with a stable stream, but the host resident-memory no-growth gate and a
-> native-pointer HID confirmation remain open. Do not treat roadmap items below
-> as shipped features.
+> auto-reconnect) and the cross-platform offline gates pass. Protocol v1
+> clipboard forwarding is implemented for explicit Android/macOS text transfers
+> and covered by offline gates, but real Android ClipboardManager <-> macOS
+> NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
+> stable stream, but the host resident-memory no-growth gate and a native-pointer
+> HID confirmation remain open. Do not treat roadmap items below as shipped
+> features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -32,9 +35,10 @@ platform scaffolding under active development.
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
+| Clipboard | Protocol v1 text clipboard forwarding is wired for Android <-> macOS with explicit send/get/overwrite actions, strict UTF-8 `text/plain`, SHA-256/origin/session-epoch validation, deny-wins managed-policy gating, and a 1 MiB negotiated size ceiling. Android JVM tests, Protocol v1 fixtures, and the Mac Protocol v1 self-test pass on current main, but no real Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E evidence is recorded, so this remains an open device gate |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
-| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard is implemented and offline-tested, but its real device/system-pasteboard E2E gate is still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
@@ -188,8 +192,12 @@ versions.
 - Android uses Kotlin, Compose, and MediaCodec.
 - HarmonyOS NEXT uses ArkTS, ArkUI, and native hardware decoding APIs.
 - iOS uses SwiftUI and VideoToolbox.
-- KMP may share protocol models, connection state, configuration, and business
-  rules between Android and iOS. Rendering and input remain native.
+- Android and iOS currently use native Kotlin and Swift implementations backed
+  by the same Protocol v1 schemas and a fail-closed shared-model contract under
+  [`contracts/shared-models`](contracts/shared-models/v1/manifest.json). KMP
+  remains a possible future home for protocol models, connection state,
+  configuration, and business rules once shared runtime ownership is justified.
+  Rendering and input remain native.
 - HarmonyOS implements the same versioned protocol independently rather than
   depending on unsupported KMP platform integration.
 
@@ -439,6 +447,20 @@ the
 and the
 [P0110 passed rerun evidence](docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-20-p0110-pacific-fixed-binary-rerun/README.md).
 
+Android and MacHost also expose explicit Protocol v1 `text/plain` clipboard
+transfer for USB/LAN sessions: each side sends only an offer until the receiver
+chooses to fetch, direct content requires an overwrite confirmation, trusted LAN
+shows a plaintext-risk confirmation before body transfer, and both peers enforce
+the negotiated 1 MiB ceiling plus origin, session epoch, UTF-8 and SHA-256
+checks. This path is covered by Android JVM tests, protocol fixtures, MacHost
+clipboard XCTest sources, and the Mac Protocol v1 executable self-test; the
+MacHost clipboard XCTest run itself is blocked in this local Command Line Tools
+environment. The real Android ClipboardManager <-> macOS NSPasteboard USB/LAN
+E2E gate remains open pending a signed Host/device run; see the
+[clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
+and the current-main audit evidence under
+[2026-08-27-current-base-clipboard-audit](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-current-base-clipboard-audit/README.md).
+
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
   manual video configuration (bitrate/quality/frame-rate presets). Network-driven
@@ -634,6 +656,10 @@ The trusted-LAN path is still separate from Internet mode. Its current
 macOS/Android peers use application records on the admitted private-network TCP
 session, while explicit legacy fallback remains plaintext and must not be
 presented as encrypted or as Internet E2EE evidence.
+The Android/macOS clipboard implementation currently belongs to the USB/LAN
+Protocol v1 session path and has only offline/self-test evidence on current
+main; no public-Internet, WebRTC DataChannel, real Android ClipboardManager, or
+real macOS NSPasteboard E2E result is claimed for clipboard.
 
 Adaptive video profiles are scoped to the WebRTC Internet transport only; USB and
 trusted-LAN sessions keep manual client-driven bitrate/quality/frame-rate presets
@@ -785,6 +811,13 @@ for Authority audit visibility, signaling long-poll rejection, future and
 post-revocation same-allocation relay credential rejection, active allocation disconnect, stale
 credential rejection, and post-revocation traffic denial; the current blocked
 evidence still lacks the live coturn/data-plane deployment observations.
+The script scripts/phase3/production_e2e_enforcement.py is the explicit owner
+and evidence contract for closing that final production enforcement gate. It
+fails closed when real deployed configuration is absent, when
+authority/signaling/coturn policy values diverge, or when local loopback and
+synthetic-peer evidence is presented as public production E2E. The current
+blocked record is retained under
+[2026-08-25-production-e2e-enforcement-current-base-blocked](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-25-production-e2e-enforcement-current-base-blocked/README.md).
 
 The formal Internet latency gate is `internet-glass-to-glass-sub150` for direct
 and relay public-Internet routes. It requires external-camera raw samples plus
@@ -825,9 +858,9 @@ increase it.
   barrel buttons cannot be losslessly downgraded and are suppressed when the
   extended capability is not negotiated. The portable Harmony core now also
   advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
-  Host InputAck acceptance before sending controller state, and releases active
-  controllers through all-zero neutral DISCONNECTED events before teardown or
-  resume. No DevEco SDK was available for this
+  Host InputAck acceptance before sending controller state, validates lifecycle
+  bounds, and releases active controllers through all-zero neutral DISCONNECTED
+  events before teardown or resume. No DevEco SDK was available for this
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
   installation, hardware decode, production HUKS API behavior, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.
@@ -865,6 +898,11 @@ increase it.
   [current-base gate audit](docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md)
   records the open PR owner map and marks this gate as the current-base
   aggregate owner path.
+- `make harmony-matepad-acceptance EVIDENCE_DIR=...` validates the final
+  redacted MatePad Mini acceptance package after readiness, strict device-gate,
+  and current-base owner manifests are present. Its `--write-blocked` dry run
+  can archive missing-device readiness, but blocked output is not real-device
+  acceptance evidence and cannot close the HarmonyOS gate.
 
 ### Phase 5 — iOS and advanced capabilities
 
@@ -927,6 +965,13 @@ increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- The host-side advanced adapter readiness owner is now the
+  `phase5-host-advanced-adapters-gate`. It records the minimum iOS/MacHost
+  adapter matrix for multi-client/display allocation, audio, clipboard, file
+  transfer, HDR/color, host actions, wake, and managed policy, and verifies
+  that unsupported Host adapters stay unadvertised or explicitly policy-gated.
+  This is a source/readiness gate only, not iOS device or advanced product-flow
+  acceptance.
 - The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
   current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.
   The current iOS renderer still advertises SDR only and has no HDR/EDR output
@@ -949,6 +994,12 @@ increase it.
   ownership model, and macOS/Android/iOS/Harmony owner status. Single-client
   display selection or display-switch evidence remains separate and cannot
   close this gate.
+- The current-base aggregate gate records per-gate owner PRs while it remains
+  fail-closed. PR #290 owns the aggregate and device-acceptance validator, #251
+  owns iOS hardware VideoToolbox readiness, and #253 owns Host advanced-adapter
+  readiness. Passing status under a mismatched owner, Simulator output, unsigned
+  archives, MacHost loopback, and Android evidence cannot close those iOS
+  hardware or Host-adapter gates.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. The hardware VideoToolbox behavior gate now has a

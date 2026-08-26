@@ -63,6 +63,11 @@ DevEco toolchain, signed HAP/checksum/signature metadata, Protocol v1 Host build
 hash, and an attached MatePad Mini-class HDC target are all present. A passing
 readiness preflight is still not installation, streaming, secure-pairing, soak,
 or latency evidence.
+The root `make harmony-avcodec-preflight` target can create a structured
+blocked/readiness manifest for the AVCodec H.264/HEVC path, and
+`make harmony-avcodec-validate` strictly validates a completed manifest. A
+passing manifest requires real DevEco/HDC/HAP/MatePad hardware evidence;
+`--allow-blocked` output is not hardware decode acceptance.
 `make harmony-current-base-gate` is the read-only aggregate owner check for the
 current README Phase 4 DevEco/HAP/decode/HUKS/authenticated-transport/resume/
 MatePad surface. It consumes the readiness and strict device-gate manifests,
@@ -80,14 +85,56 @@ make build-debug
 make build-release
 ```
 
-Both targets call real `ohpm install` and Hvigor `assembleHap`; there is no Node
-packaging substitute. A release profile and signing certificate must be
-configured locally. `make release` accepts exactly one signed release HAP,
-copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The build must be repeated
-from a clean checkout in DevEco before any release claim. The HAP raw resources
-carry the repository MIT license and Harmony runtime notice; `make release`
-also copies the root license/notices beside the HAP and includes them in the
-checksum manifest.
+The Host resume interop evidence gate is separate from the portable source
+checks and from producing a HAP. For a local readiness bundle that remains
+blocked until DevEco, HDC, a signed HAP, a HarmonyOS NEXT MatePad Mini, and a
+resume-capable Host run are available:
+
+```bash
+make harmony-host-interop-preflight EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+For a real acceptance package, fill `harmony-host-interop.json` from the raw
+HarmonyOS device and Host logs, then run:
+
+```bash
+make harmony-host-interop-gate EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+`build-debug` and `build-release` call real `ohpm install` and Hvigor
+`assembleHap`; there is no Node packaging substitute. A release profile and
+signing certificate must be configured locally. `make release` accepts exactly
+one signed release HAP, copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The
+build must be repeated from a clean checkout in DevEco before any release claim.
+The HAP raw resources carry the repository MIT license and Harmony runtime
+notice; `make release` also copies the root license/notices beside the HAP and
+includes them in the checksum manifest.
+
+Before running the interactive device matrix, collect a fail-closed lifecycle
+readiness bundle from the exact local environment:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+```
+
+Use `HARMONY_HAP_READINESS_FLAGS='--run-build --signature-certificate
+/path/to/release.cer --harmony-sdk-api "API 12"'` when the DevEco CLI and
+public signing certificate are available. The collector writes
+`harmony-hap-readiness.json`, `harmony-device-gates.json`, HDC target output,
+package pre-state, and a README. Missing DevEco, OHPM/Hvigor/HDC, signing
+material, HAP output, MatePad target, or lifecycle observations returns a
+non-zero blocked/insufficient status and is evidence of what remains blocked,
+not a pass.
+Do not pass or commit private signing keys; record only a public certificate or
+precomputed public-certificate SHA-256.
+
+After manually installing, upgrading, rolling back, and uninstalling on the
+HarmonyOS target, pass a lifecycle observation JSON with non-empty evidence
+references for `install`, `upgrade`, `rollback`, and `uninstall_cleanup`; then
+validate the generated `harmony-device-gates.json` without `--allow-blocked`
+only if every Phase 4 real-device gate is independently recorded as pass.
 
 ## Run in trusted-LAN development mode
 
@@ -184,8 +231,13 @@ portable checks below only keep the source boundaries honest while that work is
 incomplete.
 
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
+- signed HAP install/launch, in-place upgrade retention, rollback behavior, and
+  uninstall cleanup recorded on the HarmonyOS target;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
-- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
+- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device,
+  with `harmony-avcodec-preflight.json` proving decoder capability, hardware
+  identity, buffer callbacks, Protocol v1 media headers, PTS, render/free,
+  flush, reconfigure, EOS, and release for both codecs;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
   authenticated record-layer socket integration, QR camera import,
   Authority/Signaling admission, and Mac interoperability;

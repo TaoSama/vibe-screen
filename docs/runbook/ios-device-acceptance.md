@@ -25,6 +25,11 @@ The expected no-device result is fail-closed `blocked`. A nonzero exit from this
 command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
 retained gate evidence are missing. Do not convert that readiness output into a
 device pass.
+The aggregate report also records per-gate owners. PR #290 owns the aggregate
+and sanitized iOS device-acceptance validator only; hardware VideoToolbox
+readiness remains owned by #251, and Host-side advanced-adapter readiness
+remains owned by #253. Do not mark those gates complete from aggregate status,
+Simulator output, unsigned archives, MacHost loopback, or Android evidence.
 
 Before starting any install or device session, record and check the local iOS
 toolchain prerequisites. If any of these fail, stop at blocked readiness and do
@@ -108,8 +113,9 @@ Evidence requirements:
 - E6: Transient network interruption and heartbeat timeout cases with reconnect
   attempt timestamps, final state, no stale-epoch render, and measured reconnect
   duration.
-- E7: PCM S16LE negotiation, AVAudioEngine start, audible playback
-  confirmation, queue depth, underrun/error logs, and audio policy state.
+- E7: PCM S16LE negotiation, `--audio-playback-self-test` PASS on the signed
+  app build, AVAudioEngine start, audible playback confirmation, queue depth,
+  underrun/overrun/error logs, audio route, and audio policy state.
 
 Fail-closed rules:
 
@@ -124,14 +130,18 @@ Fail-closed rules:
   input behavior.
 - F6: Manual relaunch, auth/protocol validation failure, or missing epoch
   telemetry leaves reconnect open.
-- F7: Core PCM parser tests or host-side audio capture plans do not prove iOS
-  playback.
+- F7: Core PCM parser tests, playback-queue self-tests, Simulator-only
+  AVAudioEngine checks, or host-side audio capture plans do not prove audible
+  iOS playback.
 
-README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
-product flows over Internet DataChannels, and advanced real-device behavior
-open; those broader gates remain tracked in the Phase 5 verification record
-rather than closed by this device runbook. HDR output specifically requires the
-dedicated `ios-hdr-edr-gate` in the
+README Phase 5 also keeps HDR output, iOS advanced adapters, host-side advanced
+adapters, audio/bulk product flows over Internet DataChannels, and advanced
+real-device behavior open; those broader gates remain tracked in the Phase 5
+verification record rather than closed by this device runbook. The host-side
+advanced-adapter owner is #253 and requires reviewed MacHost/product evidence
+for multi-client/display streams, audio capture, clipboard/file handlers,
+HDR/color retry, host actions, wake helper, and managed policy. HDR output
+specifically requires the dedicated `ios-hdr-edr-gate` in the
 [HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback,
 Simulator output, unsigned archives, Android evidence, Protocol field presence,
 ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
@@ -165,9 +175,14 @@ ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
 8. Exercise reconnect by toggling the trusted LAN path and by allowing the
    heartbeat miss budget to expire. Record attempt count, backoff timestamps,
    final state, reconnect duration, and proof that stale epochs were rejected.
-9. Exercise PCM S16LE playback. Record negotiated audio config, packet epochs,
-   queue depth, AVAudioEngine state, audible output confirmation, and any
-   underrun or format rejection.
+9. Exercise PCM S16LE playback. First launch the same signed build with
+   `--audio-playback-self-test` and record the PASS/FAIL line plus scheduled,
+   played, queued, queue-empty, late-completion, overrun, and stop counters.
+   Then connect to an audio-capable host path and record negotiated audio
+   config, packet epochs, queue depth, AVAudioEngine state, output route,
+   audible output confirmation from a listener or external recorder, and any
+   underrun, overrun, or format rejection. If no audio-capable host path or
+   audible capture environment is present, mark E7 blocked rather than passed.
 10. If the acceptance owner requests a bounded stability sample, record a
     30-minute memory, latency, dropped-frame, thermal, and power series. Do not
     start a longer soak from this runbook without explicit owner approval.
@@ -336,11 +351,32 @@ gate.
     "videotoolbox_hevc": { "status": "open", "evidence": [] },
     "input": { "status": "open", "evidence": [] },
     "reconnect": { "status": "open", "evidence": [] },
-    "audio_playback": { "status": "open", "evidence": [] }
+    "audio_playback": {
+      "status": "open",
+      "playback_self_test": {
+        "status": "open",
+        "result_line": "",
+        "scheduled_buffers": 0,
+        "played_buffers": 0,
+        "queued_buffers": 0,
+        "queue_empty": 0,
+        "late_completions": 0,
+        "overruns": 0,
+        "stops": 0
+      },
+      "audible_confirmation": {
+        "status": "open",
+        "method": "",
+        "audio_route": "",
+        "capture_artifacts": []
+      },
+      "evidence": []
+    }
   },
   "broader_gates": {
     "hdr_output": { "status": "open", "evidence": [], "runbook": "docs/runbook/hdr-color-acceptance.md" },
     "advanced_adapters": { "status": "open", "evidence": [] },
+    "host_advanced_adapters": { "status": "open", "evidence": [] },
     "trusted_lan_secure_records": { "status": "open", "evidence": [] }
   },
   "android_evidence_used_for_ios_gates": false,

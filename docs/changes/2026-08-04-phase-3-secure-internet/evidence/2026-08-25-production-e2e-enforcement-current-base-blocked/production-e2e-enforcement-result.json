@@ -1,0 +1,164 @@
+{
+  "owners": {
+    "authority": {
+      "contact": "authority-oncall",
+      "team": "vibe-screen-authority"
+    },
+    "coturn_data_plane": {
+      "contact": "relay-oncall",
+      "team": "vibe-screen-relay"
+    },
+    "evidence_review": {
+      "contact": "qa-oncall",
+      "team": "vibe-screen-qa"
+    },
+    "release_decision": {
+      "contact": "release-oncall",
+      "team": "vibe-screen-release"
+    },
+    "signaling": {
+      "contact": "signaling-oncall",
+      "team": "vibe-screen-signaling"
+    }
+  },
+  "reasons": [
+    {
+      "category": "blocked",
+      "field": "evidence.artifacts[deployed_config]",
+      "message": "artifact does not report pass"
+    },
+    {
+      "category": "blocked",
+      "field": "evidence.artifacts[public_network_observation]",
+      "message": "artifact does not report pass"
+    },
+    {
+      "category": "blocked",
+      "field": "evidence.artifacts[data_plane_observation]",
+      "message": "artifact does not report pass"
+    },
+    {
+      "category": "blocked",
+      "field": "evidence.artifacts[coturn_disconnect_observation]",
+      "message": "artifact does not report pass"
+    },
+    {
+      "category": "blocked",
+      "field": "evidence.artifacts[mixed_route_soak]",
+      "message": "artifact does not report pass"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.authority.present",
+      "message": "real deployed configuration is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.authority.source",
+      "message": "configuration must come from reviewed deployed secret manager material"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.authority.tls_verify_full",
+      "message": "TLS hostname/certificate verification is required"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.coturn.present",
+      "message": "real deployed configuration is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.coturn.source",
+      "message": "configuration must come from reviewed deployed secret manager material"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.coturn.tls_verify_full",
+      "message": "TLS hostname/certificate verification is required"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.signaling.present",
+      "message": "real deployed configuration is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.signaling.source",
+      "message": "configuration must come from reviewed deployed secret manager material"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.signaling.tls_verify_full",
+      "message": "TLS hostname/certificate verification is required"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.coturn.exporter",
+      "message": "trusted coturn allocation exporter is not deployed"
+    },
+    {
+      "category": "blocked",
+      "field": "production_config.coturn.disconnect_executor",
+      "message": "active-allocation disconnect executor is not deployed"
+    },
+    {
+      "category": "blocked",
+      "field": "topology.public_route_observed",
+      "message": "expected True"
+    },
+    {
+      "category": "blocked",
+      "field": "topology.remote_turn_observed",
+      "message": "expected True"
+    },
+    {
+      "category": "blocked",
+      "field": "topology.public_endpoint_hosts",
+      "message": "public endpoint host observations are required"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.real_screencapturekit_capture",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.android_mediacodec_decode",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.application_aead_verified",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.coturn_allocation_observed",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.coturn_disconnect_observed",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.authority_admission_observed",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.signaling_authorization_observed",
+      "message": "required production data-plane observation is missing"
+    },
+    {
+      "category": "blocked",
+      "field": "data_plane.mixed_route_soak_minutes",
+      "message": "mixed-route production soak must be at least 120 minutes"
+    }
+  ],
+  "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
+  "schema": "dev.vibescreen.phase3-production-e2e-enforcement/v1",
+  "status": "blocked"
+}

@@ -39,10 +39,10 @@ evidence covers every supported state.
 
 The current-base iOS aggregate owner is PR #290. Merged PR #182 remains the
 historical sanitized device-acceptance baseline. Use the aggregate gate to keep
-the current owner connected to the narrower signing, VideoToolbox,
-advanced-adapter, AVAudioEngine/PCM, HDR, native-input, reconnect, and
-trusted-LAN secure-record tasks without claiming a device pass before real
-iPhone and iPad evidence exists:
+the current owner connected to the narrower signing, VideoToolbox, iOS advanced
+adapter, Host advanced-adapter, AVAudioEngine/PCM, HDR, native-input,
+reconnect, and trusted-LAN secure-record tasks without claiming a device pass
+before real iPhone and iPad evidence exists:
 
 ```sh
 make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
@@ -55,6 +55,10 @@ Simulator-only evidence, unsigned archives, MacHost loopback, Android evidence,
 or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
 `can_close_ios_device_acceptance=false`. That nonzero result is the expected
 fail-closed readiness evidence when no iOS device run is scheduled.
+The manifest and gate report retain per-gate `owner_pr` values. Hardware
+VideoToolbox H.264/HEVC is owned by #251, and Host advanced adapters are owned
+by #253. Passing status plus evidence under the wrong owner still fails closed,
+so the #290 aggregate cannot accidentally close those open readiness gates.
 
 ## Phase 0 stable-release aggregate gate
 
@@ -405,6 +409,7 @@ endpoint default:
 
 ```sh
 export ADB_ENDPOINT='<lease-controlled-endpoint>'
+make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make evidence-device-info EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-30m EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT" HOST_PID="$HOST_PID"
@@ -412,26 +417,34 @@ make host-rss-gate EVIDENCE_DIR=.build/evidence
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
-Before a short USB end-to-end smoke, use the fail-closed preflight to capture
-whether the required state already exists without changing the Host, ADB reverse
-mappings, TCC, Keychain, or Android app data:
+### Real-device readiness gate
 
-~~~sh
-make evidence-usb-smoke-preflight \
-  EVIDENCE_SERIAL=<P0110_USB_SERIAL> \
-  EVIDENCE_EXPECTED_MANUFACTURER=nubia \
-  EVIDENCE_EXPECTED_MODEL=P0110 \
-  EVIDENCE_EXPECTED_DEVICE=pacific \
-  EVIDENCE_EXPECTED_ANDROID_RELEASE=16 \
-  EVIDENCE_EXPECTED_SDK=36
-~~~
+`evidence-real-device-gate-preflight` writes
+`.build/evidence/real-device-gate/real-device-gate.json`. It is the unified
+readiness record for Android real-device work: device locks, exact ADB identity,
+ADB reverse, Android foreground state, macOS Host listener, Host signing/TCC
+preflight, and stream telemetry. By default, stream readiness requires fresh
+structured `stream_stats` in `--host-telemetry-jsonl`; a timestamp-less Host log
+`Pipeline:` line is only a legacy diagnostic when
+`--allow-host-log-without-freshness` is passed. The default target is read-only
+and exits `2` with `result=blocked` when any prerequisite is missing. Pass
+explicit extra arguments only when the device owner wants the runner to prepare
+Android-side state, for example:
 
-The command writes usb-smoke-preflight.json and exits zero only when the device
-identity matches, no /tmp/vibe-screen-*.lock exists, adb reverse tcp:54321
-tcp:54321 is configured, the Android app is running in the foreground, the Mac
-Host is listening on TCP 54321, and the stable-signed Host preflight passes. A
-nonzero exit is a blocker record; it must not be reported as a USB stream,
-reconnect, input, latency, soak, or host RSS pass.
+```sh
+make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT" \
+  REAL_DEVICE_GATE_EXTRA_ARGS="--host-telemetry-jsonl <evidence-dir>/host-telemetry.jsonl --configure-adb-reverse --launch-android-app"
+```
+
+The runner still never starts the macOS Host, changes TCC, changes Keychain
+state, or clears Android app data. A `ready` result means the session is ready
+for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
+physical-input gates by itself. Use `--require-soak-summary` or
+`--require-host-rss-gate` to require soak evidence, and pass
+`--require-latency-report <count>` or `--require-input-summary <count>` to make
+missing retained latency/input evidence explicit in the same JSON report.
+Additional `--lock-glob` values are checked in addition to the default
+`/tmp/vibe-screen-device-*.lock` ownership guards.
 
 ### USB live-stream smoke
 
@@ -583,13 +596,15 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_APK_SHA256="debug or release APK SHA-256" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
   PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5 \
-  EVIDENCE_HOST_PID="$HOST_PID"
+  EVIDENCE_HOST_PID="$HOST_PID" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate"
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
 or another phone substitute. That records useful readiness data, but it cannot
-close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi
-evidence.
+close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi or
+physical-tablet evidence. Physical-tablet manifests must declare
+`PHASE2_TABLET_SIZE_INCHES` in the 8.0..9.0 range.
 
 Run the eight-hour soak with the same Host process ID so each sample carries
 both Android app PSS and Host RSS:
@@ -664,6 +679,11 @@ Android PSS and Host RSS growth, battery/thermal readings below the Phase 2
 thresholds, net battery drain within the manifest-declared limit, a manifest
 declaring `physical_8_9_inch_tablet`, and the required raw
 README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+The gate also rejects known phone substitute identities such as Nubia
+P0110/pacific if they are manually mislabeled as physical-tablet evidence.
+The manifest must also predeclare owner entries for stand-mounted charging,
+thermal/power sampling, posture/mount review, and the eight-hour stream verdict;
+missing owner entries keep the gate `insufficient`.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
@@ -715,8 +735,9 @@ requires an identity-signed Host with current Screen Recording and Accessibility
 grants, login item enabled and not awaiting approval, reboot or logout/login
 launch evidence, automatic startup to a rendered client stream, capturable
 physical/dummy/headless or Screen Sharing display evidence, bounded unattended
-recovery logs, real window restore evidence, and a local or remote administrator
-path for FileVault, first-login, TCC, and display intervention. Missing hardware
+recovery logs, real window restore evidence, Android disconnect/reconnect with
+post-reconnect render evidence, and a local or remote administrator path for
+FileVault, first-login, TCC, and display intervention. Missing hardware
 or permission prerequisites return `blocked` with
 `can_close_login_headless_gate=false`; manual launches or relabeled display or
 device identities return `fail`.

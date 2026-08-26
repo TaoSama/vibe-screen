@@ -73,17 +73,33 @@ the assigned message-ID high-water and sends ResumeSessionRequest. A result must
 correlate, retain the exact session ID, and advance both payload and envelope
 epoch. Rejection or malformed metadata closes the connection rather than falling
 through to ClientHello on the same transport. Accepted recovery re-enters display
-selection and decoder configuration before input or media reopen. The current
-Mac Host still requires ClientHello first, so this portable state machine does
-not establish resume interoperability.
+selection and decoder configuration before input or media reopen. Post-resume
+old-epoch control envelopes fail closed, while post-resume old-epoch media is
+dropped before current-epoch media is admitted. A rejected resume closes the
+transport scope; host restart is therefore represented by a fresh ClientHello
+on a new transport rather than a same-socket downgrade. These portable checks do
+not establish resume interoperability until the Mac Host has a recorded
+resume-capable run.
+
+`scripts/harmony_host_interop_preflight.py` is the fail-closed evidence boundary
+for that run. It validates a redacted manifest that binds a clean source tree,
+DevEco/Harmony SDK versions, a signed `dev.vibescreen.harmony` HAP, a MatePad
+Mini HarmonyOS identity, a Protocol v1 Host build with a resume-capable
+registry, authenticated transport mode, bounded recovery timing, and explicit
+pass artifacts for HostHello/session/display/video/control/media,
+background/foreground, Wi-Fi loss/restore, host restart fresh-session,
+resume-result success/failure, and old-epoch control/media rejection. Its local
+preflight mode writes blocked readiness evidence when those external
+prerequisites are missing.
 
 Transport close plus decoder stop/release are all attempted even if a sibling
 operation fails. Aggregated cleanup errors remain visible in status diagnostics
 but do not suppress an otherwise safe retryable reconnect.
 
 `HarmonyVideoDecoder` keeps input buffers until a latest frame is available,
-writes Annex-B payloads, renders output buffers to the XComponent surface, and
-reports the first rendered output before the page claims streaming. Once a
+writes Annex-B payloads, preserves the Protocol v1 capture timestamp as AVCodec
+PTS, renders output buffers to the XComponent surface, and reports the first
+rendered output before the page claims streaming. Once a
 candidate is registered, configure/surface/prepare/start run transactionally;
 any stage failure owner-safely detaches and best-effort stops/releases it, with
 the primary and cleanup failures aggregated. The candidate owns a lifecycle
@@ -103,6 +119,13 @@ release, and propagates factory/release failure to configure, release, and all
 later barrier waiters; no later native create starts early. The exact
 commercial HarmonyOS SDK AVCodecKit declarations are not available in the
 portable environment; DevEco compilation and device behavior remain mandatory.
+The structured AVCodec preflight manifest is the required acceptance seam for
+this area: for both H.264 and HEVC it must record decoder capability, hardware
+decoder identity, XComponent surface availability, input/output buffer
+callbacks, Protocol v1 media header binding, PTS preservation, input push,
+render/free, flush, reconfigure, EOS, and release. Its blocked mode may document
+missing DevEco/HDC/HAP/MatePad prerequisites, but it is not hardware-decode
+acceptance evidence.
 
 ArkUI forwards all changed touch points (including Up/Cancel), normalized to
 the real component bounds and negotiated rotation. Keyboard text is mapped to
@@ -118,15 +141,14 @@ still unwritten.
 Wheel/trackpad axis delivery and the complete physical-key map remain gates
 rather than claims. Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a
 lifecycle-scoped `ControllerEvent` wire contract, and the Harmony portable
-protocol model now mirrors `Capability.CONTROLLER = 26`. The production client
-does not advertise that capability and has no `ControllerEvent` encoder,
-controller lifecycle implementation, or platform routing. The receiver-side
-contract requires synthesizing the same all-zero neutral state for the button
-mask, stick axes, triggers, and hat axes before discarding an active controller
-on disconnect, session teardown, ownership takeover, or transport loss. Harmony
-does not implement that rule, and its portable checks do not prove it.
-DevEco/API-checker, HAP, and device evidence for that path are also absent, so
-controller-specific input remains a gate rather than a claim.
+protocol model now mirrors `Capability.CONTROLLER = 26`. The production source
+advertises that capability, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting controller state, validates lifecycle bounds, and
+sends all-zero neutral `DISCONNECTED` releases before active controller teardown
+or resume. The platform controller route is still a source boundary rather than
+a device result: DevEco/API-checker, HAP, Host interoperability, and MatePad
+evidence for that path remain absent, so controller-specific input remains a
+device acceptance gate rather than a shipped claim.
 
 ## Pairing, privacy, and upgrades
 
@@ -228,3 +250,9 @@ fail the conservative critical-guard checks. Portable core tests prove
 negotiated input and bounded-queue behavior. This is deliberately limited
 syntax/control-flow evidence, not a general reachability proof, the DevEco ArkTS API/type checker,
 the full declarative ArkUI parser, or a HAP substitute.
+The static validator also checks that the production AVCodec seam still imports
+AVCodecKit, declares H.264/HEVC MIME constants, registers input/output buffer
+callbacks, binds an XComponent surface before prepare/start, preserves frame PTS
+before input push, frees rendered output buffers, and exposes flush/EOS release
+paths. Those source checks are contract guards only; they do not replace the
+DevEco/API-checker or MatePad hardware run.
