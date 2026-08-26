@@ -97,8 +97,9 @@ operation fails. Aggregated cleanup errors remain visible in status diagnostics
 but do not suppress an otherwise safe retryable reconnect.
 
 `HarmonyVideoDecoder` keeps input buffers until a latest frame is available,
-writes Annex-B payloads, renders output buffers to the XComponent surface, and
-reports the first rendered output before the page claims streaming. Once a
+writes Annex-B payloads, preserves the Protocol v1 capture timestamp as AVCodec
+PTS, renders output buffers to the XComponent surface, and reports the first
+rendered output before the page claims streaming. Once a
 candidate is registered, configure/surface/prepare/start run transactionally;
 any stage failure owner-safely detaches and best-effort stops/releases it, with
 the primary and cleanup failures aggregated. The candidate owns a lifecycle
@@ -118,6 +119,13 @@ release, and propagates factory/release failure to configure, release, and all
 later barrier waiters; no later native create starts early. The exact
 commercial HarmonyOS SDK AVCodecKit declarations are not available in the
 portable environment; DevEco compilation and device behavior remain mandatory.
+The structured AVCodec preflight manifest is the required acceptance seam for
+this area: for both H.264 and HEVC it must record decoder capability, hardware
+decoder identity, XComponent surface availability, input/output buffer
+callbacks, Protocol v1 media header binding, PTS preservation, input push,
+render/free, flush, reconfigure, EOS, and release. Its blocked mode may document
+missing DevEco/HDC/HAP/MatePad prerequisites, but it is not hardware-decode
+acceptance evidence.
 
 ArkUI forwards all changed touch points (including Up/Cancel), normalized to
 the real component bounds and negotiated rotation. Keyboard text is mapped to
@@ -242,3 +250,9 @@ fail the conservative critical-guard checks. Portable core tests prove
 negotiated input and bounded-queue behavior. This is deliberately limited
 syntax/control-flow evidence, not a general reachability proof, the DevEco ArkTS API/type checker,
 the full declarative ArkUI parser, or a HAP substitute.
+The static validator also checks that the production AVCodec seam still imports
+AVCodecKit, declares H.264/HEVC MIME constants, registers input/output buffer
+callbacks, binds an XComponent surface before prepare/start, preserves frame PTS
+before input push, frees rendered output buffers, and exposes flush/EOS release
+paths. Those source checks are contract guards only; they do not replace the
+DevEco/API-checker or MatePad hardware run.

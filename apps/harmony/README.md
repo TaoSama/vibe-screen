@@ -63,6 +63,11 @@ DevEco toolchain, signed HAP/checksum/signature metadata, Protocol v1 Host build
 hash, and an attached MatePad Mini-class HDC target are all present. A passing
 readiness preflight is still not installation, streaming, secure-pairing, soak,
 or latency evidence.
+The root `make harmony-avcodec-preflight` target can create a structured
+blocked/readiness manifest for the AVCodec H.264/HEVC path, and
+`make harmony-avcodec-validate` strictly validates a completed manifest. A
+passing manifest requires real DevEco/HDC/HAP/MatePad hardware evidence;
+`--allow-blocked` output is not hardware decode acceptance.
 `make harmony-current-base-gate` is the read-only aggregate owner check for the
 current README Phase 4 DevEco/HAP/decode/HUKS/authenticated-transport/resume/
 MatePad surface. It consumes the readiness and strict device-gate manifests,
@@ -229,7 +234,10 @@ incomplete.
 - signed HAP install/launch, in-place upgrade retention, rollback behavior, and
   uninstall cleanup recorded on the HarmonyOS target;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
-- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
+- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device,
+  with `harmony-avcodec-preflight.json` proving decoder capability, hardware
+  identity, buffer callbacks, Protocol v1 media headers, PTS, render/free,
+  flush, reconfigure, EOS, and release for both codecs;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
   authenticated record-layer socket integration, QR camera import,
   Authority/Signaling admission, and Mac interoperability;
