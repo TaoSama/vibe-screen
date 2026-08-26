@@ -661,6 +661,13 @@ identity. Not proved:
 public Internet, real remote TURN (local loopback and forced local coturn are
 not public-Internet or real-deployment evidence), real ScreenCaptureKit-to-Android
 device decoder continuity, real network fluctuation, network handoff, and soak.
+The repository also includes a fail-closed composition gate for the full Internet
+soak boundary. `make phase3-internet-soak-manifest` predeclares the production
+TURN, signaling, relay, Authority, TLS, secret-source, remote-peer, artifact, and
+handoff inputs. `make phase3-internet-soak-gate` then requires matching public
+remote TURN, real media-continuity, network-handoff, revocation-propagation, and
+two-hour mixed-route soak reports. Missing deployment material or missing report
+families produce `blocked` evidence rather than a pass.
 
 Current Phase 3 release-gate gaps are tracked as explicit open evidence rows:
 
@@ -750,6 +757,8 @@ profile. Dated local readiness evidence is recorded under
 The current-base QR pairing blocked record covers only offline Swift/Kotlin
 fixture and fail-closed checks; it records that no production TLS/public-Internet
 deployment or real Android camera QR scan was available in this environment.
+Current fail-closed Internet soak evidence is recorded under
+[`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked/README.md).
 Mac/Android automatic invocation of Authority session-profile issuance, real QR
 scan request/acceptance, real encoded ScreenCaptureKit output through the
 device, automatic fresh-session

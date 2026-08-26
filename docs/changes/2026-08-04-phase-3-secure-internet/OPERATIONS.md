@@ -146,6 +146,42 @@ Maintain separate ownership and deployment records for:
 Each release records image/binary digest, source revision, dependency manifest,
 configuration schema version, rollout region, and rollback version.
 
+## Public Internet soak evidence
+
+Before a Phase 3 result is described as public Internet, create
+`phase3-internet-soak-manifest.json` from the production deployment under test:
+
+```bash
+make phase3-internet-soak-manifest PHASE3_INTERNET_SOAK_DIR=/tmp/vibe-screen-phase3-internet \
+  PHASE3_INTERNET_TURN_URIS="turns:relay.prod.your-domain.com:5349?transport=tcp" \
+  PHASE3_INTERNET_SIGNALING_ORIGIN=https://signaling.prod.your-domain.com \
+  PHASE3_INTERNET_RELAY_ORIGIN=https://relay.prod.your-domain.com \
+  PHASE3_INTERNET_AUTHORITY_SOURCE_ID=turn-prod-1 \
+  PHASE3_INTERNET_REMOTE_PEER=peer.prod.your-domain.com \
+  PHASE3_INTERNET_TLS_CERTIFICATE_SHA256=... \
+  PHASE3_INTERNET_DEPLOYMENT_READINESS=authority-readyz,relay-readyz,coturn-tls \
+  PHASE3_INTERNET_PLANNED_HANDOFFS=wifi-to-cellular \
+  PHASE3_INTERNET_HOST_BUILD="signed Host build and SHA" \
+  PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256=...
+```
+
+After the run, place privacy-reviewed summaries beside the manifest using these
+filenames: `remote-turn-verifier.json`, `media-continuity.json`,
+`network-handoff.json`, `revocation-propagation.json`, and
+`soak-exact-window-report.json`. Then run:
+
+```bash
+make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR=/tmp/vibe-screen-phase3-internet
+```
+
+The gate passes only when those inputs jointly prove public remote TURN packet
+exchange, real encoded screen decode on Android, fresh-session network handoff,
+revocation propagation to active coturn allocation disconnect and packet denial,
+and a clean two-hour mixed direct/relay soak. If deployment config, TLS material,
+runtime secret source, readiness endpoints, remote peer, or any report is
+missing, archive the result only with `PHASE3_INTERNET_ALLOW_BLOCKED=1`; do not
+substitute local Compose, forced local coturn, or synthetic peer evidence.
+
 ## Configuration contract
 
 Production clients consume signed configuration containing environment, signaling
