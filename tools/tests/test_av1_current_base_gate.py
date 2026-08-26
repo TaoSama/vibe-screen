@@ -14,6 +14,11 @@ AV1_BLOCKED_EVIDENCE_PATH = (
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
     / "2026-08-21-av1-offline-blocked/README.md"
 )
+AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-21-av1-codec-capability/evidence"
+    / "2026-08-27-av1-current-base-blocked/README.md"
+)
 MAC_CODEC_LIMITS_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/CodecLimits.swift"
 MAC_VIDEO_ENCODER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/VideoEncoder.swift"
 MAC_STREAMING_SERVER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/StreamingServer.swift"
@@ -134,6 +139,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         gate = AV1_GATE_PATH.read_text(encoding="utf-8")
         normalized_gate = " ".join(gate.split())
         blocked_evidence = AV1_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
+        current_evidence = AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("current-base closure owner", gate)
         self.assertIn("tools/tests/test_av1_current_base_gate.py", gate)
@@ -146,12 +152,44 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("pacific", blocked_evidence)
         self.assertIn("Android 16", blocked_evidence)
         self.assertIn("SDK 36", blocked_evidence)
-        self.assertIn("EP0110PZ0B9110300B", blocked_evidence)
-        self.assertIn("adb -s EP0110PZ0B9110300B", blocked_evidence)
+        self.assertIn("<redacted-device-serial>", blocked_evidence)
+        self.assertIn("adb -s <redacted-device-serial>", blocked_evidence)
         self.assertIn("c2.qti.av1.decoder", blocked_evidence)
         self.assertIn("Can't find service: media.codec", blocked_evidence)
         self.assertIn("diagnostic only", blocked_evidence)
         self.assertIn("must not be cited as AV1 Host/device streaming evidence", blocked_evidence)
+        self.assertIn("current-base owner refresh", current_evidence)
+        self.assertIn("nubia P0110", current_evidence)
+        self.assertIn("pacific", current_evidence)
+        self.assertIn("Android 16", current_evidence)
+        self.assertIn("SDK: 36", current_evidence)
+        self.assertIn("<redacted-device-serial>", current_evidence)
+        self.assertIn("c2.qti.av1.decoder", current_evidence)
+        self.assertIn("must not be cited as AV1 Host/device real-stream acceptance", current_evidence)
+
+    def test_public_av1_gate_materials_do_not_expose_sensitive_local_values(self) -> None:
+        public_paths = [
+            README_PATH,
+            AV1_GATE_PATH,
+            AV1_BLOCKED_EVIDENCE_PATH,
+            AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH,
+            Path(__file__),
+        ]
+        forbidden_values = [
+            "EP" + "0110PZ0B9110300B",
+            "/Users/" + "luwentao",
+            "Application Support/" + "com.apple.TCC",
+            "TCC" + ".db",
+            "BEGIN " + "RSA PRIVATE KEY",
+            "BEGIN " + "OPENSSH PRIVATE KEY",
+            "BEGIN " + "EC PRIVATE KEY",
+            "BEGIN " + "DSA PRIVATE KEY",
+        ]
+
+        for path in public_paths:
+            content = path.read_text(encoding="utf-8")
+            for forbidden in forbidden_values:
+                self.assertNotIn(forbidden, content, str(path))
 
 
 if __name__ == "__main__":

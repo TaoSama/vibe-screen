@@ -56,8 +56,10 @@ The covered contract is:
 No AV1-capable macOS Host stream, Android MediaCodec stream, or iOS
 VideoToolbox stream was run. The README AV1 gate remains open.
 
-The retained blocked evidence record is
-[`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md).
+The retained blocked evidence records are
+[`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md)
+and
+[`evidence/2026-08-27-av1-current-base-blocked/README.md`](evidence/2026-08-27-av1-current-base-blocked/README.md).
 
 ## 2026-08-21 verification
 
@@ -303,5 +305,31 @@ identity remains Nubia P0110 / pacific / Android 16 / SDK 36.
   - Result: passed.
 - `cd apps/ios && swift run vibescreen-ios-selftest`
   - Result: passed.
+- `git diff --check`
+  - Result: passed.
+
+## 2026-08-27 current-base refresh
+
+The current-base closure owner was replayed on `origin/main`
+`3b2ba11e832a3618eaedfc67f92414b161423a00`. The audit kept AV1
+fail-closed and blocked: Protocol v1 only reserves `CODEC_AV1`, the current
+Host still does not advertise AV1, Android product sessions still do not offer
+AV1, and no Host/device AV1 real-stream evidence was added. Public AV1 gate
+evidence now redacts Android device serials and local sensitive paths.
+
+Retained device diagnostic identity: nubia P0110 / pacific / Android 16 / SDK
+36. Local ADB probes used the required explicit `adb -s` selector, but the
+public evidence records it as `<redacted-device-serial>`.
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 7 tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `make protocol`
+  - Result: blocked by current-base shared-model drift before this AV1 refresh: `ManagedPolicyStatus` now has `restriction_results` and `denied_hosts` fields missing from `contracts/shared-models/v1/manifest.json`, causing 7 shared-protocol-model test failures.
+- `cd baseline/MacHost && swift build`
+  - Result: blocked by current-base MacHost build failures before this AV1 refresh, including missing `HostMultiClientDisplayRouter`, `ProtocolV1SessionCoordinator.close`, and extra `ProtocolV1SessionConfiguration` arguments in `StreamingServer.swift` / `ProtocolV1SelfTest.swift`.
 - `git diff --check`
   - Result: passed.
