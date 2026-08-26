@@ -256,6 +256,38 @@ func testNativeInputAndBoundedReconnect() throws {
     )
     try require(keyboardState.pressedKeys.isEmpty, "successful key release stayed active")
     try require(!keyboardState.contains(usbHIDUsage: 0x04), "released key remained captured")
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0,
+            standardByteNegotiated: true
+        ) == 0,
+        "explicit key release kept press-time modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: true
+        ) == USBHIDModifierWire.leftShift,
+        "explicit key release lost current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: USBHIDModifierWire.leftShift,
+            standardByteNegotiated: false
+        ) == USBHIDModifierWire.leftControl,
+        "legacy explicit key release lost remapped current modifier"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0x100,
+            standardByteNegotiated: true
+        ) == nil,
+        "explicit key release accepted reserved modifier bit"
+    )
+    try require(
+        NativeKeyReleaseModifierPolicy.wireMaskForCleanupRelease == 0,
+        "cleanup key release did not clear modifiers"
+    )
 
     try require(
         try NativeInputTargetResolver.target(selectedStreamID: nil, bindings: []) == nil,
