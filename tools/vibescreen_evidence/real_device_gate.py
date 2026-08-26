@@ -45,6 +45,7 @@ TCC_DATABASE_PATTERN = re.compile(
     r"/[^\s:'\"]*?/" + "TCC" + r"(?:\." + "db" + r")?",
     flags=re.IGNORECASE,
 )
+TCC_DATABASE_NAME_PATTERN = re.compile(r"\bTCC\.db\b", flags=re.IGNORECASE)
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -84,6 +85,7 @@ def _sanitize_text(value: str, *, adb_serial: str | None = None) -> str:
         sanitized = sanitized.replace(home, "~")
     sanitized = re.sub(USER_HOME_PATH_PREFIX + r"[^\s:'\"]+", USER_HOME_PATH_PREFIX + "<redacted-user>", sanitized)
     sanitized = TCC_DATABASE_PATTERN.sub("<redacted-tcc-path>", sanitized)
+    sanitized = TCC_DATABASE_NAME_PATTERN.sub("<redacted-tcc-db>", sanitized)
     return sanitized
 
 

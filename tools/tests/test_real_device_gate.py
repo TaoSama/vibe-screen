@@ -494,6 +494,7 @@ class RealDeviceGateTests(unittest.TestCase):
                 + "TCC"
                 + "/TCC"
                 + ".db",
+                "this tool does not modify " + "TCC" + ".db",
             ],
             "transport": {
                 "adb_reverse": {
@@ -511,8 +512,10 @@ class RealDeviceGateTests(unittest.TestCase):
 
         self.assertNotIn(sample_serial, encoded)
         self.assertNotIn("/" + "Users" + "/localuser", encoded)
+        self.assertNotIn("TCC" + ".db", encoded)
         self.assertIn("<redacted-adb-serial>", encoded)
         self.assertIn("/" + "Users" + "/<redacted-user>", encoded)
+        self.assertIn("<redacted-tcc-db>", encoded)
         self.assertEqual(sanitized["android_device"]["model"], "P0110")
 
     @staticmethod
