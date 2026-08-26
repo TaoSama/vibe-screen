@@ -921,6 +921,12 @@ increase it.
   ownership model, and macOS/Android/iOS/Harmony owner status. Single-client
   display selection or display-switch evidence remains separate and cannot
   close this gate.
+- The current-base aggregate gate records per-gate owner PRs while it remains
+  fail-closed. PR #290 owns the aggregate and device-acceptance validator, #251
+  owns iOS hardware VideoToolbox readiness, and #253 owns Host advanced-adapter
+  readiness. Passing status under a mismatched owner, Simulator output, unsigned
+  archives, MacHost loopback, and Android evidence cannot close those iOS
+  hardware or Host-adapter gates.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware

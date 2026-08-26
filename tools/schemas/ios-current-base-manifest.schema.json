@@ -183,6 +183,7 @@
         "audio_playback",
         "hdr_output",
         "advanced_adapters",
+        "host_advanced_adapters",
         "trusted_lan_secure_records"
       ],
       "properties": {
@@ -196,6 +197,7 @@
         "audio_playback": {"$ref": "#/$defs/gate_record"},
         "hdr_output": {"$ref": "#/$defs/gate_record"},
         "advanced_adapters": {"$ref": "#/$defs/gate_record"},
+        "host_advanced_adapters": {"$ref": "#/$defs/gate_record"},
         "trusted_lan_secure_records": {"$ref": "#/$defs/gate_record"}
       }
     },
@@ -207,10 +209,11 @@
     "gate_record": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "required": ["status", "category", "owner_pr", "requirement", "blocking", "evidence", "notes"],
       "properties": {
         "status": {"type": "string"},
         "category": {"enum": ["device_acceptance", "broader_phase5"]},
+        "owner_pr": {"type": "string", "pattern": "^#[0-9]+$"},
         "requirement": {"type": "string", "minLength": 1},
         "blocking": {"type": "boolean"},
         "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},

@@ -16,6 +16,7 @@ from .ios_current_base_manifest import (
     BROADER_GATES,
     DEVICE_ACCEPTANCE_OWNER_PR,
     FORMAL_DEVICE_GATES,
+    GATE_OWNERS,
     KIND as MANIFEST_KIND,
     REPOSITORY_FULL_NAME,
     SCOPE_PRS,
@@ -58,6 +59,7 @@ REQUIRED_DEVICE_FIELDS = {"role", "runtime_class", "install_status", "evidence"}
 REQUIRED_GATE_FIELDS = {
     "status",
     "category",
+    "owner_pr",
     "requirement",
     "blocking",
     "evidence",
@@ -488,9 +490,11 @@ def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], d
     for name, requirement in FORMAL_DEVICE_GATES.items():
         record = gates.get(name) if isinstance(gates.get(name), dict) else {}
         formal[name] = _check(
-            _status_pass(record.get("status")) and _evidence_present(record),
+            record.get("owner_pr") == GATE_OWNERS[name]
+            and _status_pass(record.get("status"))
+            and _evidence_present(record),
             requirement,
-            evidence=_string_list(record.get("evidence")),
+            evidence=[str(record.get("owner_pr"))] + _string_list(record.get("evidence")),
             blocking=True,
         )
     for name, requirement in BROADER_GATES.items():
@@ -499,9 +503,11 @@ def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], d
         if name == "hdr_output":
             has_required_evidence = _hdr_owner_evidence_present(record)
         broader[name] = _check(
-            _status_pass(record.get("status")) and has_required_evidence,
+            record.get("owner_pr") == GATE_OWNERS[name]
+            and _status_pass(record.get("status"))
+            and has_required_evidence,
             requirement,
-            evidence=_string_list(record.get("evidence")),
+            evidence=[str(record.get("owner_pr"))] + _string_list(record.get("evidence")),
             blocking=False,
         )
     return formal, broader
@@ -577,6 +583,7 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
         "verdict": verdict,
         "run_id": manifest.get("run_id"),
         "owner": manifest.get("owner"),
+        "gate_owners": dict(GATE_OWNERS),
         "source": {"manifest": str(manifest_path)},
         "can_close_ios_device_acceptance": formal_passed,
         "can_close_current_base_aggregate": aggregate_passed and verdict == "pass",
@@ -603,6 +610,7 @@ def _failure_report(manifest_path: Path, reason: str) -> dict[str, Any]:
         "verdict": "blocked",
         "run_id": None,
         "owner": None,
+        "gate_owners": dict(GATE_OWNERS),
         "source": {"manifest": str(manifest_path)},
         "can_close_ios_device_acceptance": False,
         "can_close_current_base_aggregate": False,

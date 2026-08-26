@@ -39,10 +39,10 @@ evidence covers every supported state.
 
 The current-base iOS aggregate owner is PR #290. Merged PR #182 remains the
 historical sanitized device-acceptance baseline. Use the aggregate gate to keep
-the current owner connected to the narrower signing, VideoToolbox,
-advanced-adapter, AVAudioEngine/PCM, HDR, native-input, reconnect, and
-trusted-LAN secure-record tasks without claiming a device pass before real
-iPhone and iPad evidence exists:
+the current owner connected to the narrower signing, VideoToolbox, iOS advanced
+adapter, Host advanced-adapter, AVAudioEngine/PCM, HDR, native-input,
+reconnect, and trusted-LAN secure-record tasks without claiming a device pass
+before real iPhone and iPad evidence exists:
 
 ```sh
 make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
@@ -55,6 +55,10 @@ Simulator-only evidence, unsigned archives, MacHost loopback, Android evidence,
 or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
 `can_close_ios_device_acceptance=false`. That nonzero result is the expected
 fail-closed readiness evidence when no iOS device run is scheduled.
+The manifest and gate report retain per-gate `owner_pr` values. Hardware
+VideoToolbox H.264/HEVC is owned by #251, and Host advanced adapters are owned
+by #253. Passing status plus evidence under the wrong owner still fails closed,
+so the #290 aggregate cannot accidentally close those open readiness gates.
 
 ## Phase 0 stable-release aggregate gate
 

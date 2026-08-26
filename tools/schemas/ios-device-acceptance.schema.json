@@ -214,7 +214,28 @@
       }
     },
     "gates": {"type": "object"},
+    "broader_gates": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "hdr_output": {"$ref": "#/$defs/evidence_gate"},
+        "advanced_adapters": {"$ref": "#/$defs/evidence_gate"},
+        "host_advanced_adapters": {"$ref": "#/$defs/evidence_gate"},
+        "trusted_lan_secure_records": {"$ref": "#/$defs/evidence_gate"}
+      }
+    },
     "android_evidence_used_for_ios_gates": {"const": false},
     "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "evidence_gate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
   }
 }

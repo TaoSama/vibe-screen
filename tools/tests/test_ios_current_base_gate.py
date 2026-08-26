@@ -12,6 +12,7 @@ from vibescreen_evidence.ios_current_base_gate import derive_gate
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
+    GATE_OWNERS,
     SOURCE_DOCS,
     build_manifest,
 )
@@ -205,6 +206,27 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_ios_device_acceptance"])
         self.assertFalse(report["can_close_current_base_aggregate"])
         self.assertIn("insufficient: hdr_output", report["reasons"])
+        self.assertIn("insufficient: host_advanced_adapters", report["reasons"])
+
+    def test_wrong_gate_owner_cannot_pass_even_with_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            gate = gates["videotoolbox_h264"]
+            assert isinstance(gate, dict)
+            gate["owner_pr"] = "#290"
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: videotoolbox_h264", report["reasons"])
+        h264 = report["checks"]["formal_device_gates"]["videotoolbox_h264"]
+        self.assertFalse(h264["passed"])
+        self.assertEqual(GATE_OWNERS["videotoolbox_h264"], "#251")
 
     def test_hdr_output_requires_dedicated_owner_gate_evidence(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -236,6 +258,8 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_ios_device_acceptance"])
         self.assertTrue(report["can_close_current_base_aggregate"])
         self.assertTrue(report["can_claim_device_pass"])
+        self.assertEqual(report["gate_owners"]["videotoolbox_h264"], "#251")
+        self.assertEqual(report["gate_owners"]["host_advanced_adapters"], "#253")
 
     def test_manifest_contract_violation_cannot_pass(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -389,6 +413,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             "signing_entitlements": lambda manifest: manifest["signing"].pop("entitlements_recorded"),
             "device": lambda manifest: manifest["devices"][0].pop("runtime_class"),
             "gate": lambda manifest: manifest["gates"]["signing"].pop("status"),
+            "gate_owner": lambda manifest: manifest["gates"]["signing"].pop("owner_pr"),
         }
         for label, mutate in cases.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory_name:

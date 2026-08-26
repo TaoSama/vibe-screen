@@ -74,3 +74,9 @@ After rebasing onto the #225 baseline, #199 is the WakeHost current-base
 evidence owner. It tracks the authenticated magic-packet path against current
 mainline and keeps the sleeping-Mac/router/NIC WOL gate blocked until retained
 hardware evidence satisfies the dedicated gate.
+The current-base manifest records the narrower owner per gate so aggregate
+tracking cannot hide missing evidence: hardware H.264/HEVC VideoToolbox decode
+is owned by #251, and Host advanced adapters are owned by #253 with this gate
+ownership layer tracked by #282. Both remain open until their retained evidence
+passes through the machine gate; neither #182 nor #290 closes either gate by
+aggregation alone.

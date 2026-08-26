@@ -25,6 +25,11 @@ The expected no-device result is fail-closed `blocked`. A nonzero exit from this
 command is correct when signing identities, full Xcode, iPhone/iPad hardware, or
 retained gate evidence are missing. Do not convert that readiness output into a
 device pass.
+The aggregate report also records per-gate owners. PR #290 owns the aggregate
+and sanitized iOS device-acceptance validator only; hardware VideoToolbox
+readiness remains owned by #251, and Host-side advanced-adapter readiness
+remains owned by #253. Do not mark those gates complete from aggregate status,
+Simulator output, unsigned archives, MacHost loopback, or Android evidence.
 
 Before starting any install or device session, record and check the local iOS
 toolchain prerequisites. If any of these fail, stop at blocked readiness and do
@@ -126,11 +131,14 @@ Fail-closed rules:
 - F7: Core PCM parser tests or host-side audio capture plans do not prove iOS
   playback.
 
-README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
-product flows over Internet DataChannels, and advanced real-device behavior
-open; those broader gates remain tracked in the Phase 5 verification record
-rather than closed by this device runbook. HDR output specifically requires the
-dedicated `ios-hdr-edr-gate` in the
+README Phase 5 also keeps HDR output, iOS advanced adapters, host-side advanced
+adapters, audio/bulk product flows over Internet DataChannels, and advanced
+real-device behavior open; those broader gates remain tracked in the Phase 5
+verification record rather than closed by this device runbook. The host-side
+advanced-adapter owner is #253 and requires reviewed MacHost/product evidence
+for multi-client/display streams, audio capture, clipboard/file handlers,
+HDR/color retry, host actions, wake helper, and managed policy. HDR output
+specifically requires the dedicated `ios-hdr-edr-gate` in the
 [HDR/color acceptance runbook](hdr-color-acceptance.md): SDR fallback,
 Simulator output, unsigned archives, Android evidence, Protocol field presence,
 ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
@@ -311,6 +319,7 @@ gate.
   "broader_gates": {
     "hdr_output": { "status": "open", "evidence": [], "runbook": "docs/runbook/hdr-color-acceptance.md" },
     "advanced_adapters": { "status": "open", "evidence": [] },
+    "host_advanced_adapters": { "status": "open", "evidence": [] },
     "trusted_lan_secure_records": { "status": "open", "evidence": [] }
   },
   "android_evidence_used_for_ios_gates": false,
