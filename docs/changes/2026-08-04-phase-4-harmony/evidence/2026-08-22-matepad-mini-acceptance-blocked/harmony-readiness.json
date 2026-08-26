@@ -29,7 +29,7 @@
     "--output",
     "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json"
   ],
-  "created_at": "2026-08-26T13:05:47Z",
+  "created_at": "2026-08-26T16:20:27Z",
   "device": null,
   "device_gate_prefill": {
     "artifact": {
@@ -46,9 +46,9 @@
       "protocol": "Protocol v1"
     },
     "repository": {
-      "commit": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+      "commit": "b815d8dda7c6c06edfd41473f56e6b4fccf56d72",
       "status": "dirty",
-      "tree": "9e6240031d5f3a5a6b35e7d32f48676aed5111e4"
+      "tree": "4a2ee399dd5384f2b7464fc27f5063157076ab5e"
     },
     "toolchain": {
       "deveco_studio_version": null,
@@ -74,11 +74,16 @@
   ],
   "repository": {
     "dirty": true,
-    "revision": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+    "revision": "b815d8dda7c6c06edfd41473f56e6b4fccf56d72",
     "status_porcelain": [
       "M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness-command.txt",
+      " M scripts/harmony_device_gate.py",
       " M scripts/harmony_matepad_acceptance.py",
-      " M scripts/tests/test_harmony_matepad_acceptance.py"
+      " M scripts/tests/test_harmony_matepad_acceptance.py",
+      " M scripts/tests/test_release_tools.py",
+      " M tools/schemas/harmony-matepad-acceptance.schema.json",
+      " M tools/tests/test_harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_current_base_gate.py"
     ]
   },
   "schema_version": "vibescreen.evidence/v1",

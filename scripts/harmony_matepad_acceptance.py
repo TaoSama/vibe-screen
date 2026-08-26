@@ -17,6 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+SCRIPTS_ROOT = Path(__file__).resolve().parent
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
 import harmony_device_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -240,6 +244,29 @@ def _domain_status(gate_statuses: dict[str, str], gate_ids: Sequence[str]) -> st
     return "blocked"
 
 
+def _package_verdict(
+    *,
+    validation: GateValidation,
+    readiness_verdict: Any,
+    current_base: CurrentBaseValidation,
+    domain_statuses: Sequence[str],
+    missing_artifacts: Sequence[str],
+) -> str:
+    if "fail" in domain_statuses:
+        return "fail"
+    if (
+        validation.strict_valid
+        and readiness_verdict == "pass"
+        and current_base.verdict == "pass"
+        and current_base.can_close_readme_phase4_owner_gates
+        and current_base.can_claim_harmony_device_pass
+        and all(status == "pass" for status in domain_statuses)
+        and not missing_artifacts
+    ):
+        return "pass"
+    return "blocked"
+
+
 def _artifact_references(evidence_dir: Path, device_manifest: dict[str, Any]) -> list[dict[str, Any]]:
     gates = device_manifest.get("gates")
     if not isinstance(gates, list):
@@ -261,6 +288,9 @@ def _artifact_references(evidence_dir: Path, device_manifest: dict[str, Any]) ->
                 references.append({"gate_id": gate["id"], "reference": normalized, "status": "invalid", "detail": "URLs and external artifact references are not accepted"})
                 continue
             resolved = (resolved_evidence_dir / path).resolve()
+            if resolved == resolved_evidence_dir:
+                references.append({"gate_id": gate["id"], "reference": normalized, "status": "invalid", "detail": "expected an evidence artifact below evidence directory"})
+                continue
             try:
                 resolved.relative_to(resolved_evidence_dir)
             except ValueError:
@@ -322,16 +352,12 @@ def build_package(
     if missing_artifacts:
         blocking_reasons.append("missing or invalid local evidence references: " + ", ".join(missing_artifacts))
 
-    verdict = (
-        "pass"
-        if validation.strict_valid
-        and readiness_verdict == "pass"
-        and current_base.verdict == "pass"
-        and current_base.can_close_readme_phase4_owner_gates
-        and current_base.can_claim_harmony_device_pass
-        and not domain_blockers
-        and not missing_artifacts
-        else "blocked"
+    verdict = _package_verdict(
+        validation=validation,
+        readiness_verdict=readiness_verdict,
+        current_base=current_base,
+        domain_statuses=[str(domain["status"]) for domain in domains],
+        missing_artifacts=missing_artifacts,
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -387,13 +413,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         readiness = _read_json(readiness_path, "readiness report") if readiness_path.exists() else None
-        if args.write_blocked:
+        if args.write_blocked and not device_manifest_path.exists():
             _write_json(device_manifest_path, blocked_device_manifest(readiness))
         elif not device_manifest_path.exists():
             raise AcceptanceError(f"device gate manifest is missing: {device_manifest_path}")
         device_manifest = _read_json(device_manifest_path, "device gate manifest")
         validation = validate_device_manifest(device_manifest, evidence_root=evidence_dir)
-        if not validation.allow_blocked_valid:
+        if not validation.allow_blocked_valid and "fail" not in _gate_statuses(device_manifest).values():
             raise AcceptanceError(validation.error or "device gate manifest is invalid")
         current_base_report = harmony_current_base_gate.derive_gate(
             readiness_path,

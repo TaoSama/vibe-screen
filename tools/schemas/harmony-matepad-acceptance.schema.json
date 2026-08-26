@@ -24,7 +24,7 @@
     "kind": {"const": "harmony_matepad_mini_acceptance_package"},
     "created_at": {"type": "string", "format": "date-time"},
     "command": {"type": "array", "items": {"type": "string"}},
-    "verdict": {"enum": ["pass", "blocked"]},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
     "blocking_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "evidence_dir": {"type": "string", "minLength": 1},
     "readiness": {

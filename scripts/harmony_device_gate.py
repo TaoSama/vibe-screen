@@ -119,7 +119,10 @@ def _validate_evidence_reference(reference: str, root: Path, path: str) -> None:
         raise ManifestError(f"{path}: must stay within evidence root")
     if not resolved_path.exists():
         raise ManifestError(f"{path}: missing evidence artifact {reference}")
-    if not resolved_path.is_file():
+    if reference.endswith("/"):
+        if not resolved_path.is_dir():
+            raise ManifestError(f"{path}: expected evidence artifact directory {reference}")
+    elif not resolved_path.is_file():
         raise ManifestError(f"{path}: expected evidence artifact file {reference}")
 
 

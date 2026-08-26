@@ -149,15 +149,15 @@
           "harmony-readiness.json",
           "harmony-readiness.json",
           "permission_denial_retry:blocked",
-          "permission_denial_retry:missing-evidence-marker:harmony-matepad-acceptance.json,harmony-device-gates.json",
+          "permission_denial_retry:missing-evidence-marker:permission-denial-retry,permission_denial_retry",
           "ui_device_identity_record:blocked",
-          "ui_device_identity_record:missing-evidence-marker:harmony-matepad-acceptance.json,harmony-device-gates.json",
+          "ui_device_identity_record:missing-evidence-marker:device-identity,ui-tree,screenshot",
           "input_touch_keyboard_pointer_stylus:blocked",
-          "input_touch_keyboard_pointer_stylus:missing-evidence-marker:harmony-matepad-acceptance.json,harmony-device-gates.json",
+          "input_touch_keyboard_pointer_stylus:missing-evidence-marker:input-observations,input,stylus",
           "eight_hour_soak:blocked",
-          "eight_hour_soak:missing-evidence-marker:harmony-matepad-acceptance.json,harmony-device-gates.json",
+          "eight_hour_soak:missing-evidence-marker:samples,soak-summary,eight-hour,8h",
           "external_latency:blocked",
-          "external_latency:missing-evidence-marker:harmony-matepad-acceptance.json,harmony-device-gates.json"
+          "external_latency:missing-evidence-marker:external-camera,latency-report,latency"
         ],
         "expected": "Complete MatePad Mini UI/input/lifecycle/soak/latency acceptance evidence",
         "passed": false

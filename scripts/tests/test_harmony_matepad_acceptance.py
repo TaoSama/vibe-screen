@@ -23,7 +23,7 @@ MARKER_BY_GATE = {
     "deveco_sdk_and_api_checker": "harmony-readiness.json",
     "signed_release_hap": "harmony-hap-readiness.json",
     "hap_install_launch": "harmony-hap-readiness.json",
-    "permission_denial_retry": "harmony-matepad-acceptance.json",
+    "permission_denial_retry": "permission-denial-retry.log",
     "huks_backed_secure_pairing": "harmony-secure-pairing.json",
     "authenticated_transport_records": "harmony-authenticated-records.json",
     "credential_revocation_replay": "harmony-secure-pairing.json",
@@ -35,10 +35,10 @@ MARKER_BY_GATE = {
     "resume_host_restart": "harmony-host-interop-preflight.json",
     "resume_capable_host_interop": "harmony-host-interop-preflight.json",
     "no_old_epoch_render": "harmony-host-interop-preflight.json",
-    "ui_device_identity_record": "harmony-matepad-acceptance.json",
-    "input_touch_keyboard_pointer_stylus": "harmony-matepad-acceptance.json",
-    "eight_hour_soak": "harmony-matepad-acceptance.json",
-    "external_latency": "harmony-matepad-acceptance.json",
+    "ui_device_identity_record": "ui-tree.xml",
+    "input_touch_keyboard_pointer_stylus": "input-observations.json",
+    "eight_hour_soak": "soak-summary.json",
+    "external_latency": "latency-report.json",
 }
 
 
@@ -132,7 +132,10 @@ def write_pass_artifacts(directory: Path, manifest: dict[str, object]) -> None:
         for reference in gate["evidence"]:
             path = directory / reference
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"{gate['id']}\n", encoding="utf-8")
+            if reference.endswith("/"):
+                path.mkdir(exist_ok=True)
+            else:
+                path.write_text(f"{gate['id']}\n", encoding="utf-8")
 
 
 class HarmonyMatePadAcceptanceTests(unittest.TestCase):
@@ -234,6 +237,23 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
         self.assertTrue(all(domain["status"] == "pass" for domain in package["acceptance_domains"]))
         self.assertTrue(all(reference["status"] == "present" for reference in package["artifact_references"]))
 
+    def test_directory_artifact_references_can_pass_when_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
+            manifest = passing_device_manifest()
+            for gate in manifest["gates"]:
+                if gate["id"] == "ui_device_identity_record":
+                    gate["evidence"] = ["screenshots/"]
+            write_pass_artifacts(directory, manifest)
+            (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            exit_code = run_main(["--evidence-dir", str(directory)])
+            package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(package["verdict"], "pass")
+
     def test_strict_manifest_with_missing_artifact_references_stays_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
@@ -301,6 +321,42 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
         self.assertTrue(all(reference["status"] == "invalid" for reference in package["artifact_references"]))
         self.assertIn("expected repository-local evidence path", package["device_gate_manifest"]["error"] or "")
 
+    def test_failed_device_gate_writes_structured_fail_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
+            manifest = passing_device_manifest()
+            write_pass_artifacts(directory, manifest)
+            for gate in manifest["gates"]:
+                if gate["id"] == "external_latency":
+                    gate["status"] = "fail"
+            (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            exit_code = run_main(["--evidence-dir", str(directory)])
+            package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
+        self.assertEqual(package["verdict"], "fail")
+        self.assertEqual(package["current_base_gate"]["verdict"], "fail")
+        self.assertIn("sustained_operation", {domain["id"] for domain in package["acceptance_domains"] if domain["status"] == "fail"})
+
+    def test_write_blocked_does_not_overwrite_existing_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
+            manifest = passing_device_manifest()
+            write_pass_artifacts(directory, manifest)
+            manifest_path = directory / "harmony-device-gates.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            exit_code = run_main(["--evidence-dir", str(directory), "--write-blocked"])
+            package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
+            preserved = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(package["verdict"], "pass")
+        self.assertTrue(all(gate["status"] == "pass" for gate in preserved["gates"]))
+
     def test_android_device_manifest_fails_closed(self) -> None:
         manifest = passing_device_manifest()
         manifest["device"] = {
@@ -323,7 +379,7 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
             manifest = passing_device_manifest()
-            manifest["gates"][0]["evidence"] = ["/tmp/private.log", "../outside.log"]
+            manifest["gates"][0]["evidence"] = ["/tmp/private.log", "../outside.log", "./"]
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -332,7 +388,7 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
 
         self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
         invalid = [reference for reference in package["artifact_references"] if reference["status"] == "invalid"]
-        self.assertEqual(len(invalid), 2)
+        self.assertEqual(len(invalid), 3)
 
     def test_blocked_device_manifest_keeps_acceptance_gates_blocked(self) -> None:
         manifest = harmony_matepad_acceptance.blocked_device_manifest(passing_readiness())

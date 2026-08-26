@@ -636,6 +636,22 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
             self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
 
+    def test_harmony_device_manifest_accepts_explicit_directory_evidence(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["gates"][0]["evidence"] = ["screenshots/"]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for gate in manifest["gates"]:
+                for reference in gate["evidence"]:
+                    artifact = evidence_root / reference
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    if reference.endswith("/"):
+                        artifact.mkdir(exist_ok=True)
+                    else:
+                        artifact.write_text(f"{gate['id']} evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
+
     def test_harmony_device_manifest_rejects_missing_evidence_file_when_root_is_set(self) -> None:
         manifest = self.passing_manifest()
         with tempfile.TemporaryDirectory() as temporary_directory:

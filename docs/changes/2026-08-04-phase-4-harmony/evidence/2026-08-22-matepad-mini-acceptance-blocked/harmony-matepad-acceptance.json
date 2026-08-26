@@ -219,7 +219,7 @@
     "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked",
     "--write-blocked"
   ],
-  "created_at": "2026-08-26T13:05:48Z",
+  "created_at": "2026-08-26T16:20:27Z",
   "current_base_gate": {
     "can_claim_harmony_device_pass": false,
     "can_close_readme_phase4_owner_gates": false,
