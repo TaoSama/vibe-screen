@@ -619,7 +619,7 @@ System permission path: {SYSTEM_SETTINGS_PATH}
 Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
-partition lists, modify TCC.db, or request/override macOS privacy authorization.
+partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
 
@@ -1038,7 +1038,7 @@ System permission path: {SYSTEM_SETTINGS_PATH}
 Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
-partition lists, modify TCC.db, or request/override macOS privacy authorization.
+partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)

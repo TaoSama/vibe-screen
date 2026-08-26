@@ -828,6 +828,56 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertNotIn(str(Path.home()), status.database_path)
         self.assertNotIn(str(Path.home()), status.error or "")
 
+    def test_readiness_artifacts_keep_default_tcc_paths_redacted(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "query_tcc_database",
+            side_effect=lambda _bundle_id, path: macos_dev_host.PermissionStatus(
+                database_path=macos_dev_host.tcc_database_report_label(path),
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+        ):
+            permissions = macos_dev_host.query_tcc_rows(
+                "dev.telemachus.display",
+                macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database()),
+            )
+
+        report = macos_dev_host.format_report(
+            MacOSDevHostMetadataTests.metadata(),
+            permissions,
+            ["cannot verify TCC permissions read-only: " + str(permissions.error)],
+        )
+        inspection = macos_dev_host.HostInspection(
+            metadata=MacOSDevHostMetadataTests.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=permissions,
+            errors=["cannot verify TCC permissions read-only: " + str(permissions.error)],
+        )
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=False,
+                keys=(),
+                raw_output="",
+            ),
+        )
+        serialized_document = json.dumps(document, sort_keys=True)
+
+        for artifact in (report, serialized_document):
+            self.assertIn(macos_dev_host.USER_TCC_DATABASE_LABEL, artifact)
+            self.assertIn(macos_dev_host.SYSTEM_TCC_DATABASE_LABEL, artifact)
+            self.assertNotIn(str(Path.home()), artifact)
+            self.assertNotIn(str(macos_dev_host.SYSTEM_TCC_DATABASE), artifact)
+            self.assertNotIn("TCC" + ".db", artifact)
+
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
