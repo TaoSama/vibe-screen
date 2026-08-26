@@ -54,6 +54,7 @@ class HarmonyHapReadinessTests(unittest.TestCase):
             ["META-INF/CERT.SF"],
             "apps/harmony/dist/0.1.0/SHA256SUMS",
             "e" * 64,
+            True,
         )
 
     def device(self) -> readiness.DeviceState:
@@ -106,7 +107,7 @@ class HarmonyHapReadinessTests(unittest.TestCase):
             self.repository(),
             blocked_toolchain,
             readiness.SigningState("build-profile.json5", False, [], "", "signingConfigs is empty"),
-            readiness.ArtifactState("missing.hap", False, "", 0, False, [], "SHA256SUMS", ""),
+            readiness.ArtifactState("missing.hap", False, "", 0, False, [], "SHA256SUMS", "", False),
             readiness.DeviceState("", False, "hdc not found", "", "", "", "", "", "", False),
             self.lifecycle("insufficient"),
             None,
@@ -122,7 +123,7 @@ class HarmonyHapReadinessTests(unittest.TestCase):
         self.assertIn("hdc_target_selected", fields)
 
     def test_summary_fails_when_existing_hap_is_not_signed_zip(self) -> None:
-        bad_artifact = readiness.ArtifactState("bad.hap", True, "d" * 64, 10, False, [], "SHA256SUMS", "e" * 64)
+        bad_artifact = readiness.ArtifactState("bad.hap", True, "d" * 64, 10, False, [], "SHA256SUMS", "e" * 64, False)
         observations = readiness.build_observations(
             self.repository(),
             self.toolchain(),
@@ -160,7 +161,7 @@ class HarmonyHapReadinessTests(unittest.TestCase):
 
     def test_collect_signing_rejects_private_key_containers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            private_container = Path(temporary_directory) / "release.p12"
+            private_container = Path(temporary_directory) / "release.private"
             private_container.write_bytes(b"not committed but still private material")
 
             with self.assertRaisesRegex(readiness.ReadinessError, "public certificate"):
@@ -215,6 +216,35 @@ class HarmonyHapReadinessTests(unittest.TestCase):
         self.assertEqual(artifact.signature_entries, ["META-INF/CERT.SF"])
         self.assertRegex(artifact.sha256, r"^[0-9a-f]{64}$")
         self.assertRegex(artifact.sha256sums_sha256, r"^[0-9a-f]{64}$")
+        self.assertFalse(artifact.sha256sums_contains_hap)
+
+    def test_signed_hap_requires_sha256sums_linkage(self) -> None:
+        artifact_without_linkage = readiness.ArtifactState(
+            "apps/harmony/dist/0.1.0/vibe-screen-harmony-0.1.0.hap",
+            True,
+            "d" * 64,
+            1234,
+            True,
+            ["META-INF/CERT.SF"],
+            "apps/harmony/dist/0.1.0/SHA256SUMS",
+            "e" * 64,
+            False,
+        )
+
+        observations = readiness.build_observations(
+            self.repository(),
+            self.toolchain(),
+            self.signing(),
+            artifact_without_linkage,
+            self.device(),
+            self.lifecycle(),
+            readiness.CommandResult(["make", "release"], 0, "ok", ""),
+        )
+
+        summary = readiness.summarize(observations, "run-missing-sums-linkage")
+
+        self.assertEqual(summary["verdict"], "fail")
+        self.assertIn("signed_hap_present", {item["field"] for item in summary["missing_requirements"]})
 
     def test_lifecycle_observations_require_evidence_for_recorded_steps(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -340,7 +370,7 @@ class HarmonyHapReadinessTests(unittest.TestCase):
                 mock.patch.object(readiness, "repository_state", return_value=self.repository()),
                 mock.patch.object(readiness, "collect_toolchain", return_value=self.toolchain()),
                 mock.patch.object(readiness, "collect_signing", return_value=self.signing()),
-                mock.patch.object(readiness, "inspect_hap", return_value=readiness.ArtifactState("bad.hap", True, "d" * 64, 10, False, [], "SHA256SUMS", "e" * 64)),
+                mock.patch.object(readiness, "inspect_hap", return_value=readiness.ArtifactState("bad.hap", True, "d" * 64, 10, False, [], "SHA256SUMS", "e" * 64, False)),
                 mock.patch.object(readiness, "collect_device", return_value=self.device()),
             ):
                 exit_code = readiness.main(["--evidence-dir", str(evidence_dir), "--run-id", "run-fail"] )

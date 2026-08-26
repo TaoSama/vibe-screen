@@ -1,7 +1,7 @@
 # HarmonyOS current-base aggregate owner audit
 
-Date: 2026-08-23; rebased check: 2026-08-24
-Base: `origin/main` at `b759d785898ede5bbd4370255b3d49e56457f0ef`
+Date: 2026-08-23; rebased check: 2026-08-26
+Base: `origin/main` at `f46163524fe757e7021a4333b3370af00ec651f1`
 Scope: current-base owner selection and fail-closed evidence routing only. This
 record does not close any HarmonyOS real-device gate.
 
@@ -32,7 +32,7 @@ creating a second final-owner path.
 | #203 | draft; conflicts with current main | Focused AVCodec hardware-decode support | Needs real DevEco/HAP/MatePad decode evidence before it can close decode gates. |
 | #204 | draft; conflicts with current main | Focused HUKS secure-pairing support | Needs real HUKS runtime and Host/Authority compatibility evidence. |
 | #205 | draft; conflicts with current main | Focused Host resume interop support | Needs resume-capable Host plus HarmonyOS device evidence; also introduces `resume_capable_host_interop` expected by this aggregate gate. |
-| #206 | draft; conflicts with current main | Focused HAP lifecycle support | Needs DevEco build, signed HAP, install, launch, upgrade, rollback, and cleanup evidence. |
+| #206 | draft; rebased onto current main | Focused HAP lifecycle support | Needs DevEco build, signed HAP, install, launch, upgrade, rollback, and cleanup evidence. |
 | #210 | draft; behind current main | Support controller-status guard | Keep as docs/static guard input; controller device behavior remains MatePad acceptance evidence. |
 
 ## Aggregate gate contract

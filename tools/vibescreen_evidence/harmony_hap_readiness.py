@@ -116,6 +116,7 @@ class ArtifactState:
     signature_entries: list[str]
     sha256sums_path: str
     sha256sums_sha256: str
+    sha256sums_contains_hap: bool
 
 
 @dataclass(frozen=True)
@@ -372,7 +373,7 @@ def collect_signing(app_dir: Path, certificate: Path | None, certificate_sha256:
 
 def inspect_hap(hap_path: Path, sha256sums_path: Path) -> ArtifactState:
     if not hap_path.exists():
-        return ArtifactState(display_path(hap_path), False, "", 0, False, [], display_path(sha256sums_path), "")
+        return ArtifactState(display_path(hap_path), False, "", 0, False, [], display_path(sha256sums_path), "", False)
     signature_entries: list[str] = []
     zip_readable = False
     try:
@@ -384,16 +385,24 @@ def inspect_hap(hap_path: Path, sha256sums_path: Path) -> ArtifactState:
                     signature_entries.append(name)
     except zipfile.BadZipFile:
         zip_readable = False
+    hap_hash = sha256_file(hap_path)
     sums_hash = sha256_file(sha256sums_path) if sha256sums_path.exists() else ""
+    sha256sums_contains_hap = False
+    if sums_hash:
+        try:
+            sha256sums_contains_hap = hap_hash in sha256sums_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            sha256sums_contains_hap = False
     return ArtifactState(
         display_path(hap_path),
         True,
-        sha256_file(hap_path),
+        hap_hash,
         hap_path.stat().st_size,
         zip_readable,
         sorted(signature_entries),
         display_path(sha256sums_path),
         sums_hash,
+        sha256sums_contains_hap,
     )
 
 
@@ -566,12 +575,19 @@ def build_observations(
         ),
         Observation(
             "signed_hap_present",
-            "pass" if artifact.exists and artifact.zip_readable and bool(artifact.signature_entries) else ("blocked" if not artifact.exists else "fail"),
-            "signed release HAP archive with signature entries",
+            "pass"
+            if artifact.exists
+            and artifact.zip_readable
+            and bool(artifact.signature_entries)
+            and artifact.sha256sums_contains_hap
+            else ("blocked" if not artifact.exists else "fail"),
+            "signed release HAP archive with signature entries and SHA256SUMS linkage",
             [artifact.hap_path, *artifact.signature_entries]
-            if artifact.exists and artifact.zip_readable and artifact.signature_entries
+            if artifact.exists and artifact.zip_readable and artifact.signature_entries and artifact.sha256sums_contains_hap
             else [],
-            "HAP missing" if not artifact.exists else "signature entries missing or unreadable HAP",
+            "HAP missing"
+            if not artifact.exists
+            else "signature entries missing, unreadable HAP, or SHA256SUMS does not contain selected HAP hash",
         ),
         Observation(
             "signature_certificate_recorded",
