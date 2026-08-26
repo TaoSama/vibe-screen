@@ -359,7 +359,10 @@ The following remain unproved until their dedicated gates produce evidence:
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection;
+  paths, and managed App Configuration injection. The WakeHost current-base
+  evidence owner is #199 after rebasing onto #225 and must use
+  `make wake-host-current-base-gate` to keep this gate blocked until hardware
+  evidence exists;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over

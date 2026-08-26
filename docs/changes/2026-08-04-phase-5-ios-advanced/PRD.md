@@ -35,7 +35,7 @@ older Phase 0 clients remain valid.
 | 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device run pending |
 | 5B | multiple clients, multiple virtual displays/streams | additive resource limits, stream/display targets, explicit negotiated capability result | client routing/limits/UI implemented and CLI tested; host allocation pending |
 | 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; Internet product-flow wiring and platform/host E2E pending |
-| 5D | HDR/color, custom gestures, wake, managed devices | color-description fields; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; HDR static metadata, HDR output, and host helper pending |
+| 5D | HDR/color, custom gestures, wake, managed devices | color-description fields; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; authenticated WOL sender baseline merged; HDR static metadata, HDR output, and real WakeHost hardware gates pending |
 
 ## Acceptance criteria
 
@@ -70,3 +70,7 @@ owners for signing, VideoToolbox hardware decode, host advanced adapters,
 AVAudioEngine/PCM, HDR, native input, reconnect, and trusted-LAN secure records.
 Without real signed iPhone and iPad evidence, the aggregate remains fail-closed
 readiness only.
+After rebasing onto the #225 baseline, #199 is the WakeHost current-base
+evidence owner. It tracks the authenticated magic-packet path against current
+mainline and keeps the sleeping-Mac/router/NIC WOL gate blocked until retained
+hardware evidence satisfies the dedicated gate.

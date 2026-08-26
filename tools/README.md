@@ -208,6 +208,25 @@ evidence, HUKS secure-pairing evidence, authenticated transport evidence,
 Host resume evidence, eight-hour soak, or external-camera latency returns
 `blocked`; Android substitution returns `fail`.
 
+## WakeHost current-base gate
+
+After rebasing onto the merged PR #225 authenticated magic-packet baseline, PR
+#199 owns the WakeHost current-base evidence boundary. Use the gate to summarize
+retained sleeping-Mac Wake-on-LAN evidence without treating offline HMAC/protocol
+tests as a hardware pass:
+
+```sh
+make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base
+```
+
+With no explicit `WAKE_HOST_CURRENT_BASE_JSON`, the target writes a default
+blocked observation file plus `wake-host-current-base-gate.json`. A pass requires
+real Mac sleep/wake evidence, identity-signed Host/TCC readiness, Wake for
+network access or NIC WOL settings, verified router broadcast or directed WOL
+delivery, packet capture or router logs, post-wake Host availability, and
+negative rejected attempts for unpaired, expired, replayed, and wrong-signature
+requests.
+
 ## iOS device acceptance gate
 
 The iOS gate validates a sanitized `acceptance.json` after a separately
