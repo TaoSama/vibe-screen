@@ -109,6 +109,12 @@ def _positive_int(value: Any, field: str) -> int:
     return value
 
 
+def _nonnegative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _fail(f"{field} must be a non-negative integer")
+    return value
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     try:
@@ -348,7 +354,7 @@ def _validate_data_plane(manifest: dict[str, Any]) -> list[Reason]:
     for field in required_true:
         if not _bool(data_plane.get(field), f"data_plane.{field}"):
             reasons.append(_reason("blocked", f"data_plane.{field}", "required production data-plane observation is missing"))
-    soak_minutes = _positive_int(data_plane.get("mixed_route_soak_minutes"), "data_plane.mixed_route_soak_minutes")
+    soak_minutes = _nonnegative_int(data_plane.get("mixed_route_soak_minutes"), "data_plane.mixed_route_soak_minutes")
     if soak_minutes < 120:
         reasons.append(_reason("blocked", "data_plane.mixed_route_soak_minutes", "mixed-route production soak must be at least 120 minutes"))
     return reasons

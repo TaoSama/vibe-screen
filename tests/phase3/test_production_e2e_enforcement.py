@@ -257,6 +257,16 @@ class ProductionE2EEnforcementTests(unittest.TestCase):
         self.assertIn("data_plane.coturn_disconnect_observed", fields)
         self.assertIn("data_plane.mixed_route_soak_minutes", fields)
 
+    def test_zero_minute_soak_is_blocked_not_malformed(self) -> None:
+        manifest = valid_manifest()
+        manifest["data_plane"]["mixed_route_soak_minutes"] = 0
+
+        result = evaluate_manifest(manifest)
+
+        self.assertEqual(result["status"], "blocked")
+        fields = {reason["field"] for reason in result["reasons"]}
+        self.assertIn("data_plane.mixed_route_soak_minutes", fields)
+
     def test_evidence_root_requires_files_hashes_and_artifact_types(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
