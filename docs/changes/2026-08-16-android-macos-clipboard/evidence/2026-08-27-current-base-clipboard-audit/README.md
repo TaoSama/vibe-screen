@@ -11,7 +11,7 @@ ClipboardManager <-> macOS NSPasteboard USB/LAN E2E device gate.
 ## Repository State
 
 - Branch: `codex/clipboard-protocol-v1-e2e`
-- Refresh base `origin/main`: `a33ccc82a4602037de1b2bf52bbce4dd57dc5a28`
+- Refresh base `origin/main`: `74a539c033b67733af72e651f81d6364603a8a07`
 - Final PR head: use the GitHub PR checks/status for the latest pushed head;
   this audit does not hard-code the moving PR branch tip.
 - Open related PR: [#157](https://github.com/TaoSama/vibe-screen/pull/157)
