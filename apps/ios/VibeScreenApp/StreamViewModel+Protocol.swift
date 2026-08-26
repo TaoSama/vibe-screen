@@ -61,7 +61,7 @@ extension StreamViewModel {
         case .disconnectNotice(let notice):
             terminateSession(
                 message: "Mac 已断开会话：\(notice.reasonCode)",
-                failure: .permanent
+                failure: ReconnectFailure.fromDisconnectNotice(mayResume: notice.mayResume)
             )
         case .videoConfig(let config):
             handleVideoConfig(config)
