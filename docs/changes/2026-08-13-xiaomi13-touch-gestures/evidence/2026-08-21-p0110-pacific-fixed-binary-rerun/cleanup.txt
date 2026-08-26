@@ -1,0 +1,15 @@
+cleanup_at=2026-08-20T22:54:43Z
+# adb force-stop
+# adb reverse remove
+# quit host
+34:38: execution error: Vibe Screen got an error: User canceled. (-128)
+# remaining processes
+89030 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+91197 /opt/homebrew/bin/bash -lc '/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen' --help 2>&1 | sed -n '1,160p'
+91221 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen --help
+# reverse list
+
+# terminate host processes started during this attempt 2026-08-20T22:59:34Z
+sent TERM to 89030
+sent TERM to 91221
+# remaining matching processes
