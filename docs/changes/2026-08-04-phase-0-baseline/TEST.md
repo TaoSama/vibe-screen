@@ -329,6 +329,25 @@ latency, native-pointer, stylus, controller, rotated-display, login-startup,
 headless, LAN, Internet, or AV1 gate. Evidence is retained under
 [evidence/2026-08-23-nubia-p0110-usb-current-base/](evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
 
+On 2026-08-27 local time / 2026-08-26 UTC, the USB smoke preflight was refreshed
+on origin/main commit `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0` after the
+shared device lock was clear. The preflight used explicit
+`adb -s <P0110_USB_SERIAL> ...` read
+commands and observed the attached target as nubia / P0110 / pacific / Android
+16 / SDK 36. The package was installed, but the app process was not running and
+`.MainActivity` was not foreground. The Mac side had a Vibe Screen-owned
+listener on TCP `54321`, but the supported stable Host preflight failed because
+the installed Host lacked source commit/tree provenance and read-only TCC
+permission verification was unavailable. The retained JSON records
+`result=blocked`, `safety.ran_adb=true`, `host.preflight.passed=false`, and
+`claims.can_start_usb_smoke=false`. This remains fail-closed readiness evidence
+only; it does not prove USB streaming, Protocol v1 interoperability, decoder
+output, reconnect, input, latency, soak, Host RSS, native-pointer, stylus,
+controller, rotated-display, login-startup, headless, LAN, Internet, AV1, or
+primary-device behavior. Future ADB reruns must still use
+`adb -s <P0110_USB_SERIAL>`. Evidence is retained under
+[evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked/](evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked/README.md).
+
 ## External latency readiness check (2026-08-20)
 
 Main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` completed a latency

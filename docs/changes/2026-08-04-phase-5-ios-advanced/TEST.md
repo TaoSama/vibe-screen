@@ -1,11 +1,62 @@
 # Phase 5 verification record
 
-Date: 2026-08-05
+Date: 2026-08-05; updated 2026-08-27 for iOS PCM playback verifier
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
 
 ## Passed
+
+2026-08-27 local Command Line Tools run from rebased branch
+local branch `codex/pr209-current-base-20260827` verified the core
+playback queue policy used by the iOS AVFoundation adapter against current
+`origin/main` `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0` at source commit
+`839f1fc9520c8ea6ca18e6782aa3fa0f6458e838`:
+
+```bash
+swift build --package-path apps/ios --configuration release
+apps/ios/.build/release/vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
+make protocol
+plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
+xmllint --noout apps/ios/VibeScreen.xcodeproj/xcshareddata/xcschemes/VibeScreen.xcscheme
+swiftc -frontend -parse apps/ios/VibeScreenApp/*.swift
+git diff --check
+```
+
+Observed local result:
+
+```text
+swift build: Build complete!
+vibescreen-ios-selftest: PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+verify-generated-protocol.sh: generated macOS and iOS Protocol v1 bindings are current
+make protocol: Ran 37 tests ... OK
+project.pbxproj: OK
+xmllint: exit 0
+swiftc parse app sources: exit 0
+git diff --check: exit 0
+```
+
+An initial `make protocol` attempt failed before completing because the system
+temporary volume had no free space for Python/Go temporary directories. After
+cleaning only this worktree's regenerable SwiftPM build products and rerunning
+with `TMPDIR=$PWD/.build/tmp`, the same command passed. The host still cannot
+run XCTest or the app-level AVFoundation verifier because only Command Line
+Tools are selected:
+
+```text
+swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
+
+xcodebuild -version
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+
+xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+```
+
+The blocked environment record is retained at
+`docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked/`.
 
 ```bash
 swift package --package-path apps/ios resolve
@@ -46,18 +97,35 @@ Command Line Tools installation cannot import XCTest; this suite is therefore
 a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
-stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
-config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-WakeHost device-identity binding, and every advanced Envelope branch used by
-the client. Focused macOS/Android tests cover the shared HMAC golden vector,
-replay and unauthorized rejection, broadcast-target validation, and the
-Android Protocol v1 action path to a captured magic-packet sender.
+stream limits/routes, PCM validation and reorder, bounded playback queue
+policy, overrun/drop accounting, queue-empty accounting, late-completion
+accounting, stop/restart reset, clipboard explicit-action and feedback/digest
+rejection, managed deny-wins policy, safe filenames, sequential chunks, file
+limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR config-epoch fallback,
+gesture persistence/catalog enforcement, the 102-byte WOL vector, WakeHost
+device-identity binding, and every advanced Envelope branch used by the client.
+Focused macOS/Android tests cover the shared HMAC golden vector, replay and
+unauthorized rejection, broadcast-target validation, and the Android Protocol v1
+action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
+
+The app target adds a focused `AVAudioSession`/`AVAudioEngine` verifier through
+`VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts`. The
+test launches the app with `--audio-playback-self-test`, configures PCM S16LE,
+schedules synthetic audio through `AVAudioPlayerNode`, observes bounded queue
+overrun/drop behavior, waits for played-buffer and queue-empty counters to
+advance, stops, restarts on a newer config epoch, waits for playback completion
+again, observes the initial `AUDIO_PLAYBACK_SELF_TEST=RUNNING` diagnostic line,
+and waits for terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` in the UI. The app-side
+15-second timeout reports stalled playback completion as terminal `FAIL`; this
+closes only the executable playback-path check when run by full Xcode on a
+Simulator or signed device; it does not prove audible iPhone/iPad output
+without external audio confirmation. Late-completion accounting remains covered
+by the offline queue tests and is
+reported by the app verifier as diagnostic telemetry.
 
 Project metadata also passes:
 
@@ -148,6 +216,32 @@ The portable self-test and HarmonyOS core test now consume the same exact
 `contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
 fixture exactly; SwiftProtobuf must decode the same Hello fields. This does not
 satisfy the separate Android application fixture criterion.
+
+## iOS native-input behavior gate owner
+
+The README Phase 5 native-input behavior gate is owned by
+`phase5-ios-native-input-behavior`. The current repository includes a read-only
+evidence summary entry point:
+
+```bash
+make ios-native-input-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The gate consumes a sanitized `ios-native-input-observations.json` file and
+writes `ios-native-input-gate.json`. It requires real signed iPhone and iPad
+runs, Local Network permission, baseline MacHost listener identity, Protocol v1
+session negotiation, input capability negotiation, selected display/stream
+routing, touch tap and drag on both iPhone and iPad classes, hardware
+keyboard press/release, modifier cleanup, hover or pointer accessory movement, Host input acknowledgements, and retained
+iOS/Host logs. Missing iOS hardware, signed app, Host listener, hardware
+keyboard, or hover/pointer accessory evidence reports `blocked`; missing
+non-blocking behavior evidence reports `insufficient`; any claim that uses
+Android evidence, Simulator evidence, or offline tests as iOS input behavior
+reports `fail`. Only `pass` can close the iOS native-input behavior gate.
+
+This is an evidence/readiness owner, not device evidence. No signed iPhone or
+iPad native-input run is recorded in this repository yet, so the README Phase 5
+native-input behavior gate remains open.
 
 ## Mac/Android bounded file-transfer loop
 
@@ -272,6 +366,16 @@ owner remain blocked. It still cannot close install, launch, VideoToolbox,
 input, reconnect, audio, or full iOS device acceptance.
 The current retained blocked owner record is
 [`2026-08-25-ios-signing-current-base-owner-blocked`](evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md).
+
+The native-input row is also backed by a dedicated owner summary.
+`ios-current-base-manifest` binds `ios-native-input-gate.json` when supplied via
+`IOS_NATIVE_INPUT_GATE_JSON`, and the aggregate requires
+`dedicated_native_input_gate`, `dedicated_native_input_owner`,
+`dedicated_native_input_current_base`, and an input evidence marker containing
+`ios-native-input-gate.json verdict=pass can_close_ios_native_input_gate=true`
+before the E5 input row can pass. Hand-written `gates.input.status=pass` entries
+without that owner summary remain blocked. This does not record or imply a
+signed iPhone/iPad native-input run.
 
 2026-08-23 current-base readiness smoke on this worktree ran:
 
@@ -413,10 +517,11 @@ The following remain unproved until their dedicated gates produce evidence:
   explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
   LAN evidence;
 - cross-client golden bytes against the Android application;
-- AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection. The WakeHost current-base
-  evidence owner is #199 after rebasing onto #225 and must use
+- AVAudioEngine path execution beyond the launch-argument verifier, audible
+  iPhone/iPad output, UIPasteboard prompts/writes, security-scoped file
+  picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware paths,
+  and managed App Configuration injection. The WakeHost current-base evidence
+  owner is #199 after rebasing onto #225 and must use
   `make wake-host-current-base-gate` to keep this gate blocked until hardware
   evidence exists;
 - host-side multi-client/display, audio capture, clipboard/file handlers,

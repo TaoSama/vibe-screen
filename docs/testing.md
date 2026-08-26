@@ -7,12 +7,42 @@ Compilation is necessary but does not satisfy device acceptance.
 ```bash
 make protocol
 make baseline-macos-build
+make baseline-macos-xctest-preflight
 make baseline-macos-test
 make baseline-macos-self-test
 
 cd baseline/AndroidClient
 ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
 ```
+
+`baseline-macos-xctest-preflight` records the selected Apple developer
+directory, Swift toolchain, and `xcodebuild` availability under
+`.build/dev-macos-host/xctest-toolchain.txt`. If it reports Command Line Tools
+instead of full Xcode, keep MacHost XCTest-dependent evidence blocked until the
+machine is switched with:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+```
+
+## macOS Host signing preflight
+
+Before any Host-backed Android device gate, install and verify the current-source
+Host with a stable signing identity:
+
+```bash
+make baseline-macos-dev-install
+make baseline-macos-host-preflight
+```
+
+If the configured identity is missing, the preflight blocks with
+`codesign identity 'Vibe Screen Dev' not found in the keychain`. Create a
+self-signed Code Signing certificate named `Vibe Screen Dev` in Keychain Access,
+or set `VIBE_SCREEN_SIGN_IDENTITY` to an existing stable codesigning identity,
+then reinstall, grant Screen Recording and Accessibility, and rerun the
+preflight. Do not use ad-hoc signing for current-source device evidence because
+macOS TCC grants are bound to the signing identity.
 
 ## Real-device evidence
 
@@ -188,6 +218,31 @@ produced them. Later Xiaomi 13 streaming, display-switch, input, and
 two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
+### USB smoke preflight
+
+Before attempting a short USB end-to-end smoke, collect the fail-closed
+readiness state for the exact target device:
+
+```bash
+make evidence-usb-smoke-preflight \
+  EVIDENCE_SERIAL=<P0110_USB_SERIAL> \
+  EVIDENCE_DIR=.build/evidence/usb-smoke-preflight \
+  EVIDENCE_EXPECTED_MANUFACTURER=nubia \
+  EVIDENCE_EXPECTED_MODEL=P0110 \
+  EVIDENCE_EXPECTED_DEVICE=pacific \
+  EVIDENCE_EXPECTED_ANDROID_RELEASE=16 \
+  EVIDENCE_EXPECTED_SDK=36
+```
+
+The preflight exits `0` only when no shared Android device lock exists, the
+explicit ADB target matches the expected identity, `adb reverse tcp:54321
+tcp:54321` is already configured, the Android app is running in the foreground,
+the Mac Host is listening on TCP `54321`, and the stable-signed Host/TCC
+preflight passes. It exits `2` and writes `usb-smoke-preflight.json` when a
+prerequisite is blocked. A blocked preflight is a readiness record only; it
+does not prove USB streaming, reconnect, input, latency, soak, Host RSS, native
+pointer, stylus, controller, or Xiaomi/fuxi behavior.
+
 ### Read-only USB live-stream smoke
 
 When a Host and Android client are already streaming over USB, capture a
@@ -295,10 +350,47 @@ make native-pointer-hid-gate \
   EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/<run-dir>
 ```
 
+### iOS hardware VideoToolbox gate
+
+Phase 5 hardware VideoToolbox behavior is an iOS-device gate, not a Simulator or
+archive gate. Use the fail-closed readiness summary before and after any future
+physical run so missing prerequisites are machine-readable instead of implied:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
+```
+
+The observations file must set `runtime_class` to `simulator`,
+`unsigned_archive`, `physical_iphone`, or `physical_ipad`. Simulator and unsigned
+archive records always produce `verdict=blocked` and
+`can_close_device_family_videotoolbox_gate=false`; they are useful for readiness
+tracking only. The Makefile gate and `--require-pass` mode return nonzero unless
+the family gate can close. A physical iPhone or iPad family pass requires a
+signed installed app, matching real device identity, H.264 SPS/PPS, HEVC
+VPS/SPS/PPS, VideoToolbox session creation for both codecs, output frames for
+both codecs, hardware-path evidence, stream/config epoch telemetry,
+thermal/power state, and existing non-empty retained iOS VideoToolbox artifacts
+under the evidence directory.
+retained artifacts. The summary keeps
+`can_close_phase5_hardware_videotoolbox_gate=false` because README Phase 5 should
+close only after both iPhone and iPad family records are reviewed with the wider
+iOS device-acceptance evidence. Android MediaCodec evidence, synthetic media,
+Simulator decode, or a decoded still image cannot close this gate.
+
 ## Pass criteria
 
 - APK installs and cold-starts without fatal exception.
 - A real stream reaches a hardware decoder and produces output frames.
+- A Host start where `CGPreflightScreenCaptureAccess()` is granted but
+  `SCShareableContent` reports zero displays is blocked until either the
+  Current Main Display `CGDisplayStream` fallback starts and `54321` is actually
+  listening with rising frames, or ScreenCaptureKit display enumeration recovers.
+  Do not count the permission preflight alone as Host readiness.
 - Touch on two distinct device locations moves the Mac pointer accordingly.
 - Protocol v1 native pointer claims require a physical mouse or equivalent HID
   pointer attached to the Android device. Record hover/move, primary click,
@@ -389,3 +481,21 @@ metadata, Host listener state, and stable signed/TCC Host preflight. It exits
 nonzero for blocked or insufficient readiness; a pass still requires physical
 keyboard input through the production Protocol v1 path, Host `Key injected:`
 logs, modifier cleanup evidence, and a visible Mac-side result.
+
+For HarmonyOS HAP lifecycle readiness, collect the environment and device
+pre-state before claiming build/sign/install progress. Missing DevEco, HDC,
+signing material, HAP output, or lifecycle observations intentionally returns a
+blocked or insufficient result and writes evidence instead of passing:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+python3 scripts/harmony_device_gate.py --allow-blocked \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+```
+
+Android acceptance devices still use explicit ADB serials, for example
+`adb -s <device-serial> ...` for the Nubia P0110 / pacific / Android 16 /
+SDK 36 device. That Android evidence must not be used as HarmonyOS or MatePad
+Mini evidence.

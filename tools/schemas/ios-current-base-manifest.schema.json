@@ -18,7 +18,9 @@
     "local_environment",
     "build_evidence",
     "signing_readiness_gate",
+    "native_input_gate",
     "signing",
+    "videotoolbox_readiness_gates",
     "devices",
     "gates",
     "android_evidence_used_for_ios_gates",
@@ -129,6 +131,75 @@
         "failures": {"type": "array", "items": {"type": "string"}}
       }
     },
+    "native_input_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provided",
+        "path",
+        "owner",
+        "current_base",
+        "kind",
+        "profile",
+        "gate_owner",
+        "verdict",
+        "can_close_ios_native_input_gate",
+        "requires_real_ios_device",
+        "requires_signed_app",
+        "requires_physical_keyboard",
+        "requires_hover_or_pointer_accessory",
+        "android_evidence_is_not_ios_input_evidence",
+        "simulator_is_not_ios_input_evidence",
+        "offline_tests_are_readiness_only",
+        "observations",
+        "missing_requirements",
+        "blocking_reasons",
+        "disallowed_evidence",
+        "artifact_paths"
+      ],
+      "properties": {
+        "provided": {"type": "boolean"},
+        "path": {"type": ["string", "null"]},
+        "owner": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["role", "head_ref", "pull_request", "repository", "scope"],
+          "properties": {
+            "role": {"const": "ios_native_input_behavior_current_base_owner"},
+            "head_ref": {"const": "codex/ios-native-input-readiness-gate"},
+            "pull_request": {"const": "#257"},
+            "repository": {"const": "TaoSama/vibe-screen"},
+            "scope": {"type": "string", "minLength": 1}
+          }
+        },
+        "current_base": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["commit", "dirty"],
+          "properties": {
+            "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "kind": {"type": ["string", "null"]},
+        "profile": {"type": ["string", "null"]},
+        "gate_owner": {"type": ["string", "null"]},
+        "verdict": {"type": ["string", "null"]},
+        "can_close_ios_native_input_gate": {"type": "boolean"},
+        "requires_real_ios_device": {"type": "boolean"},
+        "requires_signed_app": {"type": "boolean"},
+        "requires_physical_keyboard": {"type": "boolean"},
+        "requires_hover_or_pointer_accessory": {"type": "boolean"},
+        "android_evidence_is_not_ios_input_evidence": {"type": "boolean"},
+        "simulator_is_not_ios_input_evidence": {"type": "boolean"},
+        "offline_tests_are_readiness_only": {"type": "boolean"},
+        "observations": {"type": "object"},
+        "missing_requirements": {"type": "array", "items": {"type": ["string", "object"]}},
+        "blocking_reasons": {"type": "array", "items": {"type": ["string", "object"]}},
+        "disallowed_evidence": {"type": "array", "items": {"type": ["string", "object"]}},
+        "artifact_paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
     "signing": {
       "type": "object",
       "additionalProperties": false,
@@ -153,6 +224,49 @@
         "device_udid_hashes_recorded": {"type": "boolean"},
         "entitlements_recorded": {"type": "boolean"},
         "signed_archive_sha256": {"type": ["string", "null"]}
+      }
+    },
+    "videotoolbox_readiness_gates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "kind",
+          "profile",
+          "runtime_class",
+          "verdict",
+          "can_close_device_family_videotoolbox_gate",
+          "can_close_phase5_hardware_videotoolbox_gate",
+          "artifact_paths",
+          "artifact_checks",
+          "blocking_reasons"
+        ],
+        "properties": {
+          "schema_version": {"const": "vibescreen.evidence/v1"},
+          "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+          "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+          "runtime_class": {"enum": ["physical_iphone", "physical_ipad"]},
+          "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+          "can_close_device_family_videotoolbox_gate": {"type": "boolean"},
+          "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+          "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "artifact_checks": {"type": "array"},
+          "blocking_reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "requirement"],
+              "properties": {
+                "field": {"type": "string", "minLength": 1},
+                "requirement": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
       }
     },
     "devices": {
@@ -183,6 +297,7 @@
         "audio_playback",
         "hdr_output",
         "advanced_adapters",
+        "host_advanced_adapters",
         "trusted_lan_secure_records"
       ],
       "properties": {
@@ -196,6 +311,7 @@
         "audio_playback": {"$ref": "#/$defs/gate_record"},
         "hdr_output": {"$ref": "#/$defs/gate_record"},
         "advanced_adapters": {"$ref": "#/$defs/gate_record"},
+        "host_advanced_adapters": {"$ref": "#/$defs/gate_record"},
         "trusted_lan_secure_records": {"$ref": "#/$defs/gate_record"}
       }
     },
@@ -207,10 +323,11 @@
     "gate_record": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "category", "requirement", "blocking", "evidence", "notes"],
+      "required": ["status", "category", "owner_pr", "requirement", "blocking", "evidence", "notes"],
       "properties": {
         "status": {"type": "string"},
         "category": {"enum": ["device_acceptance", "broader_phase5"]},
+        "owner_pr": {"type": "string", "pattern": "^#[0-9]+$"},
         "requirement": {"type": "string", "minLength": 1},
         "blocking": {"type": "boolean"},
         "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},

@@ -17,6 +17,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import macos_dev_host
 
+TEST_PRIVACY_DATABASE = Path("privacy.db")
+
 
 PRIVACY_DB_FILENAME = "privacy.sqlite"
 
@@ -275,7 +277,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
 
-    def test_preflight_command_does_not_require_identity_in_keychain(self) -> None:
+    def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"
             args = mock.Mock(
@@ -338,10 +340,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 result = macos_dev_host.preflight_command(args)
             report_text = report.read_text(encoding="utf-8")
 
-            self.assertEqual(result, 0)
-            self.assertIn("Status: PASS", report_text)
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("missing identity", report_text)
             self.assertIn("Identity: Missing Dev", report_text)
-        resolve_mock.assert_not_called()
+        resolve_mock.assert_called_once_with("Missing Dev")
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
 
@@ -477,6 +480,31 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertEqual(macos_dev_host.parse_entitlement_keys("no plist here"), ())
         self.assertEqual(macos_dev_host.parse_entitlement_keys("<plist><dict><key>broken</key></dict>"), ())
 
+    @staticmethod
+    def login_ready_inputs() -> tuple[
+        macos_dev_host.HostStartupSettings,
+        macos_dev_host.LoginItemReadiness,
+        macos_dev_host.HostDisplayReadiness,
+        macos_dev_host.LogReadiness,
+    ]:
+        return (
+            macos_dev_host.HostStartupSettings(
+                domain="dev.telemachus.display",
+                readable=True,
+                auto_start_streaming_on_launch=True,
+                startup_mode="usb",
+                has_completed_onboarding=True,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+            ),
+            macos_dev_host.LoginItemReadiness("enabled", True, "enabled", ("enabled",)),
+            macos_dev_host.HostDisplayReadiness(True, 1, ({"id": "1", "source": "CoreGraphics"},), active_display_count=1),
+            macos_dev_host.LogReadiness("<user-host-log>", True, ("Auto-start deferred",)),
+        )
+
     def test_readiness_document_keeps_controller_blocked_without_virtual_hid_entitlement(self) -> None:
         inspection = macos_dev_host.HostInspection(
             metadata=self.metadata(),
@@ -505,11 +533,13 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 keys=(),
                 raw_output="",
             ),
+            *self.login_ready_inputs(),
         )
 
         self.assertEqual(document["status"], "blocked")
         self.assertTrue(document["can_start_trusted_lan_gate"])
         self.assertTrue(document["can_start_native_hid_gate"])
+        self.assertTrue(document["can_start_headless_login_gate"])
         self.assertFalse(document["can_start_controller_runtime_gate"])
         self.assertFalse(document["can_close_runtime_gates"])
         self.assertIn(macos_dev_host.VIRTUAL_HID_ENTITLEMENT, "\n".join(document["blockers"]))
@@ -542,12 +572,16 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
                 raw_output="",
             ),
+            *self.login_ready_inputs(),
         )
 
         self.assertEqual(document["status"], "ready")
         self.assertTrue(document["can_start_trusted_lan_gate"])
         self.assertTrue(document["can_start_controller_runtime_gate"])
+        self.assertTrue(document["can_start_headless_login_gate"])
         self.assertFalse(document["can_close_runtime_gates"])
+        self.assertEqual(document["login_headless_status"], "ready")
+        self.assertIn("does_not_prove", document["login_headless"])
         self.assertEqual(document["blockers"], [])
         self.assertEqual(
             document["safety"],
@@ -560,6 +594,26 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 "closes_runtime_gates": False,
             },
         )
+
+    def test_login_headless_allows_lan_startup_mode(self) -> None:
+        settings, login_item, displays, logs = self.login_ready_inputs()
+        settings = macos_dev_host.HostStartupSettings(
+            domain=settings.domain,
+            readable=settings.readable,
+            auto_start_streaming_on_launch=settings.auto_start_streaming_on_launch,
+            startup_mode="lan",
+            has_completed_onboarding=settings.has_completed_onboarding,
+            display_source=settings.display_source,
+            selected_display_uuid=settings.selected_display_uuid,
+            selected_display_id=settings.selected_display_id,
+            stored_keys=settings.stored_keys,
+            defaults_used=settings.defaults_used,
+            error=settings.error,
+        )
+
+        blockers = macos_dev_host.login_headless_blockers(settings, login_item, displays, logs)
+
+        self.assertEqual(blockers, [])
 
     def test_readiness_document_blocks_all_start_flags_when_signing_or_tcc_is_missing(self) -> None:
         inspection = macos_dev_host.HostInspection(
@@ -582,6 +636,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
                 raw_output="",
             ),
+            *self.login_ready_inputs(),
         )
 
         self.assertEqual(document["status"], "blocked")
@@ -594,6 +649,83 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertFalse(document["can_start_controller_runtime_gate"])
         self.assertFalse(document["can_start_headless_login_gate"])
         self.assertFalse(document["can_close_runtime_gates"])
+
+    def test_readiness_document_blocks_headless_login_when_login_item_or_display_is_unverified(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=self.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=TEST_PRIVACY_DATABASE,
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            errors=[],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=True,
+                keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                raw_output="",
+            ),
+            macos_dev_host.HostStartupSettings(
+                domain="dev.telemachus.display",
+                readable=True,
+                auto_start_streaming_on_launch=True,
+                startup_mode="usb",
+                has_completed_onboarding=True,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+            ),
+            macos_dev_host.LoginItemReadiness("unverified", False, "sfltool timed out", ()),
+            macos_dev_host.HostDisplayReadiness(
+                True,
+                1,
+                ({"id": "1", "source": "system_profiler"},),
+                active_display_count=0,
+            ),
+            macos_dev_host.LogReadiness("<user-host-log>", True, ("Auto-start deferred",)),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertTrue(document["can_start_trusted_lan_gate"])
+        self.assertTrue(document["can_start_controller_runtime_gate"])
+        self.assertFalse(document["can_start_headless_login_gate"])
+        self.assertEqual(document["login_headless_status"], "blocked")
+        blockers = "\n".join(document["blockers"])
+        self.assertIn("Launch at Login is not verified enabled", blockers)
+        self.assertIn("no active display is visible", blockers)
+
+    def test_login_headless_evidence_redacts_local_paths(self) -> None:
+        host_log_text = str(Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log")
+        generic_home_text = str(Path.home() / "private-app" / "state.log")
+
+        login_item = macos_dev_host.parse_login_item_state(
+            f"bundle id dev.telemachus.display path {host_log_text} also {generic_home_text} allowed = 1"
+        )
+        log_path = Path.home() / "custom-host.log"
+
+        self.assertIn("<user-home>", "\n".join(login_item.evidence))
+        self.assertIn("<user-host-log>", "\n".join(login_item.evidence))
+        self.assertNotIn(str(Path.home()), "\n".join(login_item.evidence))
+        self.assertEqual(macos_dev_host.host_log_path_label(log_path), "<user-home>/custom-host.log")
+        self.assertEqual(
+            macos_dev_host.ascii_report_text(f"Auto-start log at {host_log_text}"),
+            "Auto-start log at <user-host-log>",
+        )
 
     def test_inspect_listener_reports_missing_listener_without_raising(self) -> None:
         with mock.patch.object(
@@ -677,6 +809,10 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                         error="bundle missing",
                     ),
                 ),
+                mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
+                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]),
+                mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
+                mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
                 redirect_stdout(StringIO()),
                 redirect_stderr(StringIO()),
             ):
@@ -803,6 +939,22 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertFalse(status.readable)
         self.assertIn("TCC database not found", status.error or "")
 
+    def test_query_tcc_database_redacts_sqlite_read_errors(self) -> None:
+        user_database = macos_dev_host.default_tcc_database()
+        with mock.patch.object(
+            macos_dev_host.sqlite3,
+            "connect",
+            side_effect=sqlite3.OperationalError(f"unable to open database file: {user_database}"),
+        ):
+            status = macos_dev_host._query_tcc_database_direct(
+                "dev.telemachus.display",
+                user_database,
+            )
+
+        self.assertFalse(status.readable)
+        self.assertIn(macos_dev_host.USER_TCC_DATABASE_LABEL, status.error or "")
+        self.assertNotIn(str(Path.home()), status.error or "")
+
     def test_query_tcc_rows_redacts_default_database_paths(self) -> None:
         with mock.patch.object(
             macos_dev_host,
@@ -827,6 +979,56 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertIn(macos_dev_host.SYSTEM_TCC_DATABASE_LABEL, status.error or "")
         self.assertNotIn(str(Path.home()), status.database_path)
         self.assertNotIn(str(Path.home()), status.error or "")
+
+    def test_readiness_artifacts_keep_default_tcc_paths_redacted(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "query_tcc_database",
+            side_effect=lambda _bundle_id, path: macos_dev_host.PermissionStatus(
+                database_path=macos_dev_host.tcc_database_report_label(path),
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+        ):
+            permissions = macos_dev_host.query_tcc_rows(
+                "dev.telemachus.display",
+                macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database()),
+            )
+
+        report = macos_dev_host.format_report(
+            MacOSDevHostMetadataTests.metadata(),
+            permissions,
+            ["cannot verify TCC permissions read-only: " + str(permissions.error)],
+        )
+        inspection = macos_dev_host.HostInspection(
+            metadata=MacOSDevHostMetadataTests.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=permissions,
+            errors=["cannot verify TCC permissions read-only: " + str(permissions.error)],
+        )
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=False,
+                keys=(),
+                raw_output="",
+            ),
+        )
+        serialized_document = json.dumps(document, sort_keys=True)
+
+        for artifact in (report, serialized_document):
+            self.assertIn(macos_dev_host.USER_TCC_DATABASE_LABEL, artifact)
+            self.assertIn(macos_dev_host.SYSTEM_TCC_DATABASE_LABEL, artifact)
+            self.assertNotIn(str(Path.home()), artifact)
+            self.assertNotIn(str(macos_dev_host.SYSTEM_TCC_DATABASE), artifact)
+            self.assertNotIn("TCC" + ".db", artifact)
 
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

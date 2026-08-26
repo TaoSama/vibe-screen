@@ -1,0 +1,41 @@
+cd baseline/MacHost
+swift build
+# PASS: Build complete.
+swift run "Vibe Screen" --protocol-v1-self-test
+# PASS: Protocol v1 self-test PASS.
+
+cd apps/ios
+swift build
+# PASS: Build complete. SwiftPM covers VibeScreenCore, VibeScreenProtocol,
+# VibeScreenVideo, and executable self-tests; the Xcode app target is covered
+# by xcodebuild and is blocked below in this local environment.
+swift run vibescreen-ios-selftest
+# PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup.
+
+cd baseline/AndroidClient
+./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+# PASS: BUILD SUCCESSFUL.
+./gradlew --no-daemon testDebugUnitTest
+# First final run observed one SocketException in the pre-existing
+# StreamClientCancellationTest.readySessionRejectsMalformedDisplayWithoutReconnectLoop.
+# The focused retry of that test passed, and the subsequent full rerun passed.
+# Final result: PASS: BUILD SUCCESSFUL.
+
+cd <repo-root>
+env GOMAXPROCS=2 GOFLAGS=-p=2 make protocol
+# PASS: buf format/lint/build/breaking and 36 protocol Python tests passed.
+apps/ios/Scripts/verify-generated-protocol.sh
+# PASS after staging regenerated Swift proto bindings: generated macOS and iOS
+# Protocol v1 bindings are current.
+git diff --check
+# PASS.
+
+# Blocked locally by Command Line Tools XCTest availability:
+cd baseline/MacHost && swift test --filter ManagedPolicyTests
+# BLOCKED: error: no such module XCTest.
+cd apps/ios && swift test --filter ManagedPolicyTests
+# BLOCKED: error: no such module XCTest.
+
+# Blocked locally because xcode-select points at Command Line Tools, not full Xcode:
+xcodebuild -list -project apps/ios/VibeScreen.xcodeproj
+# BLOCKED: xcode-select active developer directory is Command Line Tools.

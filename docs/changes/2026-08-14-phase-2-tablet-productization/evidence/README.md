@@ -233,6 +233,15 @@ Login-startup/headless Mac mini evidence uses a separate
     "android_release": "16",
     "sdk": "36",
     "device_info": "device-info.json"
+  },
+  "android_reconnect": {
+    "trigger": "usb_replug",
+    "disconnect_observed": true,
+    "reconnect_attempt_observed": true,
+    "reconnect_succeeded": true,
+    "client_render_after_reconnect_observed": true,
+    "reconnect_log": "android-reconnect.log",
+    "client_render_artifact": "android-reconnect-render.png"
   }
 }
 ```

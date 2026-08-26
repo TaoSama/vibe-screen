@@ -69,6 +69,17 @@ final class ReconnectCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.accepts(generation: generation))
     }
 
+    func testDisconnectNoticeMayResumeControlsRetryability() {
+        XCTAssertEqual(
+            ReconnectFailure.fromDisconnectNotice(mayResume: true),
+            .transientTransport
+        )
+        XCTAssertEqual(
+            ReconnectFailure.fromDisconnectNotice(mayResume: false),
+            .permanent
+        )
+    }
+
     func testClassifierRetriesOnlyTransportAndHeartbeatFailures() {
         XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.connectionClosed), .transientTransport)
         XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.timedOut("send")), .transientTransport)

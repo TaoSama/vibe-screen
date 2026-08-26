@@ -76,16 +76,17 @@ final class ProtocolV1SessionTests: XCTestCase {
             maximumFileBytes: 4_096,
             allowedHosts: ["host", "other"]
         )
-        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
-        remoteStatus.managed = true
-        remoteStatus.clipboardAllowed = false
-        remoteStatus.fileTransferAllowed = true
-        remoteStatus.audioAllowed = false
-        remoteStatus.wakeAllowed = true
-        remoteStatus.customGesturesAllowed = true
-        remoteStatus.hostActionsAllowed = false
-        remoteStatus.maximumFileBytes = 1_024
-        remoteStatus.allowedHosts = ["host"]
+        let remoteStatus = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: false,
+            maximumFileBytes: 1_024,
+            allowedHosts: ["host"]
+        ).protocolStatus
 
         let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
 
@@ -99,6 +100,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(effective.allowedHosts, ["host"])
         XCTAssertTrue(effective.allows(hostID: "host"))
         XCTAssertFalse(effective.allows(hostID: "other"))
+        XCTAssertEqual(Set(effective.restrictionResults.map(\.source)), ["effective_deny_wins"])
     }
 
     func testDisjointAllowedHostsDenyAllHosts() {
@@ -113,9 +115,17 @@ final class ProtocolV1SessionTests: XCTestCase {
             maximumFileBytes: 4_096,
             allowedHosts: ["local-host"]
         )
-        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
-        remoteStatus.managed = true
-        remoteStatus.allowedHosts = ["remote-host"]
+        let remoteStatus = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["remote-host"]
+        ).protocolStatus
 
         let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
 
@@ -685,7 +695,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions, .managedConfiguration, .fileTransfer]
         _ = session.handleControl(try hello.serializedData())
         let responses = try controlEnvelopes(session.completeCodecNegotiation())
-        XCTAssertEqual(responses.count, 4)
+        XCTAssertEqual(responses.count, 3)
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -693,24 +703,27 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 1 * 1_024 * 1_024)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 2_048)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 64 * 1_024)
-        guard case .managedPolicyStatus(let localStatus)? = responses[3].payload else {
+        guard case .managedPolicyStatus(let localStatus)? = responses[2].payload else {
             return XCTFail("Expected ManagedPolicyStatus")
         }
         XCTAssertTrue(localStatus.managed)
         XCTAssertTrue(localStatus.hostActionsAllowed)
         XCTAssertEqual(localStatus.maximumFileBytes, 2_048)
         XCTAssertEqual(localStatus.allowedHosts, ["host"])
+        XCTAssertEqual(Set(localStatus.restrictionResults.map(\.restriction)), ManagedPolicy.requiredRestrictionNames)
+        XCTAssertTrue(localStatus.restrictionResults.allSatisfy { $0.source == "managed_configuration" })
 
-        var remote = VSManagedPolicyStatus()
-        remote.managed = true
-        remote.clipboardAllowed = true
-        remote.fileTransferAllowed = true
-        remote.audioAllowed = true
-        remote.wakeAllowed = true
-        remote.customGesturesAllowed = true
-        remote.hostActionsAllowed = false
-        remote.maximumFileBytes = 4_096
-        remote.allowedHosts = ["host"]
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: false,
+            maximumFileBytes: 4_096,
+            allowedHosts: ["host"]
+        ).protocolStatus
         let remotePolicyActions = session.handleControl(try envelope(
             id: 2,
             payload: .managedPolicyStatus(remote)
@@ -721,6 +734,8 @@ final class ProtocolV1SessionTests: XCTestCase {
         }
         XCTAssertTrue(effectiveRemotePolicy.managed)
         XCTAssertFalse(effectiveRemotePolicy.hostActionsAllowed)
+        XCTAssertEqual(Set(effectiveRemotePolicy.restrictionResults.map(\.source)), ["effective_deny_wins"])
+        XCTAssertFalse(try controlEnvelopes(remotePolicyActions).contains { if case .hostActionCatalog = $0.payload { true } else { false } })
 
         _ = session.handleControl(try envelope(id: 3, payload: .listDisplaysRequest(VSListDisplaysRequest())).serializedData())
         _ = session.handleControl(try envelope(id: 4, payload: .startDisplayRequest(existingDisplayRequest())).serializedData())
@@ -738,6 +753,82 @@ final class ProtocolV1SessionTests: XCTestCase {
         )).code, .unsupportedCapability)
     }
 
+    func testManagedConfigurationBlocksOrdinaryRequestsUntilRemotePolicyStatus() throws {
+        let session = makeSession(fileTransferAvailable: true)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .fileTransfer, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 3)
+        XCTAssertFalse(responses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+        XCTAssertEqual(session.phase, .awaitingManagedPolicy)
+
+        let listRejected = session.handleControl(try envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest())
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: listRejected).code, .invalidState)
+        XCTAssertTrue(listRejected.containsClose)
+
+        let startRejected = makeSession(fileTransferAvailable: true)
+        _ = startRejected.handleControl(try hello.serializedData())
+        _ = startRejected.completeCodecNegotiation()
+        let startActions = startRejected.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: startActions).code, .invalidState)
+        XCTAssertTrue(startActions.containsClose)
+
+        let fileRejected = makeSession(fileTransferAvailable: true)
+        _ = fileRejected.handleControl(try hello.serializedData())
+        _ = fileRejected.completeCodecNegotiation()
+        var offer = VSFileOffer()
+        offer.transferID = Data([1, 2, 3, 4])
+        offer.fileName = "hello.txt"
+        offer.mimeType = "text/plain"
+        offer.byteLength = 0
+        offer.sha256 = Data(repeating: 0, count: 32)
+        let fileActions = fileRejected.handleControl(try envelope(
+            id: 2,
+            payload: .fileOffer(offer)
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: fileActions).code, .invalidState)
+        XCTAssertTrue(fileActions.containsClose)
+    }
+
+    func testManagedConfigurationAdvertisesHostActionCatalogAfterRemotePolicyStatusAllowsIt() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 3)
+        XCTAssertFalse(responses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ).protocolStatus
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+        let catalogEnvelopes = try controlEnvelopes(actions)
+        guard case .hostActionCatalog(let catalog)? = catalogEnvelopes.first?.payload else {
+            return XCTFail("Expected HostActionCatalog after valid remote policy")
+        }
+        XCTAssertEqual(catalog.actions.map(\.actionID), ["move-window", "return-windows"])
+        XCTAssertEqual(session.phase, .awaitingDisplayStart)
+    }
+
     func testManagedPolicyAllowedHostsFailsClosed() throws {
         let session = makeSession()
         var hello = clientHello()
@@ -745,15 +836,80 @@ final class ProtocolV1SessionTests: XCTestCase {
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
 
-        var remote = ManagedPolicy.unmanaged.protocolStatus
-        remote.managed = true
-        remote.allowedHosts = ["different-host"]
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["different-host"]
+        ).protocolStatus
         let actions = session.handleControl(try envelope(
             id: 2,
             payload: .managedPolicyStatus(remote)
         ).serializedData())
 
         XCTAssertEqual(try protocolError(from: actions).code, .unauthorized)
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testManagedPolicyStatusWithoutRestrictionResultsFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        var remote = VSManagedPolicyStatus()
+        remote.managed = true
+        remote.clipboardAllowed = true
+        remote.fileTransferAllowed = true
+        remote.audioAllowed = true
+        remote.wakeAllowed = true
+        remote.customGesturesAllowed = true
+        remote.hostActionsAllowed = true
+        remote.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .malformedMessage)
+        XCTAssertTrue(error.message.contains("restriction_results"))
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testManagedPolicyStatusWithMismatchedRestrictionResultFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        var remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ).protocolStatus
+        remote.restrictionResults[0].allowed = true
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .malformedMessage)
+        XCTAssertTrue(error.message.contains("restriction_results"))
         XCTAssertTrue(actions.containsClose)
     }
 
@@ -3014,19 +3170,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         ) : .unmanaged
         let session = makeAudioSession(managedPolicy: policy)
         var hello = clientHello()
-        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .audio]
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .audio]
+        if managed { hello.clientHello.capabilities.append(.managedConfiguration) }
         hello.clientHello.resourceLimits.maximumAudioStreams = 1
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
+        var nextID: UInt64 = 2
+        if managed {
+            _ = session.handleControl(try envelope(
+                id: nextID,
+                payload: .managedPolicyStatus(policy.protocolStatus)
+            ).serializedData())
+            nextID += 1
+        }
         _ = session.handleControl(try envelope(
-            id: 2,
+            id: nextID,
             payload: .startDisplayRequest(existingDisplayRequest())
         ).serializedData())
+        nextID += 1
         var videoResult = VSVideoConfigResult()
         videoResult.configEpoch = 1
         videoResult.streamID = 1
         videoResult.accepted = true
-        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(videoResult)).serializedData())
+        _ = session.handleControl(try envelope(id: nextID, payload: .videoConfigResult(videoResult)).serializedData())
         return session
     }
 

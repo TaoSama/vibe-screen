@@ -39,10 +39,10 @@ evidence covers every supported state.
 
 The current-base iOS aggregate owner is PR #290. Merged PR #182 remains the
 historical sanitized device-acceptance baseline. Use the aggregate gate to keep
-the current owner connected to the narrower signing, VideoToolbox,
-advanced-adapter, AVAudioEngine/PCM, HDR, native-input, reconnect, and
-trusted-LAN secure-record tasks without claiming a device pass before real
-iPhone and iPad evidence exists:
+the current owner connected to the narrower signing, VideoToolbox, iOS advanced
+adapter, Host advanced-adapter, AVAudioEngine/PCM, HDR, native-input,
+reconnect, and trusted-LAN secure-record tasks without claiming a device pass
+before real iPhone and iPad evidence exists:
 
 ```sh
 make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base
@@ -55,6 +55,10 @@ Simulator-only evidence, unsigned archives, MacHost loopback, Android evidence,
 or plaintext legacy fallback produce `blocked`, `insufficient`, or `fail` with
 `can_close_ios_device_acceptance=false`. That nonzero result is the expected
 fail-closed readiness evidence when no iOS device run is scheduled.
+The manifest and gate report retain per-gate `owner_pr` values. Hardware
+VideoToolbox H.264/HEVC is owned by #251, and Host advanced adapters are owned
+by #253. Passing status plus evidence under the wrong owner still fails closed,
+so the #290 aggregate cannot accidentally close those open readiness gates.
 
 ## Phase 0 stable-release aggregate gate
 
@@ -150,6 +154,18 @@ the first decoded output frame before it is used to close a codec gate. AV1 is
 currently a planned codec only: offline fail-closed/admission tests and blocked
 runbooks do not prove an AV1 stream.
 
+Trusted-LAN smoke evidence must be checked before changing README or release
+notes based on a LAN run. A passing real-device record must include non-legacy
+encrypted LAN markers from both peers, Protocol v1 over TRANSPORT_KIND_LAN,
+HEVC decode with real output frames, and reconnect with the Host PID preserved.
+A blocked record is valid only when it names the Nubia P0110 / pacific /
+Android 16 / SDK 36 device, records concrete Wi-Fi/route and Host signing/preflight
+blockers, and explicitly states that no real trusted-LAN stream was observed.
+
+Run the checker with:
+
+    make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/<run-dir>
+
 Native pointer HID mouse evidence is hardware-gated in the same way. The Android
 device must expose a real external mouse-like source (`MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), and the same observation
@@ -178,6 +194,23 @@ instrumentation-backed playback confirmation, disconnect cleanup, and non-empty
 retained artifacts under the evidence directory. Loopback, synthetic,
 Android-only, or plaintext legacy records return `blocked` or `insufficient` and keep
 `can_close_android_audio_playback_gate=false`.
+
+iOS native-input behavior is owned by the
+`phase5-ios-native-input-behavior` gate. Summarize a sanitized device-run
+observation file with:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.ios_native_input \
+  docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-observations.json \
+  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json
+```
+
+The CLI is deliberately fail-closed. It requires real iPhone and iPad signed app
+runs, physical keyboard, hover or pointer accessory, Protocol v1 session
+and capability evidence, selected display/stream routing, Host
+acknowledgements, and retained iOS/Host logs. Android evidence, Simulator
+evidence, and offline input tests are readiness signals only and cannot close
+the iOS native-input behavior gate.
 
 Run the tests without installing third-party packages:
 
@@ -393,12 +426,42 @@ endpoint default:
 
 ```sh
 export ADB_ENDPOINT='<lease-controlled-endpoint>'
+make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make evidence-device-info EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-30m EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT" HOST_PID="$HOST_PID"
 make host-rss-gate EVIDENCE_DIR=.build/evidence
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
+
+### Real-device readiness gate
+
+`evidence-real-device-gate-preflight` writes
+`.build/evidence/real-device-gate/real-device-gate.json`. It is the unified
+readiness record for Android real-device work: device locks, exact ADB identity,
+ADB reverse, Android foreground state, macOS Host listener, Host signing/TCC
+preflight, and stream telemetry. By default, stream readiness requires fresh
+structured `stream_stats` in `--host-telemetry-jsonl`; a timestamp-less Host log
+`Pipeline:` line is only a legacy diagnostic when
+`--allow-host-log-without-freshness` is passed. The default target is read-only
+and exits `2` with `result=blocked` when any prerequisite is missing. Pass
+explicit extra arguments only when the device owner wants the runner to prepare
+Android-side state, for example:
+
+```sh
+make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT" \
+  REAL_DEVICE_GATE_EXTRA_ARGS="--host-telemetry-jsonl <evidence-dir>/host-telemetry.jsonl --configure-adb-reverse --launch-android-app"
+```
+
+The runner still never starts the macOS Host, changes TCC, changes Keychain
+state, or clears Android app data. A `ready` result means the session is ready
+for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
+physical-input gates by itself. Use `--require-soak-summary` or
+`--require-host-rss-gate` to require soak evidence, and pass
+`--require-latency-report <count>` or `--require-input-summary <count>` to make
+missing retained latency/input evidence explicit in the same JSON report.
+Additional `--lock-glob` values are checked in addition to the default
+`/tmp/vibe-screen-device-*.lock` ownership guards.
 
 ### USB live-stream smoke
 
@@ -550,13 +613,15 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_APK_SHA256="debug or release APK SHA-256" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
   PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5 \
-  EVIDENCE_HOST_PID="$HOST_PID"
+  EVIDENCE_HOST_PID="$HOST_PID" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate"
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
 or another phone substitute. That records useful readiness data, but it cannot
-close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi
-evidence.
+close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi or
+physical-tablet evidence. Physical-tablet manifests must declare
+`PHASE2_TABLET_SIZE_INCHES` in the 8.0..9.0 range.
 
 Run the eight-hour soak with the same Host process ID so each sample carries
 both Android app PSS and Host RSS:
@@ -631,6 +696,11 @@ Android PSS and Host RSS growth, battery/thermal readings below the Phase 2
 thresholds, net battery drain within the manifest-declared limit, a manifest
 declaring `physical_8_9_inch_tablet`, and the required raw
 README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+The gate also rejects known phone substitute identities such as Nubia
+P0110/pacific if they are manually mislabeled as physical-tablet evidence.
+The manifest must also predeclare owner entries for stand-mounted charging,
+thermal/power sampling, posture/mount review, and the eight-hour stream verdict;
+missing owner entries keep the gate `insufficient`.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
@@ -682,8 +752,9 @@ requires an identity-signed Host with current Screen Recording and Accessibility
 grants, login item enabled and not awaiting approval, reboot or logout/login
 launch evidence, automatic startup to a rendered client stream, capturable
 physical/dummy/headless or Screen Sharing display evidence, bounded unattended
-recovery logs, real window restore evidence, and a local or remote administrator
-path for FileVault, first-login, TCC, and display intervention. Missing hardware
+recovery logs, real window restore evidence, Android disconnect/reconnect with
+post-reconnect render evidence, and a local or remote administrator path for
+FileVault, first-login, TCC, and display intervention. Missing hardware
 or permission prerequisites return `blocked` with
 `can_close_login_headless_gate=false`; manual launches or relabeled display or
 device identities return `fail`.
@@ -706,6 +777,43 @@ signed/TCC-ready Host, active selected-display stream, production Protocol v1
 forwarding plus focus/IME boundary logs, Host `Key injected:` or
 acknowledgement/CGEvent logs, modifier press/release and cleanup proof, or
 visible Mac-side result are missing.
+
+## Phase 3 Internet Soak Gate
+
+The Phase 3 Internet soak gate composes separately collected production evidence
+instead of running the public service by itself. First write a manifest from the
+reviewed production inputs:
+
+```sh
+make phase3-internet-soak-manifest PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak \
+  PHASE3_INTERNET_TURN_URIS="turns:relay.prod.your-domain.com:5349?transport=tcp" \
+  PHASE3_INTERNET_SIGNALING_ORIGIN=https://signaling.prod.your-domain.com \
+  PHASE3_INTERNET_RELAY_ORIGIN=https://relay.prod.your-domain.com \
+  PHASE3_INTERNET_AUTHORITY_SOURCE_ID=turn-prod-1 \
+  PHASE3_INTERNET_REMOTE_PEER=peer.prod.your-domain.com \
+  PHASE3_INTERNET_TLS_CERTIFICATE_SHA256=... \
+  PHASE3_INTERNET_DEPLOYMENT_READINESS=authority-readyz,relay-readyz,coturn-tls \
+  PHASE3_INTERNET_PLANNED_HANDOFFS=wifi-to-cellular \
+  PHASE3_INTERNET_HOST_BUILD="Vibe Screen release build and SHA" \
+  PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256=...
+```
+
+Then evaluate the gate after placing privacy-reviewed summaries in that same
+directory:
+
+```sh
+make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR=.build/phase3-internet-soak
+```
+
+The default filenames are `remote-turn-verifier.json`, `media-continuity.json`,
+`network-handoff.json`, `revocation-propagation.json`, and
+`soak-exact-window-report.json`. The gate passes only with public remote TURN
+packet exchange, real ScreenCaptureKit-to-Android decode continuity, fresh-session
+handoff recovery, revocation propagation through active coturn allocation
+disconnect and post-revocation packet denial, and a clean two-hour mixed
+direct/relay soak. Missing reports are `blocked`; observed plaintext fallback or
+secret-like fields in report inputs are `fail`. Set
+`PHASE3_INTERNET_ALLOW_BLOCKED=1` only to archive a blocked record.
 
 ### Short Host memory regression gate
 

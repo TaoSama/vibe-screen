@@ -4,6 +4,11 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
+EVIDENCE_EXPECTED_MANUFACTURER ?=
+EVIDENCE_EXPECTED_MODEL ?=
+EVIDENCE_EXPECTED_DEVICE ?=
+EVIDENCE_EXPECTED_ANDROID_RELEASE ?=
+EVIDENCE_EXPECTED_SDK ?=
 EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
@@ -24,6 +29,8 @@ STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG ?=
 STYLUS_HOST_READY_ARG ?=
 ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
 ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
+HARMONY_AVCODEC_HDC_TARGET ?=
+HARMONY_AVCODEC_HAP ?=
 PHASE2_DEVICE_CLASS ?=
 PHASE2_TABLET_SIZE_INCHES ?=
 PHASE2_STAND_SETUP ?=
@@ -58,6 +65,8 @@ IOS_HDR_EDR_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-hdr-edr-observations.json
 IOS_HDR_EDR_GATE_JSON ?= $(dir $(IOS_HDR_EDR_OBSERVATIONS_JSON))ios-hdr-edr-gate.json
 IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
+IOS_NATIVE_INPUT_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-native-input-observations.json
+IOS_NATIVE_INPUT_GATE_JSON ?= $(dir $(IOS_NATIVE_INPUT_OBSERVATIONS_JSON))ios-native-input-gate.json
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
@@ -69,6 +78,7 @@ TOUCH_RERUN_EXPECTED_ANDROID_MODEL ?=
 TOUCH_RERUN_EXPECTED_ANDROID_DEVICE ?=
 TOUCH_RERUN_EXPECTED_ANDROID_RELEASE ?=
 TOUCH_RERUN_EXPECTED_ANDROID_SDK ?=
+TOUCH_RERUN_REQUIRE_CURRENT_SOURCE ?= 1
 TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
 TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
 TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
@@ -155,6 +165,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	require-host-pid \
 	evidence-device-info \
 	evidence-usb-live-smoke \
+	evidence-usb-smoke-preflight \
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
@@ -172,6 +183,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-readiness \
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
+	harmony-avcodec-preflight \
+	harmony-avcodec-validate \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -189,6 +202,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	ios-app-signing-readiness-gate \
 	ios-device-acceptance-gate \
 	ios-hdr-edr-gate \
+	ios-native-input-gate \
 	ios-current-base-manifest \
 	ios-current-base-gate \
 	phase5-multi-client-current-base-gate \
@@ -338,16 +352,20 @@ phase3-android-current-base-interop-gate:
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
 
-baseline-macos-test:
+baseline-macos-xctest-preflight:
+	python3 scripts/macos_dev_host.py xctest-preflight
+
+baseline-macos-test: baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build
-	"baseline/MacHost/.build/release/Vibe Screen" --host-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --transport-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --reliability-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --protocol-v1-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --video-encoder-self-test
-	"baseline/MacHost/.build/release/Vibe Screen" --phase3-real-media-self-test
+	@host_bin="$$(cd baseline/MacHost && swift build -c release --show-bin-path)/Vibe Screen"; \
+		"$$host_bin" --host-self-test; \
+		"$$host_bin" --transport-self-test; \
+		"$$host_bin" --reliability-self-test; \
+		"$$host_bin" --protocol-v1-self-test; \
+		"$$host_bin" --video-encoder-self-test; \
+		"$$host_bin" --phase3-real-media-self-test
 
 baseline-macos-app:
 	python3 scripts/package_macos.py
@@ -365,8 +383,7 @@ baseline-macos-host-readiness:
 		--json-output $(EVIDENCE_DIR)/host-readiness.json \
 		--port $(EVIDENCE_PORT)
 
-baseline-macos-touch-preflight:
-	python3 scripts/macos_dev_host.py preflight
+baseline-macos-touch-preflight: baseline-macos-host-preflight
 
 baseline-android-test:
 	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
@@ -412,8 +429,20 @@ evidence-usb-live-smoke: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --port $(EVIDENCE_PORT) --output $(EVIDENCE_DIR)/usb-live-smoke.json
 
-evidence-touch-rerun-preflight: require-evidence-serial
+evidence-usb-smoke-preflight: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+		--serial $(EVIDENCE_SERIAL) \
+		--package $(EVIDENCE_PACKAGE) \
+		--port $(EVIDENCE_PORT) \
+		$(if $(strip $(EVIDENCE_EXPECTED_MANUFACTURER)),--expected-manufacturer $(EVIDENCE_EXPECTED_MANUFACTURER),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_MODEL)),--expected-model $(EVIDENCE_EXPECTED_MODEL),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_DEVICE)),--expected-device $(EVIDENCE_EXPECTED_DEVICE),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(EVIDENCE_EXPECTED_ANDROID_RELEASE),) \
+		$(if $(strip $(EVIDENCE_EXPECTED_SDK)),--expected-sdk $(EVIDENCE_EXPECTED_SDK),) \
+		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
+
+evidence-touch-rerun-preflight: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.touch_rerun_preflight \
 		--serial $(EVIDENCE_SERIAL) \
@@ -423,6 +452,7 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE)),--expected-android-device $(TOUCH_RERUN_EXPECTED_ANDROID_DEVICE),) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(TOUCH_RERUN_EXPECTED_ANDROID_RELEASE),) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_ANDROID_SDK)),--expected-android-sdk $(TOUCH_RERUN_EXPECTED_ANDROID_SDK),) \
+		$(if $(filter 1 true yes,$(TOUCH_RERUN_REQUIRE_CURRENT_SOURCE)),--source-root . --require-current-source,) \
 		--output $(TOUCH_RERUN_PREFLIGHT)
 
 evidence-touch-rerun-summary:
@@ -572,6 +602,19 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
+
+harmony-avcodec-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+		--output "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json" \
+		$(if $(strip $(HARMONY_AVCODEC_HDC_TARGET)),--hdc-target "$(HARMONY_AVCODEC_HDC_TARGET)",) \
+		$(if $(strip $(HARMONY_AVCODEC_HAP)),--hap "$(HARMONY_AVCODEC_HAP)",)
+
+harmony-avcodec-validate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
+		--validate "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)
@@ -725,6 +768,11 @@ hardware-keyboard-gate:
 	@test -f "$(EVIDENCE_DIR)/hardware-keyboard-observations.json" || (echo "error: collect $(EVIDENCE_DIR)/hardware-keyboard-observations.json before hardware-keyboard-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.hardware_keyboard $(EVIDENCE_DIR)/hardware-keyboard-observations.json --output $(EVIDENCE_DIR)/hardware-keyboard-summary.json --require-pass
 
+ios-native-input-gate:
+	@test -f "$(IOS_NATIVE_INPUT_OBSERVATIONS_JSON)" || (echo "error: set IOS_NATIVE_INPUT_OBSERVATIONS_JSON to sanitized iOS native-input observations JSON" >&2; exit 2)
+	mkdir -p "$(dir $(IOS_NATIVE_INPUT_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_native_input $(IOS_NATIVE_INPUT_OBSERVATIONS_JSON) --repo . --output $(IOS_NATIVE_INPUT_GATE_JSON) --require-pass
+
 hardware-keyboard-readiness: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/hardware_keyboard_readiness.py \
 		--serial "$(EVIDENCE_SERIAL)" \
@@ -738,6 +786,7 @@ ios-current-base-manifest:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_manifest \
 		--output $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--signing-readiness-gate "$(IOS_APP_SIGNING_READINESS_GATE_JSON)" \
+		--native-input-gate "$(IOS_NATIVE_INPUT_GATE_JSON)" \
 		-- make ios-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
 
 ios-current-base-gate:

@@ -277,6 +277,20 @@ class RepositoryPrivacyTests(unittest.TestCase):
         self.assertIn("EVIDENCE_SERIAL ?=\n", makefile)
         self.assertIn("error: set EVIDENCE_SERIAL explicitly", makefile)
 
+    def test_makefile_exposes_fail_closed_phase3_internet_soak_gate(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        for phrase in (
+            "phase3-internet-soak-manifest:",
+            "phase3-internet-soak-gate:",
+            "vibescreen_evidence.phase3_internet_soak manifest",
+            "vibescreen_evidence.phase3_internet_soak gate",
+            "PHASE3_INTERNET_ALLOW_BLOCKED",
+            "PHASE3_INTERNET_REMOTE_TURN_REPORT",
+            "PHASE3_INTERNET_REVOCATION_REPORT",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, makefile)
+
 
 if __name__ == "__main__":
     unittest.main()

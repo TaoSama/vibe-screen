@@ -30,10 +30,11 @@ Started: 2026-08-16
 - MacHost 候选通告能力，通过会话核心验证消息，通过主线程 UI 控制器执行
   `NSPasteboard` 读写，并按连接代际丢弃旧回调。
 - Android 与 MacHost 在双方协商 `CAPABILITY_MANAGED_CONFIGURATION` 时交换本地
-  未受管 `ManagedPolicyStatus`，并把远端 `managed=true && clipboard_allowed=false`
-  作为 clipboard 专用 deny-wins 门控：清空 pending 状态、隐藏/禁用入口，后续
-  peer clipboard payload fail-closed。该实现不读取系统 MDM 配置，也不声明完整
-  managed-policy 产品化完成。
+  `ManagedPolicyStatus`，并把远端 `managed=true && clipboard_allowed=false`
+  作为 clipboard deny-wins 门控：清空 pending 状态、隐藏/禁用入口，后续 peer
+  clipboard payload fail-closed。完整 managed-policy deny-wins 与
+  `restriction_results` 产品边界记录在
+  [2026-08-21-managed-policy-deny-wins](../2026-08-21-managed-policy-deny-wins/PRD.md)。
 - iOS 现有实现保持不变。直接 `ClipboardContent` 的接收兼容只作为 Android /
   MacHost 的防御性协议行为，不构成 iOS 互操作证据。
 
@@ -45,8 +46,9 @@ Started: 2026-08-16
 - USB（ADB reverse TCP）和可信 LAN 的既有 Protocol v1 主会话。
 - `session_id + session_epoch`、握手 peer ID、UI owner / connection generation
   校验。
-- 剪贴板范围内的 managed-policy deny-wins：仅消费对端显式
-  `ManagedPolicyStatus.clipboard_allowed=false`，不接入本机 MDM/配置源。
+- 剪贴板范围内的 managed-policy deny-wins：消费对端显式
+  `ManagedPolicyStatus.clipboard_allowed=false` 和完整 `restriction_results`，并复用
+  独立 managed-policy 产品化任务的本机配置源。
 - Android 48dp 控件、内容描述、pending 状态描述和可访问性公告。
 - Mac `NSPasteboard` 访问限制在 `@MainActor` 适配器，并带主队列断言。
 
@@ -55,7 +57,8 @@ Started: 2026-08-16
 - 不修改 iOS、HarmonyOS 或共享 proto。
 - 不支持图片、富文本、文件、音频或任意 MIME。
 - 不为可信 LAN 增加加密，也不接入 Internet record layer。
-- 不实现完整受管配置/MDM 产品线；相关并行任务仍独立推进。
+- 不声明真实受管配置/MDM profile 注入已经验收；该 gate 仍由独立 managed-policy
+  evidence 关闭。
 - 不实现剪贴板历史、跨会话持久化、后台监听或自动同步。
 - 不更新 README 宣称能力已发布。
 

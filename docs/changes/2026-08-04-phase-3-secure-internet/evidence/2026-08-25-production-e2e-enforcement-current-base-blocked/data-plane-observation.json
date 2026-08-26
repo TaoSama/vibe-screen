@@ -1,0 +1,22 @@
+{
+  "android_mediacodec_decode": false,
+  "application_aead_verified": false,
+  "authority_admission_observed": false,
+  "coturn_allocation_observed": false,
+  "local_loopback": false,
+  "missing": [
+    "real ScreenCaptureKit capture",
+    "Android MediaCodec decode",
+    "production AEAD trace"
+  ],
+  "observed": false,
+  "real_screencapturekit_capture": false,
+  "result": "not_run",
+  "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
+  "schema": "dev.vibescreen.phase3-production-data-plane-observation/v1",
+  "signaling_authorization_observed": false,
+  "source": {
+    "commit": "408c17e3b0652e1fc89018d5ddd97689082b47d2"
+  },
+  "synthetic_peer": false
+}
