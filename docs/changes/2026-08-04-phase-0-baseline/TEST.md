@@ -308,7 +308,7 @@ headless Mac gates. Evidence is retained under
 ## Current-base Nubia P0110 USB recheck (2026-08-23)
 
 Origin/main commit `50694049096783466481f418c41a5eb50740e871` was rechecked on
-the connected Nubia P0110 (pacific), serial `EP0110PZ0B9110300B`, Android 16 /
+the connected Nubia P0110 (pacific), serial `<P0110_USB_SERIAL>`, Android 16 /
 SDK 36. The current Android debug APK installed successfully and the P0110 ADB
 target reported `UsbFfs tcp:54321 tcp:54321`, but this attempt did not establish
 a current-base USB stream.
@@ -384,6 +384,21 @@ was reachable and recorded under a pseudonymous device id, but the external
 camera and synchronized-clock measurement packages were still unavailable. All
 three latency gates therefore remain open. Evidence is retained under
 [evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/README.md).
+
+On 2026-08-27, origin/main commit
+`3b2ba11e832a3618eaedfc67f92414b161423a00` refreshed current-base ownership for
+the same three README latency profiles. The connected Nubia P0110/pacific
+Android 16 / SDK 36 substitute was reachable through the required explicit ADB
+target form and recorded under the stable evidence id
+`nubia-p0110-pacific-device-1`. The local preflight found no retained
+high-frame-rate external-camera or optical single-timebase package, no formal
+USB/LAN latency manifest, no annotated latency samples, and no synchronized-clock
+input package with a sub-5 ms error budget. `make evidence-latency-preflight`
+returned exit `2`, with all three profiles reporting
+`can_close_performance_gate=false`. This is blocked readiness evidence only;
+unsynchronized telemetry, decoder timing, RTT, screenshots, and ADB-generated
+input cannot close these gates. Evidence is retained under
+[evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/README.md).
 
 ## Still unproved
 

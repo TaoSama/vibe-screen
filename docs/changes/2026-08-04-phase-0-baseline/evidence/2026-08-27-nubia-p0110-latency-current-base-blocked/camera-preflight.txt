@@ -1,0 +1,18 @@
+External-camera preflight, 2026-08-27.
+
+Result: blocked. No retained high-frame-rate external-camera or optical
+single-timebase recording package is available in this worktree for the USB or
+LAN glass-to-glass profiles. The local camera inventory exposed only the built-in
+MacBook Pro camera, which is not a retained 120 FPS+ package framing both the Mac
+stimulus and Android result.
+
+Existing formal latency package scan under
+docs/changes/2026-08-04-phase-0-baseline/evidence found no raw-camera.mov,
+manifest.json, samples.csv, or latency-evidence-report.json for the three README
+profiles. Only prior latency-preflight.json blocked-readiness records were
+present.
+
+Input latency is also blocked: no physical-input external-camera package and no
+synchronized-clock record with before/after skew checks, drift check, and a
+total error budget below 5 ms is retained. Unsynchronized telemetry is not a
+substitute for this gate.
