@@ -108,6 +108,7 @@ def passing_device_gates() -> dict[str, object]:
         "no_old_epoch_render": "harmony-host-interop-preflight.json",
         "resume_capable_host_interop": "harmony-host-interop-preflight.json",
         "permission_denial_retry": "harmony-matepad-acceptance.json",
+        "ui_device_identity_record": "harmony-matepad-acceptance.json",
         "input_touch_keyboard_pointer_stylus": "harmony-matepad-acceptance.json",
         "eight_hour_soak": "harmony-matepad-acceptance.json",
         "external_latency": "harmony-matepad-acceptance.json",
@@ -386,6 +387,7 @@ class HarmonyCurrentBaseGateTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                cwd=Path(__file__).parents[1],
                 check=False,
             )
             report = json.loads(output_path.read_text(encoding="utf-8"))

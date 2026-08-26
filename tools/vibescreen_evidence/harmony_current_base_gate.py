@@ -86,6 +86,7 @@ OWNER_GATES = {
         "owner": "HarmonyOS MatePad Mini aggregate acceptance evidence",
         "required_device_gates": (
             "permission_denial_retry",
+            "ui_device_identity_record",
             "input_touch_keyboard_pointer_stylus",
             "eight_hour_soak",
             "external_latency",

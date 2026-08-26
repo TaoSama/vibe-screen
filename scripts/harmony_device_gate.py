@@ -37,6 +37,7 @@ REQUIRED_GATE_IDS = (
     "resume_host_restart",
     "resume_capable_host_interop",
     "no_old_epoch_render",
+    "ui_device_identity_record",
     "input_touch_keyboard_pointer_stylus",
     "eight_hour_soak",
     "external_latency",

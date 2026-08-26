@@ -1,0 +1,302 @@
+{
+  "acceptance_domains": [
+    {
+      "description": "Clean source, DevEco SDK, API checker, HDC, and release artifacts",
+      "device_gate_ids": [
+        "deveco_sdk_and_api_checker",
+        "signed_release_hap"
+      ],
+      "expected_raw_artifacts": [
+        "harmony-readiness.json",
+        "build-log.txt",
+        "SHA256SUMS"
+      ],
+      "id": "toolchain_and_source",
+      "status": "blocked"
+    },
+    {
+      "description": "Signed HAP install, launch, and permission denial/retry",
+      "device_gate_ids": [
+        "signed_release_hap",
+        "hap_install_launch",
+        "permission_denial_retry"
+      ],
+      "expected_raw_artifacts": [
+        "hap-install.log",
+        "hap-signature.txt",
+        "permission-denial-retry.log",
+        "screenshots/"
+      ],
+      "id": "hap_install_signing",
+      "status": "blocked"
+    },
+    {
+      "description": "H.264 and HEVC AVCodec hardware decode into the real device surface",
+      "device_gate_ids": [
+        "h264_hardware_decode",
+        "hevc_hardware_decode"
+      ],
+      "expected_raw_artifacts": [
+        "avcodec-h264.log",
+        "avcodec-hevc.log",
+        "decoder-telemetry.jsonl"
+      ],
+      "id": "avcodec_decode",
+      "status": "blocked"
+    },
+    {
+      "description": "HUKS-backed secure pairing, authenticated transport records, and revocation/replay rejection",
+      "device_gate_ids": [
+        "huks_backed_secure_pairing",
+        "authenticated_transport_records",
+        "credential_revocation_replay"
+      ],
+      "expected_raw_artifacts": [
+        "pairing-transcript-redacted.json",
+        "huks-key-attestation.txt",
+        "revocation-replay.log"
+      ],
+      "id": "secure_pairing_huks",
+      "status": "blocked"
+    },
+    {
+      "description": "Protocol v1 Host interoperability and bounded resume across app, network, and Host restart",
+      "device_gate_ids": [
+        "host_protocol_v1_interop",
+        "resume_background_foreground",
+        "resume_network_roam",
+        "resume_host_restart",
+        "resume_capable_host_interop",
+        "no_old_epoch_render"
+      ],
+      "expected_raw_artifacts": [
+        "harmony-host-interop-preflight.json",
+        "host.log",
+        "harmony-hilog.txt",
+        "resume-events.jsonl",
+        "old-epoch-rejection.log"
+      ],
+      "id": "host_resume_interop",
+      "status": "blocked"
+    },
+    {
+      "description": "MatePad Mini identity plus touch, keyboard, pointer, stylus, and orientation UI evidence",
+      "device_gate_ids": [
+        "ui_device_identity_record",
+        "input_touch_keyboard_pointer_stylus"
+      ],
+      "expected_raw_artifacts": [
+        "device-identity.txt",
+        "ui-tree.xml",
+        "input-observations.json",
+        "screenshots/"
+      ],
+      "id": "ui_device_identity",
+      "status": "blocked"
+    },
+    {
+      "description": "Eight-hour soak and external-camera latency package",
+      "device_gate_ids": [
+        "eight_hour_soak",
+        "external_latency"
+      ],
+      "expected_raw_artifacts": [
+        "samples.jsonl",
+        "soak-summary.json",
+        "external-camera/",
+        "latency-report.json"
+      ],
+      "id": "sustained_operation",
+      "status": "blocked"
+    }
+  ],
+  "artifact_references": [
+    {
+      "gate_id": "deveco_sdk_and_api_checker",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "signed_release_hap",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "hap_install_launch",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "permission_denial_retry",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "huks_backed_secure_pairing",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "authenticated_transport_records",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "credential_revocation_replay",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "h264_hardware_decode",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "hevc_hardware_decode",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "host_protocol_v1_interop",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "resume_background_foreground",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "resume_network_roam",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "resume_host_restart",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "resume_capable_host_interop",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "no_old_epoch_render",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "ui_device_identity_record",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "input_touch_keyboard_pointer_stylus",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "eight_hour_soak",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    },
+    {
+      "gate_id": "external_latency",
+      "reference": "harmony-readiness.json",
+      "status": "present"
+    }
+  ],
+  "blocking_reasons": [
+    "HarmonyOS readiness preflight is not pass",
+    "artifact.hap_sha256: placeholder zero value is not evidence",
+    "HarmonyOS current-base owner gate is not pass",
+    "blocked acceptance domains: toolchain_and_source, hap_install_signing, avcodec_decode, secure_pairing_huks, host_resume_interop, ui_device_identity, sustained_operation"
+  ],
+  "command": [
+    "scripts/harmony_matepad_acceptance.py",
+    "--evidence-dir",
+    "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked",
+    "--write-blocked"
+  ],
+  "created_at": "2026-08-26T13:05:48Z",
+  "current_base_gate": {
+    "can_claim_harmony_device_pass": false,
+    "can_close_readme_phase4_owner_gates": false,
+    "error": null,
+    "path": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-current-base-gate.json",
+    "present": true,
+    "reasons": [
+      "blocked: readiness.readiness_manifest",
+      "blocked: readiness.deveco",
+      "blocked: readiness.hap",
+      "blocked: readiness.matepad",
+      "blocked: readiness.host",
+      "blocked: device_manifest.strict_device_gate",
+      "blocked: device_manifest.protocol_v1_host",
+      "blocked: device_manifest.signed_hap_artifact",
+      "blocked: owner_gate.deveco_build",
+      "blocked: owner_gate.hap_sign_install",
+      "blocked: owner_gate.hardware_decode_capability",
+      "blocked: owner_gate.huks_secure_pairing",
+      "blocked: owner_gate.authenticated_transport",
+      "blocked: owner_gate.host_resume_interop",
+      "blocked: owner_gate.matepad_acceptance"
+    ],
+    "verdict": "blocked"
+  },
+  "device_gate_manifest": {
+    "allow_blocked_valid": true,
+    "error": "artifact.hap_sha256: placeholder zero value is not evidence",
+    "path": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-device-gates.json",
+    "strict_valid": false,
+    "warnings": [
+      "deveco_sdk_and_api_checker: blocked",
+      "signed_release_hap: blocked",
+      "hap_install_launch: blocked",
+      "permission_denial_retry: blocked",
+      "huks_backed_secure_pairing: blocked",
+      "authenticated_transport_records: blocked",
+      "credential_revocation_replay: blocked",
+      "h264_hardware_decode: blocked",
+      "hevc_hardware_decode: blocked",
+      "host_protocol_v1_interop: blocked",
+      "resume_background_foreground: blocked",
+      "resume_network_roam: blocked",
+      "resume_host_restart: blocked",
+      "resume_capable_host_interop: blocked",
+      "no_old_epoch_render: blocked",
+      "ui_device_identity_record: blocked",
+      "input_touch_keyboard_pointer_stylus: blocked",
+      "eight_hour_soak: blocked",
+      "external_latency: blocked"
+    ]
+  },
+  "evidence_dir": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked",
+  "kind": "harmony_matepad_mini_acceptance_package",
+  "limitations": [
+    "This package is acceptance evidence only when verdict is pass.",
+    "Blocked packages are readiness evidence and must not close the HarmonyOS README gate.",
+    "Android, simulator, and portable CI evidence are explicitly excluded from MatePad Mini acceptance."
+  ],
+  "readiness": {
+    "blocking_reasons": [
+      "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+      "hvigor not found on PATH",
+      "ohpm not found on PATH",
+      "hdc not found on PATH",
+      "hdc is unavailable",
+      "signed HAP not found; pass --hap or create exactly one apps/harmony/dist/*/*.hap",
+      "signature certificate SHA-256 is required and must be non-zero 64-hex",
+      "SHA256SUMS manifest not found beside the HAP; pass --sha256sums",
+      "repository has uncommitted changes; final device evidence must bind a clean tree",
+      "Protocol v1 Host commit is required",
+      "Protocol v1 Host build SHA-256 is required"
+    ],
+    "path": "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json",
+    "present": true,
+    "verdict": "blocked"
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

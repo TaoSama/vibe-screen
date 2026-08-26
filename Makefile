@@ -90,6 +90,7 @@ HARMONY_HOST_BUILD_SHA256 ?=
 HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
+HARMONY_MATEPAD_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/harmony-matepad-acceptance.json
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -160,6 +161,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-readiness \
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
+	harmony-matepad-acceptance \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -539,6 +541,16 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
+
+harmony-matepad-acceptance:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS MatePad Mini evidence directory" >&2; exit 2)
+	mkdir -p "$(dir $(HARMONY_MATEPAD_ACCEPTANCE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_matepad_acceptance.py \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		--readiness "$(HARMONY_READINESS_JSON)" \
+		--device-gates "$(HARMONY_DEVICE_GATES_JSON)" \
+		--current-base-gate "$(HARMONY_CURRENT_BASE_GATE_JSON)" \
+		--output "$(HARMONY_MATEPAD_ACCEPTANCE_JSON)"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)

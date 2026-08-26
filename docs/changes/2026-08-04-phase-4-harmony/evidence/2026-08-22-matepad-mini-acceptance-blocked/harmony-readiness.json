@@ -1,0 +1,116 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_path": null,
+    "hap_sha256": null,
+    "hap_zip_readable": false,
+    "sha256sums_contains_hap": false,
+    "sha256sums_path": null,
+    "sha256sums_sha256": null,
+    "signature_certificate_sha256": null,
+    "signature_markers": [],
+    "version_name": "0.1.0"
+  },
+  "blocking_reasons": [
+    "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+    "hvigor not found on PATH",
+    "ohpm not found on PATH",
+    "hdc not found on PATH",
+    "hdc is unavailable",
+    "signed HAP not found; pass --hap or create exactly one apps/harmony/dist/*/*.hap",
+    "signature certificate SHA-256 is required and must be non-zero 64-hex",
+    "SHA256SUMS manifest not found beside the HAP; pass --sha256sums",
+    "repository has uncommitted changes; final device evidence must bind a clean tree",
+    "Protocol v1 Host commit is required",
+    "Protocol v1 Host build SHA-256 is required"
+  ],
+  "command": [
+    "scripts/harmony_readiness.py",
+    "--output",
+    "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness.json"
+  ],
+  "created_at": "2026-08-26T13:05:47Z",
+  "device": null,
+  "device_gate_prefill": {
+    "artifact": {
+      "bundle_name": "dev.vibescreen.harmony",
+      "hap_sha256": null,
+      "sha256sums_sha256": null,
+      "signature_certificate_sha256": null,
+      "version_name": "0.1.0"
+    },
+    "device": null,
+    "host": {
+      "build_sha256": null,
+      "commit": null,
+      "protocol": "Protocol v1"
+    },
+    "repository": {
+      "commit": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+      "status": "dirty",
+      "tree": "9e6240031d5f3a5a6b35e7d32f48676aed5111e4"
+    },
+    "toolchain": {
+      "deveco_studio_version": null,
+      "harmony_sdk_api": null,
+      "harmony_sdk_version": null,
+      "hdc_version": null,
+      "hvigor_version": null,
+      "ohpm_version": null
+    }
+  },
+  "hdc": {
+    "targets": []
+  },
+  "host": {
+    "build_sha256": null,
+    "commit": null,
+    "protocol": "Protocol v1"
+  },
+  "kind": "harmony_readiness_preflight",
+  "limitations": [
+    "This readiness preflight is not HarmonyOS device acceptance evidence.",
+    "It does not build, install, launch, pair, stream, decode, inject input, soak, or measure external-camera latency."
+  ],
+  "repository": {
+    "dirty": true,
+    "revision": "869e19873d48f02eb0b401448c61eec3dd6515f7",
+    "status_porcelain": [
+      "M docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-22-matepad-mini-acceptance-blocked/harmony-readiness-command.txt",
+      " M scripts/harmony_matepad_acceptance.py",
+      " M scripts/tests/test_harmony_matepad_acceptance.py"
+    ]
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "toolchain": {
+    "deveco_studio": {
+      "detail": "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+      "name": "deveco_studio",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hdc": {
+      "detail": "hdc not found on PATH",
+      "name": "hdc",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hvigor": {
+      "detail": "hvigor not found on PATH",
+      "name": "hvigor",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "ohpm": {
+      "detail": "ohpm not found on PATH",
+      "name": "ohpm",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    }
+  },
+  "verdict": "blocked"
+}

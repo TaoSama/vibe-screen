@@ -15,6 +15,7 @@ python3 scripts/harmony_secure_pairing_gate.py --template > /tmp/harmony-secure-
 make harmony-secure-pairing-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
 make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
 ```
 
 `make harmony-readiness` writes `/path/to/evidence/harmony-readiness.json` and
@@ -36,6 +37,11 @@ metrics, and checksums inside the evidence package before asking the gate to pas
 `make harmony-current-base-gate` is the aggregate owner check for the current
 README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
 must stay blocked until the strict device gate and readiness preflight both pass.
+`make harmony-matepad-acceptance` writes the final redacted
+`harmony-matepad-acceptance.json` package after readiness, strict device-gate,
+and current-base owner manifests exist. It may also write a blocked package for
+readiness tracking, but that package is not acceptance evidence and does not
+replace the current-base owner gate.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
