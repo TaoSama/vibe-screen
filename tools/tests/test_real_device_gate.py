@@ -331,6 +331,36 @@ class RealDeviceGateTests(unittest.TestCase):
         self.assertEqual(insufficiencies, [])
         self.assertTrue(requested["input"][0]["can_close"])
         self.assertEqual(requested["input"][0]["closure_flags"], [True])
+        self.assertTrue(requested["input"][0]["has_passing_verdict"])
+
+    def test_requested_gate_report_requires_pass_verdict_with_closure_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "native-pointer.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "can_close_native_pointer_hid_gate": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[],
+                input_summaries=[report],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertIn("input gate summary does not contain a passing gate closure verdict", insufficiencies)
+        self.assertFalse(requested["input"][0]["can_close"])
+        self.assertEqual(requested["input"][0]["closure_flags"], [True])
+        self.assertFalse(requested["input"][0]["has_passing_verdict"])
 
     def test_cli_exits_two_for_blocked_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory, mock.patch(

@@ -536,7 +536,8 @@ def _gate_status_from_report(path: Path, *, label: str) -> tuple[dict[str, Any],
         return {"path": str(path), "readable": False}, [], [f"{label} is missing or invalid: {error}"]
     verdict = report.get("verdict") or report.get("result") or report.get("status")
     closure_flags = _collect_gate_closure_flags(report)
-    can_close = bool(closure_flags) and all(closure_flags)
+    has_passing_verdict = verdict == "pass"
+    can_close = has_passing_verdict and bool(closure_flags) and all(closure_flags)
     if verdict in ("blocked", "failed", "fail"):
         errors.append(f"{label} reports {verdict}")
     elif not can_close:
@@ -547,6 +548,7 @@ def _gate_status_from_report(path: Path, *, label: str) -> tuple[dict[str, Any],
         "verdict": verdict,
         "can_close": can_close,
         "closure_flags": closure_flags,
+        "has_passing_verdict": has_passing_verdict,
     }, errors, insufficiencies
 
 
