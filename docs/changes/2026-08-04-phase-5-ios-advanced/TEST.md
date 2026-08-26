@@ -372,7 +372,7 @@ video encoder self-test passed (encoded callbacks: 1)
 ```
 
 `make protocol` also passed the Buf format/lint/build/breaking checks and the
-36 Python protocol fixture/security tests. `git diff --check` reported no
+37 Python protocol fixture/security tests. `git diff --check` reported no
 whitespace errors.
 
 Additional XCTest coverage was added for the same boundary: router stream/client

@@ -43,7 +43,7 @@ Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, m
 video encoder self-test passed (encoded callbacks: 1)
 ```
 
-`make protocol` passed the Buf format/lint/build/breaking checks and 36 Python
+`make protocol` passed the Buf format/lint/build/breaking checks and 37 Python
 protocol fixture/security tests. `git diff --check` reported no whitespace
 errors.
 
