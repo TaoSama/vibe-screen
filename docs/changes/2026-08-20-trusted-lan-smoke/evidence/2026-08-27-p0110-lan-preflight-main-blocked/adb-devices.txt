@@ -1,3 +1,2 @@
 List of devices attached
 <device-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:25
-

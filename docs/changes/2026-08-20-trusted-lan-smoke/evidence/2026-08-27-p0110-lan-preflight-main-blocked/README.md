@@ -75,4 +75,3 @@ screen content is retained in this evidence package.
 - Trusted-LAN reconnect with preserved Host PID.
 - LAN glass-to-glass latency with external-camera evidence.
 - Sustained LAN stream, memory, thermal, and host RSS no-growth evidence.
-
