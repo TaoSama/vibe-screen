@@ -13,27 +13,27 @@
     "artifacts": [
       {
         "path": "deployed-config-observation.json",
-        "sha256": "d36ecf6459854e855a965e88bed8342f9b81958cabfb94e133f35a23cc3b1933",
+        "sha256": "1946b71fa8de33000bedfe1655b2fd7736b86bc982b704553d76773d1db5ea50",
         "type": "deployed_config"
       },
       {
         "path": "public-network-observation.json",
-        "sha256": "34853d27fe38b8b26c70b53f11f9a6b77755dc614d1835f3e0eff5941ed4bd70",
+        "sha256": "ce8cc2e45a8d167180b1d122995341744dbb54f4f98eca06c6c69cad08b019c2",
         "type": "public_network_observation"
       },
       {
         "path": "data-plane-observation.json",
-        "sha256": "d198a6f2158f97e6a46efe66c7192627b5cf6892765f350ec5225824cd280047",
+        "sha256": "27829997d5310d74520fca42d2fad38cc961d357e5fe245b25b7cbbc3d1d31d5",
         "type": "data_plane_observation"
       },
       {
         "path": "coturn-disconnect-observation.json",
-        "sha256": "4c76c79c35502c7d5c5081eb5e9ca614e03276b49e72b92820599a2641251c1d",
+        "sha256": "913c14eafb674caa0244d2535dc743de9467393f1af06e527349f2a1587fa21b",
         "type": "coturn_disconnect_observation"
       },
       {
         "path": "mixed-route-soak-observation.json",
-        "sha256": "4a0cb1732db1c104719b41223d1a6be1dad2e055ede8a6aa871c4f794d0b7ee7",
+        "sha256": "581bdad12a9c888b57fa333d1c8644f58ef101228450d34abf6c4ab5d024c2b6",
         "type": "mixed_route_soak"
       }
     ],
@@ -118,7 +118,7 @@
   "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
   "schema": "dev.vibescreen.phase3-production-e2e-enforcement/v1",
   "source": {
-    "commit": "1abc03b0287feba7b932f175a9e8ff1280495606",
+    "commit": "a33ccc82a4602037de1b2bf52bbce4dd57dc5a28",
     "dirty": false
   },
   "topology": {
