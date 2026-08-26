@@ -78,7 +78,8 @@ final class VideoEncoderInFlightAdmission {
             self.identifier = identifier
         }
 
-        func release() {
+        @discardableResult
+        func release() -> Bool {
             lock.lock()
             let identifier = self.identifier
             self.identifier = nil
@@ -86,9 +87,9 @@ final class VideoEncoderInFlightAdmission {
             self.admission = nil
             lock.unlock()
 
-            if let identifier {
-                admission?.release(identifier)
-            }
+            guard let identifier else { return false }
+            admission?.release(identifier)
+            return true
         }
 
         deinit {
@@ -311,6 +312,23 @@ final class VideoEncoderFrameRegistry {
         return drainedEntries.count
     }
 
+    @discardableResult
+    func releaseAdmissionForOwner(_ owner: VideoEncoderCallbackOwner) -> Int {
+        let ownerIdentifier = ObjectIdentifier(owner)
+        lock.lock()
+        let tickets = ticketsByOwner[ownerIdentifier] ?? []
+        var releasedCount = 0
+        for ticket in tickets {
+            guard let entry = entries[ticket] else { continue }
+            if entry.context.takeUnretainedValue().completeSubmission() {
+                releasedCount += 1
+            }
+        }
+        lock.unlock()
+
+        return releasedCount
+    }
+
     var count: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -361,7 +379,8 @@ class VideoEncoder {
             self.admissionLease = admissionLease
         }
 
-        func completeSubmission() {
+        @discardableResult
+        func completeSubmission() -> Bool {
             admissionLease.release()
         }
     }
@@ -643,11 +662,12 @@ class VideoEncoder {
         defer { sessionLock.unlock() }
         // Self-test warmup may see VideoToolbox accept frames and complete
         // successfully without invoking callbacks while the encoder starts up.
-        let drainedFrames = VideoEncoderFrameRegistry.shared.drain(owner: callbackOwner)
-        if drainedFrames > 0 {
+        // Keep registry entries so late callbacks can still be claimed.
+        let releasedFrames = VideoEncoderFrameRegistry.shared.releaseAdmissionForOwner(callbackOwner)
+        if releasedFrames > 0 {
             keyframeRequests.request()
         }
-        return drainedFrames
+        return releasedFrames
     }
 
     func encode(
