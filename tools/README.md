@@ -566,13 +566,15 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_APK_SHA256="debug or release APK SHA-256" \
   PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
   PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5 \
-  EVIDENCE_HOST_PID="$HOST_PID"
+  EVIDENCE_HOST_PID="$HOST_PID" \
+  PHASE2_GATE_OWNERS="stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate"
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
 or another phone substitute. That records useful readiness data, but it cannot
-close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi
-evidence.
+close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi or
+physical-tablet evidence. Physical-tablet manifests must declare
+`PHASE2_TABLET_SIZE_INCHES` in the 8.0..9.0 range.
 
 Run the eight-hour soak with the same Host process ID so each sample carries
 both Android app PSS and Host RSS:
@@ -647,6 +649,11 @@ Android PSS and Host RSS growth, battery/thermal readings below the Phase 2
 thresholds, net battery drain within the manifest-declared limit, a manifest
 declaring `physical_8_9_inch_tablet`, and the required raw
 README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+The gate also rejects known phone substitute identities such as Nubia
+P0110/pacific if they are manually mislabeled as physical-tablet evidence.
+The manifest must also predeclare owner entries for stand-mounted charging,
+thermal/power sampling, posture/mount review, and the eight-hour stream verdict;
+missing owner entries keep the gate `insufficient`.
 `fail` means the evidence is complete but a productization threshold was
 violated; `insufficient` means the evidence package cannot close the gate. Phone
 substitute manifests such as Nubia P0110/pacific/Android 16 remain useful

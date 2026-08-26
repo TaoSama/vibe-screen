@@ -43,6 +43,7 @@ PHASE2_RECOVERY_SCENARIOS ?=
 PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
+PHASE2_GATE_OWNERS ?=
 PHASE2_TABLET_GATE ?=
 PHASE2_TABLET_MANIFEST ?=
 PHASE2_HARDWARE_KEYBOARD ?=
@@ -721,6 +722,7 @@ soak-2h-host-rss-gate: require-evidence-serial require-host-pid
 phase2-tablet-manifest: require-evidence-serial
 	@test -f "$(EVIDENCE_DIR)/device-info.json" || (echo "error: collect $(EVIDENCE_DIR)/device-info.json with make evidence-device-info before phase2-tablet-manifest" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_DEVICE_CLASS))" || (echo "error: set PHASE2_DEVICE_CLASS to physical_8_9_inch_tablet or android_substitute" >&2; exit 2)
+	@if [ "$(strip $(PHASE2_DEVICE_CLASS))" = "physical_8_9_inch_tablet" ]; then test -n "$(strip $(PHASE2_TABLET_SIZE_INCHES))" || (echo "error: set PHASE2_TABLET_SIZE_INCHES for physical_8_9_inch_tablet evidence" >&2; exit 2); fi
 	@test -n "$(strip $(PHASE2_STAND_SETUP))" || (echo "error: set PHASE2_STAND_SETUP" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_CHARGER))" || (echo "error: set PHASE2_CHARGER" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_CABLE_OR_DOCK))" || (echo "error: set PHASE2_CABLE_OR_DOCK" >&2; exit 2)
@@ -731,6 +733,7 @@ phase2-tablet-manifest: require-evidence-serial
 	@test -n "$(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS))" || (echo "error: set PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT))" || (echo "error: set PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT" >&2; exit 2)
 	@test -n "$(strip $(EVIDENCE_HOST_PID))" || (echo "error: set EVIDENCE_HOST_PID to the running Host process PID for Phase 2 device-memory evidence" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_GATE_OWNERS))" || (echo "error: set PHASE2_GATE_OWNERS to gate=owner entries for stand_mounted_charging, thermal_power_sampling, posture_and_mount, and eight_hour_sustained_stream" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
 		--output $(EVIDENCE_DIR)/phase2-tablet-manifest.json \
@@ -750,6 +753,7 @@ phase2-tablet-manifest: require-evidence-serial
 		$(if $(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS)),--battery-temperature-limit-celsius $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS),) \
 		$(if $(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT)),--maximum-net-battery-drain-percent $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT),) \
 		$(if $(strip $(PHASE2_RECOVERY_SCENARIOS)),--recovery-scenarios "$(PHASE2_RECOVERY_SCENARIOS)",) \
+		--gate-owners "$(PHASE2_GATE_OWNERS)" \
 		--host-identity "$(PHASE2_HOST_IDENTITY)" \
 		--host-build "$(PHASE2_HOST_BUILD)" \
 		--apk-sha256 "$(PHASE2_APK_SHA256)" \
@@ -763,6 +767,7 @@ phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
 	@test -n "$(strip $(PHASE2_VIDEO_PREFERENCES))" || (echo "error: set PHASE2_VIDEO_PREFERENCES" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_HOST_IDENTITY))" || (echo "error: set PHASE2_HOST_IDENTITY" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_HOST_BUILD))" || (echo "error: set PHASE2_HOST_BUILD" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_GATE_OWNERS))" || (echo "error: set PHASE2_GATE_OWNERS to gate=owner entries for stand_mounted_charging, thermal_power_sampling, posture_and_mount, and eight_hour_sustained_stream" >&2; exit 2)
 	@if [ "$@" = "phase2-tablet-soak-run" ]; then test -n "$(strip $(PHASE2_APK_PATH)$(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_PATH or PHASE2_APK_SHA256" >&2; exit 2); fi
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_soak \
@@ -784,6 +789,7 @@ phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
 		--video-preferences "$(PHASE2_VIDEO_PREFERENCES)" \
 		--host-identity "$(PHASE2_HOST_IDENTITY)" \
 		--host-build "$(PHASE2_HOST_BUILD)" \
+		--gate-owners "$(PHASE2_GATE_OWNERS)" \
 		--duration $(PHASE2_SOAK_DURATION) \
 		--preflight-duration $(PHASE2_SOAK_PREFLIGHT_DURATION) \
 		--interval $(PHASE2_SOAK_INTERVAL) \
