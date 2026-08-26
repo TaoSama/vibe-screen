@@ -80,14 +80,30 @@ make build-debug
 make build-release
 ```
 
-Both targets call real `ohpm install` and Hvigor `assembleHap`; there is no Node
-packaging substitute. A release profile and signing certificate must be
-configured locally. `make release` accepts exactly one signed release HAP,
-copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The build must be repeated
-from a clean checkout in DevEco before any release claim. The HAP raw resources
-carry the repository MIT license and Harmony runtime notice; `make release`
-also copies the root license/notices beside the HAP and includes them in the
-checksum manifest.
+The Host resume interop evidence gate is separate from the portable source
+checks and from producing a HAP. For a local readiness bundle that remains
+blocked until DevEco, HDC, a signed HAP, a HarmonyOS NEXT MatePad Mini, and a
+resume-capable Host run are available:
+
+```bash
+make harmony-host-interop-preflight EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+For a real acceptance package, fill `harmony-host-interop.json` from the raw
+HarmonyOS device and Host logs, then run:
+
+```bash
+make harmony-host-interop-gate EVIDENCE_DIR=/path/to/redacted/evidence
+```
+
+`build-debug` and `build-release` call real `ohpm install` and Hvigor
+`assembleHap`; there is no Node packaging substitute. A release profile and
+signing certificate must be configured locally. `make release` accepts exactly
+one signed release HAP, copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The
+build must be repeated from a clean checkout in DevEco before any release claim.
+The HAP raw resources carry the repository MIT license and Harmony runtime
+notice; `make release` also copies the root license/notices beside the HAP and
+includes them in the checksum manifest.
 
 ## Run in trusted-LAN development mode
 

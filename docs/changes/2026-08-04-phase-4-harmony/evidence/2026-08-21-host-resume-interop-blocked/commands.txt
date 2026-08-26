@@ -1,0 +1,11 @@
+git fetch origin main --prune
+git checkout -B codex/harmonyos-host-resume-interop origin/main
+cd apps/harmony && pnpm run test
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_release_tools -v
+cd apps/harmony && pnpm run verify
+make protocol
+make harmony-host-interop-preflight EVIDENCE_DIR=.build/harmony-host-interop-preflight-check
+python3 scripts/harmony_host_interop_preflight.py --template > .build/harmony-host-interop-template-check.json
+python3 scripts/harmony_host_interop_preflight.py --allow-blocked .build/harmony-host-interop-template-check.json
+python3 scripts/harmony_host_interop_preflight.py --evidence-dir docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-host-resume-interop-blocked --run-id 2026-08-21-host-resume-interop-blocked
+git diff --check

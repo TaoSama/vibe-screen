@@ -36,7 +36,7 @@ platform scaffolding under active development.
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; it must not be reported as encrypted LAN evidence, and Simulator UI plus device acceptance remain gated |
-| HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
+| HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
 
@@ -341,10 +341,7 @@ device: because macOS 26.4.1 rejects hardware-mirroring a physical display onto
 a virtual display (CGError 1001), mirror mode now degrades gracefully to direct
 main-display capture, so the client shows the Mac's main screen at 60 FPS with
 zero drops instead of looping unattended recovery (see Phase 1). Login-item
-approval and headless reboot still require gated macOS integration evidence;
-the shared Host readiness preflight now records login/headless setup blockers,
-but those diagnostics do not prove reboot launch, headless capture, Android
-rendering, or unattended recovery.
+approval and headless reboot still require gated macOS integration evidence.
 Real CGEvent
 injection under Accessibility is now exercised on device for keyboard and
 mouse-wheel scroll (see Phase 1). The legacy compatibility session
@@ -661,13 +658,6 @@ identity. Not proved:
 public Internet, real remote TURN (local loopback and forced local coturn are
 not public-Internet or real-deployment evidence), real ScreenCaptureKit-to-Android
 device decoder continuity, real network fluctuation, network handoff, and soak.
-The repository also includes a fail-closed composition gate for the full Internet
-soak boundary. `make phase3-internet-soak-manifest` predeclares the production
-TURN, signaling, relay, Authority, TLS, secret-source, remote-peer, artifact, and
-handoff inputs. `make phase3-internet-soak-gate` then requires matching public
-remote TURN, real media-continuity, network-handoff, revocation-propagation, and
-two-hour mixed-route soak reports. Missing deployment material or missing report
-families produce `blocked` evidence rather than a pass.
 
 Current Phase 3 release-gate gaps are tracked as explicit open evidence rows:
 
@@ -757,8 +747,6 @@ profile. Dated local readiness evidence is recorded under
 The current-base QR pairing blocked record covers only offline Swift/Kotlin
 fixture and fail-closed checks; it records that no production TLS/public-Internet
 deployment or real Android camera QR scan was available in this environment.
-Current fail-closed Internet soak evidence is recorded under
-[`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked/README.md).
 Mac/Android automatic invocation of Authority session-profile issuance, real QR
 scan request/acceptance, real encoded ScreenCaptureKit output through the
 device, automatic fresh-session
@@ -801,22 +789,14 @@ increase it.
   control/media fixtures, display/video negotiation, strict session epochs,
   bounded media queues, input encoding (including shared Protocol v1 base and
   extended stylus encoding and capability gating), fail-closed resume results,
-  a portable pairing/credential/replay/revocation core, and a transport-neutral
-  authenticated-record verifier that reproduces the macOS/Android AES-256-GCM
-  fixture for control, media, audio, and bulk channels. That verifier covers
-  directional key derivation, `session_id` hashing, strict session/key epochs,
-  channel-bound nonces, replay windows, wrong-key/tamper rejection, and explicit
-  legacy plaintext fallback marking. The secure-pairing portable path now
-  requires an explicit Harmony HUKS-backed profile before it can emit
-  `PairingRequest`, persists only version-2 credential records carrying that
-  profile, and rejects legacy records, non-HUKS providers, replayed control
+  and a portable pairing/credential/replay/revocation core. The secure-pairing
+  portable path now requires an explicit Harmony HUKS-backed profile before it
+  can emit `PairingRequest`, persists only version-2 credential records carrying
+  that profile, and rejects legacy records, non-HUKS providers, replayed control
   records, expired pairing results, and revoked credentials fail-closed. ArkUI
   now wires TCP, XComponent, AVCodec, Asset Store, foreground suspension, and
-  bounded reconnect in source. The production Harmony TCP path still uses the
-  explicit plaintext Protocol v1 upgrade and must not be reported as encrypted
-  until the HUKS-backed provider and transport integration pass DevEco, Host,
-  and MatePad gates. The portable core encodes both base stylus (position,
-  pressure, tilt)
+  bounded reconnect in source. The portable core encodes both base stylus
+  (position, pressure, tilt)
   and the extended stylus fields (tool kind, barrel buttons, contact/proximity
   state) under capability negotiation, but the production Harmony client
   advertises only CAPABILITY_STYLUS and not CAPABILITY_STYLUS_EXTENDED until
@@ -827,15 +807,19 @@ increase it.
   advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
   Host InputAck acceptance before sending controller state, and releases active
   controllers through all-zero neutral DISCONNECTED events before teardown or
-  resume. No DevEco SDK was available for this
-  record, so the repository does not claim ArkTS compilation, a HAP, signing,
-  installation, hardware decode, production HUKS API behavior, authenticated
-  transport, resume-capable Host interoperability, or real-device behavior.
-  The HUKS secure-pairing evidence verifier and blocked manifest are recorded
-  under
+  resume. The 2026-08-21 portable recovery pass adds explicit coverage for
+  resume success/failure reporting, old-epoch control/media rejection after
+  resume, and host-restart fallback to a fresh ClientHello session. A dedicated
+  HarmonyOS Host interop preflight now writes blocked evidence and a strict
+  manifest template for HostHello/session/display/video/control/media,
+  background/foreground, Wi-Fi loss/restore, bounded reconnect, host restart,
+  and old-epoch rejection runs. No DevEco SDK or HarmonyOS device was available
+  for this record, so the repository does not claim ArkTS compilation, a HAP,
+  signing, installation, hardware decode, production HUKS API behavior,
+  authenticated transport, resume-capable Host interoperability, or real-device
+  behavior. The HUKS secure-pairing evidence verifier and blocked manifest are
+  recorded under
   [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-huks-secure-pairing-blocked/README.md).
-  The authenticated-record portable-verifier blocked record is recorded under
-  [`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-harmony-lan-secure-record-blocked`](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-harmony-lan-secure-record-blocked/README.md).
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - Gate ownership is explicit while those records are open: the HarmonyOS client
@@ -917,12 +901,6 @@ increase it.
   evidence owner is #199 after being rebased onto the #225 baseline; it provides
   a fail-closed evidence gate for the latest mainline instead of treating the
   offline magic-packet baseline as a hardware pass.
-- Managed configuration now has an offline-verified deny-wins product-policy
-  model across macOS Host, Android, and iOS: Protocol v1 carries complete
-  restriction results, local parse errors fail closed, allowlists intersect,
-  and `DeniedHosts` wins over `AllowedHosts`. This is source/unit/self-test
-  evidence only; real Apple MDM profile delivery and managed App Configuration
-  injection remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
@@ -951,14 +929,8 @@ increase it.
   close this gate.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
-  interoperability commit. The hardware VideoToolbox behavior gate now has a
-  fail-closed offline owner: `make ios-videotoolbox-readiness` summarizes
-  `ios-videotoolbox-observations.json` into a schema-checked readiness result
-  that distinguishes Simulator, unsigned archive, physical iPhone, and physical
-  iPad records. Simulator and unsigned archive summaries remain blocked by
-  construction; closing Phase 5 still requires reviewed passing records from
-  both real iPhone and iPad hardware. Signing, iPhone/iPad installation,
-  host-side advanced adapters, AVAudioEngine playback,
+  interoperability commit. Signing, iPhone/iPad installation, hardware
+  VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
   HDR output, audio/bulk product flows over Internet DataChannels, native input
   behavior, reconnect behavior, and all advanced real-device behavior remain
   separate device gates. Android results are never treated as iOS evidence; see
