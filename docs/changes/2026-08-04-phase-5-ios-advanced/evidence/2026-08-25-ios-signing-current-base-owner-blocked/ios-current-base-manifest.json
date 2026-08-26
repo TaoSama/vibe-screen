@@ -221,6 +221,33 @@
       ]
     }
   },
+  "native_input_gate": {
+    "android_evidence_is_not_ios_input_evidence": true,
+    "artifact_paths": [],
+    "blocking_reasons": [
+      "ios-native-input-gate.json not provided"
+    ],
+    "can_close_ios_native_input_gate": false,
+    "current_base": null,
+    "disallowed_evidence": [],
+    "gate_owner": null,
+    "kind": null,
+    "missing_requirements": [
+      "ios-native-input-gate.json not provided"
+    ],
+    "observations": {},
+    "offline_tests_are_readiness_only": true,
+    "owner": null,
+    "path": null,
+    "profile": null,
+    "provided": false,
+    "requires_hover_or_pointer_accessory": true,
+    "requires_physical_keyboard": true,
+    "requires_real_ios_device": true,
+    "requires_signed_app": true,
+    "simulator_is_not_ios_input_evidence": true,
+    "verdict": "blocked"
+  },
   "notes": null,
   "owner": {
     "aggregate": "current-base-ios-acceptance",
@@ -312,6 +339,14 @@
     },
     "verdict": "blocked"
   },
+  "source_docs": [
+    "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
+    "docs/runbook/ios-device-acceptance.md",
+    "docs/runbook/hdr-color-acceptance.md"
+  ],
+  "source_root": "../../../../..",
   "videotoolbox_readiness_gates": [
     {
       "artifact_checks": [],
@@ -347,13 +382,5 @@
       "schema_version": "vibescreen.evidence/v1",
       "verdict": "blocked"
     }
-  ],
-  "source_docs": [
-    "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
-    "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
-    "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
-    "docs/runbook/ios-device-acceptance.md",
-    "docs/runbook/hdr-color-acceptance.md"
-  ],
-  "source_root": "../../../../.."
+  ]
 }
