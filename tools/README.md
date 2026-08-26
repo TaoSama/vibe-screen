@@ -413,6 +413,35 @@ make host-rss-gate EVIDENCE_DIR=.build/evidence
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
+### Real-device readiness gate
+
+`evidence-real-device-gate-preflight` writes
+`.build/evidence/real-device-gate/real-device-gate.json`. It is the unified
+readiness record for Android real-device work: device locks, exact ADB identity,
+ADB reverse, Android foreground state, macOS Host listener, Host signing/TCC
+preflight, and stream telemetry. By default, stream readiness requires fresh
+structured `stream_stats` in `--host-telemetry-jsonl`; a timestamp-less Host log
+`Pipeline:` line is only a legacy diagnostic when
+`--allow-host-log-without-freshness` is passed. The default target is read-only
+and exits `2` with `result=blocked` when any prerequisite is missing. Pass
+explicit extra arguments only when the device owner wants the runner to prepare
+Android-side state, for example:
+
+```sh
+make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT" \
+  REAL_DEVICE_GATE_EXTRA_ARGS="--host-telemetry-jsonl <evidence-dir>/host-telemetry.jsonl --configure-adb-reverse --launch-android-app"
+```
+
+The runner still never starts the macOS Host, changes TCC, changes Keychain
+state, or clears Android app data. A `ready` result means the session is ready
+for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
+physical-input gates by itself. Use `--require-soak-summary` or
+`--require-host-rss-gate` to require soak evidence, and pass
+`--require-latency-report <count>` or `--require-input-summary <count>` to make
+missing retained latency/input evidence explicit in the same JSON report.
+Additional `--lock-glob` values are checked in addition to the default
+`/tmp/vibe-screen-device-*.lock` ownership guards.
+
 ### USB live-stream smoke
 
 The read-only USB live-stream smoke collector inspects an already-running
@@ -444,35 +473,6 @@ private diagnostic log is recorded as context only. The summary always carries
 P0110/pacific run can never be relabeled as Xiaomi 13/fuxi evidence. To record
 a blocked summary without touching ADB when another run holds the device lock,
 invoke the module directly with `--write-blocked-on-lock`.
-
-### Real-device readiness gate
-
-`evidence-real-device-gate-preflight` writes
-`.build/evidence/real-device-gate/real-device-gate.json`. It is the unified
-readiness record for Android real-device work: device locks, exact ADB identity,
-ADB reverse, Android foreground state, macOS Host listener, Host signing/TCC
-preflight, and stream telemetry. By default, stream readiness requires fresh
-structured `stream_stats` in `--host-telemetry-jsonl`; a timestamp-less Host log
-`Pipeline:` line is only a legacy diagnostic when
-`--allow-host-log-without-freshness` is passed. The default target is read-only
-and exits `2` with `result=blocked` when any prerequisite is missing. Pass
-explicit extra arguments only when the device owner wants the runner to prepare
-Android-side state, for example:
-
-```sh
-make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT" \
-  REAL_DEVICE_GATE_EXTRA_ARGS="--host-telemetry-jsonl <evidence-dir>/host-telemetry.jsonl --configure-adb-reverse --launch-android-app"
-```
-
-The runner still never starts the macOS Host, changes TCC, changes Keychain
-state, or clears Android app data. A `ready` result means the session is ready
-for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
-physical-input gates by itself. Use `--require-soak-summary` or
-`--require-host-rss-gate` to require soak evidence, and pass
-`--require-latency-report <count>` or `--require-input-summary <count>` to make
-missing retained latency/input evidence explicit in the same JSON report.
-Additional `--lock-glob` values are checked in addition to the default
-`/tmp/vibe-screen-device-*.lock` ownership guards.
 
 Outputs go under `.build/evidence/` by default. Each soak writes raw JSONL and
 an atomic JSON summary containing connection coverage, process liveness,
