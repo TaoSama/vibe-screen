@@ -18,8 +18,9 @@ older Phase 0 clients remain valid.
 - capability/codec Hello, display list/start, H.264/HEVC media, current-epoch
   filtering, and native normalized touch events;
 - authenticated trusted-LAN admission and legacy-to-v1 upgrade into the
-  baseline MacHost main session on TCP `54321` through explicit plaintext
-  legacy fallback;
+  baseline MacHost main session on TCP `54321` through the secure-record
+  loopback path by default, with explicit plaintext legacy fallback
+  regression-tested separately;
 - replaceable TCP transport framing with independent control, video, audio,
   and bulk logical channels;
 - VideoToolbox decode with native CoreVideo output;
@@ -45,10 +46,12 @@ older Phase 0 clients remain valid.
 2. Full Xcode builds the universal iPhone/iPad target for an iOS simulator.
 3. An iPhone and iPad class device install, negotiate Protocol v1, render H.264
    and HEVC, send touch, reject an old epoch, and recover from a disconnect.
-4. The baseline MacHost accepts authenticated trusted-LAN admission through the
-   explicit plaintext legacy fallback, upgrades from its legacy entry boundary,
-   and uses Protocol v1 for the main session, display list/start, video
-   configuration/media, heartbeat, targeted touch, errors, and disconnect.
+4. The baseline MacHost accepts authenticated trusted-LAN admission, establishes
+   secure records for the default loopback path, upgrades from its legacy entry
+   boundary inside that record stream, and uses Protocol v1 for the main session,
+   display list/start, video configuration/media, heartbeat, targeted touch,
+   errors, and disconnect. Explicit plaintext legacy fallback remains a separate
+   regression path and is not encrypted evidence.
 5. A cross-client fixture proves Swift and Android encode/decode the same
    Protocol v1 Hello and input messages.
 6. License acknowledgements are present in any distributed app artifact.

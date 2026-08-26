@@ -157,15 +157,15 @@ apps/ios/Scripts/run_machost_loopback.py
 ```
 
 The harness starts the production `Vibe Screen` executable with its bounded iOS
-loopback adapter on `127.0.0.1:54321` and explicit plaintext legacy fallback,
-then starts the iOS Core transport/session executable as a separate process. The
+loopback adapter on `127.0.0.1:54321` using secure records by default, then
+starts the iOS Core transport/session executable as a separate process. The
 client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs
 a normal lifecycle and a separate invalid-target case. The covered boundary is:
 
 ```text
-SSWA/SSWR authentication -> explicit plaintext legacy fallback
--> 0D/0D01 upgrade -> ClientHello/HostHello
+SSWA/SSWR authentication -> VSLS/VSLR AES-256-GCM records
+-> 0D/0D01 upgrade inside the record stream -> ClientHello/HostHello
 -> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
 -> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
 -> DisconnectNotice
@@ -186,10 +186,13 @@ production-process integration)
 ```
 
 This proves the iOS Core trusted-LAN transport, FIFO control writer, and
-main-session composition against the baseline MacHost's explicit legacy
-fallback. It does not exercise `StreamViewModel`, the decoder, or UI; boot the
-iOS application; use an iOS device; prove hardware VideoToolbox behavior; or
-prove the macOS/Android secure-record LAN path.
+main-session composition against the baseline MacHost's secure-record loopback
+path. The same harness can explicitly exercise plaintext legacy fallback with
+`--legacy-plaintext`; that fallback is a regression path and must not be
+reported as encrypted evidence. The default loopback does not exercise
+`StreamViewModel`, the decoder, or UI; boot the iOS application; use an iOS
+device; prove hardware VideoToolbox behavior; or prove real-network LAN device
+acceptance.
 
 ## iOS SDK build evidence
 
@@ -346,7 +349,7 @@ HDR claim.
 | HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
-| trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
+| trusted LAN secure records | open | Current iOS baseline loopback proves secure-record readiness only; signed iPhone/iPad and real-network LAN evidence remain open. |
 
 The signing row is now backed by a dedicated app-signing readiness owner:
 
@@ -518,9 +521,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
   and disconnect/reconnect (the macOS Core loopback proves only the transport
   and Protocol v1 boundary listed above);
-- iOS trusted-LAN encrypted-session behavior; the current loopback exercises
-  explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
-  LAN evidence;
+- iOS trusted-LAN device behavior; the current default loopback exercises
+  AES-256-GCM secure records only on localhost and is not signed iPhone/iPad or
+  real-network LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine path execution beyond the launch-argument verifier, audible
   iPhone/iPad output, UIPasteboard prompts/writes, security-scoped file

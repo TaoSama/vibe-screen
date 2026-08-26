@@ -23,6 +23,17 @@ IOS_PACKAGE = REPOSITORY_ROOT / "apps" / "ios"
 LOOPBACK_PORT_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_PORT"
 LOOPBACK_SCENARIO_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"
 LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT = "VIBE_SCREEN_IOS_LOOPBACK_LEGACY_PLAINTEXT"
+PASSTHROUGH_ENVIRONMENT_KEYS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "DEVELOPER_DIR",
+        "SDKROOT",
+        "TOOLCHAINS",
+        "VIBE_SCREEN_IOS_LOOPBACK_TEST_LOG",
+    }
+)
 LOOPBACK_SCENARIOS = frozenset({"lifecycle", "invalid-target"})
 HOST_READY_PATTERN = re.compile(r"IOS_LOOPBACK_HOST_READY port=([0-9]+)")
 PROCESS_TERMINATION_TIMEOUT = 3.0
@@ -159,10 +170,16 @@ def loopback_environment(
         raise ValueError(f"unknown loopback scenario: {scenario}")
     validate_loopback_port(port, allow_ephemeral=allow_ephemeral)
     environment = {
-        **os.environ,
-        LOOPBACK_SCENARIO_ENVIRONMENT: scenario,
-        LOOPBACK_PORT_ENVIRONMENT: str(port),
+        key: value
+        for key, value in os.environ.items()
+        if key in PASSTHROUGH_ENVIRONMENT_KEYS
     }
+    environment.update(
+        {
+            LOOPBACK_SCENARIO_ENVIRONMENT: scenario,
+            LOOPBACK_PORT_ENVIRONMENT: str(port),
+        }
+    )
     if legacy_plaintext:
         environment[LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT] = "1"
     else:

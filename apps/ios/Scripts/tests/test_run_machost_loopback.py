@@ -103,16 +103,16 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                     lifecycle_port = runner.run_case(
                         host,
                         client,
-                        startup_timeout=2,
-                        test_timeout=2,
+                        startup_timeout=5,
+                        test_timeout=5,
                         invalid_target=False,
                         legacy_plaintext=False,
                     )
                     invalid_target_port = runner.run_case(
                         host,
                         client,
-                        startup_timeout=2,
-                        test_timeout=2,
+                        startup_timeout=5,
+                        test_timeout=5,
                         invalid_target=True,
                         legacy_plaintext=False,
                     )
@@ -171,6 +171,38 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
         self.assertNotIn(runner.LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT, secure_environment)
         self.assertEqual(legacy_environment[runner.LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT], "1")
 
+    def test_loopback_process_environment_does_not_inherit_ci_secrets(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                TEST_LOG_ENVIRONMENT: "/tmp/vibescreen-loopback.jsonl",
+                "GITHUB_TOKEN": "redacted",
+                "ACCESS_TOKEN": "redacted",
+                "PRIVATE_KEY": "redacted",
+            },
+            clear=True,
+        ):
+            environment = runner.loopback_environment(
+                "lifecycle",
+                54_321,
+                allow_ephemeral=False,
+            )
+
+        self.assertEqual(environment["PATH"], "/usr/bin")
+        self.assertEqual(
+            environment[runner.LOOPBACK_SCENARIO_ENVIRONMENT],
+            "lifecycle",
+        )
+        self.assertEqual(environment[runner.LOOPBACK_PORT_ENVIRONMENT], "54321")
+        self.assertEqual(
+            environment[TEST_LOG_ENVIRONMENT],
+            "/tmp/vibescreen-loopback.jsonl",
+        )
+        self.assertNotIn("GITHUB_TOKEN", environment)
+        self.assertNotIn("ACCESS_TOKEN", environment)
+        self.assertNotIn("PRIVATE_KEY", environment)
+
     def test_timeout_cleanup_releases_listener(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -186,7 +218,7 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                     runner.run_case(
                         host,
                         client,
-                        startup_timeout=2,
+                        startup_timeout=5,
                         test_timeout=0.1,
                         invalid_target=False,
                         legacy_plaintext=False,

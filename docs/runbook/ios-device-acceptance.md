@@ -266,7 +266,7 @@ gate.
     "ios_sdk": ""
   },
   "trusted_lan": {
-    "mode": "explicit_plaintext_legacy_fallback",
+    "mode": "secure_records",
     "encrypted_lan_claimed": false
   },
   "signing": {
@@ -383,6 +383,13 @@ gate.
   "notes": []
 }
 ```
+
+Use `trusted_lan.mode=secure_records` only when retained evidence shows
+`SSWA`/`SSWR`, `VSLS`/`VSLR`, AES-256-GCM record traffic, and the `0D`/`0D01`
+Protocol v1 upgrade inside that record stream. Use
+`explicit_plaintext_legacy_fallback` only for the separate fallback regression
+path, and keep `encrypted_lan_claimed=false` unless a signed iPhone/iPad run on a
+real network has retained packet/session evidence.
 
 To turn this runbook record into current-base aggregate evidence, copy sanitized
 field values into `ios-current-base-manifest.json` or generate a fresh default

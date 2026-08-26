@@ -23,6 +23,12 @@ from .ios_current_base_manifest import (
     SOURCE_DOCS,
     SIGNING_READINESS_OWNER_BRANCH,
     SIGNING_READINESS_OWNER_ROLE,
+    NATIVE_INPUT_GATE_OWNER,
+    NATIVE_INPUT_KIND,
+    NATIVE_INPUT_OWNER_BRANCH,
+    NATIVE_INPUT_OWNER_PR,
+    NATIVE_INPUT_OWNER_ROLE,
+    NATIVE_INPUT_PROFILE,
     VIDEOTOOLBOX_READINESS_KIND,
     VIDEOTOOLBOX_READINESS_PROFILE,
     VIDEOTOOLBOX_RUNTIME_CLASSES,
@@ -57,6 +63,29 @@ REQUIRED_SIGNING_GATE_FIELDS = {
     "can_close_ios_app_signing_readiness",
     "missing",
     "failures",
+}
+REQUIRED_NATIVE_INPUT_GATE_FIELDS = {
+    "provided",
+    "path",
+    "owner",
+    "current_base",
+    "kind",
+    "profile",
+    "gate_owner",
+    "verdict",
+    "can_close_ios_native_input_gate",
+    "requires_real_ios_device",
+    "requires_signed_app",
+    "requires_physical_keyboard",
+    "requires_hover_or_pointer_accessory",
+    "android_evidence_is_not_ios_input_evidence",
+    "simulator_is_not_ios_input_evidence",
+    "offline_tests_are_readiness_only",
+    "observations",
+    "missing_requirements",
+    "blocking_reasons",
+    "disallowed_evidence",
+    "artifact_paths",
 }
 REQUIRED_VIDEOTOOLBOX_READINESS_FIELDS = {
     "schema_version",
@@ -174,6 +203,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             "local_environment",
             "build_evidence",
             "signing_readiness_gate",
+            "native_input_gate",
             "signing",
             "videotoolbox_readiness_gates",
             "devices",
@@ -203,6 +233,27 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
         REQUIRED_SIGNING_GATE_FIELDS,
         "signing_readiness_gate",
     )
+    native_input_gate = _require_object(
+        manifest.get("native_input_gate"), "native_input_gate"
+    )
+    _require_fields(
+        native_input_gate,
+        REQUIRED_NATIVE_INPUT_GATE_FIELDS,
+        "native_input_gate",
+    )
+    for field in (
+        "observations",
+        "missing_requirements",
+        "blocking_reasons",
+        "disallowed_evidence",
+        "artifact_paths",
+    ):
+        expected_type = dict if field == "observations" else list
+        if not isinstance(native_input_gate.get(field), expected_type):
+            type_name = "an object" if expected_type is dict else "an array"
+            raise IOSCurrentBaseGateError(
+                f"manifest schema violation: native_input_gate.{field} must be {type_name}"
+            )
     videotoolbox_readiness_gates = manifest.get("videotoolbox_readiness_gates")
     if not isinstance(videotoolbox_readiness_gates, list):
         raise IOSCurrentBaseGateError(
@@ -579,6 +630,95 @@ def _videotoolbox_readiness_checks(manifest: dict[str, Any]) -> dict[str, dict[s
     return checks
 
 
+def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    native_gate = (
+        manifest.get("native_input_gate")
+        if isinstance(manifest.get("native_input_gate"), dict)
+        else {}
+    )
+    owner = native_gate.get("owner") if isinstance(native_gate.get("owner"), dict) else {}
+    current_base = (
+        native_gate.get("current_base")
+        if isinstance(native_gate.get("current_base"), dict)
+        else {}
+    )
+    repository = manifest.get("repository") if isinstance(manifest.get("repository"), dict) else {}
+    gate_commit = current_base.get("commit")
+    repository_revision = repository.get("revision")
+    current_base_matches = (
+        isinstance(gate_commit, str)
+        and COMMIT_RE.fullmatch(gate_commit) is not None
+        and isinstance(repository_revision, str)
+        and gate_commit.lower() == repository_revision.lower()
+        and current_base.get("dirty") is False
+        and repository.get("dirty") is False
+    )
+    artifact_paths = _string_list(native_gate.get("artifact_paths"))
+    readiness_flags = (
+        native_gate.get("requires_real_ios_device") is True
+        and native_gate.get("requires_signed_app") is True
+        and native_gate.get("requires_physical_keyboard") is True
+        and native_gate.get("requires_hover_or_pointer_accessory") is True
+        and native_gate.get("android_evidence_is_not_ios_input_evidence") is True
+        and native_gate.get("simulator_is_not_ios_input_evidence") is True
+        and native_gate.get("offline_tests_are_readiness_only") is True
+    )
+    gate_passed = (
+        native_gate.get("kind") == NATIVE_INPUT_KIND
+        and native_gate.get("profile") == NATIVE_INPUT_PROFILE
+        and native_gate.get("gate_owner") == NATIVE_INPUT_GATE_OWNER
+        and native_gate.get("verdict") == "pass"
+        and native_gate.get("can_close_ios_native_input_gate") is True
+        and owner.get("role") == NATIVE_INPUT_OWNER_ROLE
+        and owner.get("head_ref") == NATIVE_INPUT_OWNER_BRANCH
+        and owner.get("pull_request") == NATIVE_INPUT_OWNER_PR
+        and owner.get("repository") == REPOSITORY_FULL_NAME
+        and current_base_matches
+        and readiness_flags
+        and bool(artifact_paths)
+        and not native_gate.get("missing_requirements")
+        and not native_gate.get("blocking_reasons")
+        and not native_gate.get("disallowed_evidence")
+    )
+    return {
+        "dedicated_native_input_gate": _check(
+            native_gate.get("kind") == NATIVE_INPUT_KIND
+            and native_gate.get("verdict") == "pass"
+            and native_gate.get("can_close_ios_native_input_gate") is True,
+            "ios-native-input-gate.json passes and is bound into current-base readiness",
+            evidence=[str(native_gate.get("path"))]
+            if native_gate.get("path")
+            else _string_list(native_gate.get("missing_requirements")),
+            blocking=True,
+        ),
+        "dedicated_native_input_owner": _check(
+            owner.get("role") == NATIVE_INPUT_OWNER_ROLE
+            and owner.get("head_ref") == NATIVE_INPUT_OWNER_BRANCH
+            and owner.get("pull_request") == NATIVE_INPUT_OWNER_PR
+            and owner.get("repository") == REPOSITORY_FULL_NAME,
+            "ios-native-input-gate.json declares the dedicated current-base native-input owner",
+            evidence=[str(owner.get("role")), str(owner.get("head_ref"))]
+            if owner
+            else _string_list(native_gate.get("missing_requirements")),
+            blocking=True,
+        ),
+        "dedicated_native_input_current_base": _check(
+            current_base_matches,
+            "ios-native-input-gate.json current_base matches clean repository HEAD",
+            evidence=[str(gate_commit)]
+            if isinstance(gate_commit, str)
+            else _string_list(native_gate.get("missing_requirements")),
+            blocking=True,
+        ),
+        "dedicated_native_input_artifacts": _check(
+            gate_passed and bool(artifact_paths),
+            "ios-native-input-gate.json retains sanitized iOS/Host native-input artifacts",
+            evidence=artifact_paths,
+            blocking=True,
+        ),
+    }
+
+
 def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     gates = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
     formal: dict[str, dict[str, Any]] = {}
@@ -644,11 +784,19 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     signing = _signing_checks(manifest)
     devices = _device_checks(manifest)
     videotoolbox_readiness = _videotoolbox_readiness_checks(manifest)
+    native_input = _native_input_checks(manifest)
     formal, broader = _gate_checks(manifest)
     substitutions = _substitution_checks(manifest)
 
     invalid_substitution = any(not item["passed"] for item in substitutions.values())
-    blocking_groups = {**environment, **signing, **devices, **videotoolbox_readiness, **formal}
+    blocking_groups = {
+        **environment,
+        **signing,
+        **devices,
+        **videotoolbox_readiness,
+        **native_input,
+        **formal,
+    }
     blocking_missing = [name for name, item in blocking_groups.items() if not item["passed"]]
     metadata_missing = [name for name, item in metadata.items() if not item["passed"]]
     broader_missing = [name for name, item in broader.items() if not item["passed"]]
@@ -691,6 +839,7 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
             "signing": signing,
             "devices": devices,
             "videotoolbox_readiness": videotoolbox_readiness,
+            "native_input": native_input,
             "formal_device_gates": formal,
             "broader_phase5_gates": broader,
             "evidence_substitution": substitutions,
