@@ -338,12 +338,32 @@ test('semantic validator rejects stale Phase 4 controller gap documentation', (t
   const prdPath = resolve(fixture.fixtureRepository, 'docs/changes/2026-08-04-phase-4-harmony/PRD.md');
   const source = readFileSync(prdPath, 'utf8').replace(
     'The production source\nadvertises that capability',
-    'The production client does not advertise that capability and has no `ControllerEvent` encoder'
+    'The production client does not advertise CAPABILITY_CONTROLLER and lacks `ControllerEvent` encoder'
   );
   assert.notEqual(source, readFileSync(prdPath, 'utf8'));
   writeFileSync(prdPath, source);
   assert(validateFixture(fixture).some((failure) =>
     failure.includes('PRD.md: Phase 4 controller docs must not describe the pre-closure controller gap')));
+});
+
+test('semantic validator rejects incomplete controller portable closure wording', (t) => {
+  const fixture = projectFixture(t);
+  const techPath = resolve(fixture.fixtureRepository, 'docs/changes/2026-08-04-phase-4-harmony/TECH.md');
+  const source = readFileSync(techPath, 'utf8').replace('waits for accepted\n`InputAck` before admitting controller state, ', '');
+  assert.notEqual(source, readFileSync(techPath, 'utf8'));
+  writeFileSync(techPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('TECH.md: Phase 4 controller docs must record the portable production-source closure')));
+});
+
+test('semantic validator rejects missing controller device-evidence boundary', (t) => {
+  const fixture = projectFixture(t);
+  const appReadmePath = resolve(fixture.fixtureHarmony, 'README.md');
+  const source = readFileSync(appReadmePath, 'utf8').replace('HAP, Host interoperability, and\nMatePad evidence remain absent', 'HAP and\nMatePad evidence remain absent');
+  assert.notEqual(source, readFileSync(appReadmePath, 'utf8'));
+  writeFileSync(appReadmePath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('apps/harmony/README.md: Phase 4 controller docs must keep DevEco/HAP/MatePad gates explicit')));
 });
 
 test('semantic validator rejects missing Harmony controller device-matrix coverage', (t) => {
