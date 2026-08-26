@@ -7,13 +7,15 @@ The client is an early developer release. Its core modules build and self-test
 on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
 pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
 separate gates; do not treat Simulator or Android records as that evidence.
-The trusted-LAN Core client still uses the legacy plaintext compatibility path:
+The trusted-LAN Core client now uses the secure compatibility path by default:
 it connects to the baseline MacHost on TCP port `54321`, completes authenticated
-`SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
-Protocol v1 main session. A real two-process loopback covers this baseline
-boundary only when the test MacHost explicitly enables plaintext legacy
-fallback; it is not iOS-device, UI, hardware VideoToolbox, current macOS/Android
-secure-record LAN, or advanced-host evidence.
+`SSWA`/`SSWR` admission, negotiates `VSLS`/`VSLR` AES-256-GCM application
+records, sends the `0D` legacy-to-v1 upgrade inside the encrypted record stream,
+and then runs its Protocol v1 main session. The old plaintext path is still
+available only through an explicit legacy fallback switch and is reported as
+plaintext. The real two-process loopback covers the secure Core boundary; it is
+not iOS-device, UI, hardware VideoToolbox, real-network LAN, or advanced-host
+evidence.
 
 ## Requirements
 
@@ -58,21 +60,46 @@ The self-test decodes the shared
 `contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
 codec, in addition to its protocol/session/media checks.
 
+The app target also carries an AVFoundation playback verifier that can be run
+only through an iOS Simulator or signed device launch because it exercises
+`AVAudioSession`, `AVAudioEngine`, and `AVAudioPlayerNode`:
+
+```bash
+xcodebuild -project apps/ios/VibeScreen.xcodeproj \
+  -scheme VibeScreen \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  test \
+  -only-testing:VibeScreenAppTests/VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts
+```
+
+The verifier launches the app with `--audio-playback-self-test`, builds a
+synthetic PCM S16LE stream, starts playback-only AVAudioSession/AVAudioEngine,
+schedules buffers through AVAudioPlayerNode, observes the bounded playback queue,
+forces an overrun/drop, waits for played-buffer and queue-empty counters to
+advance before stopping, restarts on a newer config epoch, and first exposes
+an `AUDIO_PLAYBACK_SELF_TEST=RUNNING` UI line before replacing it with a
+terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` or `AUDIO_PLAYBACK_SELF_TEST=FAIL`
+line; a 15-second app-side timeout turns stalled playback completion into a
+terminal `FAIL` result. This is an executable playback-path check, not
+audible-device evidence; an iPhone/iPad run with external audible confirmation
+is still required before closing the Phase 5 audio gate.
+
 Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 
 ```bash
 apps/ios/Scripts/run_machost_loopback.py
 ```
 
-This starts MacHost on an OS-assigned loopback test port with explicit plaintext
-legacy fallback enabled and checks authenticated `SSWA`/`SSWR` admission, the
-`0D`/`0D01` upgrade exchange, Hello and negotiated capabilities, display
-list/start, video-config acknowledgement, video media framing, ping/pong,
-display/stream-targeted touch, invalid-target protocol error, and disconnect.
-The gate passes the bound port through a strictly validated test-only
-environment variable; production trusted-LAN connections still default to
-`54321`. Use `--skip-build` only after both release products have already been
-built.
+This starts MacHost on an OS-assigned loopback test port with secure records
+required by default and checks authenticated `SSWA`/`SSWR` admission, the
+`VSLS`/`VSLR` record negotiation, the encrypted `0D`/`0D01` upgrade exchange,
+Hello and negotiated capabilities, display list/start, video-config
+acknowledgement, video media framing, ping/pong, display/stream-targeted touch,
+invalid-target protocol error, and disconnect. Add `--legacy-plaintext` only to
+exercise the explicitly reported old-peer plaintext fallback. The gate passes
+the bound port through a strictly validated test-only environment variable;
+production trusted-LAN connections still default to `54321`. Use `--skip-build`
+only after both release products have already been built.
 
 All outbound main-session control uses one session-owner-scoped FIFO writer;
 message ID allocation, envelope encoding, and the TCP send therefore share one
@@ -134,10 +161,12 @@ device, and Run. The app supports both device families from one target.
    movement while they remain over the stream.
 7. Tap **断开** before changing hosts.
 
-The iOS developer transport is plaintext trusted-LAN TCP and requires a MacHost
-configured for explicit legacy fallback. Do not expose it to the Internet or an
-untrusted network, and do not treat it as evidence for the macOS/Android secure
-LAN record path.
+The iOS developer transport requires authenticated trusted-LAN TCP and secure
+records by default. It never silently downgrades to plaintext; use the
+test-only `--legacy-plaintext` loopback flag or the explicit
+`trustedLANLegacyPlaintext` startup mode only when validating old-peer
+compatibility, and report that path separately. Do not expose either path to the
+Internet or an untrusted network.
 
 ## Upgrade, reset, and uninstall
 
@@ -212,7 +241,9 @@ currently no key migration step.
 - **No advanced controls:** inspect the negotiated capability intersection;
   unsupported or policy-denied features intentionally stay off.
 - **Audio silent:** only PCM S16LE is accepted; verify sample rate, channels,
-  frame count, session epoch, and config epoch.
+  frame count, session epoch, config epoch, the playback self-test result,
+  played/queued/queue-empty/overrun counters, any late-completion diagnostics,
+  and iPhone/iPad output route.
 - **File rejected:** verify basename safety, declared size, negotiated chunk
   limit, sequential offsets, and chunk/final SHA-256.
 
@@ -227,11 +258,13 @@ currently no key migration step.
   multi-client admission and virtual-display allocation remain host work;
 - touch, hardware-keyboard capture, and hover-pointer input are exposed in the
   app, but have no signed iPhone/iPad or physical-accessory evidence yet;
-- PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
-  fallback, gestures, WOL, and managed restrictions are implemented, but have
-  no iOS-device evidence in this environment;
+- PCM S16LE playback has deterministic core queue coverage and an iOS app
+  AVAudioEngine playback verifier, but audible iPhone/iPad output remains open
+  without signed-device and external capture evidence; explicit text clipboard,
+  bounded file transfer, SDR fallback, gestures, WOL, and managed restrictions
+  are implemented, but have no iOS-device evidence in this environment;
 - no AAC/Opus, background audio, zero-copy HDR/EDR output, arbitrary clipboard
-  MIME UI, Internet transport, or production E2EE;
+  MIME UI, Internet transport, or public-network E2EE;
 - frame rendering currently creates a Core Image display image per decoded
   frame; Metal zero-copy rendering remains a measured optimization gate.
 
@@ -249,8 +282,9 @@ must still preserve these client semantics:
 - color-aware reject/retry using a newer config epoch;
 - finite host action catalogs, authenticated/replay-safe wake helpers, and
   deny-wins managed policy;
-- separate control/video/audio/bulk keys, sequences, and replay windows before
-  enabling advanced product flows over Internet transport.
+- separate control/video/audio/bulk keys, sequences, and replay windows for
+  trusted-LAN secure records and before enabling advanced channels on Internet
+  transport.
 
 See the [Phase 5 verification record](../../docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
 and [dependency provenance](../../THIRD_PARTY.md) for exact evidence and

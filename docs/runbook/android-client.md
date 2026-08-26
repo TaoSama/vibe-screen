@@ -23,6 +23,26 @@ After coordination grants a short Android lease, atomically create
 immediately after stopping the test client/server and report the release so
 other tasks can proceed.
 
+Before starting any acceptance sequence, collect the unified real-device
+readiness record from the repository root:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=<device-serial> \
+  REAL_DEVICE_GATE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+The default command is read-only. It fails closed when a device lock is present,
+the explicit Android identity does not match the claimed device, ADB reverse is
+missing, the client is not foregrounded, the macOS Host is not listening on TCP
+54321, Host signing/TCC preflight fails, or fresh structured `stream_stats`
+telemetry is absent. If the device owner wants the runner to prepare
+Android-side state, add
+`REAL_DEVICE_GATE_EXTRA_ARGS="--configure-adb-reverse --launch-android-app"`;
+this still does not start the Host, modify TCC, change Keychain state, or clear
+app data. A `ready` result is only a precondition for the formal gate runners;
+it is not USB/LAN stream, latency, soak, Host RSS, or physical-input acceptance.
+
 ## Offline gate
 
 Run this without a device or Mac host:
@@ -76,6 +96,33 @@ adb -s DEVICE_HOST:5555 install -r -t \
 
 The lease-controlled endpoint has previously identified as a
 Nubia P0110, not Xiaomi 13 (2211133C). Recheck rather than assuming its identity.
+
+## USB smoke preflight
+
+Before spending time on a short USB end-to-end smoke, collect the fail-closed
+preflight state and keep it with the evidence directory:
+
+    make evidence-usb-smoke-preflight \
+      EVIDENCE_SERIAL=<P0110_USB_SERIAL> \
+      EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/YYYY-MM-DD-nubia-p0110-usb-smoke-preflight \
+      EVIDENCE_EXPECTED_MANUFACTURER=nubia \
+      EVIDENCE_EXPECTED_MODEL=P0110 \
+      EVIDENCE_EXPECTED_DEVICE=pacific \
+      EVIDENCE_EXPECTED_ANDROID_RELEASE=16 \
+      EVIDENCE_EXPECTED_SDK=36
+
+The preflight checks `/tmp/vibe-screen-*.lock`, the explicit ADB serial, the
+actual device identity, `adb reverse tcp:54321 tcp:54321`, the Android app
+process and foreground window, the Mac TCP `54321` listener, and
+`scripts/macos_dev_host.py preflight`. It does not start the Host, create or
+remove reverse mappings, launch or stop Android, clear logcat, modify TCC, or
+touch Keychain state.
+
+If the result is `blocked`, keep `usb-smoke-preflight.json`; when Host preflight
+ran, also keep `host-signing-and-permissions.txt`. Do not report a USB stream,
+reconnect, input, latency, soak, or host RSS pass. For the Nubia substitute
+device, retain the identity as Nubia P0110 / pacific / Android 16 / SDK 36; never
+relabel it as Xiaomi 13/fuxi evidence.
 
 ## Read-only USB live-stream smoke
 

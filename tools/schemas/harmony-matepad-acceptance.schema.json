@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/harmony-matepad-acceptance.schema.json",
+  "title": "Vibe Screen HarmonyOS MatePad Mini acceptance package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "command",
+    "verdict",
+    "blocking_reasons",
+    "evidence_dir",
+    "readiness",
+    "device_gate_manifest",
+    "current_base_gate",
+    "acceptance_domains",
+    "artifact_references",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "harmony_matepad_mini_acceptance_package"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "verdict": {"enum": ["pass", "blocked", "fail"]},
+    "blocking_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "evidence_dir": {"type": "string", "minLength": 1},
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "present", "verdict", "blocking_reasons"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "present": {"type": "boolean"},
+        "verdict": {"type": ["string", "null"]},
+        "blocking_reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "device_gate_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "strict_valid", "allow_blocked_valid", "warnings", "error"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "strict_valid": {"type": "boolean"},
+        "allow_blocked_valid": {"type": "boolean"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "current_base_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "present",
+        "verdict",
+        "can_close_readme_phase4_owner_gates",
+        "can_claim_harmony_device_pass",
+        "reasons",
+        "error"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "present": {"type": "boolean"},
+        "verdict": {"type": ["string", "null"]},
+        "can_close_readme_phase4_owner_gates": {"type": "boolean"},
+        "can_claim_harmony_device_pass": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "acceptance_domains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "description", "device_gate_ids", "expected_raw_artifacts"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["pass", "blocked", "fail"]},
+          "description": {"type": "string", "minLength": 1},
+          "device_gate_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "expected_raw_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "artifact_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate_id", "reference", "status"],
+        "properties": {
+          "gate_id": {"type": "string", "minLength": 1},
+          "reference": {"type": "string", "minLength": 1},
+          "status": {"enum": ["present", "missing", "invalid"]},
+          "detail": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  }
+}

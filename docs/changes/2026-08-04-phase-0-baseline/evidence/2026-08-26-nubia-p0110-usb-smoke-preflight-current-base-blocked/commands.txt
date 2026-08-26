@@ -1,0 +1,46 @@
+Repository: <WORKSPACE>
+Base: origin/main e94d3a051e683d2a7d6f34fd03badd1b4ef264d0
+
+Formal fail-closed preflight command:
+make evidence-usb-smoke-preflight EVIDENCE_SERIAL=<P0110_USB_SERIAL> EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked EVIDENCE_EXPECTED_MANUFACTURER=nubia EVIDENCE_EXPECTED_MODEL=P0110 EVIDENCE_EXPECTED_DEVICE=pacific EVIDENCE_EXPECTED_ANDROID_RELEASE=16 EVIDENCE_EXPECTED_SDK=36
+
+The collector ran only read-only Android probes using explicit adb serial
+selection. The retained JSON redacts each recorded command to
+`adb -s REDACTED_P0110_USB_SERIAL ...`.
+
+Exit: 2
+
+Observed sanitized make output:
+mkdir -p docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+		--serial <P0110_USB_SERIAL> \
+		--package dev.telemachus.display \
+		--port 54321 \
+		--expected-manufacturer nubia \
+		--expected-model P0110 \
+		--expected-device pacific \
+		--expected-android-release 16 \
+		--expected-sdk 36 \
+		--output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked/usb-smoke-preflight.json
+make: *** [evidence-usb-smoke-preflight] Error 2
+
+Result summary from `usb-smoke-preflight.json`:
+- `result=blocked`
+- `safety.ran_adb=true`
+- `device.identity=nubia / P0110 / pacific / Android 16 / SDK 36`
+- `adb.reverse.configured` was not evaluated after the Android app process and
+  foreground probes blocked.
+- `app.running=false`
+- `app.foreground.foreground=false`
+- `host.listener.listening=true`
+- `host.listener.host_owned=true`
+- `host.preflight.passed=false`
+- `claims.can_start_usb_smoke=false`
+- `claims.live_usb_stream_observed=false`
+
+Blockers:
+- `android_app.pids`: the Android app process was not running.
+- `android_app.foreground`: the Android app was not foreground.
+- `host.preflight`: macOS Host stable-signing/TCC preflight failed because the
+  installed Host lacks source commit/tree provenance and read-only TCC
+  permission verification was unavailable.

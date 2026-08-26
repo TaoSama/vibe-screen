@@ -1,0 +1,87 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3268,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "786fac2caf1ca91937e5cd5bc7e9ecea72fce273216adbc478e75ee68d8ff6fd"
+    },
+    {
+      "bytes": 2183,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "719c89114448022d8340f75d35cb2b1257378ae7d065c5f83691a0f681f10d00"
+    },
+    {
+      "bytes": 1926,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "79bb555771d370f26be89391b2eb8d672b503cc5bd0350738fb8b661db81e124"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.exit",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 9691,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.json",
+      "result": "pass",
+      "sha256": "8a6371fe233368d9a4419b2c5784dc7181aa972ef8367e40ea142bac29e59070"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

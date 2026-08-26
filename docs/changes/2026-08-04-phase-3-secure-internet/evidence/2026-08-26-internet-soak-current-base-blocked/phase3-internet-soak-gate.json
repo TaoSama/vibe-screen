@@ -1,0 +1,118 @@
+{
+  "created_at": "2026-08-26T12:50:24.864811+00:00",
+  "criteria": {
+    "manifest": {
+      "expected": "phase3_internet_soak_manifest",
+      "measured": null,
+      "passed": false
+    },
+    "media_continuity": {
+      "expected": "pass with real capture and Android decode",
+      "measured": null,
+      "passed": false
+    },
+    "network_handoff": {
+      "expected": "pass with at least one handoff",
+      "measured": null,
+      "passed": false
+    },
+    "remote_turn": {
+      "expected": "pass with remote relay packet exchange",
+      "measured": null,
+      "passed": false
+    },
+    "revocation": {
+      "expected": "pass with allocation disconnect and packet denial",
+      "measured": null,
+      "passed": false
+    },
+    "soak": {
+      "expected": "complete two-hour mixed-route soak",
+      "measured": null,
+      "passed": false
+    }
+  },
+  "derivation_status": "complete",
+  "inputs": {
+    "manifest": {
+      "error": "missing manifest",
+      "provided": false
+    },
+    "media_continuity": {
+      "error": "missing media continuity report",
+      "provided": false
+    },
+    "network_handoff": {
+      "error": "missing network handoff report",
+      "provided": false
+    },
+    "remote_turn": {
+      "error": "missing remote TURN report",
+      "provided": false
+    },
+    "revocation": {
+      "error": "missing revocation report",
+      "provided": false
+    },
+    "soak": {
+      "error": "missing soak report",
+      "provided": false
+    }
+  },
+  "interpretation": "A pass means the supplied privacy-reviewed reports jointly satisfy the Phase 3 public Internet soak evidence contract. Missing production, TLS, secret, remote-peer, media, handoff, revocation, duration, or sampling evidence is blocked rather than inferred from local synthetic runs.",
+  "kind": "phase3_internet_soak_gate",
+  "reasons": [
+    "missing public deployment, TLS/secret material, remote peer, media continuity, handoff, revocation, or two-hour mixed-route soak evidence",
+    "missing manifest",
+    "missing remote TURN report",
+    "missing media continuity report",
+    "missing network handoff report",
+    "missing revocation report",
+    "missing soak report",
+    "phase3 Internet soak manifest is missing",
+    "public remote TURN verifier report is missing",
+    "real media continuity report is missing",
+    "network handoff report is missing",
+    "revocation propagation report is missing",
+    "two-hour soak exact-window report is missing"
+  ],
+  "required_artifacts": [
+    "README.md",
+    "phase3-internet-soak-manifest.json",
+    "phase3-internet-soak-gate.json",
+    "remote-turn-verifier.json",
+    "media-continuity.json",
+    "network-handoff.json",
+    "revocation-propagation.json",
+    "soak-exact-window-report.json",
+    "privacy-scan.json",
+    "SHA256SUMS"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "thresholds": {
+    "maximum_dropped_frames": 0.0,
+    "maximum_media_gap_seconds": 5.0,
+    "maximum_sample_gap_seconds": 90.0,
+    "minimum_duration_seconds": 7056,
+    "minimum_sample_count": 235,
+    "required_metric_families": [
+      "host_rss",
+      "client_memory",
+      "queue",
+      "loss",
+      "rtt",
+      "fps",
+      "bitrate",
+      "relay_bytes",
+      "ice_restart",
+      "drops",
+      "thermal",
+      "battery"
+    ],
+    "required_routes": [
+      "direct",
+      "relay"
+    ]
+  },
+  "verdict": "blocked"
+}

@@ -10,9 +10,7 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
-    NATIVE_INPUT_DISALLOWED_OBSERVATIONS,
-    NATIVE_INPUT_REQUIRED_OBSERVATIONS,
-    NATIVE_INPUT_REQUIRED_TRUE_FIELDS,
+    GATE_OWNERS,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -25,48 +23,55 @@ SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "ios-current-base-manifest
 CURRENT_BASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
+def make_videotoolbox_readiness_summary(
+    runtime_class: str,
+    artifact_paths: list[str] | None = None,
+    **overrides: object,
+) -> dict[str, object]:
+    artifacts = artifact_paths or [
+        f"{runtime_class}-videotoolbox-h264-hevc-frames-telemetry.json"
+    ]
+    summary: dict[str, object] = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "ios_hardware_videotoolbox_readiness",
+        "profile": "ios-hardware-videotoolbox-readiness",
+        "runtime_class": runtime_class,
+        "verdict": "pass",
+        "can_close_device_family_videotoolbox_gate": True,
+        "can_close_phase5_hardware_videotoolbox_gate": False,
+        "artifact_paths": artifacts,
+        "artifact_checks": [
+            {
+                "path": artifact,
+                "exists": True,
+                "non_empty": True,
+                "under_evidence_dir": True,
+                "valid_ios_videotoolbox_source": True,
+            }
+            for artifact in artifacts
+        ],
+        "blocking_reasons": [],
+    }
+    summary.update(overrides)
+    return summary
+
+
+def write_videotoolbox_readiness_summary(
+    root: Path, runtime_class: str, **overrides: object
+) -> Path:
+    path = root / f"{runtime_class}-ios-videotoolbox-readiness.json"
+    path.write_text(
+        json.dumps(make_videotoolbox_readiness_summary(runtime_class, **overrides)),
+        encoding="utf-8",
+    )
+    return path
+
+
 def make_docs(root: Path) -> None:
     for path in SOURCE_DOCS:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("fixture\n", encoding="utf-8")
-
-
-def make_native_input_artifacts(root: Path) -> list[str]:
-    artifacts = ["logs/ios-native-input.log", "logs/host-native-input.log"]
-    for artifact in artifacts:
-        target = root / artifact
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("fixture\n", encoding="utf-8")
-    return artifacts
-
-
-def native_input_gate_summary(root: Path) -> dict[str, object]:
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "kind": "ios_native_input_behavior",
-        "profile": "ios-native-input-behavior",
-        "gate_owner": "phase5-ios-native-input-behavior",
-        "verdict": "pass",
-        "can_close_ios_native_input_gate": True,
-        **{field: True for field in NATIVE_INPUT_REQUIRED_TRUE_FIELDS},
-        "observations": {
-            **{field: True for field in NATIVE_INPUT_REQUIRED_OBSERVATIONS},
-            **{field: False for field in NATIVE_INPUT_DISALLOWED_OBSERVATIONS},
-        },
-        "owner": {
-            "role": "ios_native_input_behavior_current_base_owner",
-            "head_ref": "codex/ios-native-input-readiness-gate",
-            "pull_request": "#257",
-            "repository": "TaoSama/vibe-screen",
-            "scope": "README Phase 5 iOS native-input behavior gate",
-        },
-        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
-        "missing_requirements": [],
-        "blocking_reasons": [],
-        "disallowed_evidence": [],
-        "artifact_paths": make_native_input_artifacts(root),
-    }
 
 
 class IOSCurrentBaseManifestTests(unittest.TestCase):
@@ -89,10 +94,20 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
         self.assertEqual(set(manifest["source_docs"]), set(SOURCE_DOCS))
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
+        for name, gate in manifest["gates"].items():
+            self.assertEqual(gate["owner_pr"], GATE_OWNERS[name])
         self.assertFalse(manifest["signing_readiness_gate"]["provided"])
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
-        self.assertFalse(manifest["native_input_gate"]["provided"])
-        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertEqual(
+            {gate["runtime_class"] for gate in manifest["videotoolbox_readiness_gates"]},
+            {"physical_iphone", "physical_ipad"},
+        )
+        self.assertFalse(
+            any(
+                gate["can_close_device_family_videotoolbox_gate"]
+                for gate in manifest["videotoolbox_readiness_gates"]
+            )
+        )
         self.assertEqual(manifest["signing"]["status"], "blocked")
         self.assertFalse(manifest["android_evidence_used_for_ios_gates"])
         self.assertTrue(any("does not claim" in item for item in manifest["limitations"]))
@@ -293,6 +308,149 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_binds_videotoolbox_readiness_gate_for_both_families(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            iphone_gate = write_videotoolbox_readiness_summary(root, "physical_iphone")
+            ipad_gate = write_videotoolbox_readiness_summary(root, "physical_ipad")
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[iphone_gate, ipad_gate],
+            )
+
+        gates = manifest["videotoolbox_readiness_gates"]
+        self.assertEqual({gate["runtime_class"] for gate in gates}, {"physical_iphone", "physical_ipad"})
+        self.assertTrue(all(gate["can_close_device_family_videotoolbox_gate"] for gate in gates))
+        self.assertTrue(all(gate["blocking_reasons"] == [] for gate in gates))
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_missing_videotoolbox_family_falls_back_to_blocked_default(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            iphone_gate = write_videotoolbox_readiness_summary(root, "physical_iphone")
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[iphone_gate],
+            )
+
+        by_runtime = {gate["runtime_class"]: gate for gate in manifest["videotoolbox_readiness_gates"]}
+        self.assertTrue(by_runtime["physical_iphone"]["can_close_device_family_videotoolbox_gate"])
+        self.assertFalse(by_runtime["physical_ipad"]["can_close_device_family_videotoolbox_gate"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_invalid_videotoolbox_readiness_gate_fails_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate_path = write_videotoolbox_readiness_summary(root, "physical_iphone", verdict="blocked")
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[gate_path],
+            )
+
+        iphone_gate = next(
+            gate for gate in manifest["videotoolbox_readiness_gates"] if gate["runtime_class"] == "physical_iphone"
+        )
+        self.assertFalse(iphone_gate["can_close_device_family_videotoolbox_gate"])
+        self.assertTrue(iphone_gate["blocking_reasons"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_invalid_videotoolbox_artifact_paths_stay_schema_compatible(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate_path = write_videotoolbox_readiness_summary(
+                root,
+                "physical_iphone",
+                artifact_paths=[123],
+            )
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[gate_path],
+            )
+
+        iphone_gate = next(
+            gate for gate in manifest["videotoolbox_readiness_gates"] if gate["runtime_class"] == "physical_iphone"
+        )
+        self.assertFalse(iphone_gate["can_close_device_family_videotoolbox_gate"])
+        self.assertEqual(iphone_gate["artifact_paths"], [])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_videotoolbox_readiness_rejects_phase5_close_claim(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate_path = write_videotoolbox_readiness_summary(
+                root,
+                "physical_iphone",
+                can_close_phase5_hardware_videotoolbox_gate=True,
+            )
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[gate_path],
+            )
+
+        iphone_gate = next(
+            gate for gate in manifest["videotoolbox_readiness_gates"] if gate["runtime_class"] == "physical_iphone"
+        )
+        self.assertFalse(iphone_gate["can_close_device_family_videotoolbox_gate"])
+        self.assertIn("must remain false", iphone_gate["blocking_reasons"][0]["requirement"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_videotoolbox_readiness_requires_physical_runtime_class(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate_path = root / "simulator-ios-videotoolbox-readiness.json"
+            gate_path.write_text(
+                json.dumps(make_videotoolbox_readiness_summary("simulator")),
+                encoding="utf-8",
+            )
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[gate_path],
+            )
+
+        self.assertFalse(
+            any(
+                gate["can_close_device_family_videotoolbox_gate"]
+                for gate in manifest["videotoolbox_readiness_gates"]
+            )
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_non_dedicated_signing_readiness_gate_fails_closed(self, state, environment):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         environment.return_value = {}
@@ -349,124 +507,6 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             },
         )
         self.assertIn("docs/runbook/hdr-color-acceptance.md", manifest["source_docs"])
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_binds_ios_native_input_gate_summary(self, state, environment):
-        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
-        environment.return_value = {}
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            make_docs(root)
-            native_input_gate = root / "ios-native-input-gate.json"
-            native_input_gate.write_text(
-                json.dumps(native_input_gate_summary(root)),
-                encoding="utf-8",
-            )
-
-            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
-
-        self.assertTrue(manifest["native_input_gate"]["provided"])
-        self.assertEqual(manifest["native_input_gate"]["kind"], "ios_native_input_behavior")
-        self.assertEqual(manifest["native_input_gate"]["verdict"], "pass")
-        self.assertTrue(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_contradictory_native_input_summary_fails_closed(self, state, environment):
-        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
-        environment.return_value = {}
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            make_docs(root)
-            native_input_gate = root / "ios-native-input-gate.json"
-            summary = native_input_gate_summary(root)
-            observations = summary["observations"]
-            assert isinstance(observations, dict)
-            observations["simulator_evidence_used_for_ios_input"] = True
-            summary["disallowed_evidence"] = [
-                {
-                    "field": "simulator_evidence_used_for_ios_input",
-                    "reason": "Simulator evidence cannot close real iOS native-input behavior",
-                }
-            ]
-            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
-
-            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
-
-        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
-        self.assertIn(
-            "ios native-input gate disallowed_evidence is not empty",
-            manifest["native_input_gate"]["missing_requirements"],
-        )
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_native_input_summary_requires_retained_artifact_files(self, state, environment):
-        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
-        environment.return_value = {}
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            make_docs(root)
-            native_input_gate = root / "ios-native-input-gate.json"
-            summary = native_input_gate_summary(root)
-            summary["artifact_paths"] = ["logs/missing-native-input.log"]
-            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
-
-            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
-
-        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
-        self.assertIn(
-            "ios native-input gate artifact_paths[0] is missing from the evidence bundle",
-            manifest["native_input_gate"]["missing_requirements"],
-        )
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_native_input_summary_requires_dedicated_owner_pr(self, state, environment):
-        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
-        environment.return_value = {}
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            make_docs(root)
-            native_input_gate = root / "ios-native-input-gate.json"
-            summary = native_input_gate_summary(root)
-            owner = summary["owner"]
-            assert isinstance(owner, dict)
-            owner["pull_request"] = "#999"
-            native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
-
-            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
-
-        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
-        self.assertIn(
-            "ios native-input gate owner PR is not #257",
-            manifest["native_input_gate"]["missing_requirements"],
-        )
-
-    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
-    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_native_input_summary_requires_iphone_and_ipad_observations(self, state, environment):
-        for field in ("iphone_native_input_observed", "ipad_native_input_observed"):
-            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory_name:
-                state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
-                environment.return_value = {}
-                root = Path(directory_name)
-                make_docs(root)
-                native_input_gate = root / "ios-native-input-gate.json"
-                summary = native_input_gate_summary(root)
-                observations = summary["observations"]
-                assert isinstance(observations, dict)
-                observations[field] = False
-                native_input_gate.write_text(json.dumps(summary), encoding="utf-8")
-
-                manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
-
-            self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
-            self.assertIn(
-                "ios native-input observation " + field + " is not true",
-                manifest["native_input_gate"]["missing_requirements"],
-            )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

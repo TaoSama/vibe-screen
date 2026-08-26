@@ -1,0 +1,19 @@
+{
+  "android_mediacodec_decode": false,
+  "duration_minutes": 0,
+  "missing": [
+    "120-minute production mixed-route soak"
+  ],
+  "observed": false,
+  "public_route_minutes": 0,
+  "real_android_device": false,
+  "real_screencapturekit_capture": false,
+  "result": "not_run",
+  "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
+  "schema": "dev.vibescreen.phase3-production-mixed-route-soak-observation/v1",
+  "source": {
+    "commit": "408c17e3b0652e1fc89018d5ddd97689082b47d2"
+  },
+  "synthetic_peer": false,
+  "turn_route_minutes": 0
+}

@@ -106,6 +106,7 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                         startup_timeout=2,
                         test_timeout=2,
                         invalid_target=False,
+                        legacy_plaintext=False,
                     )
                     invalid_target_port = runner.run_case(
                         host,
@@ -113,6 +114,7 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                         startup_timeout=2,
                         test_timeout=2,
                         invalid_target=True,
+                        legacy_plaintext=False,
                     )
             finally:
                 if default_listener is not None:
@@ -150,6 +152,24 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
             allow_ephemeral=True,
         )
         self.assertEqual(environment[runner.LOOPBACK_PORT_ENVIRONMENT], "0")
+        self.assertNotIn(runner.LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT, environment)
+
+    def test_legacy_plaintext_flag_is_explicit(self) -> None:
+        secure_environment = runner.loopback_environment(
+            "lifecycle",
+            54_321,
+            allow_ephemeral=False,
+            legacy_plaintext=False,
+        )
+        legacy_environment = runner.loopback_environment(
+            "lifecycle",
+            54_321,
+            allow_ephemeral=False,
+            legacy_plaintext=True,
+        )
+
+        self.assertNotIn(runner.LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT, secure_environment)
+        self.assertEqual(legacy_environment[runner.LOOPBACK_LEGACY_PLAINTEXT_ENVIRONMENT], "1")
 
     def test_timeout_cleanup_releases_listener(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -169,6 +189,7 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                         startup_timeout=2,
                         test_timeout=0.1,
                         invalid_target=False,
+                        legacy_plaintext=False,
                     )
             host_record = next(
                 json.loads(line)

@@ -32,6 +32,7 @@ REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
 SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
 SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
 SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"
+PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -71,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(*command: str, cwd: Path | None = None) -> str:
+def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -79,8 +80,15 @@ def run(*command: str, cwd: Path | None = None) -> str:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        timeout=timeout,
     )
     return completed.stdout.strip()
+
+
+def command_text(command: tuple[str, ...] | list[str] | str) -> str:
+    if isinstance(command, str):
+        return command
+    return " ".join(command)
 
 
 def resolve_sign_identity(requested: str) -> str:
@@ -95,13 +103,23 @@ def resolve_sign_identity(requested: str) -> str:
     """
     if requested == "-":
         return requested
-    lookup = subprocess.run(
-        ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    lookup_command = ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning")
+    try:
+        lookup = subprocess.run(
+            lookup_command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"security find-identity -v -p codesigning timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s; refusing to assume "
+            f"codesign identity '{requested}' is available. Unlock or repair the "
+            "keychain, then rerun preflight."
+        ) from error
     quoted_identity = f'"{requested}"'
     matching_identities = [
         line.strip()
@@ -128,12 +146,37 @@ def resolve_sign_identity(requested: str) -> str:
 
 def collect_source_identity(repository_root: Path = REPOSITORY_ROOT) -> SourceIdentity:
     try:
-        commit = run("git", "rev-parse", "HEAD", cwd=repository_root)
-        tree = run("git", "rev-parse", "HEAD^{tree}", cwd=repository_root)
-        status = run("git", "status", "--porcelain", cwd=repository_root)
+        commit = run(
+            "git",
+            "rev-parse",
+            "HEAD",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        tree = run(
+            "git",
+            "rev-parse",
+            "HEAD^{tree}",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
+        status = run(
+            "git",
+            "status",
+            "--porcelain",
+            cwd=repository_root,
+            timeout=PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
+        )
     except subprocess.CalledProcessError as error:
         output = (error.stdout or str(error)).strip()
         raise SystemExit(f"could not resolve git source identity for macOS Host package: {output}") from error
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"git source identity lookup timed out after "
+            f"{PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS:g}s while running "
+            f"{command_text(error.cmd)}; refusing to treat the installed Host as "
+            "current-source evidence."
+        ) from error
     return SourceIdentity(commit=commit, tree=tree, dirty=bool(status.strip()))
 
 
