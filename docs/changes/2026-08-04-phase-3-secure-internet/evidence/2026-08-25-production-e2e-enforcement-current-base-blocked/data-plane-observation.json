@@ -16,7 +16,7 @@
   "schema": "dev.vibescreen.phase3-production-data-plane-observation/v1",
   "signaling_authorization_observed": false,
   "source": {
-    "commit": "a33ccc82a4602037de1b2bf52bbce4dd57dc5a28"
+    "commit": "74a539c033b67733af72e651f81d6364603a8a07"
   },
   "synthetic_peer": false
 }
