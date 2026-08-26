@@ -56,6 +56,15 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             "9AAE572BF6D764E3436A6109197D345B5A87998C",
         )
 
+    def test_run_best_effort_reports_missing_command(self) -> None:
+        exit_code, output = macos_dev_host.run_best_effort(
+            "/definitely/missing/vibe-screen-tool"
+        )
+
+        self.assertEqual(exit_code, 127)
+        self.assertIn("command unavailable", output)
+        self.assertIn("/definitely/missing/vibe-screen-tool", output)
+
     def test_report_records_identity_hash_permission_state_and_system_path(self) -> None:
         metadata = self.metadata()
         permissions = macos_dev_host.PermissionStatus(
