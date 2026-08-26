@@ -126,7 +126,7 @@ capability, encoder, lifecycle, or platform route.
 
 ```text
 cd apps/harmony && pnpm run verify
-  PASS: 35 semantic project files; 121/121 portable tests
+  PASS: 36 semantic project files; 134/134 portable tests
 ```
 
 This remains source and portable-test evidence only. It does not establish
