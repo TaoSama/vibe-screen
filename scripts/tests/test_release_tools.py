@@ -532,7 +532,7 @@ Input Reader State:
                 "device": "pacific",
                 "os_release": "16",
                 "api_level": "36",
-                "serialno": "EP0110PZ0B9110300B",
+                "serialno": "AB0123CD456789EF",
                 "fingerprint": "test",
                 "wm_size": "Physical size: 1264x2800",
                 "wm_density": "Physical density: 560",
@@ -555,7 +555,7 @@ Input Reader State:
     def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:
         summary = {
             "status": "blocked_device_coordination_lock",
-            "requested_serial": "EP0110PZ0B9110300B",
+            "requested_serial": "AB0123CD456789EF",
             "device_identity": {},
             "existing_locks": [{"path": "/tmp/vibe-screen-device-android.lock", "detail": "present"}],
             "stylus_candidates": [],
@@ -563,7 +563,7 @@ Input Reader State:
 
         readme = android_stylus_acceptance.render_readme(summary)
 
-        self.assertIn("ADB was not run. Requested serial: EP0110PZ0B9110300B.", readme)
+        self.assertIn("ADB was not run. Requested serial: AB0123CD456789EF.", readme)
         self.assertIn("## Device coordination locks", readme)
         self.assertIn("/tmp/vibe-screen-device-android.lock", readme)
         self.assertIn("## Stylus input devices", readme)
@@ -1076,7 +1076,7 @@ class PrepareReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             artifacts = root / "artifacts"
-            self.write_artifacts(artifacts, archive_content=b"/Users/release-runner/private/file")
+            self.write_artifacts(artifacts, archive_content=b"/home/release-runner/private/file")
 
             result = subprocess.run(
                 self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
