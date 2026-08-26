@@ -27,7 +27,7 @@
     "ios-current-base-gate",
     "EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked"
   ],
-  "created_at": "2026-08-25T10:55:43Z",
+  "created_at": "2026-08-26T16:19:45Z",
   "devices": [
     {
       "evidence": [],
@@ -48,7 +48,8 @@
       "category": "broader_phase5",
       "evidence": [],
       "notes": [],
-      "requirement": "host/product adapters for multi-client/display, audio, clipboard, files, actions, wake, and managed policy",
+      "owner_pr": "#253",
+      "requirement": "iOS app/product adapters for multi-client/display, audio, clipboard, files, HDR/color, actions, wake, and managed policy",
       "status": "open"
     },
     "audio_playback": {
@@ -56,6 +57,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#209",
       "requirement": "PCM S16LE AVAudioEngine playback with audible confirmation",
       "status": "open"
     },
@@ -64,6 +66,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#290",
       "requirement": "signed app installed and launched on both iPhone and iPad-class hardware",
       "status": "open"
     },
@@ -72,7 +75,17 @@
       "category": "broader_phase5",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#196",
       "requirement": "dedicated ios-hdr-edr-gate pass for HDR/EDR output on iOS hardware, not SDR fallback only",
+      "status": "open"
+    },
+    "host_advanced_adapters": {
+      "blocking": false,
+      "category": "broader_phase5",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#253",
+      "requirement": "MacHost advanced adapters for multi-client/display streams, audio capture, clipboard/file handlers, HDR/color retry, host actions, wake helper, and managed policy",
       "status": "open"
     },
     "input": {
@@ -80,6 +93,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#257",
       "requirement": "touch, drag, keyboard modifiers, and pointer/hover behavior with host acknowledgement",
       "status": "open"
     },
@@ -88,6 +102,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#290",
       "requirement": "real iOS app/device trusted-LAN session envelopes against the host",
       "status": "open"
     },
@@ -96,6 +111,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#238",
       "requirement": "network interruption and heartbeat reconnect with stale-epoch rejection",
       "status": "open"
     },
@@ -104,6 +120,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#290",
       "requirement": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
       "status": "open"
     },
@@ -112,6 +129,7 @@
       "category": "broader_phase5",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#208",
       "requirement": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
       "status": "open"
     },
@@ -120,6 +138,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#251",
       "requirement": "hardware H.264 VideoToolbox decode on iOS hardware",
       "status": "open"
     },
@@ -128,6 +147,7 @@
       "category": "device_acceptance",
       "evidence": [],
       "notes": [],
+      "owner_pr": "#251",
       "requirement": "hardware HEVC VideoToolbox decode on iOS hardware",
       "status": "open"
     }
@@ -209,15 +229,11 @@
     "repository": "TaoSama/vibe-screen"
   },
   "repository": {
-    "dirty": true,
-    "revision": "bcba288735dbb14d0e353694c031a8fc5de93ae4",
-    "status_porcelain": [
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/commands.txt",
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-app-signing-readiness-gate.json",
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-app-signing-readiness.json"
-    ]
+    "dirty": false,
+    "revision": "993b9505c07bf6255291a82fc7e720bdb80965df",
+    "status_porcelain": []
   },
-  "run_id": "8e37af49-2be3-4df4-afc4-8b1bce9763db",
+  "run_id": "7070dd7b-3e02-405e-991b-fddee1a6968b",
   "schema_version": "vibescreen.evidence/v1",
   "scope_prs": [
     "#182",
@@ -254,7 +270,9 @@
     "kind": "ios_app_signing_readiness_gate",
     "missing": [
       "status: must be complete",
-      "xcode.ios_sdk: must record an iPhoneOS SDK, not Simulator-only SDKs",
+      "xcode.version: must be a non-empty recorded value",
+      "xcode.selected_developer_dir: must be a non-empty recorded value",
+      "xcode.ios_sdk: must be a non-empty recorded value",
       "signing.team_id: must be a non-empty recorded value",
       "signing.provisioning_profile_uuid: must be a non-empty recorded value",
       "signing.bundle_id: must be a non-empty recorded value",
@@ -270,7 +288,7 @@
       "signing.entitlements.raw_entitlements_sha256: must be a non-empty recorded value",
       "signing.entitlements.raw_entitlements_sha256: must be a SHA-256 digest",
       "artifacts: must include retained signing command/profile/entitlements output",
-      "repository dirty state is not clean for iOS signing readiness",
+      "ios app-signing readiness gate current-base commit does not match repository HEAD",
       "ios app-signing readiness gate signing_summary is incomplete"
     ],
     "owner": {

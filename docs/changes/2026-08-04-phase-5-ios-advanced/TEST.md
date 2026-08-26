@@ -242,8 +242,9 @@ HDR claim.
 | Gate | Current-base state | Evidence boundary |
 | --- | --- | --- |
 | signing | blocked-readiness | Requires a signed archive, a unique bundle ID, a certificate, and a provisioning profile. |
-| VideoToolbox H.264/HEVC | open | Implementation and CI build evidence exist; hardware decode requires iPhone and iPad records. |
-| advanced adapters | open | Client/core and Mac/Android slices are offline-tested; host/product E2E remains separate. |
+| VideoToolbox H.264/HEVC | open; owner #251 | Implementation and CI build evidence exist; hardware decode requires retained physical iPhone and iPad records for both H.264 and HEVC. |
+| iOS advanced adapters | open | Client/core slices are offline-tested; product-flow E2E remains separate. |
+| Host advanced adapters | open; owner #253 | MacHost multi-client/display stream allocation, audio capture, clipboard/file handlers, HDR/color retry, action catalog, wake helper, and managed policy need reviewed host/product evidence. |
 | AVAudioEngine/PCM | open | Core PCM validation exists; audible iOS playback is not recorded. |
 | HDR | open | Dedicated `ios-hdr-edr-gate` owner exists; current renderer is SDR-only and HDR/EDR output is not recorded. |
 | native input | open | Encoding and loopback touch evidence exist; signed iOS app/device input is not recorded. |
@@ -396,6 +397,12 @@ metadata, environment, signing, device, or formal E1-E7 gate evidence returns
 `blocked`; missing broader Phase 5 HDR, advanced-adapter, or trusted-LAN
 secure-record evidence returns `insufficient`; Android-substituted evidence
 returns `fail`.
+The aggregate manifest must also preserve per-gate owner attribution. A hardware
+VideoToolbox pass without owner #251, or a Host advanced-adapter pass without
+owner #253, remains blocked or insufficient even when evidence paths are
+present. This keeps the merged #182 device validator and #290 current-base
+aggregate distinct from the still-open hardware and Host-adapter readiness
+gates.
 
 While the Phase 0 soak owns the controlled endpoint (redacted as
 `$ADB_ENDPOINT`), Phase 5 performs only

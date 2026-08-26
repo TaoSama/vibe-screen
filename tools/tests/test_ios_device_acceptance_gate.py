@@ -231,6 +231,16 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertIn("device_udid_hashes_recorded", summary["required"])
         self.assertIn("entitlements_recorded", summary["required"])
 
+    def test_input_schema_declares_host_advanced_adapter_broader_gate(self) -> None:
+        schema = json.loads(INPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        broader_gates = schema["properties"]["broader_gates"]["properties"]
+        self.assertIn("host_advanced_adapters", broader_gates)
+        self.assertEqual(
+            broader_gates["host_advanced_adapters"],
+            {"$ref": "#/$defs/evidence_gate"},
+        )
+
     def test_input_schema_requires_embedded_videotoolbox_readiness_gates(self) -> None:
         schema = json.loads(INPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
         self.assertIn("videotoolbox_readiness_gates", schema["required"])

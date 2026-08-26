@@ -10,6 +10,7 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
+    GATE_OWNERS,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -93,6 +94,8 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["scope_prs"], SCOPE_PRS)
         self.assertEqual(set(manifest["source_docs"]), set(SOURCE_DOCS))
         self.assertEqual(set(manifest["gates"]), set(FORMAL_DEVICE_GATES) | set(BROADER_GATES))
+        for name, gate in manifest["gates"].items():
+            self.assertEqual(gate["owner_pr"], GATE_OWNERS[name])
         self.assertFalse(manifest["signing_readiness_gate"]["provided"])
         self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
         self.assertEqual(
