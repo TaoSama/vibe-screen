@@ -409,15 +409,19 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest \
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
   vibescreen_evidence.ios_videotoolbox_readiness \
   "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
-  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json"
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
 ```
 
 The schema distinguishes `simulator`, `unsigned_archive`, `physical_iphone`, and
 `physical_ipad`. Simulator and unsigned archive records are blocked by
-construction and cannot close hardware behavior. A family-level physical-device
-pass requires signed installation, matching device identity, H.264/HEVC
-parameter sets, VideoToolbox sessions, output frames, hardware-path evidence,
-stream/config epoch telemetry, thermal and power state, and retained artifacts.
+construction and cannot close hardware behavior; the strict gate exits nonzero
+for those records. A family-level physical-device pass requires signed
+installation, matching device identity, H.264/HEVC parameter sets, VideoToolbox
+sessions, output frames, hardware-path evidence, stream/config epoch telemetry,
+thermal and power state, and existing non-empty retained iOS VideoToolbox
+artifacts under the evidence directory.
 Even a passing family summary keeps
 `can_close_phase5_hardware_videotoolbox_gate=false`; the README gate remains open
 until both iPhone and iPad family summaries pass and are reviewed with the

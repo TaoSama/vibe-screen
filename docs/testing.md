@@ -305,17 +305,22 @@ physical run so missing prerequisites are machine-readable instead of implied:
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
   vibescreen_evidence.ios_videotoolbox_readiness \
   "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
-  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json"
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --require-pass
 ```
 
 The observations file must set `runtime_class` to `simulator`,
 `unsigned_archive`, `physical_iphone`, or `physical_ipad`. Simulator and unsigned
 archive records always produce `verdict=blocked` and
 `can_close_device_family_videotoolbox_gate=false`; they are useful for readiness
-tracking only. A physical iPhone or iPad family pass requires a signed installed
-app, matching real device identity, H.264 SPS/PPS, HEVC VPS/SPS/PPS,
-VideoToolbox session creation for both codecs, output frames for both codecs,
-hardware-path evidence, stream/config epoch telemetry, thermal/power state, and
+tracking only. The Makefile gate and `--require-pass` mode return nonzero unless
+the family gate can close. A physical iPhone or iPad family pass requires a
+signed installed app, matching real device identity, H.264 SPS/PPS, HEVC
+VPS/SPS/PPS, VideoToolbox session creation for both codecs, output frames for
+both codecs, hardware-path evidence, stream/config epoch telemetry,
+thermal/power state, and existing non-empty retained iOS VideoToolbox artifacts
+under the evidence directory.
 retained artifacts. The summary keeps
 `can_close_phase5_hardware_videotoolbox_gate=false` because README Phase 5 should
 close only after both iPhone and iPad family records are reviewed with the wider

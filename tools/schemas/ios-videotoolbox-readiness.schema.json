@@ -22,6 +22,7 @@
     "missing_requirements",
     "blocking_reasons",
     "artifact_paths",
+    "artifact_checks",
     "blocking_notes",
     "notes"
   ],
@@ -98,6 +99,21 @@
       }
     },
     "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "exists", "non_empty", "under_evidence_dir", "valid_ios_videotoolbox_source"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "exists": {"type": "boolean"},
+          "non_empty": {"type": "boolean"},
+          "under_evidence_dir": {"type": "boolean"},
+          "valid_ios_videotoolbox_source": {"type": "boolean"}
+        }
+      }
+    },
     "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "notes": {"type": "string"}
   }

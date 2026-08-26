@@ -122,14 +122,18 @@ Record hardware VideoToolbox readiness separately from those build gates:
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
   vibescreen_evidence.ios_videotoolbox_readiness \
   "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
-  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json"
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR"
 
-# Equivalent Makefile wrapper:
+# Strict gate wrapper; exits nonzero for blocked or insufficient summaries:
 make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
 ```
 
 Set `runtime_class` in the observations file to exactly one of `simulator`,
 `unsigned_archive`, `physical_iphone`, or `physical_ipad`. The first two are
+readiness-tracking records only and cannot make the strict gate pass. Physical
+family summaries require existing retained iOS VideoToolbox artifacts under the
+evidence directory.
 blocked by construction. A physical-device family summary requires signed app
 installation, real device identity, H.264 and HEVC parameter-set evidence,
 VideoToolbox session creation, output frames, hardware-path evidence,

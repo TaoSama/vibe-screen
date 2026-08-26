@@ -186,11 +186,15 @@ make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
 The wrapper expects `$EVIDENCE_DIR/ios-videotoolbox-observations.json`. Set
 `runtime_class` to `simulator`, `unsigned_archive`, `physical_iphone`, or
 `physical_ipad`. The helper may be run offline or in CI with Simulator/archive
-inputs, but those runtime classes must produce `verdict=blocked`. A physical
-device family can pass only when the observation record proves signed
-installation, real iPhone/iPad identity, H.264 and HEVC parameter sets,
-VideoToolbox sessions and output frames for both codecs, hardware-path evidence,
-stream/config epoch telemetry, thermal/power state, and retained artifacts.
+inputs, but those runtime classes must produce `verdict=blocked` and make the
+Makefile gate exit nonzero. A physical device family can pass only when the
+observation record proves signed installation, real iPhone/iPad identity, H.264
+and HEVC parameter sets, VideoToolbox sessions and output frames for both
+codecs, hardware-path evidence, stream/config epoch telemetry, thermal/power
+state, and existing non-empty retained iOS VideoToolbox artifacts under the
+evidence directory. To write a blocked or insufficient summary for triage
+without failing the shell command, call the Python helper directly and omit
+`--require-pass`.
 
 The summary intentionally keeps `can_close_phase5_hardware_videotoolbox_gate`
 false. Close the README Phase 5 gate only after both `physical_iphone` and

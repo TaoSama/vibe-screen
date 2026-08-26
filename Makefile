@@ -60,6 +60,7 @@ IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
 IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-videotoolbox-observations.json
 IOS_VIDEOTOOLBOX_READINESS_JSON ?= $(dir $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON))ios-videotoolbox-readiness.json
+IOS_VIDEOTOOLBOX_READINESS_JSONS ?= $(IOS_VIDEOTOOLBOX_READINESS_JSON)
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
@@ -698,7 +699,7 @@ hardware-keyboard-gate:
 ios-videotoolbox-readiness:
 	@test -f "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" || (echo "error: collect $(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON) before ios-videotoolbox-readiness" >&2; exit 2)
 	mkdir -p "$(dir $(IOS_VIDEOTOOLBOX_READINESS_JSON))"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_videotoolbox_readiness "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" --output "$(IOS_VIDEOTOOLBOX_READINESS_JSON)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_videotoolbox_readiness "$(IOS_VIDEOTOOLBOX_OBSERVATIONS_JSON)" --output "$(IOS_VIDEOTOOLBOX_READINESS_JSON)" --evidence-dir "$(EVIDENCE_DIR)" --require-pass
 
 hardware-keyboard-readiness: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/hardware_keyboard_readiness.py \
@@ -713,6 +714,7 @@ ios-current-base-manifest:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_manifest \
 		--output $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--signing-readiness-gate "$(IOS_APP_SIGNING_READINESS_GATE_JSON)" \
+		$(foreach gate,$(IOS_VIDEOTOOLBOX_READINESS_JSONS),--videotoolbox-readiness-gate "$(gate)" ) \
 		-- make ios-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
 
 ios-current-base-gate:

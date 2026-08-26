@@ -34,6 +34,23 @@ RUNTIME_CLASSES = {
     RUNTIME_PHYSICAL_IPAD,
 }
 PHYSICAL_RUNTIME_CLASSES = {RUNTIME_PHYSICAL_IPHONE, RUNTIME_PHYSICAL_IPAD}
+INVALID_ARTIFACT_MARKERS = (
+    "android",
+    "mediacodec",
+    "simulator",
+    "iphonesimulator",
+    "unsigned",
+    "ad-hoc",
+    "adhoc",
+    "synthetic",
+)
+REQUIRED_ARTIFACT_CATEGORIES = {
+    "videotoolbox": ("videotoolbox", "vt"),
+    "h264": ("h264", "h.264"),
+    "hevc": ("hevc", "h265", "h.265"),
+    "frames": ("frame", "cvpixelbuffer", "pixelbuffer"),
+    "telemetry": ("telemetry", "epoch", "thermal", "power"),
+}
 SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(?:^|/)Users/[^/\s]+", re.IGNORECASE),
     re.compile(r"(?:^|/)home/[^/\s]+", re.IGNORECASE),
@@ -148,6 +165,61 @@ def _public_string_list(record: dict[str, Any], field: str) -> list[str]:
     return values
 
 
+def _is_relative_to(path: Path, directory: Path) -> bool:
+    try:
+        path.relative_to(directory)
+        return True
+    except ValueError:
+        return False
+
+
+def _artifact_checks(
+    artifact_paths: Sequence[str], evidence_dir: Path | None
+) -> tuple[list[dict[str, Any]], bool]:
+    if not artifact_paths:
+        return [], False
+
+    if evidence_dir is None:
+        return [
+            {
+                "path": artifact,
+                "exists": False,
+                "non_empty": False,
+                "under_evidence_dir": False,
+                "valid_ios_videotoolbox_source": False,
+            }
+            for artifact in artifact_paths
+        ], False
+
+    root = evidence_dir.resolve()
+    checks: list[dict[str, Any]] = []
+    categories = {category: False for category in REQUIRED_ARTIFACT_CATEGORIES}
+    for artifact in artifact_paths:
+        raw_path = Path(artifact)
+        artifact_path = raw_path if raw_path.is_absolute() else root / raw_path
+        resolved = artifact_path.resolve(strict=False)
+        exists = resolved.is_file()
+        under_evidence_dir = _is_relative_to(resolved, root)
+        non_empty = exists and resolved.stat().st_size > 0
+        normalized = artifact.lower()
+        valid_source = not any(marker in normalized for marker in INVALID_ARTIFACT_MARKERS)
+        for category, markers in REQUIRED_ARTIFACT_CATEGORIES.items():
+            if non_empty and under_evidence_dir and valid_source and any(
+                marker in normalized for marker in markers
+            ):
+                categories[category] = True
+        checks.append(
+            {
+                "path": artifact,
+                "exists": exists,
+                "non_empty": non_empty,
+                "under_evidence_dir": under_evidence_dir,
+                "valid_ios_videotoolbox_source": valid_source,
+            }
+        )
+    return checks, all(categories.values())
+
+
 def _string_value(record: dict[str, Any], field: str) -> str:
     value = record.get(field, "")
     if isinstance(value, str):
@@ -185,9 +257,14 @@ def _runtime_blocking_reason(runtime_class: str) -> list[dict[str, str]]:
     return [{"field": "runtime_class", "requirement": requirement}]
 
 
-def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
+def summarize(
+    record: dict[str, Any], *, run_id: str | None = None, evidence_dir: Path | None = None
+) -> dict[str, Any]:
     runtime_class = _runtime_class(record)
     artifact_paths = _public_string_list(record, "artifact_paths")
+    artifact_checks, retained_artifacts_available = _artifact_checks(
+        artifact_paths, evidence_dir
+    )
     blocking_notes = _public_string_list(record, "blocking_notes")
     notes = _string_value(record, "notes")
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
@@ -201,6 +278,16 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
             {
                 "field": "artifact_paths",
                 "requirement": "retain at least one sanitized relative artifact path for reviewer inspection",
+            }
+        )
+    if field_values["artifacts_retained"] and artifact_paths and not retained_artifacts_available:
+        missing.append(
+            {
+                "field": "artifact_paths",
+                "requirement": (
+                    "retain existing non-empty iOS VideoToolbox artifacts under the evidence directory "
+                    "covering H.264, HEVC, output frames, and stream/thermal telemetry"
+                ),
             }
         )
     blocking_reasons = _runtime_blocking_reason(runtime_class) + [
@@ -235,6 +322,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "missing_requirements": missing,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": artifact_paths,
+        "artifact_checks": artifact_checks,
         "blocking_notes": blocking_notes,
         "notes": notes,
     }
@@ -258,7 +346,16 @@ def build_parser() -> argparse.ArgumentParser:
         "input", help="iOS VideoToolbox readiness observations .json file, or - for stdin"
     )
     parser.add_argument("--output", help="output summary JSON file (default: stdout)")
+    parser.add_argument(
+        "--evidence-dir",
+        help="directory that must contain retained artifact_paths before the gate can pass",
+    )
     parser.add_argument("--run-id", help="identifier shared with the evidence bundle")
+    parser.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="return nonzero unless the summary can close the device-family VideoToolbox gate",
+    )
     return parser
 
 
@@ -270,7 +367,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             with Path(args.input).open("r", encoding="utf-8") as stream:
                 record = load_record(stream)
-        summary = summarize(record, run_id=args.run_id)
+        evidence_dir = Path(args.evidence_dir) if args.evidence_dir else None
+        summary = summarize(record, run_id=args.run_id, evidence_dir=evidence_dir)
         if args.output:
             output_path = Path(args.output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -280,6 +378,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_summary(summary, sys.stdout)
     except (IOSVideoToolboxReadinessError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
+        return 1
+    if args.require_pass and not summary["can_close_device_family_videotoolbox_gate"]:
         return 1
     return 0
 

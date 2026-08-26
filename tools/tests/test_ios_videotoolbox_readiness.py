@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -15,13 +16,26 @@ from vibescreen_evidence.ios_videotoolbox_readiness import (
 
 MODULE = "vibescreen_evidence.ios_videotoolbox_readiness"
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "ios-videotoolbox-readiness.schema.json"
+PASS_ARTIFACTS = [
+    "ios-videotoolbox/videotoolbox-h264-session.log",
+    "ios-videotoolbox/videotoolbox-hevc-session.log",
+    "ios-videotoolbox/videotoolbox-output-frames.log",
+    "ios-videotoolbox/videotoolbox-telemetry-power.log",
+]
+
+
+def write_artifacts(directory: Path, names: list[str]) -> None:
+    for name in names:
+        path = directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"artifact: {name}\n", encoding="utf-8")
 
 
 class IOSVideoToolboxReadinessTest(unittest.TestCase):
     def complete_record(self, runtime_class: str = "physical_iphone") -> dict[str, object]:
         record: dict[str, object] = {field: True for field in BOOLEAN_FIELDS}
         record["runtime_class"] = runtime_class
-        record["artifact_paths"] = ["ios-videotoolbox/device.log"]
+        record["artifact_paths"] = list(PASS_ARTIFACTS)
         return record
 
     def test_simulator_is_blocked_even_with_decode_observations(self) -> None:
@@ -82,7 +96,15 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
         self.assertFalse(summary["can_close_device_family_videotoolbox_gate"])
 
     def test_physical_device_family_pass_does_not_close_whole_phase5_gate(self) -> None:
-        summary = summarize(self.complete_record("physical_ipad"), run_id="ipad-run")
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_dir = Path(raw_directory)
+            write_artifacts(evidence_dir, PASS_ARTIFACTS)
+
+            summary = summarize(
+                self.complete_record("physical_ipad"),
+                run_id="ipad-run",
+                evidence_dir=evidence_dir,
+            )
 
         self.assertEqual(summary["verdict"], "pass")
         self.assertTrue(summary["can_close_device_family_videotoolbox_gate"])
@@ -90,7 +112,11 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
         self.assertIn("both physical_iphone and physical_ipad", summary["phase5_gate_closure_rule"])
 
     def test_summary_matches_schema_required_fields(self) -> None:
-        summary = summarize(self.complete_record())
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_dir = Path(raw_directory)
+            write_artifacts(evidence_dir, PASS_ARTIFACTS)
+
+            summary = summarize(self.complete_record(), evidence_dir=evidence_dir)
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         observation_schema = schema["properties"]["observations"]
 
@@ -103,6 +129,44 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
         )
         for field in observation_schema["required"]:
             self.assertIn(field, summary["observations"])
+        artifact_check_schema = schema["properties"]["artifact_checks"]
+        for field in artifact_check_schema["items"]["required"]:
+            self.assertIn(field, summary["artifact_checks"][0])
+
+    def test_physical_pass_requires_existing_ios_videotoolbox_artifacts(self) -> None:
+        record = self.complete_record()
+
+        summary_without_root = summarize(record)
+
+        self.assertEqual(summary_without_root["verdict"], "insufficient")
+        self.assertIn(
+            "artifact_paths",
+            {item["field"] for item in summary_without_root["missing_requirements"]},
+        )
+        self.assertFalse(summary_without_root["can_close_device_family_videotoolbox_gate"])
+
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_dir = Path(raw_directory)
+            write_artifacts(evidence_dir, PASS_ARTIFACTS[:-1])
+
+            missing_artifact = summarize(record, evidence_dir=evidence_dir)
+
+        self.assertEqual(missing_artifact["verdict"], "insufficient")
+        self.assertFalse(missing_artifact["artifact_checks"][-1]["exists"])
+        self.assertFalse(missing_artifact["can_close_device_family_videotoolbox_gate"])
+
+    def test_android_or_simulator_artifact_markers_cannot_pass(self) -> None:
+        record = self.complete_record()
+        record["artifact_paths"] = ["ios-videotoolbox/android-mediacodec-simulator.log"]
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_dir = Path(raw_directory)
+            write_artifacts(evidence_dir, list(record["artifact_paths"]))
+
+            summary = summarize(record, evidence_dir=evidence_dir)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["artifact_checks"][0]["valid_ios_videotoolbox_source"])
+        self.assertFalse(summary["can_close_device_family_videotoolbox_gate"])
 
     def test_rejects_invalid_runtime_class(self) -> None:
         record = self.complete_record()
@@ -197,6 +261,19 @@ class IOSVideoToolboxReadinessCliTest(unittest.TestCase):
         self.assertEqual(summary["run_id"], "run-cli")
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["can_close_phase5_hardware_videotoolbox_gate"])
+
+    def test_cli_require_pass_rejects_blocked_simulator_summary(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", "run-cli", "--require-pass"],
+            input=json.dumps({"runtime_class": "simulator", "artifacts_retained": True}),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "blocked")
 
     def test_cli_rejects_empty_run_id(self) -> None:
         result = subprocess.run(

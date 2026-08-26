@@ -294,6 +294,42 @@
     },
     "verdict": "blocked"
   },
+  "videotoolbox_readiness_gates": [
+    {
+      "artifact_checks": [],
+      "artifact_paths": [],
+      "blocking_reasons": [
+        {
+          "field": "artifact_paths",
+          "requirement": "retain physical iPhone VideoToolbox hardware decode artifacts"
+        }
+      ],
+      "can_close_device_family_videotoolbox_gate": false,
+      "can_close_phase5_hardware_videotoolbox_gate": false,
+      "kind": "ios_hardware_videotoolbox_readiness",
+      "profile": "ios-hardware-videotoolbox-readiness",
+      "runtime_class": "physical_iphone",
+      "schema_version": "vibescreen.evidence/v1",
+      "verdict": "blocked"
+    },
+    {
+      "artifact_checks": [],
+      "artifact_paths": [],
+      "blocking_reasons": [
+        {
+          "field": "artifact_paths",
+          "requirement": "retain physical iPad VideoToolbox hardware decode artifacts"
+        }
+      ],
+      "can_close_device_family_videotoolbox_gate": false,
+      "can_close_phase5_hardware_videotoolbox_gate": false,
+      "kind": "ios_hardware_videotoolbox_readiness",
+      "profile": "ios-hardware-videotoolbox-readiness",
+      "runtime_class": "physical_ipad",
+      "schema_version": "vibescreen.evidence/v1",
+      "verdict": "blocked"
+    }
+  ],
   "source_docs": [
     "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
     "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
