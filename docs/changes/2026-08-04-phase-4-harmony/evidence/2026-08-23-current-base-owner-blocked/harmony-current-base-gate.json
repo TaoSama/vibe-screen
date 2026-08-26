@@ -85,7 +85,10 @@
           "signed_release_hap:blocked",
           "signed_release_hap:missing-evidence-marker:harmony-hap-readiness.json,SHA256SUMS,hap-install",
           "hap_install_launch:blocked",
-          "hap_install_launch:missing-evidence-marker:harmony-hap-readiness.json,SHA256SUMS,hap-install"
+          "hap_install_launch:missing-evidence-marker:harmony-hap-readiness.json,SHA256SUMS,hap-install",
+          "hap_in_place_upgrade:missing",
+          "hap_rollback_behavior:missing",
+          "hap_uninstall_cleanup:missing"
         ],
         "expected": "DevEco-built signed HAP installed and launched on the target HarmonyOS MatePad Mini",
         "passed": false

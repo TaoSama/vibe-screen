@@ -25,6 +25,9 @@ REQUIRED_GATE_IDS = (
     "deveco_sdk_and_api_checker",
     "signed_release_hap",
     "hap_install_launch",
+    "hap_in_place_upgrade",
+    "hap_rollback_behavior",
+    "hap_uninstall_cleanup",
     "permission_denial_retry",
     "huks_backed_secure_pairing",
     "authenticated_transport_records",
@@ -89,6 +92,25 @@ def _string(value: Any, path: str) -> str:
     return value
 
 
+def _blocked_placeholder(value: str) -> bool:
+    return value.strip().lower().startswith("blocked:")
+
+
+def _reject_blocked_placeholders(
+    document: dict[str, Any], keys: Iterable[str], path: str, *, allow_blocked: bool
+) -> list[str]:
+    warnings: list[str] = []
+    for key in keys:
+        value = _string(document[key], f"{path}.{key}")
+        if _blocked_placeholder(value):
+            message = f"{path}.{key}: {value}"
+            if allow_blocked:
+                warnings.append(message)
+            else:
+                raise ManifestError(f"{path}.{key}: blocked placeholder is not evidence")
+    return warnings
+
+
 def _hex(value: Any, path: str, pattern: re.Pattern[str], *, allow_placeholder: bool = False) -> str:
     text = _string(value, path).lower()
     if pattern.fullmatch(text) is None:
@@ -150,8 +172,12 @@ def validate_manifest(
 
     toolchain = _mapping(document.get("toolchain"), "toolchain")
     _require_keys(toolchain, REQUIRED_TOOLCHAIN_KEYS, "toolchain")
+    warnings.extend(_reject_blocked_placeholders(toolchain, REQUIRED_TOOLCHAIN_KEYS, "toolchain", allow_blocked=allow_blocked))
     api_value = _string(toolchain["harmony_sdk_api"], "toolchain.harmony_sdk_api")
-    if not re.search(r"(?:^|\D)(?:12|1[3-9]|[2-9][0-9])(?:\D|$)", api_value):
+    if _blocked_placeholder(api_value):
+        if not allow_blocked:
+            raise ManifestError("toolchain.harmony_sdk_api: blocked placeholder is not evidence")
+    elif not re.search(r"(?:^|\D)(?:12|1[3-9]|[2-9][0-9])(?:\D|$)", api_value):
         raise ManifestError("toolchain.harmony_sdk_api: expected API 12 or newer")
 
     artifact = _mapping(document.get("artifact"), "artifact")
@@ -163,11 +189,20 @@ def validate_manifest(
 
     device = _mapping(document.get("device"), "device")
     _require_keys(device, REQUIRED_DEVICE_KEYS, "device")
+    warnings.extend(_reject_blocked_placeholders(device, REQUIRED_DEVICE_KEYS, "device", allow_blocked=allow_blocked))
     platform = _string(device.get("platform"), "device.platform")
-    if platform not in HARMONY_PLATFORMS:
+    if _blocked_placeholder(platform):
+        if allow_blocked:
+            warnings.append(f"device.platform: {platform}")
+        else:
+            raise ManifestError("device.platform: blocked placeholder is not evidence")
+    elif platform not in HARMONY_PLATFORMS:
         raise ManifestError("device.platform: Android evidence cannot close HarmonyOS gates")
     identity_text = " ".join(str(device.get(key, "")) for key in ("manufacturer", "model", "product"))
-    if "matepad" not in identity_text.lower() or "mini" not in identity_text.lower():
+    if any(_blocked_placeholder(str(device.get(key, ""))) for key in ("manufacturer", "model", "product")):
+        if not allow_blocked:
+            raise ManifestError("device: blocked identity placeholder is not evidence")
+    elif "matepad" not in identity_text.lower() or "mini" not in identity_text.lower():
         raise ManifestError("device: expected the primary MatePad Mini target identity")
     _hex(device["serial_hash"], "device.serial_hash", HEX_64, allow_placeholder=allow_blocked)
 
