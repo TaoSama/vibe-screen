@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2719,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "1572a34286c8cf699454af116bfbab3d4200ceec9fa991263e56b24bb52ee179"
+    },
+    {
+      "bytes": 181,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation.txt",
+      "result": "pass",
+      "sha256": "e6d427c2e7dd300d7c47d013cec3e1ce9482be7bb0ae8955b609f2797910b9e1"
+    },
+    {
+      "bytes": 6113,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.json",
+      "result": "pass",
+      "sha256": "e8de02c5f34a8d0931713247584683c2de61a65359ae8ea0bb45cf350f7d9d92"
+    },
+    {
+      "bytes": 2845,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "103c731436fb5bd78e8db421a661317647adbc7e6ec5d6fa941dae28f44e701e"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

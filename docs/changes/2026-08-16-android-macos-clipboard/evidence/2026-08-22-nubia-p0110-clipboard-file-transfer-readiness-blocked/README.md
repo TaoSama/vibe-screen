@@ -2,7 +2,7 @@
 
 Date: 2026-08-22
 Device: nubia P0110 / pacific / Android 16 / SDK 36
-Serial: EP0110PZ0B9110300B
+Serial label: REDACTED_P0110_USB_SERIAL
 Source branch: codex/clipboard-file-transfer-gate
 Fetched origin/main during collection: 47207c5bc82f9931eb82ec886d2d55e96c3f3e5b
 
@@ -16,8 +16,8 @@ ClipboardManager or SAF and macOS NSPasteboard or Downloads.
 
 ## What passed
 
-- Android device identity was collected with explicit serial
-  adb -s EP0110PZ0B9110300B and matches nubia P0110 / pacific / Android 16 /
+- Android device identity was collected with an explicit serial in the private
+  run and published as `REDACTED_P0110_USB_SERIAL`; it matches nubia P0110 / pacific / Android 16 /
   SDK 36.
 - Debug app and androidTest APKs installed on the P0110.
 - ClipboardManagerInstrumentedTest passed on the device: OK (3 tests).

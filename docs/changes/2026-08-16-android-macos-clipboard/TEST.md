@@ -189,3 +189,31 @@ blocked by the current Mac environment: security find-identity -v -p
 codesigning reports zero valid identities, xcodebuild is unavailable under
 Command Line Tools, and MacHost XCTest still fails before execution with no
 such module XCTest.
+
+## 2026-08-27 Nubia P0110 current-base E2E gate attempt
+
+Evidence:
+[evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked](evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`3b2ba11e832a3618eaedfc67f92414b161423a00` and introduced the explicit
+`clipboard-e2e-gate` aggregator. The aggregator requires all of the following
+before it can close the gate:
+
+- current signed/TCC-ready Host readiness,
+- at least one real Protocol v1 USB or trusted-LAN device path ready,
+- current Android local `ClipboardManagerInstrumentedTest` pass,
+- retained product E2E JSON proving both Android `ClipboardManager` -> macOS
+  `NSPasteboard` and macOS `NSPasteboard` -> Android `ClipboardManager` with
+  explicit user action, source system clipboard read, remote system clipboard
+  write, Protocol v1 session ownership, and final marker match.
+
+The 2026-08-27 run confirmed the device identity as nubia P0110 / pacific /
+Android 16 / SDK 36 and reran the local Android ClipboardManager smoke on
+device with `OK (3 tests)`. That remains local Android system-clipboard
+evidence only. The E2E gate output is `blocked` because Host stable signing and
+permission readiness failed, USB readiness is blocked by that Host preflight,
+trusted LAN is blocked by the device Wi-Fi/route state plus Host signing, and no
+bidirectional product E2E transfer record exists. Offline, synthetic, local, or
+preflight-only evidence is explicitly marked as insufficient for closing the
+real Android/macOS system-pasteboard gate.
