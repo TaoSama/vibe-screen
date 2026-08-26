@@ -47,12 +47,13 @@ a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
-config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-WakeHost device-identity binding, and every advanced Envelope branch used by
-the client. Focused macOS/Android tests cover the shared HMAC golden vector,
-replay and unauthorized rejection, broadcast-target validation, and the
+and feedback/digest rejection, managed deny-wins policy, explanatory
+restriction-result propagation, denylist-over-allowlist host matching, safe
+filenames, sequential chunks, file limits/final SHA-256/cleanup, HDR10 to SDR
+config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte
+WOL vector, WakeHost device-identity binding, and every advanced Envelope branch
+used by the client. Focused macOS/Android tests cover the shared HMAC golden
+vector, replay and unauthorized rejection, broadcast-target validation, and the
 Android Protocol v1 action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
@@ -361,11 +362,13 @@ The following remain unproved until their dedicated gates produce evidence:
   LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection. The WakeHost current-base
-  evidence owner is #199 after rebasing onto #225 and must use
-  `make wake-host-current-base-gate` to keep this gate blocked until hardware
-  evidence exists;
+  file picker/export, UDP broadcast, real sleeping-host Wake-on-LAN over
+  router/NIC firmware paths, real Apple MDM profile delivery, and managed App
+  Configuration injection. The WakeHost current-base evidence owner is #199
+  after rebasing onto #225 and must use `make wake-host-current-base-gate` to
+  keep this gate blocked until hardware evidence exists; the offline managed
+  deny-wins source work and blocked evidence are tracked in
+  [managed policy deny-wins](../2026-08-21-managed-policy-deny-wins/TEST.md);
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over

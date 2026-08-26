@@ -1,23 +1,23 @@
 import Foundation
 import VibeScreenProtocol
 
-public struct ManagedRestrictionResult: Equatable, Sendable {
-    public static let clipboard = "clipboard"
-    public static let fileTransfer = "file_transfer"
-    public static let audio = "audio"
-    public static let wake = "wake"
-    public static let customGestures = "custom_gestures"
-    public static let hostActions = "host_actions"
-    public static let maximumFileBytes = "maximum_file_bytes"
-    public static let allowedHosts = "allowed_hosts"
-    public static let deniedHosts = "denied_hosts"
+struct ManagedRestrictionResult: Equatable {
+    static let clipboard = "clipboard"
+    static let fileTransfer = "file_transfer"
+    static let audio = "audio"
+    static let wake = "wake"
+    static let customGestures = "custom_gestures"
+    static let hostActions = "host_actions"
+    static let maximumFileBytes = "maximum_file_bytes"
+    static let allowedHosts = "allowed_hosts"
+    static let deniedHosts = "denied_hosts"
 
-    public let restriction: String
-    public let allowed: Bool
-    public let source: String
-    public let reason: String
+    let restriction: String
+    let allowed: Bool
+    let source: String
+    let reason: String
 
-    public var protocolResult: VSManagedRestrictionResult {
+    var protocolResult: VSManagedRestrictionResult {
         var result = VSManagedRestrictionResult()
         result.restriction = restriction
         result.allowed = allowed
@@ -26,7 +26,7 @@ public struct ManagedRestrictionResult: Equatable, Sendable {
         return result
     }
 
-    public init(restriction: String, allowed: Bool, source: String, reason: String) {
+    init(restriction: String, allowed: Bool, source: String, reason: String) {
         self.restriction = restriction
         self.allowed = allowed
         self.source = source
@@ -41,23 +41,38 @@ public struct ManagedRestrictionResult: Equatable, Sendable {
     }
 }
 
-public struct ManagedPolicy: Equatable, Sendable {
-    public static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
+struct ManagedPolicy: Equatable {
+    static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
+    static let defaultMaximumAudioStreams: UInt32 = 1
+    static let defaultMaximumClipboardBytes: UInt64 = 1 * 1_024 * 1_024
+    static let defaultMaximumFileChunkBytes: UInt32 = 64 * 1_024
 
-    public let isManaged: Bool
-    public let clipboardAllowed: Bool
-    public let fileTransferAllowed: Bool
-    public let audioAllowed: Bool
-    public let wakeAllowed: Bool
-    public let customGesturesAllowed: Bool
-    public let hostActionsAllowed: Bool
-    public let maximumFileBytes: UInt64
-    public let allowedHosts: Set<String>
-    public let allowedHostsRestricted: Bool
-    public let deniedHosts: Set<String>
-    public let restrictionResults: [ManagedRestrictionResult]
+    let isManaged: Bool
+    let clipboardAllowed: Bool
+    let fileTransferAllowed: Bool
+    let audioAllowed: Bool
+    let wakeAllowed: Bool
+    let customGesturesAllowed: Bool
+    let hostActionsAllowed: Bool
+    let maximumFileBytes: UInt64
+    let allowedHosts: Set<String>
+    let allowedHostsRestricted: Bool
+    let deniedHosts: Set<String>
+    let restrictionResults: [ManagedRestrictionResult]
 
-    public static let unmanaged = ManagedPolicy(
+    static let requiredRestrictionNames: Set<String> = [
+        ManagedRestrictionResult.clipboard,
+        ManagedRestrictionResult.fileTransfer,
+        ManagedRestrictionResult.audio,
+        ManagedRestrictionResult.wake,
+        ManagedRestrictionResult.customGestures,
+        ManagedRestrictionResult.hostActions,
+        ManagedRestrictionResult.maximumFileBytes,
+        ManagedRestrictionResult.allowedHosts,
+        ManagedRestrictionResult.deniedHosts
+    ]
+
+    static let unmanaged = ManagedPolicy(
         isManaged: false,
         clipboardAllowed: true,
         fileTransferAllowed: true,
@@ -84,7 +99,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     )
 
-    public static let failClosed = ManagedPolicy(
+    static let failClosed = ManagedPolicy(
         isManaged: true,
         clipboardAllowed: false,
         fileTransferAllowed: false,
@@ -111,7 +126,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     )
 
-    public init(
+    init(
         isManaged: Bool,
         clipboardAllowed: Bool,
         fileTransferAllowed: Bool,
@@ -156,16 +171,18 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     }
 
-    public init(managedConfiguration: [String: Any]?) throws {
+    init(managedConfiguration: [String: Any]?) throws {
         guard let configuration = managedConfiguration, !configuration.isEmpty else {
             self = .unmanaged
             return
         }
+
         func requiredBool(_ key: String) throws -> Bool {
             guard let value = configuration[key] else { return false }
             guard let value = value as? Bool else { throw ManagedPolicyError.invalidType(key) }
             return value
         }
+
         let maximum: UInt64
         if let value = configuration[Keys.maximumFileBytes] {
             guard let number = value as? NSNumber, number.int64Value >= 0 else {
@@ -175,6 +192,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         } else {
             maximum = 0
         }
+
         let hosts: Set<String>
         if let value = configuration[Keys.allowedHosts] {
             guard let strings = value as? [String] else {
@@ -193,6 +211,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         } else {
             deniedHosts = []
         }
+
         self.init(
             isManaged: true,
             clipboardAllowed: try requiredBool(Keys.clipboardAllowed),
@@ -207,15 +226,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     }
 
-    /// Creates a policy from a peer's ``VSManagedPolicyStatus``.
-    ///
-    /// When the peer does not advertise managed policy support (`managed == false`,
-    /// including legacy peers that never set the field), the remote policy is
-    /// treated as fully permissive so it cannot accidentally deny local features.
-    /// When `managed == true`, every field is taken verbatim from the status;
-    /// because protobuf defaults booleans to `false`, any unset capability is
-    /// denied (fail-closed).
-    public init(remoteStatus: VSManagedPolicyStatus) {
+    init(remoteStatus: VSManagedPolicyStatus) {
         guard remoteStatus.managed else {
             self = .unmanaged
             return
@@ -239,7 +250,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     }
 
-    public var protocolStatus: VSManagedPolicyStatus {
+    var protocolStatus: VSManagedPolicyStatus {
         var status = VSManagedPolicyStatus()
         status.managed = isManaged
         status.clipboardAllowed = clipboardAllowed
@@ -256,10 +267,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         return status
     }
 
-    public func applying(remote: ManagedPolicy) -> ManagedPolicy {
-        // An unmanaged remote (including legacy peers that never set the
-        // managed flag) imposes no restrictions, so it must not tighten any
-        // local policy field (e.g. it must not lower maximumFileBytes).
+    func applying(remote: ManagedPolicy) -> ManagedPolicy {
         guard remote.isManaged else { return self }
         let restricted = allowedHostsRestricted || remote.allowedHostsRestricted
         let hosts: Set<String>
@@ -307,21 +315,19 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     }
 
-    public func allows(host: String) -> Bool {
-        guard let normalized = Self.normalizedHost(host) else { return !allowedHostsRestricted }
+    func allows(hostID: String) -> Bool {
+        guard let normalized = Self.normalizedHost(hostID) else { return !allowedHostsRestricted }
         guard !deniedHosts.contains(normalized) else { return false }
         return !allowedHostsRestricted || allowedHosts.contains(normalized)
     }
 
-    public static func validateRestrictionResults(_ status: VSManagedPolicyStatus) -> Bool {
+    static func validateRestrictionResults(_ status: VSManagedPolicyStatus) -> Bool {
         guard status.managed else { return true }
         let results = status.restrictionResults
         guard results.count == requiredRestrictionNames.count else { return false }
         let grouped = Dictionary(grouping: results, by: \.restriction)
         guard Set(grouped.keys) == requiredRestrictionNames,
               grouped.values.allSatisfy({ $0.count == 1 }) else { return false }
-        let normalizedHosts = Set(status.allowedHosts.compactMap(normalizedHost))
-        let deniedHosts = Set(status.deniedHosts.compactMap(normalizedHost))
         return results.allSatisfy { result in
             guard !result.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !result.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
@@ -334,30 +340,16 @@ public struct ManagedPolicy: Equatable, Sendable {
             case ManagedRestrictionResult.hostActions: return result.allowed == status.hostActionsAllowed
             case ManagedRestrictionResult.maximumFileBytes: return result.allowed == (status.maximumFileBytes > 0)
             case ManagedRestrictionResult.allowedHosts:
-                let restricted = status.allowedHostsRestricted || !normalizedHosts.isEmpty
-                return result.allowed == (!restricted || !normalizedHosts.subtracting(deniedHosts).isEmpty)
+                let hosts = Set(status.allowedHosts.compactMap(normalizedHost))
+                let deniedHosts = Set(status.deniedHosts.compactMap(normalizedHost))
+                let restricted = status.allowedHostsRestricted || !hosts.isEmpty
+                return result.allowed == (!restricted || !hosts.subtracting(deniedHosts).isEmpty)
             case ManagedRestrictionResult.deniedHosts:
-                return result.allowed == deniedHosts.isEmpty
+                return result.allowed == Set(status.deniedHosts.compactMap(normalizedHost)).isEmpty
             default: return false
             }
         }
     }
-
-    private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
-        Set(hosts.compactMap(normalizedHost))
-    }
-
-    public static let requiredRestrictionNames: Set<String> = [
-        ManagedRestrictionResult.clipboard,
-        ManagedRestrictionResult.fileTransfer,
-        ManagedRestrictionResult.audio,
-        ManagedRestrictionResult.wake,
-        ManagedRestrictionResult.customGestures,
-        ManagedRestrictionResult.hostActions,
-        ManagedRestrictionResult.maximumFileBytes,
-        ManagedRestrictionResult.allowedHosts,
-        ManagedRestrictionResult.deniedHosts
-    ]
 
     private static func results(
         source: String,
@@ -406,6 +398,10 @@ public struct ManagedPolicy: Equatable, Sendable {
         ]
     }
 
+    private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
+        Set(hosts.compactMap(normalizedHost))
+    }
+
     private static func isBlankHost(_ host: String) -> Bool {
         normalizedHost(host) == nil
     }
@@ -426,50 +422,62 @@ public struct ManagedPolicy: Equatable, Sendable {
         static let allowedHosts = "AllowedHosts"
         static let deniedHosts = "DeniedHosts"
     }
+
+    static let advertisedCapabilities: Set<VSCapability> = [.managedConfiguration]
+
+    func applyingResourceLimits(to limits: inout VSResourceLimits) {
+        limits.maximumAudioStreams = audioAllowed ? limits.maximumAudioStreams : 0
+        limits.maximumClipboardBytes = clipboardAllowed ? limits.maximumClipboardBytes : 0
+        limits.maximumFileBytes = fileTransferAllowed ? min(limits.maximumFileBytes, maximumFileBytes) : 0
+        limits.maximumFileChunkBytes = fileTransferAllowed ? limits.maximumFileChunkBytes : 0
+    }
 }
 
-/// Holds the local (MDM) and remote (peer) managed policies and derives the
-/// effective policy by applying the remote on top of the local one.
-///
-/// The effective policy is always recomputed from the stored local and remote
-/// policies, so updating the remote policy never accumulates denials on top of
-/// a previously computed effective policy.
-public struct ManagedPolicyResolver: Equatable, Sendable {
-    public private(set) var localPolicy: ManagedPolicy
-    public private(set) var remotePolicy: ManagedPolicy?
+struct ManagedPolicyResolver: Equatable {
+    private(set) var localPolicy: ManagedPolicy
+    private(set) var remotePolicy: ManagedPolicy?
 
-    public var effectivePolicy: ManagedPolicy {
+    var effectivePolicy: ManagedPolicy {
         remotePolicy.map { localPolicy.applying(remote: $0) } ?? localPolicy
     }
 
-    public init(localPolicy: ManagedPolicy = .unmanaged, remotePolicy: ManagedPolicy? = nil) {
+    init(localPolicy: ManagedPolicy = .unmanaged, remotePolicy: ManagedPolicy? = nil) {
         self.localPolicy = localPolicy
         self.remotePolicy = remotePolicy
     }
 
-    public mutating func setLocal(_ policy: ManagedPolicy) {
-        localPolicy = policy
-    }
-
-    public mutating func setRemote(_ policy: ManagedPolicy?) {
+    mutating func setRemote(_ policy: ManagedPolicy?) {
         remotePolicy = policy
     }
 
-    /// Clears the remote policy so the effective policy falls back to the local
-    /// policy only. Call this when a session ends to avoid applying a stale
-    /// remote policy from a previous peer to the next session.
-    public mutating func clearRemote() {
+    mutating func clearRemote() {
         remotePolicy = nil
     }
 }
 
-public enum ManagedPolicyError: LocalizedError, Equatable {
+enum ManagedPolicyError: LocalizedError, Equatable {
     case invalidType(String)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .invalidType(let key):
             return "Invalid managed configuration value for \(key)."
+        }
+    }
+}
+
+struct ManagedConfigurationProvider {
+    static let managedConfigurationKey = "com.apple.configuration.managed"
+
+    var readConfiguration: () -> [String: Any]? = {
+        UserDefaults.standard.dictionary(forKey: managedConfigurationKey)
+    }
+
+    func loadPolicy() -> ManagedPolicy {
+        do {
+            return try ManagedPolicy(managedConfiguration: readConfiguration())
+        } catch {
+            return .failClosed
         }
     }
 }

@@ -129,10 +129,6 @@ final class StreamViewModel: ObservableObject {
             errorMessage = "配对链接无效：\(error.localizedDescription)"
             return
         }
-        guard managedConfiguration.policy.allows(host: pairing.host) else {
-            errorMessage = "此主机不在组织允许列表中"
-            return
-        }
         stopAutomaticReconnect(clearPairing: true)
         endSession(disconnectTransport: true)
         activePairing = pairing

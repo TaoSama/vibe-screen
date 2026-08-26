@@ -12,6 +12,7 @@ import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
+import dev.vibescreen.protocol.v1.ManagedRestrictionResult
 import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.StartDisplayResponse
@@ -46,9 +47,10 @@ class ProtocolV1ClipboardTest {
         session.clientHello()
         session.receive(hostHello(2, caps))
         session.receive(sessionAccepted(3, caps))
-        session.receive(displayList(4))
-        session.receive(startDisplay(5))
-        val requested = singleVideoConfigurationRequested(session.receive(videoConfig(6)))
+        session.receive(base(4).setManagedPolicyStatus(managedPolicyStatus()).build())
+        session.receive(displayList(5))
+        session.receive(startDisplay(6))
+        val requested = singleVideoConfigurationRequested(session.receive(videoConfig(7)))
         session.completeVideoConfiguration(
             completedConfigEpoch = 3,
             configurationToken = requested.configurationToken,
@@ -649,12 +651,7 @@ class ProtocolV1ClipboardTest {
     fun managedRemotePolicyDenyDisablesClipboardAndClearsSnapshot() {
         val session = clipboardSession()
         val offered = session.offerClipboard("before deny") ?: throw AssertionError("offer should succeed")
-        val denied =
-            ManagedPolicyStatus
-                .newBuilder()
-                .setManaged(true)
-                .setClipboardAllowed(false)
-                .build()
+        val denied = managedPolicyStatus(clipboardAllowed = false)
         val policy = base(10).setManagedPolicyStatus(denied).build()
 
         val received = session.receive(policy).single() as ProtocolV1Session.Action.ManagedPolicyReceived
@@ -854,6 +851,59 @@ class ProtocolV1ClipboardTest {
             .setMessageId(id)
             .setSessionId(sessionId)
             .setSessionEpoch(7)
+
+    private fun managedPolicyStatus(
+        clipboardAllowed: Boolean = true,
+        fileTransferAllowed: Boolean = true,
+        audioAllowed: Boolean = true,
+        wakeAllowed: Boolean = true,
+        customGesturesAllowed: Boolean = true,
+        hostActionsAllowed: Boolean = true,
+        maximumFileBytes: Long = 512L * 1_024L * 1_024L,
+        allowedHosts: List<String> = listOf(hostId),
+        allowedHostsRestricted: Boolean = true,
+        deniedHosts: List<String> = emptyList(),
+    ): ManagedPolicyStatus {
+        val results =
+            listOf(
+                restrictionResult("clipboard", clipboardAllowed),
+                restrictionResult("file_transfer", fileTransferAllowed),
+                restrictionResult("audio", audioAllowed),
+                restrictionResult("wake", wakeAllowed),
+                restrictionResult("custom_gestures", customGesturesAllowed),
+                restrictionResult("host_actions", hostActionsAllowed),
+                restrictionResult("maximum_file_bytes", maximumFileBytes > 0L),
+                restrictionResult("allowed_hosts", !allowedHostsRestricted || (allowedHosts.toSet() - deniedHosts.toSet()).isNotEmpty()),
+                restrictionResult("denied_hosts", deniedHosts.isEmpty()),
+            )
+        return ManagedPolicyStatus
+            .newBuilder()
+            .setManaged(true)
+            .setClipboardAllowed(clipboardAllowed)
+            .setFileTransferAllowed(fileTransferAllowed)
+            .setAudioAllowed(audioAllowed)
+            .setWakeAllowed(wakeAllowed)
+            .setCustomGesturesAllowed(customGesturesAllowed)
+            .setHostActionsAllowed(hostActionsAllowed)
+            .setMaximumFileBytes(maximumFileBytes)
+            .addAllAllowedHosts(allowedHosts)
+            .setAllowedHostsRestricted(allowedHostsRestricted)
+            .addAllRestrictionResults(results)
+            .addAllDeniedHosts(deniedHosts)
+            .build()
+    }
+
+    private fun restrictionResult(
+        restriction: String,
+        allowed: Boolean,
+    ): ManagedRestrictionResult =
+        ManagedRestrictionResult
+            .newBuilder()
+            .setRestriction(restriction)
+            .setAllowed(allowed)
+            .setSource("managed_configuration")
+            .setReason("Test managed policy result.")
+            .build()
 
     private fun displayList(id: Long): Envelope =
         Envelope
