@@ -105,6 +105,15 @@ def complete_evidence() -> dict:
             "sdk": "36",
             "device_info": "device-info.json",
         },
+        "android_reconnect": {
+            "trigger": "usb_replug",
+            "disconnect_observed": True,
+            "reconnect_attempt_observed": True,
+            "reconnect_succeeded": True,
+            "client_render_after_reconnect_observed": True,
+            "reconnect_log": "android-reconnect.log",
+            "client_render_artifact": "android-reconnect-render.png",
+        },
     }
 
 
@@ -124,7 +133,12 @@ def write_artifacts(root: Path, evidence: dict) -> None:
 
 class MacOSStartupRecoveryGateTest(unittest.TestCase):
     def test_complete_real_integration_evidence_can_close_login_headless_gate(self) -> None:
-        report = derive_gate(complete_evidence())
+        evidence = complete_evidence()
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
 
         self.assertEqual(report["verdict"], "pass")
         self.assertTrue(report["can_close_login_headless_gate"])
@@ -136,7 +150,11 @@ class MacOSStartupRecoveryGateTest(unittest.TestCase):
         evidence = complete_evidence()
         evidence["display"]["topology"] = "physical"
 
-        report = derive_gate(evidence)
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
 
         self.assertEqual(report["verdict"], "pass")
         self.assertTrue(report["can_close_login_headless_gate"])
@@ -146,7 +164,11 @@ class MacOSStartupRecoveryGateTest(unittest.TestCase):
         evidence = complete_evidence()
         evidence["mac_host"]["model"] = "MacBook Pro"
 
-        report = derive_gate(evidence)
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
 
         self.assertEqual(report["verdict"], "pass")
         self.assertTrue(report["can_close_login_headless_gate"])
@@ -244,6 +266,54 @@ class MacOSStartupRecoveryGateTest(unittest.TestCase):
         ):
             self.assertIn(reason, report["open_reasons"])
 
+    def test_missing_android_reconnect_evidence_blocks(self) -> None:
+        evidence = complete_evidence()
+        del evidence["android_reconnect"]
+
+        report = derive_gate(evidence)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "android_reconnect_render: android_reconnect.reconnect_succeeded must be true",
+            report["open_reasons"],
+        )
+
+    def test_missing_android_device_identity_blocks_reconnect_evidence(self) -> None:
+        evidence = complete_evidence()
+        evidence["android_device"] = {}
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "android_reconnect_render: android_device.manufacturer is required for Android reconnect evidence",
+            report["open_reasons"],
+        )
+
+    def test_incomplete_android_reconnect_blocks(self) -> None:
+        evidence = complete_evidence()
+        evidence["android_reconnect"]["client_render_after_reconnect_observed"] = False
+        del evidence["android_reconnect"]["reconnect_log"]
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "android_reconnect_render: android_reconnect.client_render_after_reconnect_observed must be true",
+            report["open_reasons"],
+        )
+
     def test_p0110_identity_guard_rejects_xiaomi_relabel(self) -> None:
         evidence = complete_evidence()
         evidence["android_device"]["codename"] = "fuxi"
@@ -324,8 +394,59 @@ class MacOSStartupRecoveryGateTest(unittest.TestCase):
         self.assertFalse(report["can_close_login_headless_gate"])
         self.assertTrue(any("must exist under the evidence root" in reason for reason in report["open_reasons"]))
 
+    def test_pass_shaped_json_without_artifact_fields_blocks_with_evidence_root(self) -> None:
+        evidence = complete_evidence()
+        for section in evidence.values():
+            if not isinstance(section, dict):
+                continue
+            for field in list(section):
+                if isinstance(section[field], str) and section[field].endswith((".txt", ".log", ".json", ".png")):
+                    del section[field]
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            report = derive_gate(evidence, evidence_root=Path(directory_name))
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertFalse(any("_missing_artifacts" in check for check in report["checks"]))
+        self.assertIn(
+            "host_identity_permissions: evidence artifact field 'signing_report' is required for a passing gate",
+            report["open_reasons"],
+        )
+        self.assertIn(
+            "headless_or_dummy_display_capture: evidence artifact field 'first_frame_artifact' is required for a passing gate",
+            report["open_reasons"],
+        )
+
+    def test_pass_shaped_json_without_artifact_fields_blocks_without_evidence_root(self) -> None:
+        evidence = complete_evidence()
+        for section in evidence.values():
+            if not isinstance(section, dict):
+                continue
+            for field in list(section):
+                if isinstance(section[field], str) and section[field].endswith((".txt", ".log", ".json", ".png")):
+                    del section[field]
+
+        report = derive_gate(evidence)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_login_headless_gate"])
+        self.assertIn(
+            "host_identity_permissions: evidence_root is required for a passing gate",
+            report["open_reasons"],
+        )
+        self.assertIn(
+            "remote_admin_access_boundary: evidence artifact field 'access_artifact' is required for a passing gate",
+            report["open_reasons"],
+        )
+
     def test_report_matches_schema_required_top_level_fields(self) -> None:
-        report = derive_gate(complete_evidence())
+        evidence = complete_evidence()
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            write_artifacts(directory, evidence)
+
+            report = derive_gate(evidence, evidence_root=directory)
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
         self.assertEqual(set(report), set(schema["properties"]))

@@ -113,6 +113,29 @@ HUKS-backed secure pairing, Host interoperability on a HarmonyOS device, or
 MatePad behavior. Controller-specific input still needs the MatePad Mini
 acceptance matrix before being claimed as device-verified.
 
+## 2026-08-21 controller input documentation drift guard
+
+The Phase 4 PRD and technical design now match the already-merged Harmony
+controller portable closure: the production Harmony source advertises
+`CAPABILITY_CONTROLLER`, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting state, validates lifecycle bounds, and sends
+all-zero neutral `DISCONNECTED` releases before teardown or resume. A new static
+validator check rejects the older pre-closure wording so README, app README, PRD,
+TECH, and TEST cannot drift back to claiming the source still lacks the
+capability, encoder, lifecycle, or platform route.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 36 semantic project files; 134/134 portable tests
+```
+
+This remains source and portable-test evidence only. It does not establish
+DevEco ArkTS/API-checker compatibility, a debug or release HAP, signing,
+installation, hardware decode, HUKS-backed secure pairing, Host interoperability
+on a HarmonyOS device, or MatePad behavior. Controller-specific input still
+requires the MatePad Mini acceptance matrix before it can be claimed as
+device-verified.
+
 ## 2026-08-20 HarmonyOS device-gate manifest validator
 
 The MatePad Mini runbook now requires a redacted `harmony-device-gates.json`
@@ -211,6 +234,59 @@ QR/controller UX, authenticated transport packets, production Authority
 deployment, public-network behavior, Host interoperability, or MatePad Mini
 acceptance.
 
+## 2026-08-21 authenticated-record portable verifier
+
+The Harmony source now includes a transport-neutral AES-256-GCM record-layer
+contract in apps/harmony/entry/src/main/ets/core/security/ChannelRecordSecurity.ts
+and Node-backed portable tests in apps/harmony/tests/channel-record-security.test.mjs.
+The tests consume the same contracts/fixtures/security/v1/channel-records.json
+fixture used by the macOS Host and Android client security suites.
+
+The verifier was replayed on current base on 2026-08-26:
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 36 semantic project files; 130/130 portable tests
+```
+
+The added checks cover:
+
+- exact initial and rotated key IDs plus 256 bytes of split directional key
+  material for host/device control, media, audio, and bulk channels;
+- byte-for-byte record sealing against the shared fixed AES-256-GCM fixture;
+- opening the corresponding Host/Android fixture records on the opposite role;
+- fail-closed replay, channel relabeling, wrong key, stale session epoch,
+  tampering, non-positive nonce sequence, wrong nonce channel, invalid sender or
+  channel arguments, closed session, and active-epoch rejection;
+- explicit legacy plaintext response encoding, and rejection of that response by
+  the secure-verifier path when fallback was not explicitly allowed.
+
+This is source/contract evidence only. It does not prove a production Harmony
+socket sends encrypted records, does not exercise HUKS, does not run the DevEco
+ArkTS/API checker, does not build or sign a HAP, and does not interoperate with
+a Mac Host or MatePad device. The production Harmony trusted-LAN path remains
+plaintext until those gates pass.
+
+Additional focused checks replayed on current base on 2026-08-26:
+
+```text
+make protocol
+  PASS: Buf format/lint/build/breaking and 37/37 protocol contract tests
+make evidence-tools-test release-tools-test
+  PASS: 826/826 evidence-tool tests and 153/153 release-tool tests
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.LanSecureRecordAdapterTest \
+  --tests dev.telemachus.display.StreamClientWirelessSecurityTest \
+  --tests dev.telemachus.display.AuthHandshakeTest \
+  --tests dev.telemachus.display.internet.security.ChannelRecordSecurityTest
+  PASS: focused Android trusted-LAN and shared channel-record tests
+cd apps/harmony && make doctor
+  BLOCKED: hvigor: not found; ohpm: not found; hdc: not found
+cd baseline/MacHost && swift test --filter LANSecureRecordAdapterTests
+  BLOCKED: active developer directory is CommandLineTools; test target cannot
+  import XCTest (`no such module 'XCTest'`)
+```
+
 ## 2026-08-23 current-base owner gate
 
 The Phase 4 README owner surface for DevEco build, signed-HAP install,
@@ -223,9 +299,8 @@ represented by a read-only current-base aggregate gate. It consumes
 - `deveco_build`: requires passing `deveco_sdk_and_api_checker` evidence that
   references DevEco/Hvigor/API-checker readiness plus DevEco/HAP/MatePad
   readiness;
-- `hap_sign_install`: requires passing `signed_release_hap`,
-  `hap_install_launch`, `hap_in_place_upgrade`, `hap_rollback_behavior`, and
-  `hap_uninstall_cleanup` device gates, evidence that references signed-HAP
+- `hap_sign_install`: requires passing `signed_release_hap` and
+  `hap_install_launch` device gates, evidence that references signed-HAP
   lifecycle artifacts, plus DevEco/HAP/MatePad readiness;
 - `hardware_decode_capability`: requires passing `h264_hardware_decode` and
   `hevc_hardware_decode` device gates, evidence that references
@@ -261,47 +336,35 @@ DevEco, MatePad Mini hardware, signed HAP metadata, HUKS/authenticated
 transport artifacts, and Host resume evidence, its correct result is `blocked`
 and the README gates remain open.
 
-## 2026-08-21 HAP lifecycle readiness collector
+## 2026-08-22 MatePad Mini acceptance package readiness
 
-`scripts/harmony_hap_readiness.py` records the local HAP build/sign/install
-readiness state before a MatePad Mini run. It captures clean repository identity,
-DevEco Studio and Harmony SDK API declarations, OHPM/Hvigor/HDC versions,
-signing configuration and public certificate hash, signed HAP and `SHA256SUMS`
-hashes, HDC target selection, package pre-state, and reviewer-supplied evidence
-references for install, in-place upgrade, rollback behavior, and uninstall
-cleanup. It writes both `harmony-hap-readiness.json` and a generated
-`harmony-device-gates.json` for the stricter gate validator.
+The MatePad Mini path now has a final redacted package validator layered after
+the readiness, strict device-gate, and current-base owner manifests:
 
-```bash
-make harmony-hap-readiness \
-  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
-  HARMONY_HDC_TARGET="$HDC_TARGET"
-python3 scripts/harmony_device_gate.py \
-  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
-python3 scripts/harmony_device_gate.py --allow-blocked \
-  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_harmony_hap_readiness -v
+```text
+make harmony-readiness EVIDENCE_DIR=/path/to/evidence
+make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-current-base-gate EVIDENCE_DIR=/path/to/evidence
+make harmony-matepad-acceptance EVIDENCE_DIR=/path/to/evidence
 ```
 
-Expected result: blocked or insufficient until DevEco, signing, HAP output, HDC
-target, and lifecycle evidence are present. The strict gate validator must fail
-on blocked readiness evidence; `--allow-blocked` validates only the blocked
-readiness structure without closing the gate. The unit test covers pass,
-blocked, fail, and insufficient readiness paths.
+`scripts/harmony_matepad_acceptance.py` groups the strict device-gate IDs into
+the acceptance domains needed for a MatePad Mini release decision: toolchain and
+source identity, HAP install/signing, AVCodec H.264/HEVC decode, HUKS-backed
+secure pairing and revocation, Protocol v1 Host resume interoperability, UI and
+device identity, sustained soak, and external-camera latency. It exits 0 only
+when readiness is `pass`, the strict device manifest passes with local
+evidence files under the evidence root, the current-base owner gate is `pass`,
+and every required domain is `pass`. Otherwise it exits 2 with a blocked
+`harmony-matepad-acceptance.json`.
 
-The collector is not a substitute for DevEco, HAP installation, or MatePad
-behavior. A generated manifest may close only the HAP lifecycle subset when the
-summary reports `can_close_hap_lifecycle_readiness=true`; the full Phase 4 gate
-still requires every `harmony-device-gates.json` entry to pass without
-`--allow-blocked`.
-
-The 2026-08-21 local run is recorded at
-[`evidence/2026-08-21-hap-readiness-blocked`](evidence/2026-08-21-hap-readiness-blocked/README.md).
-It is blocked: DevEco Studio, OHPM, Hvigor, HDC, signing configuration, public
-certificate hash, signed HAP output, MatePad Mini identity, package pre-state,
-and install/upgrade/rollback/uninstall-cleanup observations were not present in
-this environment. The generated `harmony-device-gates.json` validates only with
-`--allow-blocked` and is not acceptance evidence.
+`--write-blocked` creates a structurally valid blocked
+`harmony-device-gates.json`, derives a blocked `harmony-current-base-gate.json`,
+and writes a blocked acceptance package when no MatePad Mini or signing
+environment exists. That path is for evidence tracking only. It is not HAP
+installation, streaming, secure pairing, hardware decode, Host interop, soak,
+latency, or MatePad Mini acceptance evidence, and it must not close the README
+HarmonyOS gate.
 
 ## Clean cross-repository gates
 

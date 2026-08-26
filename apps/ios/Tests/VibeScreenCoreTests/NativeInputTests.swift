@@ -85,6 +85,35 @@ final class NativeInputTests: XCTestCase {
         XCTAssertFalse(state.contains(usbHIDUsage: 0x04))
     }
 
+    func testKeyReleaseModifierPolicyUsesCurrentMaskAndCleanupUsesZeroMask() {
+        XCTAssertEqual(
+            NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+                standardModifierMask: 0,
+                standardByteNegotiated: true
+            ),
+            0
+        )
+        XCTAssertEqual(
+            NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+                standardModifierMask: USBHIDModifierWire.leftShift,
+                standardByteNegotiated: true
+            ),
+            USBHIDModifierWire.leftShift
+        )
+        XCTAssertEqual(
+            NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+                standardModifierMask: USBHIDModifierWire.leftShift,
+                standardByteNegotiated: false
+            ),
+            USBHIDModifierWire.leftControl
+        )
+        XCTAssertNil(NativeKeyReleaseModifierPolicy.wireMaskForExplicitRelease(
+            standardModifierMask: 0x100,
+            standardByteNegotiated: true
+        ))
+        XCTAssertEqual(NativeKeyReleaseModifierPolicy.wireMaskForCleanupRelease, 0)
+    }
+
     func testContinuousTerminalKeepsActiveStateUntilEnqueueSucceeds() {
         let position = NormalizedInputPosition(x: 0.25, y: 0.5)
         var state = ContinuousInputState()

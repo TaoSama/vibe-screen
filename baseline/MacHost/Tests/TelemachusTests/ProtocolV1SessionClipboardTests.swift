@@ -33,7 +33,7 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
     }
 
     private func clientHello(
-        capabilities: [VSCapability] = [.touch, .multiDisplay, .clipboard, .managedConfiguration],
+        capabilities: [VSCapability] = [.touch, .multiDisplay, .clipboard],
         maximumClipboardBytes: UInt64 = 0
     ) -> VSEnvelope {
         var range = VSProtocolRange()
@@ -76,23 +76,36 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
 
     /// Drives a session to STREAMING with clipboard negotiated.
     private func readyClipboardSession(
-        maximumClipboardBytes: UInt64 = 0
+        maximumClipboardBytes: UInt64 = 0,
+        managed: Bool = false
     ) throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
+        var capabilities: [VSCapability] = [.touch, .multiDisplay, .clipboard]
+        if managed { capabilities.append(.managedConfiguration) }
         _ = session.handleControl(try clientHello(
+            capabilities: capabilities,
             maximumClipboardBytes: maximumClipboardBytes
         ).serializedData())
         _ = session.completeCodecNegotiation()
+        var nextID: UInt64 = 2
+        if managed {
+            _ = session.handleControl(try envelope(
+                id: nextID,
+                payload: .managedPolicyStatus(ManagedPolicy.unmanaged.protocolStatus)
+            ).serializedData())
+            nextID += 1
+        }
         _ = session.handleControl(try envelope(
-            id: 2,
+            id: nextID,
             payload: .startDisplayRequest(existingDisplayRequest())
         ).serializedData())
+        nextID += 1
         var result = VSVideoConfigResult()
         result.configEpoch = 1
         result.streamID = 1
         result.accepted = true
         _ = session.handleControl(try envelope(
-            id: 3,
+            id: nextID,
             payload: .videoConfigResult(result)
         ).serializedData())
         return session
@@ -219,16 +232,24 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
     }
 
     func testRemoteManagedPolicyDenyDisablesClipboardAndClearsSnapshot() throws {
-        let session = try readyClipboardSession()
+        let session = try readyClipboardSession(managed: true)
         let firstShare = session.shareClipboard(text: "will be denied")
         let firstEnvelope = try controlEnvelopes(firstShare).first
         guard case .clipboardOffer(let firstOffer)? = firstEnvelope?.payload else {
             return XCTFail("Expected initial clipboardOffer")
         }
 
-        var denied = VSManagedPolicyStatus()
-        denied.managed = true
-        denied.clipboardAllowed = false
+        let denied = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: false,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        ).protocolStatus
         let policyActions = session.handleControl(try envelope(
             id: 4,
             payload: .managedPolicyStatus(denied)
@@ -239,6 +260,7 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
         }
         XCTAssertTrue(effectivePolicy.managed)
         XCTAssertFalse(effectivePolicy.clipboardAllowed)
+        XCTAssertEqual(Set(effectivePolicy.restrictionResults.map(\.source)), ["effective_deny_wins"])
         XCTAssertFalse(session.hasClipboardCapability)
         XCTAssertTrue(session.shareClipboard(text: "after deny").isEmpty)
         XCTAssertTrue(session.requestClipboardContent(changeID: firstOffer.changeID).isEmpty)

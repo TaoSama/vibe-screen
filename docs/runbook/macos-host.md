@@ -173,6 +173,23 @@ If that gate's prerequisite flag is false, leave the downstream runtime stages
 as not-run and fix the missing signing identity, source provenance, TCC grant,
 listener, or gate-specific entitlement before claiming LAN, reconnect, Host RSS,
 native-pointer, stylus, controller, login/headless, or compatibility acceptance.
+
+For Android acceptance runs, archive the unified session readiness record before
+starting soak, latency, reconnect, or input work:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  REAL_DEVICE_GATE_DIR=<evidence-dir>
+```
+
+That runner wraps this Host preflight with the Android device identity, ADB
+reverse state, foreground app state, Host TCP listener, and stream telemetry
+checks. It writes `<evidence-dir>/real-device-gate.json` and reports
+`result=blocked` if the stable signing identity, Screen Recording, Accessibility,
+listener, or fresh structured stream telemetry is missing. It does not launch
+the Host or modify macOS privacy state.
+
 ## USB quick start
 
 1. Enable Android developer options and USB debugging, authorize the Mac, and
@@ -246,6 +263,19 @@ remote administrator intervention.
 If macOS reports that the login item requires approval, open **System Settings
 → General → Login Items** and approve Vibe Screen. Registration alone is not
 treated as proof that login launch is active.
+
+Before scheduling a reboot or headless pass, collect the shared read-only
+readiness snapshot:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The `login_headless` section in `host-readiness.json` records the local blockers
+for setup readiness. Exit code 2 means the run is blocked and should be kept as
+readiness evidence. A passing readiness snapshot is still only a preflight: it
+does not prove login launch after reboot, headless capture, Android rendering,
+or recovery from a controlled listener/capture/display failure.
 
 ### Acceptance gate matrix
 

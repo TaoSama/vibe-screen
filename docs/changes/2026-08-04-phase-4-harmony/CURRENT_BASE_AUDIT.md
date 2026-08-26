@@ -1,7 +1,7 @@
 # HarmonyOS current-base aggregate owner audit
 
-Date: 2026-08-23; rebased check: 2026-08-26
-Base: `origin/main` at `f46163524fe757e7021a4333b3370af00ec651f1`
+Date: 2026-08-23; rebased check: 2026-08-27
+Base: `origin/main` at `74a539c033b67733af72e651f81d6364603a8a07`
 Scope: current-base owner selection and fail-closed evidence routing only. This
 record does not close any HarmonyOS real-device gate.
 
@@ -9,30 +9,30 @@ record does not close any HarmonyOS real-device gate.
 
 This branch is the current-base aggregate owner successor for the Phase 4
 README gate surface. It refreshes the owner-gate approach from PR #283 onto
-`b759d785898ede5bbd4370255b3d49e56457f0ef`, expands the aggregate scope to the
+`74a539c033b67733af72e651f81d6364603a8a07`, expands the aggregate scope to the
 full DevEco/HAP/decode/HUKS/authenticated-transport/resume/MatePad surface, and
 absorbs the strict evidence-root hardening from PR #269. PR #250 remains a
 README-only support change that clarifies component-level decode and resume
 ownership, not a competing aggregate owner path.
 
-PR #239 remains the semantic MatePad Mini acceptance package design, but it is
-not the current-base owner while its branch is draft and `DIRTY` against current
-main. When #239 is refreshed, it should consume this gate output instead of
-creating a second final-owner path.
+PR #239 remains the semantic MatePad Mini acceptance package design, not a
+replacement for this current-base owner gate. Its refreshed branch consumes this
+gate output as an input to the final acceptance package instead of creating a
+second final-owner path.
 
 ## Open PR owner map
 
 | PR | Current status | Owner decision | Notes |
 | --- | --- | --- | --- |
 | #283 | draft; behind current main | Prior current-base gate candidate | Superseded by this branch because this branch is based on current `origin/main` and expands scope beyond decode/HAP/resume. |
-| #239 | draft; conflicts with current main | MatePad acceptance package design owner | Keep as semantic aggregate package input after refresh; not current-base today. |
+| #239 | refreshed against current main | MatePad acceptance package design owner | Keep as the final acceptance package layer that consumes this current-base gate; it does not itself close real-device gates without MatePad evidence. |
 | #269 | draft; behind current main | Support verifier hardening | Strict evidence-root validation is folded into this branch. |
 | #250 | draft; rebased onto current main | Support README attribution | Keep as a narrow README clarification; it does not replace this aggregate owner gate. |
 | #202 | draft; conflicts with current main | Focused authenticated-record support | Needs refresh before feeding the aggregate owner; not a final closure owner. |
 | #203 | draft; conflicts with current main | Focused AVCodec hardware-decode support | Needs real DevEco/HAP/MatePad decode evidence before it can close decode gates. |
 | #204 | draft; conflicts with current main | Focused HUKS secure-pairing support | Needs real HUKS runtime and Host/Authority compatibility evidence. |
-| #205 | draft; conflicts with current main | Focused Host resume interop support | Needs resume-capable Host plus HarmonyOS device evidence; also introduces `resume_capable_host_interop` expected by this aggregate gate. |
-| #206 | draft; rebased onto current main | Focused HAP lifecycle support | Needs DevEco build, signed HAP, install, launch, upgrade, rollback, and cleanup evidence. |
+| #205 | open; rebased onto current main | Focused Host resume interop support | Provides the fail-closed Host resume interop preflight and blocked readiness boundary; still needs resume-capable Host plus HarmonyOS device evidence before it can close the gate. |
+| #206 | draft; conflicts with current main | Focused HAP lifecycle support | Needs DevEco build, signed HAP, install, launch, upgrade, rollback, and cleanup evidence. |
 | #210 | draft; behind current main | Support controller-status guard | Keep as docs/static guard input; controller device behavior remains MatePad acceptance evidence. |
 
 ## Aggregate gate contract
@@ -48,7 +48,7 @@ groups are closed by real evidence:
 | Owner group | Required evidence boundary |
 | --- | --- |
 | `deveco_build` | `deveco_sdk_and_api_checker` plus DevEco/Hvigor/OHPM/HDC readiness. |
-| `hap_sign_install` | `signed_release_hap`, `hap_install_launch`, `hap_in_place_upgrade`, `hap_rollback_behavior`, and `hap_uninstall_cleanup` plus signed-HAP lifecycle artifacts. |
+| `hap_sign_install` | `signed_release_hap` and `hap_install_launch` plus signed-HAP lifecycle artifacts. |
 | `hardware_decode_capability` | H.264 and HEVC hardware decode device gates plus AVCodec evidence. |
 | `huks_secure_pairing` | HUKS-backed pairing and credential revocation/replay gates. |
 | `authenticated_transport` | authenticated transport record evidence; plaintext legacy fallback is not enough. |
@@ -57,8 +57,9 @@ groups are closed by real evidence:
 
 The gate also calls the strict `harmony_device_gate` validator with the manifest
 directory as evidence root. A final pass therefore requires local relative
-evidence files under the package. URLs, absolute paths, missing artifacts,
-directories, and path traversal fail closed.
+evidence files or explicitly referenced evidence directories under the package.
+URLs, absolute paths, missing artifacts, directory/file type mismatches, and path
+traversal fail closed.
 
 ## Evidence boundary
 
