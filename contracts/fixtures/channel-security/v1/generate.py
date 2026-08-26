@@ -206,7 +206,8 @@ def seal_record(
 def main() -> None:
     # Sanity-check against the project's known AES-GCM vector.
     known = aes_gcm_seal(bytes(32), bytes(12), b"", b"")
-    assert known.hex() == "530f8afbc74536b9a963b4f1c4cb738b", known.hex()
+    if known.hex() != "530f8afbc74536b9a963b4f1c4cb738b":
+        raise RuntimeError(f"AES-GCM known-vector mismatch: {known.hex()}")
 
     session_identifier = "vibescreen-channel-security-fixture-v1"
     session_epoch = 7

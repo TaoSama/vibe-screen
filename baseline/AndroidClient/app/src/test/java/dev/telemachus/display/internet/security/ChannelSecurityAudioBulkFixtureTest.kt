@@ -7,7 +7,9 @@ import dev.telemachus.display.internet.SessionChannel
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,11 +40,7 @@ class ChannelSecurityAudioBulkFixtureTest {
         val device = cipher(PeerRole.DEVICE, session, keys)
 
         for (record in fixture.records) {
-            val channel = when (record.channel) {
-                "AUDIO" -> SessionChannel.AUDIO
-                "BULK" -> SessionChannel.BULK
-                else -> error("unsupported channel ${record.channel}")
-            }
+            val channel = record.sessionChannel()
             val sealed = when (record.sender) {
                 "HOST" -> host.seal(channel, record.plaintext)
                 "DEVICE" -> device.seal(channel, record.plaintext)
@@ -69,11 +67,7 @@ class ChannelSecurityAudioBulkFixtureTest {
         val device = cipher(PeerRole.DEVICE, session, keys)
 
         for (record in fixture.records) {
-            val channel = when (record.channel) {
-                "AUDIO" -> SessionChannel.AUDIO
-                "BULK" -> SessionChannel.BULK
-                else -> error("unsupported channel ${record.channel}")
-            }
+            val channel = record.sessionChannel()
             val opened = when (record.sender) {
                 "HOST" -> device.open(channel, record.record)
                 "DEVICE" -> host.open(channel, record.record)
@@ -112,6 +106,31 @@ class ChannelSecurityAudioBulkFixtureTest {
     }
 
     @Test
+    fun fixtureRecordMetadataMatchesWireLayout() {
+        val session = fixture.session
+        for (record in fixture.records) {
+            val channel = record.sessionChannel().securityWireValue
+            val sender = record.senderWireValue()
+            val expectedHeader = makeHeader(
+                session.sessionIdHash,
+                session.sessionEpoch,
+                session.keyEpoch,
+                sender,
+                channel,
+                record.nonce,
+            )
+
+            assertArrayEquals("header mismatch for ${record.name}", expectedHeader, record.header)
+            assertArrayEquals("nonce mismatch for ${record.name}", makeNonce(channel, record.sequence), record.nonce)
+            assertArrayEquals(
+                "record split mismatch for ${record.name}",
+                record.header + record.ciphertextAndTag,
+                record.record,
+            )
+        }
+    }
+
+    @Test
     fun crossChannelOpenIsRejected() {
         val session = fixture.session
         val keys = TrafficKeyDerivation.initial(
@@ -128,6 +147,17 @@ class ChannelSecurityAudioBulkFixtureTest {
         assertNull(device.open(SessionChannel.BULK, hostAudio.record))
         // A BULK record must not open on the AUDIO channel.
         assertNull(device.open(SessionChannel.AUDIO, hostBulk.record))
+    }
+
+    @Test
+    fun fixtureRecordRejectsUnexpectedChannelAndSenderValues() {
+        val record = fixture.record("host_audio_seq1")
+        assertThrows(IllegalStateException::class.java) {
+            record.copy(channel = "CONTROL").sessionChannel()
+        }
+        assertThrows(IllegalStateException::class.java) {
+            record.copy(sender = "UNKNOWN").senderWireValue()
+        }
     }
 
     private fun cipher(
@@ -175,8 +205,23 @@ class ChannelSecurityAudioBulkFixtureTest {
         val sender: String,
         val sequence: Long,
         val plaintext: ByteArray,
+        val nonce: ByteArray,
+        val header: ByteArray,
+        val ciphertextAndTag: ByteArray,
         val record: ByteArray,
-    )
+    ) {
+        fun sessionChannel(): SessionChannel = when (channel) {
+            "AUDIO" -> SessionChannel.AUDIO
+            "BULK" -> SessionChannel.BULK
+            else -> error("unsupported channel $channel")
+        }
+
+        fun senderWireValue(): Int = when (sender) {
+            "HOST" -> 1
+            "DEVICE" -> 2
+            else -> error("unsupported sender $sender")
+        }
+    }
 
     private data class Fixture(
         val session: FixtureSession,
@@ -218,12 +263,36 @@ class ChannelSecurityAudioBulkFixtureTest {
                     sender = obj.get("sender").asString,
                     sequence = obj.get("sequence").asLong,
                     plaintext = hex(obj.get("plaintext").asString),
+                    nonce = hex(obj.get("nonce").asString),
+                    header = hex(obj.get("header").asString),
+                    ciphertextAndTag = hex(obj.get("ciphertext_and_tag").asString),
                     record = hex(obj.get("record").asString),
                 )
             }
 
             return Fixture(session, records)
         }
+
+        private fun makeNonce(channel: Int, sequence: Long): ByteArray =
+            ByteBuffer.allocate(12).putInt(channel).putLong(sequence).array()
+
+        private fun makeHeader(
+            sessionIdHash: ByteArray,
+            sessionEpoch: Long,
+            keyEpoch: Long,
+            sender: Int,
+            channel: Int,
+            nonce: ByteArray,
+        ): ByteArray = ByteBuffer.allocate(51)
+            .putInt(0x56534352)
+            .put(1)
+            .put(sessionIdHash)
+            .putLong(sessionEpoch)
+            .putLong(keyEpoch)
+            .put(sender.toByte())
+            .put(channel.toByte())
+            .put(nonce)
+            .array()
 
         private fun hex(value: String): ByteArray {
             require(value.length % 2 == 0) { "hex string must have even length" }
@@ -233,3 +302,11 @@ class ChannelSecurityAudioBulkFixtureTest {
         }
     }
 }
+
+private val SessionChannel.securityWireValue: Int
+    get() = when (this) {
+        SessionChannel.CONTROL -> 1
+        SessionChannel.MEDIA -> 2
+        SessionChannel.AUDIO -> 3
+        SessionChannel.BULK -> 4
+    }

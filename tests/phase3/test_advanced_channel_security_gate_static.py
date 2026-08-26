@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 ANDROID_GATE = ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/security/AdvancedChannelSecurityGate.kt"
 SWIFT_GATE = ROOT / "baseline/MacHost/Sources/Phase3/Security/AdvancedChannelSecurityGate.swift"
+FIXTURE_GENERATOR = ROOT / "contracts/fixtures/channel-security/v1/generate.py"
 
 
 def _read(path: Path) -> str:
@@ -56,6 +57,12 @@ class AdvancedChannelSecurityGateStaticTests(unittest.TestCase):
         normalized_swift = _normalized(swift_gate)
         self.assertIn("maximumAudioBacklogBytes:1024*1024", normalized_swift)
         self.assertIn("maximumBulkBacklogBytes:4*1024*1024", normalized_swift)
+
+    def test_channel_security_fixture_generator_uses_unoptimized_self_check(self) -> None:
+        generator = _read(FIXTURE_GENERATOR)
+
+        self.assertNotIn("assert known.hex()", generator)
+        self.assertIn("AES-GCM known-vector mismatch", generator)
 
 
 if __name__ == "__main__":

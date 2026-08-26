@@ -52,6 +52,28 @@ final class ChannelSecurityAudioBulkFixtureTests: XCTestCase {
         return try decoder.decode(Fixture.self, from: Data(contentsOf: url))
     }
 
+    private func fixtureChannel(_ value: String) throws -> PlatformSecurityChannel {
+        switch value {
+        case "AUDIO":
+            return .audio
+        case "BULK":
+            return .bulk
+        default:
+            throw FixtureError.unsupportedChannel(value)
+        }
+    }
+
+    private func senderWireValue(_ value: String) throws -> UInt8 {
+        switch value {
+        case "HOST":
+            return 1
+        case "DEVICE":
+            return 2
+        default:
+            throw FixtureError.unsupportedSender(value)
+        }
+    }
+
     private func hex(_ string: String) -> Data {
         var data = Data(capacity: string.count / 2)
         var index = string.startIndex
@@ -82,7 +104,7 @@ final class ChannelSecurityAudioBulkFixtureTests: XCTestCase {
         )
 
         for record in fixture.records {
-            let channel: PlatformSecurityChannel = record.channel == "AUDIO" ? .audio : .bulk
+            let channel = try fixtureChannel(record.channel)
             let plaintext = hex(record.plaintext)
             let expectedRecord = hex(record.record)
 
@@ -121,7 +143,7 @@ final class ChannelSecurityAudioBulkFixtureTests: XCTestCase {
         )
 
         for record in fixture.records {
-            let channel: PlatformSecurityChannel = record.channel == "AUDIO" ? .audio : .bulk
+            let channel = try fixtureChannel(record.channel)
             let plaintext = hex(record.plaintext)
             let expectedRecord = hex(record.record)
 
@@ -173,6 +195,29 @@ final class ChannelSecurityAudioBulkFixtureTests: XCTestCase {
         XCTAssertEqual(digest.hex, session.sessionIdHash)
     }
 
+    func testFixtureRecordMetadataMatchesWireLayout() throws {
+        let fixture = try loadFixture()
+        let session = fixture.session
+        for record in fixture.records {
+            let channel = try fixtureChannel(record.channel)
+            let nonce = hex(record.nonce)
+            let header = hex(record.header)
+            let ciphertextAndTag = hex(record.ciphertextAndTag)
+            let expectedHeader = makeHeader(
+                sessionIdHash: hex(session.sessionIdHash),
+                sessionEpoch: session.sessionEpoch,
+                keyEpoch: session.keyEpoch,
+                sender: try senderWireValue(record.sender),
+                channel: UInt8(channel.rawValue),
+                nonce: nonce
+            )
+
+            XCTAssertEqual(header, expectedHeader, "header mismatch for \(record.name)")
+            XCTAssertEqual(nonce, makeNonce(channel: channel.rawValue, sequence: record.sequence))
+            XCTAssertEqual(header + ciphertextAndTag, hex(record.record), "record split mismatch for \(record.name)")
+        }
+    }
+
     func testCrossChannelOpenIsRejected() throws {
         let fixture = try loadFixture()
         let session = fixture.session
@@ -193,6 +238,43 @@ final class ChannelSecurityAudioBulkFixtureTests: XCTestCase {
 
         XCTAssertNil(pair.device.openAdvanced(hex(hostAudio.record), channel: .bulk))
         XCTAssertNil(pair.device.openAdvanced(hex(hostBulk.record), channel: .audio))
+    }
+
+    func testFixtureParserRejectsUnexpectedChannelAndSenderValues() throws {
+        XCTAssertThrowsError(try fixtureChannel("CONTROL"))
+        XCTAssertThrowsError(try senderWireValue("UNKNOWN"))
+    }
+
+    private func makeNonce(channel: UInt32, sequence: UInt64) -> Data {
+        var channelValue = channel.bigEndian
+        var sequenceValue = sequence.bigEndian
+        return Data(bytes: &channelValue, count: MemoryLayout<UInt32>.size)
+            + Data(bytes: &sequenceValue, count: MemoryLayout<UInt64>.size)
+    }
+
+    private func makeHeader(
+        sessionIdHash: Data,
+        sessionEpoch: UInt64,
+        keyEpoch: UInt64,
+        sender: UInt8,
+        channel: UInt8,
+        nonce: Data
+    ) -> Data {
+        var magic = UInt32(0x56534352).bigEndian
+        var epoch = sessionEpoch.bigEndian
+        var keyEpochValue = keyEpoch.bigEndian
+        return Data(bytes: &magic, count: MemoryLayout<UInt32>.size)
+            + Data([1])
+            + sessionIdHash
+            + Data(bytes: &epoch, count: MemoryLayout<UInt64>.size)
+            + Data(bytes: &keyEpochValue, count: MemoryLayout<UInt64>.size)
+            + Data([sender, channel])
+            + nonce
+    }
+
+    private enum FixtureError: Error {
+        case unsupportedChannel(String)
+        case unsupportedSender(String)
     }
 }
 
