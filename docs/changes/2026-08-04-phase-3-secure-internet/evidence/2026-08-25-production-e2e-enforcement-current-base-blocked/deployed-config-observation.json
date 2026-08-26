@@ -58,6 +58,6 @@
   "run_id": "phase3-production-e2e-enforcement-20260825-current-base-blocked",
   "schema": "dev.vibescreen.phase3-production-deployed-config-observation/v1",
   "source": {
-    "commit": "74a539c033b67733af72e651f81d6364603a8a07"
+    "commit": "e94d3a051e683d2a7d6f34fd03badd1b4ef264d0"
   }
 }
