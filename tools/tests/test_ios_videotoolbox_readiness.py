@@ -21,6 +21,7 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
     def complete_record(self, runtime_class: str = "physical_iphone") -> dict[str, object]:
         record: dict[str, object] = {field: True for field in BOOLEAN_FIELDS}
         record["runtime_class"] = runtime_class
+        record["artifact_paths"] = ["ios-videotoolbox/device.log"]
         return record
 
     def test_simulator_is_blocked_even_with_decode_observations(self) -> None:
@@ -65,6 +66,19 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertEqual(summary["blocking_reasons"], [])
+        self.assertFalse(summary["can_close_device_family_videotoolbox_gate"])
+
+    def test_artifacts_retained_requires_a_reviewable_artifact_path(self) -> None:
+        record = self.complete_record("physical_iphone")
+        record["artifact_paths"] = []
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "artifact_paths",
+            {item["field"] for item in summary["missing_requirements"]},
+        )
         self.assertFalse(summary["can_close_device_family_videotoolbox_gate"])
 
     def test_physical_device_family_pass_does_not_close_whole_phase5_gate(self) -> None:
@@ -122,10 +136,41 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
         with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
             summarize(record)
 
-    def test_rejects_sensitive_notes(self) -> None:
-        record = self.complete_record()
-        record["notes"] = "operator token was copied into the log"
+        record["artifact_paths"] = ["~/Library/Logs/device.log"]
+        with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
+            summarize(record)
 
+    def test_rejects_sensitive_artifact_filenames(self) -> None:
+        record = self.complete_record()
+        record["artifact_paths"] = ["evidence/private_key_export.bin"]
+
+        with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
+            summarize(record)
+
+    def test_rejects_sensitive_notes(self) -> None:
+        examples = (
+            "operator token was copied into the log",
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+            "api_key=sk-abc12345",
+            "access_token=abcdef12345",
+            "session_id=abcdef12345",
+            "secret_key=abcdef12345",
+        )
+        for example in examples:
+            with self.subTest(example=example):
+                record = self.complete_record()
+                record["notes"] = example
+
+                with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
+                    summarize(record)
+
+    def test_rejects_sensitive_run_id(self) -> None:
+        record = self.complete_record()
+
+        with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
+            summarize(record, run_id="secret-api-key-sk_abc12345")
+
+        record["run_id"] = "Bearer abcdefghijk"
         with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
             summarize(record)
 

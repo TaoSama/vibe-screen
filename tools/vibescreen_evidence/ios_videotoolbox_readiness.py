@@ -38,12 +38,17 @@ SENSITIVE_PATH_PATTERNS = (
     re.compile(r"(?:^|/)Users/[^/\s]+", re.IGNORECASE),
     re.compile(r"(?:^|/)home/[^/\s]+", re.IGNORECASE),
     re.compile(r"[A-Za-z]:\\Users\\[^\\\s]+", re.IGNORECASE),
+    re.compile(r"^(?:~|\$HOME)(?:/|\\)", re.IGNORECASE),
     re.compile(r"Application Support/com\.apple\.TCC", re.IGNORECASE),
 )
 SENSITIVE_TEXT_PATTERNS = (
     *SENSITIVE_PATH_PATTERNS,
     re.compile(r"\b" + "TCC" + r"\.db\b", re.IGNORECASE),
-    re.compile(r"\b(?:credential|token|password|secret|private[_ -]?key)\b", re.IGNORECASE),
+    re.compile(r"\b(?:credential|credentials|password|passwd|token|tokens|secret|secrets)\b", re.IGNORECASE),
+    re.compile(r"\b(?:private|secret)[_-]?key(?:\b|[_\-.])", re.IGNORECASE),
+    re.compile(r"\b(?:api|access|refresh|session)[_-]?(?:key|token|secret|id)(?:\b|[_\-.])", re.IGNORECASE),
+    re.compile(r"\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_]{8,}", re.IGNORECASE),
 )
 
 REQUIRED_FIELDS = (
@@ -126,8 +131,7 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
 
 
 def _reject_sensitive_text(value: str, field: str) -> None:
-    patterns = SENSITIVE_PATH_PATTERNS if field == "artifact_paths" else SENSITIVE_TEXT_PATTERNS
-    if any(pattern.search(value) for pattern in patterns):
+    if any(pattern.search(value) for pattern in SENSITIVE_TEXT_PATTERNS):
         raise IOSVideoToolboxReadinessError(
             f"{field} must contain sanitized public evidence text"
         )
@@ -157,6 +161,7 @@ def _optional_run_id(record: dict[str, Any]) -> str | None:
     if value is None:
         return None
     if isinstance(value, str) and value.strip():
+        _reject_sensitive_text(value, "run_id")
         return value
     raise IOSVideoToolboxReadinessError("run_id must be a non-empty string")
 
@@ -165,6 +170,7 @@ def _explicit_run_id(value: str | None) -> str | None:
     if value is None:
         return None
     if isinstance(value, str) and value.strip():
+        _reject_sensitive_text(value, "run_id")
         return value
     raise IOSVideoToolboxReadinessError("run_id must be a non-empty string")
 
@@ -181,12 +187,22 @@ def _runtime_blocking_reason(runtime_class: str) -> list[dict[str, str]]:
 
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     runtime_class = _runtime_class(record)
+    artifact_paths = _public_string_list(record, "artifact_paths")
+    blocking_notes = _public_string_list(record, "blocking_notes")
+    notes = _string_value(record, "notes")
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
         if not field_values[field]
     ]
+    if field_values["artifacts_retained"] and not artifact_paths:
+        missing.append(
+            {
+                "field": "artifact_paths",
+                "requirement": "retain at least one sanitized relative artifact path for reviewer inspection",
+            }
+        )
     blocking_reasons = _runtime_blocking_reason(runtime_class) + [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
@@ -218,9 +234,9 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "observations": field_values,
         "missing_requirements": missing,
         "blocking_reasons": blocking_reasons,
-        "artifact_paths": _public_string_list(record, "artifact_paths"),
-        "blocking_notes": _public_string_list(record, "blocking_notes"),
-        "notes": _string_value(record, "notes"),
+        "artifact_paths": artifact_paths,
+        "blocking_notes": blocking_notes,
+        "notes": notes,
     }
 
 
