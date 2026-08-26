@@ -81,7 +81,12 @@ class ToolProbe:
     error: str | None = None
 
 
-def _run(command: Sequence[str], *, timeout_seconds: float = 15.0) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: Sequence[str],
+    *,
+    timeout_seconds: float = 15.0,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             list(command),
@@ -89,6 +94,7 @@ def _run(command: Sequence[str], *, timeout_seconds: float = 15.0) -> subprocess
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            cwd=cwd,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         return subprocess.CompletedProcess(list(command), 127, "", str(error))
@@ -326,7 +332,7 @@ def _blocked_codec(codec: str, artifact: str) -> dict[str, Any]:
 
 def _repository_with_tree(repo: Path) -> dict[str, Any]:
     state = repository_state(repo)
-    result = _run(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0)
+    result = _run(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0, cwd=repo)
     state["tree"] = result.stdout.strip() if result.returncode == 0 else "0" * 40
     return state
 

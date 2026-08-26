@@ -143,6 +143,22 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
         warnings = harmony_avcodec_preflight.validate_manifest(document, allow_blocked=True)
         self.assertTrue(warnings)
 
+    def test_repository_tree_is_read_from_requested_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name) / "repo"
+            with (
+                patch.object(harmony_avcodec_preflight, "repository_state") as repository_state,
+                patch.object(harmony_avcodec_preflight, "_run") as run,
+            ):
+                repository_state.return_value = {"revision": "a" * 40, "dirty": False, "status_porcelain": []}
+                run.return_value.stdout = "b" * 40
+                run.return_value.returncode = 0
+
+                state = harmony_avcodec_preflight._repository_with_tree(repo)
+
+        self.assertEqual("b" * 40, state["tree"])
+        run.assert_called_once_with(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0, cwd=repo)
+
     def test_collector_stays_blocked_until_real_codec_artifacts_are_recorded(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
