@@ -533,7 +533,7 @@ Input Reader State:
                 "device": "pacific",
                 "os_release": "16",
                 "api_level": "36",
-                "serialno": "EP0110PZ0B9110300B",
+                "serialno": "AB0123CD456789EF",
                 "fingerprint": "test",
                 "wm_size": "Physical size: 1264x2800",
                 "wm_density": "Physical density: 560",
@@ -556,7 +556,7 @@ Input Reader State:
     def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:
         summary = {
             "status": "blocked_device_coordination_lock",
-            "requested_serial": "EP0110PZ0B9110300B",
+            "requested_serial": "AB0123CD456789EF",
             "device_identity": {},
             "existing_locks": [{"path": "/tmp/vibe-screen-device-android.lock", "detail": "present"}],
             "stylus_candidates": [],
@@ -564,7 +564,7 @@ Input Reader State:
 
         readme = android_stylus_acceptance.render_readme(summary)
 
-        self.assertIn("ADB was not run. Requested serial: EP0110PZ0B9110300B.", readme)
+        self.assertIn("ADB was not run. Requested serial: AB0123CD456789EF.", readme)
         self.assertIn("## Device coordination locks", readme)
         self.assertIn("/tmp/vibe-screen-device-android.lock", readme)
         self.assertIn("## Stylus input devices", readme)
@@ -634,6 +634,22 @@ class HarmonyDeviceGateTests(unittest.TestCase):
                 artifact.parent.mkdir(parents=True, exist_ok=True)
                 gate_id = gate["id"]
                 artifact.write_text(f"{gate_id} evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
+
+    def test_harmony_device_manifest_accepts_explicit_directory_evidence(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["gates"][0]["evidence"] = ["screenshots/"]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_root = Path(temporary_directory)
+            for gate in manifest["gates"]:
+                for reference in gate["evidence"]:
+                    artifact = evidence_root / reference
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    if reference.endswith("/"):
+                        artifact.mkdir(exist_ok=True)
+                    else:
+                        artifact.write_text(f"{gate['id']} evidence\n", encoding="utf-8")
 
             self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
 
@@ -1255,7 +1271,7 @@ class PrepareReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             artifacts = root / "artifacts"
-            self.write_artifacts(artifacts, archive_content=b"/Users/release-runner/private/file")
+            self.write_artifacts(artifacts, archive_content=b"/home/release-runner/private/file")
 
             result = subprocess.run(
                 self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
