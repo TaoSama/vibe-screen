@@ -620,7 +620,7 @@ Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
 partition lists, modify TCC.db, or request/override macOS privacy authorization.
-It only uses the configured codesign identity and reads TCC.db in read-only mode.
+It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
 
 
@@ -647,7 +647,7 @@ and invalidates macOS Screen Recording/Accessibility grants.
 Safety
 ------
 This blocked operation did not start the Host, run Android instrumentation,
-modify Keychain, modify TCC.db, clear Android app data, or change ADB state. This
+modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
 is a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi
 result.
 System permission path: {SYSTEM_SETTINGS_PATH}
@@ -1039,7 +1039,7 @@ Keychain and TCC handling
 -------------------------
 This tool does not reset Keychain, import certificates, request passwords, update
 partition lists, modify TCC.db, or request/override macOS privacy authorization.
-It only uses the configured codesign identity and reads TCC.db in read-only mode.
+It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
     document = build_readiness_document(inspection, listener, entitlements)

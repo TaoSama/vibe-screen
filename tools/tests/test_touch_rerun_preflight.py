@@ -24,6 +24,9 @@ from vibescreen_evidence.touch_rerun_preflight import (
 )
 
 
+PRIVACY_DB_FILENAME = "privacy.sqlite"
+
+
 class TouchRerunPreflightTests(unittest.TestCase):
     def write_tcc_db(self, path: Path, rows: list[tuple[str, str, int, int, int, int]]) -> None:
         connection = sqlite3.connect(path)
@@ -45,7 +48,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
     def test_tcc_collection_marks_screen_and_accessibility_authorized(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            db_path = Path(directory) / "TCC.db"
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
             self.write_tcc_db(
                 db_path,
                 [
@@ -63,8 +66,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
     def test_tcc_collection_merges_user_and_system_sources(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            user_db = Path(directory) / "user-TCC.db"
-            system_db = Path(directory) / "system-TCC.db"
+            user_db = Path(directory) / "user-privacy.sqlite"
+            system_db = Path(directory) / "system-privacy.sqlite"
             self.write_tcc_db(
                 user_db,
                 [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 0, 4, 10)],
@@ -86,7 +89,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
     def test_tcc_collection_records_missing_databases_without_failing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             missing_db = Path(directory) / "missing.db"
-            system_db = Path(directory) / "system-TCC.db"
+            system_db = Path(directory) / "system-privacy.sqlite"
             self.write_tcc_db(
                 system_db,
                 [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 20)],
@@ -99,7 +102,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
     def test_tcc_query_times_out_instead_of_hanging(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            db_path = Path(directory) / "TCC.db"
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
             db_path.write_bytes(b"placeholder")
             queues = []
 
@@ -158,7 +161,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
     def test_tcc_query_reports_exited_without_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            db_path = Path(directory) / "TCC.db"
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
             db_path.write_bytes(b"placeholder")
 
             class FakeQueue:
@@ -205,7 +208,9 @@ class TouchRerunPreflightTests(unittest.TestCase):
             "vibescreen_evidence.touch_rerun_preflight._query_tcc_db_direct",
             side_effect=RuntimeError("simulated worker failure"),
         ):
-            touch_rerun_preflight._query_tcc_db_worker(queue_instance, Path("TCC.db"), "dev.telemachus.display")
+            touch_rerun_preflight._query_tcc_db_worker(
+                queue_instance, Path(PRIVACY_DB_FILENAME), "dev.telemachus.display"
+            )
 
         queue_instance.put.assert_called_once()
         status, payload = queue_instance.put.call_args.args[0]
@@ -271,7 +276,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
         ):
             document = touch_rerun_preflight.build_document(
                 bundle_path=Path("/Applications/Vibe Screen.app"),
-                tcc_dbs=[Path("/tmp/TCC.db")],
+                tcc_dbs=[Path("/tmp") / PRIVACY_DB_FILENAME],
                 serial="TEST_DEVICE_SERIAL",
                 adb_path="adb",
                 adb_timeout=15.0,

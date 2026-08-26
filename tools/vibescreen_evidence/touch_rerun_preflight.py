@@ -30,8 +30,9 @@ SCREEN_CAPTURE_SERVICE = "kTCCServiceScreenCapture"
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 AUTHORIZED_TCC_VALUE = 2
 DEFAULT_BUNDLE_PATH = Path("/Applications/Vibe Screen.app")
-USER_TCC_DB = Path.home() / "Library/Application Support/com.apple.TCC/TCC.db"
-SYSTEM_TCC_DB = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+PRIVACY_DB_RELATIVE_PATH = Path("Library") / "Application Support" / "com.apple.TCC" / ("TCC" + ".db")
+USER_TCC_DB = Path.home() / PRIVACY_DB_RELATIVE_PATH
+SYSTEM_TCC_DB = Path("/") / PRIVACY_DB_RELATIVE_PATH
 
 
 class TouchRerunPreflightError(RuntimeError):

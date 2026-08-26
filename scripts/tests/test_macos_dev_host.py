@@ -18,6 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import macos_dev_host
 
 
+PRIVACY_DB_FILENAME = "privacy.sqlite"
+
+
 class MacOSDevHostMetadataTests(unittest.TestCase):
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
         fields = macos_dev_host.parse_codesign_details(
@@ -202,7 +205,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="-",
-                tcc_db=Path("TCC.db"),
+                tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
                 source_root=Path("."),
                 allow_source_mismatch=False,
@@ -229,7 +232,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="Vibe Screen Dev",
-                tcc_db=Path("TCC.db"),
+                tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
                 source_root=Path("."),
                 allow_source_mismatch=False,
@@ -250,7 +253,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     macos_dev_host,
                     "query_tcc_rows",
                     return_value=macos_dev_host.PermissionStatus(
-                        database_path=Path("TCC.db"),
+                        database_path=Path(PRIVACY_DB_FILENAME),
                         readable=True,
                         rows=(
                             macos_dev_host.TCCRow(
@@ -278,7 +281,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="Missing Dev",
-                tcc_db=Path("TCC.db"),
+                tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
                 source_root=Path("."),
                 allow_source_mismatch=False,
@@ -298,7 +301,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     macos_dev_host,
                     "query_tcc_rows",
                     return_value=macos_dev_host.PermissionStatus(
-                        database_path=Path("TCC.db"),
+                        database_path=Path(PRIVACY_DB_FILENAME),
                         readable=True,
                         rows=(
                             macos_dev_host.TCCRow(
@@ -400,7 +403,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 output_dir=Path("out"),
                 sign_identity="Vibe Screen Dev",
-                tcc_db=Path("TCC.db"),
+                tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
             )
             with (
@@ -749,7 +752,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
     def test_query_tcc_rows_uses_read_only_database_and_permission_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            database_path = Path(temporary_directory) / "TCC.db"
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
             self.write_tcc_database(
                 database_path,
                 [
@@ -794,7 +797,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             status = macos_dev_host.query_tcc_rows(
                 "dev.telemachus.display",
-                Path(temporary_directory) / "missing-TCC.db",
+                Path(temporary_directory) / "missing-privacy.sqlite",
             )
 
         self.assertFalse(status.readable)
@@ -858,7 +861,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
     def test_query_tcc_database_accepts_schema_without_optional_columns(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            database_path = Path(temporary_directory) / "TCC.db"
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
             connection = sqlite3.connect(database_path)
             try:
                 connection.execute(
@@ -889,7 +892,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
     def test_query_tcc_database_times_out_instead_of_hanging(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            database_path = Path(temporary_directory) / "TCC.db"
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
             database_path.write_bytes(b"placeholder")
             queues = []
 
@@ -951,7 +954,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
     def test_query_tcc_database_reports_exited_without_result(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            database_path = Path(temporary_directory) / "TCC.db"
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
             database_path.write_bytes(b"placeholder")
 
             class FakeQueue:
@@ -1002,7 +1005,9 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             "_query_tcc_database_direct",
             side_effect=RuntimeError("simulated worker failure"),
         ):
-            macos_dev_host._query_tcc_database_worker(queue_instance, "dev.telemachus.display", Path("TCC.db"))
+            macos_dev_host._query_tcc_database_worker(
+                queue_instance, "dev.telemachus.display", Path(PRIVACY_DB_FILENAME)
+            )
 
         queue_instance.put.assert_called_once()
         status, payload = queue_instance.put.call_args.args[0]
