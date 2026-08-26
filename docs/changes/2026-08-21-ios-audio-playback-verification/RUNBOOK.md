@@ -23,12 +23,25 @@ instantiate `AVAudioSession` or prove audible output.
 
 ## App playback verifier
 
+<<<<<<< HEAD
 With full Xcode and an available iOS Simulator or signed device, run:
 
 ```bash
 xcodebuild -project apps/ios/VibeScreen.xcodeproj \
   -scheme VibeScreen \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+=======
+With full Xcode and an available iOS Simulator or signed device, choose a
+destination and run the focused UI test:
+
+```bash
+IOS_DESTINATION="platform=iOS Simulator,name=<installed-iPhone-simulator>"
+# Signed device example: IOS_DESTINATION="platform=iOS,id=<device-udid>"
+
+xcodebuild -project apps/ios/VibeScreen.xcodeproj \
+  -scheme VibeScreen \
+  -destination "$IOS_DESTINATION" \
+>>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
   test \
   -only-testing:VibeScreenAppTests/VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts
 ```
@@ -36,15 +49,36 @@ xcodebuild -project apps/ios/VibeScreen.xcodeproj \
 The test launches `VibeScreen` with `--audio-playback-self-test`. The app
 then configures playback-only `AVAudioSession`, starts `AVAudioEngine`,
 schedules synthetic PCM S16LE buffers through `AVAudioPlayerNode`, fills the
+<<<<<<< HEAD
 bounded queue until an overrun/drop is observed, reports the queue counters,
 stops, restarts with a newer config epoch, and displays a single result line:
+=======
+bounded queue until an overrun/drop is observed, waits until played-buffer and
+queue-empty counters advance, stops, restarts with a newer config epoch, waits
+for playback completion again, and displays a running line before replacing it
+with a terminal result line. If playback completion stalls, the app-side
+15-second timeout reports a terminal `FAIL` result instead of leaving only the
+running state:
+
+```text
+AUDIO_PLAYBACK_SELF_TEST=RUNNING
+```
+>>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 
 ```text
 AUDIO_PLAYBACK_SELF_TEST=PASS scheduled=<n> played=<n> queued=<n> queue_empty=<n> late_completions=<n> overruns=<n> stops=<n>
 ```
 
+<<<<<<< HEAD
 A failing result, launch timeout, missing counter, or queue-limit miss keeps the
 playback-path verifier open.
+=======
+A terminal `FAIL` result, launch timeout, missing terminal result, missing
+counter, queue-limit miss, zero played buffers, or missing queue-empty
+transition keeps the playback-path verifier open. The `late_completions` field
+is reported as a diagnostic; controlled late-completion accounting is covered
+by the offline queue tests.
+>>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 
 ## Audible iPhone/iPad gate
 

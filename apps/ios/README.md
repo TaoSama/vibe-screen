@@ -7,10 +7,6 @@ The client is an early developer release. Its core modules build and self-test
 on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
 pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
 separate gates; do not treat Simulator or Android records as that evidence.
-The hardware VideoToolbox gate is owned by the fail-closed
-`ios-videotoolbox-readiness` evidence helper: Simulator and unsigned archive
-records can be summarized for readiness tracking, but only real physical iPhone
-and iPad records can produce family-level pass summaries.
 The trusted-LAN Core client still uses the legacy plaintext compatibility path:
 it connects to the baseline MacHost on TCP port `54321`, completes authenticated
 `SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
@@ -77,12 +73,14 @@ xcodebuild -project apps/ios/VibeScreen.xcodeproj \
 The verifier launches the app with `--audio-playback-self-test`, builds a
 synthetic PCM S16LE stream, starts playback-only AVAudioSession/AVAudioEngine,
 schedules buffers through AVAudioPlayerNode, observes the bounded playback queue,
-forces an overrun/drop, reports queue-empty and late-completion counters, stops,
-restarts on a newer config epoch, and reports a
-single `AUDIO_PLAYBACK_SELF_TEST=PASS` line in the UI. This is an executable
-playback-path check, not audible-device evidence; an iPhone/iPad run with
-external audible confirmation is still required before closing the Phase 5 audio
-gate.
+forces an overrun/drop, waits for played-buffer and queue-empty counters to
+advance before stopping, restarts on a newer config epoch, and first exposes
+an `AUDIO_PLAYBACK_SELF_TEST=RUNNING` UI line before replacing it with a
+terminal `AUDIO_PLAYBACK_SELF_TEST=PASS` or `AUDIO_PLAYBACK_SELF_TEST=FAIL`
+line; a 15-second app-side timeout turns stalled playback completion into a
+terminal `FAIL` result. This is an executable playback-path check, not
+audible-device evidence; an iPhone/iPad run with external audible confirmation
+is still required before closing the Phase 5 audio gate.
 
 Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 
@@ -137,32 +135,6 @@ Use `--action simulator-build`, `--action simulator-test`, or
 `--action archive` to run one gate. The archive is written to
 `apps/ios/.build/xcode/VibeScreen.xcarchive` and is intentionally unsigned; it
 is build evidence, not an installable signed release.
-
-Record hardware VideoToolbox readiness separately from those build gates:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
-  vibescreen_evidence.ios_videotoolbox_readiness \
-  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
-  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
-  --evidence-dir "$EVIDENCE_DIR"
-
-# Strict gate wrapper; exits nonzero for blocked or insufficient summaries:
-make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
-```
-
-Set `runtime_class` in the observations file to exactly one of `simulator`,
-`unsigned_archive`, `physical_iphone`, or `physical_ipad`. The first two are
-readiness-tracking records only and cannot make the strict gate pass. Physical
-family summaries require existing retained iOS VideoToolbox artifacts under the
-evidence directory.
-blocked by construction. A physical-device family summary requires signed app
-installation, real device identity, H.264 and HEVC parameter-set evidence,
-VideoToolbox session creation, output frames, hardware-path evidence,
-stream/config epoch telemetry, thermal and power state, and retained artifacts.
-A single family-level pass still does not close the README Phase 5 hardware
-VideoToolbox gate; reviewed passing summaries are required for both iPhone and
-iPad hardware.
 
 For a physical device, open `apps/ios/VibeScreen.xcodeproj`, select the
 `VibeScreen` target, choose your development team, replace
@@ -225,8 +197,7 @@ currently no key migration step.
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
   `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
-  `AllowedHosts`, and `DeniedHosts`. Invalid types fail closed; `DeniedHosts`
-  wins after allowlist merging.
+  `AllowedHosts`. Invalid types fail closed.
 
 ## Advanced feature use
 
@@ -266,8 +237,8 @@ currently no key migration step.
   unsupported or policy-denied features intentionally stay off.
 - **Audio silent:** only PCM S16LE is accepted; verify sample rate, channels,
   frame count, session epoch, config epoch, the playback self-test result,
-  queued/queue-empty/late-completion/overrun counters, and iPhone/iPad output
-  route.
+  played/queued/queue-empty/overrun counters, any late-completion diagnostics,
+  and iPhone/iPad output route.
 - **File rejected:** verify basename safety, declared size, negotiated chunk
   limit, sequential offsets, and chunk/final SHA-256.
 
@@ -297,7 +268,6 @@ currently no key migration step.
 The baseline MacHost compatibility boundary now admits the iOS trusted-LAN
 client and composes it with the existing Protocol v1 main session. This closes
 the basic port `54321` interoperability gap only. Advanced host integrations
-are owned by the phase5-host-advanced-adapters-gate readiness contract and
 must still preserve these client semantics:
 
 - Hello plus explicit negotiated capabilities/resource limits;
