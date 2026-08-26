@@ -766,6 +766,58 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   check(notices.includes('no third-party runtime') && notices.includes('not compiled into or distributed'),
     'entry/src/main/resources/rawfile/third_party_notices.md: runtime/build boundary notice missing');
 
+  const readRepositoryFile = (relative) => {
+    try { return readFileSync(resolve(repositoryRoot, relative), 'utf8'); }
+    catch (error) { fail(relative + ': ' + error.message); return ''; }
+  };
+  const staleControllerGapPatterns = [
+    /does\s+not\s+advertise[^.\n]*(CAPABILITY_CONTROLLER|controller\s+capability|that\s+capability)/i,
+    /no\s+`?ControllerEvent`?\s+encoder/i,
+    /lacks?[^.\n]*`?ControllerEvent`?[^.\n]*encoder/i,
+    /no\s+controller\s+lifecycle/i,
+    /no\s+platform\s+routing/i,
+    /Harmony\s+does\s+not\s+implement\s+that\s+rule/i
+  ];
+  const controllerParagraphs = (source) => source.split(/\n\s*\n/)
+    .filter((paragraph) => /CAPABILITY_CONTROLLER|ControllerEvent|controller-specific input|controller portable/i.test(paragraph));
+  const controllerClosureParagraph = (relative, source) => {
+    const paragraph = controllerParagraphs(source).find((candidate) =>
+      candidate.includes('CAPABILITY_CONTROLLER') && candidate.includes('ControllerEvent')) ?? '';
+    check(paragraph.length > 0,
+      relative + ': Phase 4 controller portable boundary must mention CAPABILITY_CONTROLLER and ControllerEvent');
+    return paragraph;
+  };
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TEST.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const controllerScope = controllerParagraphs(source).join('\n\n');
+    const closureParagraph = controllerClosureParagraph(relative, source);
+    check(!staleControllerGapPatterns.some((pattern) => pattern.test(controllerScope)),
+      relative + ': Phase 4 controller docs must not describe the pre-closure controller gap');
+    check(['CAPABILITY_CONTROLLER', 'ControllerEvent', 'InputAck', 'lifecycle', 'all-zero neutral', 'DISCONNECTED']
+      .every((token) => closureParagraph.includes(token)),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+  }
+  for (const relative of ['README.md', 'apps/harmony/README.md',
+    'docs/changes/2026-08-04-phase-4-harmony/PRD.md',
+    'docs/changes/2026-08-04-phase-4-harmony/TECH.md']) {
+    const source = relative === 'apps/harmony/README.md' ? read('README.md') : readRepositoryFile(relative);
+    const normalized = source.toLowerCase();
+    check(normalized.includes('portable') && normalized.includes('source') &&
+      normalized.includes('advertises') && normalized.includes('capability'),
+    relative + ': Phase 4 controller docs must record the portable production-source closure');
+    check((source.includes('DevEco/API-checker') || source.includes('DevEco SDK')) &&
+      source.includes('HAP') && source.includes('Host interoperability') && source.includes('MatePad') &&
+      (/device\s+evidence|real-device\s+behavior|device\s+acceptance|device\s+result/i).test(source),
+      relative + ': Phase 4 controller docs must keep DevEco/HAP/MatePad gates explicit');
+  }
+  const matePadRunbook = readRepositoryFile('docs/runbook/harmony-matepad-mini.md');
+  check(matePadRunbook.includes('controller input') && matePadRunbook.includes('CONNECTED/STATE/DISCONNECTED') &&
+    matePadRunbook.includes('all-zero neutral release'),
+  'docs/runbook/harmony-matepad-mini.md: device matrix must include controller lifecycle and neutral-release checks');
+
   const makeResult = spawnSync('make', ['-n', '--no-print-directory', '-f', resolve(root, 'Makefile'), 'release',
     'HVIGOR=__HVIGOR__', 'OHPM=__OHPM__'], { cwd: root, encoding: 'utf8' });
   if (makeResult.error !== undefined) fail(`Makefile: unable to inspect release target: ${makeResult.error.message}`);
