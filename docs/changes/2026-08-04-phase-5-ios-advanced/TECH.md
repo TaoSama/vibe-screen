@@ -145,6 +145,13 @@ Negotiation rules:
 - PCM S16LE audio validates format and exact frame bytes, rejects old session
   or config epochs, reorders a bounded packet window, and feeds a bounded
   `AVAudioPlayerNode` schedule through playback-only `AVAudioSession`.
+  The queue policy is shared between the SwiftPM-verifiable core self-test and
+  the AVFoundation app adapter: it records scheduled, played, queue-empty,
+  late-completion, overrun/drop, and stop/restart counters without letting
+  audio backlog block control, video, or bulk delivery. The app exposes a
+  launch-argument playback verifier for Simulator or signed-device runs, but
+  audible output still requires separate iPhone/iPad speaker or route-capture
+  evidence.
 - Clipboard data is read or written only inside explicit button handlers.
   Change IDs suppress loops; MIME, byte limit, and SHA-256 are checked before
   system pasteboard writes.
