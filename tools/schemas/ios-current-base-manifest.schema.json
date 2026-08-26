@@ -19,6 +19,7 @@
     "build_evidence",
     "signing_readiness_gate",
     "signing",
+    "videotoolbox_readiness_gates",
     "devices",
     "gates",
     "android_evidence_used_for_ios_gates",
@@ -153,6 +154,49 @@
         "device_udid_hashes_recorded": {"type": "boolean"},
         "entitlements_recorded": {"type": "boolean"},
         "signed_archive_sha256": {"type": ["string", "null"]}
+      }
+    },
+    "videotoolbox_readiness_gates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "kind",
+          "profile",
+          "runtime_class",
+          "verdict",
+          "can_close_device_family_videotoolbox_gate",
+          "can_close_phase5_hardware_videotoolbox_gate",
+          "artifact_paths",
+          "artifact_checks",
+          "blocking_reasons"
+        ],
+        "properties": {
+          "schema_version": {"const": "vibescreen.evidence/v1"},
+          "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+          "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+          "runtime_class": {"enum": ["physical_iphone", "physical_ipad"]},
+          "verdict": {"enum": ["pass", "blocked", "insufficient"]},
+          "can_close_device_family_videotoolbox_gate": {"type": "boolean"},
+          "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+          "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "artifact_checks": {"type": "array"},
+          "blocking_reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "requirement"],
+              "properties": {
+                "field": {"type": "string", "minLength": 1},
+                "requirement": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
       }
     },
     "devices": {

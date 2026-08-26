@@ -1,6 +1,46 @@
 import Foundation
 import VibeScreenProtocol
 
+public struct ManagedRestrictionResult: Equatable, Sendable {
+    public static let clipboard = "clipboard"
+    public static let fileTransfer = "file_transfer"
+    public static let audio = "audio"
+    public static let wake = "wake"
+    public static let customGestures = "custom_gestures"
+    public static let hostActions = "host_actions"
+    public static let maximumFileBytes = "maximum_file_bytes"
+    public static let allowedHosts = "allowed_hosts"
+    public static let deniedHosts = "denied_hosts"
+
+    public let restriction: String
+    public let allowed: Bool
+    public let source: String
+    public let reason: String
+
+    public var protocolResult: VSManagedRestrictionResult {
+        var result = VSManagedRestrictionResult()
+        result.restriction = restriction
+        result.allowed = allowed
+        result.source = source
+        result.reason = reason
+        return result
+    }
+
+    public init(restriction: String, allowed: Bool, source: String, reason: String) {
+        self.restriction = restriction
+        self.allowed = allowed
+        self.source = source
+        self.reason = reason
+    }
+
+    init(protocolResult: VSManagedRestrictionResult) {
+        self.restriction = protocolResult.restriction
+        self.allowed = protocolResult.allowed
+        self.source = protocolResult.source
+        self.reason = protocolResult.reason
+    }
+}
+
 public struct ManagedPolicy: Equatable, Sendable {
     public static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
 
@@ -14,6 +54,8 @@ public struct ManagedPolicy: Equatable, Sendable {
     public let maximumFileBytes: UInt64
     public let allowedHosts: Set<String>
     public let allowedHostsRestricted: Bool
+    public let deniedHosts: Set<String>
+    public let restrictionResults: [ManagedRestrictionResult]
 
     public static let unmanaged = ManagedPolicy(
         isManaged: false,
@@ -25,7 +67,48 @@ public struct ManagedPolicy: Equatable, Sendable {
         hostActionsAllowed: true,
         maximumFileBytes: defaultMaximumFileBytes,
         allowedHosts: [],
-        allowedHostsRestricted: false
+        allowedHostsRestricted: false,
+        restrictionResults: Self.results(
+            source: "unmanaged",
+            reason: "No local managed configuration is present.",
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: defaultMaximumFileBytes,
+            allowedHostsRestricted: false,
+            allowedHosts: [],
+            deniedHosts: []
+        )
+    )
+
+    public static let failClosed = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: false,
+        fileTransferAllowed: false,
+        audioAllowed: false,
+        wakeAllowed: false,
+        customGesturesAllowed: false,
+        hostActionsAllowed: false,
+        maximumFileBytes: 0,
+        allowedHosts: [],
+        allowedHostsRestricted: true,
+        restrictionResults: Self.results(
+            source: "local_parse_error",
+            reason: "Invalid local managed configuration; all product restrictions deny by default.",
+            clipboardAllowed: false,
+            fileTransferAllowed: false,
+            audioAllowed: false,
+            wakeAllowed: false,
+            customGesturesAllowed: false,
+            hostActionsAllowed: false,
+            maximumFileBytes: 0,
+            allowedHostsRestricted: true,
+            allowedHosts: [],
+            deniedHosts: []
+        )
     )
 
     public init(
@@ -38,19 +121,39 @@ public struct ManagedPolicy: Equatable, Sendable {
         hostActionsAllowed: Bool,
         maximumFileBytes: UInt64,
         allowedHosts: Set<String>,
-        allowedHostsRestricted: Bool? = nil
+        allowedHostsRestricted: Bool? = nil,
+        deniedHosts: Set<String> = [],
+        restrictionResults: [ManagedRestrictionResult]? = nil
     ) {
         let normalizedHosts = Self.normalizedHosts(allowedHosts)
+        let normalizedDeniedHosts = Self.normalizedHosts(deniedHosts)
+        let restricted = allowedHostsRestricted ?? !normalizedHosts.isEmpty
         self.isManaged = isManaged
         self.clipboardAllowed = clipboardAllowed
-        self.fileTransferAllowed = fileTransferAllowed
+        let effectiveFileTransferAllowed = fileTransferAllowed && maximumFileBytes > 0
+        self.fileTransferAllowed = effectiveFileTransferAllowed
         self.audioAllowed = audioAllowed
         self.wakeAllowed = wakeAllowed
         self.customGesturesAllowed = customGesturesAllowed
         self.hostActionsAllowed = hostActionsAllowed
         self.maximumFileBytes = maximumFileBytes
         self.allowedHosts = normalizedHosts
-        self.allowedHostsRestricted = allowedHostsRestricted ?? !normalizedHosts.isEmpty
+        self.allowedHostsRestricted = restricted
+        self.deniedHosts = normalizedDeniedHosts
+        self.restrictionResults = restrictionResults ?? Self.results(
+            source: isManaged ? "managed_configuration" : "unmanaged",
+            reason: isManaged ? "Local managed configuration result." : "No local managed configuration is present.",
+            clipboardAllowed: clipboardAllowed,
+            fileTransferAllowed: effectiveFileTransferAllowed,
+            audioAllowed: audioAllowed,
+            wakeAllowed: wakeAllowed,
+            customGesturesAllowed: customGesturesAllowed,
+            hostActionsAllowed: hostActionsAllowed,
+            maximumFileBytes: maximumFileBytes,
+            allowedHostsRestricted: restricted,
+            allowedHosts: normalizedHosts,
+            deniedHosts: normalizedDeniedHosts
+        )
     }
 
     public init(managedConfiguration: [String: Any]?) throws {
@@ -81,6 +184,15 @@ public struct ManagedPolicy: Equatable, Sendable {
         } else {
             hosts = []
         }
+        let deniedHosts: Set<String>
+        if let value = configuration[Keys.deniedHosts] {
+            guard let strings = value as? [String] else {
+                throw ManagedPolicyError.invalidType(Keys.deniedHosts)
+            }
+            deniedHosts = Set(strings.filter { !Self.isBlankHost($0) })
+        } else {
+            deniedHosts = []
+        }
         self.init(
             isManaged: true,
             clipboardAllowed: try requiredBool(Keys.clipboardAllowed),
@@ -90,7 +202,8 @@ public struct ManagedPolicy: Equatable, Sendable {
             customGesturesAllowed: try requiredBool(Keys.customGesturesAllowed),
             hostActionsAllowed: try requiredBool(Keys.hostActionsAllowed),
             maximumFileBytes: maximum,
-            allowedHosts: hosts
+            allowedHosts: hosts,
+            deniedHosts: deniedHosts
         )
     }
 
@@ -108,6 +221,8 @@ public struct ManagedPolicy: Equatable, Sendable {
             return
         }
         let hosts = Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
+        let deniedHosts = Set(remoteStatus.deniedHosts.filter { !Self.isBlankHost($0) })
+        let results = remoteStatus.restrictionResults.map(ManagedRestrictionResult.init(protocolResult:))
         self.init(
             isManaged: true,
             clipboardAllowed: remoteStatus.clipboardAllowed,
@@ -118,7 +233,9 @@ public struct ManagedPolicy: Equatable, Sendable {
             hostActionsAllowed: remoteStatus.hostActionsAllowed,
             maximumFileBytes: remoteStatus.maximumFileBytes,
             allowedHosts: hosts,
-            allowedHostsRestricted: remoteStatus.allowedHostsRestricted || !hosts.isEmpty
+            allowedHostsRestricted: remoteStatus.allowedHostsRestricted || !hosts.isEmpty,
+            deniedHosts: deniedHosts,
+            restrictionResults: results.isEmpty ? nil : results
         )
     }
 
@@ -134,6 +251,8 @@ public struct ManagedPolicy: Equatable, Sendable {
         status.maximumFileBytes = maximumFileBytes
         status.allowedHosts = allowedHosts.sorted()
         status.allowedHostsRestricted = allowedHostsRestricted
+        status.restrictionResults = restrictionResults.map(\.protocolResult)
+        status.deniedHosts = deniedHosts.sorted()
         return status
     }
 
@@ -150,27 +269,141 @@ public struct ManagedPolicy: Equatable, Sendable {
         case (false, true): hosts = remote.allowedHosts
         case (false, false): hosts = []
         }
+        let effectiveDeniedHosts = self.deniedHosts.union(remote.deniedHosts)
+        let effectiveHosts = hosts.subtracting(effectiveDeniedHosts)
+        let clipboard = clipboardAllowed && remote.clipboardAllowed
+        let audio = audioAllowed && remote.audioAllowed
+        let wake = wakeAllowed && remote.wakeAllowed
+        let gestures = customGesturesAllowed && remote.customGesturesAllowed
+        let hostActions = hostActionsAllowed && remote.hostActionsAllowed
+        let maximum = min(maximumFileBytes, remote.maximumFileBytes)
+        let fileTransfer = fileTransferAllowed && remote.fileTransferAllowed && maximum > 0
         return ManagedPolicy(
-            isManaged: isManaged || remote.isManaged,
-            clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
-            fileTransferAllowed: fileTransferAllowed && remote.fileTransferAllowed,
-            audioAllowed: audioAllowed && remote.audioAllowed,
-            wakeAllowed: wakeAllowed && remote.wakeAllowed,
-            customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
-            hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
-            maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
-            allowedHosts: hosts,
-            allowedHostsRestricted: restricted
+            isManaged: true,
+            clipboardAllowed: clipboard,
+            fileTransferAllowed: fileTransfer,
+            audioAllowed: audio,
+            wakeAllowed: wake,
+            customGesturesAllowed: gestures,
+            hostActionsAllowed: hostActions,
+            maximumFileBytes: maximum,
+            allowedHosts: effectiveHosts,
+            allowedHostsRestricted: restricted,
+            deniedHosts: effectiveDeniedHosts,
+            restrictionResults: Self.results(
+                source: "effective_deny_wins",
+                reason: "Local and remote managed policy were combined with deny-wins semantics.",
+                clipboardAllowed: clipboard,
+                fileTransferAllowed: fileTransfer,
+                audioAllowed: audio,
+                wakeAllowed: wake,
+                customGesturesAllowed: gestures,
+                hostActionsAllowed: hostActions,
+                maximumFileBytes: maximum,
+                allowedHostsRestricted: restricted,
+                allowedHosts: effectiveHosts,
+                deniedHosts: effectiveDeniedHosts
+            )
         )
     }
 
     public func allows(host: String) -> Bool {
         guard let normalized = Self.normalizedHost(host) else { return !allowedHostsRestricted }
+        guard !deniedHosts.contains(normalized) else { return false }
         return !allowedHostsRestricted || allowedHosts.contains(normalized)
+    }
+
+    public static func validateRestrictionResults(_ status: VSManagedPolicyStatus) -> Bool {
+        guard status.managed else { return true }
+        let results = status.restrictionResults
+        guard results.count == requiredRestrictionNames.count else { return false }
+        let grouped = Dictionary(grouping: results, by: \.restriction)
+        guard Set(grouped.keys) == requiredRestrictionNames,
+              grouped.values.allSatisfy({ $0.count == 1 }) else { return false }
+        let normalizedHosts = Set(status.allowedHosts.compactMap(normalizedHost))
+        let deniedHosts = Set(status.deniedHosts.compactMap(normalizedHost))
+        return results.allSatisfy { result in
+            guard !result.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !result.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+            switch result.restriction {
+            case ManagedRestrictionResult.clipboard: return result.allowed == status.clipboardAllowed
+            case ManagedRestrictionResult.fileTransfer: return result.allowed == (status.fileTransferAllowed && status.maximumFileBytes > 0)
+            case ManagedRestrictionResult.audio: return result.allowed == status.audioAllowed
+            case ManagedRestrictionResult.wake: return result.allowed == status.wakeAllowed
+            case ManagedRestrictionResult.customGestures: return result.allowed == status.customGesturesAllowed
+            case ManagedRestrictionResult.hostActions: return result.allowed == status.hostActionsAllowed
+            case ManagedRestrictionResult.maximumFileBytes: return result.allowed == (status.maximumFileBytes > 0)
+            case ManagedRestrictionResult.allowedHosts:
+                let restricted = status.allowedHostsRestricted || !normalizedHosts.isEmpty
+                return result.allowed == (!restricted || !normalizedHosts.subtracting(deniedHosts).isEmpty)
+            case ManagedRestrictionResult.deniedHosts:
+                return result.allowed == deniedHosts.isEmpty
+            default: return false
+            }
+        }
     }
 
     private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
         Set(hosts.compactMap(normalizedHost))
+    }
+
+    public static let requiredRestrictionNames: Set<String> = [
+        ManagedRestrictionResult.clipboard,
+        ManagedRestrictionResult.fileTransfer,
+        ManagedRestrictionResult.audio,
+        ManagedRestrictionResult.wake,
+        ManagedRestrictionResult.customGestures,
+        ManagedRestrictionResult.hostActions,
+        ManagedRestrictionResult.maximumFileBytes,
+        ManagedRestrictionResult.allowedHosts,
+        ManagedRestrictionResult.deniedHosts
+    ]
+
+    private static func results(
+        source: String,
+        reason: String,
+        clipboardAllowed: Bool,
+        fileTransferAllowed: Bool,
+        audioAllowed: Bool,
+        wakeAllowed: Bool,
+        customGesturesAllowed: Bool,
+        hostActionsAllowed: Bool,
+        maximumFileBytes: UInt64,
+        allowedHostsRestricted: Bool,
+        allowedHosts: Set<String>,
+        deniedHosts: Set<String>
+    ) -> [ManagedRestrictionResult] {
+        let effectiveAllowedHosts = allowedHosts.subtracting(deniedHosts)
+        return [
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.clipboard, allowed: clipboardAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.fileTransfer, allowed: fileTransferAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.audio, allowed: audioAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.wake, allowed: wakeAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.customGestures, allowed: customGesturesAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(restriction: ManagedRestrictionResult.hostActions, allowed: hostActionsAllowed, source: source, reason: reason),
+            ManagedRestrictionResult(
+                restriction: ManagedRestrictionResult.maximumFileBytes,
+                allowed: maximumFileBytes > 0,
+                source: source,
+                reason: "\(reason) maximum_file_bytes=\(maximumFileBytes)."
+            ),
+            ManagedRestrictionResult(
+                restriction: ManagedRestrictionResult.allowedHosts,
+                allowed: !allowedHostsRestricted || !effectiveAllowedHosts.isEmpty,
+                source: source,
+                reason: allowedHostsRestricted
+                    ? "\(reason) allowed_hosts=\(effectiveAllowedHosts.sorted().joined(separator: ","))."
+                    : "\(reason) allowed_hosts unrestricted."
+            ),
+            ManagedRestrictionResult(
+                restriction: ManagedRestrictionResult.deniedHosts,
+                allowed: deniedHosts.isEmpty,
+                source: source,
+                reason: deniedHosts.isEmpty
+                    ? "\(reason) denied_hosts empty."
+                    : "\(reason) denied_hosts=\(deniedHosts.sorted().joined(separator: ","))."
+            )
+        ]
     }
 
     private static func isBlankHost(_ host: String) -> Bool {
@@ -191,6 +424,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         static let hostActionsAllowed = "HostActionsAllowed"
         static let maximumFileBytes = "MaximumFileBytes"
         static let allowedHosts = "AllowedHosts"
+        static let deniedHosts = "DeniedHosts"
     }
 }
 
@@ -229,6 +463,13 @@ public struct ManagedPolicyResolver: Equatable, Sendable {
     }
 }
 
-public enum ManagedPolicyError: Error, Equatable {
+public enum ManagedPolicyError: LocalizedError, Equatable {
     case invalidType(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidType(let key):
+            return "Invalid managed configuration value for \(key)."
+        }
+    }
 }

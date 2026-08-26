@@ -15,6 +15,7 @@
     "trusted_lan",
     "signing",
     "signing_readiness_gate",
+    "videotoolbox_readiness_gates",
     "devices",
     "gates",
     "android_evidence_used_for_ios_gates"
@@ -189,6 +190,36 @@
         "failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
         "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
         "interpretation": {"type": "string", "minLength": 1}
+      }
+    },
+    "videotoolbox_readiness_gates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "schema_version",
+          "kind",
+          "profile",
+          "runtime_class",
+          "verdict",
+          "can_close_device_family_videotoolbox_gate",
+          "can_close_phase5_hardware_videotoolbox_gate",
+          "artifact_paths",
+          "artifact_checks"
+        ],
+        "properties": {
+          "schema_version": {"const": "vibescreen.evidence/v1"},
+          "kind": {"const": "ios_hardware_videotoolbox_readiness"},
+          "profile": {"const": "ios-hardware-videotoolbox-readiness"},
+          "runtime_class": {"enum": ["physical_iphone", "physical_ipad"]},
+          "verdict": {"const": "pass"},
+          "can_close_device_family_videotoolbox_gate": {"const": true},
+          "can_close_phase5_hardware_videotoolbox_gate": {"const": false},
+          "artifact_paths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "artifact_checks": {"type": "array", "minItems": 1}
+        }
       }
     },
     "devices": {

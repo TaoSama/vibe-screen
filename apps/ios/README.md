@@ -7,6 +7,10 @@ The client is an early developer release. Its core modules build and self-test
 on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
 pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
 separate gates; do not treat Simulator or Android records as that evidence.
+The hardware VideoToolbox gate is owned by the fail-closed
+`ios-videotoolbox-readiness` evidence helper: Simulator and unsigned archive
+records can be summarized for readiness tracking, but only real physical iPhone
+and iPad records can produce family-level pass summaries.
 The trusted-LAN Core client still uses the legacy plaintext compatibility path:
 it connects to the baseline MacHost on TCP port `54321`, completes authenticated
 `SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
@@ -112,6 +116,32 @@ Use `--action simulator-build`, `--action simulator-test`, or
 `apps/ios/.build/xcode/VibeScreen.xcarchive` and is intentionally unsigned; it
 is build evidence, not an installable signed release.
 
+Record hardware VideoToolbox readiness separately from those build gates:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
+  vibescreen_evidence.ios_videotoolbox_readiness \
+  "$EVIDENCE_DIR/ios-videotoolbox-observations.json" \
+  --output "$EVIDENCE_DIR/ios-videotoolbox-readiness.json" \
+  --evidence-dir "$EVIDENCE_DIR"
+
+# Strict gate wrapper; exits nonzero for blocked or insufficient summaries:
+make ios-videotoolbox-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
+```
+
+Set `runtime_class` in the observations file to exactly one of `simulator`,
+`unsigned_archive`, `physical_iphone`, or `physical_ipad`. The first two are
+readiness-tracking records only and cannot make the strict gate pass. Physical
+family summaries require existing retained iOS VideoToolbox artifacts under the
+evidence directory.
+blocked by construction. A physical-device family summary requires signed app
+installation, real device identity, H.264 and HEVC parameter-set evidence,
+VideoToolbox session creation, output frames, hardware-path evidence,
+stream/config epoch telemetry, thermal and power state, and retained artifacts.
+A single family-level pass still does not close the README Phase 5 hardware
+VideoToolbox gate; reviewed passing summaries are required for both iPhone and
+iPad hardware.
+
 For a physical device, open `apps/ios/VibeScreen.xcodeproj`, select the
 `VibeScreen` target, choose your development team, replace
 `dev.vibescreen.ios` with a unique bundle identifier, select the attached
@@ -173,7 +203,8 @@ currently no key migration step.
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
   `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
-  `AllowedHosts`. Invalid types fail closed.
+  `AllowedHosts`, and `DeniedHosts`. Invalid types fail closed; `DeniedHosts`
+  wins after allowlist merging.
 
 ## Advanced feature use
 
