@@ -188,6 +188,31 @@ produced them. Later Xiaomi 13 streaming, display-switch, input, and
 two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
+### USB smoke preflight
+
+Before attempting a short USB end-to-end smoke, collect the fail-closed
+readiness state for the exact target device:
+
+```bash
+make evidence-usb-smoke-preflight \
+  EVIDENCE_SERIAL=<P0110_USB_SERIAL> \
+  EVIDENCE_DIR=.build/evidence/usb-smoke-preflight \
+  EVIDENCE_EXPECTED_MANUFACTURER=nubia \
+  EVIDENCE_EXPECTED_MODEL=P0110 \
+  EVIDENCE_EXPECTED_DEVICE=pacific \
+  EVIDENCE_EXPECTED_ANDROID_RELEASE=16 \
+  EVIDENCE_EXPECTED_SDK=36
+```
+
+The preflight exits `0` only when no shared Android device lock exists, the
+explicit ADB target matches the expected identity, `adb reverse tcp:54321
+tcp:54321` is already configured, the Android app is running in the foreground,
+the Mac Host is listening on TCP `54321`, and the stable-signed Host/TCC
+preflight passes. It exits `2` and writes `usb-smoke-preflight.json` when a
+prerequisite is blocked. A blocked preflight is a readiness record only; it
+does not prove USB streaming, reconnect, input, latency, soak, Host RSS, native
+pointer, stylus, controller, or Xiaomi/fuxi behavior.
+
 ### Read-only USB live-stream smoke
 
 When a Host and Android client are already streaming over USB, capture a
