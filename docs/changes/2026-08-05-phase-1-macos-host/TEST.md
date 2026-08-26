@@ -95,12 +95,31 @@ not prove private display creation/capture, actual mirroring, Accessibility or
 CGEvent effects, login-item approval, hot-plug, headless reboot, device input,
 latency, or sustained memory behavior.
 
+## Login/headless readiness diagnostics
+
+The shared read-only Host readiness target also records login/headless setup
+blockers:
+
+```bash
+make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
+```
+
+The generated `host-readiness.json` includes a `login_headless` section with
+startup defaults, Launch at Login state, active display inventory, and recent
+Host startup/recovery log markers. The same JSON keeps
+`can_start_headless_login_gate=false` unless shared Host prerequisites are ready
+and those login/headless setup checks pass. This is preflight evidence only: it
+does not register Login Items, reboot, launch or stop Vibe Screen, grant
+permissions, touch Android state, or close the login/headless acceptance gate.
+
 ## Remaining gates
 
 - private normal/HiDPI extension creation and first captured frame;
 - true mirror state before start and cleared state after stop;
 - AX migration/restore of a disposable real window, including display removal;
 - Launch at Login approval plus logout/login relaunch;
+- headless Mac mini reboot with a usable physical, dummy, or Screen Sharing
+  display after login;
 - selected-display hot-plug while streaming;
 - Android touch/reconnect/keyboard/native-mouse checks after the device lease
   is released (keyboard/native mouse also require a future transport entry);
