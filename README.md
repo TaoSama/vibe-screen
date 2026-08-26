@@ -30,7 +30,7 @@ platform scaffolding under active development.
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 only reserves CODEC_AV1, the current Host does not advertise AV1, Android does not offer AV1 in product sessions, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
 | Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture, and current-source real USB/LAN device playback evidence remains open pending Microphone/TCC, signing, and device-run validation |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
-| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
+| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
@@ -71,8 +71,8 @@ limitations are summarized in [Security](SECURITY.md).
 - Android 8.0 / API 26 or newer; JDK 17, Android SDK Platform 34, Build Tools
   34.0.0, and ADB are required to build and install the current client.
 - Verified Android devices: Xiaomi 13 (model 2211133C, codename fuxi) is the
-  primary named evidence source; Nubia P0110 (codename pacific) is an
-  acceptable substitute for general Android acceptance. Both are Android
+  primary named evidence source; Nubia P0110 (codename pacific, Android 16 /
+  API 36) is an acceptable substitute for general Android acceptance. Both are Android
   handsets, but evidence must always record the exact manufacturer, model,
   codename, and OS version of the device that produced it, and Nubia P0110
   results must not be relabeled as Xiaomi 13/fuxi evidence.
@@ -420,12 +420,21 @@ It reproduced a shared-`CGEventSource` bug where pinch's Command modifier leaked
 into later ordinary pointer events. Pinch now uses a private synthetic-modifier
 event source, preserving legitimate physical modifiers on ordinary pointer
 events, with focused isolation coverage. A stable-signed fixed-binary rerun on
-the Nubia P0110/pacific Android substitute passed the same opt-in gesture
-matrix with Host gesture logs and listen-only macOS event-tap evidence for
-tap, right click, drag, plain scroll, Command-modified pinch zoom, and
-post-pinch plain-tap modifier isolation; this does not relabel the result as
-Xiaomi 13/fuxi evidence. See the
-[touch-gesture verification record](docs/changes/2026-08-13-xiaomi13-touch-gestures/TEST.md).
+the Xiaomi 13/fuxi reached Protocol v1 streaming but remained blocked because
+Accessibility was not authorized for that exact Host binary. A later
+stable-signed fixed-binary rerun on the Nubia P0110/pacific Android substitute
+passed the same opt-in gesture matrix with Host gesture logs and listen-only
+macOS event-tap evidence for tap, right click, drag, plain scroll,
+Command-modified pinch zoom, and post-pinch plain-tap modifier isolation. That
+closes the fixed-binary touch rerun gate only for a general Android substitute;
+it does not relabel the result as Xiaomi 13/fuxi evidence, and the
+native HID mouse confirmation plus physical-finger/manual UX pass remain
+separate. See the
+[touch-gesture verification record](docs/changes/2026-08-13-xiaomi13-touch-gestures/TEST.md),
+the
+[Xiaomi 13 blocked rerun evidence](docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-16-xiaomi13-fuxi-fixed-binary-blocked/README.md),
+and the
+[P0110 passed rerun evidence](docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-20-p0110-pacific-fixed-binary-rerun/README.md).
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
@@ -957,7 +966,9 @@ The viewport/input and window-action records are retained under
 and
 [2026-08-10-xiaomi13-window-actions](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
 Earlier Android evidence also comes from Nubia
-P0110/pacific, and future P0110/pacific runs may close general Android gates when their
+P0110/pacific. The 2026-08-20 P0110/pacific run closed the fixed stable-signed
+binary touch-gesture rerun gate for a general Android substitute. Future
+P0110/pacific runs may close additional general Android gates only when their
 evidence satisfies the same pass criteria. A 2026-08-23 current-base recheck at
 `5069404` on the connected P0110 installed the current APK and restored the
 `tcp:54321` USB reverse mapping, but it did not prove stream, reconnect,

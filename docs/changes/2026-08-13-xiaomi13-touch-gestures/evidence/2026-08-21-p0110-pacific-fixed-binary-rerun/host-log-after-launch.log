@@ -1,0 +1,160 @@
+2026-08-20T22:20:40Z Client supports video frame metadata
+2026-08-20T22:20:40Z Client connected - sending display config first
+2026-08-20T22:20:40Z Sent display config: 2000x1124 @ 0°
+2026-08-20T22:20:40Z Connection ready for frames (metadata=on, codec=hevc)
+2026-08-20T22:20:40Z Connection state: failed(POSIXErrorCode(rawValue: 54): Connection reset by peer)
+2026-08-20T22:20:40Z Connection failed: POSIXErrorCode(rawValue: 54): Connection reset by peer
+2026-08-20T22:20:40Z Connection state: cancelled
+2026-08-20T22:20:40Z Connection cancelled
+2026-08-20T22:20:40Z TCP server listening on port 55433
+2026-08-20T22:20:40Z New connection incoming...
+2026-08-20T22:20:40Z Connection state: preparing
+2026-08-20T22:20:40Z Connection state: ready
+2026-08-20T22:20:40Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:20:40Z Starting input receive loop... (touch=on)
+2026-08-20T22:20:40Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:20:40Z Connection state: cancelled
+2026-08-20T22:20:40Z Connection cancelled
+2026-08-20T22:20:40Z TCP server listening on port 55434
+2026-08-20T22:20:40Z New connection incoming...
+2026-08-20T22:20:40Z Connection state: preparing
+2026-08-20T22:20:40Z Connection state: ready
+2026-08-20T22:20:40Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:20:40Z Starting input receive loop... (touch=on)
+2026-08-20T22:20:40Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:20:40Z Connection state: cancelled
+2026-08-20T22:20:40Z Connection cancelled
+2026-08-20T22:20:40Z TCP server listening on port 55435
+2026-08-20T22:20:40Z New connection incoming...
+2026-08-20T22:20:40Z Connection state: preparing
+2026-08-20T22:20:40Z Connection state: ready
+2026-08-20T22:20:40Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:20:40Z Starting input receive loop... (touch=on)
+2026-08-20T22:20:40Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:20:40Z Connection state: cancelled
+2026-08-20T22:20:40Z Connection cancelled
+2026-08-20T22:20:40Z TCP server listening on port 55436
+2026-08-20T22:20:40Z New connection incoming...
+2026-08-20T22:20:40Z Connection state: preparing
+2026-08-20T22:20:40Z Connection state: ready
+2026-08-20T22:20:40Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:20:40Z Starting input receive loop... (touch=on)
+2026-08-20T22:20:40Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:20:40Z Connection state: cancelled
+2026-08-20T22:20:40Z Connection cancelled
+2026-08-20T22:20:40Z TCP server listening on port 55437
+2026-08-20T22:20:40Z New connection incoming...
+2026-08-20T22:20:40Z Connection state: preparing
+2026-08-20T22:20:40Z Connection state: ready
+2026-08-20T22:20:40Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:20:40Z Starting input receive loop... (touch=on)
+2026-08-20T22:20:40Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:20:41Z VideoToolbox encoder configured (H.264, 20Mbps, 60fps, MEDIUM)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z TCP server listening on port 55432
+2026-08-20T22:21:06Z Server failed: POSIXErrorCode(rawValue: 48): Address already in use
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Rejected malformed touch input
+2026-08-20T22:21:06Z Client supports video frame metadata
+2026-08-20T22:21:06Z Client connected - sending display config first
+2026-08-20T22:21:06Z Sent display config: 2000x1124 @ 0°
+2026-08-20T22:21:06Z Connection ready for frames (metadata=on, codec=hevc)
+2026-08-20T22:21:06Z Connection state: failed(POSIXErrorCode(rawValue: 54): Connection reset by peer)
+2026-08-20T22:21:06Z Connection failed: POSIXErrorCode(rawValue: 54): Connection reset by peer
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55433
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55434
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55435
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55436
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55437
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z VideoToolbox encoder configured (H.264, 20Mbps, 60fps, MEDIUM)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
