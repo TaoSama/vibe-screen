@@ -15,17 +15,17 @@ absorbs the strict evidence-root hardening from PR #269. PR #250 remains a
 README-only support change that clarifies component-level decode and resume
 ownership, not a competing aggregate owner path.
 
-PR #239 remains the semantic MatePad Mini acceptance package design, but it is
-not the current-base owner while its branch is draft and `DIRTY` against current
-main. When #239 is refreshed, it should consume this gate output instead of
-creating a second final-owner path.
+PR #239 remains the semantic MatePad Mini acceptance package design, not a
+replacement for this current-base owner gate. Its refreshed branch consumes this
+gate output as an input to the final acceptance package instead of creating a
+second final-owner path.
 
 ## Open PR owner map
 
 | PR | Current status | Owner decision | Notes |
 | --- | --- | --- | --- |
 | #283 | draft; behind current main | Prior current-base gate candidate | Superseded by this branch because this branch is based on current `origin/main` and expands scope beyond decode/HAP/resume. |
-| #239 | draft; conflicts with current main | MatePad acceptance package design owner | Keep as semantic aggregate package input after refresh; not current-base today. |
+| #239 | refreshed against current main | MatePad acceptance package design owner | Keep as the final acceptance package layer that consumes this current-base gate; it does not itself close real-device gates without MatePad evidence. |
 | #269 | draft; behind current main | Support verifier hardening | Strict evidence-root validation is folded into this branch. |
 | #250 | draft; rebased onto current main | Support README attribution | Keep as a narrow README clarification; it does not replace this aggregate owner gate. |
 | #202 | draft; conflicts with current main | Focused authenticated-record support | Needs refresh before feeding the aggregate owner; not a final closure owner. |
