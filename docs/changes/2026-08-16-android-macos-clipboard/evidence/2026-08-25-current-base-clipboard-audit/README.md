@@ -4,14 +4,14 @@
 
 This record audits current `origin/main` for Android <-> macOS Protocol v1
 clipboard status after the README matrix showed an E2E gap. It was refreshed
-against the 2026-08-26 base before updating PR #231. It is a source and
+against the 2026-08-27 base before updating PR #231. It is a source and
 offline-verification record only. It does not close the real Android
 ClipboardManager <-> macOS NSPasteboard USB/LAN E2E device gate.
 
 ## Repository State
 
 - Branch: `codex/clipboard-protocol-v1-e2e`
-- Refresh base `origin/main`: `f46163524fe757e7021a4333b3370af00ec651f1`
+- Refresh base `origin/main`: `1abc03b0287feba7b932f175a9e8ff1280495606`
 - Final PR head: use the GitHub PR checks/status for the latest pushed head;
   this audit does not hard-code the moving PR branch tip.
 - Open related PR: [#157](https://github.com/TaoSama/vibe-screen/pull/157)
@@ -64,7 +64,7 @@ MacHost implementation:
 
 ## Verification Run
 
-Commands were run from this worktree on 2026-08-26 after rebasing onto current
+Commands were run from this worktree on 2026-08-27 after rebasing onto current
 `origin/main`.
 
 ```bash
