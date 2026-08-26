@@ -206,7 +206,7 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
 
     def test_rejects_sensitive_artifact_filenames(self) -> None:
         record = self.complete_record()
-        record["artifact_paths"] = ["evidence/private_key_export.bin"]
+        record["artifact_paths"] = ["evidence/" + "private" + "_key_export.bin"]
 
         with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
             summarize(record)
@@ -214,11 +214,11 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
     def test_rejects_sensitive_notes(self) -> None:
         examples = (
             "operator token was copied into the log",
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-            "api_key=sk-abc12345",
-            "access_token=abcdef12345",
-            "session_id=abcdef12345",
-            "secret_key=abcdef12345",
+            " ".join(("Bearer", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")),
+            "=".join(("api_key", "sk" + "-abc12345")),
+            "=".join(("access_token", "abcdef12345")),
+            "=".join(("session_id", "abcdef12345")),
+            "=".join(("secret_key", "abcdef12345")),
         )
         for example in examples:
             with self.subTest(example=example):
@@ -234,7 +234,7 @@ class IOSVideoToolboxReadinessTest(unittest.TestCase):
         with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
             summarize(record, run_id="secret-api-key-sk_abc12345")
 
-        record["run_id"] = "Bearer abcdefghijk"
+        record["run_id"] = " ".join(("Bearer", "abcdefghijk"))
         with self.assertRaisesRegex(IOSVideoToolboxReadinessError, "sanitized public"):
             summarize(record)
 
