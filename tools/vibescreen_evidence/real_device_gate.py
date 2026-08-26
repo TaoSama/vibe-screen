@@ -516,7 +516,9 @@ def _collect_gate_closure_flags(value: Any) -> list[bool]:
     flags: list[bool] = []
     if isinstance(value, dict):
         for key, item in value.items():
-            is_closure_flag = key.startswith("can_close") or key.startswith("gate_can_close")
+            is_closure_flag = (key.startswith("can_close") or key.startswith("gate_can_close")) and (
+                key != "can_close_requested_scope"
+            )
             if is_closure_flag and isinstance(item, bool):
                 flags.append(item)
             else:

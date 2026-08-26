@@ -75,6 +75,7 @@ class RealDeviceGateTests(unittest.TestCase):
                 host_telemetry_jsonl=telemetry,
                 host_log=None,
                 require_fresh_stream=True,
+                lock_globs=[],
                 command_runner=run,
             )
 
@@ -125,6 +126,7 @@ class RealDeviceGateTests(unittest.TestCase):
                 adb_timeout=1.0,
                 host_preflight_timeout=1.0,
                 host_log=root / "missing.log",
+                lock_globs=[],
                 command_runner=run,
             )
 
@@ -361,6 +363,65 @@ class RealDeviceGateTests(unittest.TestCase):
         self.assertFalse(requested["input"][0]["can_close"])
         self.assertEqual(requested["input"][0]["closure_flags"], [True])
         self.assertFalse(requested["input"][0]["has_passing_verdict"])
+
+    def test_requested_gate_report_ignores_requested_scope_close_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "reconnect.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "verdict": "pass",
+                        "can_close_requested_scope": True,
+                        "can_close_timing_gate": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[report],
+                input_summaries=[],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertIn("latency gate report does not contain a passing gate closure verdict", insufficiencies)
+        self.assertFalse(requested["latency"][0]["can_close"])
+        self.assertEqual(requested["latency"][0]["closure_flags"], [False])
+        self.assertTrue(requested["latency"][0]["has_passing_verdict"])
+
+    def test_requested_gate_report_accepts_non_gate_named_closure_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "macos-compatibility.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "verdict": "pass",
+                        "can_close_macos_host_compatibility_row": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=False,
+                soak_summary=None,
+                soak_samples=None,
+                host_rss_gate_output=None,
+                latency_reports=[],
+                input_summaries=[report],
+            )
+
+        self.assertEqual(blockers, [])
+        self.assertEqual(insufficiencies, [])
+        self.assertTrue(requested["input"][0]["can_close"])
+        self.assertEqual(requested["input"][0]["closure_flags"], [True])
+        self.assertTrue(requested["input"][0]["has_passing_verdict"])
 
     def test_cli_exits_two_for_blocked_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory, mock.patch(
