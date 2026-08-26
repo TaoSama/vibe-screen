@@ -3,7 +3,7 @@
   "branch": "codex/clipboard-protocol-v1-e2e",
   "head_sha": null,
   "head_sha_note": "The PR branch tip moves as review fixes land; use GitHub PR checks/status for the latest pushed head.",
-  "origin_main_sha": "1abc03b0287feba7b932f175a9e8ff1280495606",
+  "origin_main_sha": "a33ccc82a4602037de1b2bf52bbce4dd57dc5a28",
   "scope": "source audit and offline verification for Android <-> macOS Protocol v1 clipboard",
   "implementation_status": "present_on_main",
   "e2e_status": "blocked_not_run",
