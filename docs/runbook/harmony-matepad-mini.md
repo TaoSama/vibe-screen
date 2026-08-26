@@ -31,9 +31,11 @@ manifest shape, but the resulting output is not acceptance evidence and must not
 close the README gate.
 Strict `make harmony-device-gate` validation also resolves every `pass` gate's
 evidence references under `EVIDENCE_DIR`; absolute paths, URLs, `..` traversal,
-directories, and missing files fail closed. Direct strict script invocations use
-the manifest directory as the evidence root. Keep all referenced logs, summaries,
-metrics, and checksums inside the evidence package before asking the gate to pass.
+missing files, and directory/file type mismatches fail closed. References ending
+in `/` must resolve to directories; other references must resolve to files. Direct
+strict script invocations use the manifest directory as the evidence root. Keep
+all referenced logs, summaries, metrics, and checksums inside the evidence
+package before asking the gate to pass.
 `make harmony-current-base-gate` is the aggregate owner check for the current
 README Phase 4 DevEco/HAP/decode/HUKS/transport/resume/MatePad surface, and it
 must stay blocked until the strict device gate and readiness preflight both pass.
