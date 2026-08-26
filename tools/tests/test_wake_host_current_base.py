@@ -15,7 +15,7 @@ MODULE = "vibescreen_evidence.wake_host_current_base"
 SCHEMA_PATH = (
     Path(__file__).parents[1] / "schemas" / "wake-host-current-base.schema.json"
 )
-CURRENT_MAIN_SHA = "f46163524fe757e7021a4333b3370af00ec651f1"
+CURRENT_MAIN_SHA = "1abc03b0287feba7b932f175a9e8ff1280495606"
 
 
 class WakeHostCurrentBaseTest(unittest.TestCase):

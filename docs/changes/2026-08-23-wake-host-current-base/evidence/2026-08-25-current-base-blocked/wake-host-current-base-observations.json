@@ -1,6 +1,6 @@
 {
   "current_main_verified": true,
-  "current_main_sha": "f46163524fe757e7021a4333b3370af00ec651f1",
+  "current_main_sha": "1abc03b0287feba7b932f175a9e8ff1280495606",
   "magic_packet_path_baseline_merged": true,
   "paired_authorization_offline_passed": true,
   "artifact_paths": [
@@ -9,5 +9,5 @@
   "blocking_notes": [
     "No real sleeping Mac, router broadcast or directed WOL delivery, NIC firmware setting, packet capture, or post-wake Host evidence was available in this worktree."
   ],
-  "notes": "Current-base smoke records #225 baseline presence on origin/main f46163524fe757e7021a4333b3370af00ec651f1 and focused offline checks only. It must remain blocked until hardware WOL evidence is attached."
+  "notes": "Current-base smoke records #225 baseline presence on origin/main 1abc03b0287feba7b932f175a9e8ff1280495606 and focused offline checks only. It must remain blocked until hardware WOL evidence is attached."
 }

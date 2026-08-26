@@ -5,7 +5,7 @@
 Status: blocked. Gate closed: false.
 
 This package records that `origin/main`
-`f46163524fe757e7021a4333b3370af00ec651f1` contains the #225 authenticated
+`1abc03b0287feba7b932f175a9e8ff1280495606` contains the #225 authenticated
 magic-packet baseline and that focused offline checks were run, but no real
 sleeping Mac or WOL-capable network path was exercised from this worktree.
 

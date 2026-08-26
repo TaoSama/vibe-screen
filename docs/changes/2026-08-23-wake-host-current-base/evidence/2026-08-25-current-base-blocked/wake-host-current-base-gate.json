@@ -30,7 +30,7 @@
   ],
   "can_claim_sleeping_mac_wake": false,
   "can_close_wake_host_current_base_gate": false,
-  "current_main_sha": "f46163524fe757e7021a4333b3370af00ec651f1",
+  "current_main_sha": "1abc03b0287feba7b932f175a9e8ff1280495606",
   "failure_reasons": [],
   "kind": "wake_host_current_base_gate",
   "missing_requirements": [
@@ -95,7 +95,7 @@
       "requirement": "retain client logs covering the authorized and negative WakeHost attempts"
     }
   ],
-  "notes": "Current-base smoke records #225 baseline presence on origin/main f46163524fe757e7021a4333b3370af00ec651f1 and focused offline checks only. It must remain blocked until hardware WOL evidence is attached.",
+  "notes": "Current-base smoke records #225 baseline presence on origin/main 1abc03b0287feba7b932f175a9e8ff1280495606 and focused offline checks only. It must remain blocked until hardware WOL evidence is attached.",
   "observations": {
     "client_logs_retained": false,
     "current_main_verified": true,

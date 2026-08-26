@@ -8,7 +8,7 @@ git rebase origin/main
 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base tools.tests.test_schemas -v
 make wake-host-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-25-current-base-blocked; test $? -eq 2
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-25-current-base-blocked/wake-host-current-base-observations.json --output docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-25-current-base-blocked/wake-host-current-base-gate.json --run-id 2026-08-25-current-base-blocked; test $? -eq 1
-jq -e '.verdict == "blocked" and .run_id == "2026-08-25-current-base-blocked" and .current_main_sha == "f46163524fe757e7021a4333b3370af00ec651f1" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-25-current-base-blocked/wake-host-current-base-gate.json
+jq -e '.verdict == "blocked" and .run_id == "2026-08-25-current-base-blocked" and .current_main_sha == "1abc03b0287feba7b932f175a9e8ff1280495606" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-25-current-base-blocked/wake-host-current-base-gate.json
 swift build -c release
 ./.build/release/Vibe\ Screen --protocol-v1-self-test
 ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
