@@ -47,7 +47,13 @@ OWNER_GATES = {
     },
     "hap_sign_install": {
         "owner": "HarmonyOS signed HAP lifecycle evidence",
-        "required_device_gates": ("signed_release_hap", "hap_install_launch"),
+        "required_device_gates": (
+            "signed_release_hap",
+            "hap_install_launch",
+            "hap_in_place_upgrade",
+            "hap_rollback_behavior",
+            "hap_uninstall_cleanup",
+        ),
         "required_evidence_markers": ("harmony-hap-readiness.json", "SHA256SUMS", "hap-install"),
         "requirement": "DevEco-built signed HAP installed and launched on the target HarmonyOS MatePad Mini",
     },
