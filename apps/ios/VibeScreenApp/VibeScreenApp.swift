@@ -3,28 +3,80 @@ import VibeScreenCore
 
 @main
 struct VibeScreenApp: App {
-    private static let audioPlaybackSelfTestArgument = "--audio-playback-self-test"
-    private static let audioPlaybackSelfTestEnvironment = "AUDIO_PLAYBACK_SELF_TEST"
-    private static let audioPlaybackSelfTestRealAudioEnvironment = "AUDIO_PLAYBACK_SELF_TEST_REAL_AUDIO"
-    private static let audioPlaybackSelfTestRunningMessage = "AUDIO_PLAYBACK_SELF_TEST=RUNNING"
-    private static let audioPlaybackSelfTestTimeout: Duration = .seconds(15)
-
     private var shouldRunAudioPlaybackSelfTest: Bool {
-        ProcessInfo.processInfo.arguments.contains(Self.audioPlaybackSelfTestArgument)
-            || ProcessInfo.processInfo.environment[Self.audioPlaybackSelfTestEnvironment] == "1"
+        ProcessInfo.processInfo.arguments.contains(AudioPlaybackSelfTestDisplay.argument)
     }
 
-    private static func runAudioPlaybackSelfTest() async throws -> String {
-        let runRealAudio = ProcessInfo.processInfo.environment[Self.audioPlaybackSelfTestRealAudioEnvironment] == "1"
-        return try await withThrowingTaskGroup(of: String.self) { group in
+    var body: some Scene {
+        WindowGroup {
+            if shouldRunAudioPlaybackSelfTest {
+                AudioPlaybackSelfTestView()
+            } else {
+                VibeScreenRootView()
+            }
+        }
+    }
+}
+
+private struct VibeScreenRootView: View {
+    @StateObject private var model = StreamViewModel()
+
+    var body: some View {
+        ContentView(model: model)
+    }
+}
+
+private struct AudioPlaybackSelfTestView: View {
+    @State private var result = AudioPlaybackSelfTestDisplay.runningMessage
+    @State private var hasStarted = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(result)
+                .font(.footnote.monospaced())
+                .padding(10)
+                .accessibilityIdentifier(AudioPlaybackSelfTestDisplay.resultIdentifier)
+                .accessibilityLabel(result)
+            Button("Start audio playback self-test") {
+                start()
+            }
+            .accessibilityIdentifier(AudioPlaybackSelfTestDisplay.startIdentifier)
+            .disabled(hasStarted)
+        }
+        .task { await autoStartAfterFirstAccessibilityPass() }
+    }
+
+    private func autoStartAfterFirstAccessibilityPass() async {
+        guard !hasStarted else { return }
+        try? await Task.sleep(for: .milliseconds(500))
+        start()
+    }
+
+    private func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        Task { @MainActor in
+            do {
+                result = try await AudioPlaybackSelfTestDisplay.run()
+            } catch {
+                result = "AUDIO_PLAYBACK_SELF_TEST=FAIL error=\(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+private enum AudioPlaybackSelfTestDisplay {
+    static let argument = "--audio-playback-self-test"
+    static let resultIdentifier = "audio-playback-self-test-result"
+    static let startIdentifier = "audio-playback-self-test-start"
+    static let runningMessage = "AUDIO_PLAYBACK_SELF_TEST=RUNNING"
+    private static let timeout: Duration = .seconds(15)
+
+    static func run() async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
             defer { group.cancelAll() }
             group.addTask {
-                let snapshot: AudioPlaybackQueueSnapshot
-                if runRealAudio {
-                    snapshot = try await AudioPlaybackSelfTest.run()
-                } else {
-                    snapshot = try await AudioPlaybackSelfTest.runQueueOnly()
-                }
+                let snapshot = try await audioPlaybackSnapshot()
                 return [
                     "AUDIO_PLAYBACK_SELF_TEST=PASS",
                     "scheduled=\(snapshot.scheduledBufferTotal)",
@@ -37,7 +89,7 @@ struct VibeScreenApp: App {
                 ].joined(separator: " ")
             }
             group.addTask {
-                try await Task.sleep(for: audioPlaybackSelfTestTimeout)
+                try await Task.sleep(for: timeout)
                 throw AudioPlaybackSelfTestDisplayError.timedOut
             }
             guard let result = try await group.next() else {
@@ -47,50 +99,12 @@ struct VibeScreenApp: App {
         }
     }
 
-    var body: some Scene {
-        WindowGroup {
-            if shouldRunAudioPlaybackSelfTest {
-                AudioPlaybackSelfTestView()
-            } else {
-                MainAppView()
-            }
+    @MainActor
+    private static func audioPlaybackSnapshot() async throws -> AudioPlaybackQueueSnapshot {
+        if ProcessInfo.processInfo.environment["AUDIO_PLAYBACK_SELF_TEST_REAL_AUDIO"] == "1" {
+            return try await AudioPlaybackSelfTest.run()
         }
-    }
-
-    private struct MainAppView: View {
-        @StateObject private var model = StreamViewModel()
-
-        var body: some View {
-            ContentView(model: model)
-        }
-    }
-
-    private struct AudioPlaybackSelfTestView: View {
-        @State private var result = VibeScreenApp.audioPlaybackSelfTestRunningMessage
-        @State private var hasStarted = false
-
-        var body: some View {
-            VStack(spacing: 12) {
-                Text(result)
-                    .font(.footnote.monospaced())
-                    .padding(10)
-                    .accessibilityIdentifier("audio-playback-self-test-result")
-
-                Button("Start audio playback self-test") {
-                    guard !hasStarted else { return }
-                    hasStarted = true
-                    Task {
-                        do {
-                            result = try await VibeScreenApp.runAudioPlaybackSelfTest()
-                        } catch {
-                            result = "AUDIO_PLAYBACK_SELF_TEST=FAIL error=\(error.localizedDescription)"
-                        }
-                    }
-                }
-                .accessibilityIdentifier("audio-playback-self-test-start")
-                .disabled(hasStarted)
-            }
-        }
+        return try AudioPlaybackSelfTest.runQueueOnly()
     }
 }
 

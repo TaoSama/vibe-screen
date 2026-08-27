@@ -105,6 +105,29 @@ PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_ANDROID_INTEROP_EVIDENCE ?=
 PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
+PHASE3_INTERNET_SOAK_MANIFEST ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
+PHASE3_INTERNET_SOAK_GATE_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-gate.json
+PHASE3_INTERNET_TURN_URI ?=
+PHASE3_INTERNET_SIGNALING_ORIGIN ?=
+PHASE3_INTERNET_RELAY_ORIGIN ?=
+PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
+PHASE3_INTERNET_REMOTE_PEER ?=
+PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
+PHASE3_INTERNET_TURN_SECRET_SOURCE ?=
+PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
+PHASE3_INTERNET_PLANNED_HANDOFFS ?=
+PHASE3_INTERNET_HOST_BUILD ?=
+PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
+PHASE3_INTERNET_DURATION_SECONDS ?= 7200
+PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
+PHASE3_INTERNET_NOTES ?=
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(EVIDENCE_DIR)/remote-turn-verifier.json
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(EVIDENCE_DIR)/media-continuity.json
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(EVIDENCE_DIR)/network-handoff.json
+PHASE3_INTERNET_REVOCATION_REPORT ?= $(EVIDENCE_DIR)/revocation-propagation.json
+PHASE3_INTERNET_SOAK_REPORT ?= $(EVIDENCE_DIR)/soak-exact-window-report.json
+PHASE3_INTERNET_BLOCKED_REASON ?=
+PHASE3_INTERNET_ALLOW_BLOCKED ?=
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 HARMONY_HDC_TARGET ?=
@@ -140,29 +163,6 @@ PHASE3_ANDROID_UI_NOTE ?=
 PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachannel-manifest.json
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
-PHASE3_INTERNET_SOAK_MANIFEST_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
-PHASE3_INTERNET_SOAK_GATE_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-gate.json
-PHASE3_INTERNET_TURN_URI ?=
-PHASE3_INTERNET_SIGNALING_ORIGIN ?=
-PHASE3_INTERNET_RELAY_ORIGIN ?=
-PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
-PHASE3_INTERNET_REMOTE_PEER ?=
-PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
-PHASE3_INTERNET_TURN_SECRET_SOURCE ?=
-PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
-PHASE3_INTERNET_PLANNED_HANDOFFS ?=
-PHASE3_INTERNET_HOST_BUILD ?=
-PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
-PHASE3_INTERNET_DURATION_SECONDS ?= 7200
-PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
-PHASE3_INTERNET_NOTES ?=
-PHASE3_INTERNET_REMOTE_TURN_REPORT ?=
-PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?=
-PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?=
-PHASE3_INTERNET_REVOCATION_REPORT ?=
-PHASE3_INTERNET_SOAK_REPORT ?=
-PHASE3_INTERNET_BLOCKED_REASON ?= Missing retained public Internet soak evidence.
-PHASE3_INTERNET_ALLOW_BLOCKED ?=
 
 .PHONY: \
 	protocol \
@@ -382,22 +382,23 @@ phase3-advanced-datachannel-blocked-baseline:
 	$(MAKE) phase3-advanced-datachannel-current-base PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT=1
 
 phase3-internet-soak-manifest:
-	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN" >&2; exit 2)
-	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet soak evidence directory" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_URI))" || (echo "error: set PHASE3_INTERNET_TURN_URI to a public turns:?transport=tcp URI" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN to the public signaling HTTPS origin" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN to the public relay HTTPS origin" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
-	@test -n "$(strip $(PHASE3_INTERNET_REMOTE_PEER))" || (echo "error: set PHASE3_INTERNET_REMOTE_PEER" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_REMOTE_PEER))" || (echo "error: set PHASE3_INTERNET_REMOTE_PEER to an independent public peer" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256))" || (echo "error: set PHASE3_INTERNET_TLS_CERTIFICATE_SHA256" >&2; exit 2)
-	@test -n "$(strip $(PHASE3_INTERNET_TURN_SECRET_SOURCE))" || (echo "error: set PHASE3_INTERNET_TURN_SECRET_SOURCE" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_SECRET_SOURCE))" || (echo "error: set PHASE3_INTERNET_TURN_SECRET_SOURCE to file or secret_manager" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_DEPLOYMENT_READINESS))" || (echo "error: set PHASE3_INTERNET_DEPLOYMENT_READINESS" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_PLANNED_HANDOFFS))" || (echo "error: set PHASE3_INTERNET_PLANNED_HANDOFFS" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_HOST_BUILD))" || (echo "error: set PHASE3_INTERNET_HOST_BUILD" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256))" || (echo "error: set PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256" >&2; exit 2)
-	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_MANIFEST_JSON))"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
-		python3 -m vibescreen_evidence.phase3_internet_soak manifest \
-		--output "$(PHASE3_INTERNET_SOAK_MANIFEST_JSON)" \
+	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_MANIFEST))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak manifest \
+		--output "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
 		--repo . \
-		$(foreach uri,$(PHASE3_INTERNET_TURN_URI),--turn-uri "$(uri)") \
+		--turn-uri "$(PHASE3_INTERNET_TURN_URI)" \
 		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
 		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
 		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
@@ -410,19 +411,20 @@ phase3-internet-soak-manifest:
 		--android-artifact-sha256 "$(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256)" \
 		--duration-seconds "$(PHASE3_INTERNET_DURATION_SECONDS)" \
 		--sample-interval-seconds "$(PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS)" \
-		$(if $(strip $(PHASE3_INTERNET_NOTES)),--notes "$(PHASE3_INTERNET_NOTES)",)
+		$(if $(strip $(PHASE3_INTERNET_NOTES)),--notes "$(PHASE3_INTERNET_NOTES)",) \
+		-- make phase3-internet-soak-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
 
 phase3-internet-soak-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet soak evidence directory" >&2; exit 2)
 	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_GATE_JSON))"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
-		python3 -m vibescreen_evidence.phase3_internet_soak gate \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
 		--output "$(PHASE3_INTERNET_SOAK_GATE_JSON)" \
-		$(if $(strip $(PHASE3_INTERNET_SOAK_MANIFEST_JSON)),--manifest "$(PHASE3_INTERNET_SOAK_MANIFEST_JSON)",) \
-		$(if $(strip $(PHASE3_INTERNET_REMOTE_TURN_REPORT)),--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)",) \
-		$(if $(strip $(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)),--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)",) \
-		$(if $(strip $(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)),--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)",) \
-		$(if $(strip $(PHASE3_INTERNET_REVOCATION_REPORT)),--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)",) \
-		$(if $(strip $(PHASE3_INTERNET_SOAK_REPORT)),--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)",) \
+		--manifest "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
+		--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)" \
+		--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)" \
+		--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)" \
+		--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)" \
+		--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)" \
 		$(if $(strip $(PHASE3_INTERNET_BLOCKED_REASON)),--blocked-reason "$(PHASE3_INTERNET_BLOCKED_REASON)",) \
 		$(if $(filter 1 true yes,$(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
@@ -692,6 +694,8 @@ harmony-hap-readiness:
 		$(if $(strip $(HARMONY_HAP)),--hap "$(HARMONY_HAP)",) \
 		$(if $(strip $(HARMONY_SHA256SUMS)),--sha256sums "$(HARMONY_SHA256SUMS)",) \
 		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
+		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
+		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",) \
 		$(HARMONY_HAP_READINESS_FLAGS)
 
 harmony-device-gate:

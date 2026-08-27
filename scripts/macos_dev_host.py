@@ -41,6 +41,7 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item state was not probed by default; run readiness with "
     "--probe-login-item during an attended diagnostic session to inspect it."
@@ -157,15 +158,13 @@ def parse_args() -> argparse.Namespace:
     add_common_options(preflight, include_sign_identity=True)
     xctest_preflight = subparsers.add_parser(
         "xctest-preflight",
-        help="fail closed unless full Xcode and XCTest are available for MacHost XCTest runs",
+        help="fail closed unless the selected Apple toolchain can run MacHost XCTest",
     )
     xctest_preflight.add_argument(
-        "--json-output",
-        "--output",
-        dest="json_output",
+        "--report",
         type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_OUTPUT,
-        help="path for the structured XCTest preflight JSON report",
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
+        help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
     readiness = subparsers.add_parser(
         "readiness",
@@ -273,8 +272,6 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except OSError as error:
-        return 127, f"failed to run {command[0]}: {error}"
     return completed.returncode, completed.stdout.strip()
 
 
@@ -1186,6 +1183,38 @@ def write_report(path: Path, report: str) -> None:
     path.write_text(report, encoding="utf-8")
 
 
+def command_report_line(label: str, exit_code: int, output: str) -> str:
+    clean_output = ascii_report_text(output or "<empty>")
+    return f"{label}: exit_code={exit_code}\n{clean_output}"
+
+
+def xctest_preflight_command(args: argparse.Namespace) -> int:
+    xctest_status, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+    errors: list[str] = []
+    if xctest_status != 0:
+        errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+
+    report = "\n".join(
+        (
+            "macOS XCTest preflight",
+            "---------------------------------",
+            f"Status: {'PASS' if not errors else 'FAIL'}",
+            command_report_line("xcrun --find xctest", xctest_status, xctest_path),
+            "Blocking issues:",
+            "\n".join(f"- {error}" for error in errors) if errors else "- none",
+            "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
+            "",
+        )
+    )
+    write_report(args.report, report)
+    print(f"Wrote {args.report}")
+    if errors:
+        print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
+        return 2
+    print("macOS XCTest preflight passed")
+    return 0
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
@@ -1641,6 +1670,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
     print("macOS Host touch-rerun preflight passed")
     return 0
@@ -1698,18 +1728,6 @@ It only uses the configured codesign identity and reads privacy databases in rea
         return 2
     print("macOS Host shared prerequisite readiness passed")
     return 0
-
-def xctest_preflight_command(args: argparse.Namespace) -> int:
-    status = inspect_xctest_preflight()
-    document = build_xctest_preflight_document(status)
-    write_json_report(args.json_output, document)
-    print(f"Wrote {args.json_output}")
-    if document["status"] != "passed":
-        print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
-        return 2
-    print("macOS XCTest preflight passed")
-    return 0
-
 
 def main() -> int:
     args = parse_args()

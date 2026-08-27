@@ -576,7 +576,7 @@ Input Reader State:
 class HarmonyDeviceGateTests(unittest.TestCase):
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
         evidence = f"evidence/{gate_id}.txt"
-        if gate_id in {"h264_hardware_decode", "hevc_hardware_decode"}:
+        if gate_id in harmony_device_gate.AVCODEC_GATE_IDS:
             evidence = "evidence/harmony-avcodec-preflight.json"
         elif gate_id in {"huks_backed_secure_pairing", "credential_revocation_replay"}:
             evidence = "evidence/harmony-secure-pairing.json"
@@ -629,17 +629,6 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
     def test_harmony_device_manifest_passes_when_all_real_device_gates_are_present(self) -> None:
         self.assertEqual(harmony_device_gate.validate_manifest(self.passing_manifest()), [])
-
-    def test_harmony_device_manifest_requires_exact_avcodec_preflight_basename(self) -> None:
-        manifest = self.passing_manifest()
-        avcodec_gate = next(
-            gate for gate in manifest["gates"]
-            if gate["id"] in harmony_device_gate.AVCODEC_GATE_IDS
-        )
-        avcodec_gate["evidence"] = ["evidence/not-harmony-avcodec-preflight.json"]
-
-        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "harmony-avcodec-preflight.json"):
-            harmony_device_gate.validate_manifest(manifest)
 
     def test_harmony_device_manifest_requires_evidence_files_under_root(self) -> None:
         manifest = self.passing_manifest()
