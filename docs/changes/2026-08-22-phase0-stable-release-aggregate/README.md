@@ -36,7 +36,7 @@ stable-release claim is allowed:
 | Host RSS two-hour no-growth | blocked | #158, #222, #230, #237 | The retained two-hour Xiaomi 13 run grew about 18.3 MB; no current-source host_rss_gate pass exists. |
 | Native pointer HID mouse move/click acceptance | blocked | #232, #268 | No physical Android mouse/touchpad/trackball pass has retained Android, Host, and visible Mac evidence from one run. |
 | Controller runtime acceptance | blocked | #217, #220, #270 | No physical controller plus entitled Host plus Mac-side response plus neutral disconnect release pass exists. |
-| Phase 0 module ownership extraction | open | #211, #218, #221, #259 | Android TCP transport is extracted, but the remaining protocol/session/media/input/UI boundaries are not all enforced on current main. |
+| Phase 0 module ownership extraction | open | #211, #218, #221, #259 | Android TCP transport plus several `StreamClient` owner slices are extracted, but the remaining broader protocol/session, decoder/renderer, and UI/product boundaries are not all enforced on current main. |
 
 Trusted LAN current-worktree stream/reconnect, login-item/headless reboot, and
 Developer ID notarized distribution remain important release-readiness items,
