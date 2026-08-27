@@ -1,0 +1,100 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2990,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "54d8d34c70952d4e61804a2763644ee4c28877d1415bc8c8e90934567e5b1050"
+    },
+    {
+      "bytes": 1468,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "blocked.json",
+      "result": "pass",
+      "sha256": "055cb4c9124d37f76e5c488f86df06f02e84db7c36d807795314ab5c3e2d9a9c"
+    },
+    {
+      "bytes": 2296,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "9473cc6b743e89ed7ed7d97ee21f93ae91440f9aec4414c101b19783f3df8760"
+    },
+    {
+      "bytes": 33,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-identity.txt",
+      "result": "pass",
+      "sha256": "66d1eca3980ad9f654c5997e8e9266a2a1815a0ac7c8804d5c47d71758679afc"
+    },
+    {
+      "bytes": 189,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-info.json",
+      "result": "pass",
+      "sha256": "3d84349105650eea0751c901653f071b915955f779e54a3cca8d37c18f2911a1"
+    },
+    {
+      "bytes": 149,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "environment.txt",
+      "result": "pass",
+      "sha256": "024b49a226dd3a417b2103c4116afc8ffff3e41eb33653addb738cc1138fdf89"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
