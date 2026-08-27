@@ -1,0 +1,100 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2343,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "c484589b7c98fcb807c659c571a2c60e23bc0d3c2d59d095b46337599d792772"
+    },
+    {
+      "bytes": 2150,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "blocked-evidence.json",
+      "result": "pass",
+      "sha256": "9315292c753bb07ff79eb57e2870144f718a98ffdb36da03b604dab25fb2df69"
+    },
+    {
+      "bytes": 8599,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "phase3-internet-release-gate.json",
+      "result": "pass",
+      "sha256": "af87ee44514cb0a1633ee343b3e31492c515807caf5df15d5775680139147f0b"
+    },
+    {
+      "bytes": 3669,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "phase3-internet-soak-gate.json",
+      "result": "pass",
+      "sha256": "862293b7a9b93bd7320e9c12e7c4a75eebc5ee3ffb0824e45ea61929cf486f93"
+    },
+    {
+      "bytes": 2597,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "public-nat-turn-preflight.json",
+      "result": "pass",
+      "sha256": "cf7bb5c67c5fad832e2719364ad86d0f3300e982dd72fee005cd99821c27411a"
+    },
+    {
+      "bytes": 7030,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "release-gate-manifest.json",
+      "result": "pass",
+      "sha256": "01755cdaa84c18daa0431460206c829c0991813ce3f80268f0bc4efacd0251ac"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
