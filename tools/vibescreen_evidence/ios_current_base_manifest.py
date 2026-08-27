@@ -418,6 +418,17 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
     )
     if not can_close:
         derived_missing: list[str] = []
+        for key in (
+            "requires_real_ios_device",
+            "requires_signed_app",
+            "requires_physical_keyboard",
+            "requires_hover_or_pointer_accessory",
+            "android_evidence_is_not_ios_input_evidence",
+            "simulator_is_not_ios_input_evidence",
+            "offline_tests_are_readiness_only",
+        ):
+            if document.get(key) is not True:
+                derived_missing.append(f"ios native-input gate {key} must be true")
         if document.get("kind") != IOS_NATIVE_INPUT_KIND:
             derived_missing.append("ios native-input gate kind mismatch")
         if document.get("profile") != IOS_NATIVE_INPUT_PROFILE:
@@ -440,17 +451,6 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             derived_missing.append("ios native-input gate current-base dirty state is not clean")
         if repository.get("dirty") is not False:
             derived_missing.append("repository dirty state is not clean for iOS native-input readiness")
-        for key in (
-            "requires_real_ios_device",
-            "requires_signed_app",
-            "requires_physical_keyboard",
-            "requires_hover_or_pointer_accessory",
-            "android_evidence_is_not_ios_input_evidence",
-            "simulator_is_not_ios_input_evidence",
-            "offline_tests_are_readiness_only",
-        ):
-            if document.get(key) is not True:
-                derived_missing.append(f"ios native-input gate {key} must be true")
         if document.get("verdict") != "pass" or document.get("can_close_ios_native_input_gate") is not True:
             derived_missing.append("ios native-input gate verdict is not pass")
         if missing:
