@@ -45,12 +45,20 @@ Production deployment is blocked until all of these are true:
   `deploy/phase3/tls/privkey.pem`.
 - Production secrets and PostgreSQL URL files exist outside source control and
   are readable by the service UID expected by the Compose profile. Required
-  runtime secret files are `turn_secret.txt`, `client_token.txt`,
-  `usage_token.txt`, `metrics_token.txt`, `admin_token.txt`, and
-  `authority_token.txt`, plus separate migration and runtime PostgreSQL URL
-  files.
-- Both PostgreSQL URLs use `sslmode=verify-full`; the production Compose profile
-  enforces `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` for migration and runtime.
+  relay runtime secret files are `deploy/phase3/secrets/turn_secret.txt`,
+  `deploy/phase3/secrets/client_token.txt`,
+  `deploy/phase3/secrets/usage_token.txt`,
+  `deploy/phase3/secrets/metrics_token.txt`,
+  `deploy/phase3/secrets/admin_token.txt`, and
+  `deploy/phase3/secrets/authority_token.txt`. The relay also requires separate
+  migration and runtime PostgreSQL URL secret files supplied through
+  `VIBE_RELAY_MIGRATION_DATABASE_URL_FILE` and
+  `VIBE_RELAY_DATABASE_URL_FILE`; keep those files outside Git and out of
+  shell history.
+- Both relay PostgreSQL URLs use `sslmode=verify-full`; the production Compose
+  profile enforces `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` for migration and
+  runtime, so weaker `sslmode` values fail startup instead of silently
+  downgrading TLS.
 - Required inbound ports are open: UDP/TCP `3478`, TCP `5349`, and UDP
   `49152-65535`.
 - The relay image repository and exact SHA-256 digest are known.
@@ -91,18 +99,22 @@ install -d -m 0700 secrets tls
 
 Review `config/relay.production.json` and set `turn_realm` to
 `relay.taoai.site`. Keep `authority_mode` set to `production_authority`, set
-`authority_url` to the private Authority endpoint, and set
-`authority_source_id` to the stable identifier for this TURN source. Keep
-`storage_backend` set to `postgres`; the example `state_file` value is retained
-for schema compatibility but the production PostgreSQL profile does not require a
-`/data` volume for file-backed quota state.
+`authority_url` to the private Authority endpoint using an operator-supplied
+placeholder or secret-manager value, and set `authority_source_id` to the stable
+identifier for this TURN source. Do not write an internal Authority URL into
+tracked files, PR text, commit messages, or public logs. Keep `storage_backend`
+set to `postgres`; in that mode relay ignores `state_file`, and the production
+Compose profile intentionally has no `/data` volume for file-backed quota state.
+The writable `coturn-state` bind mount is still required for
+`allocation_registry_file`.
 
 Export deployment parameters using placeholders that are supplied by the
 operator environment or secret manager:
 
 ```bash
 export COTURN_REALM=relay.taoai.site
-export COTURN_EXTERNAL_IP=<public-ip-or-public-ip/private-ip>
+export COTURN_EXTERNAL_IP=<public-ip>
+# Behind one-to-one NAT, use: COTURN_EXTERNAL_IP=<public-ip>/<private-ip>
 export VIBE_RELAY_IMAGE_REPOSITORY=<registry>/<vibe-relay-image>
 export VIBE_RELAY_IMAGE_SHA256=<64-character-image-digest>
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=<path-to-migration-db-url-secret>
@@ -121,7 +133,7 @@ Deploy only after the preflight checklist is green:
 ```bash
 cd deploy/phase3
 docker compose -f docker-compose.production.yml pull relay coturn
-docker compose -f docker-compose.production.yml up -d --wait
+docker compose -f docker-compose.production.yml up -d --wait relay coturn
 curl --fail http://127.0.0.1:8090/readyz
 docker compose -f docker-compose.production.yml logs --since=10m relay coturn
 ```
