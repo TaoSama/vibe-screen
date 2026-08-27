@@ -362,15 +362,9 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
     current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else None
     gate["owner"] = owner
     gate["current_base"] = current_base
-    for key in (
-        "kind",
-        "profile",
-        "gate_owner",
-        "verdict",
-    ):
+    for key in ("kind", "profile", "gate_owner", "verdict"):
         value = document.get(key)
-        if isinstance(value, str):
-            gate[key] = value
+        gate[key] = value if isinstance(value, str) else None
     for key in (
         "can_close_ios_native_input_gate",
         "requires_real_ios_device",
@@ -382,8 +376,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         "offline_tests_are_readiness_only",
     ):
         value = document.get(key)
-        if isinstance(value, bool):
-            gate[key] = value
+        gate[key] = value is True
     gate["observations"] = document.get("observations") if isinstance(document.get("observations"), dict) else {}
     for key in ("missing_requirements", "blocking_reasons", "disallowed_evidence", "artifact_paths"):
         values = document.get(key)
@@ -435,6 +428,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         gate.get("verdict") == "pass"
         and gate.get("can_close_ios_native_input_gate") is True
         and not missing
+        and not blocking
         and not gate["disallowed_evidence"]
     )
     if not can_close:

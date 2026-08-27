@@ -249,7 +249,7 @@ def validate_manifest(
             gate_id in AVCODEC_GATE_IDS
             and status == "pass"
             and not allow_blocked
-            and not any(AVCODEC_MANIFEST_NAME in item for item in evidence)
+            and not any(Path(item).name == AVCODEC_MANIFEST_NAME for item in evidence)
         ):
             raise ManifestError(f"{gate_id}: expected evidence to include {AVCODEC_MANIFEST_NAME}")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":

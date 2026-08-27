@@ -294,6 +294,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
                 all(needle not in capability_body for needle in (".audioDataChannel", ".bulkDataChannel"))
                 and "maximumClients: Int = 1" in capability_body
                 and "if maximumClients > 1 { capabilities.insert(.multiClient) }" in capability_body
+                and capability_body.count("capabilities.insert(.multiClient)") == 1
             ) else "fail",
             detail="audio/bulk DataChannel stay out of production defaults; multi-client requires maximumClients > 1 opt-in",
         ),

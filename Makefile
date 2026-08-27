@@ -712,7 +712,7 @@ harmony-host-interop-preflight:
 harmony-host-interop-gate:
 	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a sanitized HarmonyOS Host interop manifest" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
-		--evidence-root "$(EVIDENCE_DIR)" \
+		$(if $(strip $(EVIDENCE_DIR)),--evidence-root "$(EVIDENCE_DIR)",) \
 		"$(HARMONY_HOST_INTEROP_JSON)"
 
 harmony-current-base-gate:

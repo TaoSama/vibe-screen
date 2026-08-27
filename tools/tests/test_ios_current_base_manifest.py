@@ -270,6 +270,58 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_missing_required_fields_fails_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate = make_native_input_gate()
+            for key in (
+                "kind",
+                "profile",
+                "gate_owner",
+                "requires_real_ios_device",
+                "requires_signed_app",
+                "requires_physical_keyboard",
+                "requires_hover_or_pointer_accessory",
+                "android_evidence_is_not_ios_input_evidence",
+                "simulator_is_not_ios_input_evidence",
+                "offline_tests_are_readiness_only",
+            ):
+                gate.pop(key)
+            native_input_gate = root / "ios-native-input-gate.json"
+            native_input_gate.write_text(json.dumps(gate), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        native_gate = manifest["native_input_gate"]
+        self.assertTrue(native_gate["provided"])
+        self.assertEqual(native_gate["verdict"], "blocked")
+        self.assertFalse(native_gate["can_close_ios_native_input_gate"])
+        self.assertIn("ios native-input gate kind mismatch", native_gate["missing_requirements"])
+        self.assertIn("ios native-input gate profile mismatch", native_gate["missing_requirements"])
+        self.assertIn("ios native-input gate requires_signed_app must be true", native_gate["missing_requirements"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_blocking_reasons_prevent_close(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = write_native_input_gate(root, blocking_reasons=["still missing physical-device trace"])
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        native_gate = manifest["native_input_gate"]
+        self.assertEqual(native_gate["verdict"], "blocked")
+        self.assertFalse(native_gate["can_close_ios_native_input_gate"])
+        self.assertEqual(native_gate["blocking_reasons"], ["still missing physical-device trace"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_missing_signing_readiness_gate_path_fails_closed(self, state, environment):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         environment.return_value = {}

@@ -3,9 +3,9 @@ git rev-parse origin/main
 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base tools.tests.test_schemas -v
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-observations.json --output docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-gate.json; test $? -eq 1
 jq -e '.verdict == "blocked" and .current_main_sha == "3b2ba11e832a3618eaedfc67f92414b161423a00" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-gate.json
-cd baseline/MacHost && swift build -c release
-cd baseline/MacHost && "./.build/release/Vibe Screen" --protocol-v1-self-test
-cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+(cd baseline/MacHost && swift build -c release)
+(cd baseline/MacHost && "./.build/release/Vibe Screen" --protocol-v1-self-test)
+(cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest)
 xcode-select -p; xcrun --find xctest || true; swift --version
-cd baseline/MacHost && swift test --filter ProtocolV1SessionTests
+(cd baseline/MacHost && swift test --filter ProtocolV1SessionTests)
 git diff --check
