@@ -251,7 +251,7 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
             allowedHosts: []
         ).protocolStatus
         let policyActions = session.handleControl(try envelope(
-            id: 4,
+            id: 5,
             payload: .managedPolicyStatus(denied)
         ).serializedData())
         XCTAssertEqual(policyActions.count, 1)
@@ -268,7 +268,7 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
         var request = VSClipboardRequest()
         request.changeID = firstOffer.changeID
         let requestActions = session.handleControl(try envelope(
-            id: 5,
+            id: 6,
             payload: .clipboardRequest(request)
         ).serializedData())
         let error = try protocolError(from: requestActions)
