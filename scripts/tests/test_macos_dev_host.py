@@ -195,6 +195,17 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         with self.assertRaisesRegex(SystemExit, "stable signing identity"):
             macos_dev_host.refuse_ad_hoc_identity("-")
 
+    def test_run_best_effort_reports_missing_command_without_raising(self) -> None:
+        with mock.patch.object(
+            subprocess,
+            "run",
+            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
+        ):
+            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
+
+        self.assertEqual(exit_code, 127)
+        self.assertEqual(output, "command not found: defaults")
+
     def test_validate_preflight_rejects_unexpected_named_identity(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(authorities=("Other Dev",)),
