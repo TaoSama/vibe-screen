@@ -1,0 +1,80 @@
+{
+  "artifact_paths": [
+    "commands.txt",
+    "dumpsys-input.txt",
+    "getevent-lp.txt",
+    "README.md",
+    "stylus-evidence.json"
+  ],
+  "collected_at": "2026-08-27T16:20:16.585333+00:00",
+  "device_identity": {
+    "api_level": "36",
+    "device": "pacific",
+    "fingerprint": "redacted-build-fingerprint",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "os_release": "16",
+    "serialno": "redacted-pacific-serial",
+    "wm_density": "Physical density: 560",
+    "wm_size": "Physical size: 1264x2800"
+  },
+  "diag_log_read_error": "Skipped for this capability-only snapshot; no physical drawing observation window was attempted.",
+  "drawing_observation": "",
+  "existing_locks": [],
+  "host_log_appended_bytes": 0,
+  "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "host_log_name": null,
+  "host_stable_signed_tcc_ready": false,
+  "notes": "Capability-only Nubia P0110/pacific snapshot. getevent-lp.txt records goodix_stylus_input with BTN_STYLUS, BTN_STYLUS2, ABS_PRESSURE, ABS_TILT_X, ABS_TILT_Y, and ABS_DISTANCE; BTN_TOOL_PEN and BTN_TOOL_RUBBER were not exposed in this snapshot. No physical drawing observation window was attempted.",
+  "observation_seconds": 0.0,
+  "observed_physical_drawing": false,
+  "pass_eligible_stylus_candidates": [
+    {
+      "axes": [
+        "ORIENTATION",
+        "PRESSURE",
+        "TILT",
+        "X",
+        "Y"
+      ],
+      "buttons": [],
+      "descriptor": null,
+      "name": "goodix_stylus_input",
+      "sources": [
+        "KEYBOARD",
+        "STYLUS",
+        "TOUCHSCREEN"
+      ]
+    }
+  ],
+  "status": "blocked_physical_stylus_not_observed",
+  "stylus_candidates": [
+    {
+      "axes": [
+        "PRESSURE",
+        "TILT"
+      ],
+      "buttons": [],
+      "descriptor": "2eae456e51a294467747b34134d9bcbee02b2bff",
+      "name": "goodix_stylus_input",
+      "sources": []
+    },
+    {
+      "axes": [
+        "ORIENTATION",
+        "PRESSURE",
+        "TILT",
+        "X",
+        "Y"
+      ],
+      "buttons": [],
+      "descriptor": null,
+      "name": "goodix_stylus_input",
+      "sources": [
+        "KEYBOARD",
+        "STYLUS",
+        "TOUCHSCREEN"
+      ]
+    }
+  ]
+}

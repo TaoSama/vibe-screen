@@ -1,0 +1,100 @@
+add device 1: /dev/input/event0
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_VOLUMEUP          02ef                 
+  input props:
+    <none>
+add device 2: /dev/input/event1
+  name:     "pmic_pwrkey"
+  events:
+    KEY (0001): KEY_POWER            
+  input props:
+    <none>
+add device 3: /dev/input/event2
+  name:     "pmic_resin"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN       
+  input props:
+    <none>
+add device 4: /dev/input/event3
+  name:     "pmic_pwrkey_resin_bark"
+  events:
+    KEY (0001): KEY_POWER            
+  input props:
+    <none>
+add device 5: /dev/input/event4
+  name:     "aw-haptic-hv"
+  events:
+    FF  (0015): FF_RUMBLE             FF_PERIODIC           FF_CONSTANT           FF_CUSTOM            
+                FF_GAIN              
+  input props:
+    <none>
+add device 6: /dev/input/event5
+  name:     "qbt_key_input"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_POWER             KEY_HOMEPAGE          BTN_TOOL_FINGER      
+    ABS (0003): ABS_X                 : value 0, min 0, max 1000, fuzz 0, flat 0, resolution 0
+                ABS_Y                 : value 0, min 0, max 1000, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 7: /dev/input/event6
+  name:     "STM VL53L1 proximity sensor"
+  events:
+    ABS (0003): ABS_THROTTLE          : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_RUDDER            : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_WHEEL             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_GAS               : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_BRAKE             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT0X             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT0Y             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT1X             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT1Y             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT2X             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT2Y             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT3X             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_HAT3Y             : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_DISTANCE          : value -1, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_TILT_X            : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_TILT_Y            : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_TOOL_WIDTH        : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_VOLUME            : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+                ABS_MISC              : value -1, min 0, max -1, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 8: /dev/input/event7
+  name:     "goodix_stylus_input"
+  events:
+    KEY (0001): BTN_DIGI              BTN_TOUCH             BTN_STYLUS            BTN_STYLUS2          
+    ABS (0003): ABS_X                 : value 0, min 0, max 12639, fuzz 0, flat 0, resolution 0
+                ABS_Y                 : value 0, min 0, max 27999, fuzz 0, flat 0, resolution 0
+                ABS_PRESSURE          : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_TILT_X            : value 0, min -90, max 90, fuzz 0, flat 0, resolution 0
+                ABS_TILT_Y            : value 0, min -90, max 90, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 9: /dev/input/event8
+  name:     "gdix_input_agent"
+  events:
+    KEY (0001): KEY_WAKEUP            BTN_TOOL_FINGER       BTN_TOUCH             KEY_GOTO             
+                02f4                  02f5                 
+    ABS (0003): ABS_X                 : value 0, min 0, max 12639, fuzz 0, flat 0, resolution 0
+                ABS_Y                 : value 0, min 0, max 27999, fuzz 0, flat 0, resolution 0
+                ABS_MT_SLOT           : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 12639, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 27999, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 10: /dev/input/event9
+  name:     "sun-qrd-sku2-snd-card Headset Jack"
+  events:
+    SW  (0005): SW_HEADPHONE_INSERT   SW_MICROPHONE_INSERT  SW_LINEOUT_INSERT     SW_JACK_PHYSICAL_INS    
+  input props:
+    <none>
+add device 11: /dev/input/event10
+  name:     "sun-qrd-sku2-snd-card Button Jack"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_VOLUMEUP          KEY_MEDIA             BTN_4                
+                BTN_5                 KEY_VOICECOMMAND     
+  input props:
+    <none>

@@ -1,0 +1,91 @@
+# 2026-08-28 Nubia P0110/pacific stylus capability snapshot commands
+
+Working tree: isolated `origin/main` worktree on branch
+`codex/stylus-nubia-capability-snapshot` at `27d2b0e49`.
+
+Preflight command required by the gate owner:
+
+```bash
+pgrep -x sfltool || true
+```
+
+Result: no output; no `sfltool` process was observed. No
+`/usr/bin/sfltool dumpbtm` command was executed.
+
+Device coordination:
+
+```bash
+LOCK=/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock
+```
+
+An empty stale serial lock from an aborted local command construction attempt was
+removed before any ADB command ran. The run then acquired the same serial lock
+and released it after the read-only snapshot completed. No generic
+`/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock` file was present.
+
+Device identity commands run under the serial lock:
+
+```bash
+adb -s EP0110PZ0B9110300B get-state
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+```
+
+Result:
+
+```text
+device
+nubia
+P0110
+pacific
+16
+36
+```
+
+Raw Android input capability snapshot:
+
+```bash
+adb -s EP0110PZ0B9110300B shell getevent -lp \
+  > docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot/getevent-lp.txt
+```
+
+Collector command:
+
+```bash
+python3 scripts/android_stylus_acceptance.py \
+  --serial EP0110PZ0B9110300B \
+  --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot
+```
+
+Result:
+
+```text
+blocked_physical_stylus_not_observed: wrote docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot
+```
+
+The collector was then rerun with `--skip-diag-log` under the same serial-lock
+protocol because this task only requested a capability snapshot and no physical
+drawing observation window was attempted. The retained `stylus-evidence.json`
+sets `diag_log_read_error` to that capability-only skip reason, and no
+`android-diag.log` file is retained in this evidence bundle.
+
+Capability observations:
+
+- `getevent-lp.txt` records `/dev/input/event7` named
+  `goodix_stylus_input`.
+- The raw event device exposes `BTN_TOUCH`, `BTN_STYLUS`, `BTN_STYLUS2`,
+  `ABS_PRESSURE`, `ABS_TILT_X`, `ABS_TILT_Y`, and `ABS_DISTANCE`.
+- The raw event device does not expose `BTN_TOOL_PEN` or `BTN_TOOL_RUBBER` in
+  this snapshot; eraser runtime support was not observed.
+- `dumpsys-input.txt` records `goodix_stylus_input` with `ABS_PRESSURE`,
+  `ABS_TILT_X`, and `ABS_TILT_Y`; the collector also found one pass-eligible
+  Android input candidate with `KEYBOARD | TOUCHSCREEN | STYLUS` source and
+  pressure/tilt axes.
+- No physical stylus drawing was performed, no Host `Stylus injected:` log was
+  supplied, and no visible macOS drawing-app output was captured. This is a
+  capability snapshot only and cannot close the physical-stylus drawing-app
+  gate.

@@ -80,6 +80,38 @@ Evidence:
   candidate, no physical drawing observation, no Host stylus log, and no
   drawing-app screenshot.
 
+## 2026-08-28 P0110 capability snapshot
+
+The gate owner was rechecked from a clean `origin/main` worktree at `27d2b0e49`
+on branch `codex/stylus-nubia-capability-snapshot`. The required
+`pgrep -x sfltool || true` preflight had no output, and no
+`/usr/bin/sfltool dumpbtm` command was executed. The target device operation
+used the serial-specific lock
+`/tmp/vibe-screen-android-<device-serial>.lock`; an empty stale lock from an
+aborted local command construction attempt was removed before any ADB command
+ran, then the same lock was acquired and released around the read-only ADB
+snapshot.
+
+The device identified as nubia P0110 / pacific / Android 16 / SDK 36. The raw
+`adb -s <device-serial> shell getevent -lp` snapshot records
+`/dev/input/event7` named `goodix_stylus_input` with `BTN_TOUCH`,
+`BTN_STYLUS`, `BTN_STYLUS2`, `ABS_PRESSURE`, signed `ABS_TILT_X` /
+`ABS_TILT_Y`, and `ABS_DISTANCE`. The raw snapshot did not expose
+`BTN_TOOL_PEN` or `BTN_TOOL_RUBBER`, so eraser runtime support was not observed.
+The collector still found one pass-eligible Android candidate declaring
+`KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure and tilt axes. No physical
+stylus was available for drawing, no Host stylus-injection excerpt was supplied,
+and no visible macOS drawing-app output was captured. The README drawing-app
+gate therefore remains blocked.
+
+Evidence:
+
+- `evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot/`: current
+  capability-only snapshot; status is `blocked_physical_stylus_not_observed`,
+  `stylus-summary.json` has `verdict=blocked` and
+  `can_close_physical_stylus_gate=false`, and the record must remain labeled as
+  Nubia P0110/pacific evidence rather than Xiaomi 13/fuxi evidence.
+
 ## 2026-08-29 P0110 current-base fail-closed refresh
 
 The device collection snapshot at `757e5cc` was rechecked with one online
