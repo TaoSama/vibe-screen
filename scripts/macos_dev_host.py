@@ -139,6 +139,10 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed unless a full Xcode XCTest runtime is selected for SwiftPM tests",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -1520,12 +1524,29 @@ It only uses the configured codesign identity and reads privacy databases in rea
     return 0
 
 
+def xctest_preflight_command(_args: argparse.Namespace) -> int:
+    exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+    xctest_path = output.splitlines()[0].strip() if output.strip() else ""
+    if exit_code != 0 or not xctest_path:
+        detail = redact_local_report_text(output.strip()) if output.strip() else "xcrun did not return an XCTest path"
+        print(
+            "macOS XCTest preflight failed: select a full Xcode installation before running "
+            f"baseline-macos-test ({detail}).",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"macOS XCTest preflight passed: {redact_local_report_text(xctest_path)}")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
+    if args.command == "xctest-preflight":
+        return xctest_preflight_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
