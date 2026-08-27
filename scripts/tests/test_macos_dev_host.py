@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import plistlib
 import queue
+import re
 import sqlite3
 import subprocess
 import sys
@@ -461,15 +462,57 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertFalse(args.include_login_item_diagnostic)
 
     def test_parse_args_readiness_login_item_diagnostic_is_opt_in(self) -> None:
-        with mock.patch.object(
-            sys,
-            "argv",
-            ["macos_dev_host.py", "readiness", "--include-login-item-diagnostic"],
-        ):
-            args = macos_dev_host.parse_args()
+        for flag in ("--include-login-item-diagnostic", "--inspect-login-items", "--probe-login-items"):
+            with self.subTest(flag=flag):
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["macos_dev_host.py", "readiness", flag],
+                ):
+                    args = macos_dev_host.parse_args()
 
-        self.assertEqual(args.command, "readiness")
-        self.assertTrue(args.include_login_item_diagnostic)
+                self.assertEqual(args.command, "readiness")
+                self.assertTrue(args.include_login_item_diagnostic)
+
+    def test_readiness_help_warns_login_item_probe_can_prompt_for_admin(self) -> None:
+        with (
+            mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness", "--help"]),
+            redirect_stdout(StringIO()) as stdout,
+        ):
+            with self.assertRaises(SystemExit) as error:
+                macos_dev_host.parse_args()
+
+        self.assertEqual(error.exception.code, 0)
+        help_text = stdout.getvalue()
+        self.assertIn("--include-login-item-diagnostic", help_text)
+        self.assertIn("--inspect-login-items", help_text)
+        self.assertIn("--probe-login-items", help_text)
+        self.assertIn("/usr/bin/sfltool", help_text)
+        self.assertIn("dumpbtm", help_text)
+        self.assertIn("administrator authorization", help_text)
+
+    def test_read_login_item_readiness_uses_sfltool_only_inside_explicit_probe_function(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(0, "bundle id dev.telemachus.display allowed = 1"),
+        ) as run_mock:
+            readiness = macos_dev_host.read_login_item_readiness()
+
+        self.assertEqual(readiness.state, "enabled")
+        run_mock.assert_called_once_with("/usr/bin/sfltool", "dumpbtm", timeout_seconds=15)
+
+    def test_read_login_item_readiness_fails_closed_when_sfltool_fails(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(124, "command timed out after 15s"),
+        ):
+            readiness = macos_dev_host.read_login_item_readiness()
+
+        self.assertEqual(readiness.state, "unverified")
+        self.assertFalse(readiness.matched)
+        self.assertIn("command timed out", readiness.detail)
 
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -43,7 +43,8 @@ SYSTEM_SETTINGS_PATH = (
 DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item state was not probed by default; run readiness with "
-    "--include-login-item-diagnostic during an attended diagnostic session to inspect it."
+    "--include-login-item-diagnostic or --inspect-login-items during an attended "
+    "diagnostic session to inspect it with /usr/bin/sfltool dumpbtm."
 )
 
 @dataclass(frozen=True)
@@ -174,11 +175,13 @@ def parse_args() -> argparse.Namespace:
     readiness.add_argument(
         "--include-login-item-diagnostic",
         "--inspect-login-items",
+        "--probe-login-items",
         action="store_true",
         dest="include_login_item_diagnostic",
         help=(
-            "opt in to the real macOS login-item diagnostic. This may invoke system tools "
-            "that require attended approval; default CI/test readiness skips it fail-closed."
+            "opt in to the real macOS login-item diagnostic by calling "
+            "/usr/bin/sfltool dumpbtm. This may trigger macOS administrator "
+            "authorization prompts; default CI/test readiness skips it fail-closed."
         ),
     )
     return parser.parse_args()
