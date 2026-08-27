@@ -83,9 +83,11 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
             "}\n"
         )
 
-        self.assertTrue(
-            phase5_host_advanced_adapters.production_multi_client_is_default_gated(capability_body)
+        result = phase5_host_advanced_adapters.check_default_advanced_capabilities(
+            capability_body
         )
+
+        self.assertEqual(result.status, "pass")
 
     def test_rejects_unguarded_multi_client_capability(self) -> None:
         capability_body = (
@@ -98,9 +100,11 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
             "}\n"
         )
 
-        self.assertFalse(
-            phase5_host_advanced_adapters.production_multi_client_is_default_gated(capability_body)
+        result = phase5_host_advanced_adapters.check_default_advanced_capabilities(
+            capability_body
         )
+
+        self.assertEqual(result.status, "fail")
 
     def test_cli_writes_json_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
