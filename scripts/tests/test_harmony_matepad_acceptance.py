@@ -329,15 +329,22 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
             directory = Path(directory_name)
             manifest = passing_device_manifest()
             for gate in manifest["gates"]:
-                gate_id = gate["id"]
-                if gate_id in {"h264_hardware_decode", "hevc_hardware_decode"}:
-                    gate["evidence"] = ["artifact://release/harmony/harmony-avcodec-preflight.json"]
-                elif gate_id in {"huks_backed_secure_pairing", "credential_revocation_replay"}:
-                    gate["evidence"] = ["artifact://release/harmony/harmony-secure-pairing.json"]
-                else:
-                    gate["evidence"] = [f"artifact://release/harmony/{gate_id}.txt"]
+                gate["evidence"] = [f"artifact://release/harmony/{MARKER_BY_GATE[gate['id']]}"]
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (directory / "harmony-current-base-gate.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "harmony_current_base_owner_gate",
+                        "verdict": "blocked",
+                        "can_close_readme_phase4_owner_gates": False,
+                        "can_claim_harmony_device_pass": False,
+                        "reasons": ["blocked: external artifact references"],
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             exit_code = run_main(["--evidence-dir", str(directory)])
             package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
