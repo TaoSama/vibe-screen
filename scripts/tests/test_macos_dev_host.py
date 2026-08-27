@@ -1194,23 +1194,19 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
             with (
                 mock.patch.object(
-                    macos_dev_host.package_macos,
-                    "resolve_sign_identity",
-                    side_effect=SystemExit("missing identity"),
-                ),
-                mock.patch.object(
                     macos_dev_host,
-                    "current_source_identity",
-                    return_value=macos_dev_host.package_macos.SourceIdentity(
-                        commit="c" * 40,
-                        tree="d" * 40,
-                        dirty=False,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=None,
+                        source_identity=None,
+                        permissions=macos_dev_host.PermissionStatus(
+                            database_path=macos_dev_host.USER_TCC_DATABASE_LABEL,
+                            rows=(),
+                            readable=False,
+                            error="permission state unavailable",
+                        ),
+                        errors=["Host bundle not found"],
                     ),
-                ),
-                mock.patch.object(
-                    macos_dev_host,
-                    "collect_signing_metadata",
-                    side_effect=SystemExit(f"Host bundle not found: {macos_dev_host.DEFAULT_INSTALL_PATH}"),
                 ),
                 mock.patch.object(
                     macos_dev_host,
@@ -1230,15 +1226,10 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                         virtual_hid=False,
                         keys=(),
                         raw_output="",
-                        error="bundle missing",
                     ),
                 ),
+                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]) as login_probe,
                 mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
-                mock.patch.object(
-                    macos_dev_host,
-                    "read_login_item_readiness",
-                    return_value=self.login_ready_inputs()[1],
-                ) as login_probe,
                 mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
                 mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
                 redirect_stdout(StringIO()),
