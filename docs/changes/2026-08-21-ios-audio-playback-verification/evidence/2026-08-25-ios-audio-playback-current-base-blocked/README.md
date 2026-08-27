@@ -1,18 +1,11 @@
 # iOS audio playback blocked evidence
 
-<<<<<<< HEAD
-Date: 2026-08-26
-Repository: `TaoSama/vibe-screen`
-Branch: `codex/ios-audio-pcm-verifier`
-Current base: `origin/main` at `f46163524`
-=======
 Date: 2026-08-27
 Repository: `TaoSama/vibe-screen`
 Local validation branch: `codex/pr209-current-base-20260827`
 PR branch: `codex/ios-audio-pcm-verifier`
 Current base: `origin/main` at `e94d3a051e683d2a7d6f34fd03badd1b4ef264d0`
 Verified source commit: `839f1fc9520c8ea6ca18e6782aa3fa0f6458e838`
->>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 
 ## Status
 
@@ -43,11 +36,7 @@ Therefore this evidence does not claim real audible iPhone/iPad playback.
 
 ```text
 $ TMPDIR=$PWD/.build/tmp swift build --package-path apps/ios --configuration release
-<<<<<<< HEAD
-Build complete!
-=======
 Build complete! (260.77s)
->>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 
 $ TMPDIR=$PWD/.build/tmp apps/ios/.build/release/vibescreen-ios-selftest
 RUN: framing
@@ -64,11 +53,7 @@ $ TMPDIR=$PWD/.build/tmp apps/ios/Scripts/verify-generated-protocol.sh
 generated macOS and iOS Protocol v1 bindings are current
 
 $ TMPDIR=$PWD/.build/tmp make protocol
-<<<<<<< HEAD
-Ran 37 tests in 111.148s
-=======
 Ran 37 tests in 114.188s
->>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 OK
 
 $ plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
@@ -82,13 +67,6 @@ exit 0
 
 $ git diff --check
 exit 0
-<<<<<<< HEAD
-```
-
-An earlier `make protocol` attempt failed before completing because the system
-temporary volume could not create Python/Go temporary directories (`No space
-left on device`). Rerunning with the worktree-local `TMPDIR` above passed.
-=======
 
 $ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_ios_device_acceptance_gate tools.tests.test_ios_app_signing_readiness tools.tests.test_ios_current_base_manifest tools.tests.test_ios_current_base_gate tools.tests.test_ios_hdr_edr_gate -v
 Ran 83 tests in 1.109s
@@ -100,7 +78,6 @@ exit 0
 
 The 2026-08-27 current-base rerun used the worktree-local `TMPDIR` above for
 SwiftPM, SwiftProtobuf, Go, and Python temporary files.
->>>>>>> e2eb8857197382ad70c0cf4c8d4656b0f8ab1c05
 
 ## Local environment commands
 

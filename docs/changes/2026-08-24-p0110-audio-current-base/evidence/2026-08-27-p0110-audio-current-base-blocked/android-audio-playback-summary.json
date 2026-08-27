@@ -16,25 +16,43 @@
     {
       "exists": true,
       "non_empty": true,
-      "path": "macos-dev-host-preflight.txt",
+      "path": "macos-dev-host-preflight-current-base.txt",
       "under_evidence_dir": true
     },
     {
       "exists": true,
       "non_empty": true,
-      "path": "macos-dev-host-preflight-exit.txt",
-      "under_evidence_dir": true
-    },
-    {
-      "exists": true,
-      "non_empty": false,
       "path": "host-54321-listener.txt",
       "under_evidence_dir": true
     },
     {
       "exists": true,
       "non_empty": true,
-      "path": "host-54321-listener-exit.txt",
+      "path": "host-audio-log.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-audio-logcat.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-audio-diag.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "audio-log-search.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "playback-confirmation-blocked.txt",
       "under_evidence_dir": true
     },
     {
@@ -46,54 +64,50 @@
     {
       "exists": true,
       "non_empty": true,
-      "path": "android-pidof.txt",
+      "path": "android-network.txt",
       "under_evidence_dir": true
     },
     {
       "exists": true,
       "non_empty": true,
-      "path": "android-pidof-exit.txt",
+      "path": "device-lock-acquired.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "device-lock-adb-state.txt",
       "under_evidence_dir": true
     }
   ],
   "artifact_paths": [
     "device-info.json",
     "usb-live-smoke.json",
-    "macos-dev-host-preflight.txt",
-    "macos-dev-host-preflight-exit.txt",
+    "macos-dev-host-preflight-current-base.txt",
     "host-54321-listener.txt",
-    "host-54321-listener-exit.txt",
+    "host-audio-log.txt",
+    "android-audio-logcat.txt",
+    "android-audio-diag.txt",
+    "audio-log-search.txt",
+    "playback-confirmation-blocked.txt",
     "adb-reverse-list.txt",
-    "android-pidof.txt",
-    "android-pidof-exit.txt"
+    "android-network.txt",
+    "device-lock-acquired.txt",
+    "device-lock-adb-state.txt"
   ],
   "blocking_notes": [
     "Device identity is nubia P0110 / pacific / Android 16 / SDK 36 / <ANDROID_SERIAL>; it is not Xiaomi 13/fuxi evidence.",
-    "ADB reverse tcp:54321 was present and dev.telemachus.display was foreground, but usb-live-smoke observed no current stream telemetry or decoder counters.",
-    "macos_dev_host preflight failed because the Vibe Screen Dev signing identity is missing.",
-    "No process was listening on TCP port 54321 during the retained Host listener snapshot.",
-    "Blocked readiness record only. No Host Microphone/TCC-ready signed listener, Protocol v1 audio negotiation, Host channel 3 packet flow, Android AudioTrack write evidence, audible output, or disconnect cleanup was observed."
+    "The Android device lock was acquired for a read-only current-base readiness collection; ADB commands used the explicit device serial and public artifacts use <ANDROID_SERIAL>.",
+    "USB reverse tcp:54321 and an active app/video stream were observed, but Android negotiated capabilities did not include CAPABILITY_AUDIO in the retained log window.",
+    "Current-base Host preflight failed because the installed Host lacks source commit/tree provenance and read-only TCC permission verification could not prove Screen/System Audio Recording or Microphone readiness.",
+    "No Host audio_capture_started, channel 3 audio packet flow, Android AudioTrack start/write, audible playback, or cleanup evidence was observed.",
+    "Trusted-LAN playback was not attempted because the device Wi-Fi path had no usable association, wlan0 IPv4 address, or route in the retained preflight.",
+    "Fail-closed current-base readiness record only. A live USB video stream was observed, but no real Protocol v1 USB/LAN audio playback evidence was collected; build, unit, synthetic, loopback, Android-only, and private diagnostic logs without production AudioTrack writes remain non-passing diagnostics."
   ],
   "blocking_reasons": [
     {
-      "field": "android_device_lock_acquired",
-      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
-    },
-    {
       "field": "host_stable_signed_tcc_ready",
       "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
-    },
-    {
-      "field": "host_listener_observed",
-      "requirement": "record the macOS Host listener for the transport under test"
-    },
-    {
-      "field": "protocol_v1_session_observed",
-      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
-    },
-    {
-      "field": "retained_artifacts_available",
-      "requirement": "retain non-empty pass artifacts under the evidence directory for device, Host audio, Android audio, and playback confirmation"
     }
   ],
   "can_close_android_audio_playback_gate": false,
@@ -110,24 +124,12 @@
   "loopback_or_synthetic_is_not_playback_evidence": true,
   "missing_requirements": [
     {
-      "field": "android_device_lock_acquired",
-      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
-    },
-    {
       "field": "host_build_identity_recorded",
       "requirement": "record Host commit, binary hash, and signing identity"
     },
     {
       "field": "host_stable_signed_tcc_ready",
       "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
-    },
-    {
-      "field": "host_listener_observed",
-      "requirement": "record the macOS Host listener for the transport under test"
-    },
-    {
-      "field": "protocol_v1_session_observed",
-      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
     },
     {
       "field": "audio_capability_negotiated",
@@ -164,17 +166,13 @@
     {
       "field": "host_logs_retained",
       "requirement": "retain Host logs covering negotiation, packet flow, and cleanup"
-    },
-    {
-      "field": "retained_artifacts_available",
-      "requirement": "retain non-empty pass artifacts under the evidence directory for device, Host audio, Android audio, and playback confirmation"
     }
   ],
-  "notes": "Blocked readiness record only. No Host Microphone/TCC-ready signed listener, Protocol v1 audio negotiation, Host channel 3 packet flow, Android AudioTrack write evidence, audible output, or disconnect cleanup was observed.",
+  "notes": "Fail-closed current-base readiness record only. A live USB video stream was observed, but no real Protocol v1 USB/LAN audio playback evidence was collected; build, unit, synthetic, loopback, Android-only, and private diagnostic logs without production AudioTrack writes remain non-passing diagnostics.",
   "observations": {
     "android_audio_packets_written": false,
     "android_audio_track_started": false,
-    "android_device_lock_acquired": false,
+    "android_device_lock_acquired": true,
     "android_logs_retained": true,
     "apk_identity_recorded": true,
     "audio_capability_negotiated": false,
@@ -185,21 +183,21 @@
     "disconnect_cleanup_observed": false,
     "host_audio_packets_sent": false,
     "host_build_identity_recorded": false,
-    "host_listener_observed": false,
+    "host_listener_observed": true,
     "host_logs_retained": false,
     "host_microphone_capture_started": false,
     "host_stable_signed_tcc_ready": false,
     "no_synthetic_or_loopback_markers": true,
     "playback_output_confirmed": false,
-    "protocol_v1_session_observed": false,
-    "retained_artifacts_available": false,
+    "protocol_v1_session_observed": true,
+    "retained_artifacts_available": true,
     "transport_supported": true
   },
   "profile": "protocol-v1-android-usb-lan-audio-playback",
   "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16/SDK 36 evidence must not be relabeled as Xiaomi 13/fuxi.",
   "requires_audible_or_instrumented_output": true,
   "requires_real_android_device": true,
-  "run_id": "2026-08-24-p0110-audio-current-base-blocked",
+  "run_id": "2026-08-27-p0110-audio-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "transport": "usb",
   "verdict": "blocked"
