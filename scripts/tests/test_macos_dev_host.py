@@ -62,7 +62,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
 
         self.assertEqual(exit_code, 127)
-        self.assertIn("command unavailable", output)
+        self.assertIn("command not found", output)
         self.assertIn("/definitely/missing/vibe-screen-tool", output)
 
     def test_xctest_preflight_command_passes_with_full_xcode_toolchain(self) -> None:
@@ -1156,7 +1156,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 source_root=Path("."),
                 allow_source_mismatch=False,
                 port=54321,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
             settings, login_item, displays, logs = self.login_ready_inputs()
 

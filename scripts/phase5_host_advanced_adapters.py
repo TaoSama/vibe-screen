@@ -274,6 +274,12 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
             status="fail",
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
+    if not re.search(r"\bmaximumClients\s*:\s*Int\s*=\s*1\b", capability_body):
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail="multi-client default must remain maximumClients: Int = 1",
+        )
     normalized_body = capability_body.replace("\\n", "\n")
     multiclient_lines = [
         line.strip()
