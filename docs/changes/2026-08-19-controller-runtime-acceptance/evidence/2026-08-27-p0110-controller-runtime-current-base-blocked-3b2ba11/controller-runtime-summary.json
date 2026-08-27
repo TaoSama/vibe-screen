@@ -91,7 +91,7 @@
   "profile": "controller-runtime-acceptance",
   "requires_entitled_host": true,
   "requires_external_hardware": true,
-  "run_id": "20260826T230539Z",
+  "run_id": "20260827T054603Z",
   "schema_version": "vibescreen.evidence/v1",
   "verdict": "blocked"
 }

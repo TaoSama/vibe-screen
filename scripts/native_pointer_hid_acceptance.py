@@ -43,7 +43,10 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
-ANDROID_DUMPSYS_TOKEN_RE = re.compile(r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)")
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(
+    r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
+    r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
+)
 POINTER_PATTERNS = {
     "move": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?changed\b|Pointer injected: phase=changed\b"),
     "press": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?began\b|Pointer injected: phase=began\b"),
@@ -450,13 +453,21 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         "- `result.json`: structured gate result, device identity, source devices, and checksums.",
         "- `native-pointer-hid-summary.json`: independent gate summary with `can_close_native_pointer_hid_gate`.",
         "- `dumpsys-input.txt`: Android input-device snapshot with line-ending whitespace normalized.",
-        "- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.",
-        "- `host-log-appended.txt`: bounded Host log window for pointer injection.",
+    ]
+    if result.android_logcat_bytes > 0:
+        summary.append("- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.")
+    else:
+        summary.append("- Android native pointer logcat window: not retained because no physical mouse observation ran.")
+    if result.host_log_appended_bytes > 0:
+        summary.append("- `host-log-appended.txt`: bounded Host log window for pointer injection.")
+    else:
+        summary.append("- Host pointer log window: not retained because no physical mouse observation ran.")
+    summary.extend([
         "",
         "A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.",
         "This evidence must remain scoped to the exact device identity above.",
         "Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.",
-    ]
+    ])
     if result.existing_locks:
         summary.extend(["", "## Device coordination locks", ""])
         for existing_lock in result.existing_locks:
@@ -560,8 +571,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 required_events=args.require_events,
             )
             write_result(args.evidence_dir, result, "")
-            (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
-            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(b"")
             print(result.reason, file=sys.stderr)
             return BLOCKED_EXIT
 
@@ -592,8 +601,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 requested_serial=redacted_requested_serial(args.serial),
             )
             write_result(args.evidence_dir, result, dumpsys_input)
-            (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
-            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(b"")
             print(result.reason, file=sys.stderr)
             return BLOCKED_EXIT
 
@@ -652,8 +659,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             requested_serial=redacted_requested_serial(args.serial),
         )
         write_result(args.evidence_dir, result, dumpsys_input)
-        (args.evidence_dir / "host-log-appended.txt").write_bytes(appended_log)
-        (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
+        if appended_log:
+            (args.evidence_dir / "host-log-appended.txt").write_bytes(appended_log)
+        if android_logcat:
+            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
         if status != "passed":
             print(reason, file=sys.stderr)
             return BLOCKED_EXIT if status == "blocked" else 1

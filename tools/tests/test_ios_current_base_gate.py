@@ -118,6 +118,7 @@ def make_native_input_gate() -> dict[str, object]:
 
 def complete_manifest(root: Path) -> dict[str, object]:
     manifest = make_manifest(root)
+    (root / "ios-native-input-evidence.json").write_text("native input fixture\n", encoding="utf-8")
     manifest["local_environment"] = {
         "xcodebuild_version": {
             "status": "pass",
@@ -569,6 +570,30 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_native_input_current_base", report["reasons"])
 
+    def test_native_input_gate_artifact_must_exist_under_evidence_root(self):
+        cases = {
+            "missing.json": "missing artifact",
+            "empty.json": "empty artifact",
+            "../outside.json": "escaping artifact",
+        }
+        for artifact_path, description in cases.items():
+            with self.subTest(description=description), tempfile.TemporaryDirectory() as directory_name:
+                root = Path(directory_name)
+                manifest = complete_manifest(root)
+                if artifact_path == "empty.json":
+                    (root / artifact_path).write_text("", encoding="utf-8")
+                native_input_gate = manifest["native_input_gate"]
+                assert isinstance(native_input_gate, dict)
+                native_input_gate["artifact_paths"] = [artifact_path]
+                manifest_path = write_manifest(root, manifest)
+
+                report = derive_gate(manifest_path)
+
+            self.assertEqual(report["verdict"], "blocked")
+            self.assertFalse(report["can_close_ios_device_acceptance"])
+            self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
+            self.assertIn("blocked: dedicated_native_input_artifacts", report["reasons"])
+
     def test_input_gate_must_link_to_native_input_owner_artifact(self):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -666,6 +691,9 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             output_dir.mkdir()
             manifest = complete_manifest(root)
             manifest_path = output_dir / "ios-current-base-manifest.json"
+            (output_dir / "ios-native-input-evidence.json").write_text(
+                "native input fixture\n", encoding="utf-8"
+            )
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
             report = derive_gate(manifest_path)

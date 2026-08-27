@@ -65,14 +65,20 @@ class HardwareKeyboardReadinessRedactionTests(unittest.TestCase):
     def test_android_dumpsys_redaction_removes_window_tokens_and_serials(self) -> None:
         raw = (
             f"{SAMPLE_SERIAL} token=0xb400007b62b3a410 "
-            "applicationInfo.token=<null>\n"
+            "applicationInfo.token=<null> "
+            "inputChannelToken=android.os.BinderProxy@55c37ef\n"
         )
 
         redacted = readiness.redact_android_dumpsys_text(raw, SAMPLE_SERIAL)
 
-        self.assertEqual(redacted, "<device-serial> token=<redacted> applicationInfo.token=<redacted>")
+        self.assertEqual(
+            redacted,
+            "<device-serial> token=<redacted> applicationInfo.token=<redacted> "
+            "inputChannelToken=<redacted>",
+        )
         self.assertNotIn(SAMPLE_SERIAL, redacted)
         self.assertNotIn("0xb400007b62b3a410", redacted)
+        self.assertNotIn("BinderProxy@55c37ef", redacted)
 
     def test_device_info_document_can_store_redacted_device_identity(self) -> None:
         raw_device = readiness.DeviceIdentity(

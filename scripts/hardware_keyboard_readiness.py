@@ -43,7 +43,10 @@ REDACTED_ANDROID_SDK_PATH = "<android-sdk>"
 REDACTED_HOME_PATH = "<home>"
 REDACTED_PYTHON_EXECUTABLE = "<python3.11>"
 REDACTED_TMP_EVIDENCE_PATH = "<tmp-evidence>"
-ANDROID_DUMPSYS_TOKEN_RE = re.compile(r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)")
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(
+    r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
+    r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
+)
 TMP_EVIDENCE_PATH_RE = re.compile(r"/tmp/vibe-screen-[^\s\n]+")
 
 
@@ -366,9 +369,20 @@ def package_identity_recorded(package: PackageIdentity | None) -> bool:
 def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) -> bool:
     if device is None:
         return False
-    if not all((serial, device.serial, device.manufacturer, device.model, device.device, device.android_release, device.sdk)):
+    if not all(
+        (
+            serial,
+            device.serial,
+            device.device_serial,
+            device.manufacturer,
+            device.model,
+            device.device,
+            device.android_release,
+            device.sdk,
+        )
+    ):
         return False
-    if device.serial != serial:
+    if device.serial != serial or device.device_serial != serial:
         return False
     if device.model == "P0110" or device.device == "pacific" or device.product == "pacific":
         return is_nubia_p0110_android16(device)

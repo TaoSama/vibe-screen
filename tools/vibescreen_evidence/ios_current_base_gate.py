@@ -171,6 +171,23 @@ def _native_input_evidence_present(record: dict[str, Any]) -> bool:
     return all(marker in joined for marker in NATIVE_INPUT_EVIDENCE_MARKERS)
 
 
+def _valid_retained_artifact_paths(paths: list[str], evidence_root: Path) -> list[str]:
+    valid: list[str] = []
+    root = evidence_root.resolve()
+    for item in paths:
+        candidate = Path(item)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            continue
+        resolved = (root / candidate).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        if resolved.is_file() and resolved.stat().st_size > 0:
+            valid.append(item)
+    return valid
+
+
 def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, blocking: bool = False) -> dict[str, Any]:
     return {
         "passed": passed,
@@ -522,7 +539,7 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def _native_input_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str, dict[str, Any]]:
     native_input = (
         manifest.get("native_input_gate")
         if isinstance(manifest.get("native_input_gate"), dict)
@@ -546,6 +563,7 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         and repository.get("dirty") is False
     )
     artifact_paths = _string_list(native_input.get("artifact_paths"))
+    retained_artifact_paths = _valid_retained_artifact_paths(artifact_paths, manifest_path.parent)
     missing = [
         str(item.get("requirement", item)) if isinstance(item, dict) else str(item)
         for item in native_input.get("missing_requirements", [])
@@ -575,7 +593,7 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             and native_input.get("gate_owner") == NATIVE_INPUT_GATE_OWNER
             and native_input.get("verdict") == "pass"
             and native_input.get("can_close_ios_native_input_gate") is True
-            and bool(artifact_paths),
+            and bool(retained_artifact_paths),
             "ios-native-input-gate.json passes and retains native input artifacts",
             evidence=[str(native_input.get("path"))]
             if native_input.get("path")
@@ -604,7 +622,7 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             blocking=True,
         ),
         "dedicated_native_input_artifacts": _check(
-            bool(artifact_paths),
+            bool(retained_artifact_paths),
             "ios-native-input-gate.json retains sanitized native input artifacts",
             evidence=artifact_paths,
             blocking=True,
@@ -807,7 +825,7 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     metadata = _metadata_checks(manifest, manifest_path)
     environment = _environment_checks(manifest)
     signing = _signing_checks(manifest)
-    native_input = _native_input_checks(manifest)
+    native_input = _native_input_checks(manifest, manifest_path)
     devices = _device_checks(manifest)
     videotoolbox_readiness = _videotoolbox_readiness_checks(manifest)
     formal, broader = _gate_checks(manifest)

@@ -1,8 +1,6 @@
 {
   "artifact_paths": [
-    "android-logcat-native-pointer.txt",
     "dumpsys-input.txt",
-    "host-log-appended.txt",
     "result.json"
   ],
   "blocking_notes": [
@@ -94,7 +92,7 @@
   "profile": "native-pointer-hid-mouse",
   "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
   "requires_physical_mouse": true,
-  "run_id": "acf92eb8-fd60-472d-8271-0a33b3dd37be",
+  "run_id": "2026-08-26T23:05:42Z",
   "schema_version": "vibescreen.evidence/v1",
   "synthetic_adb_pointer_is_not_physical_hid_evidence": true,
   "verdict": "blocked"

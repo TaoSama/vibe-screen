@@ -63,6 +63,22 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
         self.assertIn(record["reason"], summary["blocking_notes"])
 
+    def test_zero_length_runtime_logs_are_not_listed_as_retained_artifacts(self) -> None:
+        record = self.complete_record()
+        record["status"] = "blocked"
+        record["reason"] = "No external Android input device with MOUSE source is currently attached."
+        record["external_mouse_devices"] = []
+        record["observed_android_pointer_events"] = []
+        record["observed_host_pointer_events"] = []
+        record["visible_mac_result"] = ""
+        record["android_logcat_bytes"] = 0
+        record["host_log_appended_bytes"] = 0
+        record["host_log"] = "host-log-appended.txt"
+
+        summary = summarize(record, source_path=Path("result.json"))
+
+        self.assertEqual(summary["artifact_paths"], ["dumpsys-input.txt", "result.json"])
+
     def test_physical_mouse_requires_external_mouse_like_source(self) -> None:
         record = self.complete_record()
         record["external_mouse_devices"] = [

@@ -22,10 +22,8 @@ run did not execute ADB capability collection because
 `/tmp/vibe-screen-device-android.lock` already existed before the acceptance
 script could start.
 
-Evidence:
-
-- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json)
-- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json)
+Evidence: none; ADB collection was blocked before an evidence bundle could be
+written for this attempt.
 
 ## 2026-08-27 P0110 PR-head refresh
 
@@ -44,12 +42,6 @@ Evidence:
 
 - [2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-summary.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-summary.json)
 - [2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-evidence.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-evidence.json)
-
-- `evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/`:
-  refreshed current-base fail-closed evidence; status is
-  `blocked_physical_stylus_not_observed` with one pass-eligible capability
-  candidate but no physical drawing observation, Host stylus injection excerpt,
-  same-session Android stylus forwarding sample, or visible drawing-app output.
 
 - `evidence/2026-08-19-nubia-p0110-pacific-stylus-blocked/`: existing device
   capability snapshot; P0110 exposes `goodix_stylus_input` with pressure and
@@ -72,7 +64,6 @@ log was supplied, and the app diagnostic log contains no same-session
 `Stylus forwarded:` samples, so the drawing-app gate remains blocked.
 
 Evidence:
-
 - `evidence/2026-08-21-nubia-p0110-pacific-stylus-preflight-failclosed/`:
   current fail-closed script output; status is
   `blocked_physical_stylus_not_observed` with one pass-eligible capability
@@ -197,3 +188,6 @@ same-session Android `Stylus forwarded:` samples appeared, no Host
 was recorded. The README physical-stylus drawing-app gate remains open.
 
 Evidence:
+
+- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json)
+- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json)

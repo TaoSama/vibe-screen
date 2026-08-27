@@ -16,8 +16,8 @@ Visible Mac result: not recorded
 - `result.json`: structured gate result, device identity, source devices, and checksums.
 - `native-pointer-hid-summary.json`: independent gate summary with `can_close_native_pointer_hid_gate`.
 - `dumpsys-input.txt`: Android input-device snapshot with line-ending whitespace normalized.
-- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.
-- `host-log-appended.txt`: bounded Host log window for pointer injection.
+- Android native pointer logcat window: not retained because no physical mouse observation ran.
+- Host pointer log window: not retained because no physical mouse observation ran.
 
 A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.
 This evidence must remain scoped to the exact device identity above.

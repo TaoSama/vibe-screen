@@ -238,9 +238,10 @@ def _artifact_paths(record: dict[str, Any], source_path: Path | None) -> list[st
     if source_path is not None and str(source_path) != "-":
         paths.append(source_path.name)
     paths.append("dumpsys-input.txt")
-    paths.append("android-logcat-native-pointer.txt")
+    if _integer_value(record, "android_logcat_bytes") > 0:
+        paths.append("android-logcat-native-pointer.txt")
     host_log = _string_value(record, "host_log")
-    if host_log:
+    if host_log and _integer_value(record, "host_log_appended_bytes") > 0:
         paths.append(host_log)
     return sorted(dict.fromkeys(paths))
 

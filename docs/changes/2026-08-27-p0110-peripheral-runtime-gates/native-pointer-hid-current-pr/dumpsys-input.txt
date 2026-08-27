@@ -800,9 +800,9 @@ Input Dispatcher State:
 
 Input Manager Service (Java) State:
   Gesture Monitors (implemented as spy windows):
-    0: name='[Gesture Monitor] swipe-up', inputChannelToken=android.os.BinderProxy@d359424 displayId=0
-    1: name='[Gesture Monitor] edge-swipe', inputChannelToken=android.os.BinderProxy@55c37ef displayId=0
-    2: name='[Gesture Monitor] swipe-to-screenshot', inputChannelToken=android.os.BinderProxy@fb7681c displayId=0
+    0: name='[Gesture Monitor] swipe-up', inputChannelToken=<redacted> displayId=0
+    1: name='[Gesture Monitor] edge-swipe', inputChannelToken=<redacted> displayId=0
+    2: name='[Gesture Monitor] swipe-to-screenshot', inputChannelToken=<redacted> displayId=0
   mAdditionalDisplayInputProperties:
     <none>
   BatteryController:

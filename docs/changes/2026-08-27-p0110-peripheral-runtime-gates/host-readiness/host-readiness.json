@@ -94,7 +94,7 @@
       "startup_recovery_markers": []
     },
     "login_item": {
-      "detail": "command timed out after 15s",
+      "detail": "Launch-at-Login diagnostic skipped by default; rerun readiness with --include-login-item-diagnostic during an explicit local diagnostic session.",
       "evidence": [],
       "matched": false,
       "state": "unverified"

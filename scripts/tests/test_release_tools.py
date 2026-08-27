@@ -112,6 +112,19 @@ Input Reader State:
             android_stylus_acceptance.conclusion_status(args, [candidate]),
         )
 
+    def test_android_dumpsys_redaction_removes_window_tokens(self) -> None:
+        redacted = android_stylus_acceptance.redact_android_dumpsys_text(
+            "token=0xb400007b62b3a410 applicationInfo.token=<null> "
+            "inputChannelToken=android.os.BinderProxy@fb7681c\n"
+        )
+
+        self.assertEqual(
+            redacted,
+            "token=<redacted> applicationInfo.token=<redacted> "
+            "inputChannelToken=<redacted>\n",
+        )
+        self.assertNotIn("BinderProxy@fb7681c", redacted)
+
     def test_appended_diag_log_rejects_rotated_or_rewritten_logs(self) -> None:
         self.assertEqual(
             "\nnew stylus line",

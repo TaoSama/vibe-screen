@@ -78,6 +78,37 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
         self.assertTrue(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, matching))
         self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, partial_p0110_claim))
 
+    def test_p0110_identity_requires_collected_physical_serial(self) -> None:
+        mismatched = readiness.DeviceIdentity(
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            product="pacific",
+            android_release="16",
+            sdk="36",
+            build_fingerprint="nubia/pacific/fingerprint",
+            abi="arm64-v8a",
+            device_serial="different-physical-serial",
+        )
+        missing_physical_serial = readiness.DeviceIdentity(
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            product="pacific",
+            android_release="16",
+            sdk="36",
+            build_fingerprint="nubia/pacific/fingerprint",
+            abi="arm64-v8a",
+            device_serial="",
+        )
+
+        self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, mismatched))
+        self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, missing_physical_serial))
+
     def test_non_p0110_identity_requires_recorded_public_fields(self) -> None:
         complete = readiness.DeviceIdentity(
             serial="other-adb-serial",

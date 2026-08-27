@@ -38,7 +38,10 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
-ANDROID_DUMPSYS_TOKEN_RE = re.compile(r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)")
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(
+    r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
+    r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
+)
 REQUIRED_STYLUS_AXES = ("PRESSURE", "TILT")
 STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
 NUMBER_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"

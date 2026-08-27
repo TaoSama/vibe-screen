@@ -44,6 +44,10 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
+    "Login item state was not probed by default; run readiness with "
+    "--include-login-item-diagnostic during an attended diagnostic session to inspect it."
+)
 
 @dataclass(frozen=True)
 class SigningMetadata:
@@ -174,8 +178,8 @@ def parse_args() -> argparse.Namespace:
         "--include-login-item-diagnostic",
         action="store_true",
         help=(
-            "opt in to the local Launch-at-Login diagnostic that shells out to sfltool; "
-            "default readiness and CI paths skip it to avoid macOS authorization prompts"
+            "opt in to the real macOS login-item diagnostic. This may invoke system tools "
+            "that require attended approval; default CI/test readiness skips it fail-closed."
         ),
     )
     return parser.parse_args()
@@ -256,8 +260,6 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except OSError as error:
-        return 127, str(error)
     return completed.returncode, completed.stdout.strip()
 
 
@@ -445,10 +447,7 @@ def skipped_login_item_readiness() -> LoginItemReadiness:
     return LoginItemReadiness(
         state="unverified",
         matched=False,
-        detail=(
-            "Launch-at-Login diagnostic skipped by default; rerun readiness with "
-            "--include-login-item-diagnostic during an explicit local diagnostic session."
-        ),
+        detail=LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
         evidence=(),
     )
 
@@ -1162,9 +1161,17 @@ def inspect_host_without_throwing(
         )
     else:
         try:
-            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
+            resolved_identity = package_macos.resolve_sign_identity(
+                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+            )
         except SystemExit as error:
             errors.append(str(error))
+        else:
+            if expected_sign_identity and resolved_identity != expected_sign_identity:
+                errors.append(
+                    "configured signing identity did not resolve exactly: "
+                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                )
     try:
         metadata = collect_signing_metadata(install_path)
     except SystemExit as error:
@@ -1417,17 +1424,35 @@ def metadata_and_permissions(
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
+    errors: list[str] = []
+    if expected_sign_identity == "-":
+        errors.append(
+            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
+        )
+    else:
+        try:
+            resolved_identity = package_macos.resolve_sign_identity(
+                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+            )
+        except SystemExit as error:
+            errors.append(str(error))
+        else:
+            if expected_sign_identity and resolved_identity != expected_sign_identity:
+                errors.append(
+                    "configured signing identity did not resolve exactly: "
+                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                )
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(
+    errors.extend(validate_preflight(
         metadata,
         permissions,
         install_path=install_path,
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
-    )
+    ))
     return metadata, source_identity, permissions, errors
 
 
@@ -1546,11 +1571,6 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
-    prerequisite_errors: list[str] = []
-    try:
-        package_macos.resolve_sign_identity(args.sign_identity)
-    except SystemExit as error:
-        prerequisite_errors.append(str(error))
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
@@ -1558,7 +1578,6 @@ def preflight_command(args: argparse.Namespace) -> int:
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
-    errors = [*prerequisite_errors, *errors]
     report = format_report(
         metadata,
         permissions,
@@ -1617,7 +1636,11 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    login_item = read_login_item_readiness() if args.include_login_item_diagnostic else skipped_login_item_readiness()
+    login_item = (
+        read_login_item_readiness()
+        if getattr(args, "include_login_item_diagnostic", False)
+        else skipped_login_item_readiness()
+    )
     document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")

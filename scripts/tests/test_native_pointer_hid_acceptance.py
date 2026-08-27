@@ -81,12 +81,14 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_android_dumpsys_redaction_removes_window_tokens(self) -> None:
         redacted = acceptance.redact_android_dumpsys_text(
-            "token=0xb400007b62b3a410 applicationInfo.token=<null>\n"
+            "token=0xb400007b62b3a410 applicationInfo.token=<null> "
+            "inputChannelToken=android.os.BinderProxy@d359424\n"
         )
 
         self.assertEqual(
             redacted,
-            "token=<redacted> applicationInfo.token=<redacted>\n",
+            "token=<redacted> applicationInfo.token=<redacted> "
+            "inputChannelToken=<redacted>\n",
         )
 
     def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:
@@ -228,9 +230,12 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["requested_serial"], "redacted-requested-serial")
             self.assertIn("No external Android input device", result["reason"])
             self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
+            self.assertFalse((evidence_dir / "host-log-appended.txt").exists())
+            self.assertFalse((evidence_dir / "android-logcat-native-pointer.txt").exists())
             self.assertTrue((evidence_dir / "README.md").exists())
             summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["verdict"], "blocked")
+            self.assertEqual(summary["artifact_paths"], ["dumpsys-input.txt", "result.json"])
             self.assertFalse(summary["can_close_native_pointer_hid_gate"])
             self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
 
@@ -263,8 +268,11 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertFalse(result["adb_was_run"])
             self.assertEqual(result["existing_locks"][0]["path"], "/tmp/vibe-screen-device-android.lock")
             self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
+            self.assertFalse((evidence_dir / "host-log-appended.txt").exists())
+            self.assertFalse((evidence_dir / "android-logcat-native-pointer.txt").exists())
             summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["verdict"], "blocked")
+            self.assertEqual(summary["artifact_paths"], ["dumpsys-input.txt", "result.json"])
             self.assertFalse(summary["observations"]["adb_was_run"])
             self.assertIn("/tmp/vibe-screen-device-android.lock: owner=other-run", summary["blocking_notes"])
 
