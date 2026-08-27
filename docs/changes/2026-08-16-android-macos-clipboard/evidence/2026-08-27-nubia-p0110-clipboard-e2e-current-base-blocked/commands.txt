@@ -1,0 +1,75 @@
+git fetch origin --prune
+git rebase origin/main
+git rev-parse origin/main
+git status --short --branch
+adb -s <P0110_USB_SERIAL> get-state
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.manufacturer
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.model
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.device
+adb -s <P0110_USB_SERIAL> shell getprop ro.build.version.release
+adb -s <P0110_USB_SERIAL> shell getprop ro.build.version.sdk
+
+python3 scripts/macos_dev_host.py readiness \
+  --source-root . \
+  --report .build/private-clipboard-e2e/host-signing-and-permissions.txt \
+  --json-output .build/private-clipboard-e2e/host-readiness.json \
+  --port 54321
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+  --serial <P0110_USB_SERIAL> \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --expected-manufacturer nubia \
+  --expected-model P0110 \
+  --expected-device pacific \
+  --expected-android-release 16 \
+  --expected-sdk 36 \
+  --host-preflight-report .build/private-clipboard-e2e/usb-host-preflight.txt \
+  --output .build/private-clipboard-e2e/usb-smoke-preflight.json
+
+adb -s <P0110_USB_SERIAL> shell monkey \
+  -p dev.telemachus.display \
+  -c android.intent.category.LAUNCHER \
+  1
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+  --serial <P0110_USB_SERIAL> \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --expected-manufacturer nubia \
+  --expected-model P0110 \
+  --expected-device pacific \
+  --expected-android-release 16 \
+  --expected-sdk 36 \
+  --host-preflight-report .build/private-clipboard-e2e/usb-host-preflight.txt \
+  --output .build/private-clipboard-e2e/usb-smoke-preflight.json
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_preflight \
+  --serial <P0110_USB_SERIAL> \
+  --repo . \
+  --host-port 54321 \
+  --host-preflight-command python3 scripts/macos_dev_host.py preflight \
+  --output .build/private-clipboard-e2e/trusted-lan-preflight.json
+
+cd baseline/AndroidClient && \
+  ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest && \
+  adb -s <P0110_USB_SERIAL> install -r app/build/outputs/apk/debug/app-debug.apk && \
+  adb -s <P0110_USB_SERIAL> install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk && \
+  adb -s <P0110_USB_SERIAL> shell am instrument -w \
+    -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+    dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.clipboard_e2e_gate \
+  --host-readiness .build/private-clipboard-e2e/host-readiness.json \
+  --usb-preflight .build/private-clipboard-e2e/usb-smoke-preflight.json \
+  --trusted-lan-preflight .build/private-clipboard-e2e/trusted-lan-preflight.json \
+  --android-clipboard-instrumentation-log .build/private-clipboard-e2e/android-clipboard-instrumentation.txt \
+  --product-e2e docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/product-e2e.json \
+  --serial <P0110_USB_SERIAL> \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/clipboard-e2e-gate.json
+
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/privacy-scan.json
+
+shasum -a 256 README.md commands.txt android-clipboard-instrumentation.txt clipboard-e2e-gate.json privacy-scan.json > SHA256SUMS
+shasum -a 256 -c SHA256SUMS
