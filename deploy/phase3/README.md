@@ -129,13 +129,13 @@ they must target the same PostgreSQL database and schema so the migration job
 creates the exact schema used by runtime readiness and traffic.
 
 ```bash
-export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
-export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-migration-url
-export VIBE_SIGNALING_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-runtime-url
-export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/etc/vibe-secrets/signaling-issuer-token
-export VIBE_SIGNALING_METRICS_TOKEN_FILE=/etc/vibe-secrets/signaling-metrics-token
-export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/etc/vibe-secrets/signaling-authority-token
+export VIBE_SIGNALING_IMAGE_REPOSITORY=<registry>/<vibe-signaling-image>
+export VIBE_SIGNALING_IMAGE_SHA256=<64-character-image-digest>
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=<path-to-signaling-migration-db-url-secret>
+export VIBE_SIGNALING_DATABASE_URL_FILE=<path-to-signaling-runtime-db-url-secret>
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=<path-to-signaling-issuer-token-secret>
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=<path-to-signaling-metrics-token-secret>
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=<path-to-signaling-authority-token-secret>
 docker compose -f docker-compose.production.yml config --quiet
 docker compose -f docker-compose.production.yml pull signaling
 docker compose -f docker-compose.production.yml up -d --wait signaling
@@ -224,9 +224,14 @@ Linux host:
    its `turn_realm` equals `COTURN_REALM`. Keep
    `authority_mode=production_authority`, point `authority_url` at the private
    Authority endpoint, and set `authority_source_id` to a stable identifier for
-   this TURN source. The production example selects `storage_backend: postgres`;
+   this TURN source. Keep the real Authority URL outside tracked files, PR text,
+   commit messages, and public logs; use placeholders in public documentation.
+   The production example selects `storage_backend: postgres`;
    do not change it to the file backend for a multi-process or public
-   deployment. Keep `allocation_registry_file` on the writable
+   deployment. In PostgreSQL mode the relay ignores `state_file`, so the
+   production example omits it and the Compose profile intentionally has no
+   `/data` volume for file-backed quota state. Keep `allocation_registry_file`
+   on the writable
    `/var/lib/vibe-coturn` mount so relay can persist the Authority
    `allocation_id` to TURN REST username mapping used by operator coturn
    control helpers.
@@ -237,7 +242,9 @@ Linux host:
    Use a short-lived DDL role for migration and a least-privilege runtime role
    for relay. Both URLs must include `sslmode=verify-full` because the profile
    sets `VIBE_RELAY_DATABASE_TLS_MODE=verify-full`.
-4. Provision independent secret files with mode `0600`; distribute the same
+4. Provision independent secret files with mode `0600`: `turn_secret.txt`,
+   `client_token.txt`, `usage_token.txt`, `metrics_token.txt`,
+   `admin_token.txt`, and `authority_token.txt`. Distribute the same
    `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
    with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
    Because the coturn container runs as UID/GID `65532`, make
@@ -253,8 +260,9 @@ Linux host:
 6. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
 7. Set `COTURN_REALM` to the certificate DNS hostname and
-   `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
-   the public IP on a directly addressed host.
+   `COTURN_EXTERNAL_IP` to either `<public-ip>` on a directly addressed host or
+   `<public-ip>/<private-ip>` behind one-to-one NAT. Do not write a real IP
+   address into tracked files, PR text, commit messages, or public logs.
 8. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
    on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
    controls before these host rules.
@@ -262,18 +270,19 @@ Linux host:
 
 ```bash
 export COTURN_REALM=relay.example.com
-export COTURN_EXTERNAL_IP=203.0.113.10/10.0.0.10
-export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
-export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
-export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
-export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
-export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
-export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
-export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
-export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
-export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
+export COTURN_EXTERNAL_IP=<public-ip>
+# Behind one-to-one NAT, use: COTURN_EXTERNAL_IP=<public-ip>/<private-ip>
+export VIBE_RELAY_IMAGE_REPOSITORY=<registry>/<vibe-relay-image>
+export VIBE_RELAY_IMAGE_SHA256=<64-character-image-digest>
+export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=<path-to-relay-migration-db-url-secret>
+export VIBE_RELAY_DATABASE_URL_FILE=<path-to-relay-runtime-db-url-secret>
+export VIBE_SIGNALING_IMAGE_REPOSITORY=<registry>/<vibe-signaling-image>
+export VIBE_SIGNALING_IMAGE_SHA256=<64-character-image-digest>
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=<path-to-signaling-migration-db-url-secret>
+export VIBE_SIGNALING_DATABASE_URL_FILE=<path-to-signaling-runtime-db-url-secret>
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=<path-to-signaling-issuer-token-secret>
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=<path-to-signaling-metrics-token-secret>
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=<path-to-signaling-authority-token-secret>
 docker compose -f docker-compose.production.yml config --quiet
 docker compose -f docker-compose.production.yml pull signaling relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
@@ -295,10 +304,10 @@ python3 ../../scripts/phase3/public_nat_turn_preflight.py \
   --coturn-external-ip "$COTURN_EXTERNAL_IP" \
   --authority-ready-url https://authority.example.com/readyz \
   --relay-ready-url https://relay.example.com/readyz \
-  --connectivity-evidence /protected/evidence/public-nat-turn-connectivity.json \
-  --deployment-evidence /protected/evidence/public-nat-turn-deployment.json \
-  --output /protected/evidence/public-nat-turn-preflight.json \
-  --connectivity-command /usr/local/bin/vibe-public-turn-canary
+  --connectivity-evidence <path-to-sanitized-connectivity-evidence.json> \
+  --deployment-evidence <path-to-sanitized-deployment-evidence.json> \
+  --output <path-to-public-nat-turn-preflight-output.json> \
+  --connectivity-command <path-to-public-turn-canary-command>
 ```
 
 The preflight returns non-zero and records `blocked` when any public address,
