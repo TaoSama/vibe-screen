@@ -312,7 +312,8 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
             directory = Path(directory_name)
             manifest = passing_device_manifest()
             for gate in manifest["gates"]:
-                gate["evidence"] = [f"artifact://release/harmony/{MARKER_BY_GATE[gate['id']]}"]
+                artifact_name = "harmony-avcodec-preflight.json" if gate["id"] in harmony_device_gate.AVCODEC_GATE_IDS else gate["id"]
+                gate["evidence"] = [f"artifact://release/harmony/{artifact_name}"]
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
 
