@@ -2,7 +2,7 @@
 name: deploy
 description: |
   Deploy Vibe Screen relay or run deployment readiness checks. Use this skill when the user says /deploy, asks to deploy relay.taoai.site, operate the Phase 3 relay stack, prepare deployment docs, run production preflight, or diagnose relay deployment status. Keep public repository output open-source safe: never write private IPs, SSH usernames, local home paths, device serials, tokens, keys, or secret values into tracked files.
-argument-hint: '[preflight|local|production|status|rollback]'
+argument-hint: "[preflight|local|production|status|rollback]"
 ---
 
 # Vibe Screen Deploy
@@ -32,6 +32,20 @@ gives a different checkout.
   `<path-to-secret-file>`.
 - Runtime material belongs in ignored locations documented by `DEPLOY.md`, or in
   the deployment secret manager.
+- Production relay runtime requires the ignored secret files
+  `turn_secret.txt`, `client_token.txt`, `usage_token.txt`,
+  `metrics_token.txt`, `admin_token.txt`, and `authority_token.txt` under
+  `deploy/phase3/secrets/`, plus separate migration and runtime PostgreSQL URL
+  secret files supplied through `VIBE_RELAY_MIGRATION_DATABASE_URL_FILE` and
+  `VIBE_RELAY_DATABASE_URL_FILE`. Those PostgreSQL URLs must include
+  `sslmode=verify-full`; the production Compose profile sets
+  `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` and fails closed on weaker modes.
+- In `production_authority` mode, `authority_url` and `authority_source_id` are
+  both required. Keep `authority_url` private and use placeholders in tracked
+  docs; do not write a real internal Authority URL to the repository.
+- `COTURN_EXTERNAL_IP` must be either `<public-ip>` for a directly addressed
+  host or `<public-ip>/<private-ip>` for one-to-one NAT. Use placeholders in
+  public docs and reports.
 - Before reporting a deployment-related diff as ready, run a sensitive scan over
   changed docs and skill files.
 
