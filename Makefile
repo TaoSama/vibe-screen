@@ -103,27 +103,6 @@ PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
-PHASE3_INTERNET_SOAK_DIR ?= .build/phase3-internet-soak
-PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
-PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
-PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
-PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
-PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
-PHASE3_INTERNET_TURN_URIS ?=
-PHASE3_INTERNET_SIGNALING_ORIGIN ?=
-PHASE3_INTERNET_RELAY_ORIGIN ?=
-PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
-PHASE3_INTERNET_REMOTE_PEER ?=
-PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
-PHASE3_INTERNET_TURN_SECRET_SOURCE ?= secret_manager
-PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
-PHASE3_INTERNET_PLANNED_HANDOFFS ?=
-PHASE3_INTERNET_HOST_BUILD ?=
-PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
-PHASE3_INTERNET_DURATION_SECONDS ?= 7200
-PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
-PHASE3_INTERNET_NOTES ?=
-PHASE3_INTERNET_ALLOW_BLOCKED ?= 1
 PHASE3_ANDROID_INTEROP_EVIDENCE ?=
 PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
 PHASE3_INTERNET_SOAK_MANIFEST ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
@@ -159,7 +138,6 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HAP_READINESS_FLAGS ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
-HARMONY_HAP_READINESS_FLAGS ?=
 HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
@@ -248,8 +226,6 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-host-interop-preflight \
 	harmony-host-interop-gate \
 	harmony-current-base-gate \
-	harmony-host-interop-preflight \
-	harmony-host-interop-gate \
 	soak-30m \
 	soak-2h \
 	soak-8h \
@@ -761,15 +737,6 @@ harmony-current-base-gate:
 		--evidence-root "$(EVIDENCE_DIR)" \
 		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
 
-harmony-host-interop-preflight:
-	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
-	mkdir -p "$(EVIDENCE_DIR)"
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-dir "$(EVIDENCE_DIR)"
-
-harmony-host-interop-gate:
-	@test -n "$(strip $(HARMONY_HOST_INTEROP_JSON))" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a HarmonyOS Host interop manifest" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-root "$(EVIDENCE_DIR)" "$(HARMONY_HOST_INTEROP_JSON)"
-
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)
 	mkdir -p "$(dir $(IOS_ACCEPTANCE_GATE_JSON))"
@@ -939,38 +906,6 @@ ios-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate \
 		--manifest $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--output $(EVIDENCE_DIR)/ios-current-base-gate.json
-
-phase3-internet-soak-manifest:
-	@mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak manifest \
-		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json" \
-		$(foreach uri,$(PHASE3_INTERNET_TURN_URIS),--turn-uri "$(uri)") \
-		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
-		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
-		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
-		--remote-peer "$(PHASE3_INTERNET_REMOTE_PEER)" \
-		--tls-certificate-sha256 "$(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256)" \
-		--turn-secret-source "$(PHASE3_INTERNET_TURN_SECRET_SOURCE)" \
-		--deployment-readiness "$(PHASE3_INTERNET_DEPLOYMENT_READINESS)" \
-		--planned-handoffs "$(PHASE3_INTERNET_PLANNED_HANDOFFS)" \
-		--host-build "$(PHASE3_INTERNET_HOST_BUILD)" \
-		--android-artifact-sha256 "$(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256)" \
-		--duration-seconds "$(PHASE3_INTERNET_DURATION_SECONDS)" \
-		--sample-interval-seconds "$(PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS)" \
-		$(if $(strip $(PHASE3_INTERNET_NOTES)),--notes "$(PHASE3_INTERNET_NOTES)",) \
-		-- make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR=$(PHASE3_INTERNET_SOAK_DIR)
-
-phase3-internet-soak-gate:
-	@mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
-		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json" \
-		--manifest "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json" \
-		--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)" \
-		--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)" \
-		--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)" \
-		--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)" \
-		--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)" \
-		$(if $(strip $(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
 phase5-multi-client-current-base-gate:
 	@mkdir -p "$(dir $(PHASE5_MULTI_CLIENT_GATE_JSON))"

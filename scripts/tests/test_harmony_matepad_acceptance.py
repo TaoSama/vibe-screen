@@ -327,7 +327,8 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
         self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
         self.assertEqual(package["verdict"], "blocked")
         invalid = [reference for reference in package["artifact_references"] if reference["status"] == "invalid"]
-        self.assertEqual(len(invalid), len(manifest["gates"]))
+        expected_invalid_count = sum(len(gate["evidence"]) for gate in manifest["gates"])
+        self.assertEqual(len(invalid), expected_invalid_count)
         self.assertTrue(all(reference["reference"].startswith("artifact://") for reference in invalid))
         self.assertIn("expected repository-local evidence path", package["device_gate_manifest"]["error"] or "")
 
