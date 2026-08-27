@@ -5,7 +5,7 @@ Status: current-base owner refresh; real AV1 stream blocked
 
 ## Source state
 
-- Base: `origin/main` at `3b2ba11e832a3618eaedfc67f92414b161423a00`.
+- Base: `origin/main` at `a57bb96051b4623dd916f75516befbb3d350b8e7`.
 - Worktree: clean before this evidence refresh.
 - Scope: AV1 capability/admission audit only. No AV1 stream was attempted or
   observed.

@@ -26,8 +26,8 @@ Machine-readable artifacts in this directory:
   with `verdict=blocked`, `can_close_ios_app_signing_readiness=false`, and
   `can_close_ios_device_acceptance=false`.
 - `ios-current-base-manifest.json` and `ios-current-base-gate.json`: generated
-  aggregate binding outputs showing the signing row, native-input binding, and
-  broader Phase 5 device gates remain blocked.
+  aggregate binding outputs showing the signing row and broader Phase 5 device
+  gates remain blocked.
 - `commands.txt`, `privacy-scan.json`, and `SHA256SUMS`: retained command log,
   privacy scan, and checksum manifest for this blocked owner record.
 
@@ -41,7 +41,6 @@ Required retained evidence remains open for:
 - signed-app entitlements
 - signed app or archive SHA-256
 - archive command, codesign-entitlements, and provisioning-profile artifacts
-- dedicated native-input gate evidence from signed iPhone and iPad app runs
 
 ## Gate commands
 

@@ -311,7 +311,7 @@ identity remains Nubia P0110 / pacific / Android 16 / SDK 36.
 ## 2026-08-27 current-base refresh
 
 The current-base closure owner was replayed on `origin/main`
-`3b2ba11e832a3618eaedfc67f92414b161423a00`. The audit kept AV1
+`a57bb96051b4623dd916f75516befbb3d350b8e7`. The audit kept AV1
 fail-closed and blocked: Protocol v1 only reserves `CODEC_AV1`, the current
 Host still does not advertise AV1, Android product sessions still do not offer
 AV1, and no Host/device AV1 real-stream evidence was added. Public AV1 gate

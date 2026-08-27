@@ -355,38 +355,5 @@
     "docs/runbook/ios-device-acceptance.md",
     "docs/runbook/hdr-color-acceptance.md"
   ],
-  "source_root": "../../../../..",
-  "native_input_gate": {
-    "provided": false,
-    "path": null,
-    "owner": null,
-    "current_base": null,
-    "kind": null,
-    "profile": null,
-    "gate_owner": null,
-    "verdict": "blocked",
-    "can_close_ios_native_input_gate": false,
-    "requires_real_ios_device": true,
-    "requires_signed_app": true,
-    "requires_physical_keyboard": true,
-    "requires_hover_or_pointer_accessory": true,
-    "android_evidence_is_not_ios_input_evidence": true,
-    "simulator_is_not_ios_input_evidence": true,
-    "offline_tests_are_readiness_only": true,
-    "observations": {},
-    "missing_requirements": [
-      {
-        "field": "native_input_gate",
-        "requirement": "ios-native-input-gate.json not provided"
-      }
-    ],
-    "blocking_reasons": [
-      {
-        "field": "native_input_gate",
-        "requirement": "ios-native-input-gate.json not provided"
-      }
-    ],
-    "disallowed_evidence": [],
-    "artifact_paths": []
-  }
+  "source_root": "../../../../.."
 }

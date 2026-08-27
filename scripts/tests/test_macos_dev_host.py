@@ -277,7 +277,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
 
-    def test_preflight_command_records_configured_identity_mismatch_in_report(self) -> None:
+    def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"
             args = mock.Mock(
@@ -290,9 +290,14 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             )
             with (
                 mock.patch.object(
+                    macos_dev_host.package_macos,
+                    "resolve_sign_identity",
+                    side_effect=SystemExit("missing identity"),
+                ) as resolve_mock,
+                mock.patch.object(
                     macos_dev_host,
                     "collect_signing_metadata",
-                    return_value=self.metadata(authorities=("Vibe Screen Dev",)),
+                    return_value=self.metadata(authorities=("Missing Dev",)),
                 ) as metadata_mock,
                 mock.patch.object(
                     macos_dev_host,
@@ -337,10 +342,41 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
-            self.assertIn("expected configured identity 'Missing Dev'", report_text)
-            self.assertIn("Identity: Vibe Screen Dev", report_text)
+            self.assertIn("missing identity", report_text)
+            self.assertIn("Identity: Missing Dev", report_text)
+        resolve_mock.assert_called_once_with("Missing Dev")
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
+
+    def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest\n"),
+        ) as run_mock, redirect_stdout(StringIO()) as stdout, redirect_stderr(StringIO()):
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 0)
+        self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
+        run_mock.assert_called_once_with("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+
+    def test_xctest_preflight_fails_closed_without_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(1, "xcrun: error: unable to find utility xctest"),
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 2)
+        self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
+        self.assertIn("full Xcode", stderr.getvalue())
+
+    def test_parse_args_accepts_xctest_preflight_command(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "xctest-preflight")
 
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -732,16 +768,6 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertFalse(status.observed)
         self.assertEqual(status.port, 54321)
         self.assertEqual(status.error, "listener not observed")
-
-    def test_run_best_effort_reports_missing_platform_command(self) -> None:
-        with mock.patch(
-            "subprocess.run",
-            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
-        ):
-            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
-
-        self.assertEqual(exit_code, 127)
-        self.assertEqual(output, "command not found: /usr/bin/defaults")
 
     def test_inspect_listener_redacts_lsof_user_column(self) -> None:
         output = (

@@ -127,6 +127,11 @@ without external audio confirmation. Late-completion accounting remains covered
 by the offline queue tests and is
 reported by the app verifier as diagnostic telemetry.
 
+The Host-side advanced adapter readiness gate remains a source/readiness gate:
+it keeps host-side multi-client/display, audio, clipboard, file-transfer,
+HDR/color, host-action, wake, and managed-policy device gates open until the
+separate product-flow evidence exists.
+
 Project metadata also passes:
 
 ```text
@@ -524,8 +529,8 @@ The following remain unproved until their dedicated gates produce evidence:
   owner is #199 after rebasing onto #225 and must use
   `make wake-host-current-base-gate` to keep this gate blocked until hardware
   evidence exists;
-- Host-side advanced adapter readiness gate coverage keeps host-side multi-client/display, audio capture, clipboard/file handlers,
-  color retry, actions, and wake helper open;
+- host-side multi-client/display, audio capture, clipboard/file handlers,
+  color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over
   audio/bulk WebRTC DataChannels, plus real-network E2E behavior. The
   Android/macOS raw product-session record hooks, owner-scoped admission,
