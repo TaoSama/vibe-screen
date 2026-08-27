@@ -2,7 +2,9 @@
 
 This record refreshes current-base ownership for the README external latency
 gates on origin/main commit
-`3b2ba11e832a3618eaedfc67f92414b161423a00`. It uses the connected Android
+`3b2ba11e832a3618eaedfc67f92414b161423a00`. The evidence date is 2026-08-27 in
+Asia/Shanghai local time; machine-readable collection timestamps remain in UTC,
+including the 2026-08-26T23:xxZ entries. It uses the connected Android
 acceptance substitute recorded as `nubia-p0110-pacific-device-1`.
 
 ## Verdict

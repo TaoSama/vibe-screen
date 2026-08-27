@@ -385,7 +385,7 @@ camera and synchronized-clock measurement packages were still unavailable. All
 three latency gates therefore remain open. Evidence is retained under
 [evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-22-nubia-p0110-latency-current-base-blocked/README.md).
 
-On 2026-08-27, origin/main commit
+On 2026-08-27 Asia/Shanghai local time / 2026-08-26 UTC, origin/main commit
 `3b2ba11e832a3618eaedfc67f92414b161423a00` refreshed current-base ownership for
 the same three README latency profiles. The connected Nubia P0110/pacific
 Android 16 / SDK 36 substitute was reachable through the required explicit ADB
