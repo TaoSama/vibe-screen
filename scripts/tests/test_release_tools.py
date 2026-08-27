@@ -575,11 +575,13 @@ Input Reader State:
 
 class HarmonyDeviceGateTests(unittest.TestCase):
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
-        evidence = "evidence/harmony-avcodec-preflight.json" if gate_id in harmony_device_gate.AVCODEC_GATE_IDS else f"evidence/{gate_id}.txt"
+        evidence = [f"evidence/{gate_id}.txt"]
+        if gate_id in harmony_device_gate.AVCODEC_GATE_IDS:
+            evidence.append(f"evidence/{harmony_device_gate.AVCODEC_MANIFEST_NAME}")
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [evidence],
+            "evidence": evidence,
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
@@ -631,10 +633,11 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             evidence_root = Path(temporary_directory)
             for gate in manifest["gates"]:
-                artifact = evidence_root / gate["evidence"][0]
-                artifact.parent.mkdir(parents=True, exist_ok=True)
-                gate_id = gate["id"]
-                artifact.write_text(f"{gate_id} evidence\n", encoding="utf-8")
+                for reference in gate["evidence"]:
+                    artifact = evidence_root / reference
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    gate_id = gate["id"]
+                    artifact.write_text(f"{gate_id} evidence\n", encoding="utf-8")
 
             self.assertEqual(harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root), [])
 

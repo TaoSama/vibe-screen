@@ -312,8 +312,12 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
             directory = Path(directory_name)
             manifest = passing_device_manifest()
             for gate in manifest["gates"]:
-                artifact_name = "harmony-avcodec-preflight.json" if gate["id"] in harmony_device_gate.AVCODEC_GATE_IDS else gate["id"]
-                gate["evidence"] = [f"artifact://release/harmony/{artifact_name}"]
+                marker_name = MARKER_BY_GATE[gate["id"]]
+                gate["evidence"] = [f"artifact://release/harmony/{marker_name}"]
+                if gate["id"] in harmony_device_gate.AVCODEC_GATE_IDS:
+                    gate["evidence"].append(
+                        f"artifact://release/harmony/{harmony_device_gate.AVCODEC_MANIFEST_NAME}"
+                    )
             (directory / "harmony-readiness.json").write_text(json.dumps(passing_readiness()), encoding="utf-8")
             (directory / "harmony-device-gates.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -322,7 +326,9 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
 
         self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
         self.assertEqual(package["verdict"], "blocked")
-        self.assertTrue(all(reference["status"] == "invalid" for reference in package["artifact_references"]))
+        invalid = [reference for reference in package["artifact_references"] if reference["status"] == "invalid"]
+        self.assertEqual(len(invalid), len(manifest["gates"]))
+        self.assertTrue(all(reference["reference"].startswith("artifact://") for reference in invalid))
         self.assertIn("expected repository-local evidence path", package["device_gate_manifest"]["error"] or "")
 
     def test_failed_device_gate_writes_structured_fail_package(self) -> None:

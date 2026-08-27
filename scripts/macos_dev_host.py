@@ -1439,14 +1439,16 @@ def metadata_and_permissions(
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
-    ))
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
+    )
     return metadata, source_identity, permissions, errors
 
 

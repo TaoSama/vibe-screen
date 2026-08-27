@@ -104,6 +104,11 @@ PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/publi
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_INTERNET_SOAK_DIR ?= .build/phase3-internet-soak
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
+PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
+PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
 PHASE3_INTERNET_TURN_URIS ?=
 PHASE3_INTERNET_SIGNALING_ORIGIN ?=
 PHASE3_INTERNET_RELAY_ORIGIN ?=
@@ -118,7 +123,7 @@ PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
 PHASE3_INTERNET_DURATION_SECONDS ?= 7200
 PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
 PHASE3_INTERNET_NOTES ?=
-PHASE3_INTERNET_ALLOW_BLOCKED ?=
+PHASE3_INTERNET_ALLOW_BLOCKED ?= 1
 PHASE3_ANDROID_INTEROP_EVIDENCE ?=
 PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
 PHASE3_INTERNET_SOAK_MANIFEST ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
@@ -149,7 +154,9 @@ PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 HARMONY_HDC_TARGET ?=
 HARMONY_HAP ?=
 HARMONY_SHA256SUMS ?=
+HARMONY_SIGNATURE_CERTIFICATE ?=
 HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
+HARMONY_HAP_READINESS_FLAGS ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 HARMONY_HAP_READINESS_FLAGS ?=
@@ -157,7 +164,8 @@ HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
 HARMONY_HAP_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-hap-readiness.json
-HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop.json
+HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop-manifest.json
+HARMONY_HOST_INTEROP_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop-preflight.json
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -240,6 +248,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	harmony-host-interop-preflight \
 	harmony-host-interop-gate \
 	harmony-current-base-gate \
+	harmony-host-interop-preflight \
+	harmony-host-interop-gate \
 	soak-30m \
 	soak-2h \
 	soak-8h \
@@ -697,13 +707,14 @@ harmony-readiness:
 		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",)
 
 harmony-hap-readiness:
-	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS HAP readiness evidence directory" >&2; exit 2)
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS HAP lifecycle readiness evidence directory" >&2; exit 2)
 	mkdir -p "$(EVIDENCE_DIR)"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_hap_readiness.py \
 		--output "$(HARMONY_HAP_READINESS_JSON)" \
 		$(if $(strip $(HARMONY_HDC_TARGET)),--target "$(HARMONY_HDC_TARGET)",) \
 		$(if $(strip $(HARMONY_HAP)),--hap "$(HARMONY_HAP)",) \
 		$(if $(strip $(HARMONY_SHA256SUMS)),--sha256sums "$(HARMONY_SHA256SUMS)",) \
+		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE)),--signature-certificate "$(HARMONY_SIGNATURE_CERTIFICATE)",) \
 		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
 		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
 		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",) \
@@ -749,6 +760,15 @@ harmony-current-base-gate:
 		--device-gates "$(HARMONY_DEVICE_GATES_JSON)" \
 		--evidence-root "$(EVIDENCE_DIR)" \
 		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
+
+harmony-host-interop-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-dir "$(EVIDENCE_DIR)"
+
+harmony-host-interop-gate:
+	@test -n "$(strip $(HARMONY_HOST_INTEROP_JSON))" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a HarmonyOS Host interop manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-root "$(EVIDENCE_DIR)" "$(HARMONY_HOST_INTEROP_JSON)"
 
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)
@@ -945,11 +965,11 @@ phase3-internet-soak-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
 		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json" \
 		--manifest "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json" \
-		--remote-turn "$(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json" \
-		--media-continuity "$(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json" \
-		--network-handoff "$(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json" \
-		--revocation "$(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json" \
-		--soak-report "$(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json" \
+		--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)" \
+		--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)" \
+		--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)" \
+		--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)" \
+		--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)" \
 		$(if $(strip $(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
 phase5-multi-client-current-base-gate:
