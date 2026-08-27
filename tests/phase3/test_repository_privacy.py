@@ -234,6 +234,22 @@ class RepositoryPrivacyTests(unittest.TestCase):
             with self.subTest(safe_value=content):
                 self.assertNotIn("credential_material", scan_content(content))
 
+    def test_phase3_privacy_rules_allow_json_safe_literals_only(self) -> None:
+        safe_literals = (
+            b'{"writes_pairing_token": false}',
+            b'{"writes_pairing_token": true}',
+            b'{"writes_pairing_token": null}',
+            b'{"maximum_token_bytes": 1048576}',
+            b'{"credential": ""}',
+        )
+        for content in safe_literals:
+            with self.subTest(content=content):
+                self.assertEqual(scan_content(content), {})
+
+        findings = scan_content(b'{"token": "sensitive-token-value"}')
+        self.assertIn("credential_material", findings)
+        self.assertTrue(all(value.startswith("sha256:") for value in findings["credential_material"]))
+
     def test_phase3_evidence_sha256s_cover_every_archived_file(self) -> None:
         checksum_path = PHASE3_EVIDENCE / "SHA256SUMS"
         recorded = {}

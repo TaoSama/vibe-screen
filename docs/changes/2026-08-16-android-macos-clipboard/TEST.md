@@ -217,3 +217,29 @@ trusted LAN is blocked by the device Wi-Fi/route state plus Host signing, and no
 bidirectional product E2E transfer record exists. Offline, synthetic, local, or
 preflight-only evidence is explicitly marked as insufficient for closing the
 real Android/macOS system-pasteboard gate.
+
+## 2026-08-28 Nubia P0110 Android E2E smoke attempt
+
+Evidence:
+[evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked](evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`27d2b0e493e807ae439fbd43b06b4c2f0ce9c503`, confirmed no `sfltool` process was
+running before collection, and did not opt into the Host login-item diagnostic
+that invokes `/usr/bin/sfltool dumpbtm`. All ADB/device operations were executed
+while holding `/tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock`, and
+each ADB command used `adb -s REDACTED_P0110_USB_SERIAL`.
+
+The target device identity was recorded as nubia P0110 / pacific / Android 16 /
+SDK 36. Debug and androidTest APKs installed, and the canonical Android local
+`ClipboardManagerInstrumentedTest` passed on device with `OK (3 tests)`. ADB
+reverse for TCP 54321 was configured, but USB readiness stayed blocked because
+the Android app was not foreground, the Mac Host was not listening on TCP 54321,
+and Host stable-signing/TCC preflight failed. Trusted LAN stayed blocked because
+the device Wi-Fi was not associated, `wlan0` had no IPv4 route to the Mac LAN
+candidate, and Host stable signing was blocked.
+
+No Android `ClipboardManager` -> macOS `NSPasteboard` or macOS `NSPasteboard` ->
+Android `ClipboardManager` product transfer was executed. The 1 MiB ceiling,
+old-peer fallback, and clipboard deny-wins behavior remain offline/protocol
+evidence only for this run, not real USB/LAN product smoke evidence.

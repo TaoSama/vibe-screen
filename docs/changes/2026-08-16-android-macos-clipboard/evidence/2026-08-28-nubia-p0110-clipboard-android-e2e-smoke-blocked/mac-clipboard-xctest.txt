@@ -1,0 +1,336 @@
+[0/1] Planning build
+[1/1] Compiling plugin SwiftProtobufPlugin
+Building for debugging...
+[1/6] Write swift-version--1AB21518FC5DEDBE.txt
+[3/56] Compiling TelemachusTests LatestFrameMailboxTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[4/56] Compiling TelemachusTests LatestRetainedSlotTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[5/56] Compiling TelemachusTests ManagedPolicyTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[6/56] Compiling TelemachusTests NetworkPathFingerprintTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[7/59] Compiling TelemachusTests ProtocolV1TouchAggregatorTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[8/59] Compiling TelemachusTests ReliabilityCoreTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[9/59] Compiling TelemachusTests RevokedInternetIdentityStoreTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[10/59] Compiling TelemachusTests SettingsWindowLifecycleTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[11/59] Compiling TelemachusTests CodecLimitsTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[12/59] Compiling TelemachusTests GameControllerHIDReportTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[13/59] Compiling TelemachusTests GameControllerInjectorTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[14/59] Compiling TelemachusTests GameControllerRuntimeAvailabilityTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+error: emit-module command failed with exit code 1 (use -v to see invocation)
+[15/59] Emitting module TelemachusTests
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[16/59] Compiling TelemachusTests IOKitVirtualGamepadDeviceTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[17/59] Compiling TelemachusTests IOSClientLoopbackHostTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[18/59] Compiling TelemachusTests InternetPairingTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[19/59] Compiling TelemachusTests InternetProductProtocolCodecTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[20/59] Compiling TelemachusTests VideoColorNegotiationTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[21/59] Compiling TelemachusTests VideoEncoderInFlightAdmissionTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[22/59] Compiling TelemachusTests WakeHostTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[23/59] Compiling TelemachusTests GameControllerStateMachineTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[24/59] Compiling TelemachusTests GameControllerTestFakes.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[25/59] Compiling TelemachusTests HandshakeCodecTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[26/59] Compiling TelemachusTests HostReconfigurationCoordinatorTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[27/59] Compiling TelemachusTests SingleInstanceProcessLockTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[28/59] Compiling TelemachusTests StreamGeometryTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[29/59] Compiling TelemachusTests StreamInputInjectorKeyReleaseTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[30/59] Compiling TelemachusTests StreamMetricsTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[31/59] Compiling TelemachusTests StreamingServerClipboardTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[32/59] Compiling TelemachusTests StreamingServerLifecycleTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[33/59] Compiling TelemachusTests StylusEventFactoryTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[34/59] Compiling TelemachusTests TestProcessDeadline.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[35/59] Compiling TelemachusTests WebRTCDataChannelBackpressurePolicyTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[36/59] Compiling TelemachusTests WebRTCInternetTransportTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[37/59] Compiling TelemachusTests WirelessAuthTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[38/59] Compiling TelemachusTests InternetProductSessionTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[39/59] Compiling TelemachusTests InternetSessionLeaseIssuerTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[40/59] Compiling TelemachusTests LANAddressResolverTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[41/59] Compiling TelemachusTests LANSecureRecordAdapterTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[42/59] Compiling TelemachusTests ChannelSecurityAudioBulkFixtureTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[43/59] Compiling TelemachusTests ChannelSecurityFixture.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[44/59] Compiling TelemachusTests ClipboardCoreTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[45/59] Compiling TelemachusTests ClipboardUIControllerTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[46/59] Compiling TelemachusTests Phase3SecurityLifecycleTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[47/59] Compiling TelemachusTests ProtocolV1FileTransferTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[48/59] Compiling TelemachusTests ProtocolV1SessionClipboardTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[49/59] Compiling TelemachusTests ProtocolV1SessionTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[50/59] Compiling TelemachusTests ADBDeviceSelectionPolicyTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[51/59] Compiling TelemachusTests AdvancedChannelSecurityGateTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[52/59] Compiling TelemachusTests AudioCaptureTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[53/59] Compiling TelemachusTests ChannelRecordSecurityTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[54/59] Compiling TelemachusTests PairedDeviceStoreTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[55/59] Compiling TelemachusTests PairingURLTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[56/59] Compiling TelemachusTests PairingWireFixture.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+[57/59] Compiling TelemachusTests Phase1HostCapabilityTests.swift
+<repo-root>/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+ 1 | import XCTest
+   |        `- error: no such module 'XCTest'
+ 2 | @testable import Telemachus
+ 3 | 
+error: fatalError

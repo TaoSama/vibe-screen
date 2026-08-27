@@ -216,6 +216,57 @@ class USBSmokePreflightTests(unittest.TestCase):
 
         self.assertEqual(locks, [str(first), str(second)])
 
+    def test_collect_locks_excludes_lock_held_by_current_caller(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            held = Path(directory) / "vibe-screen-device-android.lock"
+            other = Path(directory) / "vibe-screen-other.lock"
+            held.write_text("owner\n", encoding="utf-8")
+            other.write_text("owner\n", encoding="utf-8")
+
+            locks = collect_locks(
+                [str(Path(directory) / "vibe-screen-*.lock")],
+                held_locks=[str(held)],
+            )
+
+        self.assertEqual(locks, [str(other)])
+
+    def test_held_lock_does_not_skip_runtime_probes(self) -> None:
+        commands: list[list[str]] = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return _completed(command, _ready_responses(command))
+
+        with tempfile.TemporaryDirectory() as directory:
+            held = Path(directory) / "vibe-screen-device-android.lock"
+            held.write_text("owner\n", encoding="utf-8")
+            document = build_document(
+                serial=SERIAL,
+                repository_root=Path("/repo"),
+                adb_path="adb",
+                adb_timeout=1.0,
+                host_preflight_timeout=1.0,
+                package_name=PACKAGE,
+                port=54321,
+                lock_globs=[str(Path(directory) / "vibe-screen-*.lock")],
+                held_locks=[str(held)],
+                expected_device={
+                    "manufacturer": "nubia",
+                    "model": "P0110",
+                    "device": "pacific",
+                    "android_release": "16",
+                    "sdk": "36",
+                },
+                host_preflight_report=Path(directory) / "host-signing-and-permissions.txt",
+                command_runner=run,
+                wall_clock=lambda: "2026-08-24T00:00:00Z",
+            )
+
+        self.assertEqual(document["result"], "ready")
+        self.assertEqual(document["safety"]["existing_locks"], [])
+        self.assertTrue(document["safety"]["ran_adb"])
+        self.assertIn(["adb", "-s", SERIAL, "get-state"], commands)
+
     def test_atomic_json_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "preflight" / "usb.json"
@@ -486,6 +537,7 @@ def _build_document(directory: str, command_runner, *, lock_globs: list[str] | N
         package_name=PACKAGE,
         port=54321,
         lock_globs=lock_globs or [str(Path(directory) / "missing-*.lock")],
+        held_locks=[],
         expected_device={
             "manufacturer": "nubia",
             "model": "P0110",

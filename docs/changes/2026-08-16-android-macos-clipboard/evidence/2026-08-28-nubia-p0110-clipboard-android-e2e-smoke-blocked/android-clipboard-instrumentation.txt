@@ -1,0 +1,9 @@
+$ adb -s REDACTED_P0110_USB_SERIAL shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+
+dev.telemachus.display.ClipboardManagerInstrumentedTest:...
+
+Time: 1.42
+
+OK (3 tests)
+
+

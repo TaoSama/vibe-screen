@@ -114,10 +114,13 @@ def run_probe(
     )
 
 
-def collect_locks(lock_globs: Sequence[str]) -> list[str]:
+def collect_locks(lock_globs: Sequence[str], held_locks: Sequence[str] = ()) -> list[str]:
+    held = {str(Path(lock).resolve()) for lock in held_locks}
     locks: list[str] = []
     for pattern in lock_globs:
-        locks.extend(glob.glob(pattern))
+        for match in glob.glob(pattern):
+            if str(Path(match).resolve()) not in held:
+                locks.append(match)
     return sorted(set(locks))
 
 
@@ -399,13 +402,14 @@ def build_document(
     package_name: str,
     port: int,
     lock_globs: Sequence[str],
+    held_locks: Sequence[str],
     expected_device: dict[str, str | None],
     host_preflight_report: Path,
     command_runner: CommandRunner = subprocess.run,
     wall_clock=utc_now,
 ) -> dict[str, Any]:
     blockers: list[dict[str, str]] = []
-    locks = collect_locks(lock_globs)
+    locks = collect_locks(lock_globs, held_locks)
     if locks:
         blockers.append(
             blocker(
@@ -475,6 +479,7 @@ def build_document(
             "host_preflight_timeout_seconds": host_preflight_timeout,
             "expected_device": expected_device,
             "lock_globs": list(lock_globs),
+            "held_locks": [sanitize_lock_path(lock) for lock in held_locks],
         },
         "safety": {
             "read_only": True,
@@ -671,6 +676,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
     parser.add_argument("--lock-glob", action="append", default=[DEFAULT_LOCK_GLOB])
+    parser.add_argument(
+        "--held-lock",
+        action="append",
+        default=[],
+        help=(
+            "device lease lock already held by this caller; it is excluded from "
+            "competing-lock detection while all other matching locks still block"
+        ),
+    )
     parser.add_argument("--expected-manufacturer")
     parser.add_argument("--expected-model")
     parser.add_argument("--expected-device")
@@ -714,6 +728,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         package_name=arguments.package,
         port=arguments.port,
         lock_globs=arguments.lock_glob,
+        held_locks=arguments.held_lock,
         expected_device=expected_device,
         host_preflight_report=host_report,
     )

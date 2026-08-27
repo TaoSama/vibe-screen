@@ -86,7 +86,19 @@ def _network_violations(content: bytes) -> list[str]:
 
 def _is_safe_credential_value(value: bytes) -> bool:
     normalized = value.strip().strip(b"\"'").strip().lower()
-    if normalized in {b"", b"null", b"none", b"redacted", b"<redacted>", b"[redacted]", b"..."}:
+    if normalized in {
+        b"",
+        b"null",
+        b"none",
+        b"true",
+        b"false",
+        b"redacted",
+        b"<redacted>",
+        b"[redacted]",
+        b"...",
+    }:
+        return True
+    if re.fullmatch(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", normalized):
         return True
     return re.fullmatch(
         rb"\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\}|\([^)\r\n]*\))",
