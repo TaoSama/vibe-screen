@@ -27,6 +27,7 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_XCTEST_PREFLIGHT_REPORT = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
@@ -144,16 +145,6 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
-    xctest_preflight = subparsers.add_parser(
-        "xctest-preflight",
-        help="fail closed unless the selected Apple toolchain can run MacHost XCTest",
-    )
-    xctest_preflight.add_argument(
-        "--report",
-        type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
-        help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
-    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -180,6 +171,16 @@ def parse_args() -> argparse.Namespace:
             "opt in to the real macOS login-item diagnostic. This may invoke system tools "
             "that require attended approval; default CI/test readiness skips it fail-closed."
         ),
+    )
+    xctest = subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed unless the selected Apple developer directory can run SwiftPM XCTest",
+    )
+    xctest.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT,
+        help="path for the XCTest toolchain report",
     )
     return parser.parse_args()
 
@@ -251,6 +252,9 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except FileNotFoundError:
+        executable = command[0] if command else "command"
+        return 127, f"command not found: {executable}"
     except OSError as error:
         executable = command[0] if command else "command"
         return 127, f"command unavailable: {executable}: {error.strerror or error}"
@@ -1067,7 +1071,6 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
     clean_output = ascii_report_text(output or "<empty>")
     return f"{label}: exit_code={exit_code}\n{clean_output}"
 
-
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     if not isinstance(getattr(args, "report", None), Path):
         exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
@@ -1651,15 +1654,14 @@ It only uses the configured codesign identity and reads privacy databases in rea
     print("macOS Host shared prerequisite readiness passed")
     return 0
 
-
 def main() -> int:
     args = parse_args()
+    if args.command == "xctest-preflight":
+        return xctest_preflight_command(args)
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
-    if args.command == "xctest-preflight":
-        return xctest_preflight_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")

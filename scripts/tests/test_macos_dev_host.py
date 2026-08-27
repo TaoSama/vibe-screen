@@ -423,35 +423,69 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
-    def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
-        with mock.patch.object(
-            macos_dev_host,
-            "run_best_effort",
-            return_value=(0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest\n"),
-        ) as run_mock, redirect_stdout(StringIO()) as stdout, redirect_stderr(StringIO()):
-            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+    def test_xctest_preflight_passes_with_full_xcode_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
 
-        self.assertEqual(result, 0)
-        self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
-        run_mock.assert_called_once_with("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer"
+                if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+                if command == ("/usr/bin/xcrun", "--find", "xctest"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"
+                if command == ("/usr/bin/swift", "--version"):
+                    return 0, "Apple Swift version 6.3.3"
+                raise AssertionError(command)
 
-    def test_xctest_preflight_fails_closed_without_xctest(self) -> None:
-        with mock.patch.object(
-            macos_dev_host,
-            "run_best_effort",
-            return_value=(1, "xcrun: error: unable to find utility xctest"),
-        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
-            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+            with mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run), redirect_stdout(StringIO()):
+                result = macos_dev_host.xctest_preflight_command(args)
 
-        self.assertEqual(result, 2)
-        self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
-        self.assertIn("full Xcode", stderr.getvalue())
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 0)
+            self.assertIn("Status: PASS", report_text)
+            self.assertIn("Blocking issues:\n(none)", report_text)
+
+    def test_xctest_preflight_fails_closed_for_command_line_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
+
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, "/Library/Developer/CommandLineTools"
+                if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
+                    return 1, "unable to find utility xcodebuild"
+                if command == ("/usr/bin/xcrun", "--find", "xctest"):
+                    return 1, "unable to find utility xctest"
+                if command == ("/usr/bin/swift", "--version"):
+                    return 0, "Apple Swift version 6.3.3"
+                raise AssertionError(command)
+
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("selected developer directory is Command Line Tools", report_text)
+            self.assertIn("xcodebuild is unavailable through xcrun", report_text)
+            self.assertIn("xctest is unavailable through xcrun", report_text)
+            self.assertIn("does not\ninspect or modify TCC, Keychain", report_text)
 
     def test_parse_args_accepts_xctest_preflight_command(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
             args = macos_dev_host.parse_args()
 
         self.assertEqual(args.command, "xctest-preflight")
+        self.assertEqual(args.report, macos_dev_host.DEFAULT_XCTEST_PREFLIGHT_REPORT)
 
     def test_parse_args_readiness_skips_login_item_diagnostic_by_default(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness"]):
