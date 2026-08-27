@@ -27,6 +27,7 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
@@ -36,7 +37,6 @@ ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
-DEFAULT_XCTEST_PREFLIGHT_OUTPUT = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
@@ -151,6 +151,16 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    xctest_preflight = subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed unless a full Xcode XCTest runtime is selected for SwiftPM tests",
+    )
+    xctest_preflight.add_argument(
+        "--json-output",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_JSON,
+        help=f"JSON report path (default: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -167,18 +177,6 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT_DIR / "host-readiness.json",
         help="path for the structured readiness JSON report",
-    )
-    xctest_preflight = subparsers.add_parser(
-        "xctest-preflight",
-        help="fail closed unless full Xcode and XCTest are available for MacHost XCTest runs",
-    )
-    xctest_preflight.add_argument(
-        "--json-output",
-        "--output",
-        dest="json_output",
-        type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_OUTPUT,
-        help="path for the structured XCTest preflight JSON report",
     )
     return parser.parse_args()
 
@@ -250,13 +248,14 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except OSError as error:
+        executable = command[0] if command else "command"
+        return 127, f"command not found: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except FileNotFoundError:
-        return 127, f"command not found: {command[0]}"
     return completed.returncode, completed.stdout.strip()
 
 
@@ -358,11 +357,10 @@ def build_xctest_preflight_document(status: XCTestPreflightStatus) -> dict[str, 
         "sdk_path": status.sdk_path,
         "blockers": list(status.errors),
         "safety": {
-            "read_only": True,
-            "starts_host": False,
-            "modifies_tcc": False,
-            "modifies_keychain": False,
-            "modifies_android": False,
+            "does_not_start_host": True,
+            "does_not_access_tcc_database": True,
+            "does_not_access_keychain": True,
+            "does_not_access_android_device": True,
         },
     }
 
@@ -1439,24 +1437,16 @@ def metadata_and_permissions(
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
-    errors: list[str] = []
-    if expected_sign_identity:
-        try:
-            package_macos.resolve_sign_identity(expected_sign_identity)
-        except SystemExit as error:
-            errors.append(str(error))
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(
-        validate_preflight(
-            metadata,
-            permissions,
-            install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
-            source_identity=source_identity,
-            allow_source_mismatch=allow_source_mismatch,
-        )
+    errors = validate_preflight(
+        metadata,
+        permissions,
+        install_path=install_path,
+        expected_sign_identity=expected_sign_identity,
+        source_identity=source_identity,
+        allow_source_mismatch=allow_source_mismatch,
     )
     return metadata, source_identity, permissions, errors
 
@@ -1576,6 +1566,11 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
+    prerequisite_errors: list[str] = []
+    try:
+        package_macos.resolve_sign_identity(args.sign_identity)
+    except SystemExit as error:
+        prerequisite_errors.append(str(error))
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
@@ -1583,6 +1578,7 @@ def preflight_command(args: argparse.Namespace) -> int:
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
+    errors = [*prerequisite_errors, *errors]
     report = format_report(
         metadata,
         permissions,
@@ -1653,10 +1649,24 @@ It only uses the configured codesign identity and reads privacy databases in rea
 
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
+    json_output = getattr(args, "json_output", None)
+    if not isinstance(json_output, Path):
+        exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+        xctest_path = output.splitlines()[0].strip() if output.strip() else ""
+        if exit_code != 0 or not xctest_path:
+            detail = redact_local_report_text(output.strip()) if output.strip() else "xcrun did not return an XCTest path"
+            print(
+                "macOS XCTest preflight failed: select a full Xcode installation before running "
+                f"baseline-macos-test ({detail}).",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"macOS XCTest preflight passed: {redact_local_report_text(xctest_path)}")
+        return 0
     status = inspect_xctest_preflight()
     document = build_xctest_preflight_document(status)
-    write_json_report(args.json_output, document)
-    print(f"Wrote {args.json_output}")
+    write_json_report(json_output, document)
+    print(f"Wrote {json_output}")
     if document["status"] != "passed":
         print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
         return 2
@@ -1670,10 +1680,10 @@ def main() -> int:
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
-    if args.command == "readiness":
-        return readiness_command(args)
     if args.command == "xctest-preflight":
         return xctest_preflight_command(args)
+    if args.command == "readiness":
+        return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
 
 

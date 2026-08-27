@@ -349,6 +349,36 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
 
+    def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest\n"),
+        ) as run_mock, redirect_stdout(StringIO()) as stdout, redirect_stderr(StringIO()):
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 0)
+        self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
+        run_mock.assert_called_once_with("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+
+    def test_xctest_preflight_fails_closed_without_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(1, "xcrun: error: unable to find utility xctest"),
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 2)
+        self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
+        self.assertIn("full Xcode", stderr.getvalue())
+
+    def test_parse_args_accepts_xctest_preflight_command(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "xctest-preflight")
+
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"

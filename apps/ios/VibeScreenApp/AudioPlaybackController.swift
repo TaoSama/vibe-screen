@@ -24,14 +24,10 @@ final class AudioPlaybackController {
             throw AudioPlaybackError.sessionDeactivationFailed(stopError.localizedDescription)
         }
         let streamFormat = try PCMStreamFormat(config: config)
-        guard let audioFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: Double(streamFormat.sampleRate),
-            channels: AVAudioChannelCount(streamFormat.channelCount),
-            interleaved: true
-        ) else {
-            throw AudioPlaybackError.unavailableFormat
-        }
+        let audioFormat = AVAudioFormat(
+            standardFormatWithSampleRate: Double(streamFormat.sampleRate),
+            channels: AVAudioChannelCount(streamFormat.channelCount)
+        )
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
@@ -72,14 +68,12 @@ final class AudioPlaybackController {
             throw AudioPlaybackError.bufferAllocationFailed
         }
         buffer.frameLength = AVAudioFrameCount(streamFormat.framesPerPacket)
-        let audioBuffer = buffer.mutableAudioBufferList.pointee.mBuffers
-        guard let destination = audioBuffer.mData,
-              Int(audioBuffer.mDataByteSize) >= packet.payload.count else {
+        guard let channels = buffer.floatChannelData else {
             throw AudioPlaybackError.bufferAllocationFailed
         }
         queueState.recordScheduledBuffer()
         let scheduledGeneration = configureGeneration
-        packet.payload.copyBytes(to: destination.assumingMemoryBound(to: UInt8.self), count: packet.payload.count)
+        writeFloatSamples(from: packet.payload, to: channels, format: streamFormat)
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.configureGeneration == scheduledGeneration else { return }
@@ -107,18 +101,84 @@ final class AudioPlaybackController {
             return error
         }
     }
+
+    private func writeFloatSamples(
+        from payload: Data,
+        to channels: UnsafePointer<UnsafeMutablePointer<Float>>,
+        format: PCMStreamFormat
+    ) {
+        payload.withUnsafeBytes { bytes in
+            let source = bytes.bindMemory(to: UInt8.self)
+            let frameCount = Int(format.framesPerPacket)
+            let channelCount = Int(format.channelCount)
+            for frame in 0..<frameCount {
+                for channel in 0..<channelCount {
+                    let offset = ((frame * channelCount) + channel) * MemoryLayout<Int16>.size
+                    let raw = UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8)
+                    let sample = Int16(bitPattern: raw)
+                    channels[channel][frame] = Float(sample) / Float(Int16.max)
+                }
+            }
+        }
+    }
 }
 
 @MainActor
 enum AudioPlaybackSelfTest {
+    static func runQueueOnly() throws -> AudioPlaybackQueueSnapshot {
+        var config = makeConfig()
+        let format = try PCMStreamFormat(config: config)
+        var queueState = AudioPlaybackQueueState()
+        queueState.configure(format: format)
+
+        var filled = 0
+        for sequence in UInt64(0)..<UInt64(AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers + 3) {
+            guard queueState.hasScheduleCapacity else {
+                queueState.recordOverrunDrop()
+                continue
+            }
+            let packet = try packet(sequence: sequence, config: config, format: format)
+            guard packet.payload.count == format.bytesPerPacket,
+                  packet.header.frameCount == format.framesPerPacket else {
+                throw AudioPlaybackError.invalidPCMByteCount
+            }
+            queueState.recordScheduledBuffer()
+            filled += 1
+        }
+        guard filled == AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers else {
+            throw AudioPlaybackSelfTestError.queueLimitNotEnforced(filled)
+        }
+        guard queueState.overrunDropCount > 0 else {
+            throw AudioPlaybackSelfTestError.missingOverrunObservation
+        }
+        while queueState.scheduledBufferCount > 0 {
+            queueState.completeScheduledBuffer()
+        }
+        let firstPass = queueState.snapshot
+        guard firstPass.queueEmptyCount > 0 else {
+            throw AudioPlaybackSelfTestError.playbackCompletionTimedOut(firstPass)
+        }
+
+        queueState.stop()
+        config.configEpoch += 1
+        queueState.configure(format: try PCMStreamFormat(config: config))
+        let restartedFormat = try PCMStreamFormat(config: config)
+        let restartedPacket = try packet(sequence: 0, config: config, format: restartedFormat)
+        guard restartedPacket.payload.count == restartedFormat.bytesPerPacket,
+              restartedPacket.header.frameCount == restartedFormat.framesPerPacket else {
+            throw AudioPlaybackError.invalidPCMByteCount
+        }
+        guard queueState.hasScheduleCapacity else {
+            throw AudioPlaybackSelfTestError.restartScheduleDropped
+        }
+        queueState.recordScheduledBuffer()
+        queueState.completeScheduledBuffer()
+        queueState.stop()
+        return queueState.snapshot
+    }
+
     static func run() async throws -> AudioPlaybackQueueSnapshot {
-        var config = VSAudioConfig()
-        config.streamID = 7
-        config.configEpoch = 2
-        config.codec = .pcmS16Le
-        config.sampleRateHz = 48_000
-        config.channelCount = 2
-        config.framesPerPacket = 480
+        var config = makeConfig()
 
         let controller = AudioPlaybackController()
         do {
@@ -162,6 +222,17 @@ enum AudioPlaybackSelfTest {
             _ = controller.stop()
             throw error
         }
+    }
+
+    private static func makeConfig() -> VSAudioConfig {
+        var config = VSAudioConfig()
+        config.streamID = 7
+        config.configEpoch = 2
+        config.codec = .pcmS16Le
+        config.sampleRateHz = 48_000
+        config.channelCount = 2
+        config.framesPerPacket = 480
+        return config
     }
 
     private static func packet(sequence: UInt64, config: VSAudioConfig, format: PCMStreamFormat) throws -> AudioPacket {
