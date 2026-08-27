@@ -20,6 +20,7 @@ Device: nubia P0110 / pacific / Android 16 / SDK 36
 | Settings and video controls | Open settings; toggle stats; select Smooth; select 30 FPS; move bitrate to 100 Mbps | PASS: UI state and logcat showed authoritative video preferences for epochs 3, 4, and 5 | [ui/settings-dialog.xml](evidence/2026-08-27-p0110-pacific-usb-ui/ui/settings-dialog.xml), [ui/video-preferences.xml](evidence/2026-08-27-p0110-pacific-usb-ui/ui/video-preferences.xml), [android-logcat-key-events.txt](evidence/2026-08-27-p0110-pacific-usb-ui/android-logcat-key-events.txt) |
 | Disconnect UX | Tap current disconnect bounds from UI hierarchy; confirm dialog | PASS: Disconnect? dialog with CANCEL and DISCONNECT actions appeared; confirming returned to launcher focus | [ui/disconnect-confirm.xml](evidence/2026-08-27-p0110-pacific-usb-ui/ui/disconnect-confirm.xml) |
 | Reconnect | Force-stop / relaunch cycles with ADB reverse restored | PASS for app relaunch reconnect: repeated Protocol v1 upgrade and decoder startup events observed, including final reconnected UI hierarchy | [ui/reconnected.xml](evidence/2026-08-27-p0110-pacific-usb-ui/ui/reconnected.xml), [android-logcat-key-events.txt](evidence/2026-08-27-p0110-pacific-usb-ui/android-logcat-key-events.txt) |
+| Follow-up relaunch sanity | Refresh PR/CI and ADB state; force-stop and relaunch the foreground Android client with ADB reverse and Host listener still present | PASS for current availability: P0110 identity retained, ADB reverse was present, app foregrounded after relaunch, Host listener was present, and logcat showed connection, video configuration, and decoder startup | [follow-up-relaunch-sanity.txt](evidence/2026-08-27-p0110-pacific-usb-ui/follow-up-relaunch-sanity.txt) |
 
 ## Important observations
 
@@ -33,6 +34,9 @@ Device: nubia P0110 / pacific / Android 16 / SDK 36
 - The initial automated disconnect taps missed because the capsule auto-hidden
   and because display-name width changed the button bounds. Reading the current
   UI hierarchy before tapping validated the product path without a code change.
+- A follow-up sanity check on the same date revalidated current ADB availability
+  and force-stop/relaunch reconnect. The raw screenshot and unfiltered device
+  logs remain private and are not committed.
 
 ## Open gates
 

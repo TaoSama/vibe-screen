@@ -35,6 +35,7 @@ gates.
 | [host-readiness-sanitized.json](host-readiness-sanitized.json) | Machine-readable, sanitized Host readiness subset. |
 | [usb-live-smoke-sanitized.json](usb-live-smoke-sanitized.json) | Machine-readable, sanitized USB live-smoke subset. |
 | [android-logcat-key-events.txt](android-logcat-key-events.txt) | Filtered Android Protocol v1, decoder, display, preferences, and reconnect events. |
+| [follow-up-relaunch-sanity.txt](follow-up-relaunch-sanity.txt) | Sanitized follow-up ADB availability and force-stop/relaunch reconnect check. |
 | [ui/](ui) | Sanitized UI hierarchy excerpts for capsule, display picker, settings, video preferences, disconnect confirmation, and final reconnect. |
 
 ## Boundary
