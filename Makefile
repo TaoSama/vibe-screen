@@ -68,6 +68,13 @@ IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))i
 IOS_NATIVE_INPUT_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-native-input-observations.json
 IOS_NATIVE_INPUT_GATE_JSON ?= $(dir $(IOS_NATIVE_INPUT_OBSERVATIONS_JSON))ios-native-input-gate.json
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
+CLIPBOARD_E2E_GATE_JSON ?= $(EVIDENCE_DIR)/clipboard-e2e-gate.json
+CLIPBOARD_E2E_HOST_READINESS_JSON ?= $(EVIDENCE_DIR)/host-readiness.json
+CLIPBOARD_E2E_USB_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/usb-smoke-preflight.json
+CLIPBOARD_E2E_LAN_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/trusted-lan-preflight.json
+CLIPBOARD_E2E_ANDROID_INSTRUMENTATION_LOG ?= $(EVIDENCE_DIR)/android-clipboard-instrumentation.txt
+CLIPBOARD_E2E_PRODUCT_JSON ?= $(EVIDENCE_DIR)/product-e2e.json
+CLIPBOARD_E2E_REQUIRE_PASS ?=
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
@@ -912,6 +919,24 @@ phase5-multi-client-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase5_multi_client_current_base_gate \
 		--evidence-dir "$(EVIDENCE_DIR)" \
 		--output "$(PHASE5_MULTI_CLIENT_GATE_JSON)"
+
+clipboard-e2e-gate:
+	@mkdir -p "$(dir $(CLIPBOARD_E2E_GATE_JSON))"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.clipboard_e2e_gate \
+		--host-readiness "$(CLIPBOARD_E2E_HOST_READINESS_JSON)" \
+		--usb-preflight "$(CLIPBOARD_E2E_USB_PREFLIGHT_JSON)" \
+		--trusted-lan-preflight "$(CLIPBOARD_E2E_LAN_PREFLIGHT_JSON)" \
+		--android-clipboard-instrumentation-log "$(CLIPBOARD_E2E_ANDROID_INSTRUMENTATION_LOG)" \
+		--product-e2e "$(CLIPBOARD_E2E_PRODUCT_JSON)" \
+		--serial-label "REDACTED_P0110_USB_SERIAL" \
+		--output "$(CLIPBOARD_E2E_GATE_JSON)" \
+		$(if $(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS)),--require-pass,); \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		if [ -z "$(strip $(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		exit $$status; \
+	fi
 
 host-display-rotation-current-base-manifest:
 	@mkdir -p $(EVIDENCE_DIR)

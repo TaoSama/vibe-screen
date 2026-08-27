@@ -595,7 +595,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         if not owner_valid:
             missing = [*missing, "ios native-input gate owner role is not the dedicated current-base owner"]
         if not current_base_valid:
-            missing = [*missing, "ios native-input gate current-base state does not match repository HEAD"]
+            missing = [*missing, "ios native-input gate current_base commit does not match repository HEAD"]
         if document.get("verdict") != "pass":
             missing = [*missing, "ios native-input gate verdict is not pass"]
         if document.get("can_close_ios_native_input_gate") is not True:
