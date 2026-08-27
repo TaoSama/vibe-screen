@@ -153,7 +153,9 @@
         "custom_gestures_allowed": 7,
         "host_actions_allowed": 8,
         "allowed_hosts": 9,
-        "allowed_hosts_restricted": 10
+        "allowed_hosts_restricted": 10,
+        "restriction_results": 11,
+        "denied_hosts": 12
       }
     }
   },
