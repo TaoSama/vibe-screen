@@ -40,6 +40,7 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 
 @dataclass(frozen=True)
 class SigningMetadata:
@@ -139,9 +140,15 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
-    subparsers.add_parser(
+    xctest_preflight = subparsers.add_parser(
         "xctest-preflight",
-        help="fail closed unless a full Xcode XCTest runtime is selected for SwiftPM tests",
+        help="fail closed unless the selected Apple toolchain can run MacHost XCTest",
+    )
+    xctest_preflight.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
+        help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
     readiness = subparsers.add_parser(
         "readiness",
@@ -1033,6 +1040,57 @@ def write_report(path: Path, report: str) -> None:
     path.write_text(report, encoding="utf-8")
 
 
+def command_report_line(label: str, exit_code: int, output: str) -> str:
+    clean_output = ascii_report_text(output or "<empty>")
+    return f"{label}: exit_code={exit_code}\n{clean_output}"
+
+
+def xctest_preflight_command(args: argparse.Namespace) -> int:
+    developer_status, developer_dir = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
+    swift_path_status, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift", timeout_seconds=10)
+    swift_version_status, swift_version = run_best_effort("/usr/bin/swift", "--version", timeout_seconds=10)
+    xcodebuild_path_status, xcodebuild_path = run_best_effort(
+        "/usr/bin/xcrun", "--find", "xcodebuild", timeout_seconds=10
+    )
+    xcodebuild_version_status, xcodebuild_version = run_best_effort(
+        "/usr/bin/xcodebuild", "-version", timeout_seconds=10
+    )
+
+    errors: list[str] = []
+    if developer_status != 0:
+        errors.append("xcode-select did not report a selected developer directory")
+    elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
+        errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    if swift_path_status != 0 or swift_version_status != 0:
+        errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
+    if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
+        errors.append("xcodebuild is not available from the selected Apple developer directory")
+
+    report = "\n".join(
+        (
+            "MacHost XCTest toolchain preflight",
+            "---------------------------------",
+            f"Status: {'PASS' if not errors else 'FAIL'}",
+            command_report_line("xcode-select -p", developer_status, developer_dir),
+            command_report_line("xcrun --find swift", swift_path_status, swift_path),
+            command_report_line("swift --version", swift_version_status, swift_version),
+            command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
+            command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            "Blocking issues:",
+            "\n".join(f"- {error}" for error in errors) if errors else "- none",
+            "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
+            "",
+        )
+    )
+    write_report(args.report, report)
+    print(f"Wrote {args.report}")
+    if errors:
+        print(report, file=sys.stderr)
+        return 2
+    print("macOS Host XCTest toolchain preflight passed")
+    return 0
+
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
@@ -1521,21 +1579,6 @@ It only uses the configured codesign identity and reads privacy databases in rea
         print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     print("macOS Host shared prerequisite readiness passed")
-    return 0
-
-
-def xctest_preflight_command(_args: argparse.Namespace) -> int:
-    exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
-    xctest_path = output.splitlines()[0].strip() if output.strip() else ""
-    if exit_code != 0 or not xctest_path:
-        detail = redact_local_report_text(output.strip()) if output.strip() else "xcrun did not return an XCTest path"
-        print(
-            "macOS XCTest preflight failed: select a full Xcode installation before running "
-            f"baseline-macos-test ({detail}).",
-            file=sys.stderr,
-        )
-        return 2
-    print(f"macOS XCTest preflight passed: {redact_local_report_text(xctest_path)}")
     return 0
 
 
