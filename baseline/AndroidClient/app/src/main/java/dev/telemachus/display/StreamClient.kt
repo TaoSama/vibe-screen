@@ -138,6 +138,8 @@ class StreamClient(
     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
     private val pendingInboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
+    private val audioAcceptedPacketCount = AtomicLong(0)
+    private val audioWrittenPacketCount = AtomicLong(0)
     @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
     internal val currentLanProtectionState: LanRecordProtectionState
         get() = lanRecordProtectionState
@@ -693,8 +695,12 @@ class StreamClient(
     private fun configureLegacyMode(firstByte: Int? = null) {
         wireMode = WireMode.LEGACY
         protocolSession = null
+        val activeAudioFormat = audioPlayer.activeFormat()
         audioPlayer.stop()?.let {
             Log.w(TAG, "Audio stop reported ${it.code} while switching to legacy mode")
+        }
+        if (activeAudioFormat != null) {
+            recordProtocolAudioStopped("legacy_fallback")
         }
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = firstByte
@@ -1173,6 +1179,7 @@ class StreamClient(
                 }
                 when (val result = audioPlayer.submit(frame.payload)) {
                     is ProtocolAudioPacketResult.Accepted -> {
+                        recordProtocolAudioPacket(result)
                         heartbeat.recordInbound(System.nanoTime())
                     }
                     is ProtocolAudioPacketResult.Rejected -> {
@@ -1184,6 +1191,7 @@ class StreamClient(
                         )
                     }
                     is ProtocolAudioPacketResult.PlaybackFailed -> {
+                        recordProtocolAudioStopped(result.reason.code)
                         result.cleanupFailureReason?.let {
                             Log.w(TAG, "Audio cleanup after playback failure also failed: ${it.code}")
                         }
@@ -1921,8 +1929,12 @@ class StreamClient(
         }
 
         override fun onAudioStopped(reason: String) {
+            val activeAudioFormat = audioPlayer.activeFormat()
             audioPlayer.stop()?.let {
                 Log.w(TAG, "Audio stop reported ${it.code} after $reason")
+            }
+            if (activeAudioFormat != null) {
+                recordProtocolAudioStopped(reason)
             }
         }
 
@@ -2158,12 +2170,15 @@ class StreamClient(
         val response =
             when (result) {
                 is ProtocolAudioConfigureResult.Accepted ->
-                    session.completeAudioConfiguration(
-                        config = action.config,
-                        accepted = true,
-                        rejectionReason = "",
-                        correlationId = action.correlationId,
-                    )
+                    session
+                        .completeAudioConfiguration(
+                            config = action.config,
+                            accepted = true,
+                            rejectionReason = "",
+                            correlationId = action.correlationId,
+                        ).also {
+                            recordProtocolAudioConfigured(action, result)
+                        }
                 is ProtocolAudioConfigureResult.Rejected -> {
                     audioPlayer.stop()?.let {
                         Log.w(TAG, "Audio stop after rejected configuration reported ${it.code}")
@@ -2603,8 +2618,12 @@ class StreamClient(
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
+        val activeAudioFormat = audioPlayer.activeFormat()
         audioPlayer.stop()?.let {
             Log.w(TAG, "Audio stop during cleanup reported ${it.code}")
+        }
+        if (activeAudioFormat != null) {
+            recordProtocolAudioStopped("connection_cleanup")
         }
         protocolSession = null
         wakeHostAuthorizationSecret = null
@@ -2683,6 +2702,62 @@ class StreamClient(
             AudioPacketRejectReason.NO_CONFIGURATION -> "no_audio_configuration"
             is AudioPacketRejectReason.ProtocolRejected -> reason.code
         }
+
+    private fun recordProtocolAudioConfigured(
+        action: ProtocolV1Session.Action.AudioConfigurationRequested,
+        accepted: ProtocolAudioConfigureResult.Accepted,
+    ) {
+        audioAcceptedPacketCount.set(0)
+        audioWrittenPacketCount.set(0)
+        val message =
+            "audio_config_accepted " +
+                "stream_id=${accepted.streamId} " +
+                "session_epoch=${action.sessionEpoch} " +
+                "config_epoch=${accepted.configEpoch} " +
+                "sample_rate_hz=${action.config.sampleRateHz} " +
+                "channel_count=${action.config.channelCount} " +
+                "frames_per_packet=${action.config.framesPerPacket}"
+        Log.i(TAG, message)
+        diagLog(message)
+    }
+
+    private fun recordProtocolAudioPacket(result: ProtocolAudioPacketResult.Accepted) {
+        val acceptedPackets = audioAcceptedPacketCount.incrementAndGet()
+        val writtenPackets =
+            if (result.writtenPackets > 0) {
+                audioWrittenPacketCount.addAndGet(result.writtenPackets.toLong())
+            } else {
+                audioWrittenPacketCount.get()
+            }
+        if (result.writtenPackets <= 0 || !shouldLogAudioPacketProgress(acceptedPackets)) {
+            return
+        }
+        val format = audioPlayer.activeFormat()
+        val message =
+            "audio_track_write " +
+                "stream_id=${format?.streamId ?: 0} " +
+                "config_epoch=${format?.configEpoch ?: 0} " +
+                "accepted_packets=$acceptedPackets " +
+                "written_packets=$writtenPackets " +
+                "last_write_packets=${result.writtenPackets} " +
+                "enqueue=${result.enqueueResult}"
+        Log.i(TAG, message)
+        diagLog(message)
+    }
+
+    private fun recordProtocolAudioStopped(reason: String) {
+        val message =
+            "audio_playback_stopped " +
+                "reason=$reason " +
+                "accepted_packets=${audioAcceptedPacketCount.get()} " +
+                "written_packets=${audioWrittenPacketCount.get()}"
+        Log.i(TAG, message)
+        diagLog(message)
+    }
+
+    private fun shouldLogAudioPacketProgress(acceptedPackets: Long): Boolean =
+        acceptedPackets <= INITIAL_AUDIO_PROGRESS_LOG_PACKETS ||
+            acceptedPackets % AUDIO_PROGRESS_LOG_INTERVAL_PACKETS == 0L
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
@@ -2931,6 +3006,8 @@ class StreamClient(
         private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
         private const val WAKE_HOST_REQUEST_ID_BYTES = 16
         private const val MAX_PENDING_INBOUND_WAKE_HOST_REQUESTS = 16
+        private const val INITIAL_AUDIO_PROGRESS_LOG_PACKETS = 4L
+        private const val AUDIO_PROGRESS_LOG_INTERVAL_PACKETS = 64L
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
         private const val MIN_DISPLAY_DIMENSION = 16

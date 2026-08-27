@@ -21,7 +21,7 @@ class AndroidAudioPlaybackEvidenceTest(unittest.TestCase):
         record: dict[str, object] = {field: True for field in BOOLEAN_FIELDS}
         record["transport"] = "usb"
         record["device"] = {
-            "adb_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "<ANDROID_SERIAL>",
             "manufacturer": "nubia",
             "model": "P0110",
             "device": "pacific",
@@ -102,7 +102,7 @@ class AndroidAudioPlaybackEvidenceTest(unittest.TestCase):
             evidence_dir = Path(tmpdir)
             record = self.complete_record()
             record["device"] = {
-                "adb_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<ANDROID_SERIAL>",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "device": "fuxi",

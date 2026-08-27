@@ -1,0 +1,1 @@
+acquired /tmp/vibe-screen-device-android.lock for current-base audio readiness read-only collection

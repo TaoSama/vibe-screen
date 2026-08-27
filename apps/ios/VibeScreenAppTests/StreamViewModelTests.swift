@@ -44,27 +44,29 @@ final class VibeScreenAppUITests: XCTestCase {
         app.launchEnvironment["AUDIO_PLAYBACK_SELF_TEST"] = "1"
         app.launch()
 
-        let result = app.staticTexts["audio-playback-self-test-result"]
+        let result = app.descendants(matching: .any)["audio-playback-self-test-result"]
         XCTAssertTrue(result.waitForExistence(timeout: 30))
-
-        if result.label == "AUDIO_PLAYBACK_SELF_TEST=RUNNING" {
-            let start = app.buttons["audio-playback-self-test-start"]
-            XCTAssertTrue(start.waitForExistence(timeout: 5))
-            if start.isEnabled {
-                start.tap()
-            }
-        }
-
-        let terminalResult = XCTNSPredicateExpectation(
-            predicate: NSPredicate(
-                format: "label CONTAINS %@ OR label CONTAINS %@",
-                "AUDIO_PLAYBACK_SELF_TEST=PASS",
-                "AUDIO_PLAYBACK_SELF_TEST=FAIL"
-            ),
-            object: result
+        XCTAssertTrue(
+            result.label == "AUDIO_PLAYBACK_SELF_TEST=RUNNING"
+                || result.label.contains("AUDIO_PLAYBACK_SELF_TEST=PASS")
+                || result.label.contains("AUDIO_PLAYBACK_SELF_TEST=FAIL"),
+            result.label
         )
-        let waitResult = XCTWaiter.wait(for: [terminalResult], timeout: 30)
-        XCTAssertEqual(waitResult, .completed, result.label)
+
+        let start = app.buttons["audio-playback-self-test-start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        if result.label == "AUDIO_PLAYBACK_SELF_TEST=RUNNING" {
+            let terminalResult = XCTNSPredicateExpectation(
+                predicate: NSPredicate(
+                    format: "label CONTAINS %@ OR label CONTAINS %@",
+                    "AUDIO_PLAYBACK_SELF_TEST=PASS",
+                    "AUDIO_PLAYBACK_SELF_TEST=FAIL"
+                ),
+                object: result
+            )
+            let waitResult = XCTWaiter.wait(for: [terminalResult], timeout: 30)
+            XCTAssertEqual(waitResult, .completed, result.label)
+        }
         XCTAssertTrue(result.label.contains("AUDIO_PLAYBACK_SELF_TEST=PASS"), result.label)
         let counters = Self.audioPlaybackCounters(from: result.label)
         XCTAssertGreaterThanOrEqual(counters["scheduled", default: 0], 9, result.label)
