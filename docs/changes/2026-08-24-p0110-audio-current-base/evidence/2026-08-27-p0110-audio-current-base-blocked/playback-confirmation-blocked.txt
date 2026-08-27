@@ -1,0 +1,1 @@
+No audible or instrumentation-backed Android playback confirmation was observed in this current-base readiness pass. The retained USB session is video-only for audio-gate purposes.

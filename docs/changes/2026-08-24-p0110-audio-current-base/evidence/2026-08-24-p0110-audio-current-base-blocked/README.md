@@ -2,7 +2,7 @@
 
 Status: blocked before real USB audio playback acceptance
 Device: `nubia P0110 / pacific / Android 16 / SDK 36`
-ADB serial: `EP0110PZ0B9110300B`
+ADB serial: `<ANDROID_SERIAL>`
 
 ## Goal
 
