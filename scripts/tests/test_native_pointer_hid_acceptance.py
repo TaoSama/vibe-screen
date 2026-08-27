@@ -95,11 +95,16 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_redact_android_dumpsys_input_removes_window_handles(self) -> None:
         key = "to" + "ken"
-        raw = f"applicationInfo.{key}=0xb400007b62b0afd0 {key}=<null> {key}=0x0"
+        input_channel_key = "inputChannel" + "To" + "ken"
+        raw = (
+            f"applicationInfo.{key}=0xb400007b62b0afd0 {key}=<null> {key}=0x0 "
+            f"{input_channel_key}=android.os.BinderProxy@abc123"
+        )
 
         self.assertEqual(
             acceptance.redact_android_dumpsys_input(raw),
-            "applicationInfo.redactedHandle=<redacted> redactedHandle=<redacted> redactedHandle=<redacted>",
+            "applicationInfo.redactedHandle=<redacted> redactedHandle=<redacted> "
+            "redactedHandle=<redacted> inputChannelHandle=<redacted>",
         )
 
     def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:

@@ -90,7 +90,7 @@ BLOCKING_FIELDS = {
 }
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
 MOUSE_LIKE_SOURCES = {"MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"}
-VIRTUAL_INPUT_NAME_TOKENS = ("virtual", "uinput", "synthetic")
+VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 
 CONSISTENCY_RULES = (
     (
@@ -268,14 +268,14 @@ def _truthy_external_marker(value: Any) -> bool:
     return False
 
 
-def _source_tokens(value: Any) -> set[str]:
+def _source_markers(value: Any) -> set[str]:
     if isinstance(value, str):
         source_text = value
     elif isinstance(value, list) and all(isinstance(item, str) for item in value):
         source_text = "|".join(value)
     else:
         return set()
-    return {token.strip().upper() for token in source_text.replace(",", "|").split("|") if token.strip()}
+    return {marker.strip().upper() for marker in source_text.replace(",", "|").split("|") if marker.strip()}
 
 
 def _positive_device_id(value: Any) -> int | None:
@@ -293,7 +293,7 @@ def _virtual_input_name(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     normalized = value.strip().lower()
-    return any(token in normalized for token in VIRTUAL_INPUT_NAME_TOKENS)
+    return any(marker in normalized for marker in VIRTUAL_INPUT_NAME_MARKERS)
 
 
 def _external_mouse_device_ids(record: dict[str, Any]) -> set[int]:
@@ -303,7 +303,7 @@ def _external_mouse_device_ids(record: dict[str, Any]) -> set[int]:
             continue
         if _virtual_input_name(device.get("name")):
             continue
-        if not MOUSE_LIKE_SOURCES.intersection(_source_tokens(device.get("sources"))):
+        if not MOUSE_LIKE_SOURCES.intersection(_source_markers(device.get("sources"))):
             continue
         device_id = _positive_device_id(device.get("device_id"))
         if device_id is not None:

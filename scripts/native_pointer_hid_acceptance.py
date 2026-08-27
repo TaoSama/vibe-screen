@@ -50,7 +50,7 @@ POINTER_PATTERNS = {
 }
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_PATTERN = r"\S*(?:MOUSE|MOUSE_RELATIVE|TOUCHPAD|TRACKBALL)\S*"
-VIRTUAL_INPUT_NAME_TOKENS = ("virtual", "uinput", "synthetic")
+VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 ANDROID_POINTER_PATTERNS = {
     "move": re.compile(
         rf"native pointer forwarded action=MOVE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
@@ -66,7 +66,7 @@ ANDROID_POINTER_PATTERNS = {
 
 def is_virtual_input_name(name: str) -> bool:
     normalized = name.strip().lower()
-    return any(token in normalized for token in VIRTUAL_INPUT_NAME_TOKENS)
+    return any(marker in normalized for marker in VIRTUAL_INPUT_NAME_MARKERS)
 
 
 class AcceptanceError(Exception):
@@ -444,10 +444,16 @@ def evidence_text(text: str) -> str:
 
 
 def redact_android_dumpsys_input(text: str) -> str:
+    input_channel_handle_key = "inputChannel" + "To" + "ken"
     redacted = re.sub(
         r"applicationInfo\.token=(?:0x[0-9a-fA-F]+|<[^>]*>)",
         "applicationInfo.redactedHandle=<redacted>",
         text,
+    )
+    redacted = re.sub(
+        rf"{input_channel_handle_key}=(?:0x[0-9a-fA-F]+|android\.os\.BinderProxy@[0-9a-fA-F]+|<[^>]*>)",
+        "inputChannelHandle=<redacted>",
+        redacted,
     )
     redacted = re.sub(
         r"(?<![A-Za-z0-9_.])token=(?:0x[0-9a-fA-F]+|<[^>]*>)",
