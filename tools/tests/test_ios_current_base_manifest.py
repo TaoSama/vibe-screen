@@ -525,10 +525,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            {
-                "field": "current_base.commit",
-                "requirement": "current-base commit must match repository HEAD",
-            },
+            "ios native-input gate current_base commit does not match repository HEAD",
             manifest["native_input_gate"]["missing_requirements"],
         )
 

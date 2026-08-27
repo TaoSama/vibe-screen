@@ -1470,11 +1470,6 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
-    prerequisite_errors: list[str] = []
-    try:
-        package_macos.resolve_sign_identity(args.sign_identity)
-    except SystemExit as error:
-        prerequisite_errors.append(str(error))
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
@@ -1482,7 +1477,6 @@ def preflight_command(args: argparse.Namespace) -> int:
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
-    errors = [*prerequisite_errors, *errors]
     report = format_report(
         metadata,
         permissions,
