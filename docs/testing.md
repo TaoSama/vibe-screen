@@ -44,6 +44,12 @@ then reinstall, grant Screen Recording and Accessibility, and rerun the
 preflight. Do not use ad-hoc signing for current-source device evidence because
 macOS TCC grants are bound to the signing identity.
 
+`make baseline-macos-host-readiness` keeps login-item state fail-closed by
+default and does not invoke the macOS login-item diagnostic. For an attended
+manual investigation only, run `python3 scripts/macos_dev_host.py readiness
+--include-login-item-diagnostic ...` to include the real login-item probe. Do
+not enable that flag in default tests or CI.
+
 ## Real-device evidence
 
 For every device run, record:
