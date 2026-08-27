@@ -733,6 +733,16 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertEqual(status.port, 54321)
         self.assertEqual(status.error, "listener not observed")
 
+    def test_run_best_effort_reports_missing_platform_command(self) -> None:
+        with mock.patch(
+            "subprocess.run",
+            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
+        ):
+            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
+
+        self.assertEqual(exit_code, 127)
+        self.assertEqual(output, "command not found: /usr/bin/defaults")
+
     def test_inspect_listener_redacts_lsof_user_column(self) -> None:
         output = (
             "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"

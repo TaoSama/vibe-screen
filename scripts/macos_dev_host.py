@@ -226,6 +226,9 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except FileNotFoundError as error:
+        missing_command = error.filename or (command[0] if command else "<unknown>")
+        return 127, f"command not found: {missing_command}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
