@@ -1,0 +1,20 @@
+git fetch origin --prune
+git rev-parse origin/main
+rg -n "WakeHost|wake-host|Wake-on|magic packet|CAPABILITY_WAKE|FileTransfer|file transfer|file_transfer|CAPABILITY_FILE|ManagedPolicy|managed policy|deny-wins|managed configuration" README.md docs contracts baseline apps tools Makefile .github
+PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base tools.tests.test_schemas -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-observations.json --output docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-gate.json; test $? -eq 1
+jq -e '.verdict == "blocked" and .current_main_sha == "3b2ba11e832a3618eaedfc67f92414b161423a00" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-gate.json
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+cd baseline/MacHost && swift build -c release
+cd baseline/MacHost && "./.build/release/Vibe Screen" --protocol-v1-self-test
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+xcode-select -p; xcrun --find xctest || true; swift --version
+cd baseline/MacHost && swift test --filter ProtocolV1SessionTests
+rg -q "E[P]0110PZ0B9110300B|/[U]sers/luwentao|Application Support/com.apple.TC[C]|TC[C].db|BEGIN .*KE[Y]|private ke[y]|tokens/credentials/private ke[y]s" docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-27-advanced-gates-current-base-audit docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked
+status=$?
+case "$status" in
+  0) echo REDACTION_SCAN_FAILED >&2; exit 1 ;;
+  1) echo REDACTION_SCAN_PASSED ;;
+  *) echo REDACTION_SCAN_ERROR >&2; exit "$status" ;;
+esac
+git diff --check

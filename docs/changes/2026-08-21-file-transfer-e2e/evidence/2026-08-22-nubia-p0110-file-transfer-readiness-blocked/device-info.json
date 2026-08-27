@@ -1,5 +1,5 @@
 {
-  "serial": "EP0110PZ0B9110300B",
+  "serial_redacted": true,
   "manufacturer": "nubia",
   "model": "P0110",
   "codename": "pacific",
@@ -7,4 +7,3 @@
   "sdk": "36",
   "adb_state": "device"
 }
-

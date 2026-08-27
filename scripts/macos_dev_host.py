@@ -180,6 +180,14 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_DIR / "host-readiness.json",
         help="path for the structured readiness JSON report",
     )
+    readiness.add_argument(
+        "--probe-login-item",
+        action="store_true",
+        help=(
+            "run the explicit manual Launch at Login diagnostic. This may call "
+            "sfltool dumpbtm, so default readiness and CI runs leave it skipped."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -250,14 +258,17 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except FileNotFoundError as error:
+        executable = str(error.filename or (command[0] if command else "command"))
+        return 127, f"command not found: {Path(executable).name}"
+    except OSError as error:
+        executable = command[0] if command else "command"
+        return 127, f"command unavailable: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except FileNotFoundError as error:
-        executable = str(error.filename or (command[0] if command else "command"))
-        return 127, f"command not found: {Path(executable).name}"
     return completed.returncode, completed.stdout.strip()
 
 
@@ -546,6 +557,15 @@ def read_login_item_readiness() -> LoginItemReadiness:
             evidence=(),
         )
     return parse_login_item_state(output)
+
+
+def skipped_login_item_readiness() -> LoginItemReadiness:
+    return LoginItemReadiness(
+        state="manual_probe_required",
+        matched=False,
+        detail="Launch at Login was not probed; rerun readiness with --probe-login-item for an explicit manual diagnostic.",
+        evidence=(),
+    )
 
 
 def read_display_readiness() -> HostDisplayReadiness:
@@ -1366,7 +1386,7 @@ def build_readiness_document(
     if settings is None:
         settings = read_startup_settings()
     if login_item is None:
-        login_item = read_login_item_readiness()
+        login_item = skipped_login_item_readiness()
     if displays is None:
         displays = read_display_readiness()
     if logs is None:
@@ -1617,6 +1637,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
+    login_item = read_login_item_readiness() if args.probe_login_item is True else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
@@ -1646,7 +1667,7 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    document = build_readiness_document(inspection, listener, entitlements)
+    document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
     print(f"Wrote {args.json_output}")
@@ -1655,7 +1676,6 @@ It only uses the configured codesign identity and reads privacy databases in rea
         return 2
     print("macOS Host shared prerequisite readiness passed")
     return 0
-
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     status = inspect_xctest_preflight()

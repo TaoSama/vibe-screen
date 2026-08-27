@@ -2143,16 +2143,17 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testManagedPolicyDenyStopsConfiguredAudio() throws {
         let session = try readyAudioStreamingSession(managed: true)
 
-        var remote = ManagedPolicy.unmanaged.protocolStatus
-        remote.managed = true
-        remote.clipboardAllowed = true
-        remote.fileTransferAllowed = true
-        remote.audioAllowed = false
-        remote.wakeAllowed = true
-        remote.customGesturesAllowed = true
-        remote.hostActionsAllowed = true
-        remote.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
-        remote.allowedHosts = ["host"]
+        let remote = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ).protocolStatus
         let actions = session.handleControl(try envelope(
             id: 6,
             payload: .managedPolicyStatus(remote)

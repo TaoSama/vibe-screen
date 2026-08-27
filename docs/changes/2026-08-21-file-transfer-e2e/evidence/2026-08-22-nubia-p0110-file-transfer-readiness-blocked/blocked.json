@@ -6,7 +6,7 @@
   "source_branch": "codex/clipboard-file-transfer-gate",
   "origin_main_at_collection": "47207c5bc82f9931eb82ec886d2d55e96c3f3e5b",
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial_redacted": true,
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",

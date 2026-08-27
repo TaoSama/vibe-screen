@@ -264,9 +264,14 @@ def check_default_advanced_capability_gates(capability_body: str) -> CheckResult
     forbidden_defaults = [
         needle for needle in (".audioDataChannel", ".bulkDataChannel") if needle in capability_body
     ]
-    multi_client_gated = (
-        ".multiClient" not in capability_body
-        or ("maximumClients" in capability_body and "maximumClients > 1" in capability_body)
+    multi_client_lines = [
+        line.strip()
+        for line in capability_body.splitlines()
+        if ".multiClient" in line
+    ]
+    multi_client_gated = all(
+        "maximumClients > 1" in line and line.startswith("if ")
+        for line in multi_client_lines
     )
     if forbidden_defaults or not multi_client_gated:
         return CheckResult(
