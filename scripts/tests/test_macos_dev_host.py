@@ -1457,6 +1457,50 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.assertNotIn(str(macos_dev_host.SYSTEM_TCC_DATABASE), artifact)
             self.assertNotIn("TCC" + ".db", artifact)
 
+    def test_readiness_artifacts_fail_closed_when_defaults_tool_is_missing(self) -> None:
+        with mock.patch.object(
+            macos_dev_host.subprocess,
+            "run",
+            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
+        ):
+            settings = macos_dev_host.read_startup_settings()
+
+        self.assertFalse(settings.readable)
+        self.assertIn("command unavailable", settings.error or "")
+        self.assertIn("/usr/bin/defaults", settings.error or "")
+
+        document = macos_dev_host.build_readiness_document(
+            macos_dev_host.HostInspection(
+                metadata=MacOSDevHostMetadataTests.metadata(),
+                source_identity=macos_dev_host.package_macos.SourceIdentity(
+                    commit="a" * 40,
+                    tree="b" * 40,
+                    dirty=False,
+                ),
+                permissions=macos_dev_host.PermissionStatus(
+                    database_path=macos_dev_host.USER_TCC_DATABASE_LABEL,
+                    rows=(),
+                    readable=False,
+                    error="permission state unavailable",
+                ),
+                errors=["permission state unavailable"],
+            ),
+            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=False,
+                keys=(),
+                raw_output="",
+            ),
+            settings=settings,
+            login_item=macos_dev_host.LoginItemReadiness("unverified", False, "not checked", ()),
+            displays=macos_dev_host.HostDisplayReadiness(False, 0, (), error="not checked"),
+            logs=macos_dev_host.LogReadiness("<user-host-log>", False, (), "not checked"),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertIn("cannot read startup defaults: command unavailable", "\n".join(document["blockers"]))
+
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
