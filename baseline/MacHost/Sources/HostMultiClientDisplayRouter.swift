@@ -1,11 +1,11 @@
 import Foundation
 
-struct HostClientSessionKey: Hashable, Sendable {
+struct HostClientSessionKey: Hashable {
     let sessionID: Data
     let epoch: UInt64
 }
 
-struct HostDisplayStreamBinding: Equatable, Sendable {
+struct HostDisplayStreamBinding: Equatable {
     let displayID: String
     let streamID: UInt64
 }
@@ -13,19 +13,16 @@ struct HostDisplayStreamBinding: Equatable, Sendable {
 enum HostDisplayRouterError: Error, Equatable {
     case invalidSession
     case invalidBinding
-    case clientLimitReached(Int)
-    case streamLimitReached(Int)
-    case duplicateStream(UInt64)
     case duplicateDisplay(String)
-    case unknownSession
+    case streamLimitReached(Int)
+    case clientLimitReached(Int)
 }
 
-final class HostMultiClientDisplayRouter: @unchecked Sendable {
-    let maximumClients: Int
-    let maximumStreamsPerClient: Int
-
+final class HostMultiClientDisplayRouter {
+    private let maximumClients: Int
+    private let maximumStreamsPerClient: Int
+    private var clients: [Data: ClientRoute] = [:]
     private let lock = NSLock()
-    private var sessions: [HostClientSessionKey: [UInt64: HostDisplayStreamBinding]] = [:]
 
     init(maximumClients: Int, maximumStreamsPerClient: Int) {
         self.maximumClients = max(1, maximumClients)
@@ -33,121 +30,98 @@ final class HostMultiClientDisplayRouter: @unchecked Sendable {
     }
 
     var activeClientCount: Int {
-        lock.withLock { sessions.count }
+        withLock { clients.count }
     }
 
     func register(_ key: HostClientSessionKey) throws {
-        try lock.withLock {
+        try withLock {
             try validate(key)
-            if sessions[key] != nil { return }
-
-            let matchingSessionIDs = sessions.keys.filter { $0.sessionID == key.sessionID }
-            if matchingSessionIDs.contains(where: { $0.epoch > key.epoch }) {
-                throw HostDisplayRouterError.invalidSession
+            if let existing = clients[key.sessionID] {
+                guard key.epoch > existing.epoch else { throw HostDisplayRouterError.invalidSession }
+                clients[key.sessionID] = ClientRoute(epoch: key.epoch, bindings: [:])
+                return
             }
-            for staleKey in matchingSessionIDs where staleKey.epoch < key.epoch {
-                sessions.removeValue(forKey: staleKey)
-            }
-
-            guard sessions.count < maximumClients else {
+            guard clients.count < maximumClients else {
                 throw HostDisplayRouterError.clientLimitReached(maximumClients)
             }
-            sessions[key] = [:]
+            clients[key.sessionID] = ClientRoute(epoch: key.epoch, bindings: [:])
         }
     }
 
-    @discardableResult
     func allocateStream(for displayID: String, in key: HostClientSessionKey) throws -> UInt64 {
-        try lock.withLock {
-            try validateBinding(displayID: displayID, streamID: 1)
-            var streams = try streamsForRegisteredSession(key)
-            if let existing = streams.values.first(where: { binding in binding.displayID == displayID }) {
+        try withLock {
+            try validate(key)
+            guard !displayID.isEmpty else { throw HostDisplayRouterError.invalidBinding }
+            guard var route = clients[key.sessionID], route.epoch == key.epoch else {
+                throw HostDisplayRouterError.invalidSession
+            }
+            if let existing = route.bindings.values.first(where: { $0.displayID == displayID }) {
                 return existing.streamID
             }
-            guard streams.count < maximumStreamsPerClient else {
+            guard route.bindings.count < maximumStreamsPerClient else {
                 throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
             }
-            let streamID = nextAvailableStreamID(in: streams)
-            let binding = HostDisplayStreamBinding(displayID: displayID, streamID: streamID)
-            streams[streamID] = binding
-            sessions[key] = streams
-            return streamID
+            let nextStreamID = UInt64(route.bindings.count + 1)
+            route.bindings[nextStreamID] = HostDisplayStreamBinding(displayID: displayID, streamID: nextStreamID)
+            clients[key.sessionID] = route
+            return nextStreamID
         }
     }
 
     func bind(_ binding: HostDisplayStreamBinding, to key: HostClientSessionKey) throws {
-        try lock.withLock {
-            try validateBinding(displayID: binding.displayID, streamID: binding.streamID)
-            var streams = try streamsForRegisteredSession(key)
-            guard streams[binding.streamID] == nil else {
-                throw HostDisplayRouterError.duplicateStream(binding.streamID)
+        try withLock {
+            try validate(key)
+            try validate(binding)
+            guard var route = clients[key.sessionID], route.epoch == key.epoch else {
+                throw HostDisplayRouterError.invalidSession
             }
-            guard !streams.values.contains(where: { $0.displayID == binding.displayID }) else {
+            if route.bindings.values.contains(where: { $0.displayID == binding.displayID && $0.streamID != binding.streamID }) {
                 throw HostDisplayRouterError.duplicateDisplay(binding.displayID)
             }
-            guard streams.count < maximumStreamsPerClient else {
-                throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
+            if route.bindings[binding.streamID] == nil {
+                guard route.bindings.count < maximumStreamsPerClient else {
+                    throw HostDisplayRouterError.streamLimitReached(maximumStreamsPerClient)
+                }
             }
-            streams[binding.streamID] = binding
-            sessions[key] = streams
+            route.bindings[binding.streamID] = binding
+            clients[key.sessionID] = route
         }
     }
 
     func rebind(streamID: UInt64, toDisplayID displayID: String, in key: HostClientSessionKey) throws {
-        try lock.withLock {
-            try validateBinding(displayID: displayID, streamID: streamID)
-            var streams = try streamsForRegisteredSession(key)
-            guard streams[streamID] != nil else {
-                throw HostDisplayRouterError.unknownSession
-            }
-            guard !streams.values.contains(where: { $0.streamID != streamID && $0.displayID == displayID }) else {
-                throw HostDisplayRouterError.duplicateDisplay(displayID)
-            }
-            streams[streamID] = HostDisplayStreamBinding(displayID: displayID, streamID: streamID)
-            sessions[key] = streams
-        }
+        try bind(HostDisplayStreamBinding(displayID: displayID, streamID: streamID), to: key)
     }
 
     func binding(streamID: UInt64, in key: HostClientSessionKey) -> HostDisplayStreamBinding? {
-        lock.withLock { sessions[key]?[streamID] }
+        withLock {
+            guard let route = clients[key.sessionID], route.epoch == key.epoch else { return nil }
+            return route.bindings[streamID]
+        }
     }
 
     func disconnect(_ key: HostClientSessionKey) {
-        lock.withLock {
-            sessions.removeValue(forKey: key)
-            return ()
+        withLock {
+            guard let route = clients[key.sessionID], route.epoch == key.epoch else { return }
+            clients.removeValue(forKey: key.sessionID)
         }
     }
 
     private func validate(_ key: HostClientSessionKey) throws {
-        guard !key.sessionID.isEmpty, key.epoch > 0 else {
-            throw HostDisplayRouterError.invalidSession
-        }
+        guard !key.sessionID.isEmpty, key.epoch > 0 else { throw HostDisplayRouterError.invalidSession }
     }
 
-    private func validateBinding(displayID: String, streamID: UInt64) throws {
-        guard !displayID.isEmpty, streamID > 0 else {
-            throw HostDisplayRouterError.invalidBinding
-        }
+    private func validate(_ binding: HostDisplayStreamBinding) throws {
+        guard !binding.displayID.isEmpty, binding.streamID > 0 else { throw HostDisplayRouterError.invalidBinding }
     }
 
-    private func streamsForRegisteredSession(_ key: HostClientSessionKey) throws -> [UInt64: HostDisplayStreamBinding] {
-        try validate(key)
-        guard let streams = sessions[key] else { throw HostDisplayRouterError.unknownSession }
-        return streams
+    private func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
     }
 
-    private func nextAvailableStreamID(in streams: [UInt64: HostDisplayStreamBinding]) -> UInt64 {
-        var candidate: UInt64 = 1
-        while streams[candidate] != nil { candidate += 1 }
-        return candidate
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ operation: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try operation()
+    private struct ClientRoute {
+        let epoch: UInt64
+        var bindings: [UInt64: HostDisplayStreamBinding]
     }
 }
