@@ -143,20 +143,20 @@ def parse_args() -> argparse.Namespace:
         description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    install = subparsers.add_parser("install", help="build, sign, and install the stable local development Host bundle")
+    add_common_options(install, include_sign_identity=True, include_output_dir=True)
+    preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
+    add_common_options(preflight, include_sign_identity=True)
     xctest_preflight = subparsers.add_parser(
         "xctest-preflight",
-        help="fail closed unless full Xcode is selected for SwiftPM XCTest",
+        help="fail closed unless the selected Apple toolchain can run MacHost XCTest",
     )
     xctest_preflight.add_argument(
         "--report",
         type=Path,
         default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
-        help="path for the XCTest toolchain report",
+        help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
-    install = subparsers.add_parser("install", help="build, sign, and install the stable local development Host bundle")
-    add_common_options(install, include_sign_identity=True, include_output_dir=True)
-    preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
-    add_common_options(preflight, include_sign_identity=True)
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -1064,75 +1064,36 @@ def write_report(path: Path, report: str) -> None:
     path.write_text(report, encoding="utf-8")
 
 
+def command_report_line(label: str, exit_code: int, output: str) -> str:
+    clean_output = ascii_report_text(output or "<empty>")
+    return f"{label}: exit_code={exit_code}\n{clean_output}"
+
+
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    selected_developer_dir_code, selected_developer_dir = run_best_effort("/usr/bin/xcode-select", "-p")
-    xctest_path_code, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest")
-    swift_path_code, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift")
-    swift_version_code, swift_version = run_best_effort("/usr/bin/swift", "--version")
-    xcodebuild_path_code, xcodebuild_path = run_best_effort("/usr/bin/xcrun", "--find", "xcodebuild")
-    xcodebuild_version_code, xcodebuild_version = run_best_effort("/usr/bin/xcodebuild", "-version")
-    blockers: list[str] = []
-    if selected_developer_dir_code != 0:
-        blockers.append("xcode-select -p failed")
-    if "CommandLineTools" in selected_developer_dir:
-        blockers.append("active developer directory is Command Line Tools, not full Xcode")
-    if xctest_path_code != 0:
-        blockers.append("xcrun --find xctest failed")
-    if swift_path_code != 0:
-        blockers.append("xcrun --find swift failed")
-    if swift_version_code != 0:
-        blockers.append("swift --version failed")
-    if xcodebuild_path_code != 0:
-        blockers.append("xcrun --find xcodebuild failed")
-    if xcodebuild_version_code != 0:
-        blockers.append("xcodebuild -version failed")
+    xctest_status, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+    errors: list[str] = []
+    if xctest_status != 0:
+        errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
 
-    status = "PASS" if not blockers else "FAIL"
-    blocker_lines = "\n".join(f"- {blocker}" for blocker in blockers) or "(none)"
-    report = f"""MacHost XCTest toolchain preflight
-----------------------------------
-Status: {status}
-
-Selected developer directory
-----------------------------
-exit={selected_developer_dir_code}
-{selected_developer_dir or "(empty)"}
-
-Swift path
-----------
-exit={swift_path_code}
-{swift_path or "(empty)"}
-
-XCTest path
------------
-exit={xctest_path_code}
-{xctest_path or "(empty)"}
-
-Swift version
--------------
-exit={swift_version_code}
-{swift_version or "(empty)"}
-
-xcodebuild path
----------------
-exit={xcodebuild_path_code}
-{xcodebuild_path or "(empty)"}
-
-xcodebuild version
-------------------
-exit={xcodebuild_version_code}
-{xcodebuild_version or "(empty)"}
-
-Blocking issues
----------------
-{blocker_lines}
-"""
+    report = "\n".join(
+        (
+            "macOS XCTest preflight",
+            "---------------------------------",
+            f"Status: {'PASS' if not errors else 'FAIL'}",
+            command_report_line("xcrun --find xctest", xctest_status, xctest_path),
+            "Blocking issues:",
+            "\n".join(f"- {error}" for error in errors) if errors else "- none",
+            "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
+            "",
+        )
+    )
     write_report(args.report, report)
     print(f"Wrote {args.report}")
-    if blockers:
+    if errors:
         print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
-    print("MacHost XCTest toolchain preflight passed")
+    print("macOS XCTest preflight passed")
     return 0
 
 
@@ -1589,6 +1550,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
     print("macOS Host touch-rerun preflight passed")
     return 0
