@@ -127,6 +127,11 @@ without external audio confirmation. Late-completion accounting remains covered
 by the offline queue tests and is
 reported by the app verifier as diagnostic telemetry.
 
+The Host-side advanced adapter readiness gate remains a source/readiness gate:
+it keeps host-side multi-client/display, audio, clipboard, file-transfer,
+HDR/color, host-action, wake, and managed-policy device gates open until the
+separate product-flow evidence exists.
+
 Project metadata also passes:
 
 ```text

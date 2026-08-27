@@ -240,6 +240,9 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except OSError as error:
+        executable = command[0] if command else "command"
+        return 127, f"command unavailable: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
@@ -1044,6 +1047,7 @@ def write_report(path: Path, report: str) -> None:
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     selected_developer_dir_code, selected_developer_dir = run_best_effort("/usr/bin/xcode-select", "-p")
+    xctest_path_code, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest")
     swift_path_code, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift")
     swift_version_code, swift_version = run_best_effort("/usr/bin/swift", "--version")
     xcodebuild_path_code, xcodebuild_path = run_best_effort("/usr/bin/xcrun", "--find", "xcodebuild")
@@ -1053,6 +1057,8 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
         blockers.append("xcode-select -p failed")
     if "CommandLineTools" in selected_developer_dir:
         blockers.append("active developer directory is Command Line Tools, not full Xcode")
+    if xctest_path_code != 0:
+        blockers.append("xcrun --find xctest failed")
     if swift_path_code != 0:
         blockers.append("xcrun --find swift failed")
     if swift_version_code != 0:
@@ -1077,6 +1083,11 @@ Swift path
 ----------
 exit={swift_path_code}
 {swift_path or "(empty)"}
+
+XCTest path
+-----------
+exit={xctest_path_code}
+{xctest_path or "(empty)"}
 
 Swift version
 -------------
@@ -1388,25 +1399,15 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
-    errors: list[str] = []
-    if expected_sign_identity == "-":
-        errors.append(
-            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
-        )
-    else:
-        try:
-            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
-        except SystemExit as error:
-            errors.append(str(error))
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(validate_preflight(
+    errors = validate_preflight(
         metadata,
         permissions,
         install_path=install_path,
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
-    ))
+    )
     return metadata, source_identity, permissions, errors
 
 
@@ -1525,6 +1526,11 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
+    prerequisite_errors: list[str] = []
+    try:
+        package_macos.resolve_sign_identity(args.sign_identity)
+    except SystemExit as error:
+        prerequisite_errors.append(str(error))
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
@@ -1532,6 +1538,7 @@ def preflight_command(args: argparse.Namespace) -> int:
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
     )
+    errors = [*prerequisite_errors, *errors]
     report = format_report(
         metadata,
         permissions,

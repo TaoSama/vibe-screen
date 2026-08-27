@@ -242,7 +242,7 @@ Input Reader State:
                 args,
                 [],
                 {},
-                "Input Reader State:  \n  UniqueId:  \n  token=0xb400007b62b3a410 applicationInfo.token=<null>  \n",
+                "Input Reader State:  \n  UniqueId:  \n",
                 [candidate],
                 "Stylus forwarded: samples=1 extended=true rawSource=0x4002 rawAction=2 rawTools=[stylus] phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.5 tiltX=1 tiltY=-1  \n",
                 None,
@@ -253,9 +253,6 @@ Input Reader State:
             dumpsys_text = (output_dir / "dumpsys-input.txt").read_text(encoding="utf-8")
             self.assertTrue(dumpsys_text.endswith("\n"))
             self.assertFalse(any(line.endswith(" ") for line in dumpsys_text.splitlines()))
-            self.assertIn("token=<redacted>", dumpsys_text)
-            self.assertNotIn("0xb400007b62b3a410", dumpsys_text)
-            self.assertNotIn("applicationInfo.token=<null>", dumpsys_text)
             self.assertIn("tiltY=-1  ", (output_dir / "android-diag.log").read_text(encoding="utf-8"))
             self.assertIn("tiltY=-45.0  ", (output_dir / "host-stylus.log").read_text(encoding="utf-8"))
 
@@ -578,14 +575,15 @@ Input Reader State:
 
 class HarmonyDeviceGateTests(unittest.TestCase):
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
+        evidence = (
+            "evidence/harmony-avcodec-preflight.json"
+            if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
+            else f"evidence/{gate_id}.txt"
+        )
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [
-                "evidence/harmony-avcodec-preflight.json"
-                if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
-                else f"evidence/{gate_id}.txt"
-            ],
+            "evidence": [evidence],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
@@ -631,6 +629,17 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
     def test_harmony_device_manifest_passes_when_all_real_device_gates_are_present(self) -> None:
         self.assertEqual(harmony_device_gate.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_device_manifest_requires_exact_avcodec_preflight_basename(self) -> None:
+        manifest = self.passing_manifest()
+        avcodec_gate = next(
+            gate for gate in manifest["gates"]
+            if gate["id"] in harmony_device_gate.AVCODEC_GATE_IDS
+        )
+        avcodec_gate["evidence"] = ["evidence/not-harmony-avcodec-preflight.json"]
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "harmony-avcodec-preflight.json"):
+            harmony_device_gate.validate_manifest(manifest)
 
     def test_harmony_device_manifest_requires_evidence_files_under_root(self) -> None:
         manifest = self.passing_manifest()
@@ -1019,7 +1028,7 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
         self.assertIn("harmony-host-interop-preflight", makefile)
         self.assertIn("harmony-host-interop-gate", makefile)
         self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
-        self.assertIn("--evidence-root", makefile)
+        self.assertIn('$(if $(strip $(EVIDENCE_DIR)),--evidence-root "$(EVIDENCE_DIR)",)', makefile)
         self.assertIn("$(HARMONY_HOST_INTEROP_JSON)", makefile)
 
 

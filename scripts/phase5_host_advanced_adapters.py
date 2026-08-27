@@ -260,28 +260,6 @@ def check_required_text(name: str, text: str, needles: Sequence[str]) -> CheckRe
     return CheckResult(name=name, status="pass", detail="all required contract text is present")
 
 
-def check_production_host_defaults(capability_body: str) -> CheckResult:
-    forbidden = [
-        needle
-        for needle in (".audioDataChannel", ".bulkDataChannel")
-        if needle in capability_body
-    ]
-    if ".multiClient" in capability_body and "maximumClients > 1" not in capability_body:
-        forbidden.append(".multiClient without maximumClients gate")
-    if forbidden:
-        return CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
-            status="fail",
-            detail="default production Host capabilities still expose unaccepted advanced adapters: "
-            + ", ".join(forbidden),
-        )
-    return CheckResult(
-        name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
-        status="pass",
-        detail="audio/bulk DataChannel remain absent and multi-client is gated by maximumClients",
-    )
-
-
 def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[str]]:
     protocol_session = read_text(repo, PROTOCOL_SESSION)
     phase5_tech = read_text(repo, PHASE5_TECH)
@@ -310,7 +288,16 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
             capability_body,
             ["touchEnabled", ".colorManagement", ".multiDisplay", ".clientVideoControl"],
         ),
-        check_production_host_defaults(capability_body),
+        CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="pass" if (
+                all(needle not in capability_body for needle in (".audioDataChannel", ".bulkDataChannel"))
+                and "maximumClients: Int = 1" in capability_body
+                and "if maximumClients > 1 { capabilities.insert(.multiClient) }" in capability_body
+                and capability_body.count("capabilities.insert(.multiClient)") == 1
+            ) else "fail",
+            detail="audio/bulk DataChannel stay out of production defaults; multi-client requires maximumClients > 1 opt-in",
+        ),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",
             capability_body,

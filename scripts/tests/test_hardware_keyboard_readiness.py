@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import hardware_keyboard_readiness as readiness
 
 
+TEST_ADB_SERIAL = "test-pacific-serial"
+
+
 SAMPLE_DUMPSYS_INPUT = """
 Event Hub State:
   Devices:
@@ -46,8 +49,8 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
 
     def test_p0110_identity_must_match_recorded_device(self) -> None:
         matching = readiness.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:pacific model:P0110 device:pacific",
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific",
             manufacturer="nubia",
             model="P0110",
             device="pacific",
@@ -56,24 +59,24 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
             sdk="36",
             build_fingerprint="nubia/pacific/fingerprint",
             abi="arm64-v8a",
-            device_serial="EP0110PZ0B9110300B",
+            device_serial=TEST_ADB_SERIAL,
         )
-        mislabeled = readiness.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:fuxi model:2211133C device:fuxi",
+        partial_p0110_claim = readiness.DeviceIdentity(
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:fuxi",
             manufacturer="Xiaomi",
-            model="2211133C",
+            model="P0110",
             device="fuxi",
-            product="fuxi",
+            product="pacific",
             android_release="16",
             sdk="36",
             build_fingerprint="xiaomi/fuxi/fingerprint",
             abi="arm64-v8a",
-            device_serial="EP0110PZ0B9110300B",
+            device_serial=TEST_ADB_SERIAL,
         )
 
-        self.assertTrue(readiness.device_identity_matches_claim(readiness.P0110_SERIAL, matching))
-        self.assertFalse(readiness.device_identity_matches_claim(readiness.P0110_SERIAL, mislabeled))
+        self.assertTrue(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, matching))
+        self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, partial_p0110_claim))
 
     def test_non_p0110_identity_requires_recorded_public_fields(self) -> None:
         complete = readiness.DeviceIdentity(
@@ -119,8 +122,8 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
 
     def test_device_info_document_matches_shared_schema_shape(self) -> None:
         device = readiness.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:pacific model:P0110 device:pacific",
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific",
             manufacturer="nubia",
             model="P0110",
             device="pacific",
@@ -129,7 +132,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
             sdk="36",
             build_fingerprint="nubia/pacific/fingerprint",
             abi="arm64-v8a",
-            device_serial="EP0110PZ0B9110300B",
+            device_serial=TEST_ADB_SERIAL,
         )
         package = readiness.PackageIdentity(
             package_name="dev.telemachus.display",
@@ -141,13 +144,13 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
 
         document = readiness.device_info_document(
             created_at="2026-08-23T00:00:00Z",
-            connection="already connected to EP0110PZ0B9110300B",
+            connection=f"already connected to {TEST_ADB_SERIAL}",
             adb_version="Android Debug Bridge version 1.0.41",
-            device=device,
+            device=readiness.redacted_device_identity(device),
             package=package,
         )
 
-        self.assertEqual(document["device"]["adb_serial"], readiness.P0110_SERIAL)
+        self.assertEqual(document["device"]["adb_serial"], readiness.REDACTED_DEVICE_SERIAL)
         self.assertEqual(document["device"]["sdk"], 36)
         self.assertEqual(document["packages"][0]["package"], "dev.telemachus.display")
 
@@ -163,7 +166,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        readiness.P0110_SERIAL,
+                        TEST_ADB_SERIAL,
                         "--evidence-dir",
                         str(evidence_dir),
                     ]
@@ -184,7 +187,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        readiness.P0110_SERIAL,
+                        TEST_ADB_SERIAL,
                         "--evidence-dir",
                         str(evidence_dir),
                         "--run-id",
@@ -207,18 +210,18 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
             lock = Path(temporary_directory) / "device.lock"
             evidence_dir = Path(temporary_directory) / "evidence"
             command_outputs = {
-                ("adb", "-s", readiness.P0110_SERIAL, "devices", "-l"): "List of devices attached\nEP0110PZ0B9110300B device product:pacific model:P0110 device:pacific\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.product.manufacturer"): "nubia\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.product.model"): "P0110\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.product.device"): "pacific\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.product.name"): "P0110\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.build.version.release"): "16\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.build.version.sdk"): "36\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.build.fingerprint"): "nubia/pacific/fingerprint\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.product.cpu.abi"): "arm64-v8a\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "getprop", "ro.serialno"): "EP0110PZ0B9110300B\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "dumpsys", "input"): "Device -1: Virtual\n  IsExternal: false\n  Sources: KEYBOARD | DPAD\n",
-                ("adb", "-s", readiness.P0110_SERIAL, "shell", "dumpsys", "package", "dev.telemachus.display"): "versionName=0.0.0\nversionCode=100000 minSdk=26 targetSdk=34\nfirstInstallTime=2026-08-21 10:00:00\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "devices", "-l"): f"List of devices attached\n{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.product.manufacturer"): "nubia\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.product.model"): "P0110\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.product.device"): "pacific\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.product.name"): "P0110\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.build.version.release"): "16\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.build.version.sdk"): "36\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.build.fingerprint"): "nubia/pacific/fingerprint\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.product.cpu.abi"): "arm64-v8a\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "getprop", "ro.serialno"): f"{TEST_ADB_SERIAL}\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "dumpsys", "input"): "Device -1: Virtual\n  IsExternal: false\n  Sources: KEYBOARD | DPAD\n",
+                ("adb", "-s", TEST_ADB_SERIAL, "shell", "dumpsys", "package", "dev.telemachus.display"): "versionName=0.0.0\nversionCode=100000 minSdk=26 targetSdk=34\nfirstInstallTime=2026-08-21 10:00:00\n",
                 ("adb", "version"): "Android Debug Bridge version 1.0.41\n",
                 ("lsof", "-nP", "-iTCP:54321", "-sTCP:LISTEN"): "",
                 ("security", "find-identity", "-v", "-p", "codesigning"): "     0 valid identities found\n",
@@ -237,7 +240,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        readiness.P0110_SERIAL,
+                        TEST_ADB_SERIAL,
                         "--evidence-dir",
                         str(evidence_dir),
                         "--run-id",

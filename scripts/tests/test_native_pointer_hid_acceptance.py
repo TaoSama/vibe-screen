@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import native_pointer_hid_acceptance as acceptance
 
 
+TEST_ADB_SERIAL = "test-pacific-serial"
+
+
 SAMPLE_DUMPSYS_INPUT = """
 Input Reader State (Nums of device: 3):
   Device 3: gdix_input_agent
@@ -89,8 +92,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
     def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:
         redacted = acceptance.redacted_device_identity(
             acceptance.DeviceIdentity(
-                serial="EP0110PZ0B9110300B",
-                endpoint="EP0110PZ0B9110300B device usb:1-1 product:pacific model:P0110 device:pacific",
+                serial=TEST_ADB_SERIAL,
+                endpoint=f"{TEST_ADB_SERIAL} device usb:1-1 product:pacific model:P0110 device:pacific",
                 manufacturer="nubia",
                 model="P0110",
                 device="pacific",
@@ -169,8 +172,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_main_writes_blocked_evidence_when_mouse_is_absent(self) -> None:
         identity = acceptance.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:pacific model:P0110 device:pacific",
+            serial=TEST_ADB_SERIAL,
+            endpoint=f"{TEST_ADB_SERIAL} device product:pacific model:P0110 device:pacific",
             manufacturer="nubia",
             model="P0110",
             device="pacific",
@@ -202,7 +205,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 exit_code = acceptance.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        TEST_ADB_SERIAL,
                         "--host-log",
                         str(Path(temporary_directory) / "host.log"),
                         "--evidence-dir",
@@ -243,7 +246,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 exit_code = acceptance.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        TEST_ADB_SERIAL,
                         "--host-log",
                         str(Path(temporary_directory) / "host.log"),
                         "--evidence-dir",

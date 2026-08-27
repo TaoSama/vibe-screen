@@ -102,15 +102,16 @@ PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 HARMONY_HDC_TARGET ?=
 HARMONY_HAP ?=
-HARMONY_HAP_READINESS_FLAGS ?=
 HARMONY_SHA256SUMS ?=
 HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
-HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop.json
+HARMONY_HAP_READINESS_FLAGS ?=
 HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
+HARMONY_HAP_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-hap-readiness.json
+HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop.json
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -130,16 +131,15 @@ PHASE3_ANDROID_UI_NOTE ?=
 PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachannel-manifest.json
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
-PHASE3_INTERNET_SOAK_DIR ?= $(EVIDENCE_DIR)/phase3-internet-soak
-PHASE3_INTERNET_SOAK_MANIFEST ?= $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json
-PHASE3_INTERNET_SOAK_GATE_JSON ?= $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json
-PHASE3_INTERNET_TURN_URIS ?=
+PHASE3_INTERNET_SOAK_MANIFEST_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
+PHASE3_INTERNET_SOAK_GATE_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-gate.json
+PHASE3_INTERNET_TURN_URI ?=
 PHASE3_INTERNET_SIGNALING_ORIGIN ?=
 PHASE3_INTERNET_RELAY_ORIGIN ?=
 PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
 PHASE3_INTERNET_REMOTE_PEER ?=
 PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
-PHASE3_INTERNET_TURN_SECRET_SOURCE ?= secret_manager
+PHASE3_INTERNET_TURN_SECRET_SOURCE ?=
 PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
 PHASE3_INTERNET_PLANNED_HANDOFFS ?=
 PHASE3_INTERNET_HOST_BUILD ?=
@@ -147,12 +147,12 @@ PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
 PHASE3_INTERNET_DURATION_SECONDS ?= 7200
 PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
 PHASE3_INTERNET_NOTES ?=
-PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
-PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
-PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
-PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
-PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
-PHASE3_INTERNET_BLOCKED_REASON ?=
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?=
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?=
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?=
+PHASE3_INTERNET_REVOCATION_REPORT ?=
+PHASE3_INTERNET_SOAK_REPORT ?=
+PHASE3_INTERNET_BLOCKED_REASON ?= Missing retained public Internet soak evidence.
 PHASE3_INTERNET_ALLOW_BLOCKED ?=
 
 .PHONY: \
@@ -212,10 +212,10 @@ PHASE3_INTERNET_ALLOW_BLOCKED ?=
 	harmony-hap-readiness \
 	harmony-device-gate \
 	harmony-secure-pairing-gate \
-	harmony-host-interop-preflight \
-	harmony-host-interop-gate \
 	harmony-avcodec-preflight \
 	harmony-avcodec-validate \
+	harmony-host-interop-preflight \
+	harmony-host-interop-gate \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -370,22 +370,22 @@ phase3-advanced-datachannel-blocked-baseline:
 	$(MAKE) phase3-advanced-datachannel-current-base PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT=1
 
 phase3-internet-soak-manifest:
-	@test -n "$(strip $(PHASE3_INTERNET_TURN_URIS))" || (echo "error: set PHASE3_INTERNET_TURN_URIS" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_REMOTE_PEER))" || (echo "error: set PHASE3_INTERNET_REMOTE_PEER" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256))" || (echo "error: set PHASE3_INTERNET_TLS_CERTIFICATE_SHA256" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_SECRET_SOURCE))" || (echo "error: set PHASE3_INTERNET_TURN_SECRET_SOURCE" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_DEPLOYMENT_READINESS))" || (echo "error: set PHASE3_INTERNET_DEPLOYMENT_READINESS" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_PLANNED_HANDOFFS))" || (echo "error: set PHASE3_INTERNET_PLANNED_HANDOFFS" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_HOST_BUILD))" || (echo "error: set PHASE3_INTERNET_HOST_BUILD" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256))" || (echo "error: set PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256" >&2; exit 2)
-	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_MANIFEST_JSON))"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.phase3_internet_soak manifest \
-		--output "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
+		--output "$(PHASE3_INTERNET_SOAK_MANIFEST_JSON)" \
 		--repo . \
-		$(foreach uri,$(PHASE3_INTERNET_TURN_URIS),--turn-uri "$(uri)" ) \
+		$(foreach uri,$(PHASE3_INTERNET_TURN_URI),--turn-uri "$(uri)") \
 		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
 		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
 		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
@@ -398,20 +398,19 @@ phase3-internet-soak-manifest:
 		--android-artifact-sha256 "$(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256)" \
 		--duration-seconds "$(PHASE3_INTERNET_DURATION_SECONDS)" \
 		--sample-interval-seconds "$(PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS)" \
-		$(if $(strip $(PHASE3_INTERNET_NOTES)),--notes "$(PHASE3_INTERNET_NOTES)",) \
-		-- make phase3-internet-soak-gate PHASE3_INTERNET_SOAK_DIR="$(PHASE3_INTERNET_SOAK_DIR)"
+		$(if $(strip $(PHASE3_INTERNET_NOTES)),--notes "$(PHASE3_INTERNET_NOTES)",)
 
 phase3-internet-soak-gate:
-	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_GATE_JSON))"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.phase3_internet_soak gate \
 		--output "$(PHASE3_INTERNET_SOAK_GATE_JSON)" \
-		--manifest "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
-		--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)" \
-		--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)" \
-		--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)" \
-		--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)" \
-		--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)" \
+		$(if $(strip $(PHASE3_INTERNET_SOAK_MANIFEST_JSON)),--manifest "$(PHASE3_INTERNET_SOAK_MANIFEST_JSON)",) \
+		$(if $(strip $(PHASE3_INTERNET_REMOTE_TURN_REPORT)),--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)",) \
+		$(if $(strip $(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)),--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)",) \
+		$(if $(strip $(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)),--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)",) \
+		$(if $(strip $(PHASE3_INTERNET_REVOCATION_REPORT)),--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)",) \
+		$(if $(strip $(PHASE3_INTERNET_SOAK_REPORT)),--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)",) \
 		$(if $(strip $(PHASE3_INTERNET_BLOCKED_REASON)),--blocked-reason "$(PHASE3_INTERNET_BLOCKED_REASON)",) \
 		$(if $(filter 1 true yes,$(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
@@ -674,14 +673,13 @@ harmony-readiness:
 
 harmony-hap-readiness:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS HAP readiness evidence directory" >&2; exit 2)
-	mkdir -p $(EVIDENCE_DIR)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_hap_readiness.py --evidence-dir "$(EVIDENCE_DIR)" \
-		$(if $(strip $(HARMONY_HDC_TARGET)),--target "$(HARMONY_HDC_TARGET)",) \
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_hap_readiness.py \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		$(if $(strip $(HARMONY_HDC_TARGET)),--hdc-target "$(HARMONY_HDC_TARGET)",) \
 		$(if $(strip $(HARMONY_HAP)),--hap "$(HARMONY_HAP)",) \
 		$(if $(strip $(HARMONY_SHA256SUMS)),--sha256sums "$(HARMONY_SHA256SUMS)",) \
 		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
-		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
-		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",) \
 		$(HARMONY_HAP_READINESS_FLAGS)
 
 harmony-device-gate:
@@ -691,15 +689,6 @@ harmony-device-gate:
 harmony-secure-pairing-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS secure-pairing evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_secure_pairing_gate.py "$(EVIDENCE_DIR)/harmony-secure-pairing.json"
-
-harmony-host-interop-preflight:
-	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop preflight evidence directory" >&2; exit 2)
-	mkdir -p "$(EVIDENCE_DIR)"
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-dir "$(EVIDENCE_DIR)"
-
-harmony-host-interop-gate:
-	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a completed HarmonyOS Host interop manifest" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-root "$(EVIDENCE_DIR)" "$(HARMONY_HOST_INTEROP_JSON)"
 
 harmony-avcodec-preflight:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
@@ -713,6 +702,18 @@ harmony-avcodec-validate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
 		--validate "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json"
+
+harmony-host-interop-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-dir "$(EVIDENCE_DIR)"
+
+harmony-host-interop-gate:
+	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a sanitized HarmonyOS Host interop manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		$(if $(strip $(EVIDENCE_DIR)),--evidence-root "$(EVIDENCE_DIR)",) \
+		"$(HARMONY_HOST_INTEROP_JSON)"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)

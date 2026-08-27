@@ -231,6 +231,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_xctest_preflight_command_passes_with_full_xcode(self) -> None:
         outputs = {
             ("/usr/bin/xcode-select", "-p"): (0, "/Applications/Xcode.app/Contents/Developer"),
+            ("/usr/bin/xcrun", "--find", "xctest"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"),
             ("/usr/bin/xcrun", "--find", "swift"): (0, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"),
             ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
             ("/usr/bin/xcrun", "--find", "xcodebuild"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"),
@@ -255,6 +256,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_xctest_preflight_command_fails_closed_with_command_line_tools(self) -> None:
         outputs = {
             ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
+            ("/usr/bin/xcrun", "--find", "xctest"): (72, "xcrun: error: unable to find utility xctest"),
             ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
             ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
             ("/usr/bin/xcrun", "--find", "xcodebuild"): (72, "xcrun: error: unable to find utility xcodebuild"),
@@ -275,6 +277,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("active developer directory is Command Line Tools", report_text)
+            self.assertIn("xcrun --find xctest failed", report_text)
             self.assertIn("xcrun --find xcodebuild failed", report_text)
             self.assertIn("xcodebuild -version failed", report_text)
 
@@ -397,6 +400,12 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         resolve_mock.assert_called_once_with("Missing Dev")
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
+
+    def test_parse_args_accepts_xctest_preflight_command(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "xctest-preflight")
 
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

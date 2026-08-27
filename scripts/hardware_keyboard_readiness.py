@@ -31,7 +31,6 @@ from vibescreen_evidence.hardware_keyboard import summarize  # noqa: E402
 BLOCKED_EXIT = 2
 DEFAULT_PACKAGE = "dev.telemachus.display"
 DEFAULT_PORT = 54321
-P0110_SERIAL = "EP0110PZ0B9110300B"
 DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
@@ -367,9 +366,13 @@ def package_identity_recorded(package: PackageIdentity | None) -> bool:
 def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) -> bool:
     if device is None:
         return False
-    if serial != P0110_SERIAL:
-        return all((device.manufacturer, device.model, device.device, device.android_release, device.sdk))
-    return is_nubia_p0110_android16(device)
+    if not all((serial, device.serial, device.manufacturer, device.model, device.device, device.android_release, device.sdk)):
+        return False
+    if device.serial != serial:
+        return False
+    if device.model == "P0110" or device.device == "pacific" or device.product == "pacific":
+        return is_nubia_p0110_android16(device)
+    return True
 
 
 def inspect_host(port: int, preflight_report: Path, *serials: str) -> HostPreflight:

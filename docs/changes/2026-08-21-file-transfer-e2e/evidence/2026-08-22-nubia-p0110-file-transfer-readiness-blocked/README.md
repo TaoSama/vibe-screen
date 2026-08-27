@@ -2,7 +2,8 @@
 
 Date: 2026-08-22
 Device: nubia P0110 / pacific / Android 16 / SDK 36
-Serial: EP0110PZ0B9110300B
+Serial: redacted from public evidence; the retained device identity is the
+nubia P0110 / pacific / Android 16 / SDK 36 test handset.
 Source branch: codex/clipboard-file-transfer-gate
 Fetched origin/main during collection: 47207c5bc82f9931eb82ec886d2d55e96c3f3e5b
 
