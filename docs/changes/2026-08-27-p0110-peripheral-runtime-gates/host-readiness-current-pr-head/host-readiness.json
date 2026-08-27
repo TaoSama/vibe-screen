@@ -4,8 +4,7 @@
     "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
     "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
     "Host is missing com.apple.developer.hid.virtual.device entitlement",
-    "login/headless readiness: Launch at Login is not verified enabled: unverified",
-    "login/headless readiness: no active display is visible to the current WindowServer session"
+    "login/headless readiness: Launch at Login is not verified enabled: unverified"
   ],
   "can_close_runtime_gates": false,
   "can_start_controller_runtime_gate": false,
@@ -21,7 +20,7 @@
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-27T10:29:37.782827+00:00",
+  "generated_at": "2026-08-27T11:19:22.618660+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [
@@ -31,9 +30,9 @@
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
     "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
     "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
-    "current_source_commit": "7e06483becdc1b63f0de74dfed56342eed2d0aba",
+    "current_source_commit": "5d72a6bec2632ae333b1956331b746e463555ccb",
     "current_source_dirty": false,
-    "current_source_tree": "75a0230213e2596dd783a46ac4b62ffbda9e14ee",
+    "current_source_tree": "0bcc49f96fa27d06af4fdf49c88ee7e9c98a7a7e",
     "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
     "identifier": "dev.telemachus.display",
     "identity": "Vibe Screen Dev",
@@ -53,20 +52,25 @@
   "listener_status": "ready",
   "login_headless": {
     "blockers": [
-      "Launch at Login is not verified enabled: unverified",
-      "no active display is visible to the current WindowServer session"
+      "Launch at Login is not verified enabled: unverified"
     ],
     "display_inventory": {
-      "active_display_count": 0,
-      "display_count": 1,
+      "active_display_count": 2,
+      "display_count": 2,
       "displays": [
         {
           "id": "1",
-          "logical": "1512 x 982 @ 120.00Hz",
+          "logical": "1512x982",
           "main": "1",
-          "name": "Color LCD",
-          "physical": "3024 x 1964",
-          "source": "system_profiler"
+          "physical": "3024x1964",
+          "source": "CoreGraphics"
+        },
+        {
+          "id": "2",
+          "logical": "1920x1080",
+          "main": "0",
+          "physical": "3840x2160",
+          "source": "CoreGraphics"
         }
       ],
       "error": null,
@@ -86,7 +90,7 @@
       "startup_recovery_markers": []
     },
     "login_item": {
-      "detail": "command timed out after 15s",
+      "detail": "Launch-at-Login diagnostic skipped by default; rerun readiness with --include-login-item-diagnostic during an explicit local diagnostic session.",
       "evidence": [],
       "matched": false,
       "state": "unverified"

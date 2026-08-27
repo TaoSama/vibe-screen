@@ -2,8 +2,8 @@
 
 Date: 2026-08-27
 
-Latest PR-head refresh: `7e06483becdc1b63f0de74dfed56342eed2d0aba`, after
-merging `origin/main` at `32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3` into
+Latest PR-head refresh: `5d72a6bec2632ae333b1956331b746e463555ccb`, after
+merging `origin/main` at `c0e4263f7af2d2ab1131e7fc15e5e9d3e3fef443` into
 `codex/p0110-peripheral-runtime-gates`. Historical current-base evidence from
 `3b2ba11e832a3618eaedfc67f92414b161423a00` remains below as the previous
 snapshot.
@@ -24,7 +24,7 @@ snapshots and offline gates remain separate from physical runtime acceptance.
 
 | Gate | Evidence | Verdict | Can close gate | Blocking reason |
 | --- | --- | --- | --- | --- |
-| macOS Host readiness prerequisite | `host-readiness-current-pr-head/host-readiness.json` | `blocked` | `false` | Current source was clean at the start of collection, but the installed Host lacks source provenance, TCC cannot be verified read-only, the virtual HID entitlement is missing, and login/headless diagnostics remain blocked. |
+| macOS Host readiness prerequisite | `host-readiness-current-pr-head/host-readiness.json` | `blocked` | `false` | Current source was clean at the start of collection, but the installed Host lacks source provenance, TCC cannot be verified read-only, the virtual HID entitlement is missing, and Launch-at-Login remains unverified. The default readiness path now skips the local login-item diagnostic so automated tests and CI do not invoke the macOS login-item dump tool; that diagnostic is explicit opt-in only. |
 | Controller runtime acceptance | `../2026-08-19-controller-runtime-acceptance/evidence/2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483/controller-runtime-summary.json` | `blocked` | `false` | No physical Android `SOURCE_GAMEPAD`/`SOURCE_JOYSTICK` controller was visible; the Host is not identity-signed with the approved virtual HID entitlement and no virtual-gamepad availability, Mac-side response, or neutral-release evidence exists. |
 | Physical stylus drawing app | `../2026-08-19-physical-stylus-acceptance/evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-summary.json` | `blocked` | `false` | P0110 exposes pass-eligible `goodix_stylus_input` capability, but no physical drawing was observed and no same-session Android `Stylus forwarded`, Host `Stylus injected`, stable signed/TCC Host, or visible macOS drawing-app evidence was captured. |
 | Native pointer HID mouse | `native-pointer-hid-current-pr/native-pointer-hid-summary.json` | `blocked` | `false` | No external Android input device with `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source was attached; stable signed/TCC Host evidence is also missing. |
