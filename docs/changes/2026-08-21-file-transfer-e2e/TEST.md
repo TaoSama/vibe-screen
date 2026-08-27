@@ -116,3 +116,29 @@ reported zero valid identities, xcodebuild is unavailable, and MacHost XCTest
 cannot import XCTest in this environment. A valid gate pass still requires a
 recorded USB and/or LAN session with sender file selection, receiver explicit
 approval, saved destination files, and matching SHA-256 on both sides.
+
+## 2026-08-28 file-transfer Android smoke owner gate
+
+The repository now has a dedicated fail-closed gate for the Protocol v1
+Android/macOS single-file transfer smoke:
+
+    make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/file-transfer-android-smoke
+
+The gate writes `file-transfer-android-smoke-gate.json` and cannot close from
+offline tests alone. A pass requires Host readiness, a ready USB or trusted-LAN
+real-device path, a current Android file-transfer smoke log, bidirectional
+Android -> macOS and macOS -> Android product evidence, observed
+file-offer/request/content packets, explicit sender action, receiver approval,
+saved remote file, positive session epoch, final SHA-256 equality, and
+cancel/cleanup evidence. Nubia P0110 evidence must remain labeled as nubia
+P0110 / pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi.
+
+Current 2026-08-28 collection on clean `origin/main`-based branch
+`codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
+identity matched nubia P0110 / pacific / Android 16 / SDK 36 and ADB reverse
+`tcp:54321 -> tcp:54321` was present, but the Android app was not running or
+foreground, no macOS Host was listening on TCP 54321, and the stable Host
+signing/TCC preflight failed because the `Vibe Screen Dev` signing identity was
+unavailable. No file offer/request/content exchange, sender file selection,
+receiver approval, destination file write, cancel cleanup, or end-to-end SHA-256
+equality was observed, so the README gate remains open.
