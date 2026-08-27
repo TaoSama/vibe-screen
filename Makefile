@@ -113,9 +113,12 @@ PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_ANDROID_INTEROP_EVIDENCE ?=
 PHASE3_ANDROID_INTEROP_GATE_PROFILE ?= real-capture
-PHASE3_INTERNET_SOAK_MANIFEST ?= $(EVIDENCE_DIR)/phase3-internet-soak-manifest.json
-PHASE3_INTERNET_SOAK_GATE_JSON ?= $(EVIDENCE_DIR)/phase3-internet-soak-gate.json
+PHASE3_INTERNET_SOAK_DIR ?= $(EVIDENCE_DIR)
+PHASE3_INTERNET_SOAK_MANIFEST_JSON ?= $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json
+PHASE3_INTERNET_SOAK_MANIFEST ?= $(PHASE3_INTERNET_SOAK_MANIFEST_JSON)
+PHASE3_INTERNET_SOAK_GATE_JSON ?= $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json
 PHASE3_INTERNET_TURN_URI ?=
+PHASE3_INTERNET_TURN_URIS ?=
 PHASE3_INTERNET_SIGNALING_ORIGIN ?=
 PHASE3_INTERNET_RELAY_ORIGIN ?=
 PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
@@ -129,11 +132,12 @@ PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
 PHASE3_INTERNET_DURATION_SECONDS ?= 7200
 PHASE3_INTERNET_SAMPLE_INTERVAL_SECONDS ?= 30
 PHASE3_INTERNET_NOTES ?=
-PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(EVIDENCE_DIR)/remote-turn-verifier.json
-PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(EVIDENCE_DIR)/media-continuity.json
-PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(EVIDENCE_DIR)/network-handoff.json
-PHASE3_INTERNET_REVOCATION_REPORT ?= $(EVIDENCE_DIR)/revocation-propagation.json
-PHASE3_INTERNET_SOAK_REPORT ?= $(EVIDENCE_DIR)/soak-exact-window-report.json
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
+PHASE3_INTERNET_HANDOFF_REPORT ?= $(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)
+PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
+PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
 PHASE3_INTERNET_BLOCKED_REASON ?=
 PHASE3_INTERNET_ALLOW_BLOCKED ?=
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
@@ -189,6 +193,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase3-internet-soak-gate \
 	phase3-internet-release-gate \
 	baseline-macos-build \
+	baseline-macos-xctest-preflight \
 	baseline-macos-test \
 	baseline-macos-self-test \
 	baseline-macos-app \
@@ -387,7 +392,7 @@ phase3-advanced-datachannel-blocked-baseline:
 
 phase3-internet-soak-manifest:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet soak evidence directory" >&2; exit 2)
-	@test -n "$(strip $(PHASE3_INTERNET_TURN_URI))" || (echo "error: set PHASE3_INTERNET_TURN_URI to a public turns:?transport=tcp URI" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_URI) $(PHASE3_INTERNET_TURN_URIS))" || (echo "error: set PHASE3_INTERNET_TURN_URI or PHASE3_INTERNET_TURN_URIS to a public turns:?transport=tcp URI" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN to the public signaling HTTPS origin" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN to the public relay HTTPS origin" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
@@ -399,10 +404,11 @@ phase3-internet-soak-manifest:
 	@test -n "$(strip $(PHASE3_INTERNET_HOST_BUILD))" || (echo "error: set PHASE3_INTERNET_HOST_BUILD" >&2; exit 2)
 	@test -n "$(strip $(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256))" || (echo "error: set PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256" >&2; exit 2)
 	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_MANIFEST))"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak manifest \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_internet_soak manifest \
 		--output "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
 		--repo . \
-		--turn-uri "$(PHASE3_INTERNET_TURN_URI)" \
+		$(foreach uri,$(PHASE3_INTERNET_TURN_URI) $(PHASE3_INTERNET_TURN_URIS),--turn-uri "$(uri)") \
 		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
 		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
 		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
@@ -421,7 +427,8 @@ phase3-internet-soak-manifest:
 phase3-internet-soak-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet soak evidence directory" >&2; exit 2)
 	mkdir -p "$(dir $(PHASE3_INTERNET_SOAK_GATE_JSON))"
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_internet_soak gate \
 		--output "$(PHASE3_INTERNET_SOAK_GATE_JSON)" \
 		--manifest "$(PHASE3_INTERNET_SOAK_MANIFEST)" \
 		--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)" \
