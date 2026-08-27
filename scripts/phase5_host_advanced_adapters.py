@@ -272,6 +272,21 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
             status="fail",
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
+    normalized_body = capability_body.replace("\\n", "\n")
+    multiclient_lines = [
+        line.strip()
+        for line in normalized_body.splitlines()
+        if ".multiClient" in line and "insert" in line
+    ]
+    ungated = [
+        line for line in multiclient_lines if "maximumClients > 1" not in line
+    ]
+    if ungated:
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail=f"ungated multi-client capability insertions: {'; '.join(ungated)}",
+        )
     if ".multiClient" in capability_body and "maximumClients > 1" not in capability_body:
         return CheckResult(
             name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",

@@ -1046,36 +1046,17 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
 
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    developer_status, developer_dir = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
-    swift_path_status, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift", timeout_seconds=10)
-    swift_version_status, swift_version = run_best_effort("/usr/bin/swift", "--version", timeout_seconds=10)
-    xcodebuild_path_status, xcodebuild_path = run_best_effort(
-        "/usr/bin/xcrun", "--find", "xcodebuild", timeout_seconds=10
-    )
-    xcodebuild_version_status, xcodebuild_version = run_best_effort(
-        "/usr/bin/xcodebuild", "-version", timeout_seconds=10
-    )
-
+    xctest_status, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
     errors: list[str] = []
-    if developer_status != 0:
-        errors.append("xcode-select did not report a selected developer directory")
-    elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
+    if xctest_status != 0:
         errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
-    if swift_path_status != 0 or swift_version_status != 0:
-        errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
-    if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
-        errors.append("xcodebuild is not available from the selected Apple developer directory")
 
     report = "\n".join(
         (
-            "MacHost XCTest toolchain preflight",
+            "macOS XCTest preflight",
             "---------------------------------",
             f"Status: {'PASS' if not errors else 'FAIL'}",
-            command_report_line("xcode-select -p", developer_status, developer_dir),
-            command_report_line("xcrun --find swift", swift_path_status, swift_path),
-            command_report_line("swift --version", swift_version_status, swift_version),
-            command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
-            command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            command_report_line("xcrun --find xctest", xctest_status, xctest_path),
             "Blocking issues:",
             "\n".join(f"- {error}" for error in errors) if errors else "- none",
             "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
@@ -1086,10 +1067,10 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
-    print("macOS Host XCTest toolchain preflight passed")
+    print("macOS XCTest preflight passed")
     return 0
-
 
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
@@ -1524,6 +1505,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
+        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
     print("macOS Host touch-rerun preflight passed")
     return 0
