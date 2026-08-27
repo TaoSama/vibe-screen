@@ -595,11 +595,13 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testClientDisconnectReleasesSharedHostRoute() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 1)
+        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
         let first = try readySession(
             sessionID: Data([0x01]),
             sessionEpoch: 1,
-            displayRouter: router
+            displayRouter: router,
+            maximumClients: 2,
+            clientCapabilities: [.touch, .multiDisplay, .multiClient]
         )
         XCTAssertEqual(router.activeClientCount, 1)
         var notice = VSDisconnectNotice()
@@ -618,9 +620,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         let second = makeSession(
             sessionID: Data([0x02]),
             sessionEpoch: 1,
-            displayRouter: router
+            displayRouter: router,
+            maximumClients: 2
         )
-        _ = second.handleControl(try clientHello().serializedData())
+        var secondHello = clientHello()
+        secondHello.clientHello.capabilities = [.touch, .multiDisplay, .multiClient]
+        _ = second.handleControl(try secondHello.serializedData())
         let responses = try controlEnvelopes(second.completeCodecNegotiation())
         XCTAssertTrue(responses.contains { if case .sessionAccepted = $0.payload { true } else { false } })
         XCTAssertEqual(router.activeClientCount, 1)
