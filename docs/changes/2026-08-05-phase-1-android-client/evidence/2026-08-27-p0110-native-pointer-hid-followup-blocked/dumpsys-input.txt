@@ -18,167 +18,157 @@ Event Hub State:
       Classes: KEYBOARD
       Path: /dev/input/event0
       Enabled: true
-      Descriptor: 485d69228e24f5e46da1598745890b214130dbc4
+      Descriptor: <redacted>
       Location: gpio-keys/input0
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0019, vendor=0x0001, product=0x0001, version=0x0100, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/gpio-keys.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/platform/soc/soc:gpio_keys
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
     2: pmic_pwrkey
       Classes: KEYBOARD
       Path: /dev/input/event1
       Enabled: true
-      Descriptor: 39f0cc2fda6f8287fd99ffa0db53ae80f4837e18
+      Descriptor: <redacted>
       Location: pmic_pwrkey/input0
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300:pwrkey
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
     3: pmic_resin
       Classes: KEYBOARD
       Path: /dev/input/event2
       Enabled: true
-      Descriptor: 653e1ca6257fe659881d6f71b799cb02b0d69ace
+      Descriptor: <redacted>
       Location: pmic_resin/input0
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300:resin
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
     -1: Virtual
       Classes: KEYBOARD | ALPHAKEY | DPAD | VIRTUAL
       Path: <virtual>
       Enabled: true
-      Descriptor: a718a782d34bc767f4689c232d64d527998ea7fd
+      Descriptor: <redacted>
       Location:
       ControllerNumber: 0
-      UniqueId: <virtual>
+      UniqueId: <redacted>
       Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Virtual.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: <none>
+      SysfsDevicePath: <redacted>
     5: aw-haptic-hv
       Classes: VIBRATOR | LIGHT
       Path: /dev/input/event4
       Enabled: true
-      Descriptor: c6dc384ec222dab48f056829da5b9f71a9e9f07e
+      Descriptor: <redacted>
       Location:
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile:
       KeyCharacterMapFile:
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/990000.i2c/i2c-1/1-005a
+      SysfsDevicePath: <redacted>
     6: qbt_key_input
       Classes: KEYBOARD
       Path: /dev/input/event5
       Enabled: true
-      Descriptor: d2c52ff0f656fac4cd7b7a118d575e0109a9fe1c
+      Descriptor: <redacted>
       Location:
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0019, vendor=0x0001, product=0x0001, version=0x0100, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/virtual
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
       AbsState: ABS_X=0, ABS_Y=0
     8: goodix_stylus_input
       Classes: KEYBOARD | TOUCH
       Path: /dev/input/event7
       Enabled: true
-      Descriptor: 2eae456e51a294467747b34134d9bcbee02b2bff
+      Descriptor: <redacted>
       Location:
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x001c, vendor=0x27c6, product=0x0200, version=0x0001, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/virtual
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
       AbsState: ABS_X=0, ABS_Y=0, ABS_PRESSURE=0, ABS_TILT_X=0, ABS_TILT_Y=0
     9: gdix_input_agent
       Classes: KEYBOARD | TOUCH | TOUCH_MT
       Path: /dev/input/event8
       Enabled: true
-      Descriptor: 097f229d61668e39a8bd6f6f868533b59c65668d
+      Descriptor: <redacted>
       Location:
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x001c, vendor=0x27c6, product=0x0201, version=0x0001, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/virtual
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
       AbsState: ABS_X=0, ABS_Y=0, ABS_MT_SLOT=0, ABS_MT_POSITION_X=4264, ABS_MT_POSITION_Y=13178, ABS_MT_TRACKING_ID=-1
     11: sun-qrd-sku2-snd-card Button Jack
       Classes: KEYBOARD
       Path: /dev/input/event10
       Enabled: true
-      Descriptor: f684eb0d841f1468f2e5993341e8fda586eccbd6
+      Descriptor: <redacted>
       Location: ALSA
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: <none>
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
     10: sun-qrd-sku2-snd-card Headset Jack
       Classes: SWITCH
       Path: /dev/input/event9
       Enabled: true
-      Descriptor: 4c4441e437473406e29d9a9173c6beb9819f4344
+      Descriptor: <redacted>
       Location: ALSA
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile:
       KeyCharacterMapFile:
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: <none>
+      SysfsDevicePath: <redacted>
       SwState (pressed): <none>
     4: pmic_pwrkey_resin_bark
       Classes: KEYBOARD
       Path: /dev/input/event3
       Enabled: true
-      Descriptor: 90f8b3dbba95ed4e6f173743be6cf2297150f65c
+      Descriptor: <redacted>
       Location: pmic_pwrkey_resin_bark/input0
       ControllerNumber: 0
-      UniqueId:
-      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000, bluetoothAddress=<not set>
+      UniqueId: <redacted>
       KeyLayoutFile: /system/usr/keylayout/Generic.kl
       KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
       ConfigurationFile:
       VideoDevice: <none>
-      SysfsDevicePath: /sys/devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300:pwrkey-resin-bark
+      SysfsDevicePath: <redacted>
       KeyState (pressed): <none>
   Unattached video devices:
     <none>

@@ -278,6 +278,26 @@ class NativePointerHIDCliTest(unittest.TestCase):
                 summary = json.loads(output_path.read_text(encoding="utf-8"))
                 self.assertEqual(summary["run_id"], "stable-run")
 
+        with self.subTest("malformed existing run_id is ignored"):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                input_path = Path(temporary_directory) / "result.json"
+                output_path = Path(temporary_directory) / "native-pointer-hid-summary.json"
+                input_path.write_text(json.dumps({"status": "blocked", "reason": "No physical mouse."}), encoding="utf-8")
+                output_path.write_text(json.dumps({"run_id": ""}), encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, "-m", MODULE, str(input_path), "--output", str(output_path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 2, result.stderr)
+                summary = json.loads(output_path.read_text(encoding="utf-8"))
+                self.assertRegex(summary["run_id"], r"^[0-9a-f-]{36}$")
+
 
 if __name__ == "__main__":
     unittest.main()

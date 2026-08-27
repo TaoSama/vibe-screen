@@ -97,12 +97,18 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         key = "to" + "ken"
         input_channel_key = "inputChannel" + "To" + "ken"
         raw = (
+            "  Descriptor: stable-device-descriptor\n"
+            "  UniqueId: stable-device-unique-id\n"
+            "  SysfsDevicePath: /sys/devices/platform/soc/example\n"
             f"applicationInfo.{key}=0xb400007b62b0afd0 {key}=<null> {key}=0x0 "
             f"{input_channel_key}=android.os.BinderProxy@abc123"
         )
 
         self.assertEqual(
             acceptance.redact_android_dumpsys_input(raw),
+            "  Descriptor: <redacted>\n"
+            "  UniqueId: <redacted>\n"
+            "  SysfsDevicePath: <redacted>\n"
             "applicationInfo.redactedHandle=<redacted> redactedHandle=<redacted> "
             "redactedHandle=<redacted> inputChannelHandle=<redacted>",
         )

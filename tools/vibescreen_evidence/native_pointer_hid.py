@@ -453,9 +453,9 @@ def _existing_output_run_id(output_path: Path | None) -> str | None:
     try:
         with output_path.open("r", encoding="utf-8") as stream:
             existing = load_record(stream)
+        return _optional_run_id(existing)
     except (NativePointerHIDEvidenceError, OSError):
         return None
-    return _optional_run_id(existing)
 
 
 def build_parser() -> argparse.ArgumentParser:

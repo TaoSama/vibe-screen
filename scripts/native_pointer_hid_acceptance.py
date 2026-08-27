@@ -446,9 +446,24 @@ def evidence_text(text: str) -> str:
 def redact_android_dumpsys_input(text: str) -> str:
     input_channel_handle_key = "inputChannel" + "To" + "ken"
     redacted = re.sub(
+        r"(?m)^([ \t]*Descriptor:)[ \t]*.+$",
+        r"\1 <redacted>",
+        text,
+    )
+    redacted = re.sub(
+        r"(?m)^([ \t]*UniqueId:)[ \t]*.*$",
+        r"\1 <redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?m)^([ \t]*SysfsDevicePath:)[ \t]*.*$",
+        r"\1 <redacted>",
+        redacted,
+    )
+    redacted = re.sub(
         r"applicationInfo\.token=(?:0x[0-9a-fA-F]+|<[^>]*>)",
         "applicationInfo.redactedHandle=<redacted>",
-        text,
+        redacted,
     )
     redacted = re.sub(
         rf"{input_channel_handle_key}=(?:0x[0-9a-fA-F]+|android\.os\.BinderProxy@[0-9a-fA-F]+|<[^>]*>)",

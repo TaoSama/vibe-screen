@@ -484,6 +484,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumVideoStreams, 2)
     }
 
+    func testMultiClientCapabilityRequiresSharedHostRouter() throws {
+        let session = makeMultiDisplaySession(maximumClients: 2, maximumVideoStreamsPerClient: 2)
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.multiClient)
+        var limits = VSResourceLimits()
+        limits.maximumClients = 2
+        limits.maximumDisplays = 2
+        limits.maximumVideoStreams = 2
+        hello.clientHello.resourceLimits = limits
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+
+        guard case .hostHello(let hostHello)? = responses[0].payload,
+              case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected HostHello + SessionAccepted")
+        }
+        XCTAssertFalse(hostHello.capabilities.contains(.multiClient))
+        XCTAssertEqual(hostHello.resourceLimits.maximumClients, 1)
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.multiClient))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClients, 1)
+    }
+
     func testRuntimeDisplayRebindRejectsDuplicateDisplayAsInvalidState() throws {
         let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
         let session = makeMultiDisplaySession(
