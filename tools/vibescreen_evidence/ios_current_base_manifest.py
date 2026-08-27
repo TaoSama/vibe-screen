@@ -67,6 +67,12 @@ SOURCE_DOCS = [
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
 SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+NATIVE_INPUT_GATE_KIND = "ios_native_input_behavior"
+NATIVE_INPUT_GATE_PROFILE = "ios-native-input-behavior"
+NATIVE_INPUT_GATE_OWNER = "phase5-ios-native-input-behavior"
+NATIVE_INPUT_OWNER_ROLE = "ios_native_input_behavior_current_base_owner"
+NATIVE_INPUT_OWNER_BRANCH = "codex/ios-native-input-readiness-gate"
+NATIVE_INPUT_OWNER_PR = "#257"
 VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
 VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
 VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
@@ -291,6 +297,146 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         "can_close_ios_app_signing_readiness": can_close,
         "missing": missing,
         "failures": failures,
+    }
+
+
+def _blocked_native_input_gate(
+    *,
+    path: Path | None,
+    missing: Sequence[str] | None = None,
+    failures: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "provided": path is not None,
+        "path": str(path) if path is not None else None,
+        "owner": None,
+        "current_base": None,
+        "kind": None,
+        "profile": None,
+        "gate_owner": None,
+        "verdict": "blocked",
+        "can_close_ios_native_input_gate": False,
+        "requires_real_ios_device": True,
+        "requires_signed_app": True,
+        "requires_physical_keyboard": True,
+        "requires_hover_or_pointer_accessory": True,
+        "android_evidence_is_not_ios_input_evidence": True,
+        "simulator_is_not_ios_input_evidence": True,
+        "offline_tests_are_readiness_only": True,
+        "observations": {},
+        "missing_requirements": list(missing or ["ios-native-input-gate.json not provided"]),
+        "blocking_reasons": list(missing or ["ios-native-input-gate.json not provided"]),
+        "disallowed_evidence": list(failures or []),
+        "artifact_paths": [],
+    }
+
+
+def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
+    if path is None:
+        return _blocked_native_input_gate(path=None)
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return _blocked_native_input_gate(
+            path=path,
+            missing=[f"ios native-input gate unreadable: {error}"],
+        )
+    if not isinstance(document, dict):
+        return _blocked_native_input_gate(
+            path=path,
+            missing=["ios native-input gate must be a JSON object"],
+        )
+
+    owner = document.get("owner") if isinstance(document.get("owner"), dict) else {}
+    current_base = (
+        document.get("current_base")
+        if isinstance(document.get("current_base"), dict)
+        else {}
+    )
+    gate_commit = current_base.get("commit") if isinstance(current_base, dict) else None
+    repository_revision = repository.get("revision") if isinstance(repository, dict) else None
+    repository_dirty = repository.get("dirty") if isinstance(repository, dict) else None
+    artifact_paths = document.get("artifact_paths")
+    safe_artifact_paths = (
+        artifact_paths
+        if isinstance(artifact_paths, list)
+        and all(isinstance(artifact, str) and artifact.strip() for artifact in artifact_paths)
+        else []
+    )
+    missing = list(document.get("missing_requirements", [])) if isinstance(document.get("missing_requirements"), list) else []
+    blocking = list(document.get("blocking_reasons", [])) if isinstance(document.get("blocking_reasons"), list) else []
+    disallowed = list(document.get("disallowed_evidence", [])) if isinstance(document.get("disallowed_evidence"), list) else []
+
+    current_base_matches = (
+        isinstance(gate_commit, str)
+        and COMMIT_RE.fullmatch(gate_commit) is not None
+        and isinstance(repository_revision, str)
+        and gate_commit.lower() == repository_revision.lower()
+        and current_base.get("dirty") is False
+        and repository_dirty is False
+    )
+    can_close = (
+        document.get("kind") == NATIVE_INPUT_GATE_KIND
+        and document.get("profile") == NATIVE_INPUT_GATE_PROFILE
+        and document.get("gate_owner") == NATIVE_INPUT_GATE_OWNER
+        and document.get("verdict") == "pass"
+        and document.get("can_close_ios_native_input_gate") is True
+        and document.get("requires_real_ios_device") is True
+        and document.get("requires_signed_app") is True
+        and document.get("requires_physical_keyboard") is True
+        and document.get("requires_hover_or_pointer_accessory") is True
+        and document.get("android_evidence_is_not_ios_input_evidence") is True
+        and document.get("simulator_is_not_ios_input_evidence") is True
+        and document.get("offline_tests_are_readiness_only") is True
+        and owner.get("role") == NATIVE_INPUT_OWNER_ROLE
+        and owner.get("head_ref") == NATIVE_INPUT_OWNER_BRANCH
+        and owner.get("pull_request") == NATIVE_INPUT_OWNER_PR
+        and owner.get("repository") == REPOSITORY_FULL_NAME
+        and current_base_matches
+        and bool(safe_artifact_paths)
+        and not blocking
+        and not disallowed
+    )
+    if document.get("kind") != NATIVE_INPUT_GATE_KIND:
+        missing.append("ios native-input gate kind is not ios_native_input_behavior")
+    if document.get("kind") == NATIVE_INPUT_GATE_KIND and not can_close:
+        if owner.get("role") != NATIVE_INPUT_OWNER_ROLE:
+            missing.append("ios native-input gate owner role is not the dedicated current-base owner")
+        if owner.get("head_ref") != NATIVE_INPUT_OWNER_BRANCH:
+            missing.append("ios native-input gate owner branch is not the current-base native-input owner")
+        if owner.get("pull_request") != NATIVE_INPUT_OWNER_PR:
+            missing.append("ios native-input gate owner PR is not #257")
+        if owner.get("repository") != REPOSITORY_FULL_NAME:
+            missing.append("ios native-input gate repository is not TaoSama/vibe-screen")
+        if not current_base_matches:
+            missing.append("ios native-input gate current-base commit does not match clean repository HEAD")
+        if not safe_artifact_paths:
+            missing.append("ios native-input gate artifact_paths are incomplete")
+
+    return {
+        "provided": True,
+        "path": str(path),
+        "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
+        "current_base": document.get("current_base")
+        if isinstance(document.get("current_base"), dict)
+        else None,
+        "kind": document.get("kind"),
+        "profile": document.get("profile"),
+        "gate_owner": document.get("gate_owner"),
+        "verdict": document.get("verdict"),
+        "can_close_ios_native_input_gate": can_close,
+        "requires_real_ios_device": document.get("requires_real_ios_device") is True,
+        "requires_signed_app": document.get("requires_signed_app") is True,
+        "requires_physical_keyboard": document.get("requires_physical_keyboard") is True,
+        "requires_hover_or_pointer_accessory": document.get("requires_hover_or_pointer_accessory") is True,
+        "android_evidence_is_not_ios_input_evidence": document.get("android_evidence_is_not_ios_input_evidence") is True,
+        "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
+        "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
+        "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
+        "missing_requirements": missing,
+        "blocking_reasons": blocking,
+        "disallowed_evidence": disallowed,
+        "artifact_paths": safe_artifact_paths,
     }
 
 

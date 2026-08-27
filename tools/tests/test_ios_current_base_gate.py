@@ -103,22 +103,16 @@ def make_native_input_gate() -> dict[str, object]:
         "android_evidence_is_not_ios_input_evidence": True,
         "simulator_is_not_ios_input_evidence": True,
         "offline_tests_are_readiness_only": True,
-        "observations": {
-            "iphone_native_input_observed": True,
-            "ipad_native_input_observed": True,
-            "keyboard_press_release_observed": True,
-            "hover_pointer_move_observed": True,
-        },
+        "observations": {},
         "missing_requirements": [],
         "blocking_reasons": [],
         "disallowed_evidence": [],
-        "artifact_paths": ["ios-native-input-evidence.json"],
+        "artifact_paths": ["logs/ios-native-input.log", "logs/host-native-input.log"],
     }
 
 
 def complete_manifest(root: Path) -> dict[str, object]:
     manifest = make_manifest(root)
-    (root / "ios-native-input-evidence.json").write_text("native input fixture\n", encoding="utf-8")
     manifest["local_environment"] = {
         "xcodebuild_version": {
             "status": "pass",
@@ -324,6 +318,48 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(report["can_close_current_base_aggregate"])
         self.assertIn("insufficient: hdr_output", report["reasons"])
 
+    def test_input_gate_requires_dedicated_native_input_owner_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest["native_input_gate"] = {
+                "provided": False,
+                "path": None,
+                "owner": None,
+                "current_base": None,
+                "kind": None,
+                "profile": None,
+                "gate_owner": None,
+                "verdict": "blocked",
+                "can_close_ios_native_input_gate": False,
+                "requires_real_ios_device": True,
+                "requires_signed_app": True,
+                "requires_physical_keyboard": True,
+                "requires_hover_or_pointer_accessory": True,
+                "android_evidence_is_not_ios_input_evidence": True,
+                "simulator_is_not_ios_input_evidence": True,
+                "offline_tests_are_readiness_only": True,
+                "observations": {},
+                "missing_requirements": ["ios-native-input-gate.json not provided"],
+                "blocking_reasons": ["ios-native-input-gate.json not provided"],
+                "disallowed_evidence": [],
+                "artifact_paths": [],
+            }
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            input_gate = gates["input"]
+            assert isinstance(input_gate, dict)
+            input_gate["status"] = "pass"
+            input_gate["evidence"] = ["input.json"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
+        self.assertIn("blocked: input", report["reasons"])
+
     def test_complete_synthetic_manifest_passes(self):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -498,7 +534,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: signing", report["reasons"])
         retained_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertIn(
-            "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
+            "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
             retained_manifest["limitations"],
         )
 
@@ -516,100 +552,6 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_owner", report["reasons"])
-
-    def test_dedicated_native_input_gate_is_required(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input_gate = manifest["native_input_gate"]
-            assert isinstance(native_input_gate, dict)
-            native_input_gate["provided"] = False
-            native_input_gate["verdict"] = "blocked"
-            native_input_gate["can_close_ios_native_input_gate"] = False
-            native_input_gate["artifact_paths"] = []
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
-        self.assertIn("blocked: input", report["reasons"])
-
-    def test_dedicated_native_input_owner_is_required(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input_gate = manifest["native_input_gate"]
-            assert isinstance(native_input_gate, dict)
-            owner = native_input_gate["owner"]
-            assert isinstance(owner, dict)
-            owner["pull_request"] = "#290"
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_owner", report["reasons"])
-
-    def test_native_input_gate_current_base_must_match_repository(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input_gate = manifest["native_input_gate"]
-            assert isinstance(native_input_gate, dict)
-            current_base = native_input_gate["current_base"]
-            assert isinstance(current_base, dict)
-            current_base["commit"] = "f" * 40
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_current_base", report["reasons"])
-
-    def test_native_input_gate_artifact_must_exist_under_evidence_root(self):
-        cases = {
-            "missing.json": "missing artifact",
-            "empty.json": "empty artifact",
-            "../outside.json": "escaping artifact",
-        }
-        for artifact_path, description in cases.items():
-            with self.subTest(description=description), tempfile.TemporaryDirectory() as directory_name:
-                root = Path(directory_name)
-                manifest = complete_manifest(root)
-                if artifact_path == "empty.json":
-                    (root / artifact_path).write_text("", encoding="utf-8")
-                native_input_gate = manifest["native_input_gate"]
-                assert isinstance(native_input_gate, dict)
-                native_input_gate["artifact_paths"] = [artifact_path]
-                manifest_path = write_manifest(root, manifest)
-
-                report = derive_gate(manifest_path)
-
-            self.assertEqual(report["verdict"], "blocked")
-            self.assertFalse(report["can_close_ios_device_acceptance"])
-            self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
-            self.assertIn("blocked: dedicated_native_input_artifacts", report["reasons"])
-
-    def test_input_gate_must_link_to_native_input_owner_artifact(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            gates = manifest["gates"]
-            assert isinstance(gates, dict)
-            input_gate = gates["input"]
-            assert isinstance(input_gate, dict)
-            input_gate["evidence"] = ["generic-input-pass.json"]
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: input", report["reasons"])
 
     def test_signing_udid_and_entitlements_are_blocking_current_base_checks(self):
         cases = {
@@ -691,9 +633,6 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             output_dir.mkdir()
             manifest = complete_manifest(root)
             manifest_path = output_dir / "ios-current-base-manifest.json"
-            (output_dir / "ios-native-input-evidence.json").write_text(
-                "native input fixture\n", encoding="utf-8"
-            )
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
             report = derive_gate(manifest_path)
