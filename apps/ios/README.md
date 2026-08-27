@@ -270,7 +270,9 @@ currently no key migration step.
 
 ## Required host integration
 
-The baseline MacHost compatibility boundary now admits the iOS trusted-LAN
+The phase5-host-advanced-adapters-gate readiness contract records the advanced
+host integration expectations without closing device acceptance. The baseline
+MacHost compatibility boundary now admits the iOS trusted-LAN
 client and composes it with the existing Protocol v1 main session. This closes
 the basic port `54321` interoperability gap only. Advanced host integrations
 must still preserve these client semantics:

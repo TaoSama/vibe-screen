@@ -277,7 +277,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
 
-    def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
+    def test_preflight_command_records_configured_identity_mismatch_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"
             args = mock.Mock(
@@ -290,14 +290,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             )
             with (
                 mock.patch.object(
-                    macos_dev_host.package_macos,
-                    "resolve_sign_identity",
-                    side_effect=SystemExit("missing identity"),
-                ) as resolve_mock,
-                mock.patch.object(
                     macos_dev_host,
                     "collect_signing_metadata",
-                    return_value=self.metadata(authorities=("Missing Dev",)),
+                    return_value=self.metadata(authorities=("Vibe Screen Dev",)),
                 ) as metadata_mock,
                 mock.patch.object(
                     macos_dev_host,
@@ -342,9 +337,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
-            self.assertIn("missing identity", report_text)
-            self.assertIn("Identity: Missing Dev", report_text)
-        resolve_mock.assert_called_once_with("Missing Dev")
+            self.assertIn("expected configured identity 'Missing Dev'", report_text)
+            self.assertIn("Identity: Vibe Screen Dev", report_text)
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_called_once()
 

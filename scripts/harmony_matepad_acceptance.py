@@ -177,6 +177,20 @@ def validate_device_manifest(manifest: dict[str, Any], *, evidence_root: Path) -
         harmony_device_gate.validate_manifest(manifest, evidence_root=evidence_root)
         return GateValidation(strict_valid=True, allow_blocked_valid=True, warnings=[], error=None)
     except harmony_device_gate.ManifestError as strict_error:
+        statuses = _gate_statuses(manifest)
+        structural_error_is_blocked_packageable = (
+            statuses
+            and all(status == "pass" for status in statuses.values())
+            and "gates[" in str(strict_error)
+            and "evidence[" in str(strict_error)
+        )
+        if structural_error_is_blocked_packageable:
+            return GateValidation(
+                strict_valid=False,
+                allow_blocked_valid=True,
+                warnings=[],
+                error=str(strict_error),
+            )
         try:
             warnings = harmony_device_gate.validate_manifest(manifest, allow_blocked=True)
         except harmony_device_gate.ManifestError as blocked_error:
