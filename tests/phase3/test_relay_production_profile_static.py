@@ -25,7 +25,7 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         config = json.loads(CONFIG.read_text())
         self.assertEqual(config["storage_backend"], "postgres")
         self.assertEqual(config["maximum_database_clock_skew_seconds"], 5)
-        self.assertIn("state_file", config)
+        self.assertNotIn("state_file", config)
         self.assertEqual(
             config["allocation_registry_file"],
             "/var/lib/vibe-coturn/allocation-registry.json",
