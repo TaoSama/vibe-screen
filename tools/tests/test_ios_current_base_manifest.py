@@ -7,10 +7,17 @@ import unittest
 from unittest.mock import patch
 
 from vibescreen_evidence import SCHEMA_VERSION
+from vibescreen_evidence import ios_native_input
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
     GATE_OWNERS,
+    NATIVE_INPUT_GATE_OWNER,
+    NATIVE_INPUT_KIND,
+    NATIVE_INPUT_OWNER_BRANCH,
+    NATIVE_INPUT_OWNER_PR,
+    NATIVE_INPUT_OWNER_ROLE,
+    NATIVE_INPUT_PROFILE,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -158,6 +165,14 @@ def write_native_input_gate(root: Path, **overrides: object) -> Path:
 
 
 class IOSCurrentBaseManifestTests(unittest.TestCase):
+    def test_exports_native_input_gate_contract_constants(self):
+        self.assertEqual(NATIVE_INPUT_KIND, "ios_native_input_behavior")
+        self.assertEqual(NATIVE_INPUT_PROFILE, ios_native_input.GATE_PROFILE)
+        self.assertEqual(NATIVE_INPUT_GATE_OWNER, ios_native_input.GATE_OWNER)
+        self.assertEqual(NATIVE_INPUT_OWNER_ROLE, ios_native_input.OWNER_ROLE)
+        self.assertEqual(NATIVE_INPUT_OWNER_BRANCH, ios_native_input.OWNER_BRANCH)
+        self.assertEqual(NATIVE_INPUT_OWNER_PR, "#257")
+
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_builds_current_base_manifest_with_fail_closed_defaults(self, state, environment):

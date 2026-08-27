@@ -71,6 +71,12 @@ VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
 VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
 VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
 NATIVE_INPUT_GATE_KIND = "ios_native_input_behavior"
+NATIVE_INPUT_KIND = NATIVE_INPUT_GATE_KIND
+NATIVE_INPUT_PROFILE = ios_native_input.GATE_PROFILE
+NATIVE_INPUT_GATE_OWNER = ios_native_input.GATE_OWNER
+NATIVE_INPUT_OWNER_ROLE = ios_native_input.OWNER_ROLE
+NATIVE_INPUT_OWNER_BRANCH = ios_native_input.OWNER_BRANCH
+NATIVE_INPUT_OWNER_PR = "#257"
 
 FORMAL_DEVICE_GATES = {
     "signing": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
