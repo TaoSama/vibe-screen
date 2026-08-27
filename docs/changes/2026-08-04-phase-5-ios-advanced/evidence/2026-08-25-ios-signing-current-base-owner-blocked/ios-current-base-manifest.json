@@ -157,6 +157,8 @@
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
     "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
+    "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
+    "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
     "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open."
   ],
   "local_environment": {
@@ -220,6 +222,33 @@
         "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance"
       ]
     }
+  },
+  "native_input_gate": {
+    "android_evidence_is_not_ios_input_evidence": true,
+    "artifact_paths": [],
+    "blocking_reasons": [
+      "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
+    ],
+    "can_close_ios_native_input_gate": false,
+    "current_base": null,
+    "disallowed_evidence": [],
+    "gate_owner": null,
+    "kind": null,
+    "missing_requirements": [
+      "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
+    ],
+    "observations": {},
+    "offline_tests_are_readiness_only": true,
+    "owner": null,
+    "path": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json",
+    "profile": null,
+    "provided": true,
+    "requires_hover_or_pointer_accessory": true,
+    "requires_physical_keyboard": true,
+    "requires_real_ios_device": true,
+    "requires_signed_app": true,
+    "simulator_is_not_ios_input_evidence": true,
+    "verdict": "blocked"
   },
   "notes": null,
   "owner": {
@@ -312,6 +341,14 @@
     },
     "verdict": "blocked"
   },
+  "source_docs": [
+    "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
+    "docs/runbook/ios-device-acceptance.md",
+    "docs/runbook/hdr-color-acceptance.md"
+  ],
+  "source_root": "../../../../..",
   "videotoolbox_readiness_gates": [
     {
       "artifact_checks": [],
@@ -347,13 +384,5 @@
       "schema_version": "vibescreen.evidence/v1",
       "verdict": "blocked"
     }
-  ],
-  "source_docs": [
-    "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
-    "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
-    "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
-    "docs/runbook/ios-device-acceptance.md",
-    "docs/runbook/hdr-color-acceptance.md"
-  ],
-  "source_root": "../../../../.."
+  ]
 }
