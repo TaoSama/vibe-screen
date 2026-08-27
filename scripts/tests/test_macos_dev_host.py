@@ -443,6 +443,77 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
+    def test_preflight_command_records_metadata_inspection_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Missing Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(
+                    macos_dev_host.package_macos,
+                    "resolve_sign_identity",
+                    return_value="Missing Dev",
+                ) as resolve_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    side_effect=SystemExit("Host bundle not found"),
+                ) as metadata_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "current_source_identity",
+                    return_value=macos_dev_host.package_macos.SourceIdentity(
+                        commit="a" * 40,
+                        tree="b" * 40,
+                        dirty=False,
+                    ),
+                ),
+                mock.patch.object(macos_dev_host, "query_tcc_rows") as tcc_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.preflight_command(args)
+            report_text = report.read_text(encoding="utf-8")
+
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("Host bundle not found", report_text)
+            self.assertIn("Verification: not inspected", report_text)
+            self.assertNotIn("Traceback", report_text)
+        resolve_mock.assert_called_once_with("Missing Dev")
+        metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
+        tcc_mock.assert_not_called()
+
+    def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest\n"),
+        ) as run_mock, redirect_stdout(StringIO()) as stdout, redirect_stderr(StringIO()):
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 0)
+        self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
+        run_mock.assert_called_once_with("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+
+    def test_xctest_preflight_fails_closed_without_xctest(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(1, "xcrun: error: unable to find utility xctest"),
+        ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
+            result = macos_dev_host.xctest_preflight_command(mock.Mock())
+
+        self.assertEqual(result, 2)
+        self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
+        self.assertIn("full Xcode", stderr.getvalue())
+
     def test_parse_args_accepts_xctest_preflight_command(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
             args = macos_dev_host.parse_args()
@@ -539,7 +610,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             output_dir=Path("out"),
             sign_identity="Vibe Screen Dev",
-            tcc_db=Path("TCC.db"),
+            tcc_db=TEST_PRIVACY_DATABASE,
             report=Path("report.txt"),
             source_root=Path("."),
             allow_source_mismatch=False,
@@ -549,25 +620,77 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             mock.patch.object(macos_dev_host, "safe_replace_app"),
             mock.patch.object(
                 macos_dev_host,
-                "metadata_and_permissions",
-                return_value=(
-                    self.metadata(),
-                    macos_dev_host.package_macos.SourceIdentity(
+                "inspect_host_without_throwing",
+                return_value=macos_dev_host.HostInspection(
+                    metadata=self.metadata(),
+                    source_identity=macos_dev_host.package_macos.SourceIdentity(
                         commit="a" * 40,
                         tree="b" * 40,
                         dirty=False,
                     ),
-                    macos_dev_host.PermissionStatus(Path("TCC.db"), (), True),
-                    [],
+                    permissions=macos_dev_host.PermissionStatus(TEST_PRIVACY_DATABASE, (), True),
+                    errors=[],
                 ),
-            ) as metadata_mock,
+            ) as inspection_mock,
             mock.patch.object(macos_dev_host, "write_report"),
             redirect_stdout(StringIO()),
         ):
             macos_dev_host.install_command(args)
-        metadata_mock.assert_called_once_with(
+        inspection_mock.assert_called_once_with(
             macos_dev_host.DEFAULT_INSTALL_PATH,
-            Path("TCC.db"),
+            TEST_PRIVACY_DATABASE,
+            expected_sign_identity="Vibe Screen Dev",
+            source_root=Path("."),
+            allow_source_mismatch=False,
+        )
+
+    def test_install_command_records_metadata_inspection_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=None,
+                        source_identity=macos_dev_host.package_macos.SourceIdentity(
+                            commit="c" * 40,
+                            tree="d" * 40,
+                            dirty=False,
+                        ),
+                        permissions=macos_dev_host.missing_permission_status("Host bundle signing was not inspected"),
+                        errors=["Host bundle not found"],
+                    ),
+                ) as inspection_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report.read_text(encoding="utf-8"))
+            self.assertIn("Verification: not inspected", report.read_text(encoding="utf-8"))
+            self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_called_once_with(
+            Path("built.app"),
+            macos_dev_host.DEFAULT_INSTALL_PATH,
+            macos_dev_host.EXPECTED_BUNDLE_ID,
+        )
+        inspection_mock.assert_called_once_with(
+            macos_dev_host.DEFAULT_INSTALL_PATH,
+            Path(PRIVACY_DB_FILENAME),
             expected_sign_identity="Vibe Screen Dev",
             source_root=Path("."),
             allow_source_mismatch=False,
