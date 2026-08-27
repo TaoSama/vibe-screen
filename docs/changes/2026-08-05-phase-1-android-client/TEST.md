@@ -747,3 +747,40 @@ only; the rotated host-display acceptance gate is still open.
 Evidence:
 
 - [`evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-23-p0110-host-display-rotation-current-base-blocked/)
+
+## P0110 rotated host-display current-base readiness refresh
+
+On 2026-08-28, the rotated physical/virtual host-display acceptance gate was
+refreshed again from clean `origin/main` at
+`27d2b0e493e807ae439fbd43b06b4c2f0ce9c503` before creating the
+`codex/rotated-host-display-readiness-2026-08-28` evidence branch. The safety
+precheck found no `sfltool` process, and the run did not execute `sfltool
+dumpbtm` or any login-item opt-in diagnostic.
+
+The connected Android device was sampled only under the
+`/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock` lease, and every ADB command
+used the explicit P0110 serial before the public evidence was redacted. The
+device identified as nubia P0110 / pacific / Android 16 / SDK 36, the Android
+packages were installed, and `adb reverse --list` retained
+`UsbFfs tcp:54321 tcp:54321`. No install, launch, force-stop, reverse mutation,
+Host start/stop, display rotation, or input injection was performed.
+
+The attempt remained blocked before any real rotated host-display acceptance
+run because the strict Host preflight still could not prove the stable
+`Vibe Screen Dev` signing identity, Screen Recording, Accessibility, or the
+signed Host/TCC match. The Host readiness snapshot also found no process
+listening on TCP port `54321`, so the P0110 could not establish a Protocol v1
+stream for visual source orientation or inverse-touch probes.
+
+The retained `host-display-rotation.json` therefore intentionally contains no
+completed physical or virtual run. The offline evidence gate output remains
+`status=failed` with missing physical and virtual host-display evidence and
+missing 90/180/270 coverage. The current-base aggregate gate returns
+`verdict=blocked`, `can_close_host_display_rotation_acceptance=false`,
+`can_close_current_base_aggregate=false`, and
+`can_claim_real_device_pass=false`. This is blocked/readiness evidence only;
+the rotated host-display acceptance gate is still open.
+
+Evidence:
+
+- [`evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/)
