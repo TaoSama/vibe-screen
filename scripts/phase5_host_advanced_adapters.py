@@ -260,6 +260,14 @@ def check_required_text(name: str, text: str, needles: Sequence[str]) -> CheckRe
     return CheckResult(name=name, status="pass", detail="all required contract text is present")
 
 
+def production_multi_client_is_default_gated(capability_body: str) -> bool:
+    if ".multiClient" not in capability_body:
+        return True
+    allowed_gate = "if maximumClients > 1 { capabilities.insert(.multiClient) }"
+    remaining_body = capability_body.replace(allowed_gate, "")
+    return "maximumClients: Int = 1" in capability_body and ".multiClient" not in remaining_body
+
+
 def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[str]]:
     protocol_session = read_text(repo, PROTOCOL_SESSION)
     phase5_tech = read_text(repo, PHASE5_TECH)
@@ -292,9 +300,12 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
             name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
             status="pass" if all(
                 needle not in capability_body
-                for needle in (".audioDataChannel", ".bulkDataChannel", ".multiClient")
-            ) else "fail",
-            detail="audio/bulk DataChannel and multi-client stay out of productionHostCapabilities defaults",
+                for needle in (".audioDataChannel", ".bulkDataChannel")
+            ) and production_multi_client_is_default_gated(capability_body) else "fail",
+            detail=(
+                "audio/bulk DataChannel stay out of productionHostCapabilities defaults; "
+                "multi-client requires explicit maximumClients > 1 opt-in"
+            ),
         ),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",

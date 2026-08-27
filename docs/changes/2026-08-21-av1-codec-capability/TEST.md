@@ -333,3 +333,45 @@ public evidence records it as `<redacted-device-serial>`.
   - Result: blocked by current-base MacHost build failures before this AV1 refresh, including missing `HostMultiClientDisplayRouter`, `ProtocolV1SessionCoordinator.close`, and extra `ProtocolV1SessionConfiguration` arguments in `StreamingServer.swift` / `ProtocolV1SelfTest.swift`.
 - `git diff --check`
   - Result: passed.
+
+## 2026-08-27 routing-boundary follow-up
+
+The PR branch was refreshed after the Host Protocol v1 routing boundary was
+restored locally. This follow-up resolves the unrelated MacHost compile blocker
+and the Phase 5 host-adapter readiness script now treats `.multiClient` as
+valid only when it is explicitly gated behind `maximumClients > 1`; production
+defaults still keep the Host single-client and do not close the Phase 5
+multi-client/display gate. AV1 remains fail-closed and blocked: no Host/device
+AV1 stream was attempted or recorded.
+
+Retained device diagnostic identity: nubia P0110 / pacific / Android 16 / SDK
+36. Local ADB probes used the required explicit selector and public evidence
+keeps the serial redacted.
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 7 tests.
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_phase5_host_advanced_adapters -v`
+  - Result: passed, 5 tests.
+- `make release-tools-test`
+  - Result: passed, 223 tests.
+- `make evidence-tools-test`
+  - Result: passed, 1000 tests.
+- `make protocol`
+  - Result: passed, including 45 protocol contract tests.
+- `swift build --package-path baseline/MacHost -c release`
+  - Result: passed.
+- `baseline/MacHost/.build/release/"Vibe Screen" --protocol-v1-self-test`
+  - Result: passed.
+- `make baseline-macos-self-test`
+  - Result: passed.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy -v`
+  - Result: passed, 10 tests.
+- `git diff --check`
+  - Result: passed.
+- Diff privacy scan for the real Android serial, local user path, TCC paths, and
+  private-key headers
+  - Result: passed, no matches.
