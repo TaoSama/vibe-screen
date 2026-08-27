@@ -59,7 +59,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_report_records_identity_hash_permission_state_and_system_path(self) -> None:
         metadata = self.metadata()
         permissions = macos_dev_host.PermissionStatus(
-            database_path=Path("TCC.db"),
+            database_path=TEST_PRIVACY_DATABASE,
             readable=True,
             rows=(
                 macos_dev_host.TCCRow(
@@ -100,7 +100,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_validate_preflight_rejects_ad_hoc_and_missing_permissions(self) -> None:
         metadata = self.metadata(authorities=(), signature="adhoc")
         permissions = macos_dev_host.PermissionStatus(
-            database_path=Path("TCC.db"),
+            database_path=TEST_PRIVACY_DATABASE,
             readable=True,
             rows=(),
         )
@@ -124,7 +124,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(authorities=("Other Dev",)),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -141,7 +141,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(source_commit="c" * 40),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -162,7 +162,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -183,7 +183,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(source_commit="c" * 40, source_dirty=True),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -424,7 +424,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             output_dir=Path("out"),
             sign_identity="Vibe Screen Dev",
-            tcc_db=Path("TCC.db"),
+            tcc_db=TEST_PRIVACY_DATABASE,
             report=Path("report.txt"),
             source_root=Path("."),
             allow_source_mismatch=False,
@@ -442,7 +442,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                         tree="b" * 40,
                         dirty=False,
                     ),
-                    macos_dev_host.PermissionStatus(Path("TCC.db"), (), True),
+                    macos_dev_host.PermissionStatus(TEST_PRIVACY_DATABASE, (), True),
                     [],
                 ),
             ) as metadata_mock,
@@ -452,7 +452,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.install_command(args)
         metadata_mock.assert_called_once_with(
             macos_dev_host.DEFAULT_INSTALL_PATH,
-            Path("TCC.db"),
+            TEST_PRIVACY_DATABASE,
             expected_sign_identity="Vibe Screen Dev",
             source_root=Path("."),
             allow_source_mismatch=False,
@@ -573,7 +573,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 dirty=False,
             ),
             permissions=macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -612,7 +612,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 dirty=False,
             ),
             permissions=macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -819,7 +819,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
                 sign_identity="Missing Dev",
-                tcc_db=Path("TCC.db"),
+                tcc_db=TEST_PRIVACY_DATABASE,
                 report=report,
                 json_output=json_output,
                 source_root=Path("."),
@@ -910,7 +910,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         ):
             inspection = macos_dev_host.inspect_host_without_throwing(
                 macos_dev_host.DEFAULT_INSTALL_PATH,
-                Path("TCC.db"),
+                TEST_PRIVACY_DATABASE,
                 expected_sign_identity="Missing Dev",
                 source_root=Path("."),
             )
