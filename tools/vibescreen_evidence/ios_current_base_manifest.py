@@ -640,6 +640,40 @@ def _merge_videotoolbox_readiness_gates(paths: Sequence[Path] | None) -> list[di
     return [merged[runtime] for runtime in VIDEOTOOLBOX_RUNTIME_CLASSES]
 
 
+def default_native_input_gate() -> dict[str, Any]:
+    return {
+        "provided": False,
+        "path": None,
+        "owner": None,
+        "current_base": None,
+        "kind": None,
+        "profile": None,
+        "gate_owner": None,
+        "verdict": "blocked",
+        "can_close_ios_native_input_gate": False,
+        "requires_real_ios_device": True,
+        "requires_signed_app": True,
+        "requires_physical_keyboard": True,
+        "requires_hover_or_pointer_accessory": True,
+        "android_evidence_is_not_ios_input_evidence": True,
+        "simulator_is_not_ios_input_evidence": True,
+        "offline_tests_are_readiness_only": True,
+        "observations": {},
+        "missing_requirements": [
+            "ios-native-input gate evidence was not provided",
+            "real iOS hardware input behavior remains unverified",
+        ],
+        "blocking_reasons": [
+            {
+                "field": "native_input_gate",
+                "requirement": "bind a passing ios-native-input current-base gate before closing iOS input acceptance",
+            }
+        ],
+        "disallowed_evidence": [],
+        "artifact_paths": [],
+    }
+
+
 def collect_environment(repo: Path) -> dict[str, Any]:
     return {
         "xcode_select": _run_probe(["xcode-select", "-p"]),

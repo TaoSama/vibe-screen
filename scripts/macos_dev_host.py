@@ -176,7 +176,9 @@ def parse_args() -> argparse.Namespace:
     )
     readiness.add_argument(
         "--include-login-item-diagnostic",
+        "--inspect-login-items",
         action="store_true",
+        dest="include_login_item_diagnostic",
         help=(
             "opt in to the real macOS login-item diagnostic. This may invoke system tools "
             "that require attended approval; default CI/test readiness skips it fail-closed."
@@ -1070,17 +1072,50 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
 
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    xctest_status, xctest_path = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+    if not isinstance(getattr(args, "report", None), Path):
+        exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+        xctest_path = output.splitlines()[0].strip() if output.strip() else ""
+        if exit_code != 0 or not xctest_path:
+            detail = redact_local_report_text(output.strip()) if output.strip() else "xcrun did not return an XCTest path"
+            print(
+                "macOS XCTest preflight failed: select a full Xcode installation before running "
+                f"baseline-macos-test ({detail}).",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"macOS XCTest preflight passed: {redact_local_report_text(xctest_path)}")
+        return 0
+
+    developer_status, developer_dir = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
+    swift_path_status, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift", timeout_seconds=10)
+    swift_version_status, swift_version = run_best_effort("/usr/bin/swift", "--version", timeout_seconds=10)
+    xcodebuild_path_status, xcodebuild_path = run_best_effort(
+        "/usr/bin/xcrun", "--find", "xcodebuild", timeout_seconds=10
+    )
+    xcodebuild_version_status, xcodebuild_version = run_best_effort(
+        "/usr/bin/xcodebuild", "-version", timeout_seconds=10
+    )
+
     errors: list[str] = []
-    if xctest_status != 0:
+    if developer_status != 0:
+        errors.append("xcode-select did not report a selected developer directory")
+    elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
         errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    if swift_path_status != 0 or swift_version_status != 0:
+        errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
+    if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
+        errors.append("xcodebuild is not available from the selected Apple developer directory")
 
     report = "\n".join(
         (
-            "macOS XCTest preflight",
+            "MacHost XCTest toolchain preflight",
             "---------------------------------",
             f"Status: {'PASS' if not errors else 'FAIL'}",
-            command_report_line("xcrun --find xctest", xctest_status, xctest_path),
+            command_report_line("xcode-select -p", developer_status, developer_dir),
+            command_report_line("xcrun --find swift", swift_path_status, swift_path),
+            command_report_line("swift --version", swift_version_status, swift_version),
+            command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
+            command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
             "Blocking issues:",
             "\n".join(f"- {error}" for error in errors) if errors else "- none",
             "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
@@ -1091,9 +1126,8 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
-        print("macOS XCTest preflight failed", file=sys.stderr)
         return 2
-    print("macOS XCTest preflight passed")
+    print("macOS Host XCTest toolchain preflight passed")
     return 0
 
 

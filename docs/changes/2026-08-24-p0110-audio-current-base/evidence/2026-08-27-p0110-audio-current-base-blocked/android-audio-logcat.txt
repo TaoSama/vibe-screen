@@ -1,0 +1,2 @@
+Filtered Android logcat audio evidence excerpt for current-base audio readiness.
+---

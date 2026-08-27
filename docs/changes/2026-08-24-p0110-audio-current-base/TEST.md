@@ -1,9 +1,9 @@
 # P0110 Android audio current-base owner
 
 Status: current-base Android owner recorded; real USB/LAN audio playback blocked
-Date: 2026-08-24
-Source branch: `codex/p0110-audio-playback-gate`
-Base commit: `0e7f5b69ce547296e38d922b8b5dd5f0a9ebdfea` (`origin/main` at final rebase)
+Date: 2026-08-27
+Source branch: `codex/audio-usb-lan-readiness-20260827`
+Base commit: `3b2ba11e832a3618eaedfc67f92414b161423a00` (`origin/main` at branch creation)
 
 ## Scope
 
@@ -25,30 +25,34 @@ instrumentation-backed playback confirmation, and disconnect cleanup.
 
 ## Current-base P0110 readiness
 
-Evidence directory:
-[`evidence/2026-08-24-p0110-audio-current-base-blocked`](evidence/2026-08-24-p0110-audio-current-base-blocked/README.md).
+Latest evidence directory:
+[`evidence/2026-08-27-p0110-audio-current-base-blocked`](evidence/2026-08-27-p0110-audio-current-base-blocked/README.md).
 
-The retained device identity is `nubia P0110 / pacific / Android 16 / SDK 36`
-with serial `EP0110PZ0B9110300B`. The local Android app was installed and
-foreground, and `adb reverse tcp:54321 tcp:54321` was present, but the Host
-preflight failed because the stable `Vibe Screen Dev` signing identity was not
-available, and no process was listening on TCP port `54321`. The read-only USB
-live smoke observed no current stream telemetry or decoder counters. No
-Protocol v1 audio negotiation, Host microphone capture, channel `3` packet
-flow, Android `AudioTrack` writes, audible output, or cleanup evidence was
-collected.
+The retained device identity is `nubia P0110 / pacific / Android 16 / SDK 36`;
+public artifacts use `<ANDROID_SERIAL>` instead of the real device serial. The
+local Android app was installed and foreground, `adb reverse tcp:54321
+tcp:54321` was present, a Host listener was observed on loopback TCP `54321`,
+and the read-only USB live smoke observed an active video stream. That is still
+not an audio pass: the retained production session did not negotiate
+`CAPABILITY_AUDIO`, the current-base Host preflight could not prove stable
+source provenance or TCC readiness, and no Host microphone capture, channel `3`
+packet flow, Android `AudioTrack` writes, audible output, or cleanup evidence
+was collected. Trusted-LAN audio remains blocked separately because the device
+Wi-Fi path had no usable association, `wlan0` IPv4 address, or route.
 
 The machine-checkable summary is
-[`android-audio-playback-summary.json`](evidence/2026-08-24-p0110-audio-current-base-blocked/android-audio-playback-summary.json):
+[`android-audio-playback-summary.json`](evidence/2026-08-27-p0110-audio-current-base-blocked/android-audio-playback-summary.json):
 `verdict=blocked` and `can_close_android_audio_playback_gate=false`.
 
 ## Automated checks
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| `make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-24-p0110-audio-current-base-blocked` | PASS | Wrote `device-info.json` with nubia/P0110/pacific/Android 16/SDK 36 identity and installed APK metadata. |
-| `make evidence-usb-live-smoke EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-24-p0110-audio-current-base-blocked` | NON-PASS | Wrote `usb-live-smoke.json`; summary is `verdict=insufficient` with no stream telemetry or decoder counters. |
-| `make android-audio-playback-gate EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-24-p0110-audio-current-base-blocked` | NON-PASS | Wrote `android-audio-playback-summary.json`; expected fail-closed `blocked` result because Host signing/TCC/listener and Protocol v1 audio session evidence were missing. |
+| `PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial <ANDROID_SERIAL> --package dev.telemachus.display --output evidence/2026-08-27-p0110-audio-current-base-blocked/device-info.json` | PASS | Wrote sanitized `device-info.json` with nubia/P0110/pacific/Android 16/SDK 36 identity and installed APK metadata. |
+| `PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --allow-existing-device-lock --serial <ANDROID_SERIAL> --package dev.telemachus.display --port 54321 --output evidence/2026-08-27-p0110-audio-current-base-blocked/usb-live-smoke.json` | PASS | Observed current USB video stream, foreground app, ADB reverse, and decoder counters; this does not prove audio playback. |
+| `make android-audio-playback-gate EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-27-p0110-audio-current-base-blocked` | NON-PASS | Wrote `android-audio-playback-summary.json`; expected fail-closed `blocked` result because Host stable source/TCC readiness and Protocol v1 audio session evidence were missing. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools/tests/test_android_audio_playback.py -v` | PASS | Evidence gate unit tests passed, including fail-closed blocked/insufficient behavior. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "*ProtocolPcmAudioPlaybackTest" --tests "*StreamClientProtocolV1IntegrationTest"` | PASS | Focused Android JVM tests for PCM playback and Protocol v1 audio integration passed. |
 
 ## Open gates
 
