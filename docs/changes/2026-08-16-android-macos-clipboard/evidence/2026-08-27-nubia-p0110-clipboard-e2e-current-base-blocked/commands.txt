@@ -1,7 +1,13 @@
 git fetch origin --prune
-git worktree add .claude/worktrees/clipboard-protocol-e2e -b codex/clipboard-protocol-e2e origin/main
+git rebase origin/main
 git rev-parse origin/main
 git status --short --branch
+adb -s <P0110_USB_SERIAL> get-state
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.manufacturer
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.model
+adb -s <P0110_USB_SERIAL> shell getprop ro.product.device
+adb -s <P0110_USB_SERIAL> shell getprop ro.build.version.release
+adb -s <P0110_USB_SERIAL> shell getprop ro.build.version.sdk
 
 python3 scripts/macos_dev_host.py readiness \
   --source-root . \
@@ -17,6 +23,23 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
   --expected-device pacific \
   --expected-android-release 16 \
   --expected-sdk 36 \
+  --host-preflight-report .build/private-clipboard-e2e/usb-host-preflight.txt \
+  --output .build/private-clipboard-e2e/usb-smoke-preflight.json
+
+adb -s <P0110_USB_SERIAL> shell monkey \
+  -p dev.telemachus.display \
+  -c android.intent.category.LAUNCHER \
+  1
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+  --serial <P0110_USB_SERIAL> \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --expected-manufacturer nubia \
+  --expected-model P0110 \
+  --expected-device pacific \
+  --expected-android-release 16 \
+  --expected-sdk 36 \
+  --host-preflight-report .build/private-clipboard-e2e/usb-host-preflight.txt \
   --output .build/private-clipboard-e2e/usb-smoke-preflight.json
 
 PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_preflight \

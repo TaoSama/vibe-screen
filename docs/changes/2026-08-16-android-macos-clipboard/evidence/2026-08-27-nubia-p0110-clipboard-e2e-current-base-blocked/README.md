@@ -1,7 +1,7 @@
 # Nubia P0110 Clipboard E2E Current-Base Blocked
 
 Date: 2026-08-27
-Source base: `origin/main` at `3b2ba11e832a3618eaedfc67f92414b161423a00`
+Source base: `origin/main` at `32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3`
 Branch: `codex/clipboard-protocol-e2e`
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 Serial label: `REDACTED_P0110_USB_SERIAL`
@@ -18,8 +18,8 @@ does not prove either clipboard transfer direction.
 
 - The target device identity matched nubia P0110 / pacific / Android 16 / SDK
   36.
-- ADB reverse for the USB smoke path was already present, the Android app was
-  installed/running/foreground, and a loopback Host listener was observed.
+- ADB reverse for the USB smoke path was present, the Android app was launched
+  foreground, and a loopback Host listener was observed.
 - Android local `ClipboardManagerInstrumentedTest` passed on device with
   `OK (3 tests)`.
 - The new `clipboard-e2e-gate` aggregator ran and preserved the blocked verdict

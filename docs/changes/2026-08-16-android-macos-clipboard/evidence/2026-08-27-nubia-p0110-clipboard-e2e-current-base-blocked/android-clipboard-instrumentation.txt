@@ -1,8 +1,5 @@
-BUILD SUCCESSFUL in 36s
-Performing Streamed Install
-Success
-Performing Streamed Install
-Success
 dev.telemachus.display.ClipboardManagerInstrumentedTest:...
-Time: 1.673
+
+Time: 1.748
+
 OK (3 tests)

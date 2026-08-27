@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2719,
+      "bytes": 2702,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,10 +11,10 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "1572a34286c8cf699454af116bfbab3d4200ceec9fa991263e56b24bb52ee179"
+      "sha256": "988d16c50622a77b3f63f999c6cdac31e855e8d22e7866a7502c1e3684d5d4dd"
     },
     {
-      "bytes": 181,
+      "bytes": 87,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,7 +24,7 @@
       ],
       "path": "android-clipboard-instrumentation.txt",
       "result": "pass",
-      "sha256": "e6d427c2e7dd300d7c47d013cec3e1ce9482be7bb0ae8955b609f2797910b9e1"
+      "sha256": "a96a03069043cb59be2112cc2aec6a1fa12e9fd7e415059e50913cd468345882"
     },
     {
       "bytes": 6113,
@@ -40,7 +40,7 @@
       "sha256": "e8de02c5f34a8d0931713247584683c2de61a65359ae8ea0bb45cf350f7d9d92"
     },
     {
-      "bytes": 2845,
+      "bytes": 3743,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -50,7 +50,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "103c731436fb5bd78e8db421a661317647adbc7e6ec5d6fa941dae28f44e701e"
+      "sha256": "308bd87b921ce051b53f1a1b43b497ae36c39387843949fb34c9d02004a6053d"
     }
   ],
   "categories": [
