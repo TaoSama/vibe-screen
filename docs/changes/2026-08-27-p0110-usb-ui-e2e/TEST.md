@@ -2,14 +2,15 @@
 
 Status: current-base Android USB/UI evidence recorded; non-closing for stable release
 Date: 2026-08-27
-Base commit: 3b2ba11e832a3618eaedfc67f92414b161423a00
+Evidence collection base commit: 3b2ba11e832a3618eaedfc67f92414b161423a00
+Current PR base after refresh: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 
 ## Test matrix
 
 | Area | Command or action | Result | Evidence |
 | --- | --- | --- | --- |
-| Source freshness | git fetch origin --prune; compare HEAD with origin/main | PASS: both resolved to 3b2ba11e832a3618eaedfc67f92414b161423a00; worktree was clean before evidence docs were added | [device-baseline.txt](evidence/2026-08-27-p0110-pacific-usb-ui/device-baseline.txt) |
+| Source freshness | git fetch origin --prune; compare HEAD with origin/main | PASS at evidence collection time: both resolved to 3b2ba11e832a3618eaedfc67f92414b161423a00; worktree was clean before evidence docs were added. The PR branch was later refreshed onto 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503 without rerunning the device session or changing the evidence bundle's recorded collection base. | [device-baseline.txt](evidence/2026-08-27-p0110-pacific-usb-ui/device-baseline.txt) |
 | Android build and static checks | cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug | PASS: unit tests, lint, and debug APK assembly completed | [android-gradle-check.txt](evidence/2026-08-27-p0110-pacific-usb-ui/android-gradle-check.txt) |
 | APK install and launch | Install debug APK; launch dev.telemachus.display/.MainActivity with auto_connect=true | PASS: install succeeded and Activity reported Status: ok | [android-launch.txt](evidence/2026-08-27-p0110-pacific-usb-ui/android-launch.txt) |
 | USB reverse | adb reverse tcp:54321 tcp:54321; adb reverse --list | PASS: UsbFfs tcp:54321 tcp:54321 present | [adb-reverse.txt](evidence/2026-08-27-p0110-pacific-usb-ui/adb-reverse.txt) |

@@ -3,7 +3,9 @@
 Status: current-base Android USB/UI evidence recorded; stable release gates stay open
 Date: 2026-08-27
 Source branch: codex/p0110-usb-ui-e2e
-Base commit: 3b2ba11e832a3618eaedfc67f92414b161423a00 (origin/main)
+Evidence collection base commit: 3b2ba11e832a3618eaedfc67f92414b161423a00
+Current PR base after refresh: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+  (origin/main)
 
 ## Scope
 
@@ -36,6 +38,11 @@ The private raw evidence used to prepare the bundle remains outside git. Public
 files intentionally contain only summarized or filtered logs and UI hierarchy
 snippets after removing local paths, real device serials, and macOS privacy
 database details.
+
+The PR branch has since been refreshed onto a newer origin/main at
+`27d2b0e493e807ae439fbd43b06b4c2f0ce9c503`. That refresh did not rerun the
+device session and does not change the committed evidence bundle's recorded
+collection base.
 
 ## Result
 

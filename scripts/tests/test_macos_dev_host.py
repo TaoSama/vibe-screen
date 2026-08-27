@@ -1125,7 +1125,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 result = macos_dev_host.readiness_command(args)
 
             self.assertEqual(result, 0)
-            login_item_mock.assert_called_once_with()
+            login_item_mock.assert_called_once_with(allow_system_probe=True)
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
 
