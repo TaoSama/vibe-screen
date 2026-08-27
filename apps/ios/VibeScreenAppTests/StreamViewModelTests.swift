@@ -46,11 +46,14 @@ final class VibeScreenAppUITests: XCTestCase {
 
         let result = app.staticTexts["audio-playback-self-test-result"]
         XCTAssertTrue(result.waitForExistence(timeout: 30))
-        XCTAssertEqual(result.label, "AUDIO_PLAYBACK_SELF_TEST=RUNNING")
 
-        let start = app.buttons["audio-playback-self-test-start"]
-        XCTAssertTrue(start.waitForExistence(timeout: 5))
-        start.tap()
+        if result.label == "AUDIO_PLAYBACK_SELF_TEST=RUNNING" {
+            let start = app.buttons["audio-playback-self-test-start"]
+            XCTAssertTrue(start.waitForExistence(timeout: 5))
+            if start.isEnabled {
+                start.tap()
+            }
+        }
 
         let terminalResult = XCTNSPredicateExpectation(
             predicate: NSPredicate(

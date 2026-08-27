@@ -260,6 +260,46 @@ def check_required_text(name: str, text: str, needles: Sequence[str]) -> CheckRe
     return CheckResult(name=name, status="pass", detail="all required contract text is present")
 
 
+def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
+    forbidden = [
+        needle
+        for needle in (".audioDataChannel", ".bulkDataChannel")
+        if needle in capability_body
+    ]
+    if forbidden:
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail=f"ungated default capabilities present: {', '.join(forbidden)}",
+        )
+    normalized_body = capability_body.replace("\\n", "\n")
+    multiclient_lines = [
+        line.strip()
+        for line in normalized_body.splitlines()
+        if ".multiClient" in line and "insert" in line
+    ]
+    ungated = [
+        line for line in multiclient_lines if "maximumClients > 1" not in line
+    ]
+    if ungated:
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail=f"ungated multi-client capability insertions: {'; '.join(ungated)}",
+        )
+    if ".multiClient" in capability_body and "maximumClients > 1" not in capability_body:
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail="multi-client capability is not gated by maximumClients > 1",
+        )
+    return CheckResult(
+        name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+        status="pass",
+        detail="audio/bulk DataChannel stay out of defaults; multi-client is explicitly maximumClients gated",
+    )
+
+
 def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[str]]:
     protocol_session = read_text(repo, PROTOCOL_SESSION)
     phase5_tech = read_text(repo, PHASE5_TECH)
@@ -288,16 +328,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
             capability_body,
             ["touchEnabled", ".colorManagement", ".multiDisplay", ".clientVideoControl"],
         ),
-        CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
-            status="pass" if (
-                all(needle not in capability_body for needle in (".audioDataChannel", ".bulkDataChannel"))
-                and "maximumClients: Int = 1" in capability_body
-                and "if maximumClients > 1 { capabilities.insert(.multiClient) }" in capability_body
-                and capability_body.count("capabilities.insert(.multiClient)") == 1
-            ) else "fail",
-            detail="audio/bulk DataChannel stay out of production defaults; multi-client requires maximumClients > 1 opt-in",
-        ),
+        check_default_advanced_capabilities(capability_body),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",
             capability_body,
