@@ -67,7 +67,9 @@ For every device run, record:
   `make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>`:
   `host-readiness.json` and `host-signing-and-permissions.txt`. A blocked
   readiness snapshot is prerequisite evidence only and cannot close the runtime
-  gate by itself;
+  gate by itself. The default readiness target must not probe Launch at Login;
+  use the explicit `--include-login-item-diagnostic` readiness diagnostic only for a human
+  opt-in run;
 - APK version/signing identity and install timestamp;
 - ADB reverse mapping and host listener;
 - decoder name, first output frame, continuing frame counters, and drops;

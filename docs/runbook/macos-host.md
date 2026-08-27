@@ -145,8 +145,11 @@ directory that will own the run:
 make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 ```
 
-The target writes both files below without launching the Host or mutating the
-machine:
+The target writes both files below without launching the Host, mutating the
+machine, or probing Launch at Login. Keep login-item probing out of default CI
+and test runs; use `python3 scripts/macos_dev_host.py readiness
+--include-login-item-diagnostic ...` only during an explicit human diagnostic because macOS
+may request administrator authorization for the underlying service dump.
 
 ```text
 <evidence-dir>/host-signing-and-permissions.txt
@@ -272,10 +275,13 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 ```
 
 The `login_headless` section in `host-readiness.json` records the local blockers
-for setup readiness. Exit code 2 means the run is blocked and should be kept as
-readiness evidence. A passing readiness snapshot is still only a preflight: it
-does not prove login launch after reboot, headless capture, Android rendering,
-or recovery from a controlled listener/capture/display failure.
+for setup readiness. By default the login item is recorded as unverified rather
+than probing macOS login-item state; pass `--include-login-item-diagnostic` to
+`scripts/macos_dev_host.py readiness` only for an explicit human diagnostic.
+Exit code 2 means the run is blocked and should be kept as readiness evidence.
+A passing readiness snapshot is still only a preflight: it does not prove login
+launch after reboot, headless capture, Android rendering, or recovery from a
+controlled listener/capture/display failure.
 
 ### Acceptance gate matrix
 
