@@ -229,7 +229,9 @@ downstream admission/secure-record/Protocol v1/decoder/reconnect/latency stages
 as `not_run`, and do not describe the run as a trusted-LAN pass. The preflights
 are read-only: they do not launch the Host, write a pairing token or QR payload,
 modify TCC, alter Keychain, clear Android app data, or change saved Wi-Fi
-credentials.
+credentials. The default Host readiness target also skips the macOS login-item
+database probe; use `scripts/macos_dev_host.py readiness --probe-login-item`
+only for an explicit interactive manual diagnostic.
 
 ## Source-level checks
 
