@@ -432,10 +432,12 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 del timeout_seconds
                 if command == ("/usr/bin/xcode-select", "-p"):
                     return 0, "/Applications/Xcode.app/Contents/Developer"
+                if command == ("/usr/bin/xcrun", "--find", "swift"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
                 if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
                     return 0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
-                if command == ("/usr/bin/xcrun", "--find", "xctest"):
-                    return 0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 0, "Xcode 16.4\nBuild version 16F6"
                 if command == ("/usr/bin/swift", "--version"):
                     return 0, "Apple Swift version 6.3.3"
                 raise AssertionError(command)
@@ -446,7 +448,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report_text = report.read_text(encoding="utf-8")
             self.assertEqual(result, 0)
             self.assertIn("Status: PASS", report_text)
-            self.assertIn("Blocking issues:\n(none)", report_text)
+            self.assertIn("Blocking issues:\n- none", report_text)
 
     def test_xctest_preflight_fails_closed_for_command_line_tools(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -457,10 +459,12 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 del timeout_seconds
                 if command == ("/usr/bin/xcode-select", "-p"):
                     return 0, "/Library/Developer/CommandLineTools"
+                if command == ("/usr/bin/xcrun", "--find", "swift"):
+                    return 0, "/usr/bin/swift"
                 if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
                     return 1, "unable to find utility xcodebuild"
-                if command == ("/usr/bin/xcrun", "--find", "xctest"):
-                    return 1, "unable to find utility xctest"
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 127, "command unavailable: /usr/bin/xcodebuild"
                 if command == ("/usr/bin/swift", "--version"):
                     return 0, "Apple Swift version 6.3.3"
                 raise AssertionError(command)
@@ -475,10 +479,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report_text = report.read_text(encoding="utf-8")
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
-            self.assertIn("selected developer directory is Command Line Tools", report_text)
-            self.assertIn("xcodebuild is unavailable through xcrun", report_text)
-            self.assertIn("xctest is unavailable through xcrun", report_text)
-            self.assertIn("does not\ninspect or modify TCC, Keychain", report_text)
+            self.assertIn("full Xcode is not selected", report_text)
+            self.assertIn("xcodebuild is not available", report_text)
+            self.assertIn("does not build, install, sign, modify TCC, or touch devices", report_text)
 
     def test_parse_args_accepts_xctest_preflight_command(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
@@ -1073,7 +1076,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
-            self.assertIn("not probed by default", document["login_headless"]["login_item"]["detail"])
+            self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
 
     def test_readiness_command_runs_login_item_diagnostic_only_when_opted_in(self) -> None:
@@ -1090,7 +1093,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 source_root=Path("."),
                 allow_source_mismatch=False,
                 port=54321,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
             metadata = self.metadata()
             source_identity = macos_dev_host.package_macos.SourceIdentity(
