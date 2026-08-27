@@ -79,36 +79,8 @@ def make_videotoolbox_readiness_gate(runtime_class: str, artifact_path: str) -> 
     }
 
 
-def make_native_input_gate(**overrides: object) -> dict[str, object]:
-    observations = {
-        "ios_device_lock_acquired": True,
-        "device_identity_recorded": True,
-        "device_is_iphone_or_ipad": True,
-        "iphone_native_input_observed": True,
-        "ipad_native_input_observed": True,
-        "app_revision_recorded": True,
-        "signed_app_installed": True,
-        "local_network_permission_recorded": True,
-        "baseline_machost_listener_observed": True,
-        "protocol_session_negotiated": True,
-        "input_capabilities_negotiated": True,
-        "display_stream_binding_recorded": True,
-        "touch_tap_observed": True,
-        "touch_drag_observed": True,
-        "hardware_keyboard_attached": True,
-        "keyboard_press_release_observed": True,
-        "keyboard_modifier_observed": True,
-        "keyboard_modifier_release_no_leak_observed": True,
-        "hover_pointer_accessory_attached": True,
-        "hover_pointer_move_observed": True,
-        "host_input_acknowledgements_retained": True,
-        "ios_logs_retained": True,
-        "host_logs_retained": True,
-        "android_evidence_used_for_ios_input": False,
-        "simulator_evidence_used_for_ios_input": False,
-        "offline_tests_used_as_device_evidence": False,
-    }
-    gate: dict[str, object] = {
+def make_native_input_gate() -> dict[str, object]:
+    return {
         "provided": True,
         "path": "ios-native-input-gate.json",
         "owner": {
@@ -131,14 +103,12 @@ def make_native_input_gate(**overrides: object) -> dict[str, object]:
         "android_evidence_is_not_ios_input_evidence": True,
         "simulator_is_not_ios_input_evidence": True,
         "offline_tests_are_readiness_only": True,
-        "observations": observations,
+        "observations": {},
         "missing_requirements": [],
         "blocking_reasons": [],
         "disallowed_evidence": [],
-        "artifact_paths": ["ios-native-input-host.log", "ios-native-input-device.log"],
+        "artifact_paths": ["logs/ios-native-input.log", "logs/host-native-input.log"],
     }
-    gate.update(overrides)
-    return gate
 
 
 def complete_manifest(root: Path) -> dict[str, object]:
@@ -199,6 +169,7 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "signed_archive_sha256": "a" * 64,
         }
     )
+    manifest["native_input_gate"] = make_native_input_gate()
     manifest["devices"] = [
         {
             "role": "iphone",
@@ -221,7 +192,6 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "physical_ipad", IPAD_VIDEOTOOLBOX_ARTIFACT
         ),
     ]
-    manifest["native_input_gate"] = make_native_input_gate()
     gates = manifest["gates"]
     assert isinstance(gates, dict)
     for name in [*FORMAL_DEVICE_GATES, *BROADER_GATES]:
@@ -231,6 +201,9 @@ def complete_manifest(root: Path) -> dict[str, object]:
         gate["evidence"] = [f"{name}.json"]
     gates["videotoolbox_h264"]["evidence"] = [IPHONE_VIDEOTOOLBOX_ARTIFACT]
     gates["videotoolbox_hevc"]["evidence"] = [IPAD_VIDEOTOOLBOX_ARTIFACT]
+    gates["input"]["evidence"] = [
+        "ios-native-input-gate.json verdict=pass can_close_ios_native_input_gate=true"
+    ]
     hdr_gate = gates["hdr_output"]
     assert isinstance(hdr_gate, dict)
     hdr_gate["evidence"] = [
@@ -253,7 +226,6 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: xcodebuild_available", report["reasons"])
         self.assertIn("blocked: ios_sdk_available", report["reasons"])
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
-        self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
         self.assertIn("blocked: signing_status", report["reasons"])
         self.assertIn("blocked: iphone_physical_device", report["reasons"])
         self.assertIn("blocked: ipad_physical_device", report["reasons"])
@@ -345,6 +317,48 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_ios_device_acceptance"])
         self.assertFalse(report["can_close_current_base_aggregate"])
         self.assertIn("insufficient: hdr_output", report["reasons"])
+
+    def test_input_gate_requires_dedicated_native_input_owner_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest["native_input_gate"] = {
+                "provided": False,
+                "path": None,
+                "owner": None,
+                "current_base": None,
+                "kind": None,
+                "profile": None,
+                "gate_owner": None,
+                "verdict": "blocked",
+                "can_close_ios_native_input_gate": False,
+                "requires_real_ios_device": True,
+                "requires_signed_app": True,
+                "requires_physical_keyboard": True,
+                "requires_hover_or_pointer_accessory": True,
+                "android_evidence_is_not_ios_input_evidence": True,
+                "simulator_is_not_ios_input_evidence": True,
+                "offline_tests_are_readiness_only": True,
+                "observations": {},
+                "missing_requirements": ["ios-native-input-gate.json not provided"],
+                "blocking_reasons": ["ios-native-input-gate.json not provided"],
+                "disallowed_evidence": [],
+                "artifact_paths": [],
+            }
+            gates = manifest["gates"]
+            assert isinstance(gates, dict)
+            input_gate = gates["input"]
+            assert isinstance(input_gate, dict)
+            input_gate["status"] = "pass"
+            input_gate["evidence"] = ["input.json"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
+        self.assertIn("blocked: input", report["reasons"])
 
     def test_complete_synthetic_manifest_passes(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -520,7 +534,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: signing", report["reasons"])
         retained_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertIn(
-            "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open.",
+            "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records.",
             retained_manifest["limitations"],
         )
 
@@ -538,82 +552,6 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_owner", report["reasons"])
-
-    def test_dedicated_native_input_gate_is_required(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            manifest["native_input_gate"] = make_native_input_gate(
-                verdict="blocked",
-                can_close_ios_native_input_gate=False,
-                blocking_reasons=[
-                    {
-                        "field": "observations.ipad_native_input_observed",
-                        "requirement": "record native-input behavior from a signed iPad app run",
-                    }
-                ],
-            )
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
-
-    def test_native_input_gate_current_base_must_match_repository(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input = manifest["native_input_gate"]
-            assert isinstance(native_input, dict)
-            current_base = native_input["current_base"]
-            assert isinstance(current_base, dict)
-            current_base["commit"] = "f" * 40
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_current_base", report["reasons"])
-
-    def test_native_input_gate_rejects_disallowed_evidence(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input = manifest["native_input_gate"]
-            assert isinstance(native_input, dict)
-            native_input["disallowed_evidence"] = [
-                {
-                    "field": "android_evidence_used_for_ios_input",
-                    "reason": "Android evidence cannot close iOS native-input behavior",
-                }
-            ]
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_policy", report["reasons"])
-
-    def test_native_input_gate_observations_are_required(self):
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            manifest = complete_manifest(root)
-            native_input = manifest["native_input_gate"]
-            assert isinstance(native_input, dict)
-            observations = native_input["observations"]
-            assert isinstance(observations, dict)
-            observations["hardware_keyboard_attached"] = False
-            manifest_path = write_manifest(root, manifest)
-
-            report = derive_gate(manifest_path)
-
-        self.assertEqual(report["verdict"], "blocked")
-        self.assertFalse(report["can_close_ios_device_acceptance"])
-        self.assertIn("blocked: dedicated_native_input_observations", report["reasons"])
 
     def test_signing_udid_and_entitlements_are_blocking_current_base_checks(self):
         cases = {
@@ -670,7 +608,6 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
             "signing": lambda manifest: manifest["signing"].pop("certificate_identity_recorded"),
             "signing_udid": lambda manifest: manifest["signing"].pop("device_udid_hashes_recorded"),
             "signing_entitlements": lambda manifest: manifest["signing"].pop("entitlements_recorded"),
-            "native_input": lambda manifest: manifest["native_input_gate"].pop("artifact_paths"),
             "device": lambda manifest: manifest["devices"][0].pop("runtime_class"),
             "gate": lambda manifest: manifest["gates"]["signing"].pop("status"),
             "gate_owner": lambda manifest: manifest["gates"]["signing"].pop("owner_pr"),

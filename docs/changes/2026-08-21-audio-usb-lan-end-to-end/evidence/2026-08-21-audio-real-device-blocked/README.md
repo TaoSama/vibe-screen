@@ -25,9 +25,10 @@ Android Wi-Fi route and secure-record admission evidence; the most recent LAN
 records for the Nubia P0110 remained blocked before LAN stream setup.
 
 The target Android device for the next run must be recorded as `nubia P0110 /
-pacific / Android 16 / SDK 36` with serial `EP0110PZ0B9110300B`; Android
-commands must use `adb -s EP0110PZ0B9110300B ...`. This record does not relabel
-that device as Xiaomi 13/fuxi evidence.
+pacific / Android 16 / SDK 36`; local Android commands must use an explicit
+`adb -s <ANDROID_SERIAL> ...` selector. Public evidence must not expose the real
+device serial, and this record does not relabel that device as Xiaomi 13/fuxi
+evidence.
 
 No real USB audio playback, trusted-LAN audio playback, audible output, or
 Android device `AudioTrack` runtime write evidence was collected. This blocked

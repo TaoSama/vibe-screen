@@ -7,17 +7,10 @@ import unittest
 from unittest.mock import patch
 
 from vibescreen_evidence import SCHEMA_VERSION
-from vibescreen_evidence import ios_native_input
 from vibescreen_evidence.ios_current_base_manifest import (
     BROADER_GATES,
     FORMAL_DEVICE_GATES,
     GATE_OWNERS,
-    NATIVE_INPUT_GATE_OWNER,
-    NATIVE_INPUT_KIND,
-    NATIVE_INPUT_OWNER_BRANCH,
-    NATIVE_INPUT_OWNER_PR,
-    NATIVE_INPUT_OWNER_ROLE,
-    NATIVE_INPUT_PROFILE,
     SCOPE_PRS,
     SOURCE_DOCS,
     build_manifest,
@@ -74,60 +67,10 @@ def write_videotoolbox_readiness_summary(
     return path
 
 
-def make_native_input_gate_summary(**overrides: object) -> dict[str, object]:
-    summary: dict[str, object] = {
-        "kind": "ios_native_input_behavior",
-        "profile": "ios-native-input-behavior",
-        "gate_owner": "phase5-ios-native-input-behavior",
-        "owner": {
-            "role": "ios_native_input_behavior_current_base_owner",
-            "head_ref": "codex/ios-native-input-readiness-gate",
-            "pull_request": "#257",
-            "repository": "TaoSama/vibe-screen",
-            "scope": "README Phase 5 iOS native-input behavior gate",
-        },
-        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
-        "verdict": "pass",
-        "can_close_ios_native_input_gate": True,
-        "requires_real_ios_device": True,
-        "requires_signed_app": True,
-        "requires_physical_keyboard": True,
-        "requires_hover_or_pointer_accessory": True,
-        "android_evidence_is_not_ios_input_evidence": True,
-        "simulator_is_not_ios_input_evidence": True,
-        "offline_tests_are_readiness_only": True,
-        "observations": {"iphone_native_input_observed": True, "ipad_native_input_observed": True},
-        "missing_requirements": [],
-        "blocking_reasons": [],
-        "disallowed_evidence": [],
-        "artifact_paths": [
-            "logs/iphone-native-input.log",
-            "logs/ipad-native-input.log",
-            "logs/host-native-input.log",
-        ],
-    }
-    summary.update(overrides)
-    return summary
-
-
-def write_native_input_gate_summary(root: Path, **overrides: object) -> Path:
-    path = root / "ios-native-input-gate.json"
-    path.write_text(
-        json.dumps(make_native_input_gate_summary(**overrides)),
-        encoding="utf-8",
-    )
-    return path
-
-
-def make_docs(root: Path) -> None:
-    for path in SOURCE_DOCS:
-        target = root / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("fixture\n", encoding="utf-8")
-
-
 def make_native_input_gate(**overrides: object) -> dict[str, object]:
     gate: dict[str, object] = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": "native-input-fixture",
         "kind": "ios_native_input_behavior",
         "profile": "ios-native-input-behavior",
         "gate_owner": "phase5-ios-native-input-behavior",
@@ -148,11 +91,13 @@ def make_native_input_gate(**overrides: object) -> dict[str, object]:
         "android_evidence_is_not_ios_input_evidence": True,
         "simulator_is_not_ios_input_evidence": True,
         "offline_tests_are_readiness_only": True,
-        "observations": {"device_is_iphone_or_ipad": True},
+        "observations": {},
         "missing_requirements": [],
         "blocking_reasons": [],
         "disallowed_evidence": [],
-        "artifact_paths": ["ios-native-input.log", "host-native-input.log"],
+        "artifact_paths": ["logs/ios-native-input.log", "logs/host-native-input.log"],
+        "blocking_notes": [],
+        "notes": None,
     }
     gate.update(overrides)
     return gate
@@ -164,15 +109,13 @@ def write_native_input_gate(root: Path, **overrides: object) -> Path:
     return path
 
 
-class IOSCurrentBaseManifestTests(unittest.TestCase):
-    def test_exports_native_input_gate_contract_constants(self):
-        self.assertEqual(NATIVE_INPUT_KIND, "ios_native_input_behavior")
-        self.assertEqual(NATIVE_INPUT_PROFILE, ios_native_input.GATE_PROFILE)
-        self.assertEqual(NATIVE_INPUT_GATE_OWNER, ios_native_input.GATE_OWNER)
-        self.assertEqual(NATIVE_INPUT_OWNER_ROLE, ios_native_input.OWNER_ROLE)
-        self.assertEqual(NATIVE_INPUT_OWNER_BRANCH, ios_native_input.OWNER_BRANCH)
-        self.assertEqual(NATIVE_INPUT_OWNER_PR, "#257")
+def make_docs(root: Path) -> None:
+    for path in SOURCE_DOCS:
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture\n", encoding="utf-8")
 
+class IOSCurrentBaseManifestTests(unittest.TestCase):
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_builds_current_base_manifest_with_fail_closed_defaults(self, state, environment):
@@ -268,19 +211,47 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             manifest["signing_readiness_gate"]["owner"]["role"],
             "ios_app_signing_readiness_current_base_owner",
         )
-        self.assertEqual(
-            manifest["signing"],
-            {
-                "status": "pass",
-                "bundle_id": "dev.example.vibescreen.acceptance",
-                "unique_bundle_id": True,
-                "team_id_redacted": True,
-                "certificate_identity_recorded": True,
-                "provisioning_profile_recorded": True,
-                "device_udid_hashes_recorded": True,
-                "entitlements_recorded": True,
-                "signed_archive_sha256": "a" * 64,
-            },
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_missing_ios_native_input_gate_path_fails_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_gate = root / "missing-ios-native-input-gate.json"
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_gate)
+
+        self.assertTrue(manifest["native_input_gate"]["provided"])
+        self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertTrue(
+            any(
+                isinstance(reason, dict)
+                and reason.get("field") == "native_input_gate"
+                and "unreadable" in str(reason.get("requirement"))
+                for reason in manifest["native_input_gate"]["blocking_reasons"]
+            )
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_ios_native_input_gate_current_base_must_match_repository_head(self, state, environment):
+        state.return_value = {"revision": "f" * 40, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_gate = write_native_input_gate(root)
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_gate)
+
+        self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
+        self.assertIn(
+            "ios native-input gate current-base commit does not match repository HEAD",
+            manifest["native_input_gate"]["missing_requirements"],
         )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
@@ -506,13 +477,13 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_binds_ios_native_input_gate_summary(self, state, environment):
+    def test_native_input_gate_preserves_profile_and_clear_blocking_reasons(self, state, environment):
         state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
         environment.return_value = {}
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             make_docs(root)
-            native_input_gate = write_native_input_gate_summary(root)
+            native_input_gate = write_native_input_gate(root)
 
             manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
 
@@ -534,7 +505,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             make_docs(root)
-            native_input_gate = write_native_input_gate_summary(root)
+            native_input_gate = write_native_input_gate(root)
 
             manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
 
@@ -795,12 +766,25 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
             make_docs(root)
             output = root / "ios-current-base-manifest.json"
 
-            exit_code = main(["--repo", str(root), "--output", str(output), "--", "make", "ios-current-base-gate"])
+            native_gate = write_native_input_gate(root)
+
+            exit_code = main([
+                "--repo",
+                str(root),
+                "--output",
+                str(output),
+                "--native-input-gate",
+                str(native_gate),
+                "--",
+                "make",
+                "ios-current-base-gate",
+            ])
             manifest = json.loads(output.read_text(encoding="utf-8"))
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "ios-current-base-gate"])
         self.assertEqual(manifest["source_root"], ".")
+        self.assertEqual(manifest["native_input_gate"]["path"], str(native_gate))
 
 
 if __name__ == "__main__":

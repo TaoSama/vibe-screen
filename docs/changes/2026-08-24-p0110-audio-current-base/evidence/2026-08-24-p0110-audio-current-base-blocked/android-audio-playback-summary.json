@@ -68,7 +68,7 @@
     "android-pidof-exit.txt"
   ],
   "blocking_notes": [
-    "Device identity is nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B; it is not Xiaomi 13/fuxi evidence.",
+    "Device identity is nubia P0110 / pacific / Android 16 / SDK 36 / <ANDROID_SERIAL>; it is not Xiaomi 13/fuxi evidence.",
     "ADB reverse tcp:54321 was present and dev.telemachus.display was foreground, but usb-live-smoke observed no current stream telemetry or decoder counters.",
     "macos_dev_host preflight failed because the Vibe Screen Dev signing identity is missing.",
     "No process was listening on TCP port 54321 during the retained Host listener snapshot.",
@@ -98,7 +98,7 @@
   ],
   "can_close_android_audio_playback_gate": false,
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<ANDROID_SERIAL>",
     "android_release": "16",
     "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
     "device": "pacific",

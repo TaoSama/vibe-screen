@@ -261,6 +261,7 @@ def check_required_text(name: str, text: str, needles: Sequence[str]) -> CheckRe
 
 
 def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
+    check_name = "production-host-defaults-do-not-advertise-hdr-audio-multiclient"
     forbidden = [
         needle
         for needle in (".audioDataChannel", ".bulkDataChannel")
@@ -268,7 +269,7 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
     ]
     if forbidden:
         return CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            name=check_name,
             status="fail",
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
@@ -278,23 +279,27 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
         for line in normalized_body.splitlines()
         if ".multiClient" in line and "insert" in line
     ]
-    ungated = [
-        line for line in multiclient_lines if "maximumClients > 1" not in line
-    ]
+    if len(multiclient_lines) > 1:
+        return CheckResult(
+            name=check_name,
+            status="fail",
+            detail="multi-client capability is inserted more than once",
+        )
+    ungated = [line for line in multiclient_lines if "maximumClients > 1" not in line]
     if ungated:
         return CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            name=check_name,
             status="fail",
             detail=f"ungated multi-client capability insertions: {'; '.join(ungated)}",
         )
-    if ".multiClient" in capability_body and "maximumClients > 1" not in capability_body:
+    if multiclient_lines and "maximumClients > 1" not in capability_body:
         return CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            name=check_name,
             status="fail",
             detail="multi-client capability is not gated by maximumClients > 1",
         )
     return CheckResult(
-        name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+        name=check_name,
         status="pass",
         detail="audio/bulk DataChannel stay out of defaults; multi-client is explicitly maximumClients gated",
     )

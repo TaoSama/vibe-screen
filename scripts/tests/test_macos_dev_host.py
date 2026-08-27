@@ -25,6 +25,14 @@ PRIVACY_DB_FILENAME = "privacy.sqlite"
 
 
 class MacOSDevHostMetadataTests(unittest.TestCase):
+    def test_run_best_effort_reports_missing_executable(self) -> None:
+        with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/defaults")):
+            exit_code, output = macos_dev_host.run_best_effort("/missing/defaults")
+
+        self.assertEqual(exit_code, 127)
+        self.assertIn("command unavailable", output)
+        self.assertIn("/missing/defaults", output)
+
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
         fields = macos_dev_host.parse_codesign_details(
             """
@@ -71,7 +79,17 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report = Path(temporary_directory) / "xctest-toolchain.txt"
             args = mock.Mock(report=report)
             command_outputs = {
-                ("/usr/bin/xcrun", "--find", "xctest"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"),
+                ("/usr/bin/xcode-select", "-p"): (0, "/Applications/Xcode.app/Contents/Developer"),
+                ("/usr/bin/xcrun", "--find", "swift"): (
+                    0,
+                    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift",
+                ),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (
+                    0,
+                    "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
+                ),
+                ("/usr/bin/xcodebuild", "-version"): (0, "Xcode 16.4\nBuild version 16F6"),
             }
 
             with (
@@ -88,8 +106,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 0)
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: PASS", report_text)
-            self.assertIn("xcrun --find xctest: exit_code=0", report_text)
-            self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
+            self.assertIn("xcodebuild -version: exit_code=0", report_text)
+            self.assertIn("macOS Host XCTest toolchain preflight passed", stdout.getvalue())
             self.assertEqual(stderr.getvalue(), "")
 
     def test_xctest_preflight_command_blocks_command_line_tools(self) -> None:
@@ -97,7 +115,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report = Path(temporary_directory) / "xctest-toolchain.txt"
             args = mock.Mock(report=report)
             command_outputs = {
-                ("/usr/bin/xcrun", "--find", "xctest"): (1, "xcrun: error: unable to find utility xctest"),
+                ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
+                ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (72, "unable to find utility xcodebuild"),
+                ("/usr/bin/xcodebuild", "-version"): (127, "command unavailable: /usr/bin/xcodebuild"),
             }
 
             with (
@@ -106,7 +128,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     "run_best_effort",
                     side_effect=lambda *command, timeout_seconds=None: command_outputs[command],
                 ),
-                redirect_stdout(StringIO()) as stdout,
+                redirect_stdout(StringIO()),
                 redirect_stderr(StringIO()) as stderr,
             ):
                 result = macos_dev_host.xctest_preflight_command(args)
@@ -115,7 +137,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("full Xcode is not selected", report_text)
-            self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
+            self.assertIn("xcodebuild is not available", report_text)
+            self.assertIn("Command Line Tools cannot run this XCTest suite", stderr.getvalue())
 
     def test_report_records_identity_hash_permission_state_and_system_path(self) -> None:
         metadata = self.metadata()
@@ -1018,22 +1041,23 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
             self.assertIn("not probed", document["login_headless"]["login_item"]["detail"])
             self.assertFalse(document["can_close_runtime_gates"])
+            self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertIn("--include-login-item-diagnostic", document["login_headless"]["login_item"]["detail"])
             self.assertEqual(document["host"]["current_source_commit"], "c" * 40)
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
             self.assertIn("not probed by default", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
-        login_mock.assert_not_called()
 
-    def test_readiness_command_probes_login_items_only_when_opted_in(self) -> None:
+    def test_readiness_command_runs_login_item_diagnostic_only_when_opted_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             report = root / "host-signing-and-permissions.txt"
             json_output = root / "host-readiness.json"
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                sign_identity="Missing Dev",
+                sign_identity="Vibe Screen Dev",
                 tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
                 json_output=json_output,
@@ -1042,45 +1066,44 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 port=54321,
                 include_login_item_diagnostic=True,
             )
+            metadata = self.metadata()
+            source_identity = macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            )
+            permissions = macos_dev_host.PermissionStatus(
+                database_path=Path("privacy.sqlite"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            )
 
             with (
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_host_without_throwing",
-                    return_value=macos_dev_host.HostInspection(
-                        metadata=None,
-                        source_identity=macos_dev_host.package_macos.SourceIdentity(
-                            commit="c" * 40,
-                            tree="d" * 40,
-                            dirty=False,
-                        ),
-                        permissions=macos_dev_host.missing_permission_status("Host bundle signing was not inspected"),
-                        errors=["missing identity"],
-                    ),
+                    return_value=macos_dev_host.HostInspection(metadata, source_identity, permissions, []),
                 ),
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_listener",
-                    return_value=macos_dev_host.ListenerStatus(
-                        port=54321,
-                        observed=False,
-                        output="",
-                        error="listener not observed",
-                    ),
+                    return_value=macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
                 ),
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_entitlements",
                     return_value=macos_dev_host.EntitlementStatus(
                         app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                        virtual_hid=False,
-                        keys=(),
+                        virtual_hid=True,
+                        keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
                         raw_output="",
-                        error="bundle missing",
                     ),
                 ),
                 mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
-                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]) as login_mock,
+                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]) as login_item_mock,
                 mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
                 mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
                 redirect_stdout(StringIO()),
@@ -1088,8 +1111,10 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             ):
                 result = macos_dev_host.readiness_command(args)
 
-            self.assertEqual(result, 2)
-            login_mock.assert_called_once_with()
+            self.assertEqual(result, 0)
+            login_item_mock.assert_called_once_with()
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
 
     def test_readiness_command_checks_login_item_only_when_opted_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1497,16 +1522,21 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             permissions=permissions,
             errors=["cannot verify TCC permissions read-only: " + str(permissions.error)],
         )
-        document = macos_dev_host.build_readiness_document(
-            inspection,
-            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
-            macos_dev_host.EntitlementStatus(
-                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                virtual_hid=False,
-                keys=(),
-                raw_output="",
-            ),
-        )
+        with mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_probe:
+            document = macos_dev_host.build_readiness_document(
+                inspection,
+                macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+                macos_dev_host.EntitlementStatus(
+                    app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    virtual_hid=False,
+                    keys=(),
+                    raw_output="",
+                ),
+                settings=MacOSDevHostMetadataTests.login_ready_inputs()[0],
+                displays=MacOSDevHostMetadataTests.login_ready_inputs()[2],
+                logs=MacOSDevHostMetadataTests.login_ready_inputs()[3],
+            )
+        login_probe.assert_not_called()
         serialized_document = json.dumps(document, sort_keys=True)
 
         for artifact in (report, serialized_document):

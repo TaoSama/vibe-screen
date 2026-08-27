@@ -5,6 +5,8 @@ import VibeScreenCore
 struct VibeScreenApp: App {
     private var shouldRunAudioPlaybackSelfTest: Bool {
         ProcessInfo.processInfo.arguments.contains(AudioPlaybackSelfTestDisplay.argument)
+            || ProcessInfo.processInfo.environment[AudioPlaybackSelfTestDisplay.environment] == "1"
+            || ProcessInfo.processInfo.environment[AudioPlaybackSelfTestDisplay.legacyEnvironment] == "1"
     }
 
     var body: some Scene {
@@ -48,7 +50,7 @@ private struct AudioPlaybackSelfTestView: View {
 
     private func autoStartAfterFirstAccessibilityPass() async {
         guard !hasStarted else { return }
-        try? await Task.sleep(for: .milliseconds(500))
+        try? await Task.sleep(for: AudioPlaybackSelfTestDisplay.launchDelay)
         start()
     }
 
@@ -67,9 +69,13 @@ private struct AudioPlaybackSelfTestView: View {
 
 private enum AudioPlaybackSelfTestDisplay {
     static let argument = "--audio-playback-self-test"
+    static let environment = "AUDIO_PLAYBACK_SELF_TEST"
+    static let legacyEnvironment = "VIBE_SCREEN_AUDIO_PLAYBACK_SELF_TEST"
     static let resultIdentifier = "audio-playback-self-test-result"
     static let startIdentifier = "audio-playback-self-test-start"
     static let runningMessage = "AUDIO_PLAYBACK_SELF_TEST=RUNNING"
+    static let launchDelay: Duration = .milliseconds(500)
+    private static let realAudioEnvironment = "AUDIO_PLAYBACK_SELF_TEST_REAL_AUDIO"
     private static let timeout: Duration = .seconds(15)
 
     static func run() async throws -> String {
@@ -101,7 +107,7 @@ private enum AudioPlaybackSelfTestDisplay {
 
     @MainActor
     private static func audioPlaybackSnapshot() async throws -> AudioPlaybackQueueSnapshot {
-        if ProcessInfo.processInfo.environment["AUDIO_PLAYBACK_SELF_TEST_REAL_AUDIO"] == "1" {
+        if ProcessInfo.processInfo.environment[realAudioEnvironment] == "1" {
             return try await AudioPlaybackSelfTest.run()
         }
         return try AudioPlaybackSelfTest.runQueueOnly()

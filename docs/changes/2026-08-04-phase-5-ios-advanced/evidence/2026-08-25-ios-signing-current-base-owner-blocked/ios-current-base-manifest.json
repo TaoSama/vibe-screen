@@ -27,7 +27,7 @@
     "ios-current-base-gate",
     "EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked"
   ],
-  "created_at": "2026-08-26T16:19:45Z",
+  "created_at": "2026-08-26T23:53:23Z",
   "devices": [
     {
       "evidence": [],
@@ -157,7 +157,8 @@
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
     "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
-    "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, but signed app/device and real-network LAN evidence remain open."
+    "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
+    "The current iOS trusted-LAN baseline uses explicit plaintext legacy fallback and does not prove secure records."
   ],
   "local_environment": {
     "signing_identities": {
@@ -225,10 +226,7 @@
     "android_evidence_is_not_ios_input_evidence": true,
     "artifact_paths": [],
     "blocking_reasons": [
-      {
-        "field": "native_input_gate",
-        "requirement": "ios-native-input-gate.json not provided"
-      }
+      "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
     ],
     "can_close_ios_native_input_gate": false,
     "current_base": null,
@@ -236,44 +234,14 @@
     "gate_owner": null,
     "kind": null,
     "missing_requirements": [
-      {
-        "field": "native_input_gate",
-        "requirement": "ios-native-input-gate.json not provided"
-      }
+      "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
     ],
-    "observations": {
-      "android_evidence_used_for_ios_input": false,
-      "app_revision_recorded": false,
-      "baseline_machost_listener_observed": false,
-      "device_identity_recorded": false,
-      "device_is_iphone_or_ipad": false,
-      "display_stream_binding_recorded": false,
-      "hardware_keyboard_attached": false,
-      "host_input_acknowledgements_retained": false,
-      "host_logs_retained": false,
-      "hover_pointer_accessory_attached": false,
-      "hover_pointer_move_observed": false,
-      "input_capabilities_negotiated": false,
-      "ios_device_lock_acquired": false,
-      "ios_logs_retained": false,
-      "ipad_native_input_observed": false,
-      "iphone_native_input_observed": false,
-      "keyboard_modifier_observed": false,
-      "keyboard_modifier_release_no_leak_observed": false,
-      "keyboard_press_release_observed": false,
-      "local_network_permission_recorded": false,
-      "offline_tests_used_as_device_evidence": false,
-      "protocol_session_negotiated": false,
-      "signed_app_installed": false,
-      "simulator_evidence_used_for_ios_input": false,
-      "touch_drag_observed": false,
-      "touch_tap_observed": false
-    },
+    "observations": {},
     "offline_tests_are_readiness_only": true,
     "owner": null,
-    "path": null,
+    "path": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json",
     "profile": null,
-    "provided": false,
+    "provided": true,
     "requires_hover_or_pointer_accessory": true,
     "requires_physical_keyboard": true,
     "requires_real_ios_device": true,
@@ -290,10 +258,10 @@
   },
   "repository": {
     "dirty": false,
-    "revision": "993b9505c07bf6255291a82fc7e720bdb80965df",
+    "revision": "707c0fe84274108af5f49468e5ac95119900d724",
     "status_porcelain": []
   },
-  "run_id": "7070dd7b-3e02-405e-991b-fddee1a6968b",
+  "run_id": "cc558106-694e-4e8d-a938-3cf8672f9d35",
   "schema_version": "vibescreen.evidence/v1",
   "scope_prs": [
     "#182",
