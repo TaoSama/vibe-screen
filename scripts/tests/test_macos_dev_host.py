@@ -1402,6 +1402,12 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertNotIn(str(Path.home()), status.database_path)
         self.assertNotIn(str(Path.home()), status.error or "")
 
+    def test_run_best_effort_reports_missing_command(self) -> None:
+        status, output = macos_dev_host.run_best_effort("/definitely/missing/vibe-screen-tool")
+
+        self.assertEqual(status, 127)
+        self.assertEqual(output, "command not found: /definitely/missing/vibe-screen-tool")
+
     def test_readiness_artifacts_keep_default_tcc_paths_redacted(self) -> None:
         with mock.patch.object(
             macos_dev_host,
