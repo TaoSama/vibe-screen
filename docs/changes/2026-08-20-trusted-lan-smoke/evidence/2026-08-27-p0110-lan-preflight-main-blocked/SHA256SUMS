@@ -7,7 +7,7 @@ e6c21e8d260fe71882debdb339d2402a2ca7648529bc2303f48649bce0380017  ./adb-release.
 a4b2c5db15348c29451e18b8307e5ef81625ea638e807935f39ceaa8d9ac7758  ./adb-sdk.txt
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./android-ip-route.txt
 da3fac4547d3e32294bd30bf0066c72eacf977fd765e93935a0b8e96a4ecb008  ./android-wifi-status.txt
-ab93462bb4c894de6d7a59a152d8e145c33f03665b2aaf9cffb1ab86f0dd8685  ./android-wlan0.txt
+cfc304a8bacf933073247742cb33f2fd840f68c80f66a1f90f0886543c70d516  ./android-wlan0.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./baseline-macos-host-readiness.exit
 2838912cd13f9189c72551d5ac10c74171a63ca0ebaa5561859dd921dc091ec2  ./baseline-macos-host-readiness.txt
 2ff2744e0dc7a1c138ec1b5253419266999e36b8106e06b1e24e532e9f22ea9d  ./clean-worktree.txt
@@ -27,7 +27,7 @@ fd9a88cb5f70b3fc339b17c3d90384cf9c46430ee14b321c5b1d51fd1a83bccc  ./macos-ifconf
 2ad5e57776ecb4b37b741f751521e2c77d58bf2d6d64e54c61507eabd39dea31  ./macos-sw-vers.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./preflight-command.exit
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./preflight-command.txt
-af5b1adc4cd436eb439c5464650943affe09e719d46862efc21eafb84ff97fea  ./README.md
+24e3a597ff5aad1da426fa4a4a10e3bc37aa9d450d7e0a93f48b9f7cc914b055  ./README.md
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./reconnect-timing-command.exit
 bb407acbea2e5197924f936f564903ebd87450420ececde61ee359dc8a340b82  ./reconnect-timing-command.txt
 46ae966e08743c81e21714d0a8def0db99250ae15a357a0479198af4b8cbc76e  ./reconnect-timing-summary.json

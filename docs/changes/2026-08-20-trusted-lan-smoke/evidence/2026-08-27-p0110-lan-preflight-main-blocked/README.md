@@ -64,6 +64,9 @@ stability, or Host RSS gates.
   for this preflight.
 - `SHA256SUMS`: hashes for retained artifacts.
 
+Device and network command outputs are retained as sanitized stdout with
+sensitive identifiers redacted.
+
 No pairing token, QR payload, Wi-Fi credential, SSID, real Android serial,
 operator home path, TCC database path, private key, public address, or private
 screen content is retained in this evidence package.

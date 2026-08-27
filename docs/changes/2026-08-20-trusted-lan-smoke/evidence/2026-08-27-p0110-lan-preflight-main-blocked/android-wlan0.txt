@@ -1,2 +1,2 @@
 23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000
-    ether <redacted> brd <redacted-broadcast-mac>
+    link/ether <redacted> brd <redacted-broadcast-mac>
