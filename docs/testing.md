@@ -26,6 +26,11 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 xcodebuild -version
 ```
 
+The default macOS readiness and test paths do not inspect Login Items with
+`sfltool`. Login-item state remains fail-closed as unverified unless an operator
+explicitly runs the manual diagnostic path with `scripts/macos_dev_host.py
+readiness --probe-login-item`.
+
 ## macOS Host signing preflight
 
 Before any Host-backed Android device gate, install and verify the current-source

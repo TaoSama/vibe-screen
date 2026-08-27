@@ -43,8 +43,8 @@ SYSTEM_SETTINGS_PATH = (
 )
 DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
-    "Login item state was not probed by default; run readiness with "
-    "--include-login-item-diagnostic during an attended diagnostic session to inspect it."
+    "Login item probe not run. Use scripts/macos_dev_host.py readiness "
+    "--probe-login-item or --include-login-item-diagnostic only for an explicit manual diagnostic."
 )
 
 @dataclass(frozen=True)
@@ -163,13 +163,14 @@ def parse_args() -> argparse.Namespace:
         help="path for the structured readiness JSON report",
     )
     readiness.add_argument(
+        "--probe-login-item",
         "--include-login-item-diagnostic",
         "--inspect-login-items",
+        dest="probe_login_item",
         action="store_true",
-        dest="include_login_item_diagnostic",
         help=(
-            "opt in to the real macOS login-item diagnostic. This may invoke system tools "
-            "that require attended approval; default CI/test readiness skips it fail-closed."
+            "explicit opt-in manual diagnostic: inspect the macOS Login Items database "
+            "with sfltool dumpbtm; default readiness reports login-item state as unverified"
         ),
     )
     xctest = subparsers.add_parser(
@@ -1610,6 +1611,11 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
+    probe_login_item = bool(
+        vars(args).get("probe_login_item", False)
+        or vars(args).get("include_login_item_diagnostic", False)
+    )
+    login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
@@ -1639,11 +1645,6 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    login_item = (
-        read_login_item_readiness()
-        if getattr(args, "include_login_item_diagnostic", False)
-        else skipped_login_item_readiness()
-    )
     document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
