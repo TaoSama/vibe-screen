@@ -237,7 +237,7 @@
       "dedicated_native_input_artifacts": {
         "blocking": true,
         "evidence": [],
-        "expected": "ios-native-input-gate.json retains sanitized iOS and Host input artifacts",
+        "expected": "ios-native-input-gate.json retains sanitized iOS and Host native-input artifacts",
         "passed": false
       },
       "dedicated_native_input_current_base": {
@@ -246,6 +246,14 @@
           "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
         ],
         "expected": "ios-native-input-gate.json current_base matches clean repository HEAD",
+        "passed": false
+      },
+      "dedicated_native_input_fail_closed": {
+        "blocking": true,
+        "evidence": [
+          "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
+        ],
+        "expected": "native-input summary rejects Simulator, Android, offline-only, unsigned, or missing-accessory evidence",
         "passed": false
       },
       "dedicated_native_input_gate": {
@@ -262,15 +270,6 @@
           "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
         ],
         "expected": "ios-native-input-gate.json declares the dedicated current-base native-input owner",
-        "passed": false
-      },
-      "dedicated_native_input_summary_clean": {
-        "blocking": true,
-        "evidence": [
-          "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'",
-          "ios native-input gate unreadable: [Errno 2] No such file or directory: 'docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-native-input-gate.json'"
-        ],
-        "expected": "ios-native-input-gate.json has true safety constraints and no missing, blocking, or disallowed evidence rows",
         "passed": false
       }
     },
@@ -445,7 +444,7 @@
     "blocked: dedicated_native_input_owner",
     "blocked: dedicated_native_input_current_base",
     "blocked: dedicated_native_input_artifacts",
-    "blocked: dedicated_native_input_summary_clean",
+    "blocked: dedicated_native_input_fail_closed",
     "blocked: ipad_physical_device",
     "blocked: ipad_install",
     "blocked: iphone_physical_device",
@@ -467,7 +466,7 @@
     "insufficient: host_advanced_adapters",
     "insufficient: trusted_lan_secure_records"
   ],
-  "run_id": "7070dd7b-3e02-405e-991b-fddee1a6968b",
+  "run_id": "cc558106-694e-4e8d-a938-3cf8672f9d35",
   "schema_version": "vibescreen.evidence/v1",
   "source": {
     "manifest": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/ios-current-base-manifest.json"
