@@ -105,8 +105,9 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 ```
 
 The generated `host-readiness.json` includes a `login_headless` section with
-startup defaults, Launch at Login state, active display inventory, and recent
-Host startup/recovery log markers. The same JSON keeps
+startup defaults, Launch at Login state, active display inventory, recent Host
+startup/recovery log markers, and the installed Host source provenance used by
+the shared signing/TCC preflight. The same JSON keeps
 `can_start_headless_login_gate=false` unless shared Host prerequisites are ready
 and those login/headless setup checks pass. This is preflight evidence only: it
 does not register Login Items, reboot, launch or stop Vibe Screen, grant
@@ -154,4 +155,5 @@ Validation performed for this tooling/readiness update:
 No macOS logout/login, reboot, headless display capture, unattended listener
 failure/retry run, or Android reconnect timing run was performed for this
 package. The gate keeps all login item, headless Mac mini, unattended recovery,
-and Android reconnect acceptance claims open until those raw artifacts exist.
+and Android reconnect acceptance claims open until those raw artifacts and
+matching installed Host source provenance exist.
