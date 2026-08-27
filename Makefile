@@ -111,6 +111,7 @@ HARMONY_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-readiness.json
 HARMONY_DEVICE_GATES_JSON ?= $(EVIDENCE_DIR)/harmony-device-gates.json
 HARMONY_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/harmony-current-base-gate.json
 HARMONY_HAP_READINESS_JSON ?= $(EVIDENCE_DIR)/harmony-hap-readiness.json
+HARMONY_HOST_INTEROP_JSON ?= $(EVIDENCE_DIR)/harmony-host-interop.json
 PHASE3_HOST_LOG ?=
 PHASE3_ANDROID_LOG ?=
 PHASE3_DEVICE_INFO ?=
@@ -213,6 +214,8 @@ PHASE3_INTERNET_ALLOW_BLOCKED ?=
 	harmony-secure-pairing-gate \
 	harmony-avcodec-preflight \
 	harmony-avcodec-validate \
+	harmony-host-interop-preflight \
+	harmony-host-interop-gate \
 	harmony-current-base-gate \
 	soak-30m \
 	soak-2h \
@@ -699,6 +702,18 @@ harmony-avcodec-validate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS AVCodec evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight \
 		--validate "$(EVIDENCE_DIR)/harmony-avcodec-preflight.json"
+
+harmony-host-interop-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-dir "$(EVIDENCE_DIR)"
+
+harmony-host-interop-gate:
+	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a sanitized HarmonyOS Host interop manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-root "$(EVIDENCE_DIR)" \
+		"$(HARMONY_HOST_INTEROP_JSON)"
 
 harmony-current-base-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS current-base evidence directory" >&2; exit 2)
