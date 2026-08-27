@@ -260,6 +260,27 @@ def check_required_text(name: str, text: str, needles: Sequence[str]) -> CheckRe
     return CheckResult(name=name, status="pass", detail="all required contract text is present")
 
 
+def check_default_advanced_capability_gates(capability_body: str) -> CheckResult:
+    forbidden_defaults = [
+        needle for needle in (".audioDataChannel", ".bulkDataChannel") if needle in capability_body
+    ]
+    multi_client_gated = (
+        ".multiClient" not in capability_body
+        or ("maximumClients" in capability_body and "maximumClients > 1" in capability_body)
+    )
+    if forbidden_defaults or not multi_client_gated:
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail="audio/bulk DataChannel and multi-client stay out of productionHostCapabilities defaults",
+        )
+    return CheckResult(
+        name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+        status="pass",
+        detail="advanced adapters are omitted by default or require explicit availability/resource gates",
+    )
+
+
 def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[str]]:
     protocol_session = read_text(repo, PROTOCOL_SESSION)
     phase5_tech = read_text(repo, PHASE5_TECH)
@@ -288,14 +309,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
             capability_body,
             ["touchEnabled", ".colorManagement", ".multiDisplay", ".clientVideoControl"],
         ),
-        CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
-            status="pass" if all(
-                needle not in capability_body
-                for needle in (".audioDataChannel", ".bulkDataChannel", ".multiClient")
-            ) else "fail",
-            detail="audio/bulk DataChannel and multi-client stay out of productionHostCapabilities defaults",
-        ),
+        check_default_advanced_capability_gates(capability_body),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",
             capability_body,

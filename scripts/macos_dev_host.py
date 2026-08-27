@@ -1308,14 +1308,26 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
+    errors: list[str] = []
+    if expected_sign_identity == "-":
+        errors.append(
+            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
+        )
+    else:
+        try:
+            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
+        except SystemExit as error:
+            errors.append(str(error))
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
     )
     return metadata, source_identity, permissions, errors
 
