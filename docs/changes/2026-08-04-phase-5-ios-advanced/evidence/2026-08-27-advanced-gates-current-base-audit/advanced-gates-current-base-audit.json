@@ -1,0 +1,50 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-27-advanced-gates-current-base-audit",
+  "current_main_sha": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+  "verdict": "blocked",
+  "can_close_any_advanced_gate": false,
+  "gates": {
+    "wake_host": {
+      "offline_contract_covered": true,
+      "real_device_or_hardware_evidence_retained": false,
+      "owner_evidence": "docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked/wake-host-current-base-gate.json",
+      "open_requirements": [
+        "real sleeping Mac wake",
+        "WOL-capable router or directed broadcast delivery",
+        "NIC Wake for network access settings",
+        "packet capture or router log",
+        "post-wake Host availability",
+        "negative rejected attempts in the hardware run"
+      ]
+    },
+    "file_transfer": {
+      "offline_contract_covered": true,
+      "real_device_or_product_flow_evidence_retained": false,
+      "owner_evidence": "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked/README.md",
+      "open_requirements": [
+        "Android USB or LAN file send and receive",
+        "UI file selection and explicit receiver approval",
+        "saved destination files on both endpoints as applicable",
+        "progress and cancel behavior",
+        "source and destination SHA-256 equality",
+        "public-Internet WebRTC bulk product flow in the separate Phase 3 gate"
+      ]
+    },
+    "managed_policy": {
+      "offline_contract_covered": true,
+      "real_mdm_or_managed_configuration_evidence_retained": false,
+      "owner_evidence": "docs/changes/2026-08-21-managed-policy-deny-wins/evidence/2026-08-21-mdm-profile-blocked/README.md",
+      "open_requirements": [
+        "real Apple MDM or managed App Configuration delivery",
+        "Android managed configuration interop on device",
+        "mid-session revocation evidence under a live product session"
+      ]
+    }
+  },
+  "redaction": {
+    "public_android_serials_removed": true,
+    "forbidden_local_paths_found": false,
+    "credentials_found": false
+  }
+}
