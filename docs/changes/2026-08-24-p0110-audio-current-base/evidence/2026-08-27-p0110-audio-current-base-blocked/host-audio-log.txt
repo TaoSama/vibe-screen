@@ -1,0 +1,305 @@
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Client connected - sending display config first
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:14:48Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:14:48Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:18:00Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:18:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:18:01Z Protocol v1 selected for connection epoch 102
+2026-08-26T18:18:19Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:18:19Z Protocol v1 selected for connection epoch 103
+2026-08-26T18:31:23Z Client connected via wireless listener — running auth handshake
+2026-08-26T18:31:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:31:23Z Client connected via wireless listener — running auth handshake
+2026-08-26T18:31:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:31:25Z Client connected via wireless listener — running auth handshake
+2026-08-26T18:31:25Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:31:25Z Client connected via wireless listener — running auth handshake
+2026-08-26T18:31:25Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:42:51Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:51Z Client connected - sending display config first
+2026-08-26T18:42:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:42:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:42:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:42:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T18:42:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T18:42:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:41:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:32Z Client connected - sending display config first
+2026-08-26T19:41:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:32Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:41:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:41:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:41:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:41:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:41:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:44:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:22Z Client connected - sending display config first
+2026-08-26T19:44:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:44:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:44:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:44:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:44:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:44:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Client connected - sending display config first
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:53:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:53:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:55:56Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:55:56Z Client connected - sending display config first
+2026-08-26T19:55:56Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:55:56Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:55:56Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:55:56Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:55:56Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:55:56Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:55:56Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:55:56Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Client connected - sending display config first
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:22Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:22Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:32Z Client connected - sending display config first
+2026-08-26T19:56:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T19:56:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T19:56:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:03:49Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:49Z Client connected - sending display config first
+2026-08-26T20:03:49Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:49Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:03:49Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:49Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:03:49Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:50Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:03:50Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:50Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:03:50Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:03:50Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:05:12Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:05:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:05:12Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:05:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:05:13Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:05:13Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:05:13Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:05:13Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:10:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:32Z Client connected - sending display config first
+2026-08-26T20:10:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:32Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:10:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:10:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:10:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:10:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:10:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Client connected - sending display config first
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Client connected - sending display config first
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:17:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:17:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:10Z Client connected - sending display config first
+2026-08-26T20:18:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:11Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:11Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:11Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:11Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:52Z Client connected - sending display config first
+2026-08-26T20:18:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:53Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:53Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:53Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:53Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:18:53Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:18:53Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Client connected - sending display config first
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:19:10Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:19:10Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Client connected - sending display config first
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:34:12Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:34:12Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:07Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:57:07Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:08Z Client connected via wireless listener — running auth handshake
+2026-08-26T20:57:08Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Client connected - sending display config first
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T20:57:52Z Client connected via loopback (USB) — skipping auth
+2026-08-26T20:57:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:11:00Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:00Z Client connected - sending display config first
+2026-08-26T21:11:00Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:00Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:11:01Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:02Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:11:02Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:02Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:11:02Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:02Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:11:02Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:11:02Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:14:30Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:31Z Client connected - sending display config first
+2026-08-26T21:14:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:14:31Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:31Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:14:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:32Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:14:32Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:32Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:14:33Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:14:33Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:15:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:23Z Client connected - sending display config first
+2026-08-26T21:15:23Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:23Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:15:24Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:24Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:15:24Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:24Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:15:24Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:24Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:15:24Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:15:24Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:16:47Z Client connected via wireless listener — running auth handshake
+2026-08-26T21:16:47Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:16:47Z Client connected via wireless listener — running auth handshake
+2026-08-26T21:16:47Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:01Z Client connected via wireless listener — running auth handshake
+2026-08-26T21:17:01Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:02Z Client connected via wireless listener — running auth handshake
+2026-08-26T21:17:02Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:58Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:58Z Client connected - sending display config first
+2026-08-26T21:17:58Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:58Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:59Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:59Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:59Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:59Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:59Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:59Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:17:59Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:17:59Z Protocol v1 selected for connection epoch 1
+2026-08-26T21:46:06Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:46:06Z Protocol v1 selected for connection epoch 104
+2026-08-26T21:49:45Z Client connected via loopback (USB) — skipping auth
+2026-08-26T21:49:45Z Protocol v1 selected for connection epoch 105
+2026-08-26T22:19:51Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:19:51Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:19:51Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:19:51Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:19:52Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:19:53Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:19:53Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:19:53Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:26:51Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:26:51Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:26:51Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:26:51Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:26:52Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:26:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T22:26:52Z Client connected via wireless listener — running auth handshake
+2026-08-26T22:26:52Z Protocol v1 selected for connection epoch 1
+2026-08-26T23:07:35Z Client connected via loopback (USB) — skipping auth
+2026-08-26T23:07:35Z Protocol v1 selected for connection epoch 106

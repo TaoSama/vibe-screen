@@ -70,7 +70,17 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report = Path(temporary_directory) / "xctest-toolchain.txt"
             args = mock.Mock(report=report)
             command_outputs = {
-                ("/usr/bin/xcrun", "--find", "xctest"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"),
+                ("/usr/bin/xcode-select", "-p"): (0, "/Applications/Xcode.app/Contents/Developer"),
+                ("/usr/bin/xcrun", "--find", "swift"): (
+                    0,
+                    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift",
+                ),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (
+                    0,
+                    "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
+                ),
+                ("/usr/bin/xcodebuild", "-version"): (0, "Xcode 16.4\nBuild version 16F6"),
             }
 
             with (
@@ -87,8 +97,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 0)
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: PASS", report_text)
-            self.assertIn("xcrun --find xctest: exit_code=0", report_text)
-            self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
+            self.assertIn("xcodebuild -version: exit_code=0", report_text)
+            self.assertIn("macOS Host XCTest toolchain preflight passed", stdout.getvalue())
             self.assertEqual(stderr.getvalue(), "")
 
     def test_xctest_preflight_command_blocks_command_line_tools(self) -> None:
@@ -96,7 +106,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report = Path(temporary_directory) / "xctest-toolchain.txt"
             args = mock.Mock(report=report)
             command_outputs = {
-                ("/usr/bin/xcrun", "--find", "xctest"): (1, "xcrun: error: unable to find utility xctest"),
+                ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
+                ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (72, "unable to find utility xcodebuild"),
+                ("/usr/bin/xcodebuild", "-version"): (127, "command unavailable: /usr/bin/xcodebuild"),
             }
 
             with (
@@ -105,7 +119,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     "run_best_effort",
                     side_effect=lambda *command, timeout_seconds=None: command_outputs[command],
                 ),
-                redirect_stdout(StringIO()) as stdout,
+                redirect_stdout(StringIO()),
                 redirect_stderr(StringIO()) as stderr,
             ):
                 result = macos_dev_host.xctest_preflight_command(args)
@@ -114,7 +128,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("full Xcode is not selected", report_text)
-            self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
+            self.assertIn("xcodebuild is not available", report_text)
+            self.assertIn("Command Line Tools cannot run this XCTest suite", stderr.getvalue())
 
     def test_report_records_identity_hash_permission_state_and_system_path(self) -> None:
         metadata = self.metadata()
@@ -987,6 +1002,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "manual_probe_required")
+            self.assertIn("--probe-login-item", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
         login_probe_mock.assert_not_called()
 
@@ -1005,20 +1021,26 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 allow_source_mismatch=False,
                 probe_login_item=True,
             )
+            metadata = self.metadata()
+            source_identity = macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            )
+            permissions = macos_dev_host.PermissionStatus(
+                database_path=Path("privacy.sqlite"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                    ),
+                )
+
             with (
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_host_without_throwing",
-                    return_value=macos_dev_host.HostInspection(
-                        metadata=self.metadata(),
-                        source_identity=macos_dev_host.package_macos.SourceIdentity(
-                            commit="a" * 40,
-                            tree="b" * 40,
-                            dirty=False,
-                        ),
-                        permissions=macos_dev_host.PermissionStatus(Path(PRIVACY_DB_FILENAME), (), True),
-                        errors=[],
-                    ),
+                    return_value=macos_dev_host.HostInspection(metadata, source_identity, permissions, []),
                 ),
                 mock.patch.object(
                     macos_dev_host,
@@ -1045,7 +1067,9 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 result = macos_dev_host.readiness_command(args)
 
             self.assertEqual(result, 0)
-            self.assertEqual(json.loads(json_output.read_text(encoding="utf-8"))["login_headless_status"], "ready")
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertEqual(document["login_headless_status"], "ready")
+            self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
         login_probe_mock.assert_called_once_with()
 
     def test_readiness_command_checks_login_item_only_when_opted_in(self) -> None:
@@ -1376,16 +1400,21 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             permissions=permissions,
             errors=["cannot verify TCC permissions read-only: " + str(permissions.error)],
         )
-        document = macos_dev_host.build_readiness_document(
-            inspection,
-            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
-            macos_dev_host.EntitlementStatus(
-                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                virtual_hid=False,
-                keys=(),
-                raw_output="",
-            ),
-        )
+        with mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_probe:
+            document = macos_dev_host.build_readiness_document(
+                inspection,
+                macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+                macos_dev_host.EntitlementStatus(
+                    app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    virtual_hid=False,
+                    keys=(),
+                    raw_output="",
+                ),
+                settings=MacOSDevHostMetadataTests.login_ready_inputs()[0],
+                displays=MacOSDevHostMetadataTests.login_ready_inputs()[2],
+                logs=MacOSDevHostMetadataTests.login_ready_inputs()[3],
+            )
+        login_probe.assert_not_called()
         serialized_document = json.dumps(document, sort_keys=True)
 
         for artifact in (report, serialized_document):
