@@ -575,10 +575,15 @@ Input Reader State:
 
 class HarmonyDeviceGateTests(unittest.TestCase):
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
+        evidence = (
+            "evidence/harmony-avcodec-preflight.json"
+            if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
+            else f"evidence/{gate_id}.txt"
+        )
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": [f"evidence/{gate_id}.txt"],
+            "evidence": [evidence],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {

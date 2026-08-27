@@ -229,6 +229,13 @@ def validate_manifest(
         evidence = gate.get("evidence")
         if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
             raise ManifestError(f"gates[{index}].evidence: expected non-empty string array")
+        if evidence_root is not None and not allow_blocked and status == "pass":
+            for evidence_index, reference in enumerate(evidence):
+                _validate_evidence_reference(
+                    reference,
+                    evidence_root,
+                    f"gates[{index}].evidence[{evidence_index}]",
+                )
         if gate_id == "huks_backed_secure_pairing":
             manifest = _mapping(gate.get("secure_pairing_manifest"), f"gates[{index}].secure_pairing_manifest")
             if manifest.get("schema") != SECURE_PAIRING_MANIFEST_SCHEMA:
@@ -238,7 +245,12 @@ def validate_manifest(
             if manifest.get("status") != status:
                 raise ManifestError(f"gates[{index}].secure_pairing_manifest.status: must match gate status")
             _string(manifest.get("path"), f"gates[{index}].secure_pairing_manifest.path")
-        if gate_id in AVCODEC_GATE_IDS and status == "pass" and not any(AVCODEC_MANIFEST_NAME in item for item in evidence):
+        if (
+            gate_id in AVCODEC_GATE_IDS
+            and status == "pass"
+            and not allow_blocked
+            and not any(AVCODEC_MANIFEST_NAME in item for item in evidence)
+        ):
             raise ManifestError(f"{gate_id}: expected evidence to include {AVCODEC_MANIFEST_NAME}")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":
             message = f"{gate_id}: {status}"
@@ -246,13 +258,6 @@ def validate_manifest(
                 warnings.append(message)
             else:
                 raise ManifestError(message)
-        if evidence_root is not None and not allow_blocked and status == "pass":
-            for evidence_index, reference in enumerate(evidence):
-                _validate_evidence_reference(
-                    reference,
-                    evidence_root,
-                    f"gates[{index}].evidence[{evidence_index}]",
-                )
 
     missing = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in by_id]
     if missing:

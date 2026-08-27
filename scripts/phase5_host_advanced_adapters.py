@@ -290,11 +290,12 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
         ),
         CheckResult(
             name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
-            status="pass" if all(
-                needle not in capability_body
-                for needle in (".audioDataChannel", ".bulkDataChannel", ".multiClient")
+            status="pass" if (
+                all(needle not in capability_body for needle in (".audioDataChannel", ".bulkDataChannel"))
+                and "maximumClients: Int = 1" in capability_body
+                and "if maximumClients > 1 { capabilities.insert(.multiClient) }" in capability_body
             ) else "fail",
-            detail="audio/bulk DataChannel and multi-client stay out of productionHostCapabilities defaults",
+            detail="audio/bulk DataChannel stay out of production defaults; multi-client requires maximumClients > 1 opt-in",
         ),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",
