@@ -32,6 +32,7 @@ PASSTHROUGH_ENVIRONMENT_KEYS = frozenset(
         "SDKROOT",
         "TOOLCHAINS",
         "VIBE_SCREEN_IOS_LOOPBACK_TEST_LOG",
+        "VIBE_SCREEN_TELEMETRY_PATH",
     }
 )
 LOOPBACK_SCENARIOS = frozenset({"lifecycle", "invalid-target"})

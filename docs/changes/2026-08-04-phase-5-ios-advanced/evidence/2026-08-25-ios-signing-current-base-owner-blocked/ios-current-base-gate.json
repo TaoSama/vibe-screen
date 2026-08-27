@@ -263,6 +263,14 @@
         ],
         "expected": "ios-native-input-gate.json declares the dedicated current-base native-input owner",
         "passed": false
+      },
+      "dedicated_native_input_readiness_flags": {
+        "blocking": true,
+        "evidence": [
+          "ios-native-input-gate.json not provided"
+        ],
+        "expected": "ios-native-input-gate.json declares real-device readiness flags with no outstanding or disallowed evidence",
+        "passed": false
       }
     },
     "signing": {
@@ -443,6 +451,7 @@
     "blocked: dedicated_native_input_gate",
     "blocked: dedicated_native_input_owner",
     "blocked: dedicated_native_input_current_base",
+    "blocked: dedicated_native_input_readiness_flags",
     "blocked: dedicated_native_input_artifacts",
     "blocked: signing",
     "blocked: device_install",

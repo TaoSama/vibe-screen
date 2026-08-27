@@ -18,7 +18,9 @@ older Phase 0 clients remain valid.
 - capability/codec Hello, display list/start, H.264/HEVC media, current-epoch
   filtering, and native normalized touch events;
 - authenticated trusted-LAN admission and legacy-to-v1 upgrade into the
-  baseline MacHost main session on TCP `54321` through the secure-record
+  baseline MacHost main session through the secure-record loopback harness,
+  which asks the Host to bind port `0` and passes the selected localhost port
+  to the iOS client,
   loopback path by default, with explicit plaintext legacy fallback
   regression-tested separately;
 - replaceable TCP transport framing with independent control, video, audio,

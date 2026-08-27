@@ -419,8 +419,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise AcceptanceError(f"device gate manifest is missing: {device_manifest_path}")
         device_manifest = _read_json(device_manifest_path, "device gate manifest")
         validation = validate_device_manifest(device_manifest, evidence_root=evidence_dir)
-        if not validation.allow_blocked_valid and "fail" not in _gate_statuses(device_manifest).values():
-            raise AcceptanceError(validation.error or "device gate manifest is invalid")
         current_base_report = harmony_current_base_gate.derive_gate(
             readiness_path,
             device_manifest_path,

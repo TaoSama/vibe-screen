@@ -428,7 +428,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         and owner.get("pull_request") == NATIVE_INPUT_OWNER_PR
         and owner.get("repository") == REPOSITORY_FULL_NAME
         and current_base_matches
-        and safe_artifact_paths
+        and bool(safe_artifact_paths)
         and document.get("requires_real_ios_device") is True
         and document.get("requires_signed_app") is True
         and document.get("requires_physical_keyboard") is True
@@ -440,13 +440,16 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         and not blocking_reasons
         and not disallowed_evidence
     )
+    can_close = bool(can_close)
     if not can_close:
         if document.get("kind") != NATIVE_INPUT_KIND:
-            missing = [*missing, "ios native-input gate kind mismatch"]
+            missing = [*missing, "ios native-input gate kind is not ios_native_input_behavior"]
         if document.get("profile") != NATIVE_INPUT_PROFILE:
-            missing = [*missing, "ios native-input gate profile mismatch"]
+            missing = [*missing, "ios native-input gate profile is not ios-native-input-behavior"]
         if document.get("gate_owner") != NATIVE_INPUT_GATE_OWNER:
-            missing = [*missing, "ios native-input gate gate_owner mismatch"]
+            missing = [*missing, "ios native-input gate gate_owner is not the dedicated native-input owner"]
+        if document.get("verdict") != "pass" or document.get("can_close_ios_native_input_gate") is not True:
+            missing = [*missing, "ios native-input gate verdict does not close the native-input gate"]
         if owner.get("role") != NATIVE_INPUT_OWNER_ROLE:
             missing = [*missing, "ios native-input gate owner role is not the dedicated current-base owner"]
         if owner.get("head_ref") != NATIVE_INPUT_OWNER_BRANCH:

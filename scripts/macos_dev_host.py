@@ -116,6 +116,16 @@ class EntitlementStatus:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class XCTestToolchainStatus:
+    developer_dir: str
+    swift_path: str
+    swift_version: str
+    xcodebuild_version: str
+    xctest_path: str
+    blockers: tuple[str, ...]
+
+
 def default_tcc_database() -> Path:
     return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
 
@@ -1132,6 +1142,87 @@ def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
 
+def effective_sign_identity(expected_sign_identity: str | None) -> str:
+    return expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+
+
+def inspect_xctest_toolchain() -> XCTestToolchainStatus:
+    blockers: list[str] = []
+    developer_status, developer_output = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
+    developer_dir = redact_local_report_text(developer_output) if developer_status == 0 else "missing"
+    if developer_status != 0:
+        blockers.append(f"xcode-select -p failed: {redact_local_report_text(developer_output)}")
+    elif "CommandLineTools" in developer_output:
+        blockers.append("selected developer directory is Command Line Tools, not full Xcode")
+
+    swift_status, swift_path_output = run_best_effort("/usr/bin/xcrun", "--find", "swift", timeout_seconds=10)
+    swift_path = redact_local_report_text(swift_path_output) if swift_status == 0 else "missing"
+    if swift_status != 0:
+        blockers.append(f"xcrun --find swift failed: {redact_local_report_text(swift_path_output)}")
+
+    swift_version_status, swift_version_output = run_best_effort("swift", "--version", timeout_seconds=10)
+    swift_version = redact_local_report_text(swift_version_output) if swift_version_status == 0 else "missing"
+    if swift_version_status != 0:
+        blockers.append(f"swift --version failed: {redact_local_report_text(swift_version_output)}")
+
+    xcodebuild_status, xcodebuild_output = run_best_effort("/usr/bin/xcodebuild", "-version", timeout_seconds=10)
+    xcodebuild_version = redact_local_report_text(xcodebuild_output) if xcodebuild_status == 0 else "missing"
+    if xcodebuild_status != 0:
+        blockers.append(f"xcodebuild -version failed: {redact_local_report_text(xcodebuild_output)}")
+
+    xctest_status, xctest_output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+    xctest_path = redact_local_report_text(xctest_output) if xctest_status == 0 else "missing"
+    if xctest_status != 0 or not xctest_output.strip():
+        blockers.append(f"xcrun --find xctest failed: {redact_local_report_text(xctest_output)}")
+
+    return XCTestToolchainStatus(
+        developer_dir=developer_dir,
+        swift_path=swift_path,
+        swift_version=swift_version,
+        xcodebuild_version=xcodebuild_version,
+        xctest_path=xctest_path,
+        blockers=tuple(blockers),
+    )
+
+
+def format_xctest_toolchain_report(status: XCTestToolchainStatus) -> str:
+    result = "PASS" if not status.blockers else "FAIL"
+    blockers = "\n".join(f"- {blocker}" for blocker in status.blockers) or "(none)"
+    return f"""macOS Host XCTest toolchain preflight
+-------------------------------------
+Selected developer directory: {status.developer_dir}
+Swift path: {status.swift_path}
+Swift version: {status.swift_version}
+xcodebuild version: {status.xcodebuild_version}
+XCTest path: {status.xctest_path}
+
+Preflight result
+----------------
+Status: {result}
+Blocking issues:
+{blockers}
+
+Readiness boundary
+------------------
+Full Xcode with XCTest is required for baseline/MacHost XCTest validation.
+Command Line Tools or missing XCTest keeps the XCTest evidence gate blocked.
+This preflight does not build, archive, sign, install, start the Host, inspect
+TCC, modify Keychain, or claim any iOS device pass.
+"""
+
+
+def xctest_preflight_command(args: argparse.Namespace) -> int:
+    status = inspect_xctest_toolchain()
+    report = format_xctest_toolchain_report(status)
+    write_report(args.report, report)
+    print(f"Wrote {args.report}")
+    if status.blockers:
+        print(report, file=sys.stderr)
+        return 2
+    print("macOS Host XCTest toolchain preflight passed")
+    return 0
+
+
 def inspect_host_without_throwing(
     install_path: Path,
     tcc_db: Path,
@@ -1147,14 +1238,15 @@ def inspect_host_without_throwing(
     except SystemExit as error:
         source_identity = None
         errors.append(str(error))
-    if expected_sign_identity == "-":
+    configured_sign_identity = effective_sign_identity(expected_sign_identity)
+    if configured_sign_identity == "-":
         errors.append(
             "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
         )
     else:
         try:
             resolved_identity = package_macos.resolve_sign_identity(
-                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                configured_sign_identity
             )
         except SystemExit as error:
             errors.append(str(error))
@@ -1179,7 +1271,7 @@ def inspect_host_without_throwing(
             metadata,
             permissions,
             install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
+            expected_sign_identity=configured_sign_identity,
             source_identity=source_identity,
             allow_source_mismatch=allow_source_mismatch,
         )
@@ -1419,14 +1511,15 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     errors: list[str] = []
     if validate_configured_identity:
-        if expected_sign_identity == "-":
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
+        if configured_sign_identity == "-":
             errors.append(
                 "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
             )
         else:
             try:
                 resolved_identity = package_macos.resolve_sign_identity(
-                    expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                    configured_sign_identity
                 )
             except SystemExit as error:
                 errors.append(str(error))
@@ -1436,17 +1529,21 @@ def metadata_and_permissions(
                         "configured signing identity did not resolve exactly: "
                         f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
                     )
+    else:
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
-    ))
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=configured_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
+    )
     return metadata, source_identity, permissions, errors
 
 

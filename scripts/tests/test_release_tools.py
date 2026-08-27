@@ -581,6 +581,8 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             "status": status,
             "evidence": [evidence],
         }
+        if gate_id in {"h264_hardware_decode", "hevc_hardware_decode"}:
+            gate["evidence"] = ["evidence/harmony-avcodec-preflight.json"]
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
                 "schema": harmony_device_gate.SECURE_PAIRING_MANIFEST_SCHEMA,

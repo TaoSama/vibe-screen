@@ -180,6 +180,7 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
                 "GITHUB_TOKEN": "redacted",
                 "ACCESS_TOKEN": "redacted",
                 "PRIVATE_KEY": "redacted",
+                "VIBE_SCREEN_TELEMETRY_PATH": "/tmp/vibescreen-telemetry.jsonl",
             },
             clear=True,
         ):
@@ -198,6 +199,10 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
         self.assertEqual(
             environment[TEST_LOG_ENVIRONMENT],
             "/tmp/vibescreen-loopback.jsonl",
+        )
+        self.assertEqual(
+            environment["VIBE_SCREEN_TELEMETRY_PATH"],
+            "/tmp/vibescreen-telemetry.jsonl",
         )
         self.assertNotIn("GITHUB_TOKEN", environment)
         self.assertNotIn("ACCESS_TOKEN", environment)

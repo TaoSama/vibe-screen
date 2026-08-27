@@ -250,6 +250,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-device-environment-summary \
 	phase2-device-environment-gate \
 	phase3-android-current-base-interop-gate \
+	phase3-internet-soak-manifest \
+	phase3-internet-soak-gate \
 	host-display-rotation-current-base-manifest \
 	host-display-rotation-current-base-gate \
 	wake-host-current-base-gate
@@ -733,6 +735,16 @@ harmony-current-base-gate:
 		--device-gates "$(HARMONY_DEVICE_GATES_JSON)" \
 		--evidence-root "$(EVIDENCE_DIR)" \
 		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
+
+harmony-host-interop-preflight:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-dir "$(EVIDENCE_DIR)"
+
+harmony-host-interop-gate:
+	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a sanitized HarmonyOS Host interop manifest" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
+		--evidence-root "$(EVIDENCE_DIR)" \
+		"$(HARMONY_HOST_INTEROP_JSON)"
 
 ios-device-acceptance-gate:
 	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)

@@ -57,6 +57,10 @@ xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
 
 The blocked environment record is retained at
 `docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked/`.
+The Host-side advanced adapter readiness gate,
+`phase5-host-advanced-adapters-gate`, is a source/readiness owner only: it
+does not close host-side multi-client/display, audio, clipboard, file-transfer,
+wake, managed-policy, HDR/EDR, or iOS native-input device gates.
 
 ```bash
 swift package --package-path apps/ios resolve
@@ -157,8 +161,9 @@ apps/ios/Scripts/run_machost_loopback.py
 ```
 
 The harness starts the production `Vibe Screen` executable with its bounded iOS
-loopback adapter on `127.0.0.1:54321` using secure records by default, then
-starts the iOS Core transport/session executable as a separate process. The
+loopback adapter on `127.0.0.1` by asking the Host to bind port `0`, then
+passes the selected localhost port to the iOS Core transport/session executable
+started as a separate process. The secure-record path is used by default. The
 client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs
 a normal lifecycle and a separate invalid-target case. The covered boundary is:

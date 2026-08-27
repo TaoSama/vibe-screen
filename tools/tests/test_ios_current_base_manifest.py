@@ -629,9 +629,14 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
+            "ios native-input gate verdict does not close the native-input gate",
+            manifest["native_input_gate"]["missing_requirements"],
+        )
+        self.assertIn(
             "ios native-input gate must retain sanitized iOS/Host artifacts",
             manifest["native_input_gate"]["missing_requirements"],
         )
+        self.assertIsInstance(manifest["native_input_gate"]["can_close_ios_native_input_gate"], bool)
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

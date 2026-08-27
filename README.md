@@ -39,7 +39,7 @@ platform scaffolding under active development.
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard is implemented and offline-tested, but its real device/system-pasteboard E2E gate is still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
-| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback using the secure-record path by default, with explicit plaintext legacy fallback regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
+| iOS trusted LAN | Core client interoperates with the baseline MacHost in a real two-process localhost loopback using the secure-record path by default; the loopback harness asks the Host to bind port `0` and passes the selected localhost port to the client. Explicit plaintext legacy fallback is regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
 ## Quick start
@@ -926,7 +926,9 @@ increase it.
   implemented and covered by offline/core self-tests; no iOS device evidence is
   recorded yet.
 - The trusted-LAN iOS Core client now uses the secure-record loopback path by
-  default to interoperate with the baseline MacHost on TCP `54321`:
+  default to interoperate with the baseline MacHost in a localhost loopback;
+  the harness asks the Host to bind port `0` and passes the selected port to
+  the iOS client:
   authenticated `SSWA`/`SSWR` admission establishes AES-256-GCM `VSLS`/`VSLR`
   records, and the `0D` upgrade runs inside that record stream into the
   Protocol v1 main session. Hello/capability negotiation, display list/start,

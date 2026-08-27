@@ -312,6 +312,26 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: dedicated_native_input_gate", report["reasons"])
         self.assertIn("blocked: dedicated_native_input_owner", report["reasons"])
 
+
+    def test_native_input_readiness_flags_are_reported_separately_from_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            native_gate = manifest["native_input_gate"]
+            assert isinstance(native_gate, dict)
+            native_gate["requires_physical_keyboard"] = False
+            native_gate["missing_requirements"] = ["physical keyboard evidence missing"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertIn("blocked: dedicated_native_input_readiness_flags", report["reasons"])
+        self.assertNotIn("blocked: dedicated_native_input_artifacts", report["reasons"])
+        native_checks = report["checks"]["native_input"]
+        self.assertFalse(native_checks["dedicated_native_input_readiness_flags"]["passed"])
+        self.assertTrue(native_checks["dedicated_native_input_artifacts"]["passed"])
+
     def test_wrong_gate_owner_cannot_pass_even_with_evidence(self):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)

@@ -663,19 +663,8 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         and native_gate.get("simulator_is_not_ios_input_evidence") is True
         and native_gate.get("offline_tests_are_readiness_only") is True
     )
-    gate_passed = (
-        native_gate.get("kind") == NATIVE_INPUT_KIND
-        and native_gate.get("profile") == NATIVE_INPUT_PROFILE
-        and native_gate.get("gate_owner") == NATIVE_INPUT_GATE_OWNER
-        and native_gate.get("verdict") == "pass"
-        and native_gate.get("can_close_ios_native_input_gate") is True
-        and owner.get("role") == NATIVE_INPUT_OWNER_ROLE
-        and owner.get("head_ref") == NATIVE_INPUT_OWNER_BRANCH
-        and owner.get("pull_request") == NATIVE_INPUT_OWNER_PR
-        and owner.get("repository") == REPOSITORY_FULL_NAME
-        and current_base_matches
-        and readiness_flags
-        and bool(artifact_paths)
+    readiness_clear = (
+        readiness_flags
         and not native_gate.get("missing_requirements")
         and not native_gate.get("blocking_reasons")
         and not native_gate.get("disallowed_evidence")
@@ -710,8 +699,16 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             else _string_list(native_gate.get("missing_requirements")),
             blocking=True,
         ),
+        "dedicated_native_input_readiness_flags": _check(
+            readiness_clear,
+            "ios-native-input-gate.json declares real-device readiness flags with no outstanding or disallowed evidence",
+            evidence=_string_list(native_gate.get("missing_requirements"))
+            or _string_list(native_gate.get("blocking_reasons"))
+            or _string_list(native_gate.get("disallowed_evidence")),
+            blocking=True,
+        ),
         "dedicated_native_input_artifacts": _check(
-            gate_passed and bool(artifact_paths),
+            bool(artifact_paths),
             "ios-native-input-gate.json retains sanitized iOS/Host native-input artifacts",
             evidence=artifact_paths,
             blocking=True,
