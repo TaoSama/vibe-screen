@@ -779,3 +779,27 @@ and cannot close the native mouse pointer move/click gate.
 Evidence:
 
 - [`evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/`](evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/)
+
+## P0110 native pointer HID follow-up blocker
+
+On 2026-08-27, the native pointer HID owner refreshed the PR branch after
+`origin/main` remained at `3b2ba11e832a3618eaedfc67f92414b161423a00` and the
+branch still contained that commit as its merge base. The connected Android
+device was sampled again with a serial-scoped ADB command and recorded as nubia
+P0110 / pacific / Android 16 / SDK 36, with the serial redacted from retained
+evidence.
+
+No external Android input device with a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`,
+or `TRACKBALL` source was attached. The collector therefore stopped before any
+observation window, wrote `status=blocked`, and the independent summary reports
+`verdict=blocked` with `can_close_native_pointer_hid_gate=false`. A strict
+`make native-pointer-hid-gate` rerun rejected this blocked bundle as expected.
+
+This follow-up does not close the README native mouse pointer move/click gate.
+It also does not use synthetic ADB pointer motion as hover/native HID evidence;
+the gate still requires forwarded move, press, and release logs whose positive
+`deviceId` values match an external mouse-like Android input device.
+
+Evidence:
+
+- [`evidence/2026-08-27-p0110-native-pointer-hid-followup-blocked/`](evidence/2026-08-27-p0110-native-pointer-hid-followup-blocked/)

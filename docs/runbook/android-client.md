@@ -374,8 +374,9 @@ that preflight. A pass requires Android
 `BUTTON_RELEASE` from `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`,
 and each line must include a positive `deviceId` that matches an external
 mouse-like device from the retained `dumpsys input` snapshot. Virtual or
-synthetic input events such as `deviceId=-1` are intentionally ignored for gate
-closure. A pass also requires Host `Pointer injected` lines for `changed`,
+synthetic input events such as `deviceId=-1`, or mouse-like devices whose names
+identify virtual, uinput, or synthetic sources, are intentionally ignored for
+gate closure. A pass also requires Host `Pointer injected` lines for `changed`,
 `began`, and `ended`. Missing hardware or missing Host stable signing/TCC
 evidence is `blocked`; missing Android logs, Host logs, mismatched forwarding
 `deviceId`, or the visible-result note is `failed`, not a pass. A blocked bundle

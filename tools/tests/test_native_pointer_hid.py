@@ -98,6 +98,20 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["observations"]["physical_mouse_attached"])
         self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
 
+    def test_virtual_named_mouse_cannot_close_gate_even_when_external(self) -> None:
+        record = self.complete_record()
+        record["external_mouse_devices"] = [
+            {"device_id": 11, "name": "uinput synthetic mouse", "sources": "MOUSE", "is_external": "true"},
+            {"device_id": 12, "name": "Virtual Bluetooth Trackpad", "sources": "TOUCHPAD", "is_external": "true"},
+        ]
+        record["observed_android_pointer_device_ids_by_event"] = {"move": [11], "press": [11], "release": [11]}
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["observations"]["physical_mouse_attached"])
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+
     def test_p0110_identity_cannot_be_relabeled_as_xiaomi(self) -> None:
         record = self.complete_record()
         record["device"] = {

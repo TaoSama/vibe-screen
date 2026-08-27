@@ -49,6 +49,18 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             ],
         )
 
+    def test_external_mouse_devices_rejects_virtual_or_uinput_names(self) -> None:
+        devices = [
+            acceptance.InputDeviceSummary(21, "uinput synthetic mouse", "MOUSE", "true"),
+            acceptance.InputDeviceSummary(22, "Virtual Bluetooth Trackpad", "TOUCHPAD", "true"),
+            acceptance.InputDeviceSummary(23, "USB Optical Mouse", "MOUSE", "true"),
+        ]
+
+        self.assertEqual(
+            acceptance.external_mouse_devices(devices),
+            [acceptance.InputDeviceSummary(23, "USB Optical Mouse", "MOUSE", "true")],
+        )
+
     def test_observed_events_accept_swift_enum_and_plain_phase_spelling(self) -> None:
         log = """
         Pointer injected: phase=INPUT_PHASE_changed buttons=0

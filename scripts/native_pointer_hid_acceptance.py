@@ -50,6 +50,7 @@ POINTER_PATTERNS = {
 }
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_PATTERN = r"\S*(?:MOUSE|MOUSE_RELATIVE|TOUCHPAD|TRACKBALL)\S*"
+VIRTUAL_INPUT_NAME_TOKENS = ("virtual", "uinput", "synthetic")
 ANDROID_POINTER_PATTERNS = {
     "move": re.compile(
         rf"native pointer forwarded action=MOVE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
@@ -61,6 +62,11 @@ ANDROID_POINTER_PATTERNS = {
         rf"native pointer forwarded action=BUTTON_RELEASE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
     ),
 }
+
+
+def is_virtual_input_name(name: str) -> bool:
+    normalized = name.strip().lower()
+    return any(token in normalized for token in VIRTUAL_INPUT_NAME_TOKENS)
 
 
 class AcceptanceError(Exception):
@@ -339,7 +345,7 @@ def external_mouse_devices(devices: Sequence[InputDeviceSummary]) -> list[InputD
     for device in devices:
         sources = device.sources.upper()
         external = device.is_external.lower() == "true"
-        if external and device.device_id > 0 and (
+        if external and device.device_id > 0 and not is_virtual_input_name(device.name) and (
             "MOUSE" in sources
             or "MOUSE_RELATIVE" in sources
             or "TOUCHPAD" in sources
