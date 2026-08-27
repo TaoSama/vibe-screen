@@ -60,6 +60,7 @@ RECONNECT_PASS_MARKERS = (
 )
 LOCK_MARKERS = (
     "/tmp/vibe-screen-device-android.lock",
+    "/tmp/vibe-screen-android-",
     "android_device_lock_acquired",
 )
 TELEMETRY_ENCRYPTED_RE = re.compile(r'"?trusted_lan_encrypted"?\s*(?:=|:|to)\s*true', re.IGNORECASE)
@@ -146,7 +147,10 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
             "README.md must include a Device label for Nubia P0110/pacific/Android 16/SDK 36"
         )
     if not _contains_any(lowered, LOCK_MARKERS):
-        errors.append("evidence must record /tmp/vibe-screen-device-android.lock acquisition or equivalent lock observation")
+        errors.append(
+            "evidence must record /tmp/vibe-screen-device-android.lock, "
+            "/tmp/vibe-screen-android-<serial>.lock, or equivalent lock observation"
+        )
 
     if any(FORBIDDEN_DEVICE_CLAIM_RE.search(label) for label in device_labels):
         errors.append("README.md must not label Nubia P0110/pacific evidence as Xiaomi 13/fuxi")

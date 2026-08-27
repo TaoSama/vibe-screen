@@ -1,0 +1,3 @@
+lock_acquired=true
+lock_path=/tmp/vibe-screen-android-<device-serial>.lock
+pid=62204

@@ -1,0 +1,11 @@
+$ make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28
+mkdir -p /tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.trusted_lan_preflight \
+		--serial <device-serial> \
+		--repo . \
+		--host-port 54321 \
+		 \
+		 \
+		--output /tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28/trusted-lan-preflight.json
+make: *** [evidence-trusted-lan-preflight] Error 2

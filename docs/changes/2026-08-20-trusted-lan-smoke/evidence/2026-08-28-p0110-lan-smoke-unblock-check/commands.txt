@@ -1,0 +1,38 @@
+# Commands
+
+```sh
+pgrep -x sfltool || true
+git switch -c codex/lan-smoke-unblock-check
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+python3 - <<'PY'
+# Acquired /tmp/vibe-screen-android-<device-serial>.lock before running the
+# trusted-LAN preflight. The collector invoked only explicit adb -s
+# <device-serial> commands through its ADB client.
+PY
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-tool-verification
+make baseline-macos-host-readiness \
+  EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28
+jq '{result, blockers, claims, repository, android_device: {identity: .android_device.identity}}' \
+  trusted-lan-preflight.json
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest \
+  tools.tests.test_trusted_lan_preflight \
+  tools.tests.test_trusted_lan_smoke -v
+make trusted-lan-smoke-evidence-check \
+  EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-28-p0110-lan-smoke-unblock-check
+```
+
+The trusted-LAN preflight and Host readiness commands exited `2`, which is the
+expected blocked-readiness result for these collectors. The tool-verification
+rerun used the updated collector and confirmed the tool records `pgrep -x
+sfltool`, acquires `/tmp/vibe-screen-android-<device-serial>.lock`, releases it,
+and redacts the device serial in `trusted-lan-preflight.json`. No `sfltool
+dumpbtm` or sfltool opt-in command was run.

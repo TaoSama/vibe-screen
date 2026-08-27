@@ -32,6 +32,24 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
         self.assertFalse(report["can_close_trusted_lan_reconnect_gate"])
         self.assertEqual(report["errors"], [])
 
+    def test_blocked_preflight_accepts_serial_specific_device_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "README.md").write_text(
+                "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
+                "The /tmp/vibe-screen-android-<device-serial>.lock was acquired.\n"
+                "wlan0 reported NO-CARRIER state DOWN and Wifi is not connected.\n"
+                "Host preflight failed because the Vibe Screen Dev codesign identity is missing.\n"
+                "No real trusted-LAN stream was observed.\n",
+                encoding="utf-8",
+            )
+
+            report = evaluate_evidence_dir(root)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertEqual(report["errors"], [])
+
     def test_pass_requires_non_legacy_encrypted_lan_markers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -128,7 +146,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
-            "evidence must record /tmp/vibe-screen-device-android.lock acquisition or equivalent lock observation",
+            "evidence must record /tmp/vibe-screen-device-android.lock, /tmp/vibe-screen-android-<serial>.lock, or equivalent lock observation",
             report["errors"],
         )
 

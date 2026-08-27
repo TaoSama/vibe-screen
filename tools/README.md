@@ -581,17 +581,20 @@ Before a real-device trusted-LAN smoke or reconnect run, collect the read-only
 preflight result:
 
 ```sh
-make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/trusted-lan-preflight
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=.build/evidence/trusted-lan-preflight
 ```
 
-The tool checks the explicit Nubia P0110/pacific/Android 16 identity, Android
-Wi-Fi association, wlan0 IPv4, route to a Mac LAN IPv4 candidate, and the stable
-Host signing/TCC preflight. It exits 0 only when the environment is ready to
-start the real LAN smoke. It exits 2 for a blocked preflight and still writes
-trusted-lan-preflight.json; keep that JSON as blocked evidence and stop before
-Host launch, QR/token exchange, stream, reconnect, or latency capture. The
-preflight intentionally does not start the Host, run instrumentation, modify
-TCC, alter Keychain, change saved Wi-Fi credentials, or write pairing secrets.
+The tool first records `pgrep -x sfltool` and acquires the serial-specific
+Android coordination lock `/tmp/vibe-screen-android-<serial>.lock` before any
+ADB/device command. It then checks the explicit Nubia P0110/pacific/Android 16
+identity, Android Wi-Fi association, wlan0 IPv4, route to a Mac LAN IPv4
+candidate, and the stable Host signing/TCC preflight. It exits 0 only when the
+environment is ready to start the real LAN smoke. It exits 2 for a blocked
+preflight and still writes trusted-lan-preflight.json; keep that JSON as blocked
+evidence and stop before Host launch, QR/token exchange, stream, reconnect, or
+latency capture. The preflight intentionally does not start the Host, run
+instrumentation, modify TCC, alter Keychain, change saved Wi-Fi credentials, or
+write pairing secrets.
 
 For the Phase 2 tablet productization eight-hour soak, derive the exact-window
 report and then evaluate the tablet gate:
@@ -651,7 +654,7 @@ Blocked runs write readiness evidence and only the artifacts collected before
 the blocker:
 
 ```sh
-make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+make phase2-tablet-soak-preflight EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=.build/evidence/phase2-preflight \
   PHASE2_DEVICE_CLASS=android_substitute \
   PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
@@ -764,7 +767,7 @@ the exact Android serial before attempting physical input:
 
 ```sh
 make hardware-keyboard-readiness \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=.build/evidence/hardware-keyboard-readiness
 ```
 
@@ -997,7 +1000,7 @@ or pass exact blockers directly:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
-  --target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
+  --target-device "Nubia P0110 / pacific / Android 16 / <device-serial>" \
   --blocker "Vibe Screen Dev signing identity is unavailable" \
   --blocker "Host is not listening on 127.0.0.1:54321" \
   --output reconnect-timing-summary.json
