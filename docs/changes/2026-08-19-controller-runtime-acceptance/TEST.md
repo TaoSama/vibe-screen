@@ -114,3 +114,18 @@ availability. The summary is intentionally `blocked` with
 
 - [2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-summary.json](evidence/2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-summary.json)
 - [2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-readiness.json](evidence/2026-08-27-p0110-controller-runtime-current-base-blocked-3b2ba11/controller-runtime-readiness.json)
+
+## 2026-08-27 PR-head refresh
+
+After merging `origin/main` commit `32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3`
+into `codex/p0110-peripheral-runtime-gates`, PR-head commit
+`7e06483becdc1b63f0de74dfed56342eed2d0aba` was checked again. Android
+commands used `adb -s <device-serial>` and the connected device was recorded as
+Nubia P0110 / pacific / Android 16 / SDK 36. No physical `SOURCE_GAMEPAD` or
+`SOURCE_JOYSTICK` controller was visible. Host readiness remained blocked by the
+missing approved virtual HID entitlement and lack of identity-signed runtime
+availability evidence. The summary is intentionally `blocked` with
+`can_close_runtime_gate=false`; it is not controller runtime acceptance.
+
+- [2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483/controller-runtime-summary.json](evidence/2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483/controller-runtime-summary.json)
+- [2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483/controller-runtime-readiness.json](evidence/2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483/controller-runtime-readiness.json)

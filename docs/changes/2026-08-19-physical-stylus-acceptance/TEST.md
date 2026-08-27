@@ -24,6 +24,27 @@ script could start.
 
 Evidence:
 
+- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-summary.json)
+- [2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/stylus-evidence.json)
+
+## 2026-08-27 P0110 PR-head refresh
+
+After merging `origin/main` commit `32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3`
+into `codex/p0110-peripheral-runtime-gates`, PR-head commit
+`7e06483becdc1b63f0de74dfed56342eed2d0aba` was checked again. Android
+commands used `adb -s <device-serial>` and the connected device was recorded as
+nubia P0110 / pacific / Android 16 / SDK 36. The input snapshot still exposes a
+pass-eligible `goodix_stylus_input` candidate with pressure, orientation, tilt,
+X, and Y axes. No physical stylus drawing observation was performed, no
+same-session Android `Stylus forwarded:` samples appeared, no Host
+`Stylus injected:` excerpt was captured, and no visible macOS drawing-app output
+was recorded. The README physical-stylus drawing-app gate remains open.
+
+Evidence:
+
+- [2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-summary.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-summary.json)
+- [2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-evidence.json](evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483/stylus-evidence.json)
+
 - `evidence/2026-08-27-nubia-p0110-pacific-stylus-current-base-blocked-3b2ba11/`:
   refreshed current-base fail-closed evidence; status is
   `blocked_physical_stylus_not_observed` with one pass-eligible capability
