@@ -403,10 +403,10 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("missing identity", report_text)
-            self.assertIn("Identity: Missing Dev", report_text)
+            self.assertIn("Configured identity: Missing Dev", report_text)
         resolve_mock.assert_called_once_with("Missing Dev")
-        metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
-        tcc_mock.assert_called_once()
+        metadata_mock.assert_not_called()
+        tcc_mock.assert_not_called()
 
     def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
         with mock.patch.object(
@@ -764,6 +764,37 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertFalse(document["can_start_headless_login_gate"])
         self.assertIn("Launch at Login is not verified enabled: unverified", "\n".join(document["blockers"]))
 
+    def test_read_display_readiness_counts_system_profiler_online_displays_as_active(self) -> None:
+        profiler_displays = (
+            {
+                "id": "1",
+                "name": "Color LCD",
+                "main": "1",
+                "logical": "1512 x 982 @ 120.00Hz",
+                "physical": "3024 x 1964",
+                "source": "system_profiler",
+            },
+        )
+
+        with (
+            mock.patch.object(
+                macos_dev_host,
+                "run_best_effort",
+                return_value=(0, ""),
+            ),
+            mock.patch.object(
+                macos_dev_host,
+                "read_system_profiler_displays",
+                return_value=list(profiler_displays),
+            ),
+        ):
+            readiness = macos_dev_host.read_display_readiness()
+
+        self.assertTrue(readiness.readable)
+        self.assertEqual(readiness.display_count, 1)
+        self.assertEqual(readiness.active_display_count, 1)
+        self.assertEqual(readiness.displays, profiler_displays)
+
     def test_readiness_document_blocks_all_start_flags_when_signing_or_tcc_is_missing(self) -> None:
         inspection = macos_dev_host.HostInspection(
             metadata=None,
@@ -1033,6 +1064,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertIn("not probed by default", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
             login_probe.assert_not_called()
             run_best_effort_mock.assert_not_called()
@@ -1118,6 +1150,71 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             login_mock.assert_called_once_with()
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
+
+    def test_readiness_command_probes_login_items_only_when_opted_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report = root / "host-signing-and-permissions.txt"
+            json_output = root / "host-readiness.json"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Missing Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                json_output=json_output,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+                port=54321,
+                include_login_item_diagnostic=True,
+            )
+
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=None,
+                        source_identity=macos_dev_host.package_macos.SourceIdentity(
+                            commit="c" * 40,
+                            tree="d" * 40,
+                            dirty=False,
+                        ),
+                        permissions=macos_dev_host.missing_permission_status("Host bundle signing was not inspected"),
+                        errors=["missing identity"],
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(
+                        port=54321,
+                        observed=False,
+                        output="",
+                        error="listener not observed",
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                        virtual_hid=False,
+                        keys=(),
+                        raw_output="",
+                        error="bundle missing",
+                    ),
+                ),
+                mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
+                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]) as login_mock,
+                mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
+                mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            self.assertEqual(result, 2)
+            login_mock.assert_called_once_with()
 
     def test_readiness_command_checks_login_item_only_when_opted_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
