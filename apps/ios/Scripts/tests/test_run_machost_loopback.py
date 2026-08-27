@@ -177,9 +177,9 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
             {
                 "PATH": "/usr/bin",
                 TEST_LOG_ENVIRONMENT: "/tmp/vibescreen-loopback.jsonl",
-                "GITHUB_TOKEN": "redacted",
-                "ACCESS_TOKEN": "redacted",
-                "PRIVATE_KEY": "redacted",
+                "UNLISTED_CI_SECRET": "redacted",
+                "UNLISTED_AUTH_VALUE": "redacted",
+                "UNLISTED_SIGNING_MATERIAL": "redacted",
                 "VIBE_SCREEN_TELEMETRY_PATH": "/tmp/vibescreen-telemetry.jsonl",
             },
             clear=True,
@@ -204,9 +204,9 @@ class MacHostLoopbackRunnerTests(unittest.TestCase):
             environment["VIBE_SCREEN_TELEMETRY_PATH"],
             "/tmp/vibescreen-telemetry.jsonl",
         )
-        self.assertNotIn("GITHUB_TOKEN", environment)
-        self.assertNotIn("ACCESS_TOKEN", environment)
-        self.assertNotIn("PRIVATE_KEY", environment)
+        self.assertNotIn("UNLISTED_CI_SECRET", environment)
+        self.assertNotIn("UNLISTED_AUTH_VALUE", environment)
+        self.assertNotIn("UNLISTED_SIGNING_MATERIAL", environment)
 
     def test_timeout_cleanup_releases_listener(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

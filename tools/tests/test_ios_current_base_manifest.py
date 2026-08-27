@@ -382,8 +382,8 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertTrue(native_gate["provided"])
         self.assertEqual(native_gate["verdict"], "blocked")
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
-        self.assertIn("ios native-input gate kind mismatch", native_gate["missing_requirements"])
-        self.assertIn("ios native-input gate profile mismatch", native_gate["missing_requirements"])
+        self.assertIn("ios native-input gate kind is not ios_native_input_behavior", native_gate["missing_requirements"])
+        self.assertIn("ios native-input gate profile is not ios-native-input-behavior", native_gate["missing_requirements"])
         self.assertIn("ios native-input gate requires_signed_app must be true", native_gate["missing_requirements"])
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
