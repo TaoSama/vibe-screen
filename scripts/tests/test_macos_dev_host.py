@@ -29,7 +29,7 @@ class MacOSDevHostMetadataTests(unittest.TestCase):
             exit_code, output = macos_dev_host.run_best_effort("/missing/defaults")
 
         self.assertEqual(exit_code, 127)
-        self.assertIn("command not found", output)
+        self.assertIn("command unavailable", output)
         self.assertIn("/missing/defaults", output)
 
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:

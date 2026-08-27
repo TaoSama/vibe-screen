@@ -1591,6 +1591,7 @@ class PrepareReleaseTests(unittest.TestCase):
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
         self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
         self.assertIn("swift build -c release --show-bin-path", makefile)
