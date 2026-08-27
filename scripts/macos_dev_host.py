@@ -160,6 +160,14 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_DIR / "host-readiness.json",
         help="path for the structured readiness JSON report",
     )
+    readiness.add_argument(
+        "--probe-login-item",
+        action="store_true",
+        help=(
+            "explicit manual diagnostic only: run /usr/bin/sfltool dumpbtm to inspect "
+            "the Launch at Login item; default readiness and CI paths do not run it"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -419,6 +427,18 @@ def read_login_item_readiness() -> LoginItemReadiness:
             evidence=(),
         )
     return parse_login_item_state(output)
+
+
+def unprobed_login_item_readiness() -> LoginItemReadiness:
+    return LoginItemReadiness(
+        state="unverified",
+        matched=False,
+        detail=(
+            "Launch at Login readiness was not probed; run the readiness command with "
+            "--probe-login-item only during an explicit manual diagnostic."
+        ),
+        evidence=(),
+    )
 
 
 def read_display_readiness() -> HostDisplayReadiness:
@@ -1239,7 +1259,7 @@ def build_readiness_document(
     if settings is None:
         settings = read_startup_settings()
     if login_item is None:
-        login_item = read_login_item_readiness()
+        login_item = unprobed_login_item_readiness()
     if displays is None:
         displays = read_display_readiness()
     if logs is None:
@@ -1513,7 +1533,12 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    document = build_readiness_document(inspection, listener, entitlements)
+    login_item = (
+        read_login_item_readiness()
+        if getattr(args, "probe_login_item", False) is True
+        else unprobed_login_item_readiness()
+    )
+    document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
     print(f"Wrote {args.json_output}")
