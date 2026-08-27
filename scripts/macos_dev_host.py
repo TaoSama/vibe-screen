@@ -238,6 +238,8 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
+    except OSError as error:
+        return 127, f"failed to run {command[0]}: {error}"
     return completed.returncode, completed.stdout.strip()
 
 
@@ -1058,9 +1060,17 @@ def inspect_host_without_throwing(
         )
     else:
         try:
-            package_macos.resolve_sign_identity(expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY)
+            resolved_identity = package_macos.resolve_sign_identity(
+                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+            )
         except SystemExit as error:
             errors.append(str(error))
+        else:
+            if expected_sign_identity and resolved_identity != expected_sign_identity:
+                errors.append(
+                    "configured signing identity did not resolve exactly: "
+                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                )
     try:
         metadata = collect_signing_metadata(install_path)
     except SystemExit as error:
@@ -1313,17 +1323,35 @@ def metadata_and_permissions(
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
+    errors: list[str] = []
+    if expected_sign_identity == "-":
+        errors.append(
+            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
+        )
+    else:
+        try:
+            resolved_identity = package_macos.resolve_sign_identity(
+                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+            )
+        except SystemExit as error:
+            errors.append(str(error))
+        else:
+            if expected_sign_identity and resolved_identity != expected_sign_identity:
+                errors.append(
+                    "configured signing identity did not resolve exactly: "
+                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                )
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors = validate_preflight(
+    errors.extend(validate_preflight(
         metadata,
         permissions,
         install_path=install_path,
         expected_sign_identity=expected_sign_identity,
         source_identity=source_identity,
         allow_source_mismatch=allow_source_mismatch,
-    )
+    ))
     return metadata, source_identity, permissions, errors
 
 
