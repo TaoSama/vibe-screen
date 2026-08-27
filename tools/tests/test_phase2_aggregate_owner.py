@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from vibescreen_evidence.phase2_aggregate_owner import derive_report
+from vibescreen_evidence.phase2_aggregate_owner import CURRENT_BASE
 
 
 MODULE = "vibescreen_evidence.phase2_aggregate_owner"
@@ -51,6 +52,15 @@ def close_signal(field):
 
 
 class Phase2AggregateOwnerTest(unittest.TestCase):
+    def test_source_baseline_tracks_current_origin_main(self):
+        report = derive_report()
+
+        self.assertEqual(
+            report["source_baseline"],
+            "origin/main 3b2ba11e832a3618eaedfc67f92414b161423a00",
+        )
+        self.assertEqual(report["source_baseline"], CURRENT_BASE)
+
     def test_missing_child_gates_are_blocked_and_keep_readme_open(self):
         report = derive_report()
 
@@ -129,6 +139,22 @@ class Phase2AggregateOwnerTest(unittest.TestCase):
         self.assertTrue(report["can_close_readme_phase2_gates"])
         self.assertEqual(report["open_reasons"], [])
         self.assertTrue(all(gate["can_close"] for gate in report["owner_matrix"]))
+
+    def test_blocked_login_headless_input_keeps_phase2_open(self):
+        report = derive_report(login_headless={"schema_version": "vibescreen.evidence/v1", "verdict": "blocked", "can_close_login_headless_gate": False})
+
+        login_headless = next(
+            gate for gate in report["owner_matrix"] if gate["gate_id"] == "login_startup_headless"
+        )
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_readme_phase2_gates"])
+        self.assertFalse(login_headless["can_close"])
+        self.assertEqual(login_headless["status"], "blocked")
+        self.assertIn(
+            "login_startup_headless: can_close_login_headless_gate is false",
+            report["open_reasons"],
+        )
 
     def test_merge_plan_has_unique_order_and_current_child_owners(self):
         report = derive_report()

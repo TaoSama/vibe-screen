@@ -1,0 +1,102 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "macos_startup_recovery_evidence",
+  "run_id": "2026-08-27-macos-login-headless-current-base-blocked",
+  "source_commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+  "mac_host": {
+    "model": "Mac16,8",
+    "architecture": "arm64",
+    "macos_version": "26.4.1",
+    "macos_build": "25E253",
+    "host_bundle_identifier": "dev.telemachus.display",
+    "host_signing": "identity_signed",
+    "host_cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "host_binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "source_commit": "",
+    "source_tree": "",
+    "source_dirty": null,
+    "screen_recording_permission": "unverified",
+    "accessibility_permission": "unverified",
+    "signing_report": "host-signing-and-permissions.txt",
+    "permission_report": "host-signing-and-permissions.txt",
+    "host_log": "host-readiness.json"
+  },
+  "login_item": {
+    "status": "unverified",
+    "requires_approval": null,
+    "reboot_or_logout_login_performed": false,
+    "login_launch_observed": false,
+    "manual_launch_used": false,
+    "system_settings_artifact": "host-readiness.json",
+    "launch_log": "host-readiness.json"
+  },
+  "automatic_startup": {
+    "auto_start_enabled": true,
+    "startup_mode": "usb",
+    "onboarding_completed": true,
+    "first_server_start_observed": false,
+    "client_render_observed": false,
+    "startup_log": "host-readiness.json",
+    "client_render_artifact": "host-readiness.json"
+  },
+  "display": {
+    "topology": "physical",
+    "capturable_display_observed": false,
+    "first_frame_observed": false,
+    "display_uuid": "37D8832A-2D66-02CA-B9F7-8F30A301B230",
+    "claims_headless_from_attached_monitor": false,
+    "dimensions": {
+      "logical_width": 1512,
+      "logical_height": 982,
+      "physical_width": 3024,
+      "physical_height": 1964
+    },
+    "display_report": "host-readiness.json",
+    "first_frame_artifact": "host-readiness.json"
+  },
+  "unattended_recovery": {
+    "trigger": "not_attempted_missing_login_item_tcc_and_headless_mac_mini_prerequisites",
+    "observed": false,
+    "retry_delays_seconds": [],
+    "full_speed_loop_observed": false,
+    "restart_succeeded": false,
+    "bounded_exhaustion_observed": false,
+    "logs_retained": false,
+    "recovery_log": "host-readiness.json"
+  },
+  "window_recovery": {
+    "move_observed": false,
+    "disconnect_or_failure_trigger_observed": false,
+    "restored_observed": false,
+    "accessibility_error_observed": false,
+    "original_frame": {},
+    "restored_frame": {},
+    "window_log": "host-readiness.json",
+    "before_artifact": "host-readiness.json",
+    "after_artifact": "host-readiness.json"
+  },
+  "remote_access": {
+    "method": "physical_console",
+    "operator_intervention_path_verified": false,
+    "filevault_or_first_login_blocker_absent": false,
+    "requires_unavailable_local_intervention": false,
+    "access_artifact": "host-readiness.json"
+  },
+  "android_device": {
+    "manufacturer": "not_observed",
+    "model": "not_observed",
+    "codename": "not_observed",
+    "android_release": "not_observed",
+    "sdk": "not_observed",
+    "device_info": "host-readiness.json"
+  },
+  "android_reconnect": {
+    "trigger": "not_attempted_missing_login_item_tcc_and_headless_mac_mini_prerequisites",
+    "disconnect_observed": false,
+    "reconnect_attempt_observed": false,
+    "reconnect_succeeded": false,
+    "client_render_after_reconnect_observed": false,
+    "reconnect_log": "host-readiness.json",
+    "client_render_artifact": "host-readiness.json"
+  }
+}
