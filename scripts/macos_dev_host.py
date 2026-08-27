@@ -608,7 +608,7 @@ for index in 0..<Int(count) {
             len(profiler_displays),
             tuple(profiler_displays),
             error=None if exit_code == 0 else redact_local_report_text(output),
-            active_display_count=0,
+            active_display_count=len(profiler_displays),
         )
     if exit_code != 0:
         return HostDisplayReadiness(False, 0, (), redact_local_report_text(output or "display inventory command failed"))
@@ -1502,25 +1502,27 @@ def metadata_and_permissions(
     expected_sign_identity: str | None = None,
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
+    validate_configured_identity: bool = True,
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     errors: list[str] = []
-    if expected_sign_identity == "-":
-        errors.append(
-            "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
-        )
-    else:
-        try:
-            resolved_identity = package_macos.resolve_sign_identity(
-                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+    if validate_configured_identity:
+        if expected_sign_identity == "-":
+            errors.append(
+                "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
             )
-        except SystemExit as error:
-            errors.append(str(error))
         else:
-            if expected_sign_identity and resolved_identity != expected_sign_identity:
-                errors.append(
-                    "configured signing identity did not resolve exactly: "
-                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+            try:
+                resolved_identity = package_macos.resolve_sign_identity(
+                    expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
                 )
+            except SystemExit as error:
+                errors.append(str(error))
+            else:
+                if expected_sign_identity and resolved_identity != expected_sign_identity:
+                    errors.append(
+                        "configured signing identity did not resolve exactly: "
+                        f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                    )
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
@@ -1652,12 +1654,17 @@ def preflight_command(args: argparse.Namespace) -> int:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
+    try:
+        package_macos.resolve_sign_identity(args.sign_identity)
+    except SystemExit as error:
+        return write_signing_prerequisite_report(args, error)
     metadata, source_identity, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
         source_root=args.source_root,
         allow_source_mismatch=args.allow_source_mismatch,
+        validate_configured_identity=False,
     )
     report = format_report(
         metadata,
