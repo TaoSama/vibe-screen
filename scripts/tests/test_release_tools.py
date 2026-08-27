@@ -574,14 +574,36 @@ Input Reader State:
 
 
 class HarmonyDeviceGateTests(unittest.TestCase):
+    MARKER_BY_GATE = {
+        "deveco_sdk_and_api_checker": "harmony-readiness.json",
+        "signed_release_hap": "harmony-hap-readiness.json",
+        "hap_install_launch": "harmony-hap-readiness.json",
+        "hap_in_place_upgrade": "harmony-hap-readiness.json",
+        "hap_rollback_behavior": "harmony-hap-readiness.json",
+        "hap_uninstall_cleanup": "harmony-hap-readiness.json",
+        "permission_denial_retry": "permission-denial-retry.log",
+        "huks_backed_secure_pairing": "harmony-secure-pairing.json",
+        "authenticated_transport_records": "harmony-authenticated-records.json",
+        "credential_revocation_replay": "harmony-secure-pairing.json",
+        "h264_hardware_decode": "harmony-avcodec-preflight.json",
+        "hevc_hardware_decode": "harmony-avcodec-preflight.json",
+        "host_protocol_v1_interop": "harmony-host-interop-preflight.json",
+        "resume_background_foreground": "harmony-host-interop-preflight.json",
+        "resume_network_roam": "harmony-host-interop-preflight.json",
+        "resume_host_restart": "harmony-host-interop-preflight.json",
+        "resume_capable_host_interop": "harmony-host-interop-preflight.json",
+        "no_old_epoch_render": "harmony-host-interop-preflight.json",
+        "ui_device_identity_record": "ui-tree.xml",
+        "input_touch_keyboard_pointer_stylus": "input-observations.json",
+        "eight_hour_soak": "soak-summary.json",
+        "external_latency": "latency-report.json",
+    }
+
     def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
-        evidence = [f"evidence/{gate_id}.txt"]
-        if gate_id in harmony_device_gate.AVCODEC_GATE_IDS:
-            evidence.append(f"evidence/{harmony_device_gate.AVCODEC_MANIFEST_NAME}")
         gate: dict[str, object] = {
             "id": gate_id,
             "status": status,
-            "evidence": evidence,
+            "evidence": [f"evidence/{self.MARKER_BY_GATE[gate_id]}"],
         }
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
@@ -817,13 +839,15 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
 
-    def test_harmony_hap_readiness_make_target_uses_fail_closed_collector(self) -> None:
+    def test_harmony_readiness_make_target_uses_fail_closed_collector(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
-        self.assertIn("harmony-hap-readiness", makefile)
-        self.assertIn("scripts/harmony_hap_readiness.py", makefile)
+        self.assertIn("harmony-readiness:", makefile)
+        self.assertIn("scripts/harmony_readiness.py", makefile)
         self.assertIn("HARMONY_HDC_TARGET", makefile)
-        self.assertIn("HARMONY_HAP_READINESS_FLAGS", makefile)
+        self.assertIn("HARMONY_HAP", makefile)
+        self.assertIn("HARMONY_SHA256SUMS", makefile)
+        self.assertIn("HARMONY_SIGNATURE_CERTIFICATE_SHA256", makefile)
 
 
 class HarmonyHostInteropPreflightTests(unittest.TestCase):
@@ -1010,14 +1034,15 @@ class HarmonyHostInteropPreflightTests(unittest.TestCase):
         self.assertEqual(probes["ohpm"]["path"], "tool")
         self.assertNotIn("/usr/local/bin", json.dumps(summary))
 
-    def test_harmony_host_interop_make_targets_use_manifest_validator(self) -> None:
+    def test_harmony_current_base_make_target_uses_owner_gate_validator(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
-        self.assertIn("harmony-host-interop-preflight", makefile)
-        self.assertIn("harmony-host-interop-gate", makefile)
-        self.assertIn("scripts/harmony_host_interop_preflight.py", makefile)
+        self.assertIn("harmony-current-base-gate:", makefile)
+        self.assertIn("vibescreen_evidence.harmony_current_base_gate", makefile)
+        self.assertIn("--readiness", makefile)
+        self.assertIn("--device-gates", makefile)
         self.assertIn("--evidence-root", makefile)
-        self.assertIn("$(HARMONY_HOST_INTEROP_JSON)", makefile)
+        self.assertIn("$(HARMONY_DEVICE_GATES_JSON)", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):
@@ -1567,6 +1592,7 @@ class PrepareReleaseTests(unittest.TestCase):
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
         self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
         self.assertIn("swift build -c release --show-bin-path", makefile)

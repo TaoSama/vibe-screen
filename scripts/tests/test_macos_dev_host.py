@@ -24,6 +24,14 @@ PRIVACY_DB_FILENAME = "privacy.sqlite"
 
 
 class MacOSDevHostMetadataTests(unittest.TestCase):
+    def test_run_best_effort_reports_missing_executable(self) -> None:
+        with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/vibe-screen-tool")):
+            exit_code, output = macos_dev_host.run_best_effort("/missing/vibe-screen-tool")
+
+        self.assertEqual(exit_code, 127)
+        self.assertIn("command unavailable", output)
+        self.assertIn("/missing/vibe-screen-tool", output)
+
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
         fields = macos_dev_host.parse_codesign_details(
             """
