@@ -927,6 +927,30 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             "Auto-start log at <user-host-log>",
         )
 
+    def test_read_login_item_readiness_skips_system_probe_by_default(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            side_effect=AssertionError("default login-item readiness must not run sfltool"),
+        ):
+            login_item = macos_dev_host.read_login_item_readiness()
+
+        self.assertEqual(login_item.state, "unverified")
+        self.assertFalse(login_item.matched)
+        self.assertIn("not probed by default", login_item.detail)
+
+    def test_read_login_item_readiness_runs_system_probe_only_when_allowed(self) -> None:
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            return_value=(0, "bundle id dev.telemachus.display allowed = 1"),
+        ) as runner:
+            login_item = macos_dev_host.read_login_item_readiness(allow_system_probe=True)
+
+        runner.assert_called_once_with("/usr/bin/sfltool", "dumpbtm", timeout_seconds=15)
+        self.assertEqual(login_item.state, "enabled")
+        self.assertTrue(login_item.matched)
+
     def test_inspect_listener_reports_missing_listener_without_raising(self) -> None:
         with mock.patch.object(
             macos_dev_host,
@@ -1170,67 +1194,127 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 result = macos_dev_host.readiness_command(args)
 
             self.assertEqual(result, 0)
-            login_item_probe.assert_called_once_with()
+            login_item_probe.assert_called_once_with(allow_system_probe=True)
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["status"], "ready")
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
 
-    def test_readiness_command_login_item_diagnostic_is_explicit_opt_in(self) -> None:
+    def test_readiness_command_skips_login_item_probe_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            report = root / "host-signing-and-permissions.txt"
-            json_output = root / "host-readiness.json"
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                sign_identity="Missing Dev",
-                tcc_db=Path(PRIVACY_DB_FILENAME),
-                report=report,
-                json_output=json_output,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path("TCC.db"),
+                report=root / "host-signing-and-permissions.txt",
+                json_output=root / "host-readiness.json",
                 source_root=Path("."),
                 allow_source_mismatch=False,
                 port=54321,
-                include_login_item_diagnostic=True,
+                include_login_item_diagnostic=False,
+            )
+            inspection = macos_dev_host.HostInspection(
+                metadata=self.metadata(),
+                source_identity=macos_dev_host.package_macos.SourceIdentity(
+                    commit="a" * 40,
+                    tree="b" * 40,
+                    dirty=False,
+                ),
+                permissions=macos_dev_host.PermissionStatus(
+                    database_path=Path("TCC.db"),
+                    readable=True,
+                    rows=(
+                        macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                        macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                    ),
+                ),
+                errors=[],
             )
 
             with (
-                mock.patch.object(
-                    macos_dev_host.package_macos,
-                    "resolve_sign_identity",
-                    side_effect=SystemExit("missing identity"),
-                ),
-                mock.patch.object(
-                    macos_dev_host,
-                    "current_source_identity",
-                    return_value=macos_dev_host.package_macos.SourceIdentity(
-                        commit="c" * 40,
-                        tree="d" * 40,
-                        dirty=False,
-                    ),
-                ),
-                mock.patch.object(
-                    macos_dev_host,
-                    "collect_signing_metadata",
-                    side_effect=SystemExit(f"Host bundle not found: {macos_dev_host.DEFAULT_INSTALL_PATH}"),
-                ),
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing", return_value=inspection),
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_listener",
-                    return_value=macos_dev_host.ListenerStatus(
-                        port=54321,
-                        observed=False,
-                        output="",
-                        error="listener not observed",
-                    ),
+                    return_value=macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
                 ),
                 mock.patch.object(
                     macos_dev_host,
                     "inspect_entitlements",
                     return_value=macos_dev_host.EntitlementStatus(
                         app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                        virtual_hid=False,
-                        keys=(),
+                        virtual_hid=True,
+                        keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
                         raw_output="",
-                        error="bundle missing",
+                    ),
+                ),
+                mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
+                mock.patch.object(
+                    macos_dev_host,
+                    "read_login_item_readiness",
+                    side_effect=AssertionError("default readiness must not run sfltool"),
+                ),
+                mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
+                mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            self.assertEqual(result, 2)
+            document = json.loads(args.json_output.read_text(encoding="utf-8"))
+            login_item = document["login_headless"]["login_item"]
+            self.assertEqual(login_item["state"], "unverified")
+            self.assertFalse(login_item["matched"])
+            self.assertIn("not probed by default", login_item["detail"])
+
+    def test_readiness_command_runs_login_item_probe_only_when_opted_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path("TCC.db"),
+                report=root / "host-signing-and-permissions.txt",
+                json_output=root / "host-readiness.json",
+                source_root=Path("."),
+                allow_source_mismatch=False,
+                port=54321,
+                include_login_item_diagnostic=True,
+            )
+            inspection = macos_dev_host.HostInspection(
+                metadata=self.metadata(),
+                source_identity=macos_dev_host.package_macos.SourceIdentity(
+                    commit="a" * 40,
+                    tree="b" * 40,
+                    dirty=False,
+                ),
+                permissions=macos_dev_host.PermissionStatus(
+                    database_path=Path("TCC.db"),
+                    readable=True,
+                    rows=(
+                        macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                        macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                    ),
+                ),
+                errors=[],
+            )
+
+            with (
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing", return_value=inspection),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                        virtual_hid=True,
+                        keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                        raw_output="",
                     ),
                 ),
                 mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
@@ -1246,9 +1330,9 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             ):
                 result = macos_dev_host.readiness_command(args)
 
-            self.assertEqual(result, 2)
-            login_probe.assert_called_once_with()
-            document = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertEqual(result, 0)
+            login_probe.assert_called_once_with(allow_system_probe=True)
+            document = json.loads(args.json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
 
     def test_inspect_host_without_throwing_keeps_source_identity_when_bundle_inspection_fails(self) -> None:

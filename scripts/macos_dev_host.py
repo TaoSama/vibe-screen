@@ -430,7 +430,18 @@ def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> 
     )
 
 
-def read_login_item_readiness() -> LoginItemReadiness:
+def skipped_login_item_readiness() -> LoginItemReadiness:
+    return LoginItemReadiness(
+        state="unverified",
+        matched=False,
+        detail=LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
+        evidence=(),
+    )
+
+
+def read_login_item_readiness(*, allow_system_probe: bool = False) -> LoginItemReadiness:
+    if not allow_system_probe:
+        return skipped_login_item_readiness()
     exit_code, output = run_best_effort("/usr/bin/sfltool", "dumpbtm", timeout_seconds=15)
     if exit_code != 0:
         return LoginItemReadiness(
@@ -440,15 +451,6 @@ def read_login_item_readiness() -> LoginItemReadiness:
             evidence=(),
         )
     return parse_login_item_state(output)
-
-
-def skipped_login_item_readiness() -> LoginItemReadiness:
-    return LoginItemReadiness(
-        state="unverified",
-        matched=False,
-        detail=LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
-        evidence=(),
-    )
 
 
 def read_display_readiness() -> HostDisplayReadiness:
@@ -1636,11 +1638,10 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    login_item = (
-        read_login_item_readiness()
-        if getattr(args, "include_login_item_diagnostic", False)
-        else skipped_login_item_readiness()
-    )
+    if getattr(args, "include_login_item_diagnostic", False) is True:
+        login_item = read_login_item_readiness(allow_system_probe=True)
+    else:
+        login_item = skipped_login_item_readiness()
     document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
