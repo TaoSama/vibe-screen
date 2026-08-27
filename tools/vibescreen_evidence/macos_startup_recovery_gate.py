@@ -202,6 +202,21 @@ def _host_identity_gate(document: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("mac_host.host_cdhash is required")
     if _string(host.get("host_binary_sha256")) is None:
         reasons.append("mac_host.host_binary_sha256 is required")
+    host_source_commit = _string(host.get("source_commit"))
+    host_source_tree = _string(host.get("source_tree"))
+    if host_source_commit is None:
+        reasons.append("mac_host.source_commit is required")
+    if host_source_tree is None:
+        reasons.append("mac_host.source_tree is required")
+    if _bool(host.get("source_dirty")) is not False:
+        reasons.append("mac_host.source_dirty must be false")
+    evidence_source_commit = _string(document.get("source_commit"))
+    if (
+        evidence_source_commit is not None
+        and host_source_commit is not None
+        and host_source_commit != evidence_source_commit
+    ):
+        reasons.append("mac_host.source_commit must match source_commit")
     if _string(host.get("screen_recording_permission")) != "granted":
         reasons.append("mac_host.screen_recording_permission must be granted")
     if _string(host.get("accessibility_permission")) != "granted":
