@@ -1030,6 +1030,51 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.assertNotIn(str(macos_dev_host.SYSTEM_TCC_DATABASE), artifact)
             self.assertNotIn("TCC" + ".db", artifact)
 
+    def test_readiness_document_fails_closed_when_defaults_tool_is_missing(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=MacOSDevHostMetadataTests.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=macos_dev_host.USER_TCC_DATABASE_LABEL,
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+            errors=["cannot verify TCC permissions read-only"],
+        )
+
+        with mock.patch.object(
+            macos_dev_host.subprocess,
+            "run",
+            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
+        ):
+            document = macos_dev_host.build_readiness_document(
+                inspection,
+                macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+                macos_dev_host.EntitlementStatus(
+                    app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    virtual_hid=False,
+                    keys=(),
+                    raw_output="",
+                ),
+                login_item=macos_dev_host.LoginItemReadiness("unverified", False, "not checked", ()),
+                displays=macos_dev_host.HostDisplayReadiness(False, 0, (), "not checked", None),
+                logs=macos_dev_host.LogReadiness("<user-host-log>", False, "not checked", ()),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertEqual(
+            document["login_headless"]["startup_settings"]["error"],
+            "command not found: defaults",
+        )
+        serialized_document = json.dumps(document, sort_keys=True)
+        self.assertNotIn(str(Path.home()), serialized_document)
+        self.assertNotIn("/usr/bin/defaults", serialized_document)
+
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
