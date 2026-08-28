@@ -1,0 +1,12 @@
+Command:
+adb -s <android-device-serial> shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+
+Result:
+Stopping: dev.telemachus.display
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+Status: ok
+LaunchState: COLD
+Activity: dev.telemachus.display/.MainActivity
+TotalTime: 428
+WaitTime: 432
+Complete
