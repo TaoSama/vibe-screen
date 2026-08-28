@@ -212,13 +212,28 @@ def _origin_summary(origin: str, option: str) -> dict[str, Any]:
     }
 
 
-def _read_optional(path: Path | None, label: str) -> tuple[dict[str, Any] | None, str | None]:
+def _safe_path_label(root: Path, path: Path) -> str:
+    try:
+        return path.resolve(strict=False).relative_to(root.resolve(strict=False)).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _read_optional(path: Path | None, label: str, *, root: Path | None = None) -> tuple[dict[str, Any] | None, str | None]:
     if path is None:
         return None, f"missing {label}"
+    display_path = _safe_path_label(root, path) if root is not None else path.as_posix()
     try:
         return _read_json(path, label), None
     except EvidenceInputError as error:
-        return None, str(error)
+        cause = error.__cause__
+        if isinstance(cause, FileNotFoundError):
+            return None, f"{label}: missing {display_path}"
+        if isinstance(cause, PermissionError):
+            return None, f"{label}: could not read {display_path}: permission denied"
+        if isinstance(cause, OSError):
+            return None, f"{label}: could not read {display_path}: {cause.strerror or cause.__class__.__name__}"
+        return None, str(error).replace(str(path), display_path)
 
 
 def _reject_secret_material(document: Any, context: str = "$") -> list[str]:
@@ -562,14 +577,15 @@ def derive_gate(
     revocation_path: Path | None,
     soak_report_path: Path | None,
     blocked_reason: str | None = None,
+    root: Path | None = None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
-    manifest, manifest_error = _read_optional(manifest_path, "manifest")
-    remote_turn, remote_turn_error = _read_optional(remote_turn_path, "remote TURN report")
-    media, media_error = _read_optional(media_continuity_path, "media continuity report")
-    handoff, handoff_error = _read_optional(network_handoff_path, "network handoff report")
-    revocation, revocation_error = _read_optional(revocation_path, "revocation report")
-    soak, soak_error = _read_optional(soak_report_path, "soak report")
+    manifest, manifest_error = _read_optional(manifest_path, "manifest", root=root)
+    remote_turn, remote_turn_error = _read_optional(remote_turn_path, "remote TURN report", root=root)
+    media, media_error = _read_optional(media_continuity_path, "media continuity report", root=root)
+    handoff, handoff_error = _read_optional(network_handoff_path, "network handoff report", root=root)
+    revocation, revocation_error = _read_optional(revocation_path, "revocation report", root=root)
+    soak, soak_error = _read_optional(soak_report_path, "soak report", root=root)
 
     input_errors = [
         error
@@ -721,6 +737,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             revocation_path=args.revocation,
             soak_report_path=args.soak_report,
             blocked_reason=args.blocked_reason,
+            root=args.output.parent,
         )
         _write_json(args.output, document)
     except (OSError, ManifestError, Phase3InternetSoakError, EvidenceInputError) as error:
