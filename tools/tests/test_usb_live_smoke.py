@@ -156,6 +156,20 @@ class ParserTests(unittest.TestCase):
         stale_filtered = filter_logcat_by_pids(text.replace(" 29380 ", " 11111 "), [29380])
         self.assertEqual(stale_filtered, "")
 
+    def test_filter_logcat_by_pids_drops_pidless_lines_before_current_pid_context(self):
+        text = (
+            "D VD      : Output #60: decoder latency avg=5.8ms max=31.3ms "
+            "over 60 samples, input bufs avail=9, dropped=0\n"
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"event":"stream_stats","fps":59.8}\n'
+            "D VD      : Decode stats: input=120, output=120, dropped=0, availBufs=9\n"
+        )
+
+        filtered = filter_logcat_by_pids(text, [29380])
+
+        self.assertIn('"fps":59.8', filtered)
+        self.assertIn("Decode stats", filtered)
+        self.assertNotIn("Output #60", filtered)
+
 class LabelGuardTests(unittest.TestCase):
     def test_p0110_is_not_fuxi(self):
         identity = {"manufacturer": "nubia", "model": "P0110", "device": "pacific", "product": "pacific"}

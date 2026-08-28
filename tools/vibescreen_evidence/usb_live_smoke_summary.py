@@ -233,7 +233,7 @@ def filter_logcat_by_pids(text: str, pids: Sequence[int]) -> str:
         if match and match.group("pid") in pid_strings:
             saw_current_pid_line = True
             candidate_lines.append(line)
-        elif not match and _is_pidless_live_log_line(line):
+        elif saw_current_pid_line and not match and _is_pidless_live_log_line(line):
             candidate_lines.append(line)
     if not saw_current_pid_line:
         return ""
