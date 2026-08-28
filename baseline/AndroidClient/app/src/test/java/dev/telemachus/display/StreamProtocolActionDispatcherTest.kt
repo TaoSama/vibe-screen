@@ -120,12 +120,12 @@ class StreamProtocolActionDispatcherTest {
                 "clipboard-content:clipboard-data-id:false:42",
                 "managed-policy:false",
                 "file-offer:transfer:42",
-                "file-accept:transfer:false",
-                "file-progress:transfer",
-                "file-cancel:transfer",
-                "file-complete:transfer:false",
+                "file-accept:transfer:false:42",
+                "file-progress:transfer:42",
+                "file-cancel:transfer:42",
+                "file-complete:transfer:false:42",
                 "wake-request:wake:13:42",
-                "wake-result:true:",
+                "wake-result:true::42",
             ),
             sink.events,
         )
@@ -384,24 +384,39 @@ class StreamProtocolActionDispatcherTest {
             events += "file-offer:" + offer.transferId.toStringUtf8() + ":" + connectionGeneration
         }
 
-        override fun onFileAcceptReceived(out: DataOutputStream, session: ProtocolV1Session, response: FileAccept) {
-            events += "file-accept:" + response.transferId.toStringUtf8() + ":" + response.accepted
+        override fun onFileAcceptReceived(
+            out: DataOutputStream,
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            response: FileAccept,
+        ) {
+            events += "file-accept:" + response.transferId.toStringUtf8() + ":" + response.accepted + ":" + connectionGeneration
         }
 
-        override fun onFileProgressReceived(out: DataOutputStream, session: ProtocolV1Session, progress: FileTransferProgress) {
-            events += "file-progress:" + progress.transferId.toStringUtf8()
+        override fun onFileProgressReceived(
+            out: DataOutputStream,
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            progress: FileTransferProgress,
+        ) {
+            events += "file-progress:" + progress.transferId.toStringUtf8() + ":" + connectionGeneration
         }
 
-        override fun onFileCancelReceived(cancellation: FileTransferCancel) {
-            events += "file-cancel:" + cancellation.transferId.toStringUtf8()
+        override fun onFileCancelReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            cancellation: FileTransferCancel,
+        ) {
+            events += "file-cancel:" + cancellation.transferId.toStringUtf8() + ":" + connectionGeneration
         }
 
         override fun onFileCompleteReceived(
             out: DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             result: FileTransferComplete,
         ) {
-            events += "file-complete:" + result.transferId.toStringUtf8() + ":" + result.accepted
+            events += "file-complete:" + result.transferId.toStringUtf8() + ":" + result.accepted + ":" + connectionGeneration
         }
 
         override fun onWakeHostRequested(
@@ -413,8 +428,13 @@ class StreamProtocolActionDispatcherTest {
             events += "wake-request:" + request.requestId.toStringUtf8() + ":" + correlationId + ":" + connectionGeneration
         }
 
-        override fun onWakeHostCompleted(accepted: Boolean, rejectionReason: String) {
-            events += "wake-result:" + accepted + ":" + rejectionReason
+        override fun onWakeHostCompleted(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            accepted: Boolean,
+            rejectionReason: String,
+        ) {
+            events += "wake-result:" + accepted + ":" + rejectionReason + ":" + connectionGeneration
         }
 
         override fun onDisconnected(reasonCode: String, mayResume: Boolean): SessionFailure {
