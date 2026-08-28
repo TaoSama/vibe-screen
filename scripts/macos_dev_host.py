@@ -28,6 +28,7 @@ DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
+DEFAULT_XCTEST_PREFLIGHT_REPORT = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
@@ -37,16 +38,15 @@ ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
-DEFAULT_XCTEST_PREFLIGHT_OUTPUT = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
-DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
-    "Login item state was not probed by default; run readiness with "
-    "--include-login-item-diagnostic or --inspect-login-items during an attended "
-    "diagnostic session to inspect it with /usr/bin/sfltool dumpbtm."
+    "Login item not probed by default; probe not run. Run readiness with "
+    "--include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or "
+    "--probe-login-items during an attended diagnostic session to inspect it with "
+    "/usr/bin/sfltool dumpbtm."
 )
 
 @dataclass(frozen=True)
@@ -160,19 +160,19 @@ def parse_args() -> argparse.Namespace:
     add_common_options(preflight, include_sign_identity=True)
     xctest_preflight = subparsers.add_parser(
         "xctest-preflight",
-        help="fail closed unless the selected Apple toolchain can run MacHost XCTest",
+        help="fail closed unless the selected Apple developer directory can run SwiftPM XCTest",
     )
     xctest_preflight.add_argument(
         "--report",
         type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT,
         help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
     xctest_preflight.add_argument(
         "--json-output",
         type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_JSON,
-        help=f"JSON report path (default: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
+        default=None,
+        help=f"optional JSON report path; when omitted, the text report is written to --report (default JSON path: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
     )
     readiness = subparsers.add_parser(
         "readiness",
@@ -192,9 +192,11 @@ def parse_args() -> argparse.Namespace:
         help="path for the structured readiness JSON report",
     )
     readiness.add_argument(
+        "--probe-login-item",
+        "--probe-login-items",
         "--include-login-item-diagnostic",
         "--inspect-login-items",
-        "--probe-login-items",
+        dest="probe_login_item",
         action="store_true",
         help=(
             "opt in to the real macOS login-item diagnostic by calling "
@@ -1198,18 +1200,16 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
     clean_output = ascii_report_text(output or "<empty>")
     return f"{label}: exit_code={exit_code}\n{clean_output}"
 
-
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     report_path = getattr(args, "report", None)
     json_output = getattr(args, "json_output", None)
 
     if isinstance(json_output, Path):
         status = inspect_xctest_preflight()
-        errors = list(status.errors)
         document = build_xctest_preflight_document(status)
         write_json_report(json_output, document)
         print(f"Wrote {json_output}")
-        if errors:
+        if status.errors:
             return 2
         return 0
 
@@ -1265,7 +1265,14 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     )
     write_report(report_path, report)
     print(f"Wrote {report_path}")
-    if errors:
+    json_errors: tuple[str, ...] = ()
+    if isinstance(json_output, Path):
+        status = inspect_xctest_preflight()
+        json_errors = status.errors
+        document = build_xctest_preflight_document(status)
+        write_json_report(json_output, document)
+        print(f"Wrote {json_output}")
+    if errors or json_errors:
         print(report, file=sys.stderr)
         return 2
     print("macOS Host XCTest toolchain preflight passed")
@@ -1754,7 +1761,11 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    login_item = read_login_item_readiness() if getattr(args, "include_login_item_diagnostic", False) else skipped_login_item_readiness()
+    probe_login_item = bool(
+        vars(args).get("probe_login_item", False)
+        or vars(args).get("include_login_item_diagnostic", False)
+    )
+    login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
@@ -1796,12 +1807,12 @@ It only uses the configured codesign identity and reads privacy databases in rea
 
 def main() -> int:
     args = parse_args()
+    if args.command == "xctest-preflight":
+        return xctest_preflight_command(args)
     if args.command == "install":
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
-    if args.command == "xctest-preflight":
-        return xctest_preflight_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")

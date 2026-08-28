@@ -199,8 +199,8 @@
         259
       ],
       "blockers": [
-        "Android TCP transport ownership is enforced, but StreamClient still combines transport composition and local product-session behavior.",
-        "Protocol, session, media, input, UI, decoder, and renderer boundaries are not yet all enforced by current-base module contracts."
+        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 side-effect owner checks, but it still composes transport with local product-session behavior.",
+        "Broader protocol/session, full file-transfer and wake-host product ownership, UI, decoder, and renderer boundaries are not yet all enforced by current-base module contracts."
       ]
     }
   ],
