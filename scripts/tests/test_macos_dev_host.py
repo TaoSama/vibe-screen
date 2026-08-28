@@ -27,13 +27,12 @@ PRIVACY_DB_FILENAME = "privacy.sqlite"
 
 class MacOSDevHostMetadataTests(unittest.TestCase):
     def test_run_best_effort_reports_missing_executable(self) -> None:
-        with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/defaults")):
-            exit_code, output = macos_dev_host.run_best_effort("/missing/defaults")
+        with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/vibe-screen-tool")):
+            exit_code, output = macos_dev_host.run_best_effort("/missing/vibe-screen-tool")
 
         self.assertEqual(exit_code, 127)
         self.assertIn("command not found", output)
-        self.assertIn("defaults", output)
-        self.assertNotIn("/missing/defaults", output)
+        self.assertIn("vibe-screen-tool", output)
 
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
         fields = macos_dev_host.parse_codesign_details(
@@ -205,6 +204,17 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     def test_refuse_ad_hoc_identity_for_local_install(self) -> None:
         with self.assertRaisesRegex(SystemExit, "stable signing identity"):
             macos_dev_host.refuse_ad_hoc_identity("-")
+
+    def test_run_best_effort_reports_missing_command_without_raising(self) -> None:
+        with mock.patch.object(
+            subprocess,
+            "run",
+            side_effect=FileNotFoundError(2, "No such file or directory", "/usr/bin/defaults"),
+        ):
+            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
+
+        self.assertEqual(exit_code, 127)
+        self.assertEqual(output, "command not found: defaults")
 
     def test_validate_preflight_rejects_unexpected_named_identity(self) -> None:
         errors = macos_dev_host.validate_preflight(
