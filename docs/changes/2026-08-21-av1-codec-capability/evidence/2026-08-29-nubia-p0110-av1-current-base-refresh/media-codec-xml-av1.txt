@@ -1,0 +1,120 @@
+/vendor/etc/media_codecs.xml:65: | av1         | 1920    1088    480     120     3916800     3916800 |
+/vendor/etc/media_codecs.xml:87: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs.xml:274:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs.xml:290:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs.xml:307:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_google_c2_video.xml:80:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" variant="slow-cpu,!slow-cpu">
+/vendor/etc/media_codecs_kera_v0.xml:67: | av1         | 1280     720    240     120      864000     2073600 |
+/vendor/etc/media_codecs_kera_v0.xml:90: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_kera_v0.xml:291:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_kera_v0.xml:308:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_kera_v0.xml:326:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_kera_v1.xml:67: | av1         | 1280     720    240     100      864000     2073600 |
+/vendor/etc/media_codecs_kera_v1.xml:90: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_performance_kera_v0.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:124:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:130:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:221:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:110:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:116:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:207:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:115:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:190:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:75:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:85:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:134:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:151:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:238:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:69:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:76:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:125:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:131:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:222:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:124:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:130:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:221:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_sun.xml:65: | av1         | 1920    1088    480     120     3916800     3916800 |
+/vendor/etc/media_codecs_sun.xml:87: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs_sun.xml:274:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_sun.xml:290:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_sun.xml:307:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:68: | av1         | 1920    1088    480     120     3916800     7776000 |
+/vendor/etc/media_codecs_sun_vendor.xml:94: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs_sun_vendor.xml:298:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:316:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:336:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:68: | av1         | 1920    1088    240     120     1958400     2073600 |
+/vendor/etc/media_codecs_tuna_v0.xml:85: | av1      | 3840    2160    60      40      1944000     2073600 |
+/vendor/etc/media_codecs_tuna_v0.xml:279:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:295:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:312:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:67: | av1         | 1280     720    240     100      864000     2073600 |
+/vendor/etc/media_codecs_tuna_v1.xml:91: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_tuna_v1.xml:292:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:309:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:327:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs.xml:65: | av1         | 1920    1088    480     120     3916800     3916800 |
+/vendor/etc/media_codecs.xml:87: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs.xml:274:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs.xml:290:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs.xml:307:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_google_c2_video.xml:80:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" variant="slow-cpu,!slow-cpu">
+/vendor/etc/media_codecs_kera_v0.xml:67: | av1         | 1280     720    240     120      864000     2073600 |
+/vendor/etc/media_codecs_kera_v0.xml:90: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_kera_v0.xml:291:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_kera_v0.xml:308:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_kera_v0.xml:326:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_kera_v1.xml:67: | av1         | 1280     720    240     100      864000     2073600 |
+/vendor/etc/media_codecs_kera_v1.xml:90: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_performance_kera_v0.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:124:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:130:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v0.xml:221:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:110:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:116:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_kera_v1.xml:207:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:115:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun.xml:190:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:75:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:85:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:134:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:151:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_sun_vendor.xml:238:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:69:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:76:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:125:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:131:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v0.xml:222:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:68:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:75:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:124:        <MediaCodec name="c2.android.av1.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:130:        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_performance_tuna_v1.xml:221:        <MediaCodec name="c2.android.av1.encoder" type="video/av01" update="true">
+/vendor/etc/media_codecs_sun.xml:65: | av1         | 1920    1088    480     120     3916800     3916800 |
+/vendor/etc/media_codecs_sun.xml:87: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs_sun.xml:274:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_sun.xml:290:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_sun.xml:307:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:68: | av1         | 1920    1088    480     120     3916800     7776000 |
+/vendor/etc/media_codecs_sun_vendor.xml:94: | av1      | 1280    720     60      40      216000      2073600 |
+/vendor/etc/media_codecs_sun_vendor.xml:298:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:316:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_sun_vendor.xml:336:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:68: | av1         | 1920    1088    240     120     1958400     2073600 |
+/vendor/etc/media_codecs_tuna_v0.xml:85: | av1      | 3840    2160    60      40      1944000     2073600 |
+/vendor/etc/media_codecs_tuna_v0.xml:279:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:295:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v0.xml:312:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:67: | av1         | 1280     720    240     100      864000     2073600 |
+/vendor/etc/media_codecs_tuna_v1.xml:91: | av1      | 1280     720    60      40       216000     2073600 |
+/vendor/etc/media_codecs_tuna_v1.xml:292:        <MediaCodec name="c2.qti.av1.decoder" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:309:        <MediaCodec name="c2.qti.av1.decoder.low_latency" type="video/av01" >
+/vendor/etc/media_codecs_tuna_v1.xml:327:        <MediaCodec name="c2.qti.av1.decoder.secure" type="video/av01" >
