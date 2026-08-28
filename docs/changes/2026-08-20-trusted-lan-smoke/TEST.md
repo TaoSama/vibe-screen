@@ -109,6 +109,38 @@ addresses, and MAC addresses before updating the PR. The only token-pattern
 match in the patch is the checker's redaction regex literal, not a retained
 credential or pairing payload.
 
+## 2026-08-28 LAN smoke unblock readiness check
+
+The `origin/main` revision `27d2b0e493e807ae439fbd43b06b4c2f0ce9c503` was
+checked from a clean source state on the Nubia P0110 / pacific / Android 16 /
+SDK 36 device (`<device-serial>`). The run first confirmed no `sfltool` process
+was present, then acquired `/tmp/vibe-screen-android-<device-serial>.lock`
+before any ADB/device operation. The preflight used only explicit
+`adb -s <device-serial>` targeting and did not run `/usr/bin/sfltool dumpbtm`
+or any sfltool opt-in path.
+
+The device identity was confirmed, but the unblock readiness check remained
+blocked before Host launch, pairing, or streaming: Wi-Fi was not associated,
+`wlan0` had no carrier or IPv4 address, Android had no `wlan0` route to a Mac
+LAN IPv4 candidate, and Host stable signing was blocked before trusted-LAN
+evidence could start. The shared Host readiness snapshot also reported
+`can_start_trusted_lan_gate=false`, with no TCP `54321` listener observed and
+TCC verification not completed under the missing stable-signing prerequisite.
+
+No real trusted-LAN stream, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS evidence was observed. The retained
+artifact bundle is
+[`evidence/2026-08-28-p0110-lan-smoke-unblock-check/README.md`](evidence/2026-08-28-p0110-lan-smoke-unblock-check/README.md).
+
+Focused checks for this unblock owner record:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28` | BLOCKED, exit 2 | Confirmed Nubia P0110/pacific identity, recorded Wi-Fi/wlan0/route blockers and Host signing blocker, and stopped before Host launch or pairing. |
+| `make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-tool-verification` | BLOCKED, exit 2 | Verified the updated collector records `pgrep -x sfltool`, acquires and releases `/tmp/vibe-screen-android-<device-serial>.lock`, and redacts the serial in public JSON. |
+| `make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28` | BLOCKED, exit 2 | `can_start_trusted_lan_gate=false`; stable signing, TCC read, Host listener, virtual HID, and login/headless readiness remained blocked. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-28-p0110-lan-smoke-unblock-check` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
+
 ## 2026-08-22 fail-closed preflight
 
 The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`
