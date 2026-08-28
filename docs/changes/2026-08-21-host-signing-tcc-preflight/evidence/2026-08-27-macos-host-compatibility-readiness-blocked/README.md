@@ -25,9 +25,14 @@ make baseline-macos-host-readiness \
 # Return to the repository root so the evidence package path resolves
 # to the committed tree, not the detached worktree.
 cd ../..
-# Copy the retained readiness artifacts into this evidence package, then run:
+# Copy the retained readiness artifacts into this committed evidence package.
+EVIDENCE_PKG=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked
+CLEAN_EVIDENCE=.claude/worktrees/macos-host-compat-readiness-clean/.build/evidence/macos-host-compatibility-readiness-2026-08-27-clean
+cp "$CLEAN_EVIDENCE/host-readiness.json" "$EVIDENCE_PKG/"
+cp "$CLEAN_EVIDENCE/host-signing-and-permissions.txt" "$EVIDENCE_PKG/"
+# macos-hardware-compatibility.json must already be present in the evidence package.
 make macos-hardware-compatibility-gate \
-  EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked
+  EVIDENCE_DIR="$EVIDENCE_PKG"
 ```
 
 Before the safety follow-up validation, `pgrep -x sfltool` returned no process
