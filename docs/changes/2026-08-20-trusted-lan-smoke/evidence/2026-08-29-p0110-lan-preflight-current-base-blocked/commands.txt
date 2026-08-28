@@ -1,0 +1,58 @@
+# Command summary
+
+Branch: `codex/trusted-lan-current-base-evidence`
+Head commit: `2da3f86e24cf51c6966dcea7848f55623cb67a40`
+Target device serial: `<device-serial>`
+Device: nubia P0110 / pacific / Android 16 / SDK 36
+
+Initial safety check:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Trusted-LAN preflight, expected blocked exit `2`:
+
+```sh
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_DIR=.build/evidence/trusted-lan-current-base-2026-08-29-clean
+```
+
+Host readiness, expected blocked exit `2`; no login-item diagnostic option was
+passed:
+
+```sh
+make baseline-macos-host-readiness \
+  EVIDENCE_DIR=.build/evidence/trusted-lan-current-base-2026-08-29-clean
+```
+
+Reconnect timing blocked summary, expected blocked exit `3` from the Python
+module before the wrapper records it:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36" \
+  --blocker "Android Wi-Fi is not associated" \
+  --blocker "wlan0 has no IPv4 route to the Mac LAN candidate" \
+  --blocker "Host stable signing is blocked before trusted-LAN evidence can start" \
+  --artifact trusted-lan-preflight.json \
+  --artifact host-readiness.json \
+  --notes "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise" \
+  --output .build/evidence/trusted-lan-current-base-2026-08-29-clean/reconnect-timing-summary.json
+```
+
+Evidence checker:
+
+```sh
+make trusted-lan-smoke-evidence-check \
+  EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-29-p0110-lan-preflight-current-base-blocked
+```
+
+Focused tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools:scripts python3 -m unittest scripts.tests.test_macos_dev_host -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb -v
+```

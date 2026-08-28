@@ -141,6 +141,38 @@ Focused checks for this unblock owner record:
 | `make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-2026-08-28` | BLOCKED, exit 2 | `can_start_trusted_lan_gate=false`; stable signing, TCC read, Host listener, virtual HID, and login/headless readiness remained blocked. |
 | `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-28-p0110-lan-smoke-unblock-check` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
 
+## 2026-08-29 current-base preflight recheck
+
+The `codex/trusted-lan-current-base-evidence` branch was created from the latest
+`origin/main`, then the trusted-LAN and Host readiness tools were hardened to
+redact raw IPv4 endpoints and serial-derived local runtime lock paths from
+public JSON. The final read-only preflight ran from clean commit
+`2da3f86e24cf51c6966dcea7848f55623cb67a40` on the Nubia P0110 / pacific /
+Android 16 / SDK 36 device (`<device-serial>`).
+
+The real trusted-LAN smoke remains blocked before Host launch, pairing, or
+streaming: Wi-Fi is not associated, `wlan0` has no carrier or IPv4 address,
+Android has no `wlan0` route to a Mac LAN IPv4 candidate, and Host stable
+signing is blocked before trusted-LAN evidence can start. The shared Host
+readiness snapshot reports `can_start_trusted_lan_gate=false`; TCC was not
+evaluated because stable signing failed, and the observed TCP `54321` listener
+was loopback-only rather than LAN evidence.
+
+No real trusted-LAN stream, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS evidence was observed. The retained
+artifact bundle is
+[`evidence/2026-08-29-p0110-lan-preflight-current-base-blocked/README.md`](evidence/2026-08-29-p0110-lan-preflight-current-base-blocked/README.md).
+
+Focused checks for this current-base owner record:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=.build/evidence/trusted-lan-current-base-2026-08-29-clean` | BLOCKED, exit 2 | Confirmed Nubia P0110/pacific identity, recorded Wi-Fi/wlan0/route blockers and Host signing blocker, and stopped before Host launch or pairing. |
+| `make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/trusted-lan-current-base-2026-08-29-clean` | BLOCKED, exit 2 | `can_start_trusted_lan_gate=false`; stable signing, TCC verification, and evidence-grade Host readiness remained blocked. The default command did not probe login items. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools:scripts python3 -m unittest scripts.tests.test_macos_dev_host -v` | PASS, 79 tests | Covers Host readiness fail-closed behavior, default login-item probe skipping, and listener output redaction. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb -v` | PASS, 54 tests | Covers trusted-LAN preflight redaction, blocked/pass evidence classification, and explicit-serial ADB boundaries. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-29-p0110-lan-preflight-current-base-blocked` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
+
 ## 2026-08-22 fail-closed preflight
 
 The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`

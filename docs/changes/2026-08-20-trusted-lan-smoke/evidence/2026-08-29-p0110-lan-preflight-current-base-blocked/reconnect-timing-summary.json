@@ -1,0 +1,46 @@
+{
+  "artifact_paths": [
+    "host-readiness.json",
+    "trusted-lan-preflight.json"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Android Wi-Fi is not associated",
+    "wlan0 has no IPv4 route to the Mac LAN candidate",
+    "Host stable signing is blocked before trusted-LAN evidence can start"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / SDK 36"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Android Wi-Fi is not associated",
+    "wlan0 has no IPv4 route to the Mac LAN candidate",
+    "Host stable signing is blocked before trusted-LAN evidence can start"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "2e4b5066-3151-4fe9-bad7-802df14bc79d",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}
