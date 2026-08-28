@@ -1,0 +1,185 @@
+{
+  "artifacts": {
+    "android_apk_sha256": "blocked",
+    "mac_host_sha256": "blocked"
+  },
+  "claims": [
+    "Blocked readiness record only; no Phase 3 Internet release gate is closed.",
+    "Device target is nubia P0110/pacific; primary-device evidence is not claimed."
+  ],
+  "device": {
+    "codename": "pacific",
+    "evidence_role": "general_android_substitute",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "os_version": "Android 16"
+  },
+  "gates": {
+    "cross_service_revocation": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "external_camera_latency": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "network_handoff_recovery": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "packet_capture_confidentiality": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "public_internet_direct_path": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "real_screencapturekit_to_android_media": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "remote_turn_relay_path": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    },
+    "two_hour_mixed_route_soak": {
+      "blockers": [
+        "missing_internet_device_lease",
+        "no_controlled_network_impairment_harness",
+        "no_public_internet_or_remote_turn_route",
+        "no_real_handoff_or_two_hour_soak_window",
+        "missing_remote_production_signaling_relay_authority_deployment",
+        "missing_public_tls_and_turn_secret_runtime_evidence",
+        "missing_real_android_ui_public_internet_session",
+        "missing_public_direct_and_remote_turn_media_continuity",
+        "missing_network_handoff_revocation_packet_capture_latency_and_two_hour_soak"
+      ],
+      "evidence_files": [
+        "blocked-evidence.json",
+        "README.md"
+      ],
+      "local_loopback_only": true,
+      "status": "blocked",
+      "synthetic_media": true
+    }
+  },
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-release-gate-manifest/v1",
+  "source": {
+    "commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "tree_status": "clean"
+  }
+}
