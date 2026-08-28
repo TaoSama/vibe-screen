@@ -1,0 +1,11 @@
+Command:
+cd baseline/AndroidClient
+./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.ConnectionGuidanceTest
+
+Result: PASS
+
+Final rerun key output:
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 21s
+39 actionable tasks: 8 executed, 31 up-to-date
