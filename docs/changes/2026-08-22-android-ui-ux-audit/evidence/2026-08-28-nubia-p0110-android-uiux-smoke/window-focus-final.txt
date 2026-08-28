@@ -1,0 +1,2 @@
+  mCurrentFocus=Window{1a5d416 u0 com.android.launcher3/com.obric.feature.ObricLauncher}
+  mFocusedApp=ActivityRecord{201001555 u0 com.android.launcher3/com.obric.feature.ObricLauncher t539}
