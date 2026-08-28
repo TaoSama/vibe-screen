@@ -205,6 +205,29 @@ class USBSmokePreflightTests(unittest.TestCase):
         self.assertIsNone(document["host"]["preflight"])
         self.assertIn("no ADB", document["blockers"][0]["message"])
 
+    def test_owned_lock_allows_read_only_runtime_probes(self) -> None:
+        commands: list[list[str]] = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return _completed(command, _ready_responses(command))
+
+        with tempfile.TemporaryDirectory() as directory:
+            lock = Path(directory) / "vibe-screen-device-android.lock"
+            lock.write_text("owner\n", encoding="utf-8")
+            document = _build_document(
+                directory,
+                run,
+                lock_globs=[str(Path(directory) / "vibe-screen-*.lock")],
+                allow_existing_locks=True,
+            )
+
+        self.assertEqual(document["result"], "ready")
+        self.assertEqual(document["safety"]["existing_locks"], [str(lock)])
+        self.assertTrue(document["safety"]["allows_existing_locks"])
+        self.assertTrue(document["safety"]["ran_adb"])
+        self.assertTrue(any(command[:3] == ["adb", "-s", SERIAL] for command in commands))
+
     def test_collect_locks_sorts_and_deduplicates_patterns(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             first = Path(directory) / "vibe-screen-a.lock"
@@ -476,7 +499,13 @@ class USBSmokePreflightTests(unittest.TestCase):
         )
 
 
-def _build_document(directory: str, command_runner, *, lock_globs: list[str] | None = None):
+def _build_document(
+    directory: str,
+    command_runner,
+    *,
+    lock_globs: list[str] | None = None,
+    allow_existing_locks: bool = False,
+):
     return build_document(
         serial=SERIAL,
         repository_root=Path("/repo"),
@@ -494,6 +523,7 @@ def _build_document(directory: str, command_runner, *, lock_globs: list[str] | N
             "sdk": "36",
         },
         host_preflight_report=Path(directory) / "host-signing-and-permissions.txt",
+        allow_existing_locks=allow_existing_locks,
         command_runner=command_runner,
         wall_clock=lambda: "2026-08-24T00:00:00Z",
     )
@@ -554,10 +584,12 @@ def assert_schema_shape(test_case: unittest.TestCase, document: dict) -> None:
         set(document["configuration"]),
         set(schema["properties"]["configuration"]["properties"]),
     )
+    test_case.assertIn("allow_existing_locks", document["configuration"])
     test_case.assertEqual(
         set(document["safety"]),
         set(schema["properties"]["safety"]["properties"]),
     )
+    test_case.assertIn("allows_existing_locks", document["safety"])
     test_case.assertEqual(
         set(document["claims"]),
         set(schema["properties"]["claims"]["properties"]),
