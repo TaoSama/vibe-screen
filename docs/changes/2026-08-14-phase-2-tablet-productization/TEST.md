@@ -551,7 +551,7 @@ Current-base aggregate evidence is under
 [`evidence/2026-08-28-phase2-tablet-current-base-owner`](evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
 It consumes the new P0110 soak preflight plus retained device-environment,
 hardware-keyboard, and login/headless blocked summaries. The report records
-`source_baseline=origin/main a11df1ce7eeea456143de57895d1cbf48acbc3de`,
+`source_baseline=origin/main e90463e5d24ee055686a9b6d3a1acd02c616b81b`,
 `verdict=blocked`, and `can_close_readme_phase2_gates=false`; it also records
 that Nubia P0110/pacific is substitute readiness only and must not be relabeled
 as another device or 8-9 inch tablet evidence.
