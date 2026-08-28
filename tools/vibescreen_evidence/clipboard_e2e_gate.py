@@ -219,7 +219,12 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android ClipboardManager instrumentation log is missing"],
         )
     text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
-    passed = "OK (" in text and "FAILURES!!!" not in text and "Tests run:" not in text
+    passed = (
+        ("OK (" in text or ("Finished " in text and " tests on " in text and "BUILD SUCCESSFUL" in text))
+        and "FAILURES!!!" not in text
+        and "BUILD FAILED" not in text
+        and "Tests run:" not in text
+    )
     reasons = [] if passed else ["Android ClipboardManager instrumentation log does not show an OK result"]
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
