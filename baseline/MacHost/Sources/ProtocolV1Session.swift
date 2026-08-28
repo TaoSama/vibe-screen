@@ -1386,12 +1386,21 @@ final class ProtocolV1SessionCoordinator {
             return false
         }
         guard let target else { return true }
-        if target.displayID.isEmpty && target.streamID == 0 { return true }
+        let hasDisplayID = !target.displayID.isEmpty
+        let hasStreamID = target.streamID != 0
+        if !hasDisplayID && !hasStreamID { return true }
         if let router = configuration.displayRouter, negotiatedCapabilities.contains(.multiClient) {
-            guard let binding = router.binding(streamID: streamID, in: sessionKey) else { return false }
-            return target.displayID == binding.displayID && target.streamID == binding.streamID
+            let lookupStreamID = hasStreamID ? target.streamID : streamID
+            guard let binding = router.binding(streamID: lookupStreamID, in: sessionKey) else {
+                return false
+            }
+            let displayMatches = !hasDisplayID || binding.displayID == target.displayID
+            let streamMatches = !hasStreamID || binding.streamID == streamID
+            return displayMatches && streamMatches
         }
-        return target.displayID == configuration.displayID && target.streamID == streamID
+        let displayMatches = !hasDisplayID || target.displayID == configuration.displayID
+        let streamMatches = !hasStreamID || target.streamID == streamID
+        return displayMatches && streamMatches
     }
 
     private func allocateStreamID(for displayID: String) throws -> UInt64 {
