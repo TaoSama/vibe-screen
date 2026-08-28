@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 import subprocess
 import sys
 import tempfile
@@ -27,8 +28,8 @@ def tablet_manifest(device_class="physical_8_9_inch_tablet"):
     }
     if device_class == "android_substitute":
         identity = {
-            "adb_serial": "EP0110PZ0B9110300B",
-            "device_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "P0110_TEST_SERIAL",
+            "device_serial": "P0110_TEST_SERIAL",
             "manufacturer": "nubia",
             "model": "P0110",
             "codename": "pacific",
@@ -53,12 +54,21 @@ def close_signal(field):
 
 class Phase2AggregateOwnerTest(unittest.TestCase):
     def test_source_baseline_tracks_current_origin_main(self):
-        report = derive_report()
+        report = derive_report(source_baseline="origin/main test-sha")
 
-        self.assertEqual(
-            report["source_baseline"],
-            "origin/main 3b2ba11e832a3618eaedfc67f92414b161423a00",
-        )
+        self.assertEqual(report["source_baseline"], "origin/main test-sha")
+
+    def test_source_baseline_defaults_to_current_origin_main(self):
+        with mock.patch(f"{MODULE}._git_revision", return_value="abc123") as revision:
+            report = derive_report()
+
+        revision.assert_called_once_with(Path.cwd(), "origin/main")
+        self.assertEqual(report["source_baseline"], "origin/main abc123")
+
+    def test_source_baseline_falls_back_when_origin_main_is_unavailable(self):
+        with mock.patch(f"{MODULE}._git_revision", return_value=None):
+            report = derive_report()
+
         self.assertEqual(report["source_baseline"], CURRENT_BASE)
 
     def test_missing_child_gates_are_blocked_and_keep_readme_open(self):

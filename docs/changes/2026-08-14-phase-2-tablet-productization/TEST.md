@@ -485,3 +485,81 @@ Validation performed for this tooling/readiness update:
 - `cd baseline/MacHost && swift build`
 - `shasum -a 256 -c SHA256SUMS` in both new 2026-08-24 evidence directories
 - `git diff --check`
+
+## 2026-08-25 device-environment current-base readiness
+
+Fresh P0110/pacific device-environment readiness evidence is under
+[`evidence/2026-08-25-p0110-device-environment-readiness`](evidence/2026-08-25-p0110-device-environment-readiness/README.md).
+The retained summary records nubia P0110 / pacific / Android 16 / SDK 36 as an
+`android_substitute` phone and reports `verdict=blocked`,
+`can_close_stand_charging_gate=false`, and
+`can_close_device_environment_gate=false`. The retained battery, power, and
+thermal dumps are readiness-only snapshots; they do not prove a physical
+8-9 inch tablet, stand-mounted charging setup, controlled thermal-load
+recovery, or eight-hour environment window.
+
+The aggregate owner record under
+[`evidence/2026-08-25-phase2-aggregate-owner-current-base`](evidence/2026-08-25-phase2-aggregate-owner-current-base/README.md)
+consumes the device-environment summary and remains `verdict=blocked` with
+`can_close_readme_phase2_gates=false`.
+
+Validation recorded for this update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_device_environment tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make phase2-device-environment-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness`
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-phase2-aggregate-owner-current-base ...`
+- `shasum -a 256 -c SHA256SUMS`
+
+## 2026-08-27 login/headless current-base readiness
+
+Evidence is under
+[`evidence/2026-08-27-macos-login-headless-current-base-blocked`](evidence/2026-08-27-macos-login-headless-current-base-blocked/README.md).
+The passive macOS startup/recovery verifier reports `verdict=blocked` and
+`can_close_login_headless_gate=false`. It observed a local Host listener and
+startup defaults, but no current-source installed Host provenance, read-only TCC
+verification, Launch at Login machine verification, Virtual HID entitlement,
+reboot/login launch, headless display, client-rendered first frame, bounded
+recovery, or window-restore artifact was available.
+
+This evidence did not run `/usr/bin/sfltool dumpbtm`, did not pass any
+login-item diagnostic opt-in flag, did not touch ADB, and did not close login
+startup or headless Mac mini acceptance. The local `phase2-aggregate-owner.json`
+inside the same directory consumes only the login/headless blocked summary and
+keeps `can_close_readme_phase2_gates=false`.
+
+## 2026-08-28 P0110 tablet soak preflight current-base
+
+Evidence is under
+[`evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base`](evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/README.md).
+The 2-second preflight ran against the attached `EP0110PZ0B9110300B` device and
+records it as nubia P0110 / pacific / Android 16 / SDK 36 with
+`device_class=android_substitute`. It exited `2` as expected, wrote
+`phase2-soak-readiness.json` with `result=blocked` and
+`can_close_phase2_gate=false`, and did not start an eight-hour soak. Blockers
+were the missing formal APK identity, non-tablet device class, missing Host PID,
+and missing Host telemetry JSONL.
+
+The same directory was checked with `phase2-tablet-preflight`; that verifier also
+exited nonzero and wrote `phase2-tablet-preflight.json` with
+`verdict=blocked`. The physical-tablet gate reason is: device class is
+`android_substitute`, while Phase 2 tablet acceptance requires
+`physical_8_9_inch_tablet`. No physical stylus, hardware-keyboard,
+portrait/landscape tablet UI, recovery, thermal/power, or eight-hour soak gate
+artifact was produced.
+
+Current-base aggregate evidence is under
+[`evidence/2026-08-28-phase2-tablet-current-base-owner`](evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
+It consumes the new P0110 soak preflight plus retained device-environment,
+hardware-keyboard, and login/headless blocked summaries. The report records
+`source_baseline=origin/main 20cd27b1d59dfcc66e28df41aba421e14b6171f4`,
+`verdict=blocked`, and `can_close_readme_phase2_gates=false`; it also records
+that Nubia P0110/pacific is substitute readiness only and must not be relabeled
+as another device or 8-9 inch tablet evidence.
+
+Validation performed for this update:
+
+- `make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B ... PHASE2_SOAK_PREFLIGHT_DURATION=2s PHASE2_SOAK_INTERVAL=1s` (exit `2`, expected blocked readiness)
+- `make phase2-tablet-preflight EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base` (exit `2`, expected blocked bundle verifier)
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner ...`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-28 evidence directories

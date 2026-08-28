@@ -6,6 +6,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any, Sequence
 
@@ -19,7 +20,7 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main 3b2ba11e832a3618eaedfc67f92414b161423a00"
+CURRENT_BASE = "origin/main 20cd27b1d59dfcc66e28df41aba421e14b6171f4"
 REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 
@@ -359,6 +360,31 @@ def _known_phone_substitute(identity: dict[str, Any] | None) -> bool:
     return model == "p0110" or codename == "pacific"
 
 
+def _git_revision(repo: Path, ref: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    revision = result.stdout.strip()
+    return revision or None
+
+
+def current_source_baseline(repo: Path | None = None) -> str:
+    revision = _git_revision(repo or Path.cwd(), "origin/main")
+    if revision is None:
+        return CURRENT_BASE
+    return f"origin/main {revision}"
+
+
 def _substitute_notes(manifest: dict[str, Any] | None) -> list[str]:
     notes: list[str] = []
     device_class = _manifest_device_class(manifest)
@@ -439,6 +465,7 @@ def derive_report(
     tablet_ui: dict[str, Any] | None = None,
     recovery: dict[str, Any] | None = None,
     login_headless: dict[str, Any] | None = None,
+    source_baseline: str | None = None,
 ) -> dict[str, Any]:
     inputs = {
         "tablet_gate": tablet_gate,
@@ -479,7 +506,7 @@ def derive_report(
         "kind": KIND,
         "verdict": verdict,
         "can_close_readme_phase2_gates": can_close,
-        "source_baseline": CURRENT_BASE,
+        "source_baseline": source_baseline or current_source_baseline(),
         "audit_summary": {
             "single_prs_against_origin_main": (
                 "#179, #189, #213, #315, #321, #338, #342, and #343 are merged into current base. "

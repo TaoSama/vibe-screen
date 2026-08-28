@@ -568,6 +568,17 @@ available. The latest P0110/pacific hardware-keyboard current-base readiness
 record captures the real device identity and fails closed because no external
 Android-attached keyboard or stable signed/TCC-ready Host was available; a Host
 listener alone is not enough, and this is not a gate pass.
+The latest P0110/pacific tablet sustained-use current-base preflight captures
+the device as nubia P0110 / pacific / Android 16 / SDK 36 and keeps the Phase 2
+tablet gate blocked because the device is an `android_substitute` phone, APK
+identity was not supplied for a formal run, no Host PID or Host telemetry JSONL
+was provided, no physical 8-9 inch tablet evidence exists, and no eight-hour
+soak gate artifact was produced. The current aggregate owner report consumes
+that blocked preflight and still reports `can_close_readme_phase2_gates=false`;
+see
+[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/README.md)
+and
+[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC

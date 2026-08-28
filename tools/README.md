@@ -724,7 +724,9 @@ evidence, foreground/background and transport recovery evidence, the raw
 thermal/power/log artifacts, and a passing eight-hour tablet soak gate. Use it
 with `PHASE2_DEVICE_CLASS=android_substitute` to create blocked evidence for the
 Nubia P0110/pacific or another non-tablet Android device; that result is useful
-readiness evidence but cannot close Phase 2 tablet acceptance.
+readiness evidence but cannot close Phase 2 tablet acceptance. The preflight
+also rejects known phone substitutes such as Nubia P0110/pacific when a
+hand-written manifest incorrectly labels them as `physical_8_9_inch_tablet`.
 
 Use the aggregate owner report after child owners produce summaries, or when a
 current-base audit needs to prove that the README Phase 2 gates remain open:
