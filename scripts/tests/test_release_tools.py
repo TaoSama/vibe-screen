@@ -856,6 +856,12 @@ class HarmonyDeviceGateTests(unittest.TestCase):
 
     def test_harmony_readiness_make_target_uses_fail_closed_collector(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
+        target_match = re.search(
+            r"(?ms)^harmony-hap-readiness:\n(?P<body>.*?)(?=^[a-zA-Z0-9_.-]+:|\Z)",
+            makefile,
+        )
+        self.assertIsNotNone(target_match)
+        target_body = target_match.group("body")
 
         self.assertIn("harmony-readiness:", makefile)
         self.assertIn("scripts/harmony_readiness.py", makefile)
@@ -863,6 +869,13 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("HARMONY_HAP", makefile)
         self.assertIn("HARMONY_SHA256SUMS", makefile)
         self.assertIn("HARMONY_SIGNATURE_CERTIFICATE_SHA256", makefile)
+        self.assertIn("scripts/harmony_hap_readiness.py", target_body)
+        self.assertIn("HARMONY_HAP_READINESS_DIR", target_body)
+        self.assertIn("--evidence-dir \"$(HARMONY_HAP_READINESS_DIR)\"", target_body)
+        self.assertIn("--hdc-target \"$(HARMONY_HDC_TARGET)\"", target_body)
+        self.assertIn("HARMONY_HAP_READINESS_FLAGS", target_body)
+        self.assertNotIn("--output", target_body)
+        self.assertNotIn("--target", target_body)
 
 
 class HarmonyHostInteropPreflightTests(unittest.TestCase):

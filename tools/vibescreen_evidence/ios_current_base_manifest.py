@@ -559,22 +559,22 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         )
     if document.get("verdict") != "pass" or document.get("can_close_ios_native_input_gate") is not True:
         missing.append(_native_input_missing_requirement("ios native-input gate verdict is not pass"))
-    if document.get("missing_requirements") not in ([], None):
+    if document.get("missing_requirements") != []:
         missing.append(
             _native_input_missing_requirement(
-                "ios native-input gate still has missing requirements"
+                "ios native-input gate missing_requirements must be an explicit empty list"
             )
         )
-    if document.get("blocking_reasons") not in ([], None):
+    if document.get("blocking_reasons") != []:
         missing.append(
             _native_input_missing_requirement(
-                "ios native-input gate still has blocking reasons"
+                "ios native-input gate blocking_reasons must be an explicit empty list"
             )
         )
-    if document.get("disallowed_evidence") not in ([], None):
+    if document.get("disallowed_evidence") != []:
         missing.append(
             _native_input_missing_requirement(
-                "ios native-input gate contains disallowed evidence"
+                "ios native-input gate disallowed_evidence must be an explicit empty list"
             )
         )
     if not artifact_paths:
@@ -584,6 +584,12 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             )
         )
 
+    raw_blocking_reasons = document.get("blocking_reasons")
+    blocking_reasons = (
+        _native_input_requirement_list(raw_blocking_reasons)
+        if isinstance(raw_blocking_reasons, list)
+        else list(missing)
+    )
     normalized = _default_native_input_gate(path, [])
     normalized.update(
         {
@@ -603,7 +609,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
             "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
             "missing_requirements": missing,
-            "blocking_reasons": blocking,
+            "blocking_reasons": blocking_reasons,
             "disallowed_evidence": disallowed,
             "artifact_paths": artifact_paths,
         }

@@ -1096,16 +1096,44 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
 
 
 def format_report(
-    metadata: SigningMetadata,
+    metadata: SigningMetadata | None,
     permissions: PermissionStatus,
     errors: list[str],
     *,
     source_identity: package_macos.SourceIdentity | None = None,
     allow_source_mismatch: bool = False,
+    install_path: Path | None = None,
 ) -> str:
-    authorities = "\n".join(f"Authority: {authority}" for authority in metadata.authorities)
-    if not authorities:
-        authorities = "Authority: ad-hoc"
+    if metadata is None:
+        app_path: Path | str = install_path if install_path is not None else "not inspected"
+        identifier = "not inspected"
+        identity_name = "not inspected"
+        authorities = "Authority: not inspected"
+        team_identifier = "not inspected"
+        certificate_sha1 = "not inspected"
+        cdhash = "not inspected"
+        binary_sha256 = "not inspected"
+        designated_requirement = "not inspected"
+        source_commit = "not inspected"
+        source_tree = "not inspected"
+        source_dirty: bool | str = "not inspected"
+        verification = "not inspected"
+    else:
+        app_path = metadata.app_path
+        identifier = metadata.identifier
+        identity_name = metadata.identity_name
+        authorities = "\n".join(f"Authority: {authority}" for authority in metadata.authorities)
+        if not authorities:
+            authorities = "Authority: ad-hoc"
+        team_identifier = metadata.team_identifier or "not set"
+        certificate_sha1 = metadata.leaf_certificate_hash or "not available"
+        cdhash = metadata.cdhash or "missing"
+        binary_sha256 = metadata.binary_sha256
+        designated_requirement = metadata.designated_requirement or "missing"
+        source_commit = metadata.source_commit or "missing"
+        source_tree = metadata.source_tree or "missing"
+        source_dirty = metadata.source_dirty if metadata.source_dirty is not None else "missing"
+        verification = "valid on disk (codesign --verify --deep --strict)"
     rows = "\n".join(format_permission_row(row) for row in permissions.rows)
     if not rows:
         rows = "(no matching rows)"
@@ -1113,23 +1141,23 @@ def format_report(
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
     return f"""Host bundle
 -----------
-Path: {metadata.app_path}
-Identifier: {metadata.identifier}
-Identity: {metadata.identity_name}
+Path: {app_path}
+Identifier: {identifier}
+Identity: {identity_name}
 {authorities}
-TeamIdentifier: {metadata.team_identifier or 'not set'}
-Certificate SHA-1: {metadata.leaf_certificate_hash or 'not available'}
-CDHash: {metadata.cdhash or 'missing'}
-Binary SHA-256: {metadata.binary_sha256}
-Designated requirement: {metadata.designated_requirement or 'missing'}
-Source commit: {metadata.source_commit or 'missing'}
-Source tree: {metadata.source_tree or 'missing'}
-Source dirty: {metadata.source_dirty if metadata.source_dirty is not None else 'missing'}
+TeamIdentifier: {team_identifier}
+Certificate SHA-1: {certificate_sha1}
+CDHash: {cdhash}
+Binary SHA-256: {binary_sha256}
+Designated requirement: {designated_requirement}
+Source commit: {source_commit}
+Source tree: {source_tree}
+Source dirty: {source_dirty}
 Current source commit: {source_identity.commit if source_identity else 'not checked'}
 Current source tree: {source_identity.tree if source_identity else 'not checked'}
 Current source dirty: {source_identity.dirty if source_identity else 'not checked'}
 Source mismatch allowed: {allow_source_mismatch}
-Verification: valid on disk (codesign --verify --deep --strict)
+Verification: {verification}
 
 Read-only TCC capture
 ---------------------
@@ -1293,6 +1321,7 @@ def inspect_host_without_throwing(
     expected_sign_identity: str | None = None,
     source_root: Path = package_macos.REPOSITORY_ROOT,
     allow_source_mismatch: bool = False,
+    validate_configured_identity: bool = True,
 ) -> HostInspection:
     errors: list[str] = []
     source_identity: package_macos.SourceIdentity | None
@@ -1305,7 +1334,7 @@ def inspect_host_without_throwing(
         errors.append(
             "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
         )
-    else:
+    elif validate_configured_identity:
         try:
             resolved_identity = package_macos.resolve_sign_identity(
                 expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
@@ -1688,7 +1717,7 @@ def install_command(args: argparse.Namespace) -> int:
             return write_signing_prerequisite_report(args, error)
         raise
     safe_replace_app(packaged_app, install_path, EXPECTED_BUNDLE_ID)
-    metadata, source_identity, permissions, errors = metadata_and_permissions(
+    inspection = inspect_host_without_throwing(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
@@ -1696,20 +1725,24 @@ def install_command(args: argparse.Namespace) -> int:
         allow_source_mismatch=args.allow_source_mismatch,
     )
     report = format_report(
-        metadata,
-        permissions,
-        errors,
-        source_identity=source_identity,
+        inspection.metadata,
+        inspection.permissions,
+        inspection.errors,
+        source_identity=inspection.source_identity,
         allow_source_mismatch=args.allow_source_mismatch,
+        install_path=install_path,
     )
     write_report(args.report, report)
     print(f"Installed {install_path}")
     print(f"Wrote {args.report}")
-    if errors:
+    if inspection.errors:
         print(
             "Permissions are not ready for touch rerun yet; grant the listed items in "
             f"{SYSTEM_SETTINGS_PATH}, relaunch Vibe Screen, then run preflight."
         )
+        if inspection.metadata is None:
+            print(report, file=sys.stderr)
+            return 2
     return 0
 
 
@@ -1725,7 +1758,7 @@ def preflight_command(args: argparse.Namespace) -> int:
         package_macos.resolve_sign_identity(args.sign_identity)
     except SystemExit as error:
         return write_signing_prerequisite_report(args, error)
-    metadata, source_identity, permissions, errors = metadata_and_permissions(
+    inspection = inspect_host_without_throwing(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
@@ -1734,15 +1767,16 @@ def preflight_command(args: argparse.Namespace) -> int:
         validate_configured_identity=False,
     )
     report = format_report(
-        metadata,
-        permissions,
-        errors,
-        source_identity=source_identity,
+        inspection.metadata,
+        inspection.permissions,
+        inspection.errors,
+        source_identity=inspection.source_identity,
         allow_source_mismatch=args.allow_source_mismatch,
+        install_path=install_path,
     )
     write_report(args.report, report)
     print(f"Wrote {args.report}")
-    if errors:
+    if inspection.errors:
         print(report, file=sys.stderr)
         print("macOS Host preflight failed", file=sys.stderr)
         return 2
