@@ -1,0 +1,11 @@
+27b1183526cdc0353d601e3fb7118399d4ffaee8e10c71baf64ec0d67f0c7414  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/README.md
+7e296b43e21e50b760c8a16b85d1de8914009aeb22947731add392d0813fe109  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/actionable-error-current-base-gate.json
+ca1220b22a55352d9324fef250c3351fe7407c445bf2fb0099004689b5860ceb  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/actionable-error-current-base.json
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/adb-reverse-missing-before.txt
+aaf23ff008879b5bb16aee5d3fcc362e967ac80b54f2cc58c0f4a8348cc9f92e  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/adb-reverse-restored-after.txt
+659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/device-identity.txt
+27e7fe0f21650a286ab45230e9fcf978ac05208ff220942f3b3274e3fcd05a69  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/host-listener-current.txt
+e59d8ee7e0be7082fd5908f9a50bd73971abc8b8e8614525a8ea04f2a53fa3d0  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/lan-route-readonly-sanitized.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/logcat-usb-adb-reverse-missing-current-base.txt
+b1c823dd1f3a362a05657707c29ece34e928497a205f1fc0c8df88c620a693da  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/repository-current-base.txt
+677b63de46bdba6bfe443fe57bb3fa727d79c28b8f3aa2b1823339e67f2b5537  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/usb-adb-reverse-missing-ui.xml
