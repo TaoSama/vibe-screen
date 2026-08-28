@@ -1,0 +1,95 @@
+# Commands run from an isolated worktree based on origin/main.
+git fetch origin --prune
+git worktree add --detach ../rss-soak-origin-main origin/main
+git switch -c codex/host-rss-current-base-build-fix
+
+# Required context review.
+sed -n '1,240p' README.md
+sed -n '1,240p' AGENTS.md
+sed -n '1,240p' CLAUDE.md
+sed -n '1,260p' docs/changes/2026-08-10-host-rss-growth/TECH.md
+sed -n '1,220p' docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md
+sed -n '1,220p' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-25-host-rss-gate-telemetry-readiness/README.md
+rg -n "soak-2h-host-rss-gate|host_rss_gate|host_memory_diagnostic|VIBE_SCREEN_TELEMETRY_PATH|HOST_PID" Makefile scripts tools docs/changes/2026-08-10-host-rss-growth
+
+# Current-base build failure reproduced before the fix.
+make baseline-macos-build
+
+# Build fix validation.
+make baseline-macos-build
+make baseline-macos-self-test
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_soak_report tools.tests.test_soak tools.tests.test_host_memory_diagnostic -v
+
+# Current-base refresh after PR #358 merged to main. The retained readiness
+# probe stayed blocked; no new Host RSS soak or login-item diagnostic was run.
+git fetch origin --prune
+git switch --detach origin/main
+git cherry-pick --no-commit origin/codex/host-rss-current-base-build-fix
+git diff --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_phase5_host_advanced_adapters scripts.tests.test_macos_dev_host scripts.tests.test_release_tools -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_ios_current_base_gate tools.tests.test_ios_current_base_manifest tools.tests.test_ios_native_input -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_shared_protocol_model -v
+make protocol
+make baseline-macos-build
+make baseline-macos-self-test
+make phase3-test
+make release-tools-test
+make evidence-tools-test
+python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/readiness-summary.json >/dev/null
+cd docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked && shasum -a 256 -c SHA256SUMS
+git diff --check
+git diff --cached --check
+# Re-ran the sensitive-content scan for raw device endpoints, private local
+# paths, TCC database paths, and secret material. The exact pattern is
+# intentionally omitted from this public command ledger.
+
+# Final current-base refresh after origin/main advanced. The retained readiness
+# probe stayed blocked; no new Host RSS soak or login-item diagnostic was run.
+git fetch origin --prune
+git switch --detach origin/main
+git diff --binary origin/main...origin/codex/host-rss-current-base-build-fix > /tmp/pr354-current-base.patch
+git apply --3way --index /tmp/pr354-current-base.patch
+make protocol
+make evidence-tools-test
+make release-tools-test
+make baseline-macos-build
+make baseline-macos-self-test
+make phase3-test
+git diff --check
+# Re-ran the sensitive-content scan for raw device endpoints, private local
+# paths, TCC database paths, and secret material. The exact pattern is
+# intentionally omitted from this public command ledger.
+cd baseline/MacHost && swift test --filter ProtocolV1SessionTests
+
+# Clean-branch readiness after committing the build fix.
+git status --short --branch
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/2026-08-27-host-rss-clean-branch-readiness-blocked EVIDENCE_PORT=54321
+
+# PR current-head refresh after release/current-base follow-up fixes.
+git fetch origin --prune
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+gh pr view 354 --json number,title,state,mergeable,mergeStateStatus,headRefName,headRefOid,baseRefOid,statusCheckRollup,url
+gh pr checks 354 --watch=false
+gh pr view 358 --json number,title,state,mergeable,mergeStateStatus,headRefName,headRefOid,baseRefOid,statusCheckRollup,url
+gh pr checks 358 --watch=false
+python3 scripts/macos_dev_host.py readiness --port 54321 --json-output .build/host-rss-current-head-readiness.json
+
+# Later refresh while PR #358 remained open and CI jobs were still queued.
+git fetch origin --prune
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+gh pr view 354 --json number,title,state,mergeable,mergeStateStatus,isDraft,headRefName,headRefOid,baseRefName,baseRefOid,reviewDecision,reviewRequests,reviews,comments,url
+gh pr checks 354 --watch=false
+gh pr view 358 --json number,title,state,mergeable,mergeStateStatus,isDraft,headRefName,headRefOid,baseRefName,baseRefOid,reviewDecision,reviewRequests,reviews,comments,url
+gh pr checks 358 --watch=false
+python3 scripts/macos_dev_host.py readiness --port 54321 --json-output .build/host-rss-latest-readiness.json
+python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/readiness-summary.json >/dev/null
+cd docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked && shasum -a 256 -c SHA256SUMS
+git diff --check
+# Ran a sensitive-content scan for raw device endpoints, private local paths,
+# TCC database paths, and secret material. The exact pattern is intentionally
+# omitted from this public command ledger.
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_soak_report tools.tests.test_soak tools.tests.test_host_memory_diagnostic -v
