@@ -76,6 +76,45 @@ and
     execution with `no such module 'XCTest'`; the MacHost product target
     compiled successfully with `swift build`.
 
+## 2026-08-28 Nubia P0110 Android decoder capability probe
+
+A read-only Android decoder capability snapshot was captured on `origin/main`
+`27d2b0e493e807ae439fbd43b06b4c2f0ce9c503` for the connected Nubia P0110
+(`pacific`, Android 16 / SDK 36, serial `<redacted-device-serial>`). The run first
+checked `pgrep -x sfltool || true`, which returned no output, and no
+`/usr/bin/sfltool dumpbtm` command was executed. Android device commands were
+run after acquiring `/tmp/vibe-screen-android-<redacted-device-serial>.lock`.
+
+The preferred service-level probes remained unavailable on this device:
+`adb -s <redacted-device-serial> shell dumpsys media.codec` returned no stdout and
+`Can't find service: media.codec` on stderr with exit code `0`, and
+`adb -s <redacted-device-serial> shell cmd media.codec list` returned
+`cmd: Can't find service: media.codec` with exit code `20`. Vendor/system XML
+inspection still declares diagnostic AV1 decoder entries including
+`c2.qti.av1.decoder`, `c2.qti.av1.decoder.low_latency`,
+`c2.qti.av1.decoder.secure`, `c2.android.av1.decoder`, and
+`c2.android.av1-dav1d.decoder`.
+
+This is only an Android capability/readiness snapshot. It does not add AV1
+Host/device real-stream evidence, does not prove MediaCodec configuration or a
+first decoded output frame, and does not change the README AV1 gate status.
+The retained raw outputs and hashes are recorded under
+[`evidence/2026-08-28-nubia-p0110-av1-capability-probe/README.md`](evidence/2026-08-28-nubia-p0110-av1-capability-probe/README.md).
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 6 tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `make protocol`
+  - Result: passed, including 45 protocol contract tests.
+- `cd docs/changes/2026-08-21-av1-codec-capability/evidence/2026-08-28-nubia-p0110-av1-capability-probe && shasum -a 256 -c SHA256SUMS.txt`
+  - Result: passed for every retained evidence file.
+- `git diff --check`
+  - Result: passed.
+- Sensitive-info scan over the AV1 evidence directory, `TEST.md`, and
+  `tools/tests/test_av1_current_base_gate.py`
+  - Result: passed; no matching secret/token/private-key patterns.
+
 ## 2026-08-23 current-base refresh
 
 The current-base closure owner was replayed on `origin/main`

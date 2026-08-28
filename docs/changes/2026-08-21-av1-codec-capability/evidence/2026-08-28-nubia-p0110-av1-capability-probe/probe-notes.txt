@@ -1,0 +1,17 @@
+Before device use, pgrep -x sfltool || true returned no output.
+
+The first lock implementation attempted to use flock, but this macOS host did
+not have flock in PATH and no ADB command was run in that attempt. The second
+attempt found a stale empty lock file from the failed flock attempt. A later
+lock check found owner=lan-smoke-unblock-check with pid=62204; ps reported no
+running process for that PID, so the stale lock was removed before acquiring
+/tmp/vibe-screen-android-<redacted-device-serial>.lock for the AV1 read-only ADB
+probe.
+
+No /usr/bin/sfltool dumpbtm command was executed. No Vibe Screen AV1 stream was
+started.
+
+repo-status.txt was captured after the evidence directory had been created, so
+its dirty status lists this evidence directory. Before the branch was created,
+the worktree HEAD matched origin/main at 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+and git status --short --branch reported no modified or untracked files.
