@@ -170,24 +170,24 @@ def _signing_probe() -> dict[str, Any]:
     return result
 
 
-def _host_preflight_probe(repo: Path) -> dict[str, Any]:
-    return _run_probe(
-        [
-            sys.executable,
-            "scripts/macos_dev_host.py",
-            "preflight",
-            "--install-path",
-            "/Applications/Vibe Screen.app",
-        ],
-        cwd=repo,
-    )
+def _host_preflight_probe(repo: Path, report_path: Path | None = None) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        "scripts/macos_dev_host.py",
+        "preflight",
+        "--install-path",
+        "/Applications/Vibe Screen.app",
+    ]
+    if report_path is not None:
+        command.extend(["--report", str(report_path)])
+    return _run_probe(command, cwd=repo)
 
 
 def _installed_host_codesign_probe() -> dict[str, Any]:
     return _run_probe(["codesign", "-dv", "--verbose=4", "/Applications/Vibe Screen.app"])
 
 
-def collect_environment(repo: Path) -> dict[str, Any]:
+def collect_environment(repo: Path, host_preflight_report: Path | None = None) -> dict[str, Any]:
     return {
         "codesigning_identities": _signing_probe(),
         "installed_host_codesign": _installed_host_codesign_probe(),
@@ -198,7 +198,7 @@ def collect_environment(repo: Path) -> dict[str, Any]:
                 "TCC grant evidence is not collected by this public current-base manifest",
             ],
         },
-        "host_preflight": _host_preflight_probe(repo),
+        "host_preflight": _host_preflight_probe(repo, host_preflight_report),
         "host_displays": _run_probe(["system_profiler", "SPDisplaysDataType"]),
     }
 
@@ -323,7 +323,7 @@ def host_preflight_records(environment: dict[str, Any]) -> dict[str, dict[str, A
             category="host_preflight",
             requirement=HOST_PREFLIGHT_CHECKS["screen_recording_tcc"],
             blocking=True,
-            evidence=["tcc-dev-telemachus-display.txt"],
+            evidence=["host-preflight.txt"],
             notes=["TCC Screen Recording grant was not proven"],
         ),
         "accessibility_tcc": _check_record(
@@ -331,7 +331,7 @@ def host_preflight_records(environment: dict[str, Any]) -> dict[str, dict[str, A
             category="host_preflight",
             requirement=HOST_PREFLIGHT_CHECKS["accessibility_tcc"],
             blocking=True,
-            evidence=["tcc-dev-telemachus-display.txt"],
+            evidence=["host-preflight.txt"],
             notes=["TCC Accessibility grant was not proven"],
         ),
         "signing_tcc_match": _check_record(
@@ -339,7 +339,7 @@ def host_preflight_records(environment: dict[str, Any]) -> dict[str, dict[str, A
             category="host_preflight",
             requirement=HOST_PREFLIGHT_CHECKS["signing_tcc_match"],
             blocking=True,
-            evidence=["host-preflight.txt", "tcc-dev-telemachus-display.txt"],
+            evidence=["host-preflight.txt"],
             notes=["signed Host identity and TCC rows could not be matched"],
         ),
         "rotation_restoration_plan": _check_record(
@@ -384,12 +384,13 @@ def build_manifest(
     repo: Path,
     aggregate_owner_pr: str = AGGREGATE_OWNER_PR,
     adb_serial: str | None = None,
+    host_preflight_report: Path | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
     owner_pr = _normalize_pr(aggregate_owner_pr)
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
-    environment = collect_environment(repo)
+    environment = collect_environment(repo, host_preflight_report)
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -444,15 +445,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = args.command
     if command[:1] == ["--"]:
         command = command[1:]
+    output_path = args.output.resolve()
     try:
         manifest = build_manifest(
             command=command,
             repo=args.repo,
             aggregate_owner_pr=args.aggregate_owner_pr,
             adb_serial=args.adb_serial,
+            host_preflight_report=output_path.parent / "host-preflight.txt",
             notes=args.notes,
         )
-        write_json(args.output, manifest)
+        write_json(output_path, manifest)
     except (ManifestError, OSError, TypeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
