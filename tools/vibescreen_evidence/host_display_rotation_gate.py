@@ -522,6 +522,11 @@ def _validate_inverse_touch_mapping(
             if isinstance(name, str):
                 seen_points.add(name)
             error_px = point.get("error_px")
+            if point.get("within_tolerance") is not True:
+                errors.append(
+                    f"runs[{run_index}].inverse_touch_mapping.points[{point_index}].within_tolerance: "
+                    "must be true"
+                )
             if (
                 has_valid_tolerance
                 and isinstance(error_px, (int, float))
