@@ -1,0 +1,42 @@
+{
+  "kind": "macos_host_shared_prerequisite_readiness",
+  "status": "blocked",
+  "can_close_runtime_gates": false,
+  "listener_status": "ready",
+  "listener": {
+    "observed": true,
+    "port": 54321,
+    "address": "127.0.0.1"
+  },
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "identifier": "dev.telemachus.display",
+    "source_commit": null,
+    "current_source_commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "current_source_dirty": false
+  },
+  "blockers": [
+    "stable signing identity was not available to the readiness check",
+    "installed Host lacks source commit/tree provenance",
+    "TCC permissions could not be verified read-only",
+    "Host is missing the virtual HID entitlement",
+    "Launch at Login is not verified enabled",
+    "no active display is visible to the current WindowServer session"
+  ],
+  "permissions": {
+    "readable": false,
+    "accessibility_granted": false,
+    "screen_recording_granted": false
+  },
+  "entitlements": {
+    "virtual_hid": false
+  },
+  "safety": {
+    "closes_runtime_gates": false,
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "starts_host": false
+  }
+}

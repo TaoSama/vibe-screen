@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt source="20-disconnect-confirm-actual.xml">
+  <node resource-id="dev.telemachus.display:id/alertTitle" class="android.widget.TextView" text="Disconnect?" bounds="[774,436][1091,512]" />
+  <node resource-id="android:id/message" class="android.widget.TextView" text="This ends the current screen session with the Mac." bounds="[690,540][2250,606]" />
+  <node resource-id="android:id/button2" class="android.widget.Button" text="CANCEL" clickable="true" focusable="true" bounds="[1534,715][1799,883]" />
+  <node resource-id="android:id/button1" class="android.widget.Button" text="DISCONNECT" clickable="true" focusable="true" bounds="[1827,715][2222,883]" />
+</sanitized-ui-excerpt>
