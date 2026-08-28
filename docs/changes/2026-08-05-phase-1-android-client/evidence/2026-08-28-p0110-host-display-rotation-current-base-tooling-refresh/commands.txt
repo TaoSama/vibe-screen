@@ -1,0 +1,21 @@
+# Commands for 2026-08-28 P0110 host-display-rotation current-base tooling refresh
+pgrep -x sfltool || true
+make host-display-rotation-gate EVIDENCE_DIR=<RUN_DIR>
+make host-display-rotation-current-base-manifest EVIDENCE_DIR=<RUN_DIR> EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL
+make host-display-rotation-current-base-gate EVIDENCE_DIR=<RUN_DIR> EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL
+adb devices -l
+adb -s REDACTED_P0110_USB_SERIAL get-state
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.manufacturer
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.model
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.device
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.release
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.sdk
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.fingerprint
+adb -s REDACTED_P0110_USB_SERIAL shell pm path dev.telemachus.display
+adb -s REDACTED_P0110_USB_SERIAL shell pm path dev.telemachus.display.test
+adb -s REDACTED_P0110_USB_SERIAL reverse --list
+adb -s REDACTED_P0110_USB_SERIAL shell dumpsys window windows
+adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display
+adb -s REDACTED_P0110_USB_SERIAL shell ss -tnp
+make baseline-macos-host-readiness EVIDENCE_DIR=<RUN_DIR>
+pgrep -x sfltool || true
