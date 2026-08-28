@@ -129,14 +129,57 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         manifest = self.load_real_manifest()
         device = manifest["device"]
         assert isinstance(device, dict)
-        device["manufacturer"] = "Xiaomi"
+        device["manufacturer"] = "OtherVendor"
         device["model"] = "2211133C"
-        device["codename"] = "fuxi"
+        device["codename"] = "othercodename"
 
         report = evaluate(manifest, repository_root=REPOSITORY_ROOT)
 
         self.assertEqual(report["verdict"], "fail")
-        self.assertIn("device.manufacturer: expected nubia, got Xiaomi", report["errors"])
+        self.assertIn("device.manufacturer: expected nubia, got OtherVendor", report["errors"])
+
+    def test_real_current_base_report_redacts_adb_serial(self) -> None:
+        report = evaluate(self.load_real_manifest(), repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["device_identity"]["adb_serial"], "<redacted-adb-serial>")
+        self.assertNotIn("EP" + "0110PZ0B9110300B", json.dumps(report, sort_keys=True))
+
+    def test_rejects_public_manifest_with_raw_adb_serial(self) -> None:
+        manifest = self.load_real_manifest()
+        device = manifest["device"]
+        assert isinstance(device, dict)
+        device["adb_serial"] = "EP" + "0110PZ0B9110300B"
+
+        report = evaluate(manifest, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("device.adb_serial: public current-base evidence must redact", "\n".join(report["errors"]))
+
+    def test_rejects_sensitive_public_artifact_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            artifact = root / "artifact.txt"
+            artifact.write_text("visible serial EP" + "0110PZ0B9110300B\n", encoding="utf-8")
+            import hashlib
+
+            digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            manifest = self.load_real_manifest()
+            states = manifest["states"]
+            assert isinstance(states, list)
+            sensitive_artifact = {
+                "path": "artifact.txt",
+                "sha256": digest,
+                "kind": "operator_note",
+                "description": "synthetic sensitive artifact",
+            }
+            for state in states:
+                assert isinstance(state, dict)
+                state["artifacts"] = [dict(sensitive_artifact)]
+
+            report = evaluate(manifest, repository_root=root)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("public artifact contains raw ADB serial", "\n".join(report["errors"]))
 
     def test_runtime_rejects_schema_required_top_level_gaps(self) -> None:
         manifest = self.load_real_manifest()

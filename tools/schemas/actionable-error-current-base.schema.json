@@ -41,7 +41,7 @@
       "additionalProperties": false,
       "required": ["adb_serial", "manufacturer", "model", "codename", "android_release", "sdk"],
       "properties": {
-        "adb_serial": { "type": "string", "minLength": 1 },
+        "adb_serial": { "const": "<redacted-adb-serial>" },
         "manufacturer": { "type": "string", "minLength": 1 },
         "model": { "type": "string", "minLength": 1 },
         "codename": { "type": "string", "minLength": 1 },
