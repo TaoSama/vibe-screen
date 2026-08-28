@@ -5,7 +5,7 @@ not have flock in PATH and no ADB command was run in that attempt. The second
 attempt found a stale empty lock file from the failed flock attempt. A later
 lock check found owner=lan-smoke-unblock-check with pid=62204; ps reported no
 running process for that PID, so the stale lock was removed before acquiring
-/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock for the AV1 read-only ADB
+/tmp/vibe-screen-android-<redacted-device-serial>.lock for the AV1 read-only ADB
 probe.
 
 No /usr/bin/sfltool dumpbtm command was executed. No Vibe Screen AV1 stream was
