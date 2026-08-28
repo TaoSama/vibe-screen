@@ -1,0 +1,5 @@
+## codex/rotated-host-display-readiness-2026-08-28
+?? docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/
+27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+merge-base-origin-main-ancestor-exit=0
