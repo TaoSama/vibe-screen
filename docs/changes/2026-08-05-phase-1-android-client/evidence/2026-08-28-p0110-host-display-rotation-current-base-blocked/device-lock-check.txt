@@ -1,0 +1,6 @@
+lock_path=/tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock
+attempt_pid=12057
+lock_acquired=true
+lock_released_on_process_exit=true
+lock_file_removed=true
+lock_exists_after=no

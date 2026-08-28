@@ -27,6 +27,7 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 DEFAULT_XCTEST_PREFLIGHT_REPORT = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
@@ -37,12 +38,10 @@ ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
-DEFAULT_XCTEST_PREFLIGHT_OUTPUT = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
-DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item probe not run by default; run readiness with "
     "--include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or "
@@ -159,6 +158,22 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    xctest_preflight = subparsers.add_parser(
+        "xctest-preflight",
+        help="fail closed unless the selected Apple developer directory can run SwiftPM XCTest",
+    )
+    xctest_preflight.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_REPORT,
+        help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
+    )
+    xctest_preflight.add_argument(
+        "--json-output",
+        type=Path,
+        default=None,
+        help=f"optional JSON report path; when omitted, the text report is written to --report (default JSON path: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -188,16 +203,6 @@ def parse_args() -> argparse.Namespace:
             "/usr/bin/sfltool dumpbtm. This may trigger macOS administrator "
             "authorization prompts; default CI/test readiness skips it fail-closed."
         ),
-    )
-    xctest = subparsers.add_parser(
-        "xctest-preflight",
-        help="fail closed unless the selected Apple developer directory can run SwiftPM XCTest",
-    )
-    xctest.add_argument(
-        "--report",
-        type=Path,
-        default=DEFAULT_XCTEST_PREFLIGHT_REPORT,
-        help="path for the XCTest toolchain report",
     )
     return parser.parse_args()
 
@@ -274,7 +279,7 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         return 127, f"command unavailable: {Path(executable).name}"
     except OSError as error:
         executable = command[0] if command else "command"
-        return 127, f"command unavailable: {executable}: {error.strerror or error}"
+        return 127, f"command unavailable: command not found: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
@@ -1196,7 +1201,19 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
     return f"{label}: exit_code={exit_code}\n{clean_output}"
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    if not isinstance(getattr(args, "report", None), Path):
+    report_path = getattr(args, "report", None)
+    json_output = getattr(args, "json_output", None)
+
+    if isinstance(json_output, Path):
+        status = inspect_xctest_preflight()
+        document = build_xctest_preflight_document(status)
+        write_json_report(json_output, document)
+        print(f"Wrote {json_output}")
+        if status.errors:
+            return 2
+        return 0
+
+    if not isinstance(report_path, Path):
         exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
         xctest_path = output.splitlines()[0].strip() if output.strip() else ""
         if exit_code != 0 or not xctest_path:
@@ -1246,14 +1263,20 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
             "",
         )
     )
-    write_report(args.report, report)
-    print(f"Wrote {args.report}")
-    if errors:
+    write_report(report_path, report)
+    print(f"Wrote {report_path}")
+    json_errors: tuple[str, ...] = ()
+    if isinstance(json_output, Path):
+        status = inspect_xctest_preflight()
+        json_errors = status.errors
+        document = build_xctest_preflight_document(status)
+        write_json_report(json_output, document)
+        print(f"Wrote {json_output}")
+    if errors or json_errors:
         print(report, file=sys.stderr)
         return 2
     print("macOS Host XCTest toolchain preflight passed")
     return 0
-
 
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)

@@ -47,6 +47,7 @@ PHASE2_HOST_LOG ?=
 PHASE2_APK_PATH ?=
 PHASE2_APK_SHA256 ?=
 PHASE2_RECOVERY_SCENARIOS ?=
+PHASE2_GATE_OWNERS ?=
 PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
@@ -885,6 +886,7 @@ phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
 		--video-preferences "$(PHASE2_VIDEO_PREFERENCES)" \
 		--host-identity "$(PHASE2_HOST_IDENTITY)" \
 		--host-build "$(PHASE2_HOST_BUILD)" \
+		--gate-owners "$(PHASE2_GATE_OWNERS)" \
 		--duration $(PHASE2_SOAK_DURATION) \
 		--preflight-duration $(PHASE2_SOAK_PREFLIGHT_DURATION) \
 		--interval $(PHASE2_SOAK_INTERVAL) \
