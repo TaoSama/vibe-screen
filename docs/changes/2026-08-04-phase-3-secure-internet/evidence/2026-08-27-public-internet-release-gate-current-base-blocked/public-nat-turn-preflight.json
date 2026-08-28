@@ -1,0 +1,99 @@
+{
+  "checks": [
+    {
+      "detail": "relay authority_url still uses a placeholder hostname",
+      "name": "relay_production_config",
+      "result": "blocked"
+    },
+    {
+      "detail": "ok",
+      "name": "coturn_production_config",
+      "result": "pass"
+    },
+    {
+      "detail": "turn secret file must be provided",
+      "name": "turn_secret_file",
+      "result": "blocked"
+    },
+    {
+      "detail": "TLS certificate must be provided",
+      "name": "tls_certificate",
+      "result": "blocked"
+    },
+    {
+      "detail": "TLS private key must be provided",
+      "name": "tls_private_key",
+      "result": "blocked"
+    },
+    {
+      "detail": "COTURN_EXTERNAL_IP must be provided",
+      "name": "coturn_external_ip",
+      "result": "blocked"
+    },
+    {
+      "detail": "authority readiness URL must be provided",
+      "name": "authority_readiness",
+      "result": "blocked"
+    },
+    {
+      "detail": "relay readiness URL must be provided",
+      "name": "relay_readiness",
+      "result": "blocked"
+    },
+    {
+      "detail": "DNS resolution cannot be skipped for public NAT/TURN pass evidence",
+      "name": "dns_resolution",
+      "result": "blocked"
+    },
+    {
+      "detail": "public NAT/TURN connectivity evidence must be provided",
+      "name": "connectivity_evidence",
+      "result": "blocked"
+    },
+    {
+      "detail": "external public NAT/TURN connectivity command must be provided",
+      "name": "external_connectivity_canary",
+      "result": "blocked"
+    },
+    {
+      "detail": "public NAT/TURN deployment evidence must be provided",
+      "name": "deployment_evidence",
+      "result": "blocked"
+    }
+  ],
+  "connectivity": {},
+  "coturn": {
+    "allowed_peer_ip_count": 0,
+    "max_bps": 20000000,
+    "private_peer_deny_count": 13,
+    "relay_port_max": 65535,
+    "relay_port_min": 49152,
+    "tls_listening_port": 5349,
+    "total_quota": 1000,
+    "user_quota": 12
+  },
+  "deployment": {},
+  "kind": "phase3_public_nat_turn_preflight",
+  "limitations": [
+    "blocked_before_public_nat_turn_deployment_gate"
+  ],
+  "privacy": {
+    "raw_device_identifiers_recorded": false,
+    "raw_endpoints_recorded": false,
+    "sensitive_values_recorded": false
+  },
+  "relay": {},
+  "required_runtime_inputs": [
+    "turn_secret_file",
+    "tls_certificate",
+    "tls_private_key",
+    "coturn_external_ip",
+    "authority_readiness",
+    "relay_readiness",
+    "connectivity_evidence",
+    "external_connectivity_canary",
+    "deployment_evidence"
+  ],
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-public-nat-turn-preflight/v1"
+}
