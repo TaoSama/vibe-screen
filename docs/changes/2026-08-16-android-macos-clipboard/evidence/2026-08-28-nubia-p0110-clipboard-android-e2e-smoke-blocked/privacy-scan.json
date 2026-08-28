@@ -430,7 +430,7 @@
       "sha256": "97a0062c0baa0fc1229421075be705142bf86e7321013452590b0746d4b3f8f0"
     },
     {
-      "bytes": 7504,
+      "bytes": 9118,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -440,7 +440,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "b2dc7f87f5ab9039601c7449352622baac543621c1807565cbb133862982ddbe"
+      "sha256": "ecf123602bc7d601d2915242cd848d68471d130014fecdf08bee5b9e7d2d090b"
     },
     {
       "bytes": 217,
@@ -690,7 +690,7 @@
       "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
     },
     {
-      "bytes": 7615,
+      "bytes": 7686,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -700,7 +700,7 @@
       ],
       "path": "usb-smoke-preflight.json",
       "result": "pass",
-      "sha256": "d053ad5c665493a534940249670192924d7bb11b110eb29a3ea006c3c5dca60a"
+      "sha256": "4d66f9d714f79b04eb4387b08f93afeeeec40373f7b46d7e2c5f6ba91ee6ced5"
     },
     {
       "bytes": 541,

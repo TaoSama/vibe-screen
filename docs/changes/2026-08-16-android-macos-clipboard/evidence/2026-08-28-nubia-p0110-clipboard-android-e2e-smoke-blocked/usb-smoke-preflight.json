@@ -88,6 +88,7 @@
       "model": "P0110",
       "sdk": "36"
     },
+    "allow_existing_locks": false,
     "held_locks": [
       "/tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock"
     ],
@@ -158,6 +159,7 @@
   "safety": {
     "changes_adb_reverse": false,
     "checked_device_locks": true,
+    "allows_existing_locks": false,
     "clears_logcat": false,
     "existing_locks": [],
     "injects_input": false,

@@ -90,6 +90,8 @@ def _is_safe_credential_value(value: bytes) -> bool:
     # "false"/"true"/"null" is a string value that could be a credential.
     if stripped in (b"true", b"false", b"null"):
         return True
+    if re.fullmatch(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", stripped):
+        return True
     normalized = stripped.strip(b"\"\'").strip().lower()
     if normalized in {
         b"",
@@ -99,8 +101,6 @@ def _is_safe_credential_value(value: bytes) -> bool:
         b"[redacted]",
         b"...",
     }:
-        return True
-    if re.fullmatch(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", normalized):
         return True
     return re.fullmatch(
         rb"\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\}|\([^)\r\n]*\))",

@@ -250,6 +250,12 @@ class RepositoryPrivacyTests(unittest.TestCase):
         self.assertIn("credential_material", findings)
         self.assertTrue(all(value.startswith("sha256:") for value in findings["credential_material"]))
 
+        numeric_string_findings = scan_content(b'{"token":"12345"}')
+        self.assertIn("credential_material", numeric_string_findings)
+        self.assertTrue(
+            all(value.startswith("sha256:") for value in numeric_string_findings["credential_material"])
+        )
+
     def test_phase3_evidence_sha256s_cover_every_archived_file(self) -> None:
         checksum_path = PHASE3_EVIDENCE / "SHA256SUMS"
         recorded = {}
