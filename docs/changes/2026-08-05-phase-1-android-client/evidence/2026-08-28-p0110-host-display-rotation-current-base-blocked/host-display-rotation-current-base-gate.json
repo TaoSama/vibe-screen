@@ -1,0 +1,184 @@
+{
+  "can_claim_real_device_pass": false,
+  "can_close_current_base_aggregate": false,
+  "can_close_host_display_rotation_acceptance": false,
+  "checks": {
+    "device": {
+      "device_identity": {
+        "blocking": true,
+        "evidence": [
+          "device-identity.txt"
+        ],
+        "expected": "manufacturer/model/codename/release/sdk/serial are retained for the device that produced evidence",
+        "passed": true
+      },
+      "physical_android_device": {
+        "blocking": true,
+        "evidence": [
+          "physical_android_device"
+        ],
+        "expected": "device is a physical Android device, not simulator or synthetic evidence",
+        "passed": true
+      }
+    },
+    "evidence_substitution": {
+      "client_local_matrix_not_used_for_host_rotation": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "client-local Fit/Fill/rotation matrix is not used as host display rotation evidence",
+        "passed": true
+      }
+    },
+    "formal_host_display_rotation_gates": {
+      "physical_host_display_rotation": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "physical Mac display rotated through 90/180/270 with retained real-device visual and inverse-touch evidence",
+        "passed": false
+      },
+      "virtual_host_display_rotation": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "virtual Mac display rotated through 90/180/270 with retained real-device visual and inverse-touch evidence",
+        "passed": false
+      }
+    },
+    "host_preflight": {
+      "accessibility_tcc": {
+        "blocking": true,
+        "evidence": [
+          "tcc-dev-telemachus-display.txt"
+        ],
+        "expected": "Accessibility grant is recorded for the signed Host bundle",
+        "passed": false
+      },
+      "bundle_identifier": {
+        "blocking": true,
+        "evidence": [
+          "host-preflight.txt",
+          "installed-host-codesign.txt"
+        ],
+        "expected": "installed Host bundle identifier matches dev.telemachus.display",
+        "passed": true
+      },
+      "rotation_restoration_plan": {
+        "blocking": true,
+        "evidence": [
+          "host-displays-before.txt"
+        ],
+        "expected": "operator retained a restoration plan for original macOS display rotation",
+        "passed": false
+      },
+      "screen_recording_tcc": {
+        "blocking": true,
+        "evidence": [
+          "tcc-dev-telemachus-display.txt"
+        ],
+        "expected": "Screen Recording grant is recorded for the signed Host bundle",
+        "passed": false
+      },
+      "signing_identity": {
+        "blocking": true,
+        "evidence": [
+          "codesigning-identities.txt"
+        ],
+        "expected": "stable non-ad-hoc Host signing identity is available",
+        "passed": false
+      },
+      "signing_tcc_match": {
+        "blocking": true,
+        "evidence": [
+          "host-preflight.txt",
+          "tcc-dev-telemachus-display.txt"
+        ],
+        "expected": "the signed bundle identity matches the TCC rows being used",
+        "passed": false
+      }
+    },
+    "metadata": {
+      "aggregate_owner": {
+        "blocking": false,
+        "evidence": [
+          "current-base-host-display-rotation"
+        ],
+        "expected": "current-base-host-display-rotation",
+        "passed": true
+      },
+      "aggregate_owner_pr": {
+        "blocking": false,
+        "evidence": [
+          "#262"
+        ],
+        "expected": "current-base aggregate owner #262",
+        "passed": true
+      },
+      "kind": {
+        "blocking": false,
+        "evidence": [],
+        "expected": "host_display_rotation_current_base_manifest",
+        "passed": true
+      },
+      "schema_version": {
+        "blocking": false,
+        "evidence": [],
+        "expected": "vibescreen.evidence/v1",
+        "passed": true
+      },
+      "scope_prs": {
+        "blocking": false,
+        "evidence": [
+          "#162",
+          "#243",
+          "#262",
+          "#272"
+        ],
+        "expected": "related PRs #162/#243/#262/#272 are recorded in scope",
+        "passed": true
+      },
+      "source_docs": {
+        "blocking": false,
+        "evidence": [
+          "README.md",
+          "docs/changes/2026-08-05-phase-1-android-client/TEST.md",
+          "docs/runbook/host-display-rotation-acceptance.md",
+          "docs/testing.md"
+        ],
+        "expected": "README, testing guide, runbook, and Phase 1 TEST are referenced and present",
+        "passed": true
+      }
+    },
+    "supporting_client_local_gate": {
+      "client_local_fit_fill_rotation_matrix": {
+        "blocking": false,
+        "evidence": [
+          "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-viewport-input/"
+        ],
+        "expected": "client-local Fit/Fill and Follow Mac/90/180/270 matrix stays separate from host display rotation",
+        "passed": true
+      }
+    }
+  },
+  "derivation_status": "complete",
+  "interpretation": "A pass means the current base has retained real-device evidence for both physical and virtual macOS host displays at 90, 180, and 270 degrees. The existing client-local Fit/Fill/rotation matrix with hostRotation=0 remains supporting evidence only and cannot close this gate.",
+  "kind": "host_display_rotation_current_base_gate",
+  "owner": {
+    "aggregate": "current-base-host-display-rotation",
+    "aggregate_pr": "#262",
+    "repository": "TaoSama/vibe-screen"
+  },
+  "reasons": [
+    "blocked: signing_identity",
+    "blocked: screen_recording_tcc",
+    "blocked: accessibility_tcc",
+    "blocked: signing_tcc_match",
+    "blocked: rotation_restoration_plan",
+    "blocked: physical_host_display_rotation",
+    "blocked: virtual_host_display_rotation"
+  ],
+  "run_id": "a30dcbdc-8da0-4ddf-a53f-a4c2ab96117c",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "manifest": "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/host-display-rotation-current-base-manifest.json"
+  },
+  "verdict": "blocked"
+}
