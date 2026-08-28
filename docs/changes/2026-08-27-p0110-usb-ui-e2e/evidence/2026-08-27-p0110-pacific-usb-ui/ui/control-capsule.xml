@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt source="03-control-capsule.xml">
+  <node resource-id="dev.telemachus.display:id/videoViewport" class="android.widget.FrameLayout" bounds="[427,0][2373,1264]" />
+  <node resource-id="dev.telemachus.display:id/surfaceView" class="android.view.SurfaceView" bounds="[427,0][2373,1264]" />
+  <node resource-id="dev.telemachus.display:id/inputViewport" class="android.view.View" content-desc="Show stream controls" clickable="true" focusable="true" bounds="[427,0][2373,1264]" />
+  <node resource-id="dev.telemachus.display:id/controlBar" class="android.widget.FrameLayout" bounds="[854,210][2086,420]" />
+  <node resource-id="dev.telemachus.display:id/connectionSecurityGroup" class="android.widget.LinearLayout" content-desc="USB connection, ADB reverse" bounds="[875,231][1295,399]" />
+  <node resource-id="dev.telemachus.display:id/connectionSecurityLabel" class="android.widget.TextView" text="USB" bounds="[903,260][1267,317]" />
+  <node resource-id="dev.telemachus.display:id/connectionSecurityDetail" class="android.widget.TextView" text="ADB reverse" bounds="[903,317][1267,370]" />
+  <node resource-id="dev.telemachus.display:id/displayCapsuleGroup" class="android.widget.LinearLayout" content-desc="Choose display, currently Built-in Retina Display" clickable="true" focusable="true" bounds="[1316,231][1463,399]" />
+  <node resource-id="dev.telemachus.display:id/controlHostActionsButton" class="android.widget.ImageButton" content-desc="Window actions" clickable="true" focusable="true" bounds="[1477,231][1645,399]" />
+  <node resource-id="dev.telemachus.display:id/controlSettingsButton" class="android.widget.ImageButton" content-desc="Settings" clickable="true" focusable="true" bounds="[1673,231][1841,399]" />
+  <node resource-id="dev.telemachus.display:id/controlDisconnectButton" class="android.widget.ImageButton" content-desc="Disconnect" clickable="true" focusable="true" bounds="[1897,231][2065,399]" />
+</sanitized-ui-excerpt>
