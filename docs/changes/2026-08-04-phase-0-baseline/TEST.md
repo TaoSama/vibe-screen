@@ -308,8 +308,8 @@ headless Mac gates. Evidence is retained under
 ## Current-base Nubia P0110 USB recheck (2026-08-23)
 
 Origin/main commit `50694049096783466481f418c41a5eb50740e871` was rechecked on
-the connected Nubia P0110 (pacific), serial `<P0110_USB_SERIAL>`, Android 16 /
-SDK 36. The current Android debug APK installed successfully and the P0110 ADB
+the connected Nubia P0110 / pacific / Android 16 / SDK 36 substitute. The
+current Android debug APK installed successfully and the P0110 ADB
 target reported `UsbFfs tcp:54321 tcp:54321`, but this attempt did not establish
 a current-base USB stream.
 
