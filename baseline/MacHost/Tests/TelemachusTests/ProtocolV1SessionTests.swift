@@ -1577,12 +1577,22 @@ final class ProtocolV1SessionTests: XCTestCase {
             try envelope(id: 7, payload: .touchEvent(displayOnlyTargetTouch)).serializedData()
         ).containsTouch)
 
+        var wrongDisplayTarget = VSInputTarget()
+        wrongDisplayTarget.displayID = "wrong-display"
+        var wrongDisplayTargetTouch = touchEvent()
+        wrongDisplayTargetTouch.target = wrongDisplayTarget
+        let rejectedDisplay = session.handleControl(
+            try envelope(id: 8, payload: .touchEvent(wrongDisplayTargetTouch)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejectedDisplay).code, .invalidState)
+        XCTAssertTrue(rejectedDisplay.containsClose)
+
         var wrongTarget = activeTarget
         wrongTarget.streamID = 2
         var wrongTargetTouch = touchEvent()
         wrongTargetTouch.target = wrongTarget
         let rejected = session.handleControl(
-            try envelope(id: 8, payload: .touchEvent(wrongTargetTouch)).serializedData()
+            try envelope(id: 9, payload: .touchEvent(wrongTargetTouch)).serializedData()
         )
         XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
         XCTAssertTrue(rejected.containsClose)

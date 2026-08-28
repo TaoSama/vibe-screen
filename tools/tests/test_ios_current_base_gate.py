@@ -192,7 +192,6 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "physical_ipad", IPAD_VIDEOTOOLBOX_ARTIFACT
         ),
     ]
-    manifest["native_input_gate"] = make_native_input_gate()
     gates = manifest["gates"]
     assert isinstance(gates, dict)
     for name in [*FORMAL_DEVICE_GATES, *BROADER_GATES]:

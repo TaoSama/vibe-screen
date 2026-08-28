@@ -370,12 +370,13 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     ),
                 ),
                 redirect_stdout(StringIO()),
-                redirect_stderr(StringIO()),
+                redirect_stderr(StringIO()) as stderr,
             ):
                 result = macos_dev_host.preflight_command(args)
 
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
+            self.assertIn("macOS Host preflight failed", stderr.getvalue())
 
     def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

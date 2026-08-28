@@ -321,22 +321,21 @@ def _default_native_input_gate(
     failures: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     observations = {field: False for field in ios_native_input.BOOLEAN_FIELDS}
-    field_missing = [
-        {"field": field, "requirement": requirement}
-        for field, requirement in ios_native_input.REQUIRED_FIELDS
-    ]
+    field_missing = [requirement for _, requirement in ios_native_input.REQUIRED_FIELDS]
     reason_missing = list(reasons or ["ios-native-input-gate.json not provided"])
     field_blocking = [
-        item for item in field_missing if item["field"] in ios_native_input.BLOCKING_FIELDS
+        {"field": field, "requirement": requirement}
+        for field, requirement in ios_native_input.REQUIRED_FIELDS
+        if field in ios_native_input.BLOCKING_FIELDS
     ]
     return {
         "provided": provided,
         "path": str(path) if path is not None else None,
         "owner": None,
         "current_base": None,
-        "kind": NATIVE_INPUT_KIND if path is None else None,
-        "profile": NATIVE_INPUT_PROFILE if path is None else None,
-        "gate_owner": NATIVE_INPUT_GATE_OWNER if path is None else None,
+        "kind": NATIVE_INPUT_KIND,
+        "profile": NATIVE_INPUT_PROFILE,
+        "gate_owner": NATIVE_INPUT_GATE_OWNER,
         "verdict": "blocked",
         "can_close_ios_native_input_gate": False,
         "requires_real_ios_device": True,
@@ -621,6 +620,8 @@ def _load_videotoolbox_readiness_gate(path: Path) -> dict[str, Any]:
 
     runtime_class = document.get("runtime_class")
     missing: list[str] = []
+    if document.get("schema_version") != SCHEMA_VERSION:
+        missing.append(f"schema_version must be {SCHEMA_VERSION}")
     if document.get("kind") != VIDEOTOOLBOX_READINESS_KIND:
         missing.append("kind must be ios_hardware_videotoolbox_readiness")
     if document.get("profile") != VIDEOTOOLBOX_READINESS_PROFILE:
@@ -688,37 +689,7 @@ def _merge_videotoolbox_readiness_gates(paths: Sequence[Path] | None) -> list[di
 
 
 def default_native_input_gate() -> dict[str, Any]:
-    return {
-        "provided": False,
-        "path": None,
-        "owner": None,
-        "current_base": None,
-        "kind": None,
-        "profile": None,
-        "gate_owner": None,
-        "verdict": "blocked",
-        "can_close_ios_native_input_gate": False,
-        "requires_real_ios_device": True,
-        "requires_signed_app": True,
-        "requires_physical_keyboard": True,
-        "requires_hover_or_pointer_accessory": True,
-        "android_evidence_is_not_ios_input_evidence": True,
-        "simulator_is_not_ios_input_evidence": True,
-        "offline_tests_are_readiness_only": True,
-        "observations": {},
-        "missing_requirements": [
-            "ios-native-input gate evidence was not provided",
-            "real iOS hardware input behavior remains unverified",
-        ],
-        "blocking_reasons": [
-            {
-                "field": "native_input_gate",
-                "requirement": "bind a passing ios-native-input current-base gate before closing iOS input acceptance",
-            }
-        ],
-        "disallowed_evidence": [],
-        "artifact_paths": [],
-    }
+    return _default_native_input_gate()
 
 
 def collect_environment(repo: Path) -> dict[str, Any]:

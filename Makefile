@@ -957,7 +957,7 @@ clipboard-e2e-gate:
 		$(if $(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS)),--require-pass,); \
 	status=$$?; \
 	if [ $$status -ne 0 ]; then \
-		if [ -z "$(strip $(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		if [ -z "$(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
 

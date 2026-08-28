@@ -1432,7 +1432,7 @@ final class ProtocolV1SessionCoordinator {
             return false
         }
         let displayMatches = !hasDisplayID || binding.displayID == target.displayID
-        let streamMatches = !hasStreamID || binding.streamID == streamID
+        let streamMatches = !hasStreamID || target.streamID == streamID
         return displayMatches && streamMatches
     }
 

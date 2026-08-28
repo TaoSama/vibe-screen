@@ -102,37 +102,14 @@ def write_videotoolbox_readiness_summary(
 
 
 def make_native_input_gate(**overrides: object) -> dict[str, object]:
-    gate: dict[str, object] = {
-        "schema_version": SCHEMA_VERSION,
-        "run_id": "native-input-fixture",
-        "kind": "ios_native_input_behavior",
-        "profile": "ios-native-input-behavior",
-        "gate_owner": "phase5-ios-native-input-behavior",
-        "owner": {
-            "role": "ios_native_input_behavior_current_base_owner",
-            "head_ref": "codex/ios-native-input-readiness-gate",
-            "pull_request": "#257",
-            "repository": "TaoSama/vibe-screen",
-            "scope": "README Phase 5 iOS native-input behavior gate",
-        },
-        "current_base": {"commit": CURRENT_BASE_COMMIT, "dirty": False},
-        "verdict": "pass",
-        "can_close_ios_native_input_gate": True,
-        "requires_real_ios_device": True,
-        "requires_signed_app": True,
-        "requires_physical_keyboard": True,
-        "requires_hover_or_pointer_accessory": True,
-        "android_evidence_is_not_ios_input_evidence": True,
-        "simulator_is_not_ios_input_evidence": True,
-        "offline_tests_are_readiness_only": True,
-        "observations": {},
-        "missing_requirements": [],
-        "blocking_reasons": [],
-        "disallowed_evidence": [],
-        "artifact_paths": ["logs/ios-native-input.log", "logs/host-native-input.log"],
-        "blocking_notes": [],
-        "notes": None,
-    }
+    gate = make_native_input_summary(
+        run_id="native-input-fixture",
+        current_base={"commit": CURRENT_BASE_COMMIT, "dirty": False},
+        observations={},
+        artifact_paths=["logs/ios-native-input.log", "logs/host-native-input.log"],
+        blocking_notes=[],
+        notes=None,
+    )
     gate.update(overrides)
     return gate
 
@@ -294,7 +271,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
-    def test_binds_ios_native_input_gate_summary(self, state, environment):
+    def test_binds_ios_native_input_gate_file(self, state, environment):
         state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
         environment.return_value = {}
         with tempfile.TemporaryDirectory() as directory_name:
@@ -665,6 +642,35 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         )
         self.assertFalse(iphone_gate["can_close_device_family_videotoolbox_gate"])
         self.assertTrue(iphone_gate["blocking_reasons"])
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_videotoolbox_readiness_rejects_schema_version_mismatch(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate_path = write_videotoolbox_readiness_summary(
+                root,
+                "physical_iphone",
+                schema_version="vibescreen.evidence/v0",
+            )
+
+            manifest = build_manifest(
+                command=[],
+                repo=root,
+                videotoolbox_readiness_gates=[gate_path],
+            )
+
+        iphone_gate = next(
+            gate for gate in manifest["videotoolbox_readiness_gates"] if gate["runtime_class"] == "physical_iphone"
+        )
+        self.assertFalse(iphone_gate["can_close_device_family_videotoolbox_gate"])
+        self.assertIn(
+            "schema_version must be vibescreen.evidence/v1",
+            {reason["requirement"] for reason in iphone_gate["blocking_reasons"]},
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")

@@ -1745,7 +1745,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(report, file=sys.stderr)
-        print("macOS XCTest preflight failed", file=sys.stderr)
+        print("macOS Host preflight failed", file=sys.stderr)
         return 2
     print("macOS Host touch-rerun preflight passed")
     return 0
