@@ -464,7 +464,29 @@ Additional `--lock-glob` values are checked in addition to the default
 `/tmp/vibe-screen-device-*.lock` ownership guards. When a hardware-owner script
 already holds a specific lease file, pass that exact path with `--held-lock` so
 the preflight ignores the caller-owned lock while still blocking on every other
-matching lock.
+matching lock. For single-device owner runs that already hold their coordination
+lock through the Make target, pass `EVIDENCE_ALLOW_EXISTING_LOCKS=1` so the
+preflight records the lock and continues read-only probing instead of treating
+that owned lock as an external blocker.
+
+### File-transfer Android smoke gate
+
+Use this gate for the dedicated Android/macOS Protocol v1 single-file transfer
+smoke owner:
+
+```sh
+make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/file-transfer-android-smoke
+```
+
+The gate evaluates Host readiness, USB or trusted-LAN preflight, optional
+Android file-transfer instrumentation output, and retained product E2E evidence
+from both Android -> macOS and macOS -> Android directions. A pass requires a
+real Nubia P0110/pacific Android 16 run with a ready transport, observed
+file-offer/request/content packets, explicit sender action and receiver
+approval, remote file write, positive session epoch, final SHA-256 equality,
+and cancel/cleanup evidence. Missing product evidence,
+synthetic/offline-only evidence, or a P0110 run relabeled as Xiaomi/fuxi remains
+blocked or failed.
 
 ### USB live-stream smoke
 

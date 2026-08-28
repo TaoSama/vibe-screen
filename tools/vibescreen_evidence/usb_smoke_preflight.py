@@ -405,12 +405,14 @@ def build_document(
     held_locks: Sequence[str],
     expected_device: dict[str, str | None],
     host_preflight_report: Path,
+    allow_existing_locks: bool = False,
     command_runner: CommandRunner = subprocess.run,
     wall_clock=utc_now,
 ) -> dict[str, Any]:
     blockers: list[dict[str, str]] = []
     locks = collect_locks(lock_globs, held_locks)
-    if locks:
+    probes_blocked_by_locks = bool(locks and not allow_existing_locks)
+    if probes_blocked_by_locks:
         blockers.append(
             blocker(
                 "safety.locks",
@@ -424,7 +426,7 @@ def build_document(
     host_listener: dict[str, Any] | None = None
     host_preflight: dict[str, Any] | None = None
 
-    if not locks:
+    if not probes_blocked_by_locks:
         device, device_blockers = collect_device(
             serial=serial,
             adb_path=adb_path,
@@ -480,12 +482,14 @@ def build_document(
             "expected_device": expected_device,
             "lock_globs": list(lock_globs),
             "held_locks": [sanitize_lock_path(lock) for lock in held_locks],
+            "allow_existing_locks": allow_existing_locks,
         },
         "safety": {
             "read_only": True,
-            "ran_adb": not locks,
+            "ran_adb": not probes_blocked_by_locks,
             "checked_device_locks": True,
             "existing_locks": [sanitize_lock_path(lock) for lock in locks],
+            "allows_existing_locks": allow_existing_locks,
             "starts_host": False,
             "starts_android_app": False,
             "installs_apk": False,
@@ -690,6 +694,11 @@ def build_parser() -> argparse.ArgumentParser:
             "competing-lock detection while all other matching locks still block"
         ),
     )
+    parser.add_argument(
+        "--allow-existing-locks",
+        action="store_true",
+        help="Continue read-only probes while recording existing locks. Use only when the caller owns the device lock.",
+    )
     parser.add_argument("--expected-manufacturer")
     parser.add_argument("--expected-model")
     parser.add_argument("--expected-device")
@@ -736,6 +745,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         held_locks=arguments.held_lock,
         expected_device=expected_device,
         host_preflight_report=host_report,
+        allow_existing_locks=arguments.allow_existing_locks,
     )
     public_document = sanitize_public_document(
         document,
