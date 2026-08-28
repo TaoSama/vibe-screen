@@ -273,17 +273,18 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
-    except FileNotFoundError as error:
-        executable = str(error.filename or (command[0] if command else "command"))
-        return 127, f"command unavailable: {Path(executable).name}"
-    except OSError as error:
-        executable = command[0] if command else "command"
-        return 127, f"command unavailable: command not found: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
+    except FileNotFoundError as error:
+        executable = str(error.filename or (command[0] if command else "command"))
+        return 127, f"command unavailable: {Path(executable).name}"
+    except OSError as error:
+        command_name = Path(command[0]).name if command else "command"
+        detail = error.strerror or error.__class__.__name__
+        return 127, f"{command_name} unavailable: {detail}"
     return completed.returncode, completed.stdout.strip()
 
 

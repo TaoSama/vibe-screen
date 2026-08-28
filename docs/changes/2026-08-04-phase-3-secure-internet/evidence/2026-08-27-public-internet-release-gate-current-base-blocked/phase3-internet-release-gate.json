@@ -1,0 +1,175 @@
+{
+  "evidence_dir": "docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-27-public-internet-release-gate-current-base-blocked",
+  "gate_can_close_phase3_release": false,
+  "gates": [
+    {
+      "evidence": [
+        "phase3-internet-manifest.json"
+      ],
+      "name": "public_internet_session_manifest",
+      "reasons": [
+        "phase3-internet-manifest.json is missing or unreadable"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "device_identity_cross_check",
+      "reasons": [
+        "phase3-internet-manifest.json and device-info.json are required for device identity cross-check"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "README.md"
+      ],
+      "name": "raw_evidence_bundle",
+      "reasons": [
+        "missing or empty required artifact: phase3-internet-manifest.json",
+        "missing or empty required artifact: device-info.json",
+        "missing or empty required artifact: host.txt",
+        "missing or empty required artifact: build.txt",
+        "missing or empty required artifact: apk-sha256.txt",
+        "missing or empty required artifact: direct-session.jsonl",
+        "missing or empty required artifact: relay-session.jsonl",
+        "missing or empty required artifact: network-handoff.jsonl",
+        "missing or empty required artifact: replay-revocation.jsonl",
+        "missing or empty required artifact: packet-capture-notes.md",
+        "missing or empty required artifact: privacy-manifest.json",
+        "missing or empty required artifact: real-media-continuity.json",
+        "missing or empty required artifact: latency/direct/manifest.json",
+        "missing or empty required artifact: latency/direct/samples.csv",
+        "missing or empty required artifact: latency/direct/raw-camera.mov",
+        "missing or empty required artifact: latency/relay/manifest.json",
+        "missing or empty required artifact: latency/relay/samples.csv",
+        "missing or empty required artifact: latency/relay/raw-camera.mov",
+        "missing or empty required artifact: soak-2h/summary.json",
+        "missing or empty required artifact: soak-2h/samples.jsonl",
+        "missing or empty required artifact: soak-2h/host-telemetry.jsonl",
+        "missing or empty required artifact: soak-2h/exact-window-report.json",
+        "missing or empty required artifact: host.log",
+        "missing or empty required artifact: raw-logcat.txt",
+        "missing or empty required artifact: datachannel-record-layer.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "datachannel-record-layer.json"
+      ],
+      "name": "webrtc_datachannel_record_layer",
+      "reasons": [
+        "DataChannel record-layer evidence: missing datachannel-record-layer.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "latency/direct/latency-evidence.json"
+      ],
+      "name": "direct_external_camera_latency",
+      "reasons": [
+        "direct latency evidence: missing latency/direct/latency-evidence.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "latency/relay/latency-evidence.json"
+      ],
+      "name": "relay_external_camera_latency",
+      "reasons": [
+        "relay latency evidence: missing latency/relay/latency-evidence.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "real-media-continuity.json"
+      ],
+      "name": "real_capture_to_mediacodec",
+      "reasons": [
+        "real media continuity evidence: missing real-media-continuity.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "network_handoff",
+      "reasons": [
+        "missing network handoff"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "cross_service_revocation",
+      "reasons": [
+        "missing cross service revocation"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "packet_capture_confidentiality",
+      "reasons": [
+        "missing packet capture confidentiality"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "soak-2h/exact-window-report.json"
+      ],
+      "name": "two_hour_mixed_route_soak",
+      "reasons": [
+        "two-hour soak report: missing soak-2h/exact-window-report.json"
+      ],
+      "status": "blocked"
+    }
+  ],
+  "generated_at": "2026-08-26T23:29:07.584229+00:00",
+  "interpretation": "A pass requires real Android and macOS peers over a genuine public Internet path, a deployed remote TURN route, real ScreenCaptureKit or CGDisplayStream frames decoded by Android MediaCodec, external-camera latency evidence for direct and relay routes, network handoff, cross-service revocation, packet-capture confidentiality, a four-channel AES-256-GCM DataChannel record-layer contract, and a two-hour mixed-route soak. The DataChannel record-layer contract is transport-boundary evidence only: audio capture/playback, clipboard sync, and file-transfer product flows must remain not_claimed until real public Internet product evidence exists. Local loopback, USB, trusted LAN, forced local coturn, synthetic peers, synthetic media, missing raw samples, or blocked attempts cannot close the Phase 3 release gate.",
+  "kind": "phase3_internet_release_gate",
+  "reasons": [
+    "missing Phase 3 Internet manifest",
+    "public_internet_session_manifest: phase3-internet-manifest.json is missing or unreadable",
+    "device_identity_cross_check: phase3-internet-manifest.json and device-info.json are required for device identity cross-check",
+    "raw_evidence_bundle: missing or empty required artifact: phase3-internet-manifest.json",
+    "raw_evidence_bundle: missing or empty required artifact: device-info.json",
+    "raw_evidence_bundle: missing or empty required artifact: host.txt",
+    "raw_evidence_bundle: missing or empty required artifact: build.txt",
+    "raw_evidence_bundle: missing or empty required artifact: apk-sha256.txt",
+    "raw_evidence_bundle: missing or empty required artifact: direct-session.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: relay-session.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: network-handoff.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: replay-revocation.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: packet-capture-notes.md",
+    "raw_evidence_bundle: missing or empty required artifact: privacy-manifest.json",
+    "raw_evidence_bundle: missing or empty required artifact: real-media-continuity.json",
+    "raw_evidence_bundle: missing or empty required artifact: latency/direct/manifest.json",
+    "raw_evidence_bundle: missing or empty required artifact: latency/direct/samples.csv",
+    "raw_evidence_bundle: missing or empty required artifact: latency/direct/raw-camera.mov",
+    "raw_evidence_bundle: missing or empty required artifact: latency/relay/manifest.json",
+    "raw_evidence_bundle: missing or empty required artifact: latency/relay/samples.csv",
+    "raw_evidence_bundle: missing or empty required artifact: latency/relay/raw-camera.mov",
+    "raw_evidence_bundle: missing or empty required artifact: soak-2h/summary.json",
+    "raw_evidence_bundle: missing or empty required artifact: soak-2h/samples.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: soak-2h/host-telemetry.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: soak-2h/exact-window-report.json",
+    "raw_evidence_bundle: missing or empty required artifact: host.log",
+    "raw_evidence_bundle: missing or empty required artifact: raw-logcat.txt",
+    "raw_evidence_bundle: missing or empty required artifact: datachannel-record-layer.json",
+    "webrtc_datachannel_record_layer: DataChannel record-layer evidence: missing datachannel-record-layer.json",
+    "direct_external_camera_latency: direct latency evidence: missing latency/direct/latency-evidence.json",
+    "relay_external_camera_latency: relay latency evidence: missing latency/relay/latency-evidence.json",
+    "real_capture_to_mediacodec: real media continuity evidence: missing real-media-continuity.json",
+    "network_handoff: missing network handoff",
+    "cross_service_revocation: missing cross service revocation",
+    "packet_capture_confidentiality: missing packet capture confidentiality",
+    "two_hour_mixed_route_soak: two-hour soak report: missing soak-2h/exact-window-report.json"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

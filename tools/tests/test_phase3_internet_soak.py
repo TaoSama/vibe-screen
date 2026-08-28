@@ -277,6 +277,21 @@ class Phase3InternetSoakTests(unittest.TestCase):
         self.assertEqual(gate["verdict"], "fail")
         self.assertTrue(any("secret material" in reason for reason in gate["reasons"]))
 
+    def test_missing_input_paths_do_not_leak_absolute_paths_when_root_is_provided(self) -> None:
+        gate = derive_gate(
+            manifest_path=self.root / "phase3-internet-soak-manifest.json",
+            remote_turn_path=self.root / "remote-turn-verifier.json",
+            media_continuity_path=self.root / "media-continuity.json",
+            network_handoff_path=self.root / "network-handoff.json",
+            revocation_path=self.root / "revocation-propagation.json",
+            soak_report_path=self.root / "soak-exact-window-report.json",
+            root=self.root,
+        )
+
+        serialized = json.dumps(gate, sort_keys=True)
+        self.assertNotIn(str(self.root), serialized)
+        self.assertIn("phase3-internet-soak-manifest.json", serialized)
+
     def test_cli_gate_exit_codes_blocked_and_allowed_blocked(self) -> None:
         output = self.root / "gate.json"
         stderr = io.StringIO()

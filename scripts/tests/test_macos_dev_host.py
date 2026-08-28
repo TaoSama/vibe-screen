@@ -73,6 +73,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(exit_code, 127)
         self.assertEqual(output, "command unavailable: vibe-screen-tool")
+        self.assertNotIn("/definitely/missing/vibe-screen-tool", output)
 
     def test_signing_prerequisite_report_uses_shared_device_evidence_wording(self) -> None:
         report = macos_dev_host.format_signing_prerequisite_report(
