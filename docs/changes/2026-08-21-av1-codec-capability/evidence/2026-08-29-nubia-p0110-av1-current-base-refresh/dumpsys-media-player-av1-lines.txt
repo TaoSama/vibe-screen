@@ -1,0 +1,14 @@
+Media type 'video/av01':
+  Decoder "c2.qti.av1.decoder" supports
+    hal name: "c2.qti.av1.decoder"
+  Decoder "c2.qti.av1.decoder.low_latency" supports
+    hal name: "c2.qti.av1.decoder.low_latency"
+  Decoder "c2.qti.av1.decoder.secure" supports
+    hal name: "c2.qti.av1.decoder.secure"
+  Decoder "c2.android.av1-dav1d.decoder" supports
+    hal name: "c2.android.av1-dav1d.decoder"
+  Decoder "c2.android.av1.decoder" supports
+    hal name: "c2.android.av1.decoder"
+Media type 'video/av01':
+  Encoder "c2.android.av1.encoder" supports
+    hal name: "c2.android.av1.encoder"
