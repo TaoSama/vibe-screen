@@ -73,6 +73,10 @@ has verdict `pass` with closing-strength evidence. Historical real-device
 evidence is accepted only for the Android USB baseline gate; current-source
 runtime, latency, Host RSS, hardware compatibility, HID, controller, and module
 ownership gates require their gate-specific closing evidence.
+Pass `PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse HEAD)` when
+refreshing or auditing the aggregate owner so the summary records whether the
+manifest is bound to the evaluated source commit; a mismatch is reported as
+`source_guard.verdict=insufficient` and cannot pass the release-claim gate.
 
 The iOS HDR output / EDR rendering row has a narrower dedicated owner. It
 validates retained physical-device HDR observations and returns nonzero for the
