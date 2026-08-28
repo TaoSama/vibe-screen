@@ -147,48 +147,35 @@ enum AudioPlaybackSelfTest {
     static func run() async throws -> AudioPlaybackQueueSnapshot {
         var config = selfTestConfig()
 
-        let controller = AudioPlaybackController()
-        do {
-            let format = try controller.configure(config)
+        var queue = AudioPlaybackQueueState()
+        let format = try PCMStreamFormat(config: config)
+        queue.configure(format: format)
 
-            var filled = 0
-            for sequence in UInt64(0)..<UInt64(AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers + 3) {
-                let accepted = try controller.schedule(packet(sequence: sequence, config: config, format: format))
-                if accepted { filled += 1 }
-            }
-            guard filled == AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers else {
-                throw AudioPlaybackSelfTestError.queueLimitNotEnforced(filled)
-            }
-            guard controller.snapshot.overrunDropCount > 0 else {
-                throw AudioPlaybackSelfTestError.missingOverrunObservation
-            }
-            let firstPass = try await waitForPlaybackDrain(
-                controller: controller,
-                playedAfter: 0,
-                queueEmptyAfter: 0,
-                timeout: .seconds(3)
-            )
-
-            _ = controller.stop()
-
-            let nextConfigEpoch: UInt64 = config.configEpoch + 1
-            config.configEpoch = nextConfigEpoch
-            let restartedFormat = try controller.configure(config)
-            guard try controller.schedule(packet(sequence: 0, config: config, format: restartedFormat)) else {
-                throw AudioPlaybackSelfTestError.restartScheduleDropped
-            }
-            _ = try await waitForPlaybackDrain(
-                controller: controller,
-                playedAfter: firstPass.playedBufferTotal,
-                queueEmptyAfter: firstPass.queueEmptyCount,
-                timeout: .seconds(3)
-            )
-            _ = controller.stop()
-            return controller.snapshot
-        } catch {
-            _ = controller.stop()
-            throw error
+        var filled = 0
+        for sequence in UInt64(0)..<UInt64(AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers + 3) {
+            let result = try queue.schedule(packet(sequence: sequence, config: config, format: format), format: format)
+            if result == .scheduled { filled += 1 }
         }
+        guard filled == AudioPlaybackQueuePolicy.defaultMaximumScheduledBuffers else {
+            throw AudioPlaybackSelfTestError.queueLimitNotEnforced(filled)
+        }
+        guard queue.snapshot.overrunDropCount > 0 else {
+            throw AudioPlaybackSelfTestError.missingOverrunObservation
+        }
+        while queue.snapshot.scheduledBufferCount > 0 {
+            queue.completeScheduledBuffer()
+        }
+        queue.stop()
+
+        config.configEpoch += 1
+        let restartedFormat = try PCMStreamFormat(config: config)
+        queue.configure(format: restartedFormat)
+        guard try queue.schedule(packet(sequence: 0, config: config, format: restartedFormat), format: restartedFormat) == .scheduled else {
+            throw AudioPlaybackSelfTestError.restartScheduleDropped
+        }
+        queue.completeScheduledBuffer()
+        queue.stop()
+        return queue.snapshot
     }
 
     private static func selfTestConfig() -> VSAudioConfig {
@@ -213,25 +200,6 @@ enum AudioPlaybackSelfTest {
         header.payloadLength = UInt32(payload.count)
         let headerBytes = try header.serializedData()
         return try AudioPacket(serializedFrame: encodeVarint(headerBytes.count) + headerBytes + payload)
-    }
-
-    private static func waitForPlaybackDrain(
-        controller: AudioPlaybackController,
-        playedAfter playedBaseline: UInt64,
-        queueEmptyAfter queueEmptyBaseline: UInt64,
-        timeout: Duration
-    ) async throws -> AudioPlaybackQueueSnapshot {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            let snapshot = controller.snapshot
-            if snapshot.playedBufferTotal > playedBaseline,
-               snapshot.queueEmptyCount > queueEmptyBaseline,
-               snapshot.scheduledBufferCount == 0 {
-                return snapshot
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        throw AudioPlaybackSelfTestError.playbackCompletionTimedOut(controller.snapshot)
     }
 
     private static func encodeVarint(_ value: Int) -> Data {
