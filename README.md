@@ -1062,6 +1062,10 @@ client-local Fit/Fill and four-direction rotation/input matrix is also verified
 with host rotation zero; rotated host-display acceptance remains open, with the
 recording checklist and offline evidence-summary gate in the Phase 1 test
 record and current-base owner tooling. A
+2026-08-28 P0110/pacific current-base refresh kept that gate blocked: the
+device identity and USB reverse were present, but the Host stable-signing/TCC
+preflight and TCP `54321` listener were unavailable, so no physical or virtual
+90/180/270 display stream or inverse-touch matrix was claimed. A
 post-fix 30-minute preference run completed 60/60 connected samples with no
 reconnect or sample error; it is a short regression run, not a replacement for
 the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the
