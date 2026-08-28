@@ -1,0 +1,53 @@
+Repository setup
+
+  git fetch origin --prune
+  git status --short --branch
+  git rev-parse HEAD
+  git rev-parse origin/main
+  git switch -c codex/host-display-rotation-current-base-20260827
+
+Current-base gate
+
+  make host-display-rotation-current-base-gate \
+    EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked \
+    EVIDENCE_SERIAL=<redacted-adb-serial>
+
+Read-only Android sampling. Every adb command used the explicit P0110 serial
+`<redacted-adb-serial>`:
+
+  adb -s <redacted-adb-serial> get-state
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> shell pm path dev.telemachus.display
+  adb -s <redacted-adb-serial> shell pm path dev.telemachus.display.test
+
+Host preflight and local display probes
+
+  security find-identity -v -p codesigning
+  codesign -dv --verbose=4 "/Applications/Vibe Screen.app"
+  system_profiler SPDisplaysDataType
+  python3 scripts/macos_dev_host.py preflight \
+    --install-path "/Applications/Vibe Screen.app" \
+    --report docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/host-preflight.txt
+
+Formal host-display rotation gate
+
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+    python3 -m vibescreen_evidence.host_display_rotation_gate \
+    docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/host-display-rotation.json \
+    --check-artifacts \
+    --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/host-display-rotation-gate.json
+
+Expected result
+
+  host-display-rotation-gate.json: status=failed
+  host-display-rotation-current-base-gate.json: verdict=blocked
+  make host-display-rotation-current-base-gate: exits non-zero for blocked verdict
+  can_close_current_base_aggregate=false
+  can_claim_real_device_pass=false
+
+No install, launch, ADB reverse mutation, host display rotation, Host stream, or
+input injection was performed.
