@@ -1,0 +1,50 @@
+{
+  "artifact_paths": [
+    "android-ip-route.txt",
+    "android-wifi-status.txt",
+    "android-wlan0.txt",
+    "host-54321-listener.txt",
+    "host-readiness.json",
+    "trusted-lan-preflight.json"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Android Wi-Fi is enabled but not associated, wlan0 has no carrier or IPv4 route to the Mac LAN candidate",
+    "Host stable signing/TCC readiness did not pass for the current evidence-grade Host bundle",
+    "Only loopback TCP 54321 listener was observed; no Mac LAN listener or trusted-LAN session was started"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / SDK 36"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Blocked readiness record only; no real trusted-LAN Protocol v1 reconnect timing attempt was run.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Android Wi-Fi is enabled but not associated, wlan0 has no carrier or IPv4 route to the Mac LAN candidate",
+    "Host stable signing/TCC readiness did not pass for the current evidence-grade Host bundle",
+    "Only loopback TCP 54321 listener was observed; no Mac LAN listener or trusted-LAN session was started"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "79bea230-f092-4d57-aa54-f0e88abbd1be",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}
