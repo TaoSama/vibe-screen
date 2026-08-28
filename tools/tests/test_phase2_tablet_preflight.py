@@ -38,6 +38,34 @@ def manifest(device_class: str = "physical_8_9_inch_tablet", size: str | None = 
     }
 
 
+def p0110_physical_tablet_manifest() -> dict:
+    document = manifest(device_class="physical_8_9_inch_tablet")
+    document["device"]["identity"] = {
+        "adb_serial": "P0110_TEST_SERIAL",
+        "device_serial": "P0110_TEST_SERIAL",
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "codename": "pacific",
+        "android_release": "16",
+    }
+    return document
+
+
+def p0110_device_info() -> dict:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "android_device_info",
+        "device": {
+            "adb_serial": "P0110_TEST_SERIAL",
+            "device_serial": "P0110_TEST_SERIAL",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "device": "pacific",
+            "android_release": "16",
+        },
+    }
+
+
 def device_info() -> dict:
     return {
         "schema_version": "vibescreen.evidence/v1",
@@ -214,6 +242,19 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         physical_gate = next(gate for gate in result["gates"] if gate["name"] == "physical_8_9_inch_tablet")
         self.assertEqual(physical_gate["status"], "blocked")
         self.assertIn("android_substitute", physical_gate["reasons"][0])
+
+    def test_known_phone_substitute_mislabeled_as_physical_tablet_is_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            write_json(root / "phase2-tablet-manifest.json", p0110_physical_tablet_manifest())
+            write_json(root / "device-info.json", p0110_device_info())
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        physical_gate = next(gate for gate in result["gates"] if gate["name"] == "physical_8_9_inch_tablet")
+        self.assertEqual(physical_gate["status"], "blocked")
+        self.assertIn("Nubia P0110/pacific", physical_gate["reasons"][0])
 
     def test_missing_hardware_artifacts_are_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
