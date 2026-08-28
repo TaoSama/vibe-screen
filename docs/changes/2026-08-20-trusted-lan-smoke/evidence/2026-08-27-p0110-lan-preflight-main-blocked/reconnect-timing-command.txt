@@ -1,0 +1,9 @@
+mkdir -p docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-27-p0110-lan-preflight-main-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.reconnect_timing \
+		--blocked \
+		--target-device "Nubia P0110 / pacific / Android 16 / SDK 36" \
+		--blocker "Android Wi-Fi is enabled but not associated, wlan0 has no carrier or IPv4 route to the Mac LAN candidate" --blocker "Host stable signing/TCC readiness did not pass for the current evidence-grade Host bundle" --blocker "Only loopback TCP 54321 listener was observed; no Mac LAN listener or trusted-LAN session was started" \
+		--artifact "trusted-lan-preflight.json" --artifact "host-readiness.json" --artifact "host-54321-listener.txt" --artifact "android-wifi-status.txt" --artifact "android-wlan0.txt" --artifact "android-ip-route.txt" \
+		--notes "Blocked readiness record only; no real trusted-LAN Protocol v1 reconnect timing attempt was run." \
+		--output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-27-p0110-lan-preflight-main-blocked/reconnect-timing-summary.json || test $? -eq 3
