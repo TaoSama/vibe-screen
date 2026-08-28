@@ -1,0 +1,1 @@
+Playback confirmation blocked: no CAPABILITY_AUDIO negotiation, no accepted AudioConfig, no Host channel 3 packet flow, and no Android AudioTrack start/write evidence were observed on the real nubia P0110 / pacific / Android 16 / SDK 36 device.

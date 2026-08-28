@@ -229,6 +229,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-latency-preflight \
 	evidence-latency-gate \
 	android-audio-playback-gate \
+	android-audio-playback-owner-record \
 	native-pointer-hid-acceptance \
 	native-pointer-hid-gate \
 	physical-stylus-acceptance \
@@ -672,6 +673,11 @@ android-audio-playback-gate:
 	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-gate" >&2; exit 2)
 	mkdir -p "$(dir $(ANDROID_AUDIO_PLAYBACK_GATE_JSON))"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.android_audio_playback "$(ANDROID_AUDIO_PLAYBACK_JSON)" --evidence-dir "$(dir $(ANDROID_AUDIO_PLAYBACK_JSON))" --output "$(ANDROID_AUDIO_PLAYBACK_GATE_JSON)" --require-pass
+
+android-audio-playback-owner-record:
+	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-owner-record" >&2; exit 2)
+	mkdir -p "$(dir $(ANDROID_AUDIO_PLAYBACK_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.android_audio_playback "$(ANDROID_AUDIO_PLAYBACK_JSON)" --evidence-dir "$(dir $(ANDROID_AUDIO_PLAYBACK_JSON))" --output "$(ANDROID_AUDIO_PLAYBACK_GATE_JSON)"
 
 actionable-error-states-gate:
 	mkdir -p $(EVIDENCE_DIR)
