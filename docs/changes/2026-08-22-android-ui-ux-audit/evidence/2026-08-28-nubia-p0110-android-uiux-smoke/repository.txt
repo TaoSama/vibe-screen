@@ -1,0 +1,6 @@
+# repository
+HEAD=f5db90a761e158798065ce1078bf49428031ce49
+origin/main=1430c3cc18948b93b50b7054e992844f287b6fbc
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTerminalGuidanceContractTest.kt
+?? docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-08-28-nubia-p0110-android-uiux-smoke/

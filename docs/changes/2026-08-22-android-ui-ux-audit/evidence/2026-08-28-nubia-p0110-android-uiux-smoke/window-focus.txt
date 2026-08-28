@@ -1,0 +1,2 @@
+  mCurrentFocus=Window{ba6c1f5 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{225379973 u0 dev.telemachus.display/.MainActivity t653}
