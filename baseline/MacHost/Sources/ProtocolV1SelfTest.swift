@@ -775,10 +775,18 @@ enum ProtocolV1SelfTest {
                   hostHello.capabilities.contains(.multiClient),
                   hostHello.resourceLimits.maximumClients == 2,
                   hostHello.resourceLimits.maximumDisplays == 2,
+                  hostHello.resourceLimits.maximumAudioStreams == 0,
+                  hostHello.resourceLimits.maximumClipboardBytes == UInt64(ClipboardCore.localMaximumBytes),
+                  hostHello.resourceLimits.maximumFileBytes == 0,
+                  hostHello.resourceLimits.maximumFileChunkBytes == 0,
                   accepted.negotiatedCapabilities.contains(.multiClient),
                   accepted.negotiatedResourceLimits.maximumClients == 2,
                   accepted.negotiatedResourceLimits.maximumDisplays == 1,
-                  accepted.negotiatedResourceLimits.maximumVideoStreams == 2 else {
+                  accepted.negotiatedResourceLimits.maximumVideoStreams == 2,
+                  accepted.negotiatedResourceLimits.maximumAudioStreams == 0,
+                  accepted.negotiatedResourceLimits.maximumClipboardBytes == 0,
+                  accepted.negotiatedResourceLimits.maximumFileBytes == 0,
+                  accepted.negotiatedResourceLimits.maximumFileChunkBytes == 0 else {
                 failures.append("Multi-client resource limits/capability were not negotiated correctly")
                 return
             }
