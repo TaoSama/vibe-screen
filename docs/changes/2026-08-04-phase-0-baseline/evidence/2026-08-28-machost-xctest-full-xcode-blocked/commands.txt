@@ -1,4 +1,4 @@
-Repository: /Users/luwentao/.codex/worktrees/0c20/vibe-screen
+Repository: $WORKTREE
 Commit: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
 Base: origin/main at 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
 Collected-at-utc: 2026-08-27T16:38:51Z
@@ -50,12 +50,37 @@ Outcome: exit 2, blocked readiness.
   - xcodebuild is not available from the selected Apple developer directory
   Safety: read-only; does not build, install, sign, modify TCC, or touch devices.
 
-Skipped after fail-closed preflight:
+MacHost release build (does not depend on the XCTest preflight):
 
   make baseline-macos-build
+
+Outcome: exit 0.
+
+  cd baseline/MacHost && swift build -c release
+  Build complete!
+
+MacHost self-test suite (depends on baseline-macos-build, not on the XCTest
+preflight):
+
   make baseline-macos-self-test
+
+Outcome: exit 0.
+
+  cd baseline/MacHost && swift build -c release
+  Build complete!
+  Host self-test: PASS (display identity/catalog, input/window geometry, startup/recovery policy, callback generation, fallback setup policy/replacement, ADB device selection)
+  Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true, malformedTouchRejected=true, portConflict=true, codecNegotiations=1, protocolV1Lifecycle=true, protocolV1ReadyLifecycle=true, protocolV1PreReadyStops=true, fileApprovalDispatch=true, error=none)
+  Reliability self-test: PASS (queue, epoch, heartbeat/backoff, codec, JSONL)
+  Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client routing, epoch, targeted input, heartbeat, graceful disconnect, error, media)
+  video encoder self-test passed (warmup callbacks: 3, encoded callbacks: 123, settings updates: 24)
+  phase3 real-media self-test: PASS (hevc=true, keyframe=true, delta=true, keyframePayloadBytes=351, deltaPayloadBytes=205, keyframeFragments=1, deltaFragments=1, reassembled=true)
+
+Skipped after fail-closed XCTest preflight:
+
   make baseline-macos-test
 
-Reason: the active Apple developer directory is Command Line Tools, and the
-repository preflight requires full Xcode before XCTest-dependent evidence can
-run.
+Reason: baseline-macos-test depends on baseline-macos-xctest-preflight in the
+Makefile, and the preflight requires a full Xcode developer directory. The
+active developer directory is Command Line Tools, so XCTest execution stays
+blocked. baseline-macos-build and baseline-macos-self-test do not depend on the
+XCTest preflight and were run successfully above.

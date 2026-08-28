@@ -6,7 +6,7 @@
   "status": "blocked",
   "collected_at_utc": "2026-08-27T16:38:51Z",
   "source": {
-    "repository": "/Users/luwentao/.codex/worktrees/0c20/vibe-screen",
+    "repository": "$WORKTREE",
     "base_ref": "origin/main",
     "commit": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503"
   },
@@ -45,20 +45,26 @@
       "status": "blocked",
       "exit_code": 2,
       "details": "Repository preflight failed closed because full Xcode is not selected and xcodebuild is unavailable."
+    },
+    {
+      "id": "baseline_macos_build",
+      "command": "make baseline-macos-build",
+      "status": "pass",
+      "exit_code": 0,
+      "details": "MacHost release build succeeded with Command Line Tools. baseline-macos-build does not depend on baseline-macos-xctest-preflight in the Makefile."
+    },
+    {
+      "id": "baseline_macos_self_test",
+      "command": "make baseline-macos-self-test",
+      "status": "pass",
+      "exit_code": 0,
+      "details": "MacHost self-test suite passed. baseline-macos-self-test depends on baseline-macos-build, not on baseline-macos-xctest-preflight."
     }
   ],
   "skipped_commands": [
     {
-      "command": "make baseline-macos-build",
-      "reason": "Full Xcode preflight failed before MacHost build/test evidence collection."
-    },
-    {
-      "command": "make baseline-macos-self-test",
-      "reason": "Full Xcode preflight failed before MacHost self-test evidence collection."
-    },
-    {
       "command": "make baseline-macos-test",
-      "reason": "Full Xcode preflight failed before XCTest execution."
+      "reason": "baseline-macos-test depends on baseline-macos-xctest-preflight in the Makefile, and the preflight requires a full Xcode developer directory. The active developer directory is Command Line Tools."
     }
   ],
   "safety": {
@@ -68,5 +74,5 @@
     "ran_host_install": false,
     "touched_devices": false
   },
-  "claim_boundary": "Blocked readiness only. This record does not prove MacHost XCTest pass, MacHost self-test pass, or Phase 0 stable-release closure."
+  "claim_boundary": "Blocked readiness only for XCTest. This record does not prove MacHost XCTest pass or Phase 0 stable-release closure. baseline-macos-build and baseline-macos-self-test pass under Command Line Tools and are not blocked by the XCTest preflight."
 }

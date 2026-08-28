@@ -1,4 +1,4 @@
-Repository: /Users/luwentao/.codex/worktrees/0c20/vibe-screen
+Repository: $WORKTREE
 Branch: codex/machost-xctest-full-xcode-readiness
 HEAD: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
 origin/main: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
