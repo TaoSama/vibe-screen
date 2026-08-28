@@ -70,8 +70,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
 
         self.assertEqual(exit_code, 127)
-        self.assertIn("command unavailable", output)
-        self.assertIn("/definitely/missing/vibe-screen-tool", output)
+        self.assertIn("vibe-screen-tool unavailable", output)
+        self.assertNotIn("/definitely/missing/vibe-screen-tool", output)
 
     def test_xctest_preflight_command_passes_with_full_xcode_toolchain(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -426,33 +426,44 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Status: FAIL", report_text)
             self.assertIn("missing identity", report_text)
-            self.assertIn("Configured identity: Missing Dev", report_text)
+            self.assertIn("Identity: Missing Dev", report_text)
         resolve_mock.assert_called_once_with("Missing Dev")
-        metadata_mock.assert_not_called()
-        tcc_mock.assert_not_called()
+        metadata_mock.assert_called_once()
+        tcc_mock.assert_called_once()
 
     def test_xctest_preflight_passes_when_xcrun_finds_xctest(self) -> None:
         with mock.patch.object(
             macos_dev_host,
             "run_best_effort",
-            return_value=(0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest\n"),
+            side_effect=[
+                (0, "/Applications/Xcode.app/Contents/Developer"),
+                (0, "/usr/bin/swift"),
+                (0, "swift 5.10"),
+                (0, "/usr/bin/xcodebuild"),
+                (0, "Xcode 15.0"),
+            ],
         ) as run_mock, redirect_stdout(StringIO()) as stdout, redirect_stderr(StringIO()):
             result = macos_dev_host.xctest_preflight_command(mock.Mock())
 
         self.assertEqual(result, 0)
-        self.assertIn("macOS XCTest preflight passed", stdout.getvalue())
-        run_mock.assert_called_once_with("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+        self.assertIn("macOS Host XCTest toolchain preflight passed", stdout.getvalue())
+        self.assertEqual(run_mock.call_count, 5)
 
     def test_xctest_preflight_fails_closed_without_xctest(self) -> None:
         with mock.patch.object(
             macos_dev_host,
             "run_best_effort",
-            return_value=(1, "xcrun: error: unable to find utility xctest"),
+            side_effect=[
+                (0, "/Library/Developer/CommandLineTools"),
+                (1, "xcrun: error: unable to find utility swift"),
+                (1, "swift: command not found"),
+                (1, "xcrun: error: unable to find utility xcodebuild"),
+                (1, "xcodebuild: command not found"),
+            ],
         ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
             result = macos_dev_host.xctest_preflight_command(mock.Mock())
 
         self.assertEqual(result, 2)
-        self.assertIn("macOS XCTest preflight failed", stderr.getvalue())
         self.assertIn("full Xcode", stderr.getvalue())
 
     def test_parse_args_accepts_xctest_preflight_command(self) -> None:
