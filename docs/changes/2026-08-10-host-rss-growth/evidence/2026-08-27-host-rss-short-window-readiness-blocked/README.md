@@ -1,4 +1,4 @@
-# 2026-08-28 Host RSS short-window regression readiness: blocked
+# 2026-08-27 Host RSS short-window regression readiness: blocked
 
 Created: 2026-08-27T16:18:20Z
 Baseline: `origin/main` commit `27d2b0e493e807ae439fbd43b06b4c2f0ce9c503`
@@ -56,7 +56,7 @@ reported:
 
 - `verdict`: `insufficient`
 - `attribution`: `inconclusive`
-- `error`: `host telemetry file does not exist`
+- `errors[0]`: `host telemetry file does not exist: .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl`
 - `sufficiency.stream_telemetry`: `false`
 - `sufficiency.collection_complete`: `false`
 

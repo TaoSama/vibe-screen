@@ -309,21 +309,25 @@ Safety: read-only; does not build, install, sign, modify TCC, or touch devices.
 Wrote .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/xctest-toolchain.txt
 xctest_preflight_exit=2
 
-$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-host-rss-short-window-readiness-blocked/readiness.json >/dev/null
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/readiness.json >/dev/null
 json_readiness_exit=0
 
-$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-host-rss-short-window-readiness-blocked/host-readiness.json >/dev/null
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/host-readiness.json >/dev/null
 json_host_readiness_exit=0
 
-$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-host-rss-short-window-readiness-blocked/failclosed-diagnostic.json >/dev/null
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/failclosed-diagnostic.json >/dev/null
 json_failclosed_diagnostic_exit=0
 
 $ git diff --check
 git_diff_check_exit=0
 
-$ sensitive scan for local paths and common token patterns
+$ rg -n --no-heading '/Users/[A-Za-z0-9_]+' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
 local_path_scan_exit=1
+$ rg -n --no-heading '\$(HOME|USER|LOGNAME|SHELL|TMPDIR|XDG_[A-Z_]+)' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
 private_var_scan_exit=1
+$ rg -n --no-heading -e '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
 private_key_scan_exit=1
+$ rg -n --no-heading '(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|bearer[[:space:]]+[A-Za-z0-9._-]+)' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
 token_scan_exit=1
+# rg exit code 1 means no matches were found; the retained evidence files contain no user-local home paths, shell private variables, private key material, or bearer/API tokens.
 Result: no matches found in retained evidence files.

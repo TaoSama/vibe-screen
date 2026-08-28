@@ -61,7 +61,7 @@
     "source_dirty_during_readiness": false,
     "worktree": "<worktree>"
   },
-  "run_id": "2026-08-28-host-rss-short-window-readiness-blocked",
+  "run_id": "2026-08-27-host-rss-short-window-readiness-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "short_window_diagnostic": {
     "accepted_for_short_diagnostic": false,
