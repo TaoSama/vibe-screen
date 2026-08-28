@@ -1132,7 +1132,10 @@ def format_report(
         verification = "valid on disk (codesign --verify --deep --strict)"
     rows = "\n".join(format_permission_row(row) for row in permissions.rows)
     if not rows:
-        rows = "(no matching rows)"
+        if permissions.error:
+            rows = "(TCC rows unavailable; one or more databases could not be read)"
+        else:
+            rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
     return f"""Host bundle

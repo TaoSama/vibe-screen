@@ -23,6 +23,7 @@ import package_macos
 import prepare_release
 import android_stylus_acceptance
 from phase3.evidence_privacy import scan_content as scan_phase3_evidence_content
+import macos_dev_host
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -1218,6 +1219,21 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         resolve_mock.assert_called_once_with("Vibe Screen Dev")
         validate_mock.assert_not_called()
         run_mock.assert_not_called()
+
+    def test_host_report_marks_tcc_rows_unavailable_when_database_read_fails(self) -> None:
+        report = macos_dev_host.format_report(
+            metadata=None,
+            permissions=macos_dev_host.PermissionStatus(
+                database_path="<user-tcc-db>",
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+            errors=["cannot verify TCC permissions read-only: unable to open database file"],
+        )
+
+        self.assertIn("(TCC rows unavailable; one or more databases could not be read)", report)
+        self.assertNotIn("(no matching rows)", report)
 
 
 class PrepareReleaseTests(unittest.TestCase):

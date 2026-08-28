@@ -1033,7 +1033,7 @@ older reconnect logs:
 
 ```sh
 make evidence-reconnect-timing-blocked \
-  EVIDENCE_SERIAL="${ANDROID_SERIAL}" \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
   EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
   RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable" --blocker "Host is not listening on 127.0.0.1:54321"' \
   RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
@@ -1045,7 +1045,7 @@ or pass exact blockers directly:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
-  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36 / ${ANDROID_SERIAL}" \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36 / $ADB_SERIAL" \
   --blocker "Vibe Screen Dev signing identity is unavailable" \
   --blocker "Host is not listening on 127.0.0.1:54321" \
   --output reconnect-timing-summary.json
