@@ -220,7 +220,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(authorities=("Other Dev",)),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -237,7 +237,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(source_commit="c" * 40),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -258,7 +258,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -279,7 +279,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         errors = macos_dev_host.validate_preflight(
             self.metadata(source_commit="c" * 40, source_dirty=True),
             macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -444,20 +444,101 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
+    def test_xctest_preflight_passes_with_full_xcode_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
+
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer"
+                if command == ("/usr/bin/xcrun", "--find", "swift"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+                if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
+                    return 0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 0, "Xcode 16.4\nBuild version 16F6"
+                if command == ("/usr/bin/swift", "--version"):
+                    return 0, "Apple Swift version 6.3.3"
+                raise AssertionError(command)
+
+            with mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run), redirect_stdout(StringIO()):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 0)
+            self.assertIn("Status: PASS", report_text)
+            self.assertIn("Blocking issues:\n- none", report_text)
+
+    def test_xctest_preflight_fails_closed_for_command_line_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "xctest-toolchain.txt"
+            args = mock.Mock(report=report)
+
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, "/Library/Developer/CommandLineTools"
+                if command == ("/usr/bin/xcrun", "--find", "swift"):
+                    return 0, "/usr/bin/swift"
+                if command == ("/usr/bin/xcrun", "--find", "xcodebuild"):
+                    return 1, "unable to find utility xcodebuild"
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 127, "command unavailable: /usr/bin/xcodebuild"
+                if command == ("/usr/bin/swift", "--version"):
+                    return 0, "Apple Swift version 6.3.3"
+                raise AssertionError(command)
+
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("Status: FAIL", report_text)
+            self.assertIn("full Xcode is not selected", report_text)
+            self.assertIn("xcodebuild is not available", report_text)
+            self.assertIn("does not build, install, sign, modify TCC, or touch devices", report_text)
+
     def test_parse_args_accepts_xctest_preflight_command(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]):
             args = macos_dev_host.parse_args()
 
         self.assertEqual(args.command, "xctest-preflight")
+        self.assertEqual(args.report, macos_dev_host.DEFAULT_XCTEST_PREFLIGHT_REPORT)
 
-    def test_readiness_command_requires_explicit_login_item_probe(self) -> None:
+    def test_parse_args_defaults_readiness_to_skip_login_item_probe(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness"]):
             args = macos_dev_host.parse_args()
 
-        self.assertFalse(args.include_login_item_diagnostic)
+        self.assertEqual(args.command, "readiness")
+        self.assertFalse(args.probe_login_item)
+
+    def test_parse_args_accepts_explicit_login_item_probe_for_readiness(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness", "--probe-login-item"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "readiness")
+        self.assertTrue(args.probe_login_item)
+
+    def test_parse_args_accepts_legacy_login_item_diagnostic_alias(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness", "--include-login-item-diagnostic"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "readiness")
+        self.assertTrue(args.probe_login_item)
 
     def test_parse_args_readiness_login_item_diagnostic_is_opt_in(self) -> None:
-        for flag in ("--include-login-item-diagnostic", "--inspect-login-items", "--probe-login-items"):
+        for flag in (
+            "--include-login-item-diagnostic",
+            "--inspect-login-items",
+            "--probe-login-item",
+            "--probe-login-items",
+        ):
             with self.subTest(flag=flag):
                 with mock.patch.object(
                     sys,
@@ -467,7 +548,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     args = macos_dev_host.parse_args()
 
                 self.assertEqual(args.command, "readiness")
-                self.assertTrue(args.include_login_item_diagnostic)
+                self.assertTrue(args.probe_login_item)
 
     def test_readiness_help_warns_login_item_probe_can_prompt_for_admin(self) -> None:
         with (
@@ -481,6 +562,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         help_text = stdout.getvalue()
         self.assertIn("--include-login-item-diagnostic", help_text)
         self.assertIn("--inspect-login-items", help_text)
+        self.assertIn("--probe-login-item", help_text)
         self.assertIn("--probe-login-items", help_text)
         self.assertIn("/usr/bin/sfltool", help_text)
         self.assertIn("dumpbtm", help_text)
@@ -689,7 +771,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 dirty=False,
             ),
             permissions=macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -728,7 +810,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 dirty=False,
             ),
             permissions=macos_dev_host.PermissionStatus(
-                database_path=Path("TCC.db"),
+                database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
@@ -1059,7 +1141,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 source_root=Path("."),
                 allow_source_mismatch=False,
                 port=54321,
-                include_login_item_diagnostic=False,
+                probe_login_item=False,
             )
 
             with (
@@ -1133,7 +1215,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
-            self.assertIn("--include-login-item-diagnostic", document["login_headless"]["login_item"]["detail"])
+            self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
             login_probe.assert_not_called()
             run_best_effort_mock.assert_not_called()
@@ -1233,7 +1315,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 port=54321,
                 source_root=Path("."),
                 allow_source_mismatch=False,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
             metadata = self.metadata()
             source_identity = macos_dev_host.package_macos.SourceIdentity(
@@ -1299,8 +1381,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 json_output=json_output,
                 source_root=Path("."),
                 allow_source_mismatch=False,
-                port=54321,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
             settings, login_item, displays, logs = self.login_ready_inputs()
 
@@ -1369,8 +1450,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 json_output=json_output,
                 source_root=Path("."),
                 allow_source_mismatch=False,
-                port=54321,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
 
             with (
@@ -1652,6 +1732,12 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertNotIn(str(Path.home()), status.database_path)
         self.assertNotIn(str(Path.home()), status.error or "")
 
+    def test_run_best_effort_reports_missing_command(self) -> None:
+        status, output = macos_dev_host.run_best_effort("/definitely/missing/vibe-screen-tool")
+
+        self.assertEqual(status, 127)
+        self.assertEqual(output, "command unavailable: vibe-screen-tool")
+
     def test_readiness_artifacts_keep_default_tcc_paths_redacted(self) -> None:
         with mock.patch.object(
             macos_dev_host,
@@ -1706,6 +1792,215 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.assertNotIn(str(Path.home()), artifact)
             self.assertNotIn(str(macos_dev_host.SYSTEM_TCC_DATABASE), artifact)
             self.assertNotIn("TCC" + ".db", artifact)
+
+    def test_readiness_document_default_does_not_probe_login_item(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=MacOSDevHostMetadataTests.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            errors=[],
+        )
+
+        with mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_item_probe:
+            document = macos_dev_host.build_readiness_document(
+                inspection,
+                macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+                macos_dev_host.EntitlementStatus(
+                    app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    virtual_hid=True,
+                    keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                    raw_output="",
+                ),
+                settings=MacOSDevHostMetadataTests.login_ready_inputs()[0],
+                displays=MacOSDevHostMetadataTests.login_ready_inputs()[2],
+                logs=MacOSDevHostMetadataTests.login_ready_inputs()[3],
+            )
+
+        login_item_probe.assert_not_called()
+        self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+        self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
+        self.assertIn("Launch at Login is not verified enabled: unverified", "\n".join(document["blockers"]))
+
+    def test_readiness_command_skips_login_item_probe_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report = root / "host-signing-and-permissions.txt"
+            json_output = root / "host-readiness.json"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                json_output=json_output,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+                port=54321,
+                probe_login_item=False,
+            )
+
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=MacOSDevHostMetadataTests.metadata(),
+                        source_identity=macos_dev_host.package_macos.SourceIdentity(
+                            commit="a" * 40,
+                            tree="b" * 40,
+                            dirty=False,
+                        ),
+                        permissions=macos_dev_host.PermissionStatus(
+                            database_path=Path(PRIVACY_DB_FILENAME),
+                            readable=True,
+                            rows=(
+                                macos_dev_host.TCCRow(
+                                    "kTCCServiceScreenCapture",
+                                    "dev.telemachus.display",
+                                    0,
+                                    2,
+                                    4,
+                                    1,
+                                ),
+                                macos_dev_host.TCCRow(
+                                    "kTCCServiceAccessibility",
+                                    "dev.telemachus.display",
+                                    0,
+                                    2,
+                                    4,
+                                    2,
+                                ),
+                            ),
+                        ),
+                        errors=[],
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                        virtual_hid=True,
+                        keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                        raw_output="",
+                    ),
+                ),
+                mock.patch.object(macos_dev_host, "read_startup_settings", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[0]),
+                mock.patch.object(macos_dev_host, "read_display_readiness", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[2]),
+                mock.patch.object(macos_dev_host, "summarize_host_log", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[3]),
+                mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_item_probe,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 2)
+        login_item_probe.assert_not_called()
+        self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+        self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
+
+    def test_readiness_command_only_probes_login_item_when_explicitly_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report = root / "host-signing-and-permissions.txt"
+            json_output = root / "host-readiness.json"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                json_output=json_output,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+                probe_login_item=True,
+            )
+
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=MacOSDevHostMetadataTests.metadata(),
+                        source_identity=macos_dev_host.package_macos.SourceIdentity(
+                            commit="a" * 40,
+                            tree="b" * 40,
+                            dirty=False,
+                        ),
+                        permissions=macos_dev_host.PermissionStatus(
+                            database_path=Path(PRIVACY_DB_FILENAME),
+                            readable=True,
+                            rows=(
+                                macos_dev_host.TCCRow(
+                                    "kTCCServiceScreenCapture",
+                                    "dev.telemachus.display",
+                                    0,
+                                    2,
+                                    4,
+                                    1,
+                                ),
+                                macos_dev_host.TCCRow(
+                                    "kTCCServiceAccessibility",
+                                    "dev.telemachus.display",
+                                    0,
+                                    2,
+                                    4,
+                                    2,
+                                ),
+                            ),
+                        ),
+                        errors=[],
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_listener",
+                    return_value=macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_entitlements",
+                    return_value=macos_dev_host.EntitlementStatus(
+                        app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                        virtual_hid=True,
+                        keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                        raw_output="",
+                    ),
+                ),
+                mock.patch.object(macos_dev_host, "read_startup_settings", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[0]),
+                mock.patch.object(macos_dev_host, "read_display_readiness", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[2]),
+                mock.patch.object(macos_dev_host, "summarize_host_log", return_value=MacOSDevHostMetadataTests.login_ready_inputs()[3]),
+                mock.patch.object(
+                    macos_dev_host,
+                    "read_login_item_readiness",
+                    return_value=MacOSDevHostMetadataTests.login_ready_inputs()[1],
+                ) as login_item_probe,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        login_item_probe.assert_called_once_with()
+        self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
 
     def test_readiness_document_fails_closed_when_defaults_tool_is_missing(self) -> None:
         inspection = macos_dev_host.HostInspection(
