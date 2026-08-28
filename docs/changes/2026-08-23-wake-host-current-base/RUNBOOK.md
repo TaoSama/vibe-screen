@@ -9,6 +9,10 @@ wake the Mac itself.
 - Use the latest intended `origin/main` commit and record its SHA.
 - Run an identity-signed installed Host build with Screen Recording and any
   required local permissions already granted.
+- Do not inspect Launch at Login for this gate. WakeHost current-base evidence
+  records Host TCC readiness and sleep/wake behavior only; it does not require
+  `/usr/bin/sfltool dumpbtm`, `--include-login-item-diagnostic`,
+  `--inspect-login-items`, or `--probe-login-items`.
 - Enable macOS Wake for network access and confirm the target NIC or firmware
   can respond to Wake-on-LAN.
 - Verify the router, switch, VLAN, or directed-broadcast path can deliver WOL
