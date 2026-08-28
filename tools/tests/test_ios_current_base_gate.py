@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +32,12 @@ BLOCKED_OWNER_EVIDENCE = (
     / "evidence"
     / "2026-08-25-ios-signing-current-base-owner-blocked"
 )
+
+
+def module_env() -> dict[str, str]:
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    return environment
 
 
 def make_docs(root: Path) -> None:
@@ -683,6 +690,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 check=False,
+                env=module_env(),
             )
             report = json.loads(output_path.read_text(encoding="utf-8"))
 
@@ -713,6 +721,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 check=False,
+                env=module_env(),
             )
             report = json.loads(output_path.read_text(encoding="utf-8"))
 
