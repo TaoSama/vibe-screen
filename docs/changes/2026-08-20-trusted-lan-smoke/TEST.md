@@ -216,6 +216,30 @@ the Host stable-signing preflight also remained blocked by the missing `Vibe
 Screen Dev` codesigning identity. The retained artifact bundle is
 [`evidence/2026-08-24-p0110-usb-loopback-running-window/README.md`](evidence/2026-08-24-p0110-usb-loopback-running-window/README.md).
 
+## 2026-08-27 current-main preflight recheck
+
+After `git fetch origin --prune`, commit
+`3b2ba11e832a3618eaedfc67f92414b161423a00` from `origin/main` was rechecked on
+the same Nubia P0110 / pacific / Android 16 / SDK 36 device
+(`<device-serial>`). The local checkout matched `origin/main`, and the
+machine-readable trusted-LAN preflight was run against a clean detached
+`origin/main` worktree so the retained evidence files did not affect repository
+provenance.
+
+The real trusted-LAN smoke remains blocked before Host launch or pairing:
+Wi-Fi is enabled but not associated, `wlan0` has no carrier or IPv4 address,
+Android has no `wlan0` route to the Mac LAN candidate, and Host stable signing
+is not ready for evidence-grade trusted-LAN acceptance. The Mac firewall was
+disabled, but the only observed TCP `54321` listener was on loopback, which is
+not LAN evidence.
+
+No trusted-LAN socket admission, secure-record negotiation, Protocol v1 LAN
+upgrade, decoder output, reconnect, latency, soak, or Host RSS no-growth
+evidence was observed. A blocked reconnect timing summary was retained with
+`can_close_timing_gate=false` and no required disruption exercised. The retained
+artifact bundle is
+[`evidence/2026-08-27-p0110-lan-preflight-main-blocked/README.md`](evidence/2026-08-27-p0110-lan-preflight-main-blocked/README.md).
+
 ## Fail-closed preflight
 
 Use the shared Host readiness snapshot and the machine-readable trusted-LAN
@@ -237,7 +261,10 @@ downstream admission/secure-record/Protocol v1/decoder/reconnect/latency stages
 as `not_run`, and do not describe the run as a trusted-LAN pass. The preflights
 are read-only: they do not launch the Host, write a pairing token or QR payload,
 modify TCC, alter Keychain, clear Android app data, or change saved Wi-Fi
-credentials.
+credentials. The default Host readiness target also skips the macOS login-item
+database probe; use
+`scripts/macos_dev_host.py readiness --include-login-item-diagnostic` only for
+an explicit interactive manual diagnostic.
 
 ## Source-level checks
 
