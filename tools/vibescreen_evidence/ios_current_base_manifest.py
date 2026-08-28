@@ -491,6 +491,17 @@ def _default_native_input_gate(path: Path | None, reasons: Sequence[str]) -> dic
     }
 
 
+def _current_base_for_native_input(document: dict[str, Any]) -> dict[str, Any]:
+    current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
+    commit = current_base.get("commit")
+    if commit is None and isinstance(current_base.get("revision"), str):
+        commit = current_base["revision"]
+    return {
+        "commit": commit if isinstance(commit, str) else None,
+        "dirty": current_base.get("dirty") if isinstance(current_base.get("dirty"), bool) else None,
+    }
+
+
 def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return _default_native_input_gate(path, ["ios-native-input-gate.json not provided"])
@@ -502,8 +513,8 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         return _default_native_input_gate(path, ["ios native-input gate must be a JSON object"])
 
     owner = document.get("owner") if isinstance(document.get("owner"), dict) else {}
-    current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
-    current_base_commit = current_base.get("commit") if isinstance(current_base, dict) else None
+    current_base = _current_base_for_native_input(document)
+    current_base_commit = current_base.get("commit")
     repository_revision = repository.get("revision") if isinstance(repository, dict) else None
     missing: list[str] = []
 
@@ -588,9 +599,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
     normalized.update(
         {
             "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
-            "current_base": document.get("current_base")
-            if isinstance(document.get("current_base"), dict)
-            else None,
+            "current_base": current_base,
             "kind": document.get("kind"),
             "profile": document.get("profile"),
             "gate_owner": document.get("gate_owner"),
@@ -605,15 +614,9 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
             "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
             "missing_requirements": missing,
-            "blocking_reasons": document.get("blocking_reasons")
-            if isinstance(document.get("blocking_reasons"), list)
-            else [],
-            "disallowed_evidence": document.get("disallowed_evidence")
-            if isinstance(document.get("disallowed_evidence"), list)
-            else [],
-            "artifact_paths": document.get("artifact_paths")
-            if isinstance(document.get("artifact_paths"), list)
-            else [],
+            "blocking_reasons": document.get("blocking_reasons") if isinstance(document.get("blocking_reasons"), list) else [],
+            "disallowed_evidence": document.get("disallowed_evidence") if isinstance(document.get("disallowed_evidence"), list) else [],
+            "artifact_paths": document.get("artifact_paths") if isinstance(document.get("artifact_paths"), list) else [],
         }
     )
     return normalized
