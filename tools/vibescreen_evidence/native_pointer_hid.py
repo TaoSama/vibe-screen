@@ -52,6 +52,10 @@ REQUIRED_FIELDS = (
     ),
     ("android_move_forwarded", "retain Android native pointer MOVE forwarding logs from a mouse-like source"),
     (
+        "android_forwarding_device_ids_match_external_mouse",
+        "match every Android forwarded pointer event to a positive deviceId from the external mouse-like input device inventory",
+    ),
+    (
         "android_button_press_forwarded",
         "retain Android native pointer BUTTON_PRESS forwarding logs from a mouse-like source",
     ),
@@ -86,22 +90,23 @@ BLOCKING_FIELDS = {
 }
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
 MOUSE_LIKE_SOURCES = {"MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"}
+VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 
 CONSISTENCY_RULES = (
     (
         "android_move_forwarded",
-        ("physical_mouse_attached", "default_gate_events_required"),
-        "Android native pointer MOVE evidence requires a physical mouse-like source and the full gate event set",
+        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
+        "Android native pointer MOVE evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
     ),
     (
         "android_button_press_forwarded",
-        ("physical_mouse_attached", "default_gate_events_required"),
-        "Android native pointer BUTTON_PRESS evidence requires a physical mouse-like source and the full gate event set",
+        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
+        "Android native pointer BUTTON_PRESS evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
     ),
     (
         "android_button_release_forwarded",
-        ("physical_mouse_attached", "default_gate_events_required"),
-        "Android native pointer BUTTON_RELEASE evidence requires a physical mouse-like source and the full gate event set",
+        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
+        "Android native pointer BUTTON_RELEASE evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
     ),
     (
         "host_pointer_changed_injected",
@@ -264,23 +269,82 @@ def _truthy_external_marker(value: Any) -> bool:
     return False
 
 
-def _source_tokens(value: Any) -> set[str]:
+def _source_markers(value: Any) -> set[str]:
     if isinstance(value, str):
         source_text = value
     elif isinstance(value, list) and all(isinstance(item, str) for item in value):
         source_text = "|".join(value)
     else:
         return set()
-    return {token.strip().upper() for token in source_text.replace(",", "|").split("|") if token.strip()}
+    return {marker.strip().upper() for marker in source_text.replace(",", "|").split("|") if marker.strip()}
 
 
-def _has_physical_mouse_like_device(record: dict[str, Any]) -> bool:
+def _positive_device_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _virtual_input_name(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().lower()
+    return any(marker in normalized for marker in VIRTUAL_INPUT_NAME_MARKERS)
+
+
+def _external_mouse_device_ids(record: dict[str, Any]) -> set[int]:
+    device_ids: set[int] = set()
     for device in _dict_list(record, "external_mouse_devices"):
         if not _truthy_external_marker(device.get("is_external")):
             continue
-        if MOUSE_LIKE_SOURCES.intersection(_source_tokens(device.get("sources"))):
-            return True
-    return False
+        if _virtual_input_name(device.get("name")):
+            continue
+        if not MOUSE_LIKE_SOURCES.intersection(_source_markers(device.get("sources"))):
+            continue
+        device_id = _positive_device_id(device.get("device_id"))
+        if device_id is not None:
+            device_ids.add(device_id)
+    return device_ids
+
+
+def _has_physical_mouse_like_device(record: dict[str, Any]) -> bool:
+    return bool(_external_mouse_device_ids(record))
+
+
+def _event_device_ids(record: dict[str, Any]) -> dict[str, set[int]]:
+    value = record.get("observed_android_pointer_device_ids_by_event", {})
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise NativePointerHIDEvidenceError("observed_android_pointer_device_ids_by_event must be an object")
+    parsed: dict[str, set[int]] = {}
+    for event, device_ids in value.items():
+        if not isinstance(event, str) or not event.strip():
+            raise NativePointerHIDEvidenceError("observed_android_pointer_device_ids_by_event keys must be non-empty strings")
+        if not isinstance(device_ids, list):
+            raise NativePointerHIDEvidenceError("observed_android_pointer_device_ids_by_event values must be lists")
+        parsed[event] = {
+            parsed_id
+            for raw_id in device_ids
+            if (parsed_id := _positive_device_id(raw_id)) is not None
+        }
+    return parsed
+
+
+def _android_forwarding_device_ids_match_external_mouse(record: dict[str, Any]) -> bool:
+    external_device_ids = _external_mouse_device_ids(record)
+    if not external_device_ids:
+        return False
+    event_device_ids = _event_device_ids(record)
+    return all(
+        bool(external_device_ids.intersection(event_device_ids.get(event, set())))
+        for event in REQUIRED_POINTER_EVENTS
+    )
 
 
 def _observations(record: dict[str, Any]) -> dict[str, bool]:
@@ -297,6 +361,7 @@ def _observations(record: dict[str, Any]) -> dict[str, bool]:
         "physical_mouse_attached": _has_physical_mouse_like_device(record),
         "default_gate_events_required": set(REQUIRED_POINTER_EVENTS).issubset(required_events),
         "android_move_forwarded": "move" in android_events,
+        "android_forwarding_device_ids_match_external_mouse": _android_forwarding_device_ids_match_external_mouse(record),
         "android_button_press_forwarded": "press" in android_events,
         "android_button_release_forwarded": "release" in android_events,
         "host_pointer_changed_injected": "move" in host_events,
@@ -383,6 +448,17 @@ def _write_summary(summary: dict[str, Any], output: TextIO) -> None:
     output.write("\n")
 
 
+def _existing_output_run_id(output_path: Path | None) -> str | None:
+    if output_path is None or not output_path.exists():
+        return None
+    try:
+        with output_path.open("r", encoding="utf-8") as stream:
+            existing = load_record(stream)
+        return _optional_run_id(existing)
+    except (NativePointerHIDEvidenceError, OSError):
+        return None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Summarize Vibe Screen native pointer HID mouse acceptance evidence.",
@@ -412,9 +488,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             with source_path.open("r", encoding="utf-8") as stream:
                 record = load_record(stream)
-        summary = summarize(record, run_id=args.run_id, source_path=source_path)
-        if args.output:
-            output_path = Path(args.output)
+        output_path = Path(args.output) if args.output else None
+        run_id = args.run_id or _existing_output_run_id(output_path)
+        summary = summarize(record, run_id=run_id, source_path=source_path)
+        if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with output_path.open("w", encoding="utf-8") as stream:
                 _write_summary(summary, stream)

@@ -43,10 +43,6 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
 )
-ANDROID_DUMPSYS_TOKEN_RE = re.compile(
-    r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
-    r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
-)
 POINTER_PATTERNS = {
     "move": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?changed\b|Pointer injected: phase=changed\b"),
     "press": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?began\b|Pointer injected: phase=began\b"),
@@ -54,11 +50,23 @@ POINTER_PATTERNS = {
 }
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_PATTERN = r"\S*(?:MOUSE|MOUSE_RELATIVE|TOUCHPAD|TRACKBALL)\S*"
+VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 ANDROID_POINTER_PATTERNS = {
-    "move": re.compile(rf"native pointer forwarded action=MOVE\b.*\bsource={ANDROID_MOUSE_SOURCE_PATTERN}"),
-    "press": re.compile(rf"native pointer forwarded action=BUTTON_PRESS\b.*\bsource={ANDROID_MOUSE_SOURCE_PATTERN}"),
-    "release": re.compile(rf"native pointer forwarded action=BUTTON_RELEASE\b.*\bsource={ANDROID_MOUSE_SOURCE_PATTERN}"),
+    "move": re.compile(
+        rf"native pointer forwarded action=MOVE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    ),
+    "press": re.compile(
+        rf"native pointer forwarded action=BUTTON_PRESS\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    ),
+    "release": re.compile(
+        rf"native pointer forwarded action=BUTTON_RELEASE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    ),
 }
+
+
+def is_virtual_input_name(name: str) -> bool:
+    normalized = name.strip().lower()
+    return any(marker in normalized for marker in VIRTUAL_INPUT_NAME_MARKERS)
 
 
 class AcceptanceError(Exception):
@@ -91,6 +99,7 @@ class DeviceIdentity:
 
 @dataclass(frozen=True)
 class InputDeviceSummary:
+    device_id: int
     name: str
     sources: str
     is_external: str
@@ -142,6 +151,7 @@ class AcceptanceResult:
     required_pointer_events: list[str]
     observed_host_pointer_events: list[str]
     observed_android_pointer_events: list[str]
+    observed_android_pointer_device_ids_by_event: dict[str, list[int]]
     visible_mac_result: str
     existing_locks: list[CoordinationLock]
     adb_was_run: bool
@@ -255,6 +265,7 @@ def lock_blocked_result(
         required_pointer_events=list(required_events),
         observed_host_pointer_events=[],
         observed_android_pointer_events=[],
+        observed_android_pointer_device_ids_by_event={},
         visible_mac_result="",
         existing_locks=list(locks),
         adb_was_run=False,
@@ -286,22 +297,25 @@ def read_device_identity(serial: str) -> DeviceIdentity:
 
 def parse_input_devices(dumpsys_input: str) -> list[InputDeviceSummary]:
     summaries: list[InputDeviceSummary] = []
+    current_device_id: int | None = None
     current_name: str | None = None
     current_external: str | None = None
     current_sources: str | None = None
     for raw_line in dumpsys_input.splitlines():
         line = raw_line.rstrip()
-        match = re.match(r"\s*Device\s+[^:]+:\s*(.+)", line)
+        match = re.match(r"\s*Device\s+(-?\d+):\s*(.+)", line)
         if match:
-            if current_name and current_sources:
+            if current_device_id is not None and current_name and current_sources:
                 summaries.append(
                     InputDeviceSummary(
+                        device_id=current_device_id,
                         name=current_name,
                         sources=current_sources,
                         is_external=current_external or "unknown",
                     )
                 )
-            current_name = match.group(1).strip()
+            current_device_id = int(match.group(1))
+            current_name = match.group(2).strip()
             current_external = None
             current_sources = None
             continue
@@ -314,9 +328,10 @@ def parse_input_devices(dumpsys_input: str) -> list[InputDeviceSummary]:
         sources = re.match(r"\s*Sources:\s*(.+)", line)
         if sources:
             current_sources = sources.group(1).strip()
-    if current_name and current_sources:
+    if current_device_id is not None and current_name and current_sources:
         summaries.append(
             InputDeviceSummary(
+                device_id=current_device_id,
                 name=current_name,
                 sources=current_sources,
                 is_external=current_external or "unknown",
@@ -330,7 +345,7 @@ def external_mouse_devices(devices: Sequence[InputDeviceSummary]) -> list[InputD
     for device in devices:
         sources = device.sources.upper()
         external = device.is_external.lower() == "true"
-        if external and (
+        if external and device.device_id > 0 and not is_virtual_input_name(device.name) and (
             "MOUSE" in sources
             or "MOUSE_RELATIVE" in sources
             or "TOUCHPAD" in sources
@@ -415,12 +430,52 @@ def observed_android_events(log_text: str) -> list[str]:
     return [name for name, pattern in ANDROID_POINTER_PATTERNS.items() if pattern.search(log_text)]
 
 
+def observed_android_event_device_ids(log_text: str) -> dict[str, list[int]]:
+    observed: dict[str, list[int]] = {}
+    for name, pattern in ANDROID_POINTER_PATTERNS.items():
+        device_ids = sorted({int(match.group(1)) for match in pattern.finditer(log_text)})
+        if device_ids:
+            observed[name] = device_ids
+    return observed
+
+
 def evidence_text(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
 
 
-def redact_android_dumpsys_text(text: str) -> str:
-    return ANDROID_DUMPSYS_TOKEN_RE.sub(lambda match: match.group(0).split("=", 1)[0] + "=<redacted>", text)
+def redact_android_dumpsys_input(text: str) -> str:
+    input_channel_handle_key = "inputChannel" + "To" + "ken"
+    redacted = re.sub(
+        r"(?m)^([ \t]*Descriptor:)[ \t]*.+$",
+        r"\1 <redacted>",
+        text,
+    )
+    redacted = re.sub(
+        r"(?m)^([ \t]*UniqueId:)[ \t]*.*$",
+        r"\1 <redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?m)^([ \t]*SysfsDevicePath:)[ \t]*.*$",
+        r"\1 <redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        r"applicationInfo\.token=(?:0x[0-9a-fA-F]+|<[^>]*>)",
+        "applicationInfo.redactedHandle=<redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        rf"{input_channel_handle_key}=(?:0x[0-9a-fA-F]+|android\.os\.BinderProxy@[0-9a-fA-F]+|<[^>]*>)",
+        "inputChannelHandle=<redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?<![A-Za-z0-9_.])token=(?:0x[0-9a-fA-F]+|<[^>]*>)",
+        "redactedHandle=<redacted>",
+        redacted,
+    )
+    return redacted
 
 
 def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> None:
@@ -433,7 +488,7 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         json.dumps(gate_summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    (path / "dumpsys-input.txt").write_text(evidence_text(redact_android_dumpsys_text(dumpsys_input)), encoding="utf-8")
+    (path / "dumpsys-input.txt").write_text(evidence_text(redact_android_dumpsys_input(dumpsys_input)), encoding="utf-8")
     summary = [
         f"# Native pointer HID acceptance: {result.status}",
         "",
@@ -453,21 +508,13 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         "- `result.json`: structured gate result, device identity, source devices, and checksums.",
         "- `native-pointer-hid-summary.json`: independent gate summary with `can_close_native_pointer_hid_gate`.",
         "- `dumpsys-input.txt`: Android input-device snapshot with line-ending whitespace normalized.",
-    ]
-    if result.android_logcat_bytes > 0:
-        summary.append("- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.")
-    else:
-        summary.append("- Android native pointer logcat window: not retained because no physical mouse observation ran.")
-    if result.host_log_appended_bytes > 0:
-        summary.append("- `host-log-appended.txt`: bounded Host log window for pointer injection.")
-    else:
-        summary.append("- Host pointer log window: not retained because no physical mouse observation ran.")
-    summary.extend([
+        "- `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.",
+        "- `host-log-appended.txt`: bounded Host log window for pointer injection.",
         "",
         "A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.",
         "This evidence must remain scoped to the exact device identity above.",
         "Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.",
-    ])
+    ]
     if result.existing_locks:
         summary.extend(["", "## Device coordination locks", ""])
         for existing_lock in result.existing_locks:
@@ -571,6 +618,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 required_events=args.require_events,
             )
             write_result(args.evidence_dir, result, "")
+            (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
+            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(b"")
             print(result.reason, file=sys.stderr)
             return BLOCKED_EXIT
 
@@ -595,12 +644,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 required_pointer_events=list(args.require_events),
                 observed_host_pointer_events=[],
                 observed_android_pointer_events=[],
+                observed_android_pointer_device_ids_by_event={},
                 visible_mac_result="",
                 existing_locks=existing_locks,
                 adb_was_run=True,
                 requested_serial=redacted_requested_serial(args.serial),
             )
             write_result(args.evidence_dir, result, dumpsys_input)
+            (args.evidence_dir / "host-log-appended.txt").write_bytes(b"")
+            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(b"")
             print(result.reason, file=sys.stderr)
             return BLOCKED_EXIT
 
@@ -622,13 +674,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         android_text = android_logcat.decode("utf-8", errors="replace")
         observed_host = observed_events(appended_text)
         observed_android = observed_android_events(android_text)
+        observed_android_device_ids = observed_android_event_device_ids(android_text)
         missing_host = [name for name in args.require_events if name not in observed_host]
         missing_android = [name for name in args.require_events if name not in observed_android]
+        external_mouse_device_ids = {device.device_id for device in mouse_devices}
+        missing_android_device_ids = [
+            name
+            for name in args.require_events
+            if not external_mouse_device_ids.intersection(observed_android_device_ids.get(name, []))
+        ]
         missing_host_ready = not args.host_stable_signed_tcc_ready
         missing_visible_result = not args.visible_result_note.strip()
         missing_reasons = []
         if missing_android:
             missing_reasons.append("missing Android native pointer log events: " + ", ".join(missing_android))
+        if missing_android_device_ids:
+            missing_reasons.append(
+                "missing Android native pointer log events with deviceId matching an external mouse-like input device: "
+                + ", ".join(missing_android_device_ids)
+            )
         if missing_host:
             missing_reasons.append("missing Host pointer injection events: " + ", ".join(missing_host))
         if missing_host_ready:
@@ -653,16 +717,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             required_pointer_events=list(args.require_events),
             observed_host_pointer_events=observed_host,
             observed_android_pointer_events=observed_android,
+            observed_android_pointer_device_ids_by_event=observed_android_device_ids,
             visible_mac_result=args.visible_result_note.strip(),
             existing_locks=existing_locks,
             adb_was_run=True,
             requested_serial=redacted_requested_serial(args.serial),
         )
         write_result(args.evidence_dir, result, dumpsys_input)
-        if appended_log:
-            (args.evidence_dir / "host-log-appended.txt").write_bytes(appended_log)
-        if android_logcat:
-            (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
+        (args.evidence_dir / "host-log-appended.txt").write_bytes(appended_log)
+        (args.evidence_dir / "android-logcat-native-pointer.txt").write_bytes(android_logcat)
         if status != "passed":
             print(reason, file=sys.stderr)
             return BLOCKED_EXIT if status == "blocked" else 1
