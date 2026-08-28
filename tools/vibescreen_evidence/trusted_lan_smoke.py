@@ -60,8 +60,14 @@ RECONNECT_PASS_MARKERS = (
 )
 LOCK_MARKERS = (
     "/tmp/vibe-screen-device-android.lock",
-    "/tmp/vibe-screen-android-",
     "android_device_lock_acquired",
+)
+SERIAL_LOCK_MARKER_RE = re.compile(
+    (
+        r"/tmp/vibe-screen-android-(?:<[^>\n]+>|[a-z0-9._-]+)\.lock"
+        r"|vibe-screen-android-(?:<[^>\n]+>|[a-z0-9._-]{20,})\.lock"
+    ),
+    re.IGNORECASE,
 )
 TELEMETRY_ENCRYPTED_RE = re.compile(r'"?trusted_lan_encrypted"?\s*(?:=|:|to)\s*true', re.IGNORECASE)
 TELEMETRY_NOT_ENCRYPTED_RE = re.compile(r'"?trusted_lan_encrypted"?\s*(?:=|:|to)\s*false', re.IGNORECASE)
@@ -146,7 +152,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
         errors.append(
             "README.md must include a Device label for Nubia P0110/pacific/Android 16/SDK 36"
         )
-    if not _contains_any(lowered, LOCK_MARKERS):
+    if not _contains_any(lowered, LOCK_MARKERS) and SERIAL_LOCK_MARKER_RE.search(lowered) is None:
         errors.append(
             "evidence must record /tmp/vibe-screen-device-android.lock, "
             "/tmp/vibe-screen-android-<serial>.lock, or equivalent lock observation"

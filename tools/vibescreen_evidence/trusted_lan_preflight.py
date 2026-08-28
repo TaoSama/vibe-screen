@@ -10,12 +10,14 @@ from __future__ import annotations
 import argparse
 import errno
 import fcntl
+import hashlib
 import ipaddress
 import json
 import os
 import platform
 import re
 import shlex
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -36,7 +38,8 @@ EXPECTED_SDK = 36
 DEFAULT_HOST_PORT = 54321
 DEFAULT_HOST_PREFLIGHT_COMMAND = (sys.executable, "scripts/macos_dev_host.py", "preflight")
 REDACTED_DEVICE_SERIAL = "<device-serial>"
-DEVICE_LOCK_TEMPLATE = "/tmp/vibe-screen-android-{serial}.lock"
+DEVICE_LOCK_DIR = Path("/tmp") / f"vibe-screen-{os.getuid()}" / "trusted-lan-locks"
+DEVICE_LOCK_PREFIX = "vibe-screen-android-"
 SSID_REDACTIONS = (
     (re.compile(r"(SSID: )[^,\n]+"), r"\1<redacted>"),
     (re.compile(r"(BSSID: )[^,\n]+"), r"\1<redacted>"),
@@ -157,7 +160,8 @@ def redact_command_part(value: str) -> str:
 
 
 def device_lock_path(serial: str) -> Path:
-    return Path(DEVICE_LOCK_TEMPLATE.format(serial=serial))
+    serial_hash = hashlib.sha256(serial.encode("utf-8")).hexdigest()[:24]
+    return DEVICE_LOCK_DIR / f"{DEVICE_LOCK_PREFIX}{serial_hash}.lock"
 
 
 @dataclass(frozen=True)
@@ -179,17 +183,28 @@ class DeviceLock:
 
     def __enter__(self) -> DeviceLockSnapshot:
         try:
-            self._handle = self.path.open("a+", encoding="utf-8")
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(self.path.parent, 0o700)
+            flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+            fd = os.open(self.path, flags, 0o600)
+            stat_result = os.fstat(fd)
+            if not stat.S_ISREG(stat_result.st_mode):
+                os.close(fd)
+                raise OSError(errno.EINVAL, "device lock path is not a regular file")
+            self._handle = os.fdopen(fd, "r+", encoding="utf-8")
             fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             if self._handle is not None:
                 self._handle.close()
                 self._handle = None
-            try:
-                detail = self.path.read_text(encoding="utf-8", errors="replace").strip()
-            except OSError:
-                detail = "locked by another process"
-            if error.errno not in (errno.EACCES, errno.EAGAIN):
+            if error.errno == errno.ELOOP:
+                detail = "device lock path is a symlink; refusing to follow it"
+            elif error.errno in (errno.EACCES, errno.EAGAIN):
+                try:
+                    detail = self.path.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError:
+                    detail = "locked by another process"
+            else:
                 detail = f"failed to acquire lock: {error}"
             raise DeviceLockError(path=self.path, detail=detail) from error
         self._handle.truncate(0)

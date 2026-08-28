@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import fcntl
+import os
 import sys
 import tempfile
 import unittest
@@ -60,7 +61,7 @@ class FakeDeviceLock:
         self.serial = serial
 
     def __enter__(self) -> DeviceLockSnapshot:
-        return DeviceLockSnapshot(f"/tmp/vibe-screen-android-{self.serial}.lock", True, "acquired")
+        return DeviceLockSnapshot(f"/tmp/vibe-screen-android-<device-serial>.lock", True, "acquired")
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         return None
@@ -156,28 +157,46 @@ class TrustedLANPreflightTests(unittest.TestCase):
 
     def test_device_lock_reuses_stale_unlocked_marker(self) -> None:
         serial = "TESTLOCK_STALE"
-        path = device_lock_path(serial)
-        path.write_text("stale marker", encoding="utf-8")
-        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                path.write_text("stale marker", encoding="utf-8")
 
-        with DeviceLock(serial) as snapshot:
-            self.assertTrue(snapshot.acquired)
-            self.assertIn("TESTLOCK_STALE", path.read_text(encoding="utf-8"))
+                with DeviceLock(serial) as snapshot:
+                    self.assertTrue(snapshot.acquired)
+                    self.assertIn("TESTLOCK_STALE", path.read_text(encoding="utf-8"))
 
-        self.assertFalse(path.exists())
+                self.assertFalse(path.exists())
 
     def test_device_lock_blocks_when_flocked_by_another_process(self) -> None:
         serial = "TESTLOCK_ACTIVE"
-        path = device_lock_path(serial)
-        self.addCleanup(lambda: path.unlink(missing_ok=True))
-        with path.open("w", encoding="utf-8") as handle:
-            handle.write("owner=other\n")
-            handle.flush()
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with self.assertRaises(DeviceLockError):
-                with DeviceLock(serial):
-                    pass
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                with path.open("w", encoding="utf-8") as handle:
+                    handle.write("owner=other\n")
+                    handle.flush()
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    with self.assertRaises(DeviceLockError):
+                        with DeviceLock(serial):
+                            pass
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def test_device_lock_rejects_preexisting_symlink_without_following(self) -> None:
+        serial = "EP0110PZ0B9110300B"
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                target = Path(directory) / "symlink-target"
+                path.symlink_to(target)
+
+                with self.assertRaisesRegex(DeviceLockError, "symlink"):
+                    with DeviceLock(serial):
+                        pass
+
+                self.assertTrue(path.is_symlink())
+                self.assertFalse(target.exists())
+                self.assertNotIn(serial, os.readlink(path))
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient", FakeADBClient)
