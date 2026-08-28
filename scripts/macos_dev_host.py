@@ -27,6 +27,7 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
@@ -177,6 +178,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
         help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
+    xctest_preflight.add_argument(
+        "--json-output",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_JSON,
+        help=f"JSON report path (default: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -199,7 +206,6 @@ def parse_args() -> argparse.Namespace:
         "--inspect-login-items",
         "--probe-login-items",
         action="store_true",
-        dest="include_login_item_diagnostic",
         help=(
             "opt in to the real macOS login-item diagnostic by calling "
             "/usr/bin/sfltool dumpbtm. This may trigger macOS administrator "
@@ -281,7 +287,7 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         return 127, f"command unavailable: {Path(executable).name}"
     except OSError as error:
         executable = command[0] if command else "command"
-        return 127, f"command unavailable: {executable}: {error.strerror or error}"
+        return 127, f"command unavailable: command not found: {executable}: {error.strerror or error}"
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
         detail = output.strip()
@@ -1272,15 +1278,80 @@ TCC, modify Keychain, or claim any iOS device pass.
 
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    status = inspect_xctest_toolchain()
-    report = format_xctest_toolchain_report(status)
-    write_report(args.report, report)
-    print(f"Wrote {args.report}")
-    if status.blockers:
+    report_path = getattr(args, "report", None)
+    json_output = getattr(args, "json_output", None)
+
+    if isinstance(json_output, Path):
+        status = inspect_xctest_preflight()
+        errors = list(status.errors)
+        document = build_xctest_preflight_document(status)
+        write_json_report(json_output, document)
+        print(f"Wrote {json_output}")
+        if errors:
+            return 2
+        return 0
+
+    if not isinstance(report_path, Path):
+        exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
+        xctest_path = output.splitlines()[0].strip() if output.strip() else ""
+        if exit_code != 0 or not xctest_path:
+            detail = redact_local_report_text(output.strip()) if output.strip() else "xcrun did not return an XCTest path"
+            print(
+                "macOS XCTest preflight failed: select a full Xcode installation before running "
+                f"baseline-macos-test ({detail}).",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"macOS XCTest preflight passed: {redact_local_report_text(xctest_path)}")
+        return 0
+
+    developer_status, developer_dir = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
+    swift_path_status, swift_path = run_best_effort("/usr/bin/xcrun", "--find", "swift", timeout_seconds=10)
+    swift_version_status, swift_version = run_best_effort("/usr/bin/swift", "--version", timeout_seconds=10)
+    xcodebuild_path_status, xcodebuild_path = run_best_effort(
+        "/usr/bin/xcrun", "--find", "xcodebuild", timeout_seconds=10
+    )
+    xcodebuild_version_status, xcodebuild_version = run_best_effort(
+        "/usr/bin/xcodebuild", "-version", timeout_seconds=10
+    )
+
+    errors: list[str] = []
+    if developer_status != 0:
+        errors.append("xcode-select did not report a selected developer directory")
+    elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
+        errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    if swift_path_status != 0 or swift_version_status != 0:
+        errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
+    if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
+        errors.append("xcodebuild is not available from the selected Apple developer directory")
+
+    report = "\n".join(
+        (
+            "MacHost XCTest toolchain preflight",
+            "---------------------------------",
+            f"Status: {'PASS' if not errors else 'FAIL'}",
+            command_report_line("xcode-select -p", developer_status, developer_dir),
+            command_report_line("xcrun --find swift", swift_path_status, swift_path),
+            command_report_line("swift --version", swift_version_status, swift_version),
+            command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
+            command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            "Blocking issues:",
+            "\n".join(f"- {error}" for error in errors) if errors else "- none",
+            "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
+            "",
+        )
+    )
+    write_report(report_path, report)
+    print(f"Wrote {report_path}")
+    if errors:
         print(report, file=sys.stderr)
         return 2
     print("macOS Host XCTest toolchain preflight passed")
     return 0
+
+
+def missing_permission_status(error: str) -> PermissionStatus:
+    return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
 
 def inspect_host_without_throwing(

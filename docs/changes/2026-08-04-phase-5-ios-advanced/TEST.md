@@ -460,6 +460,8 @@ capture pipeline, and one virtual display; `ProtocolV1SessionConfiguration`
 does not advertise `.multiClient` in production. PR #201 adds an offline Host
 routing boundary, but its own record keeps production capped at one active
 client/stream and does not close multi-device or parallel-capture acceptance.
+The Host-side advanced adapter readiness gate is source/readiness evidence only
+and does not close host-side multi-client/display or other Phase 5 device gates.
 
 ## MacHost multi-client/display routing boundary
 
