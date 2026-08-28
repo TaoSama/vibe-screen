@@ -45,6 +45,56 @@ DEFAULT_HOST_RSS_SOURCE = "soak --host-pid sampling via ps -o rss="
 DEFAULT_ANDROID_PSS_SOURCE = "ADB dumpsys meminfo app TOTAL PSS"
 BLOCKED_EXIT = 2
 READY_EXIT = 0
+REDACTED_DEVICE_SERIAL = "<device-serial>"
+REDACTED_REPO_ROOT_PATH = "<repo-root>"
+REDACTED_HOME_PATH = "<home>"
+REDACTED_TCC_PATH = "<tcc-database>"
+REDACTED_ANDROID_SDK_PATH = "<android-sdk>"
+REDACTED_SECRET = "<redacted-secret>"
+REDACTED_DEVICE_DETAIL = "<device-detail>"
+REDACTED_NETWORK_DETAIL = "<network-detail>"
+SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"/Users/[^\s\n]+/Library/Application Support/com\.apple\.TCC/TCC\.db"
+        ),
+        REDACTED_TCC_PATH,
+    ),
+    (re.compile(r"/Users/[^\s\n]+/Library/Android/sdk"), REDACTED_ANDROID_SDK_PATH),
+    (re.compile(r"/Users/[^\s\n]+"), REDACTED_HOME_PATH),
+    (
+        re.compile(
+            r"(?i)(token|credential|password|private[_ -]?key|secret)=([^\s,;]+)"
+        ),
+        r"\1=" + REDACTED_SECRET,
+    ),
+    (
+        re.compile(
+            r'(?i)("(?:token|credential|password|private[_ -]?key|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"'
+        ),
+        r"\1" + REDACTED_SECRET + '"',
+    ),
+    (
+        re.compile(
+            r"(?i)(token|credential|password|private[_ -]?key|secret)%3[dD]([^\s&;,]+)"
+        ),
+        r"\1%3D" + REDACTED_SECRET,
+    ),
+    (
+        re.compile(r"(?i)(\[(?:[^\]]*\.)?(?:hostname|devicename)\]:\s*)\[[^\]]*\]"),
+        r"\1[" + REDACTED_DEVICE_DETAIL + "]",
+    ),
+    (
+        re.compile(
+            r"(?i)(\[[^\]]*(?:wifi\.mac|macaddr|mac_address|ipaddr|ip_address|bluetooth|fmd_)[^\]]*\]:\s*)\[[^\]]*\]"
+        ),
+        r"\1[" + REDACTED_NETWORK_DETAIL + "]",
+    ),
+    (
+        re.compile(r"\b(?:[0-9A-Fa-f]{2}:){5,}[0-9A-Fa-f]{2}\b"),
+        REDACTED_NETWORK_DETAIL,
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +138,72 @@ def write_text(path: Path, content: str) -> None:
     temporary.replace(path)
 
 
+def redaction_values(*values: object) -> tuple[str, ...]:
+    redactions: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text or text == REDACTED_DEVICE_SERIAL:
+            continue
+        redactions.add(text)
+    return tuple(sorted(redactions, key=len, reverse=True))
+
+
+def sanitize_text(value: str, *serials: str) -> str:
+    sanitized = value
+    for serial in redaction_values(*serials):
+        sanitized = sanitized.replace(serial, REDACTED_DEVICE_SERIAL)
+    for pattern, replacement in SENSITIVE_TEXT_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
+    return sanitized
+
+
+def sanitize_path(value: Path | str, *serials: str) -> str:
+    path_text = str(value)
+    try:
+        path_text = str(Path(path_text).resolve().relative_to(Path.cwd().resolve()))
+    except (OSError, ValueError):
+        pass
+    return sanitize_text(path_text, *serials)
+
+
+def command_serial_values(command: Sequence[str]) -> tuple[str, ...]:
+    serials: list[str] = []
+    for index, token in enumerate(command):
+        if token in {"-s", "--serial", "EVIDENCE_SERIAL"} and index + 1 < len(command):
+            serials.append(command[index + 1])
+            continue
+        if token.startswith("--serial="):
+            serials.append(token.partition("=")[2])
+            continue
+        if token.startswith("EVIDENCE_SERIAL="):
+            serials.append(token.partition("=")[2])
+    return redaction_values(*serials)
+
+
+def sanitized_public_copy(value: Any, *serials: str) -> Any:
+    if isinstance(value, dict):
+        return {key: sanitized_public_copy(item, *serials) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitized_public_copy(item, *serials) for item in value]
+    if isinstance(value, tuple):
+        return [sanitized_public_copy(item, *serials) for item in value]
+    if isinstance(value, str):
+        return sanitize_text(value, *serials)
+    return value
+
+
+def sanitize_evidence_file(path: Path, *serials: str) -> None:
+    try:
+        original = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    sanitized = sanitize_text(original, *serials)
+    if sanitized != original:
+        write_text(path, sanitized)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -124,18 +240,19 @@ def write_command_output(
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Any]:
     result = run_command(command, timeout_seconds=timeout_seconds, command_runner=command_runner)
-    write_text(stdout_path, result.stdout)
+    command_serials = command_serial_values(command)
+    write_text(stdout_path, sanitize_text(result.stdout, *command_serials))
     if stderr_path is not None:
-        write_text(stderr_path, result.stderr)
+        write_text(stderr_path, sanitize_text(result.stderr, *command_serials))
     return {
-        "command": list(command),
+        "command": list(sanitized_public_copy(list(command), *command_serials)),
         "returncode": result.returncode,
-        "stdout": str(stdout_path),
-        "stderr": str(stderr_path) if stderr_path is not None else None,
+        "stdout": sanitize_path(stdout_path, *command_serials),
+        "stderr": sanitize_path(stderr_path, *command_serials) if stderr_path is not None else None,
     }
 
 
-def existing_locks(paths: Sequence[Path] | None = None) -> list[dict[str, Any]]:
+def existing_locks(paths: Sequence[Path] | None = None, *serials: str) -> list[dict[str, Any]]:
     if paths is None:
         paths = (SOAK_LOCK, ANDROID_LOCK)
     locks: list[dict[str, Any]] = []
@@ -150,10 +267,10 @@ def existing_locks(paths: Sequence[Path] | None = None) -> list[dict[str, Any]]:
         detail = None
         if path.is_file():
             try:
-                detail = path.read_text(encoding="utf-8", errors="replace")[:1000]
+                detail = sanitize_text(path.read_text(encoding="utf-8", errors="replace")[:1000], *serials)
             except OSError as error:
                 detail = "present but unreadable: " + str(error)
-        locks.append({"path": str(path), "mode": oct(stat.st_mode & 0o777), "detail": detail})
+        locks.append({"path": sanitize_path(path, *serials), "mode": oct(stat.st_mode & 0o777), "detail": detail})
     return locks
 
 
@@ -183,21 +300,27 @@ class DeviceLock:
             self.path.unlink(missing_ok=True)
 
 
-def copy_optional_log(source: Path | None, destination: Path, artifacts: list[dict[str, Any]]) -> None:
+def copy_optional_log(
+    source: Path | None, destination: Path, artifacts: list[dict[str, Any]], *serials: str
+) -> None:
     if source is None:
         return
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
+        sanitize_evidence_file(destination, *serials)
         artifacts.append({"path": destination.name, "kind": "host_log_copy"})
     except OSError:
         return
 
 
-def archive_host_telemetry(source: Path, destination: Path, artifacts: list[dict[str, Any]]) -> Path:
+def archive_host_telemetry(
+    source: Path, destination: Path, artifacts: list[dict[str, Any]], *serials: str
+) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.resolve() != destination.resolve():
         shutil.copyfile(source, destination)
+    sanitize_evidence_file(destination, *serials)
     artifacts.append({"path": str(destination.parent.name + "/" + destination.name), "kind": "host_telemetry"})
     return destination
 
@@ -250,7 +373,7 @@ def collect_static_artifacts(
         from .device_info import collect_device_info
 
         device_info = collect_device_info(client, packages=[package_name])
-        write_json(output_dir / "device-info.json", device_info)
+        write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, serial))
         artifacts.append({"path": "device-info.json", "kind": "device_info"})
     except (ADBError, OSError, ValueError) as error:
         errors.append("device-info: " + str(error))
@@ -297,14 +420,22 @@ def collect_static_artifacts(
     if apk is not None:
         try:
             apk_sha256 = sha256_file(apk)
-            write_text(output_dir / "apk-sha256.txt", apk_sha256 + "  " + str(apk) + "\n")
+            write_text(output_dir / "apk-sha256.txt", apk_sha256 + "  " + sanitize_text(str(apk), serial) + "\n")
         except OSError as error:
             errors.append("apk-sha256: " + str(error))
     elif apk_sha256 is not None:
         write_text(output_dir / "apk-sha256.txt", apk_sha256 + "\n")
     if apk_sha256:
         artifacts.append({"path": "apk-sha256.txt", "kind": "android_artifact"})
-    write_text(output_dir / "build.txt", "command=" + shlex.join(sys.argv) + "\n" + "cwd=" + str(Path.cwd()) + "\n")
+    write_text(
+        output_dir / "build.txt",
+        "command="
+        + sanitize_text(shlex.join(sys.argv), serial)
+        + "\n"
+        + "cwd="
+        + sanitize_path(Path.cwd(), serial)
+        + "\n",
+    )
     artifacts.append({"path": "build.txt", "kind": "command"})
     return device_info, errors, artifacts, apk_sha256
 
@@ -420,7 +551,7 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
         "",
         "## Command",
         "",
-        "    " + shlex.join(readiness.get("command", [])),
+        "    " + sanitize_text(shlex.join(readiness.get("command", []))),
         "",
         "## Blockers",
     ]
@@ -439,7 +570,7 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
     for artifact in readiness.get("artifacts", []):
         lines.append("- " + str(artifact.get("path")))
     lines.append("")
-    write_text(output_dir / "README.md", "\n".join(lines))
+    write_text(output_dir / "README.md", sanitize_text("\n".join(lines)))
 
 
 def build_readiness(
@@ -454,6 +585,7 @@ def build_readiness(
     gate: dict[str, Any] | None,
     android_log_metrics: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    command_serials = command_serial_values(command)
     result = "blocked" if blockers else ("pass" if gate and gate.get("verdict") == "pass" else "ready")
     if mode == "run" and gate is not None and gate.get("verdict") != "pass":
         result = "blocked"
@@ -463,13 +595,13 @@ def build_readiness(
         "run_id": str(uuid.uuid4()),
         "created_at": utc_now(),
         "mode": mode,
-        "command": list(command),
-        "output_dir": str(output_dir),
+        "command": list(sanitized_public_copy(list(command), *command_serials)),
+        "output_dir": sanitize_text(str(output_dir), *command_serials),
         "device_class": device_class,
         "result": result,
         "can_close_phase2_gate": bool(gate and gate.get("verdict") == "pass" and not blockers),
-        "blockers": list(blockers),
-        "artifacts": list(artifacts),
+        "blockers": list(sanitized_public_copy(list(blockers), *command_serials)),
+        "artifacts": list(sanitized_public_copy(list(artifacts), *command_serials)),
         "soak_summary_status": soak_summary.get("status") if soak_summary else None,
         "phase2_gate_verdict": gate.get("verdict") if gate else None,
         "android_log_metrics": android_log_metrics or {},
@@ -483,10 +615,7 @@ def build_blocked_on_lock_readiness(
     locks: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
     blockers = ["device coordination lock exists; no ADB command was run"]
-    artifacts = [
-        {"path": str(lock.get("path", "")), "kind": "blocking_lock"}
-        for lock in locks
-    ]
+    artifacts = [{"path": str(lock.get("path", "")), "kind": "blocking_lock"} for lock in locks]
     readiness = build_readiness(
         mode=arguments.mode,
         command=command,
@@ -589,7 +718,12 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
     except ManifestError as error:
         raise Phase2SoakError(str(error)) from error
 
-    owner = {"pid": os.getpid(), "serial": arguments.serial, "created_at": utc_now(), "output_dir": str(output_dir)}
+    owner = {
+        "pid": os.getpid(),
+        "serial": REDACTED_DEVICE_SERIAL,
+        "created_at": utc_now(),
+        "output_dir": sanitize_text(str(output_dir), arguments.serial),
+    }
     if arguments.allow_existing_device_lock:
         lock_context = NullContext()
     else:
@@ -601,7 +735,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             return build_blocked_on_lock_readiness(
                 arguments=arguments,
                 command=command,
-                locks=existing_locks(),
+                locks=existing_locks(None, arguments.serial),
             )
 
     with lock_context:
@@ -623,6 +757,8 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             apk=arguments.apk,
             apk_sha256=apk_sha256_argument if has_valid_apk_sha256_argument else None,
         )
+        if device_info is not None:
+            write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, arguments.serial))
         blockers.extend(setup_errors)
         artifacts.extend(setup_artifacts)
         if arguments.mode == "preflight" and apk_sha256 is None:
@@ -636,6 +772,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         )
         if device_info is not None:
             try:
+                public_device_info = sanitized_public_copy(device_info, arguments.serial)
                 manifest_duration_seconds = (
                     int(arguments.duration)
                     if arguments.mode == "run"
@@ -644,7 +781,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                 manifest = build_manifest(
                     command=command,
                     repo=arguments.repo,
-                    device_info=device_info,
+                    device_info=public_device_info,
                     device_class=arguments.device_class,
                     tablet_size_inches=arguments.tablet_size_inches,
                     stand_setup=arguments.stand_setup,
@@ -670,6 +807,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     apk_sha256=apk_sha256,
                     notes=arguments.notes,
                 )
+                manifest = sanitized_public_copy(manifest, arguments.serial)
                 manifest["required_artifacts"] = runner_required_artifacts(
                     arguments.mode,
                     has_apk_identity=apk_sha256 is not None,
@@ -700,6 +838,9 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                         run_id=manifest.get("run_id") if manifest else None,
                     )
                     soak_summary = runner.run()
+                    sanitize_evidence_file(soak_dir / "samples.jsonl", arguments.serial)
+                    sanitize_evidence_file(soak_dir / "summary.json", arguments.serial)
+                    soak_summary = sanitized_public_copy(soak_summary, arguments.serial)
                     artifacts.extend([
                         {"path": str(soak_dir.relative_to(output_dir) / "samples.jsonl"), "kind": "soak_samples"},
                         {"path": str(soak_dir.relative_to(output_dir) / "summary.json"), "kind": "soak_summary"},
@@ -713,6 +854,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                                 arguments.host_telemetry_jsonl,
                                 soak_dir / "host-telemetry.jsonl",
                                 artifacts,
+                                arguments.serial,
                             )
                             report = derive_report(
                                 soak_dir / "summary.json",
@@ -737,13 +879,21 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             finally:
                 stop_process(logcat, logcat_handle)
                 android_log_metrics = write_log_derivatives(output_dir / "raw-logcat.txt", output_dir)
+                for relative in (
+                    "raw-logcat.txt",
+                    "decoder-telemetry.jsonl",
+                    "reconnects.log",
+                    "frame-drops.log",
+                    "host.log",
+                ):
+                    sanitize_evidence_file(output_dir / relative, arguments.serial)
                 artifacts.extend([
                     {"path": "raw-logcat.txt", "kind": "android_logcat"},
                     {"path": "decoder-telemetry.jsonl", "kind": "android_telemetry"},
                     {"path": "reconnects.log", "kind": "android_log_filter"},
                     {"path": "frame-drops.log", "kind": "android_log_filter"},
                 ])
-                copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts)
+                copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts, arguments.serial)
                 blockers.extend(
                     collect_after_artifacts(
                         output_dir=output_dir,
@@ -766,6 +916,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         gate=gate,
         android_log_metrics=android_log_metrics,
     )
+    readiness = sanitized_public_copy(readiness, arguments.serial)
     write_json(output_dir / "phase2-soak-readiness.json", readiness)
     write_readme(output_dir, readiness)
     return readiness
