@@ -1311,6 +1311,7 @@ final class ProtocolV1SessionCoordinator {
 
     private func releaseRouteLocked() {
         displayRouter.disconnect(sessionKey)
+        isRegisteredWithDisplayRouter = false
     }
 
     private func routeDisplayFailure(
@@ -1534,6 +1535,7 @@ final class ProtocolV1SessionCoordinator {
         }
         do {
             try displayRouter.register(sessionKey)
+            isRegisteredWithDisplayRouter = true
         } catch HostDisplayRouterError.clientLimitReached(_) {
             return fail(
                 code: .resourceExhausted,
