@@ -27,6 +27,7 @@ EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
 DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
+DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
@@ -167,6 +168,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH,
         help="path for the XCTest toolchain report (default: .build/dev-macos-host/xctest-toolchain.txt)",
     )
+    xctest_preflight.add_argument(
+        "--json-output",
+        type=Path,
+        default=DEFAULT_XCTEST_PREFLIGHT_JSON,
+        help=f"JSON report path (default: {DEFAULT_XCTEST_PREFLIGHT_JSON})",
+    )
     readiness = subparsers.add_parser(
         "readiness",
         help="write read-only JSON readiness for shared Host signing, TCC, listener, and entitlement prerequisites",
@@ -189,7 +196,6 @@ def parse_args() -> argparse.Namespace:
         "--inspect-login-items",
         "--probe-login-items",
         action="store_true",
-        dest="include_login_item_diagnostic",
         help=(
             "opt in to the real macOS login-item diagnostic by calling "
             "/usr/bin/sfltool dumpbtm. This may trigger macOS administrator "
@@ -1195,7 +1201,20 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
 
 
 def xctest_preflight_command(args: argparse.Namespace) -> int:
-    if not isinstance(getattr(args, "report", None), Path):
+    report_path = getattr(args, "report", None)
+    json_output = getattr(args, "json_output", None)
+
+    if isinstance(json_output, Path):
+        status = inspect_xctest_preflight()
+        errors = list(status.errors)
+        document = build_xctest_preflight_document(status)
+        write_json_report(json_output, document)
+        print(f"Wrote {json_output}")
+        if errors:
+            return 2
+        return 0
+
+    if not isinstance(report_path, Path):
         exit_code, output = run_best_effort("/usr/bin/xcrun", "--find", "xctest", timeout_seconds=10)
         xctest_path = output.splitlines()[0].strip() if output.strip() else ""
         if exit_code != 0 or not xctest_path:
@@ -1245,14 +1264,13 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
             "",
         )
     )
-    write_report(args.report, report)
-    print(f"Wrote {args.report}")
+    write_report(report_path, report)
+    print(f"Wrote {report_path}")
     if errors:
         print(report, file=sys.stderr)
         return 2
     print("macOS Host XCTest toolchain preflight passed")
     return 0
-
 
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
