@@ -122,7 +122,7 @@ def _load_json(path: Path, label: str) -> tuple[dict[str, Any] | None, str | Non
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return None, f"{label} missing: {path}"
+        return None, f"{label} missing: {_public_path(path)}"
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         return None, f"{label} unreadable: {error}"
     if not isinstance(document, dict):
@@ -148,6 +148,18 @@ def _string_list(value: Any) -> list[str]:
 
 def _strings_from_values(values: Sequence[Any]) -> list[str]:
     return [str(value) for value in values if _non_empty_string(value)]
+
+
+def _public_path(path: Path, *, repo: Path = REPO_ROOT) -> str:
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return path.name if path.is_absolute() else str(path)
+    try:
+        return str(resolved.relative_to(repo.resolve()))
+    except (OSError, ValueError):
+        pass
+    return f"<external>/{resolved.name or path.name}"
 
 
 def _required_markers(config: dict[str, Any], gate_id: str) -> tuple[str, ...]:
@@ -436,9 +448,9 @@ def derive_gate(readiness_path: Path, device_gates_path: Path, evidence_root: Pa
             "gate_owners": _gate_owners(),
         },
         "source": {
-            "readiness": str(readiness_path),
-            "device_gates": str(device_gates_path),
-            "evidence_root": str(resolved_evidence_root),
+            "readiness": _public_path(readiness_path),
+            "device_gates": _public_path(device_gates_path),
+            "evidence_root": _public_path(resolved_evidence_root),
         },
         "source_docs": SOURCE_DOCS,
         "can_close_readme_phase4_owner_gates": verdict == "pass",

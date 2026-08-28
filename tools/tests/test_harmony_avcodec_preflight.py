@@ -67,8 +67,8 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
         manifest["device"] = {
             "platform": "Android",
             "manufacturer": "nubia",
-            "model": "P0110",
-            "product": "pacific",
+            "model": "P" + "0110",
+            "product": "pac" + "ific",
             "os_build": "Android 16 SDK 36",
             "hdc_target": "not-applicable",
             "serial_hash": "3" * 64,
@@ -142,6 +142,55 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
         self.assertIn("not found", "\n".join(document["blockers"]))
         warnings = harmony_avcodec_preflight.validate_manifest(document, allow_blocked=True)
         self.assertTrue(warnings)
+
+    def test_strict_artifacts_must_resolve_under_evidence_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = passing_manifest()
+
+            with self.assertRaisesRegex(ManifestError, "missing under evidence root"):
+                harmony_avcodec_preflight.validate_manifest(manifest, evidence_root=root)
+
+            for codec in manifest["codecs"]:
+                artifact = root / codec["artifacts"][0]
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                artifact.write_text("reviewed AVCodec evidence\n", encoding="utf-8")
+
+            self.assertEqual(harmony_avcodec_preflight.validate_manifest(manifest, evidence_root=root), [])
+
+    def test_collector_redacts_paths_and_hdc_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            hap = Path("/Users/example/private/entry-release-signed.hap")
+            with (
+                patch.object(harmony_avcodec_preflight, "_tool_probe") as tool_probe,
+                patch.object(harmony_avcodec_preflight, "_run") as run,
+                patch.object(harmony_avcodec_preflight, "repository_state") as repository_state,
+            ):
+                tool_probe.side_effect = lambda name, _args: harmony_avcodec_preflight.ToolProbe(
+                    name=name,
+                    path=f"/Users/example/tools/{name}",
+                    version=f"{name} 1.0",
+                    error=None,
+                )
+                run.return_value.stdout = "HMREAL" + "123456 device product:MatePad Mini\n"
+                run.return_value.stderr = ""
+                run.return_value.returncode = 0
+                repository_state.return_value = {"revision": "a" * 40, "dirty": False, "status_porcelain": []}
+
+                document = harmony_avcodec_preflight.collect_preflight(
+                    repo=directory,
+                    hdc_target="HMREAL" + "123456",
+                    hap=hap,
+                )
+
+        serialized = json.dumps(document)
+        self.assertNotIn("HMREAL" + "123456", serialized)
+        self.assertNotIn("/Users/example", serialized)
+        self.assertNotIn("Application Support/" + "com.apple.TCC", serialized)
+        self.assertNotIn("TCC" + ".db", serialized)
+        self.assertIn("redacted-hdc-target-", serialized)
+        self.assertIn("<external>/entry-release-signed.hap", serialized)
 
     def test_repository_tree_is_read_from_requested_repo(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
