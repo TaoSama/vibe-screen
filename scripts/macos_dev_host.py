@@ -1204,6 +1204,11 @@ def write_report(path: Path, report: str) -> None:
     path.write_text(report, encoding="utf-8")
 
 
+def command_report_line(label: str, exit_code: int, output: str) -> str:
+    clean_output = ascii_report_text(output or "<empty>")
+    return f"{label}: exit_code={exit_code}\n{clean_output}"
+
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 

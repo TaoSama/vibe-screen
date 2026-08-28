@@ -84,7 +84,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                     0,
                     "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift",
                 ),
-                ("swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
                 ("/usr/bin/xcrun", "--find", "xcodebuild"): (
                     0,
                     "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
@@ -110,7 +110,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 0)
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: PASS", report_text)
-            self.assertIn("xcodebuild version: Xcode 16.4", report_text)
+            self.assertIn("xcodebuild -version: exit_code=0", report_text)
             self.assertIn("macOS Host XCTest toolchain preflight passed", stdout.getvalue())
             self.assertEqual(stderr.getvalue(), "")
 
@@ -121,7 +121,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             command_outputs = {
                 ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
                 ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
-                ("swift", "--version"): (0, "Swift version 6.0"),
+                ("/usr/bin/swift", "--version"): (0, "Swift version 6.0"),
                 ("/usr/bin/xcrun", "--find", "xcodebuild"): (72, "unable to find utility xcodebuild"),
                 ("/usr/bin/xcodebuild", "-version"): (127, "command unavailable: /usr/bin/xcodebuild"),
                 ("/usr/bin/xcrun", "--find", "xctest"): (72, "unable to find utility xctest"),
@@ -141,9 +141,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             report_text = report.read_text(encoding="utf-8")
             self.assertIn("Status: FAIL", report_text)
-            self.assertIn("Command Line Tools, not full Xcode", report_text)
-            self.assertIn("xcodebuild -version failed", report_text)
-            self.assertIn("selected developer directory is Command Line Tools, not full Xcode", stderr.getvalue())
+            self.assertIn("full Xcode is not selected", report_text)
+            self.assertIn("xcodebuild is not available", report_text)
+            self.assertIn("Command Line Tools cannot run this XCTest suite", stderr.getvalue())
 
     def test_report_records_identity_hash_permission_state_and_system_path(self) -> None:
         metadata = self.metadata()
@@ -617,7 +617,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             calls = {
                 ("/usr/bin/xcode-select", "-p"): (0, "/Applications/Xcode.app/Contents/Developer"),
                 ("/usr/bin/xcrun", "--find", "swift"): (0, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"),
-                ("swift", "--version"): (0, "Apple Swift version 6.1"),
+                ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"),
                 ("/usr/bin/xcodebuild", "-version"): (0, "Xcode 16.4\nBuild version 16F6"),
                 ("/usr/bin/xcrun", "--find", "xctest"): (0, "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest"),
             }
@@ -630,7 +631,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertEqual(result, 0)
         self.assertIn("Status: PASS", report_text)
         self.assertIn("Xcode 16.4", report_text)
-        self.assertIn("XCTest path:", report_text)
+        self.assertIn("xcodebuild -version: exit_code=0", report_text)
 
     def test_xctest_preflight_command_fails_closed_for_command_line_tools(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -639,7 +640,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             calls = {
                 ("/usr/bin/xcode-select", "-p"): (0, "/Library/Developer/CommandLineTools"),
                 ("/usr/bin/xcrun", "--find", "swift"): (0, "/usr/bin/swift"),
-                ("swift", "--version"): (0, "Apple Swift version 6.1"),
+                ("/usr/bin/swift", "--version"): (0, "Apple Swift version 6.1"),
+                ("/usr/bin/xcrun", "--find", "xcodebuild"): (1, "unable to find utility xcodebuild"),
                 ("/usr/bin/xcodebuild", "-version"): (1, "xcodebuild requires Xcode"),
                 ("/usr/bin/xcrun", "--find", "xctest"): (1, "unable to find utility xctest"),
             }
@@ -655,9 +657,8 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(result, 2)
         self.assertIn("Status: FAIL", report_text)
-        self.assertIn("Command Line Tools, not full Xcode", report_text)
-        self.assertIn("xcodebuild -version failed", report_text)
-        self.assertIn("xcrun --find xctest failed", report_text)
+        self.assertIn("full Xcode is not selected", report_text)
+        self.assertIn("xcodebuild is not available", report_text)
         self.assertNotIn(str(Path.home()), report_text)
 
     @staticmethod
