@@ -158,9 +158,18 @@ def normalized_hosts(policy: dict[str, object]) -> set[str]:
     return {host.strip().lower() for host in hosts if isinstance(host, str) and host.strip()}
 
 
+def normalized_denied_hosts(policy: dict[str, object]) -> set[str]:
+    hosts = policy.get("denied_hosts", [])
+    if not isinstance(hosts, list):
+        raise VerificationError("managed policy denied_hosts must be a list")
+    return {host.strip().lower() for host in hosts if isinstance(host, str) and host.strip()}
+
+
 def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
     normalized = dict(policy)
     normalized["allowed_hosts"] = sorted(normalized_hosts(policy))
+    normalized["denied_hosts"] = sorted(normalized_denied_hosts(policy))
+    normalized.setdefault("restriction_results", [])
     if normalized["managed"] and (normalized["allowed_hosts_restricted"] or normalized["allowed_hosts"]):
         normalized["allowed_hosts_restricted"] = True
     return normalized
@@ -181,6 +190,8 @@ def apply_remote_policy(local: dict[str, object], remote: dict[str, object]) -> 
         hosts = remote["allowed_hosts"]
     else:
         hosts = []
+    denied_hosts = sorted(set(local["denied_hosts"]).union(remote["denied_hosts"]))
+    hosts = [host for host in hosts if host not in denied_hosts]
     return {
         "managed": bool(local["managed"] or remote["managed"]),
         "clipboard_allowed": bool(local["clipboard_allowed"] and remote["clipboard_allowed"]),
@@ -192,6 +203,8 @@ def apply_remote_policy(local: dict[str, object], remote: dict[str, object]) -> 
         "maximum_file_bytes": min(int(local["maximum_file_bytes"]), int(remote["maximum_file_bytes"])),
         "allowed_hosts": hosts,
         "allowed_hosts_restricted": bool(local_restricted or remote_restricted),
+        "restriction_results": [],
+        "denied_hosts": denied_hosts,
     }
 
 

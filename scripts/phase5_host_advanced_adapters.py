@@ -273,35 +273,16 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
             status="fail",
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
-    normalized_body = capability_body.replace("\\n", "\n")
-    multiclient_lines = [
-        line.strip()
-        for line in normalized_body.splitlines()
-        if ".multiClient" in line and "insert" in line
-    ]
-    if len(multiclient_lines) > 1:
+    if ".multiClient" in capability_body:
         return CheckResult(
             name=check_name,
             status="fail",
-            detail="multi-client capability is inserted more than once",
-        )
-    ungated = [line for line in multiclient_lines if "maximumClients > 1" not in line]
-    if ungated:
-        return CheckResult(
-            name=check_name,
-            status="fail",
-            detail=f"ungated multi-client capability insertions: {'; '.join(ungated)}",
-        )
-    if multiclient_lines and "maximumClients > 1" not in capability_body:
-        return CheckResult(
-            name=check_name,
-            status="fail",
-            detail="multi-client capability is not gated by maximumClients > 1",
+            detail="multi-client capability is still present in production defaults",
         )
     return CheckResult(
         name=check_name,
         status="pass",
-        detail="audio/bulk DataChannel stay out of defaults; multi-client is explicitly maximumClients gated",
+        detail="audio/bulk DataChannel and multi-client stay out of production defaults",
     )
 
 

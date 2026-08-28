@@ -605,6 +605,8 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             "status": status,
             "evidence": [f"evidence/{self.MARKER_BY_GATE[gate_id]}"],
         }
+        if gate_id in harmony_device_gate.AVCODEC_GATE_IDS:
+            gate["evidence"] = [f"evidence/{gate_id}.txt", f"evidence/{harmony_device_gate.AVCODEC_MANIFEST_NAME}"]
         if gate_id == "huks_backed_secure_pairing":
             gate["secure_pairing_manifest"] = {
                 "schema": harmony_device_gate.SECURE_PAIRING_MANIFEST_SCHEMA,
