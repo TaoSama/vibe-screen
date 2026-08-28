@@ -625,6 +625,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(router.activeClientCount, 0)
 
         let second = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
             sessionID: Data([0x02]),
             sessionEpoch: 1,
             displayRouter: router,
