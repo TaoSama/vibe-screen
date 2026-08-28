@@ -242,6 +242,29 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertTrue(result["gate_closed"])
         self.assertEqual(result["not_proven"], [])
 
+    def test_android_clipboard_smoke_accepts_gradle_instrumentation_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "Starting 3 tests on P0110 - 16\n\n"
+                "Finished 3 tests on P0110 - 16\n\n"
+                "BUILD SUCCESSFUL in 38s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        android_gate = next(item for item in result["checks"] if item["name"] == "android_clipboardmanager_smoke")
+        self.assertEqual(android_gate["status"], "pass")
+        self.assertEqual(result["verdict"], "pass")
+
     def test_p0110_identity_guard_rejects_xiaomi_relabel(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -276,7 +299,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
             root = Path(directory_name)
             paths = write_pass_inputs(root)
             raw_serial = "EP0110" + "PZ0B9110300B"
-            user_path = "/Users/" + "luwentao"
+            user_path = "/Users/" + "localuser"
             tcc_path = "Application Support/" + "com.apple" + ".TCC/" + "TCC" + ".db"
             write_json(
                 paths["host"],

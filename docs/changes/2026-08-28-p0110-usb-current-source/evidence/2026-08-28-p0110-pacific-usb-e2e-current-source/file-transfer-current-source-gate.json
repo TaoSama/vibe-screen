@@ -1,0 +1,77 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "android_macos_file_transfer_current_source_gate",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "serial_label": "REDACTED_P0110_USB_SERIAL",
+    "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only",
+    "recorded_as_fuxi": false
+  },
+  "verdict": "blocked",
+  "result": "blocked",
+  "gate_closed": false,
+  "can_close_android_macos_file_transfer_e2e_gate": false,
+  "checks": [
+    {
+      "name": "android_file_transfer_jvm",
+      "status": "pass",
+      "evidence": [
+        "android-file-transfer-jvm.txt",
+        "android-file-transfer-jvm.exit"
+      ],
+      "reasons": []
+    },
+    {
+      "name": "usb_live_smoke",
+      "status": "pass",
+      "evidence": [
+        "usb-live-smoke.json",
+        "usb-live-smoke-after-reinstall.json"
+      ],
+      "reasons": []
+    },
+    {
+      "name": "host_readiness",
+      "status": "blocked",
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "reasons": [
+        "current-source stable-signed/TCC-ready Host was not available",
+        "installed Host lacks source commit/tree provenance",
+        "read-only TCC verification could not prove required grants"
+      ]
+    },
+    {
+      "name": "product_file_transfer_e2e",
+      "status": "blocked",
+      "evidence": [],
+      "reasons": [
+        "retained live session did not negotiate file-transfer capability",
+        "no explicit Android-to-macOS file transfer product flow was captured",
+        "no explicit macOS-to-Android file transfer product flow was captured",
+        "no final digest or destination file match from a real product transfer was retained"
+      ]
+    }
+  ],
+  "blockers": [
+    "current-source stable-signed/TCC-ready Host was not available",
+    "retained live session did not negotiate file-transfer capability",
+    "no bidirectional Android/macOS product file-transfer evidence exists"
+  ],
+  "not_proven": [
+    "Android -> macOS product file transfer over Protocol v1 USB",
+    "macOS -> Android product file transfer over Protocol v1 USB",
+    "user approval, chunk progress, final digest, and destination file match in a real product session"
+  ],
+  "safety": {
+    "offline_tests_do_not_close_gate": true,
+    "synthetic_evidence_do_not_close_gate": true,
+    "public_output_sanitized": true,
+    "raw_serial_redacted": true
+  }
+}

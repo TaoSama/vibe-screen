@@ -1,0 +1,180 @@
+{
+  "adb": {
+    "reverse": {
+      "configured": true,
+      "parsed": {
+        "entries": [
+          "UsbFfs tcp:54321 tcp:54321"
+        ],
+        "entry": "UsbFfs tcp:54321 tcp:54321",
+        "port": 54321,
+        "present": true
+      },
+      "probe": {
+        "command": [
+          "adb",
+          "-s",
+          "REDACTED_P0110_USB_SERIAL",
+          "reverse",
+          "--list"
+        ],
+        "error": null,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "UsbFfs tcp:54321 tcp:54321"
+      }
+    }
+  },
+  "app": {
+    "foreground": {
+      "focus_lines": [
+        "mCurrentFocus=Window{6991b16 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
+        "mFocusedApp=ActivityRecord{43078441 u0 dev.telemachus.display/.MainActivity t652}",
+        "topResumedActivity=ActivityRecord{43078441 u0 dev.telemachus.display/.MainActivity t652}",
+        "ResumedActivity: ActivityRecord{43078441 u0 dev.telemachus.display/.MainActivity t652}"
+      ],
+      "foreground": true,
+      "foreground_component": "dev.telemachus.display/dev.telemachus.display.MainActivity",
+      "foreground_package": "dev.telemachus.display"
+    },
+    "package": {
+      "first_install_time": "2026-08-28 19:38:04",
+      "installed": true,
+      "last_update_time": "2026-08-28 19:38:04",
+      "package": "dev.telemachus.display",
+      "version_code": 100000,
+      "version_name": "0.0.0"
+    },
+    "pids": [
+      31872
+    ],
+    "running": true
+  },
+  "blockers": [
+    {
+      "field": "host.preflight",
+      "message": "macOS Host stable-signing/TCC preflight failed: Host signing prerequisite"
+    }
+  ],
+  "claims": {
+    "can_close_controller_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "can_close_latency_gate": false,
+    "can_close_native_pointer_hid_gate": false,
+    "can_close_stylus_gate": false,
+    "can_close_two_hour_soak_gate": false,
+    "can_start_usb_smoke": false,
+    "device_matches_expected_p0110": true,
+    "live_usb_stream_observed": false,
+    "readme_gate_closure": false
+  },
+  "collected_at": "2026-08-28T11:38:58.496911Z",
+  "configuration": {
+    "adb_timeout_seconds": 15.0,
+    "expected_device": {
+      "android_release": "16",
+      "device": "pacific",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": "36"
+    },
+    "host_preflight_timeout_seconds": 60.0,
+    "lock_globs": [
+      "/tmp/vibe-screen-*.lock"
+    ],
+    "package": "dev.telemachus.display",
+    "port": 54321,
+    "serial": "REDACTED_P0110_USB_SERIAL"
+  },
+  "device": {
+    "identity": {
+      "android_release": "16",
+      "device": "pacific",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": 36
+    },
+    "label_guard": {
+      "device_matches_expected_p0110": true,
+      "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only",
+      "recorded_as_expected_device_only": true
+    }
+  },
+  "host": {
+    "listener": {
+      "host_owned": true,
+      "listening": true,
+      "pids": [
+        4810
+      ],
+      "probe": {
+        "command": [
+          "lsof",
+          "-nP",
+          "-iTCP:54321",
+          "-sTCP:LISTEN"
+        ],
+        "error": null,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "COMMAND    PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 4810 <HOST_USER>    7u  IPv4 0x1df65b55c1a8548a      0t0  TCP 127.0.0.1:54321 (LISTEN)"
+      },
+      "processes": [
+        {
+          "matches_host_identity": true,
+          "pid": 4810,
+          "probe": {
+            "command": [
+              "ps",
+              "-p",
+              "4810",
+              "-o",
+              "comm="
+            ],
+            "error": null,
+            "returncode": 0,
+            "stderr": "",
+            "stdout": "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen"
+          }
+        }
+      ]
+    },
+    "preflight": {
+      "passed": false,
+      "probe": {
+        "command": [
+          "/opt/homebrew/opt/python@3.11/bin/python3.11",
+          "scripts/macos_dev_host.py",
+          "preflight",
+          "--report",
+          "docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/host-signing-and-permissions.txt"
+        ],
+        "error": null,
+        "returncode": 2,
+        "stderr": "Host signing prerequisite\n-------------------------\nConfigured identity: Vibe Screen Dev\nInstall path: /Applications/Vibe Screen.app\n\nResult\n------\nStatus: FAIL\nBlocking issues:\n- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.\n\nNext action\n-----------\nCreate or import the stable local codesigning identity, or set\n$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild\nand reinstall the Host before rerunning touch evidence. Do not use ad-hoc\nsigning for fixed-binary device reruns because it changes the code-signing hash\nand invalidates macOS Screen Recording/Accessibility grants.\n\nSafety\n------\nThis blocked operation did not start the Host, run Android instrumentation,\nmodify Keychain, edit privacy databases, clear Android app data, or change ADB state. This\nis a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi\nresult.\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility",
+        "stdout": ""
+      },
+      "report_excerpt": "Host signing prerequisite\n-------------------------\nConfigured identity: Vibe Screen Dev\nInstall path: /Applications/Vibe Screen.app\n\nResult\n------\nStatus: FAIL\nBlocking issues:\n- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.\n\nNext action\n-----------\nCreate or import the stable local codesigning identity, or set\n$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild\nand reinstall the Host before rerunning touch evidence. Do not use ad-hoc\nsigning for fixed-binary device reruns because it changes the code-signing hash\nand invalidates macOS Screen Recording/Accessibility grants.\n\nSafety\n------\nThis blocked operation did not start the Host, run Android instrumentation,\nmodify Keychain, edit privacy databases, clear Android app data, or change ADB state. This\nis a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi\nresult.\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility\n",
+      "report_exists": true,
+      "report_path": "docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/host-signing-and-permissions.txt"
+    }
+  },
+  "kind": "android_usb_smoke_preflight",
+  "result": "blocked",
+  "safety": {
+    "changes_adb_reverse": false,
+    "checked_device_locks": true,
+    "clears_logcat": false,
+    "existing_locks": [],
+    "injects_input": false,
+    "installs_apk": false,
+    "modifies_android_app_data": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "ran_adb": true,
+    "read_only": true,
+    "starts_android_app": false,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.evidence/v1"
+}
