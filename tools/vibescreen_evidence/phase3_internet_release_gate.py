@@ -220,13 +220,33 @@ def _write_json(path: Path, document: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def _read_optional_json(path: Path | None, label: str) -> tuple[dict[str, Any] | None, str | None]:
+def _safe_path_label(root: Path, path: Path) -> str:
+    try:
+        return path.resolve(strict=False).relative_to(root.resolve(strict=False)).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _read_optional_json(
+    path: Path | None,
+    label: str,
+    *,
+    root: Path | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
     if path is None:
         return None, f"missing {label}"
+    display_path = _safe_path_label(root, path) if root is not None else path.as_posix()
     try:
         return _read_json(path, label), None
     except EvidenceInputError as error:
-        return None, str(error)
+        cause = error.__cause__
+        if isinstance(cause, FileNotFoundError):
+            return None, f"{label}: missing {display_path}"
+        if isinstance(cause, PermissionError):
+            return None, f"{label}: could not read {display_path}: permission denied"
+        if isinstance(cause, OSError):
+            return None, f"{label}: could not read {display_path}: {cause.strerror or cause.__class__.__name__}"
+        return None, str(error).replace(str(path), display_path)
 
 
 def _non_empty(path: Path) -> bool:
@@ -281,10 +301,7 @@ def _line_count(path: Path) -> int:
 def _relative(root: Path, path: Path | None) -> str | None:
     if path is None:
         return None
-    try:
-        return path.resolve(strict=False).relative_to(root.resolve(strict=False)).as_posix()
-    except ValueError:
-        return str(path)
+    return _safe_path_label(root, path)
 
 
 def _existing_path(
@@ -488,7 +505,7 @@ def _session_manifest_gate(manifest: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _datachannel_record_layer_gate(root: Path, path: Path | None) -> dict[str, Any]:
-    document, error = _read_optional_json(path, "DataChannel record-layer evidence")
+    document, error = _read_optional_json(path, "DataChannel record-layer evidence", root=root)
     evidence = [_relative(root, path)] if path is not None else []
     if error is not None:
         return _gate(
@@ -716,7 +733,7 @@ def _latency_manifest_path(path: Path | None) -> Path | None:
 
 
 def _latency_gate(root: Path, route: str, path: Path | None) -> dict[str, Any]:
-    document, error = _read_optional_json(path, f"{route} latency evidence")
+    document, error = _read_optional_json(path, f"{route} latency evidence", root=root)
     evidence = [_relative(root, path)] if path is not None else []
     reasons: list[str] = []
     if error is not None:
@@ -739,7 +756,7 @@ def _latency_gate(root: Path, route: str, path: Path | None) -> dict[str, Any]:
         reasons.append(f"{route} latency gate must require external hardware")
 
     manifest_path = _latency_manifest_path(path)
-    manifest, manifest_error = _read_optional_json(manifest_path, f"{route} latency manifest")
+    manifest, manifest_error = _read_optional_json(manifest_path, f"{route} latency manifest", root=root)
     manifest_relative = _relative(root, manifest_path)
     if manifest_relative is not None:
         evidence.append(manifest_relative)
@@ -802,7 +819,7 @@ def _latency_gate(root: Path, route: str, path: Path | None) -> dict[str, Any]:
 
 
 def _real_media_gate(root: Path, path: Path | None) -> dict[str, Any]:
-    document, error = _read_optional_json(path, "real media continuity evidence")
+    document, error = _read_optional_json(path, "real media continuity evidence", root=root)
     evidence = [_relative(root, path)] if path is not None else []
     if error is not None:
         return _gate("real_capture_to_mediacodec", BLOCKED, evidence=[item for item in evidence if item], reasons=[error])
@@ -915,7 +932,7 @@ def _status_file_gate(
     allow_cwd_relative: bool = False,
 ) -> dict[str, Any]:
     path = _existing_path(root, candidates, allow_cwd_relative=allow_cwd_relative)
-    document, error = _read_optional_json(path, name.replace("_", " "))
+    document, error = _read_optional_json(path, name.replace("_", " "), root=root)
     evidence = [_relative(root, path)] if path is not None else []
     if error is not None:
         return _gate(name, BLOCKED, evidence=[item for item in evidence if item], reasons=[error])
@@ -951,7 +968,7 @@ def _status_file_gate(
 
 
 def _soak_gate(root: Path, path: Path | None) -> dict[str, Any]:
-    document, error = _read_optional_json(path, "two-hour soak report")
+    document, error = _read_optional_json(path, "two-hour soak report", root=root)
     evidence = [_relative(root, path)] if path is not None else []
     if error is not None:
         return _gate("two_hour_mixed_route_soak", BLOCKED, evidence=[item for item in evidence if item], reasons=[error])
@@ -1019,7 +1036,7 @@ def _report_evidence_dir(root: Path) -> str:
     for candidate in (root, *root.parents):
         if (candidate / ".git").exists():
             return root.relative_to(candidate).as_posix()
-    return str(root)
+    return root.name
 
 
 def derive_gate(
@@ -1038,10 +1055,12 @@ def derive_gate(
     manifest, manifest_error = _read_optional_json(
         manifest_path if manifest_path.exists() else None,
         "Phase 3 Internet manifest",
+        root=root,
     )
     device_info, _device_info_error = _read_optional_json(
         root / "device-info.json" if (root / "device-info.json").exists() else None,
         "device identity",
+        root=root,
     )
     gates = [
         _session_manifest_gate(manifest),
