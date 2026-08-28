@@ -1,7 +1,7 @@
 git fetch origin main --prune
 git switch -c codex/clipboard-android-e2e-smoke
 pgrep -x sfltool || true
-pgrep -x sfltool > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.txt 2>&1 || true; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.exit
+pgrep -x sfltool > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.txt 2>&1; pgrep_rc=$?; printf '%s\n' "$pgrep_rc" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.exit
 python3 scripts/macos_dev_host.py readiness --source-root . --report .build/private-clipboard-e2e-20260828/host-signing-and-permissions.txt --json-output .build/private-clipboard-e2e-20260828/host-readiness.json --port 54321
 cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest --tests dev.telemachus.display.ClientExperienceTest
 swift test --package-path baseline/MacHost --filter 'Clipboard|ProtocolV1SessionClipboard'

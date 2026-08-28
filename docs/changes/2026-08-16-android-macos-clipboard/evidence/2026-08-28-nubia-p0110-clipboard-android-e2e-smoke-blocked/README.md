@@ -1,6 +1,11 @@
 # Nubia P0110 Clipboard Android E2E Smoke Blocked
 
-Date: 2026-08-28
+Date: 2026-08-28 (local, Asia/Shanghai; UTC 2026-08-27T16:34:10Z)
+The evidence directory and README use the local collection date
+(2026-08-28 Asia/Shanghai). Machine-generated timestamps inside the
+artifacts (host-readiness.json generated_at, usb-smoke-preflight.json
+collected_at, trusted-lan-preflight.json collected_at) are emitted in
+UTC and therefore read 2026-08-27. Both refer to the same run.
 Source base: `origin/main` at `27d2b0e493e807ae439fbd43b06b4c2f0ce9c503`
 Branch: `codex/clipboard-android-e2e-smoke`
 Device: nubia P0110 / pacific / Android 16 / SDK 36
@@ -27,7 +32,7 @@ does not prove either clipboard transfer direction.
 - Android local `ClipboardManagerInstrumentedTest` passed on device with
   `OK (3 tests)`. This proves only foreground Android system-clipboard access
   on the P0110.
-- Android focused clipboard JVM tests passed locally.
+- Android-focused clipboard JVM tests passed locally.
 - Android debug and androidTest APK builds passed locally.
 - Evidence-tool and repository privacy unit tests passed locally after adding the
   held-lock and privacy-safe-literal coverage.

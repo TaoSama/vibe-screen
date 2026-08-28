@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 4617,
+      "bytes": 5001,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "cc1cc39f67b6f0159e093ebecadc0f5dfd12f25d18a2c1299abfa7adc7d43765"
+      "sha256": "f5595d23109c62688f9dd41a2debce7cbb69b8279a14313d226b30748bfa3b31"
     },
     {
       "bytes": 2,
@@ -430,7 +430,7 @@
       "sha256": "97a0062c0baa0fc1229421075be705142bf86e7321013452590b0746d4b3f8f0"
     },
     {
-      "bytes": 7492,
+      "bytes": 7504,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -440,7 +440,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "41694402380e48ecd235ae15fa532e46f26a3a26da50b9ee4d23ffeba9d0997f"
+      "sha256": "b2dc7f87f5ab9039601c7449352622baac543621c1807565cbb133862982ddbe"
     },
     {
       "bytes": 217,
@@ -521,7 +521,7 @@
       "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
     },
     {
-      "bytes": 6301,
+      "bytes": 6288,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -531,7 +531,7 @@
       ],
       "path": "host-readiness.json",
       "result": "pass",
-      "sha256": "e94cbcab705ed7b3c153c52609acbb04df94e8b60f5368cc2d6da3f6488a2d42"
+      "sha256": "4214955c6ae7d9cbeddeaef6a0c2403e9f096c3407ec56b658a5fcb39e389fb8"
     },
     {
       "bytes": 2219,
@@ -583,7 +583,7 @@
       ],
       "path": "pgrep-sfltool.exit",
       "result": "pass",
-      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
     },
     {
       "bytes": 0,

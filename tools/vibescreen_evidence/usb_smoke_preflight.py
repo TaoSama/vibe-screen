@@ -485,7 +485,7 @@ def build_document(
             "read_only": True,
             "ran_adb": not locks,
             "checked_device_locks": True,
-            "existing_locks": locks,
+            "existing_locks": [sanitize_lock_path(lock) for lock in locks],
             "starts_host": False,
             "starts_android_app": False,
             "installs_apk": False,
@@ -563,7 +563,12 @@ def public_path(path: str | Path, repository_root: Path) -> str:
 
 def sanitize_lock_path(path: str) -> str:
     name = Path(path).name
-    return f"/tmp/{name}" if name.startswith("vibe-screen-") else path
+    if name.startswith("vibe-screen-"):
+        return f"/tmp/{name}"
+    # Non-vibe-screen lock file paths must not leak arbitrary absolute paths.
+    if name.endswith(".lock"):
+        return "<redacted-lock-path>"
+    return path
 
 
 def sanitize_public_value(value: Any, *, serial: str, serial_label: str, repository_root: Path) -> Any:
