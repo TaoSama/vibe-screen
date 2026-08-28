@@ -348,6 +348,23 @@ primary-device behavior. Future ADB reruns must still use
 `adb -s <P0110_USB_SERIAL>`. Evidence is retained under
 [evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked/](evidence/2026-08-26-nubia-p0110-usb-smoke-preflight-current-base-blocked/README.md).
 
+On 2026-08-28, origin/main commit
+`f5db90a761e158798065ce1078bf49428031ce49` was refreshed in an independent
+worktree for a Nubia P0110/pacific Android 16 USB current-source pass. The
+Android client built, linted, passed JVM tests, installed on the P0110, launched
+with explicit `adb -s <P0110_USB_SERIAL> ...` commands, and produced two short
+USB live-smoke passes against the already running Host. The retained smoke
+evidence records ADB reverse `tcp:54321 tcp:54321`, foreground
+`dev.telemachus.display/.MainActivity`, positive stream FPS, Protocol v1 session
+epoch 1, HEVC hardware decode on `c2.qti.hevc.decoder`, 1920x1080 output, first
+output frame, decoder counters, and `dropped=0`. The strict USB smoke preflight
+and Host readiness remain blocked because the available Host was not a
+current-source, stable-signed/TCC-proven Host with embedded source provenance.
+Clipboard and file-transfer E2E were not negotiated or exercised as product
+flows in this run. This record is P0110/pacific evidence only and must not be
+cited as Xiaomi 13/fuxi evidence. Evidence is retained under
+[`../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/`](../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).
+
 ## External latency readiness check (2026-08-20)
 
 Main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` completed a latency
