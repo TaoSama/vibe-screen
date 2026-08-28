@@ -1093,7 +1093,8 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             json_output = root / "host-readiness.json"
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                tcc_db=Path(PRIVACY_DB_FILENAME),
+                sign_identity="Missing Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
                 report=report,
                 json_output=json_output,
                 source_root=Path("."),
@@ -1166,6 +1167,8 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["status"], "blocked")
             self.assertFalse(document["can_start_trusted_lan_gate"])
             self.assertFalse(document["can_start_controller_runtime_gate"])
+            self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertIn("not probed", document["login_headless"]["login_item"]["detail"])
             self.assertFalse(document["can_close_runtime_gates"])
             self.assertEqual(document["host"]["current_source_commit"], "c" * 40)
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
@@ -1405,7 +1408,8 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             json_output = root / "host-readiness.json"
             args = mock.Mock(
                 install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-                tcc_db=Path(PRIVACY_DB_FILENAME),
+                tcc_db=TEST_PRIVACY_DATABASE,
+                sign_identity="Missing Dev",
                 report=report,
                 json_output=json_output,
                 source_root=Path("."),
@@ -1498,8 +1502,86 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertIn("missing identity", "\n".join(inspection.errors))
         self.assertIn("Host bundle not found", "\n".join(inspection.errors))
 
+    def test_xctest_preflight_passes_with_full_xcode_and_xctest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            developer_dir = Path(temporary_directory) / "Xcode.app" / "Contents" / "Developer"
+            xctest = developer_dir / "Platforms" / "MacOSX.platform" / "Developer" / "Library" / "Frameworks" / "XCTest.framework"
+            xctest.mkdir(parents=True)
+            output = Path(temporary_directory) / "xctest-preflight.json"
+
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, str(developer_dir)
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 0, "Xcode 16.4\nBuild version 16F6"
+                if command == ("/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"):
+                    return 0, str(developer_dir / "Platforms" / "MacOSX.platform" / "Developer" / "SDKs" / "MacOSX.sdk")
+                return 1, "unexpected command"
+
+            args = argparse.Namespace(json_output=output)
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            document = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(result, 0)
+            self.assertEqual(document["status"], "passed")
+            self.assertTrue(document["can_run_swiftpm_xctest"])
+            self.assertTrue(document["is_full_xcode"])
+            self.assertTrue(document["has_xctest"])
+            self.assertEqual(document["xcode_version"], "16.4")
+            self.assertEqual(document["xcode_build"], "16F6")
+            self.assertFalse(document["blockers"])
+
+    def test_xctest_preflight_blocks_command_line_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            developer_dir = Path(temporary_directory) / "CommandLineTools"
+            developer_dir.mkdir()
+            output = Path(temporary_directory) / "xctest-preflight.json"
+
+            def fake_run(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+                del timeout_seconds
+                if command == ("/usr/bin/xcode-select", "-p"):
+                    return 0, str(developer_dir)
+                if command == ("/usr/bin/xcodebuild", "-version"):
+                    return 1, "xcodebuild requires Xcode"
+                if command == ("/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"):
+                    return 0, str(developer_dir / "SDKs" / "MacOSX.sdk")
+                return 1, "unexpected command"
+
+            args = argparse.Namespace(json_output=output)
+            with (
+                mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.xctest_preflight_command(args)
+
+            document = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(result, 2)
+            self.assertEqual(document["status"], "blocked")
+            self.assertFalse(document["can_run_swiftpm_xctest"])
+            self.assertFalse(document["is_full_xcode"])
+            self.assertFalse(document["has_xctest"])
+            self.assertIn("Full Xcode is required", "\n".join(document["blockers"]))
+
 
 class MacOSDevHostTCCTests(unittest.TestCase):
+    def test_run_best_effort_reports_missing_command_without_throwing(self) -> None:
+        with mock.patch.object(
+            macos_dev_host.subprocess,
+            "run",
+            side_effect=FileNotFoundError("missing executable"),
+        ):
+            exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
+
+        self.assertEqual(exit_code, 127)
+        self.assertIn("command unavailable: defaults", output)
+
     def test_tcc_database_paths_includes_system_database_for_default_user_database(self) -> None:
         paths = macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database())
 
