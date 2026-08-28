@@ -1,0 +1,28 @@
+$ <python3.11> <repo-root>/scripts/macos_dev_host.py preflight --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/host-signing-and-permissions.txt
+stderr:
+Host signing prerequisite
+-------------------------
+Configured identity: Vibe Screen Dev
+Install path: /Applications/Vibe Screen.app
+
+Result
+------
+Status: FAIL
+Blocking issues:
+- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.
+
+Next action
+-----------
+Create or import the stable local codesigning identity, or set
+$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild
+and reinstall the Host before rerunning device evidence. Do not use ad-hoc
+signing for fixed-binary device reruns because it changes the code-signing hash
+and invalidates macOS Screen Recording/Accessibility grants.
+
+Safety
+------
+This blocked operation did not start the Host, run Android instrumentation,
+modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
+is a Host signing prerequisite, not an Android device-identity result.
+System permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility
+exit_code=2
