@@ -586,15 +586,17 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         missing.append("ios native-input gate offline_tests_are_readiness_only must be true")
     if document.get("verdict") != "pass" or document.get("can_close_ios_native_input_gate") is not True:
         missing.append("ios native-input gate verdict is not pass")
-    if document.get("missing_requirements") not in ([], None):
-        missing.append("ios native-input gate still has missing requirements")
-    if document.get("blocking_reasons") not in ([], None):
-        missing.append("ios native-input gate still has blocking reasons")
-    if document.get("disallowed_evidence") not in ([], None):
-        missing.append("ios native-input gate contains disallowed evidence")
+    if document.get("missing_requirements") != []:
+        missing.append("ios native-input gate missing_requirements must be an explicit empty list")
+    if document.get("blocking_reasons") != []:
+        missing.append("ios native-input gate blocking_reasons must be an explicit empty list")
+    if document.get("disallowed_evidence") != []:
+        missing.append("ios native-input gate disallowed_evidence must be an explicit empty list")
     if not isinstance(document.get("artifact_paths"), list) or not document.get("artifact_paths"):
         missing.append("ios native-input gate must retain sanitized artifacts")
 
+    raw_blocking_reasons = document.get("blocking_reasons")
+    blocking_reasons = raw_blocking_reasons if isinstance(raw_blocking_reasons, list) else list(missing)
     normalized = _default_native_input_gate(path, missing)
     normalized.update(
         {
@@ -614,9 +616,13 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
             "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
             "missing_requirements": missing,
-            "blocking_reasons": document.get("blocking_reasons") if isinstance(document.get("blocking_reasons"), list) else [],
-            "disallowed_evidence": document.get("disallowed_evidence") if isinstance(document.get("disallowed_evidence"), list) else [],
-            "artifact_paths": document.get("artifact_paths") if isinstance(document.get("artifact_paths"), list) else [],
+            "blocking_reasons": blocking_reasons,
+            "disallowed_evidence": document.get("disallowed_evidence")
+            if isinstance(document.get("disallowed_evidence"), list)
+            else [],
+            "artifact_paths": document.get("artifact_paths")
+            if isinstance(document.get("artifact_paths"), list)
+            else [],
         }
     )
     return normalized
