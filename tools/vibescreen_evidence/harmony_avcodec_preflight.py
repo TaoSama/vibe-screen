@@ -71,6 +71,10 @@ REQUIRED_CODEC_GATE_KEYS = (
 CODEC_RUN_BLOCKER = "no HarmonyOS AVCodecKit hardware run artifacts were provided"
 HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+USER_HOME_PATH_RE = re.compile(r"(?:/Users|/home|/Volumes)/[^\s'\",]+")
+WINDOWS_USER_PATH_RE = re.compile(r"[A-Za-z]:\\Users\\[^\s'\"]+")
+TCC_PATH_RE = re.compile(r"Application Support/com\.apple\.TCC|\bTCC\.db\b", re.IGNORECASE)
+PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|-----END [A-Z ]*PRIVATE KEY-----")
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,68 @@ class ToolProbe:
     path: str | None
     version: str | None
     error: str | None = None
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _redact_hdc_target(target: str) -> str:
+    if not target:
+        return ""
+    return f"redacted-hdc-target-{_sha256_text(target)[:12]}"
+
+
+def _sanitize_public_text(value: str) -> str:
+    if not value:
+        return ""
+    text = value.replace(str(Path.home()), "<home>")
+    text = TCC_PATH_RE.sub("<tcc-path>", text)
+    text = USER_HOME_PATH_RE.sub("<user-path>", text)
+    text = WINDOWS_USER_PATH_RE.sub("<user-path>", text)
+    text = PRIVATE_KEY_RE.sub("<private-key-marker>", text)
+    return text
+
+
+def _display_path(path: Path | str | None, *, repo: Path | None = None) -> str | None:
+    if path is None:
+        return None
+    value = Path(path)
+    try:
+        resolved = value.expanduser().resolve()
+    except OSError:
+        return _sanitize_public_text(str(path)) if not value.is_absolute() else f"<external>/{value.name}"
+    if repo is not None:
+        try:
+            return str(resolved.relative_to(repo.resolve()))
+        except (OSError, ValueError):
+            pass
+    if value.is_absolute() or resolved.is_absolute():
+        return f"<external>/{resolved.name or value.name}"
+    return _sanitize_public_text(str(path))
+
+
+def _public_tool_probe(probe: ToolProbe) -> dict[str, str | None]:
+    return {
+        "name": probe.name,
+        "path": _display_path(probe.path),
+        "version": _sanitize_public_text(probe.version or "") or None,
+        "error": _sanitize_public_text(probe.error or "") or None,
+    }
+
+
+def _redact_hdc_targets_output(output: str) -> str:
+    lines: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lower().startswith("list of") or stripped.lower().startswith("empty"):
+            lines.append(line)
+            continue
+        prefix = line[: len(line) - len(line.lstrip())]
+        parts = stripped.split(maxsplit=1)
+        state = parts[1].split()[0] if len(parts) > 1 and parts[1].split() else "listed"
+        lines.append(f"{prefix}{_redact_hdc_target(parts[0])} {state}")
+    return "\n".join(lines) + ("\n" if output.endswith("\n") else "")
 
 
 def _run(
@@ -185,7 +251,27 @@ def _validate_codec(codec: dict[str, Any], expected_codec: str, *, allow_blocked
         raise ManifestError(f"codecs.{expected_codec}.artifacts: expected non-empty string array")
 
 
-def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) -> list[str]:
+def _validate_relative_artifact_paths(artifacts: list[str], evidence_root: Path, path: str) -> None:
+    root = evidence_root.resolve()
+    for artifact in artifacts:
+        candidate = Path(artifact)
+        if candidate.is_absolute():
+            raise ManifestError(f"{path}: artifact path must be relative: {artifact}")
+        try:
+            resolved = (root / candidate).resolve()
+            resolved.relative_to(root)
+        except (OSError, ValueError) as error:
+            raise ManifestError(f"{path}: artifact path escapes evidence root: {artifact}") from error
+        if not resolved.exists():
+            raise ManifestError(f"{path}: artifact path missing under evidence root: {artifact}")
+
+
+def validate_manifest(
+    document: dict[str, Any],
+    *,
+    allow_blocked: bool = False,
+    evidence_root: Path | None = None,
+) -> list[str]:
     warnings: list[str] = []
     if document.get("schema_version") != SCHEMA_VERSION:
         raise ManifestError(f"schema_version: expected {SCHEMA_VERSION}")
@@ -259,6 +345,10 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
         if codec not in by_codec:
             raise ManifestError(f"codecs.{codec}: missing")
         _validate_codec(by_codec[codec], codec, allow_blocked=allow_blocked, warnings=warnings)
+        if evidence_root is not None and by_codec[codec].get("status") == "pass":
+            artifacts = by_codec[codec].get("artifacts")
+            assert isinstance(artifacts, list)
+            _validate_relative_artifact_paths(artifacts, evidence_root, f"codecs.{codec}.artifacts")
 
     blockers = document.get("blockers", [])
     if blockers is not None and (not isinstance(blockers, list) or not all(isinstance(item, str) and item.strip() for item in blockers)):
@@ -306,7 +396,7 @@ def template_manifest() -> dict[str, Any]:
         "host": {"commit": placeholder_commit, "build_sha256": placeholder_hash, "protocol": "Protocol v1"},
         "codecs": [_blocked_codec(codec, "replace with real AVCodecKit artifact paths") for codec in REQUIRED_CODECS],
         "blockers": [],
-        "notes": ["Do not commit raw serials, credentials, IP addresses, hilog screen contents, or private network data."],
+        "notes": ["Do not commit raw serials, sensitive identifiers, IP addresses, hilog screen contents, or private network data."],
     }
 
 
@@ -359,16 +449,16 @@ def collect_preflight(*, repo: Path, hdc_target: str | None, hap: Path | None) -
     if hap is None:
         blockers.append("no signed HarmonyOS release HAP was provided")
     elif not hap.is_file():
-        blockers.append(f"signed HAP not found: {hap}")
+        blockers.append(f"signed HAP not found: {_display_path(hap, repo=repo)}")
     blockers.append(CODEC_RUN_BLOCKER)
 
     hdc_targets: str | None = None
     hdc_error: str | None = None
     if probes["hdc"].path is not None:
         result = _run([probes["hdc"].path or "hdc", "list", "targets", "-v"], timeout_seconds=15.0)
-        hdc_targets = result.stdout.strip()
+        hdc_targets = _redact_hdc_targets_output(result.stdout).strip()
         if result.returncode != 0:
-            hdc_error = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            hdc_error = _sanitize_public_text(result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}")
             blockers.append(f"hdc target enumeration failed: {hdc_error}")
         elif hdc_target is not None and hdc_target not in result.stdout:
             blockers.append("explicit HDC target was not present in hdc list targets -v output")
@@ -401,6 +491,7 @@ def collect_preflight(*, repo: Path, hdc_target: str | None, hap: Path | None) -
             "version_name": "0.1.0",
             "hap_sha256": _sha256(hap) if hap is not None and hap.is_file() else placeholder_hash,
             "signature_certificate_sha256": placeholder_hash,
+            "hap_path": _display_path(hap, repo=repo) if hap is not None else None,
         },
         "device": {
             "platform": "HarmonyOS NEXT",
@@ -408,13 +499,13 @@ def collect_preflight(*, repo: Path, hdc_target: str | None, hap: Path | None) -
             "model": "MatePad Mini",
             "product": "MatePad Mini",
             "os_build": "blocked: not collected from HarmonyOS hardware",
-            "hdc_target": hdc_target or "blocked: no target",
+            "hdc_target": _redact_hdc_target(hdc_target) if hdc_target else "blocked: no target",
             "serial_hash": placeholder_hash,
         },
         "host": {"commit": placeholder_commit, "build_sha256": placeholder_hash, "protocol": "Protocol v1"},
         "codecs": [_blocked_codec(codec, "blocked preflight: no HarmonyOS AVCodecKit hardware run") for codec in REQUIRED_CODECS],
         "blockers": blockers,
-        "tool_probe": {name: probe.__dict__ for name, probe in probes.items()},
+        "tool_probe": {name: _public_tool_probe(probe) for name, probe in probes.items()},
         "hdc_targets": hdc_targets,
         "hdc_error": hdc_error,
         "notes": [
@@ -449,6 +540,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hap", type=Path, help="Signed release HAP to hash for provenance.")
     parser.add_argument("--template", action="store_true", help="Print a redaction-safe acceptance manifest template and exit.")
     parser.add_argument("--validate", type=Path, help="Validate an existing AVCodec evidence manifest.")
+    parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        help="Directory that strict pass codec artifact references must resolve under.",
+    )
     parser.add_argument("--allow-blocked", action="store_true", help="Allow blocked status for readiness records; never closes the gate.")
     return parser
 
@@ -460,7 +556,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(template_manifest(), indent=2, sort_keys=True))
             return 0
         if arguments.validate is not None:
-            warnings = validate_manifest(_load_manifest(arguments.validate), allow_blocked=arguments.allow_blocked)
+            warnings = validate_manifest(
+                _load_manifest(arguments.validate),
+                allow_blocked=arguments.allow_blocked,
+                evidence_root=arguments.evidence_root,
+            )
             if arguments.allow_blocked:
                 print("HarmonyOS AVCodec manifest is structurally valid but not acceptance evidence:")
                 for warning in warnings or ["allow-blocked mode does not close AVCodec hardware gates"]:

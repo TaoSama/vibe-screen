@@ -356,6 +356,10 @@ HDR claim.
 | reconnect | open | Core heartbeat/backoff exists; trusted-LAN iOS device reconnect is not recorded. |
 | trusted LAN secure records | open | Current iOS baseline loopback proves secure-record readiness only; signed iPhone/iPad and real-network LAN evidence remain open. |
 
+The Host-side advanced adapter readiness gate is a source/readiness contract;
+it does not close host-side multi-client/display, audio, HDR, clipboard/file,
+native-input, reconnect, or trusted-LAN device gates.
+
 The signing row is now backed by a dedicated app-signing readiness owner:
 
 ```bash

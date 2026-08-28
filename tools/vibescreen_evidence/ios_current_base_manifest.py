@@ -362,6 +362,17 @@ def _default_native_input_gate(
     }
 
 
+def _current_base_for_native_input(document: dict[str, Any]) -> dict[str, Any]:
+    current_base = document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
+    commit = current_base.get("commit")
+    if commit is None and isinstance(current_base.get("revision"), str):
+        commit = current_base["revision"]
+    return {
+        "commit": commit if isinstance(commit, str) else None,
+        "dirty": current_base.get("dirty") if isinstance(current_base.get("dirty"), bool) else None,
+    }
+
+
 def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return _default_native_input_gate()
@@ -381,9 +392,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         )
 
     owner = document.get("owner") if isinstance(document.get("owner"), dict) else {}
-    current_base = (
-        document.get("current_base") if isinstance(document.get("current_base"), dict) else {}
-    )
+    current_base = _current_base_for_native_input(document)
     artifact_paths = document.get("artifact_paths")
     safe_artifact_paths = (
         artifact_paths
@@ -494,9 +503,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         "provided": True,
         "path": str(path),
         "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
-        "current_base": document.get("current_base")
-        if isinstance(document.get("current_base"), dict)
-        else None,
+        "current_base": current_base,
         "kind": document.get("kind"),
         "profile": document.get("profile"),
         "gate_owner": document.get("gate_owner"),
@@ -517,6 +524,7 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         "disallowed_evidence": disallowed_evidence,
         "artifact_paths": safe_artifact_paths,
     }
+
 
 
 def default_videotoolbox_readiness_gates() -> list[dict[str, Any]]:
