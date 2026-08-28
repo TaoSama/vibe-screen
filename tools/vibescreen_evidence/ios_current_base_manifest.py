@@ -443,9 +443,9 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         and document.get("android_evidence_is_not_ios_input_evidence") is True
         and document.get("simulator_is_not_ios_input_evidence") is True
         and document.get("offline_tests_are_readiness_only") is True
-        and not missing
-        and not blocking_reasons
-        and not disallowed_evidence
+        and document.get("missing_requirements") == []
+        and document.get("blocking_reasons") == []
+        and document.get("disallowed_evidence") == []
     )
     can_close = bool(can_close)
     if not can_close:
@@ -489,6 +489,12 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             missing = [*missing, "ios native-input gate offline_tests_are_readiness_only must be true"]
         if document.get("verdict") != "pass" or document.get("can_close_ios_native_input_gate") is not True:
             missing = [*missing, "ios native-input gate verdict is not pass"]
+        if document.get("missing_requirements") != []:
+            missing = [*missing, "ios native-input gate missing_requirements must be an explicit empty list"]
+        if document.get("blocking_reasons") != []:
+            missing = [*missing, "ios native-input gate blocking_reasons must be an explicit empty list"]
+        if document.get("disallowed_evidence") != []:
+            missing = [*missing, "ios native-input gate disallowed_evidence must be an explicit empty list"]
         if blocking_reasons:
             missing = [*missing, "ios native-input gate still has blocking reasons"]
         if disallowed_evidence:
@@ -496,32 +502,35 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         if not safe_artifact_paths:
             missing = [*missing, "ios native-input gate must retain sanitized iOS/Host artifacts"]
 
-    return {
-        "provided": True,
-        "path": str(path),
-        "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
-        "current_base": current_base,
-        "kind": document.get("kind"),
-        "profile": document.get("profile"),
-        "gate_owner": document.get("gate_owner"),
-        "verdict": "pass" if can_close else "blocked",
-        "can_close_ios_native_input_gate": can_close,
-        "requires_real_ios_device": document.get("requires_real_ios_device") is True,
-        "requires_signed_app": document.get("requires_signed_app") is True,
-        "requires_physical_keyboard": document.get("requires_physical_keyboard") is True,
-        "requires_hover_or_pointer_accessory": document.get("requires_hover_or_pointer_accessory") is True,
-        "android_evidence_is_not_ios_input_evidence": document.get("android_evidence_is_not_ios_input_evidence") is True,
-        "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
-        "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
-        "observations": document.get("observations")
-        if isinstance(document.get("observations"), dict)
-        else {},
-        "missing_requirements": missing,
-        "blocking_reasons": blocking_reasons,
-        "disallowed_evidence": disallowed_evidence,
-        "artifact_paths": safe_artifact_paths,
-    }
-
+    raw_blocking_reasons = document.get("blocking_reasons")
+    blocking_reasons = raw_blocking_reasons if isinstance(raw_blocking_reasons, list) else list(missing)
+    normalized = _default_native_input_gate(provided=True, path=path, reasons=missing)
+    normalized.update(
+        {
+            "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
+            "current_base": current_base,
+            "kind": document.get("kind"),
+            "profile": document.get("profile"),
+            "gate_owner": document.get("gate_owner"),
+            "verdict": "pass" if can_close else "blocked",
+            "can_close_ios_native_input_gate": can_close,
+            "requires_real_ios_device": document.get("requires_real_ios_device") is True,
+            "requires_signed_app": document.get("requires_signed_app") is True,
+            "requires_physical_keyboard": document.get("requires_physical_keyboard") is True,
+            "requires_hover_or_pointer_accessory": document.get("requires_hover_or_pointer_accessory") is True,
+            "android_evidence_is_not_ios_input_evidence": document.get("android_evidence_is_not_ios_input_evidence") is True,
+            "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
+            "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
+            "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
+            "missing_requirements": missing,
+            "blocking_reasons": blocking_reasons,
+            "disallowed_evidence": document.get("disallowed_evidence")
+            if isinstance(document.get("disallowed_evidence"), list)
+            else [],
+            "artifact_paths": safe_artifact_paths,
+        }
+    )
+    return normalized
 
 
 def default_videotoolbox_readiness_gates() -> list[dict[str, Any]]:

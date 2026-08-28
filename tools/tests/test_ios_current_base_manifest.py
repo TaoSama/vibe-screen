@@ -368,6 +368,38 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_requires_explicit_empty_lists(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            gate = make_native_input_gate()
+            del gate["missing_requirements"]
+            del gate["blocking_reasons"]
+            del gate["disallowed_evidence"]
+            native_input_gate = root / "ios-native-input-gate.json"
+            native_input_gate.write_text(json.dumps(gate), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        native_gate = manifest["native_input_gate"]
+        self.assertFalse(native_gate["can_close_ios_native_input_gate"])
+        self.assertIn(
+            "ios native-input gate missing_requirements must be an explicit empty list",
+            native_gate["blocking_reasons"],
+        )
+        self.assertIn(
+            "ios native-input gate blocking_reasons must be an explicit empty list",
+            native_gate["blocking_reasons"],
+        )
+        self.assertIn(
+            "ios native-input gate disallowed_evidence must be an explicit empty list",
+            native_gate["blocking_reasons"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_missing_signing_readiness_gate_path_fails_closed(self, state, environment):
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         environment.return_value = {}

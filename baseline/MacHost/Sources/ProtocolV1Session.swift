@@ -1339,6 +1339,11 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
+    private func reservedDisplayStreamIDs() -> Set<UInt64> {
+        negotiatedCapabilities.contains(.audio) ? [ProtocolV1AudioState.streamID] : []
+    }
+
+
     // Bounds the host applies to a client SetVideoPreferences request. The
     // client can express intent but never drive the encoder outside this range.
     private static let minimumClientBitrateKbps: UInt32 = 1_000
@@ -1523,9 +1528,6 @@ final class ProtocolV1SessionCoordinator {
         }
         selectedCodec = codec
         var baseNegotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
-          if !baseNegotiatedCapabilities.contains(.stylus) {
-              baseNegotiatedCapabilities.remove(.stylusExtended)
-          }
         if baseNegotiatedCapabilities.contains(.multiClient) {
             let localMaximumClients = displayRouter.maximumClients
             let peerMaximumClients = hello.resourceLimits.maximumClients == 0
@@ -1534,22 +1536,6 @@ final class ProtocolV1SessionCoordinator {
             if min(localMaximumClients, peerMaximumClients) <= 1 {
                 baseNegotiatedCapabilities.remove(.multiClient)
             }
-        }
-        do {
-            try displayRouter.register(sessionKey)
-            isRegisteredWithDisplayRouter = true
-        } catch HostDisplayRouterError.clientLimitReached(_) {
-            return fail(
-                code: .resourceExhausted,
-                message: "Host has reached the negotiated maximum client count.",
-                correlationID: correlationID
-            )
-        } catch {
-            return fail(
-                code: .invalidState,
-                message: "Host could not register the Protocol v1 client route.",
-                correlationID: correlationID
-            )
         }
         if !baseNegotiatedCapabilities.contains(.stylus) {
             baseNegotiatedCapabilities.remove(.stylusExtended)
@@ -1568,6 +1554,22 @@ final class ProtocolV1SessionCoordinator {
             policy: managedPolicyResolver.effectivePolicy
         )
         remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
+        do {
+            try displayRouter.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
+            isRegisteredWithDisplayRouter = true
+        } catch HostDisplayRouterError.clientLimitReached {
+            return fail(
+                code: .resourceExhausted,
+                message: "Host has no available multi-client display route slot.",
+                correlationID: correlationID
+            )
+        } catch {
+            return fail(
+                code: .invalidState,
+                message: "ClientHello could not register a display route.",
+                correlationID: correlationID
+            )
+        }
 
         // Capture the peer's device identity. Every incoming clipboard
         // offer/content must originate from this exact device; an empty or
@@ -1634,13 +1636,17 @@ final class ProtocolV1SessionCoordinator {
         limits.maximumClients = UInt32(clamping: displayRouter.maximumClients)
         limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
         limits.maximumVideoStreams = UInt32(clamping: displayRouter.maximumStreamsPerClient)
-        limits.maximumAudioStreams = ManagedPolicy.defaultMaximumAudioStreams
-        limits.maximumClipboardBytes = ManagedPolicy.defaultMaximumClipboardBytes
-        if configuration.fileTransferPolicy.allowed {
+        limits.maximumAudioStreams = configuration.hostCapabilities.contains(.audio)
+            ? ManagedPolicy.defaultMaximumAudioStreams
+            : 0
+        limits.maximumClipboardBytes = configuration.hostCapabilities.contains(.clipboard)
+            ? ManagedPolicy.defaultMaximumClipboardBytes
+            : 0
+        if configuration.hostCapabilities.contains(.fileTransfer) {
             limits.maximumFileBytes = configuration.fileTransferPolicy.maximumFileBytes
             limits.maximumFileChunkBytes = UInt32(clamping: configuration.fileTransferPolicy.maximumChunkBytes)
         }
-        managedPolicyResolver.effectivePolicy.applyingResourceLimits(to: &limits)
+        managedPolicyResolver.localPolicy.applyingResourceLimits(to: &limits)
         return limits
     }
 
@@ -1660,12 +1666,17 @@ final class ProtocolV1SessionCoordinator {
         if !negotiatedCapabilities.contains(.audio) {
             limits.maximumAudioStreams = 0
         }
-        if negotiatedMaximumClipboardBytes > 0 {
+        if negotiatedCapabilities.contains(.clipboard) {
             limits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
+        } else {
+            limits.maximumClipboardBytes = 0
         }
         if negotiatedCapabilities.contains(.fileTransfer) {
             limits.maximumFileBytes = negotiatedFileTransferPolicy.maximumFileBytes
             limits.maximumFileChunkBytes = UInt32(clamping: negotiatedFileTransferPolicy.maximumChunkBytes)
+        } else {
+            limits.maximumFileBytes = 0
+            limits.maximumFileChunkBytes = 0
         }
         managedPolicyResolver.effectivePolicy.applyingResourceLimits(to: &limits)
         return limits
@@ -1933,7 +1944,7 @@ final class ProtocolV1SessionCoordinator {
 
     private func resetSessionOwnedStateLocked() {
         if isRegisteredWithDisplayRouter {
-            configuration.displayRouter?.disconnect(sessionKey)
+            displayRouter.disconnect(sessionKey)
             isRegisteredWithDisplayRouter = false
         }
         _ = stylusSequenceState.consumeReset()

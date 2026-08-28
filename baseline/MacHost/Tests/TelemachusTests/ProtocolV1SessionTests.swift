@@ -457,6 +457,23 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(router.activeClientCount, 0)
     }
 
+    func testHostDisplayRouterSkipsReservedAudioStreamID() throws {
+        let audioStreamID: UInt64 = 2
+        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 2)
+        let key = HostClientSessionKey(sessionID: Data([0x01]), epoch: 1)
+
+        try router.register(key, reservedStreamIDs: [audioStreamID])
+
+        XCTAssertEqual(try router.allocateStream(for: "display-a", in: key), 1)
+        XCTAssertEqual(try router.allocateStream(for: "display-b", in: key), 3)
+        XCTAssertThrowsError(try router.bind(
+            HostDisplayStreamBinding(displayID: "display-c", streamID: audioStreamID),
+            to: key
+        )) { error in
+            XCTAssertEqual(error as? HostDisplayRouterError, .invalidBinding)
+        }
+    }
+
     func testSharedHostRouterAdvertisesClientAndStreamCaps() throws {
         let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
         let session = makeMultiDisplaySession(
@@ -483,10 +500,18 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(hostHello.resourceLimits.maximumClients, 2)
         XCTAssertEqual(hostHello.resourceLimits.maximumDisplays, 2)
         XCTAssertEqual(hostHello.resourceLimits.maximumVideoStreams, 2)
+        XCTAssertEqual(hostHello.resourceLimits.maximumAudioStreams, 0)
+        XCTAssertEqual(hostHello.resourceLimits.maximumClipboardBytes, UInt64(ClipboardCore.localMaximumBytes))
+        XCTAssertEqual(hostHello.resourceLimits.maximumFileBytes, 0)
+        XCTAssertEqual(hostHello.resourceLimits.maximumFileChunkBytes, 0)
         XCTAssertTrue(hostHello.capabilities.contains(.multiClient))
         XCTAssertTrue(accepted.negotiatedCapabilities.contains(.multiClient))
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClients, 2)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumVideoStreams, 2)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumAudioStreams, 0)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 0)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 0)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 0)
     }
 
     func testMultiClientCapabilityRequiresSharedHostRouter() throws {
@@ -736,7 +761,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected SessionAccepted")
         }
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumAudioStreams, 0)
-        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 1 * 1_024 * 1_024)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 0)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 2_048)
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 64 * 1_024)
         guard case .managedPolicyStatus(let localStatus)? = responses[2].payload else {
@@ -2134,6 +2159,27 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(audioConfig.channelCount, 2)
         XCTAssertEqual(audioConfig.framesPerPacket, 480)
         XCTAssertTrue(readyActions.containsConnectionReady)
+    }
+
+    func testAudioNegotiationReservesFixedStreamIDFromDisplayStreams() throws {
+        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 2)
+        let session = makeSession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                audioCaptureAvailable: true
+            ),
+            displayRouter: router,
+            maximumVideoStreamsPerClient: 2
+        )
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .audio]
+        hello.clientHello.resourceLimits.maximumAudioStreams = 1
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        let key = HostClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
+        XCTAssertEqual(try router.allocateStream(for: "display-a", in: key), 1)
+        XCTAssertEqual(try router.allocateStream(for: "display-b", in: key), 3)
     }
 
     func testAudioConfigResultStartsAudioAndRejectsStaleEpochs() throws {
