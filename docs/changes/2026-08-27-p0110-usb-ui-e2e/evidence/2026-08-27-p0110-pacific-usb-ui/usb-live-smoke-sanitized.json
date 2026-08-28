@@ -1,0 +1,73 @@
+{
+  "kind": "android_usb_live_smoke",
+  "verdict": "pass",
+  "collected_at": "2026-08-26T23:10:15Z",
+  "device": {
+    "identity": {
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "product": "pacific",
+      "device": "pacific",
+      "android_release": "16",
+      "sdk": 36,
+      "abi": "arm64-v8a"
+    },
+    "label_guard": {
+      "device_is_nubia_p0110_pacific": true,
+      "device_is_fuxi": false,
+      "recorded_as_fuxi": false,
+      "do_not_relabel_as": ["Xiaomi 13", "fuxi"],
+      "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only"
+    }
+  },
+  "adb": {
+    "reverse": {
+      "present": true,
+      "port": 54321,
+      "entries": ["UsbFfs tcp:54321 tcp:54321"]
+    }
+  },
+  "app": {
+    "package": "dev.telemachus.display",
+    "foreground": true,
+    "running": true,
+    "version_code": 100000,
+    "version_name": "0.0.0"
+  },
+  "claims": {
+    "live_usb_stream_observed": true,
+    "readme_gate_closure": false,
+    "device_is_fuxi": false,
+    "can_close_two_hour_soak_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "can_close_latency_gate": false,
+    "can_close_native_pointer_hid_gate": false,
+    "can_close_stylus_gate": false,
+    "can_close_controller_gate": false
+  },
+  "logs": {
+    "diagnostic": {
+      "decoder": {
+        "decoder": "c2.qti.hevc.decoder",
+        "first_output_frame_observed": true,
+        "video_size": {"width": 1512, "height": 982},
+        "latest_decode_stats": {"input": 2940, "output": 2908, "dropped": 3},
+        "latest_output_latency": {"avg_ms": 10.4, "max_ms": 94.6, "samples": 60, "dropped": 0}
+      }
+    },
+    "telemetry": {
+      "session_epochs": [1],
+      "stream_stats": {
+        "count": 5,
+        "fps_avg": 12.33209024241069,
+        "fps_min": 2.9784065524944157,
+        "fps_max": 33.460803059273424
+      }
+    }
+  },
+  "notes": [
+    "Short smoke only; not a performance or stability gate.",
+    "Low short-window FPS counters are not used to claim sustained 60 FPS.",
+    "The run supports live USB stream observation and Android UI path evidence only."
+  ]
+}

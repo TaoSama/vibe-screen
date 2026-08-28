@@ -1,0 +1,21 @@
+Command:
+make baseline-macos-host-readiness ...
+
+Result:
+status=blocked
+can_close_runtime_gates=false
+listener_status=ready
+listener=127.0.0.1:54321 observed
+
+Blockers:
+- Stable signing identity for the development Host was not available to the readiness check.
+- The installed Host lacked source commit/tree provenance for this current source tree.
+- TCC permission state could not be verified in read-only mode.
+- The installed Host was missing the virtual HID entitlement.
+- Launch at Login was not verified enabled.
+- No active display was visible to the current WindowServer session in the login/headless readiness section.
+
+Impact:
+This run can support a short installed-Host USB/UI live check, but it cannot
+close current-source Host runtime, TCC, virtual HID, login/headless, RSS, or
+stable-release gates.

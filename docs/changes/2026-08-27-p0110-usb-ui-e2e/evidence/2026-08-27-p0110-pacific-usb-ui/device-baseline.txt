@@ -1,0 +1,20 @@
+# Source
+commit=3b2ba11e832a3618eaedfc67f92414b161423a00
+branch=codex/p0110-usb-ui-e2e
+
+# Device
+state=device
+manufacturer=nubia
+model=P0110
+product=pacific
+device=pacific
+android_release=16
+sdk=36
+screen_size=1264x2800
+density=560
+battery_level=100
+
+# Scope guard
+recorded_identity=nubia P0110 / pacific / Android 16 / SDK 36
+evidence_scope=general Android substitute handset only
+must_not_relabel_as=Xiaomi 13/fuxi
