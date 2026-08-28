@@ -256,9 +256,10 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except FileNotFoundError as error:
-        command_name = command[0] if command else "command"
-        return 127, f"command not found: {error.filename or command_name}"
+    except OSError as error:
+        command_name = Path(command[0]).name if command else "command"
+        detail = error.strerror or error.__class__.__name__
+        return 127, f"{command_name} unavailable: {detail}"
     return completed.returncode, completed.stdout.strip()
 
 
