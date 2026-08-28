@@ -102,10 +102,19 @@ def _is_safe_credential_value(value: bytes) -> bool:
         b"...",
     }:
         return True
+    if re.fullmatch(rb"[<\[]redacted[-_a-z0-9]*[>\]]", normalized):
+        return True
     return re.fullmatch(
         rb"\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\}|\([^)\r\n]*\))",
         normalized,
     ) is not None
+
+
+def _is_safe_hardware_identifier_match(match: re.Match[bytes]) -> bool:
+    value_match = re.search(rb":\s*(?P<value>\"(?:\\.|[^\"\\\r\n])*\")", match.group())
+    if value_match is None:
+        value_match = re.search(rb":\s*(?P<value>[^\r\n]+)$", match.group())
+    return value_match is not None and _is_safe_credential_value(value_match.group("value"))
 
 
 def _credential_violations(content: bytes) -> list[str]:
@@ -128,6 +137,7 @@ def scan_content(content: bytes) -> dict[str, list[str]]:
             finding_id(match.group())
             for pattern in HARDWARE_IDENTIFIER_PATTERNS
             for match in pattern.finditer(content)
+            if not _is_safe_hardware_identifier_match(match)
         ],
         "credential_material": _credential_violations(content),
         "url": [
