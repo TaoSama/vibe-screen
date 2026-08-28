@@ -29,6 +29,9 @@ _LOGCAT_THREADTIME_PATTERN = re.compile(
     r"^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+"
     r"(?P<pid>\d+)\s+\d+\s+[VDIWEF]\s+"
 )
+_PIDLESS_LIVE_LOG_PATTERN = re.compile(
+    r"^[VDIWEF]\s+(?:VibeScreenTelemetry|VD)\s*:"
+)
 
 
 def parse_adb_reverse(output: str, *, port: int = DEFAULT_PORT) -> dict[str, Any]:
@@ -223,12 +226,22 @@ def filter_logcat_by_pids(text: str, pids: Sequence[int]) -> str:
     pid_strings = {str(pid) for pid in pids}
     if not pid_strings:
         return ""
-    matching_lines = []
+    candidate_lines = []
+    saw_current_pid_line = False
     for line in text.splitlines():
         match = _LOGCAT_THREADTIME_PATTERN.match(line)
         if match and match.group("pid") in pid_strings:
-            matching_lines.append(line)
-    return "\n".join(matching_lines)
+            saw_current_pid_line = True
+            candidate_lines.append(line)
+        elif not match and _is_pidless_live_log_line(line):
+            candidate_lines.append(line)
+    if not saw_current_pid_line:
+        return ""
+    return "\n".join(candidate_lines)
+
+
+def _is_pidless_live_log_line(line: str) -> bool:
+    return bool(_PIDLESS_LIVE_LOG_PATTERN.match(line))
 
 
 def _last_event(events: Sequence[dict[str, Any]], name: str) -> dict[str, Any] | None:
