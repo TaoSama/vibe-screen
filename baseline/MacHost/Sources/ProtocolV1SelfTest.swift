@@ -756,6 +756,7 @@ enum ProtocolV1SelfTest {
             }
 
             let negotiated = makeMultiDisplaySession(
+                hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([VSCapability.multiClient]),
                 displayRouter: HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2),
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 2
@@ -2228,6 +2229,7 @@ enum ProtocolV1SelfTest {
     }
 
     private static func makeMultiDisplaySession(
+        hostCapabilities: Set<VSCapability>? = nil,
         displayRouter: HostMultiClientDisplayRouter? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
@@ -2240,7 +2242,7 @@ enum ProtocolV1SelfTest {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+            hostCapabilities: hostCapabilities ?? ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 maximumClients: maximumClients
             ),
