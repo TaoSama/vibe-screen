@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt source="05-settings-dialog.xml">
+  <node class="android.widget.TextView" text="Display settings" bounds="[406,266][2534,397]" />
+  <node class="android.widget.TextView" text="Show Stats" bounds="[448,507][772,588]" />
+  <node resource-id="dev.telemachus.display:id/showStatsSwitch" class="android.widget.Switch" content-desc="Show Stats" checkable="true" checked="false" clickable="true" bounds="[1225,495][1393,663]" />
+  <node class="android.widget.TextView" text="Sustained use" bounds="[448,789][852,870]" />
+  <node class="android.widget.TextView" text="Video" bounds="[1547,495][1711,576]" />
+  <node resource-id="dev.telemachus.display:id/videoQualitySmooth" class="android.widget.CompoundButton" text="SMOOTH" checkable="true" checked="false" clickable="true" bounds="[1547,872][2492,1040]" />
+</sanitized-ui-excerpt>
