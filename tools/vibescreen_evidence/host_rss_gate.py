@@ -282,6 +282,7 @@ def derive_gate(
         previous_captured_at = captured_at
         if not (started <= captured_at <= finished):
             continue
+        elapsed_values.append(elapsed)
         rss_value = record.get("host", {}).get("rss_kb")
         if not isinstance(rss_value, (int, float)) or isinstance(rss_value, bool):
             continue
@@ -291,7 +292,6 @@ def derive_gate(
                 f"samples line {source_line}.host.rss_kb: must be finite and non-negative"
             )
         points.append((captured_at, rss))
-        elapsed_values.append(elapsed)
     points.sort(key=lambda item: item[0])
     if not points:
         raise EvidenceInputError("samples: no host RSS records in the summary exact window")

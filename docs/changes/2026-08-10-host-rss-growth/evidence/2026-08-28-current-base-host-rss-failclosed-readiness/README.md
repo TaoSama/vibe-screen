@@ -48,8 +48,8 @@ short or incomplete memory evidence with the formal two-hour gate:
 
 ## Verification completed
 
-- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_real_device_gate tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic tools.tests.test_phase0_stable_release -v` passed 129 tests.
-- `make evidence-tools-test` passed 1030 tests.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_real_device_gate tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic tools.tests.test_phase0_stable_release -v` passed 130 tests.
+- `make evidence-tools-test` passed 1065 tests.
 - `make phase0-stable-release-gate` kept the aggregate blocked with
   `readme_guard=pass`; blocking gates still include `host_rss_2h_no_growth`.
 
