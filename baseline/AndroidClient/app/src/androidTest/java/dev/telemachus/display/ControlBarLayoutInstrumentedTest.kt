@@ -124,6 +124,30 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun fileTransferControlPreservesTouchTargetsWhenVisible() {
+        listOf(320, 360).forEach { widthDp ->
+            withLayout(widthDp = widthDp, fileTransferVisible = true) { layout ->
+                val expectedMode =
+                    ControlBarLayoutPolicy.mode(
+                        availableWidthPx = layout.dp(widthDp),
+                        displaySelectorVisible = true,
+                        hostActionsVisible = true,
+                        clipboardVisible = true,
+                        geometry = ControlBarLayoutApplier.geometry(layout.context.resources),
+                        fileTransferVisible = true,
+                    )
+                assertEquals(expectedMode, layout.mode)
+                assertEquals(View.VISIBLE, layout.views.fileTransfer.visibility)
+                assertEquals(
+                    layout.context.getString(R.string.control_file_transfer),
+                    layout.views.fileTransfer.contentDescription.toString(),
+                )
+                assertActionGeometry(layout)
+            }
+        }
+    }
+
+    @Test
     fun productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable() {
         withLayout(widthDp = 320) { layout ->
             assertEquals(View.VISIBLE, layout.views.displaySelector.visibility)
@@ -190,6 +214,21 @@ class ControlBarLayoutInstrumentedTest {
         val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
         val withHostInlineWidth = withHostColumnWidth + geometry.selectorMinimumWidthPx
         val withoutHostInlineWidth = withoutHostColumnWidth + geometry.selectorMinimumWidthPx
+        val withFileTransferColumnWidth =
+            compactMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+            )
+        val withFileTransferStackedWidth =
+            stackedMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+            )
+        val withFileTransferInlineWidth = withFileTransferColumnWidth + geometry.selectorMinimumWidthPx
         assertModeAndShape(
             widthPx = withHostColumnWidth,
             selectorVisible = false,
@@ -228,6 +267,42 @@ class ControlBarLayoutInstrumentedTest {
             hostVisible = false,
             clipboardVisible = false,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferColumnWidth,
+            selectorVisible = false,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.COMPACT,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferInlineWidth,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.INLINE,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferInlineWidth - 1,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.STACKED,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferStackedWidth - 1,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
+            assertGeometry = false,
         )
     }
 
@@ -419,15 +494,26 @@ class ControlBarLayoutInstrumentedTest {
         selectorVisible: Boolean,
         hostVisible: Boolean,
         clipboardVisible: Boolean = hostVisible,
+        fileTransferVisible: Boolean = false,
         expectedMode: ControlBarLayoutPolicy.Mode,
+        assertGeometry: Boolean = true,
     ) {
         withLayout(
             widthPx = widthPx,
             selectorVisible = selectorVisible,
             hostVisible = hostVisible,
             clipboardVisible = clipboardVisible,
+            fileTransferVisible = fileTransferVisible,
         ) { layout ->
             assertEquals(expectedMode, layout.mode)
+            assertEquals(if (fileTransferVisible) View.VISIBLE else View.GONE, layout.views.fileTransfer.visibility)
+            if (fileTransferVisible) {
+                assertEquals(
+                    layout.context.getString(R.string.control_file_transfer),
+                    layout.views.fileTransfer.contentDescription.toString(),
+                )
+                assertTrue(layout.views.fileTransfer.isClickable)
+            }
             when (expectedMode) {
                 ControlBarLayoutPolicy.Mode.COMPACT -> {
                     assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, layout.cardParams.width)
@@ -459,9 +545,16 @@ class ControlBarLayoutInstrumentedTest {
                     assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
                     assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.selectorParams.width)
                     assertEquals(0f, layout.selectorParams.weight)
+                    if (fileTransferVisible) {
+                        val geometry = ControlBarLayoutApplier.geometry(layout.context.resources)
+                        val fileTransferParams = layout.views.fileTransfer.layoutParams as LinearLayout.LayoutParams
+                        assertEquals(geometry.columnActionSpacingPx, fileTransferParams.topMargin)
+                    }
                 }
             }
-            assertActionGeometry(layout)
+            if (assertGeometry) {
+                assertActionGeometry(layout)
+            }
         }
     }
 
@@ -469,23 +562,25 @@ class ControlBarLayoutInstrumentedTest {
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible),
+                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible),
             )
 
     private fun compactMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             geometry.statusMinimumWidthPx +
             geometry.statusGapPx +
-            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
 
     private fun assertAccessibleDisplayName(layout: MeasuredLayout) {
         assertEquals(FULL_DISPLAY_NAME, layout.label.text.toString())
@@ -522,7 +617,13 @@ class ControlBarLayoutInstrumentedTest {
             )
         }
         val actionBounds =
-            listOf(layout.views.hostAction, layout.views.clipboard, layout.views.settings, layout.views.disconnect)
+            listOf(
+                layout.views.hostAction,
+                layout.views.clipboard,
+                layout.views.fileTransfer,
+                layout.views.settings,
+                layout.views.disconnect,
+            )
                 .filter { it.visibility == View.VISIBLE }
                 .map { control ->
                     assertTrue("Control ${control.id} was narrower than 48dp", control.measuredWidth >= minimum)
@@ -573,6 +674,7 @@ class ControlBarLayoutInstrumentedTest {
         selectorVisible: Boolean = true,
         hostVisible: Boolean = true,
         clipboardVisible: Boolean = hostVisible,
+        fileTransferVisible: Boolean = false,
         applyLayout: Boolean = true,
         assertion: (MeasuredLayout) -> Unit,
     ) {
@@ -603,7 +705,7 @@ class ControlBarLayoutInstrumentedTest {
         views.displaySelector.visibility = if (selectorVisible) View.VISIBLE else View.GONE
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
         views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
-        views.fileTransfer.visibility = View.GONE
+        views.fileTransfer.visibility = if (fileTransferVisible) View.VISIBLE else View.GONE
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,

@@ -162,3 +162,25 @@ negotiate file-transfer capability, and no Android <-> macOS product
 file-transfer flow with user approval, chunk progress, final digest, and
 destination-file match was captured. The P0110 evidence must not be relabeled as
 Xiaomi 13/fuxi evidence.
+
+## 2026-08-28 Nubia P0110 file-transfer current-source blocked refresh
+
+Evidence:
+[evidence/2026-08-28-nubia-p0110-file-transfer-current-source-blocked](evidence/2026-08-28-nubia-p0110-file-transfer-current-source-blocked/README.md).
+
+Status remains open. The run refreshed from current origin/main at
+e90463e5d24ee055686a9b6d3a1acd02c616b81b, recorded the device as nubia P0110
+/ pacific / Android 16 / SDK 36, and kept the serial redacted as
+REDACTED_P0110_USB_SERIAL. The Android file-transfer control-bar smoke passed
+on the P0110 with OK (2 tests), covering the visible file-transfer action's
+phone-width touch targets plus production layout-applier mode handling when the
+extra action is present.
+
+The generated blocked.json is intentionally blocked, with gate_closed=false and
+can_close_file_transfer_android_smoke_gate=false. Host readiness still blocks on
+stable signing/source-provenance/TCC/virtual-HID and login-headless
+prerequisites; USB readiness therefore cannot prove a real Protocol v1
+file-transfer path, no trusted-LAN preflight was collected, and no
+file-transfer-product-e2e.json exists. This evidence does not claim Android
+<-> macOS product file transfer, receiver approval, destination file SHA-256
+equality, positive session epoch, or cancel cleanup.
