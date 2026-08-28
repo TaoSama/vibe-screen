@@ -1,0 +1,7 @@
+pwd=<redacted-local-path>
+date_utc=2026-08-28T11:30:45Z
+head=f5db90a761e158798065ce1078bf49428031ce49
+origin_main=f5db90a761e158798065ce1078bf49428031ce49
+branch=codex/p0110-usb-e2e-current-source
+status_porcelain_start=1
+sfltool_pids=
