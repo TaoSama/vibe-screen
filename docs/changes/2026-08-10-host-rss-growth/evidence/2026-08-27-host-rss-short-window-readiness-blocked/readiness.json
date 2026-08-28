@@ -1,0 +1,112 @@
+{
+  "blocking_reasons": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+    "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "Host listener is not observed on TCP port 54321",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified",
+    "full Xcode is not selected; Command Line Tools cannot run the MacHost XCTest suite",
+    "no stable-signed current-source Host was launched with VIBE_SCREEN_TELEMETRY_PATH",
+    "no 10-17 minute USB/LAN stream window was collected",
+    "no formal two-hour Host RSS gate was run"
+  ],
+  "created_at": "2026-08-27T16:18:20.984736+00:00",
+  "formal_gate": {
+    "accepted_for_two_hour_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "host_rss_gate_json_present": false
+  },
+  "host": {
+    "accessibility_granted": false,
+    "can_start_host_rss_gate": false,
+    "configured_signing_identity": "Vibe Screen Dev",
+    "full_xcode_available": false,
+    "installed_binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "installed_matches_current_source": false,
+    "listener_observed": false,
+    "readiness_status": "blocked",
+    "screen_recording_granted": false,
+    "source_commit_provenance_present": false,
+    "tcc_readable": false,
+    "virtual_hid_entitlement": false,
+    "xcode_select": "/Library/Developer/CommandLineTools"
+  },
+  "kind": "host_rss_short_window_regression_readiness",
+  "login_item": {
+    "detail": "Login item state was not probed by default; run readiness with --include-login-item-diagnostic during an attended diagnostic session to inspect it.",
+    "diagnostic_was_run": false,
+    "sfltool_dumpbtm_was_run": false,
+    "state": "unverified"
+  },
+  "next_commands": [
+    "export EVIDENCE_DIR=.build/evidence/memory-short",
+    "export VIBE_SCREEN_TELEMETRY_PATH=$EVIDENCE_DIR/host-telemetry.jsonl",
+    "# Launch stable-signed current-source Host with Screen Recording/Accessibility grants, establish USB/LAN stream, and set HOST_PID.",
+    "PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic --host-pid \"$HOST_PID\" --duration-seconds 900 --interval-seconds 30 --telemetry-jsonl \"$EVIDENCE_DIR/host-telemetry.jsonl\" --samples \"$EVIDENCE_DIR/samples.jsonl\" --output \"$EVIDENCE_DIR/diagnostic.json\"",
+    "make soak-2h-host-rss-gate EVIDENCE_SERIAL=\"$EVIDENCE_SERIAL\" EVIDENCE_DIR=\"$EVIDENCE_DIR\" HOST_PID=\"$HOST_PID\""
+  ],
+  "non_claims": [
+    "does not prove a short-window Host memory diagnostic pass",
+    "does not prove the formal two-hour Host RSS no-growth gate",
+    "does not prove installed Host matches current source",
+    "does not prove Screen Recording or Accessibility authorization",
+    "does not prove login-item readiness; sfltool dumpbtm was not run",
+    "does not prove Android USB/LAN stream health for this source revision"
+  ],
+  "repository": {
+    "branch": "codex/host-rss-short-window-regression",
+    "head": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
+    "origin_main": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
+    "source_dirty_during_readiness": false,
+    "worktree": "<worktree>"
+  },
+  "run_id": "2026-08-27-host-rss-short-window-readiness-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "short_window_diagnostic": {
+    "accepted_for_short_diagnostic": false,
+    "failclosed_probe_attribution": "inconclusive",
+    "failclosed_probe_error": "host telemetry file does not exist: .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl",
+    "failclosed_probe_verdict": "insufficient",
+    "failclosed_probe_was_run": true,
+    "real_short_window_was_run": false
+  },
+  "status": "blocked",
+  "verification": [
+    {
+      "command": "pgrep -x sfltool || true",
+      "exit_code": 0,
+      "result": "no output; no residual sfltool process observed"
+    },
+    {
+      "command": "python3 scripts/macos_dev_host.py readiness --json-output .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/host-readiness.json",
+      "exit_code": 2,
+      "result": "blocked readiness written without login-item opt-in"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic --host-pid $$ --duration-seconds 600 --interval-seconds 30 --telemetry-jsonl .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl --samples .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/failclosed-samples.jsonl --output .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/failclosed-diagnostic.json",
+      "exit_code": 1,
+      "result": "verdict=insufficient for missing host telemetry"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_memory_diagnostic -v",
+      "exit_code": 0,
+      "result": "62 tests passed"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v",
+      "exit_code": 0,
+      "result": "57 tests passed"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate -v",
+      "exit_code": 0,
+      "result": "22 tests passed"
+    },
+    {
+      "command": "python3 scripts/macos_dev_host.py xctest-preflight --report .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/xctest-toolchain.txt",
+      "exit_code": 2,
+      "result": "blocked: full Xcode/xcodebuild unavailable"
+    }
+  ]
+}
