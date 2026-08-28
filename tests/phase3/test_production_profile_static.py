@@ -137,6 +137,7 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertLessEqual(config["max_credential_ttl_seconds"], 1800)
         self.assertLessEqual(config["max_concurrent_sessions_per_device"], 2)
         self.assertLessEqual(config["daily_bytes_per_device"], 20 * 1024 * 1024 * 1024)
+        self.assertEqual(config["authority_source_id"], "<turn-source-id>")
         self.assertNotIn("state_file", config)
         self.assertEqual(
             config["allocation_registry_file"],
