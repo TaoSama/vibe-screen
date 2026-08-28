@@ -282,6 +282,29 @@ class HostRSSGateTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertFalse(report["sufficiency"]["duration"]["passed"])
+        self.assertFalse(report["sufficiency"]["elapsed_span"]["passed"])
+        self.assertEqual(report["window"]["elapsed_span_seconds"], 900)
+
+    def test_stretched_wall_clock_with_short_elapsed_span_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            rows = [
+                json.loads(line)
+                for line in samples.read_text(encoding="utf-8").splitlines()
+            ]
+            for index, row in enumerate(rows):
+                row["elapsed_seconds"] = 900 * index / max(1, len(rows) - 1)
+            samples.write_text(
+                "\n".join(json.dumps(row) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            exact_window = write_exact_window_report(directory)
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["sufficiency"]["elapsed_span"]["passed"])
+        self.assertEqual(report["window"]["elapsed_span_seconds"], 900)
 
     def test_missing_end_of_window_coverage_is_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:

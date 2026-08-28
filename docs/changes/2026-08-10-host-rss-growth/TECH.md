@@ -125,8 +125,9 @@ MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
 运行；30 分钟结果只能作为回归证据，不能替代或关闭正式两小时门禁。若以后单独
 批准正式门禁运行，Host RSS 门禁由
 `vibescreen_evidence.host_rss_gate` 独立判定，要求来源 soak 完整无错误、窗口至少
-7056 秒、Host RSS 样本至少 230 个且后半程至少 115 个、首尾和内部采样间隔均不
-超过 90 秒，并同时满足：后半程 OLS 斜率 95% 上界与 Theil-Sen 稳健斜率均不高于
+7056 秒、soak 样本自身 `elapsed_seconds` 跨度至少 7056 秒、Host RSS 样本至少
+230 个且后半程至少 115 个、首尾和内部采样间隔均不超过 90 秒，并同时满足：
+后半程 OLS 斜率 95% 上界与 Theil-Sen 稳健斜率均不高于
 40 KiB/min、后半程端点中位数漂移不高于 4 MiB、全窗端点中位数漂移不高于 8
 MiB、后半程最后两个四分之一窗口的均值增量不高于 2 MiB；并且同一窗口的原生
 Host telemetry 必须证明流仍在活动、heartbeat 被接受、帧队列和编码器/最新帧保留
@@ -159,6 +160,9 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
   `heap_class_growth` 列表中重建首末漂移。
+- 短窗诊断报告现在显式输出
+  `gate.can_close_host_rss_no_growth_gate=false`，让自动化不能把 10-17 分钟
+  `host_memory_diagnostic` 的 `pass` 误当成正式两小时 no-growth 通过。
 - 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
   本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
   运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。
