@@ -1,0 +1,5 @@
+List of devices attached
+REDACTED_P0110_USB_SERIAL     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:26
+
+
+exit_code=0

@@ -1,0 +1,17 @@
+# Commands for 2026-08-28 P0110 host-display-rotation current-base blocked record
+pgrep -x sfltool || true
+git fetch origin --prune
+git rev-parse HEAD origin/main
+git merge-base --is-ancestor origin/main HEAD
+git switch -c codex/rotated-host-display-readiness-2026-08-28
+security find-identity -v -p codesigning
+codesign -dv --verbose=4 /Applications/Vibe Screen.app
+python3 scripts/macos_dev_host.py preflight --install-path /Applications/Vibe Screen.app --report <RUN_DIR>/host-preflight.txt
+make baseline-macos-host-readiness EVIDENCE_DIR=<RUN_DIR>
+system_profiler SPDisplaysDataType
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+python3 - <<PY_LOCKED_ADB  # acquire fcntl lock on /tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock, then run adb -s REDACTED_P0110_USB_SERIAL read-only probes; release lock on process exit
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate <RUN_DIR>/host-display-rotation.json --check-artifacts --output <RUN_DIR>/host-display-rotation-gate.json
+make host-display-rotation-current-base-manifest EVIDENCE_DIR=<RUN_DIR> EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL
+make host-display-rotation-current-base-gate EVIDENCE_DIR=<RUN_DIR> EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL
+python3 -m unittest tools.tests.test_host_display_rotation_gate tools.tests.test_host_display_rotation_current_base_manifest tools.tests.test_host_display_rotation_current_base_gate
