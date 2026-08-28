@@ -43,6 +43,10 @@ KIND = "harmony_readiness_preflight"
 DEFAULT_BUNDLE_NAME = "dev.vibescreen.harmony"
 DEFAULT_HAP_GLOB = "apps/harmony/dist/*/*.hap"
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+USER_HOME_PATH_RE = re.compile(r"(?:/Users|/home|/Volumes)/[^\s'\",]+")
+WINDOWS_USER_PATH_RE = re.compile(r"[A-Za-z]:\\Users\\[^\s'\"]+")
+TCC_PATH_RE = re.compile(r"Application Support/com\.apple\.TCC|\bTCC\.db\b", re.IGNORECASE)
+PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|-----END [A-Z ]*PRIVATE KEY-----")
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 WhichRunner = Callable[[str], str | None]
@@ -101,6 +105,87 @@ def utc_timestamp() -> str:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def redact_hdc_target(target: str) -> str:
+    if not target:
+        return ""
+    return f"sha256:{sha256_text(target)[:12]}"
+
+
+def sanitize_public_text(value: str) -> str:
+    if not value:
+        return ""
+    text = value.replace(str(REPO_ROOT), "<repo>").replace(str(Path.home()), "<home>")
+    text = TCC_PATH_RE.sub("<tcc-path>", text)
+    text = USER_HOME_PATH_RE.sub("<user-path>", text)
+    text = WINDOWS_USER_PATH_RE.sub("<user-path>", text)
+    text = PRIVATE_KEY_RE.sub("<private-key-marker>", text)
+    return text
+
+
+def display_path(path: Path | str | None, *, repo: Path = REPO_ROOT) -> str | None:
+    if path is None:
+        return None
+    value = Path(path)
+    try:
+        resolved = value.expanduser().resolve()
+    except OSError:
+        return sanitize_public_text(str(path)) if not value.is_absolute() else f"<external>/{value.name}"
+    try:
+        return str(resolved.relative_to(repo.resolve()))
+    except (OSError, ValueError):
+        pass
+    if value.is_absolute() or resolved.is_absolute():
+        return f"<external>/{resolved.name or value.name}"
+    return sanitize_public_text(str(path))
+
+
+def public_command(command: Sequence[str], *, repo: Path) -> list[str]:
+    path_options = {"--output", "--repo", "--deveco-studio-app", "--hap", "--sha256sums"}
+    target_options = {"--target"}
+    result: list[str] = []
+    skip: str | None = None
+    for token in command:
+        if skip == "path":
+            result.append(display_path(token, repo=repo) or "")
+            skip = None
+            continue
+        if skip == "target":
+            result.append(redact_hdc_target(token))
+            skip = None
+            continue
+        matched_inline = False
+        for option in path_options:
+            if token.startswith(option + "="):
+                result.append(f"{option}={display_path(token.split('=', 1)[1], repo=repo)}")
+                matched_inline = True
+                break
+        if matched_inline:
+            continue
+        for option in target_options:
+            if token.startswith(option + "="):
+                result.append(f"{option}={redact_hdc_target(token.split('=', 1)[1])}")
+                matched_inline = True
+                break
+        if matched_inline:
+            continue
+        result.append(sanitize_public_text(token))
+        if token in path_options:
+            skip = "path"
+        elif token in target_options:
+            skip = "target"
+    return result
+
+
+def public_probe(probe: Probe, *, repo: Path) -> dict[str, str | None]:
+    return {
+        "name": probe.name,
+        "status": probe.status,
+        "path": display_path(probe.path, repo=repo),
+        "version": sanitize_public_text(probe.version or "") or None,
+        "detail": sanitize_public_text(probe.detail or "") or None,
+    }
 
 
 def sha256_file(path: Path) -> str:
@@ -325,7 +410,7 @@ def read_harmony_device_identity(
 
 
 def _redact_target(line: str, target: str) -> str:
-    return line.replace(target, f"sha256:{sha256_text(target)[:12]}")
+    return line.replace(target, redact_hdc_target(target))
 
 
 def collect_hdc_status(
@@ -389,7 +474,7 @@ def inspect_hap(
     if resolved_hap is None:
         reasons.append(f"signed HAP not found; pass --hap or create exactly one {DEFAULT_HAP_GLOB}")
     elif not resolved_hap.is_file():
-        reasons.append(f"HAP does not exist: {resolved_hap}")
+        reasons.append(f"HAP does not exist: {display_path(resolved_hap, repo=repo)}")
     else:
         hap_hash = sha256_file(resolved_hap)
         try:
@@ -402,7 +487,7 @@ def inspect_hap(
             if not signature_markers:
                 reasons.append("HAP archive has no recognizable signature marker; verify signing output manually")
         except zipfile.BadZipFile:
-            reasons.append(f"HAP is not a readable zip archive: {resolved_hap}")
+            reasons.append(f"HAP is not a readable zip archive: {display_path(resolved_hap, repo=repo)}")
 
     cert_hash = signature_certificate_sha256.lower() if signature_certificate_sha256 else None
     if cert_hash is None or HASH_RE.fullmatch(cert_hash) is None or set(cert_hash) == {"0"}:
@@ -419,7 +504,7 @@ def inspect_hap(
     if resolved_sha256sums is None:
         reasons.append("SHA256SUMS manifest not found beside the HAP; pass --sha256sums")
     elif not resolved_sha256sums.is_file():
-        reasons.append(f"SHA256SUMS does not exist: {resolved_sha256sums}")
+        reasons.append(f"SHA256SUMS does not exist: {display_path(resolved_sha256sums, repo=repo)}")
     else:
         sha256sums_hash = sha256_file(resolved_sha256sums)
         if hap_hash is not None:
@@ -431,12 +516,12 @@ def inspect_hap(
                 reasons.append("SHA256SUMS does not contain the selected HAP SHA-256")
 
     artifact = ArtifactReadiness(
-        hap_path=str(resolved_hap) if resolved_hap is not None else None,
+        hap_path=display_path(resolved_hap, repo=repo) if resolved_hap is not None else None,
         hap_sha256=hap_hash,
         hap_zip_readable=zip_readable,
         signature_markers=signature_markers,
         signature_certificate_sha256=cert_hash,
-        sha256sums_path=str(resolved_sha256sums) if resolved_sha256sums is not None else None,
+        sha256sums_path=display_path(resolved_sha256sums, repo=repo) if resolved_sha256sums is not None else None,
         sha256sums_sha256=sha256sums_hash,
         sha256sums_contains_hap=sha256sums_contains_hap,
         bundle_name=bundle_name,
@@ -494,11 +579,11 @@ def build_report(
         blocking_reasons.append("host build SHA-256 must be 64 hex")
 
     toolchain_reasons = [
-        probe.detail or f"{probe.name} unavailable"
+        sanitize_public_text(probe.detail or f"{probe.name} unavailable")
         for probe in (deveco, hvigor, ohpm, hdc)
         if probe.status != "pass"
     ]
-    all_reasons = [*toolchain_reasons, *blocking_reasons]
+    all_reasons = [*toolchain_reasons, *(sanitize_public_text(reason) for reason in blocking_reasons)]
     verdict = "pass" if not all_reasons else "blocked"
 
     final_manifest_prefill = {
@@ -542,18 +627,21 @@ def build_report(
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "created_at": utc_timestamp(),
-        "command": list(command),
+        "command": public_command(command, repo=repo),
         "verdict": verdict,
         "blocking_reasons": all_reasons,
         "repository": repo_state,
         "toolchain": {
-            "deveco_studio": asdict(deveco),
-            "hvigor": asdict(hvigor),
-            "ohpm": asdict(ohpm),
-            "hdc": asdict(hdc),
+            "deveco_studio": public_probe(deveco, repo=repo),
+            "hvigor": public_probe(hvigor, repo=repo),
+            "ohpm": public_probe(ohpm, repo=repo),
+            "hdc": public_probe(hdc, repo=repo),
         },
         "hdc": {
-            "targets": [asdict(target) for target in hdc_targets],
+            "targets": [
+                {**asdict(target), "raw_summary": sanitize_public_text(target.raw_summary)}
+                for target in hdc_targets
+            ],
         },
         "device": asdict(device) if device is not None else None,
         "artifact": asdict(artifact),

@@ -1,0 +1,5 @@
+Captured at: 2026-08-27T16:18:24Z
+Repository HEAD: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+Branch: codex/av1-android-decode-capability-probe
+Dirty status:
+?? docs/changes/2026-08-21-av1-codec-capability/evidence/2026-08-28-nubia-p0110-av1-capability-probe/

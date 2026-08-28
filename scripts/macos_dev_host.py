@@ -36,6 +36,7 @@ ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
+DEFAULT_XCTEST_PREFLIGHT_OUTPUT = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
@@ -97,6 +98,17 @@ class HostInspection:
     source_identity: package_macos.SourceIdentity | None
     permissions: PermissionStatus
     errors: list[str]
+
+
+@dataclass(frozen=True)
+class XCTestPreflightStatus:
+    developer_dir: str | None
+    developer_dir_kind: str
+    xcode_version: str | None
+    xcode_build: str | None
+    sdk_path: str | None
+    has_xctest: bool
+    errors: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -251,6 +263,9 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except FileNotFoundError as error:
+        executable = str(error.filename or (command[0] if command else "command"))
+        return 127, f"command not found: {Path(executable).name}"
     except OSError as error:
         executable = command[0] if command else "command"
         return 127, f"command unavailable: {executable}: {error.strerror or error}"
@@ -259,10 +274,114 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
         return 124, f"command timed out after {timeout_seconds}s{suffix}"
-    except FileNotFoundError as error:
-        command_name = command[0] if command else "command"
-        return 127, f"command not found: {error.filename or command_name}"
     return completed.returncode, completed.stdout.strip()
+
+
+def parse_xcodebuild_version(output: str) -> tuple[str | None, str | None]:
+    xcode_version: str | None = None
+    xcode_build: str | None = None
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("Xcode "):
+            xcode_version = line.removeprefix("Xcode ").strip() or None
+        elif line.startswith("Build version "):
+            xcode_build = line.removeprefix("Build version ").strip() or None
+    return xcode_version, xcode_build
+
+
+def developer_dir_kind(developer_dir: Path | None) -> str:
+    if developer_dir is None:
+        return "unknown"
+    text = str(developer_dir)
+    if text.endswith(".app/Contents/Developer"):
+        return "full_xcode"
+    if developer_dir.name == "CommandLineTools" or "/CommandLineTools" in text:
+        return "command_line_tools"
+    return "unknown"
+
+
+def has_xctest_framework(developer_dir: Path | None) -> bool:
+    if developer_dir is None:
+        return False
+    candidates = (
+        developer_dir / "Platforms" / "MacOSX.platform" / "Developer" / "Library" / "Frameworks" / "XCTest.framework",
+        developer_dir / "Library" / "Frameworks" / "XCTest.framework",
+    )
+    return any(candidate.is_dir() for candidate in candidates)
+
+
+def inspect_xctest_preflight() -> XCTestPreflightStatus:
+    errors: list[str] = []
+    developer_dir: Path | None = None
+    developer_code, developer_output = run_best_effort("/usr/bin/xcode-select", "-p", timeout_seconds=10)
+    if developer_code == 0 and developer_output.strip():
+        developer_dir = Path(developer_output.strip())
+    else:
+        errors.append(f"xcode-select -p failed: {redact_local_report_text(developer_output or 'no developer directory')}")
+    kind = developer_dir_kind(developer_dir)
+    if kind != "full_xcode":
+        errors.append("Full Xcode is required for SwiftPM XCTest; Command Line Tools are insufficient")
+
+    xcode_version: str | None = None
+    xcode_build: str | None = None
+    xcode_code, xcode_output = run_best_effort("/usr/bin/xcodebuild", "-version", timeout_seconds=10)
+    if xcode_code == 0:
+        xcode_version, xcode_build = parse_xcodebuild_version(xcode_output)
+    else:
+        errors.append(f"xcodebuild -version failed: {redact_local_report_text(xcode_output or 'xcodebuild unavailable')}")
+
+    sdk_path: str | None = None
+    sdk_code, sdk_output = run_best_effort(
+        "/usr/bin/xcrun",
+        "--sdk",
+        "macosx",
+        "--show-sdk-path",
+        timeout_seconds=10,
+    )
+    if sdk_code == 0 and sdk_output.strip():
+        sdk_path = redact_local_report_text(sdk_output.strip())
+    else:
+        errors.append(f"xcrun macosx SDK lookup failed: {redact_local_report_text(sdk_output or 'macOS SDK unavailable')}")
+
+    has_xctest = has_xctest_framework(developer_dir)
+    if not has_xctest:
+        errors.append("XCTest.framework was not found in the selected developer directory")
+
+    return XCTestPreflightStatus(
+        developer_dir=redact_local_report_text(str(developer_dir)) if developer_dir is not None else None,
+        developer_dir_kind=kind,
+        xcode_version=xcode_version,
+        xcode_build=xcode_build,
+        sdk_path=sdk_path,
+        has_xctest=has_xctest,
+        errors=tuple(errors),
+    )
+
+
+def build_xctest_preflight_document(status: XCTestPreflightStatus) -> dict[str, Any]:
+    passed = status.developer_dir_kind == "full_xcode" and status.has_xctest and not status.errors
+    return {
+        "schema_version": "vibescreen.macos-xctest-preflight/v1",
+        "kind": "macos_xctest_preflight",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "status": "passed" if passed else "blocked",
+        "can_run_swiftpm_xctest": passed,
+        "developer_dir": status.developer_dir,
+        "developer_dir_kind": status.developer_dir_kind,
+        "is_full_xcode": status.developer_dir_kind == "full_xcode",
+        "has_xctest": status.has_xctest,
+        "xcode_version": status.xcode_version,
+        "xcode_build": status.xcode_build,
+        "sdk_path": status.sdk_path,
+        "blockers": list(status.errors),
+        "safety": {
+            "read_only": True,
+            "starts_host": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "modifies_android": False,
+        },
+    }
 
 
 TCC_QUERY_TIMEOUT_SECONDS = 5
@@ -1442,14 +1561,16 @@ def metadata_and_permissions(
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
-    ))
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
+    )
     return metadata, source_identity, permissions, errors
 
 
@@ -1610,6 +1731,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
+    login_item = read_login_item_readiness() if getattr(args, "include_login_item_diagnostic", False) else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
@@ -1639,11 +1761,6 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    login_item = (
-        read_login_item_readiness()
-        if getattr(args, "include_login_item_diagnostic", False)
-        else skipped_login_item_readiness()
-    )
     document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
@@ -1653,7 +1770,6 @@ It only uses the configured codesign identity and reads privacy databases in rea
         return 2
     print("macOS Host shared prerequisite readiness passed")
     return 0
-
 
 def main() -> int:
     args = parse_args()

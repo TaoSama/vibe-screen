@@ -349,8 +349,9 @@ HDR claim.
 | trusted LAN secure records | open | Current iOS baseline loopback is explicit plaintext legacy fallback, not secure-record LAN evidence. |
 
 The Host-side advanced adapter readiness gate is a source/readiness contract
-only. It does not close host-side multi-client/display, audio, HDR, clipboard,
-file-transfer, wake, managed-configuration, or other device/product-flow gates.
+only. It does not close host-side multi-client/display, audio, HDR,
+clipboard/file, file-transfer, wake, managed-configuration, native-input,
+reconnect, trusted-LAN, or other device/product-flow gates.
 
 The signing row is now backed by a dedicated app-signing readiness owner:
 
