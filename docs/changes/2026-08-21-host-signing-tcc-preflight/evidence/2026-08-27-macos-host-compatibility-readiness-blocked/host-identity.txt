@@ -1,0 +1,11 @@
+ProductName: macOS
+ProductVersion: 26.4.1
+BuildVersion: 25E253
+Architecture: arm64
+ModelIdentifier: Mac16,8
+CPU: Apple M4 Pro
+Swift: Apple Swift version 6.3.3
+Xcode: unavailable in this shell
+Source commit: 27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+Source tree: 41870d87db15b3a2ba253ee5a3cc201a136d90c2
+Source dirty: false before evidence files were written
