@@ -368,7 +368,7 @@ def collect_toolchain(app_dir: Path, args: argparse.Namespace) -> ToolchainState
 
 def collect_signing(app_dir: Path, certificate: Path | None, certificate_sha256: str) -> SigningState:
     if certificate is not None and certificate.suffix.lower() not in PUBLIC_SIGNING_EXTENSIONS:
-        raise ReadinessError("--signature-certificate must reference a public certificate/profile file, not private key material")
+        raise ReadinessError("--signature-certificate must reference a public certificate/profile file; sensitive signing inputs are never required")
     if certificate_sha256 and re.fullmatch(r"[0-9a-fA-F]{64}", certificate_sha256) is None:
         raise ReadinessError("--signature-certificate-sha256 must be a 64-character hex SHA-256 digest")
     profile = app_dir / "build-profile.json5"
@@ -633,7 +633,7 @@ def build_observations(
         Observation(
             "signature_certificate_recorded",
             "pass" if bool(signing.signature_certificate_sha256) else "insufficient",
-            "signing certificate SHA-256 recorded without private key material",
+            "signing certificate SHA-256 recorded without sensitive signing inputs",
             [signing.signature_certificate_sha256] if signing.signature_certificate_sha256 else [],
             "pass --signature-certificate or --signature-certificate-sha256",
         ),
@@ -748,7 +748,7 @@ def device_gate_manifest(result: ReadinessResult, package_name: str) -> dict[str
         "toolchain": {
             "deveco_studio_version": toolchain.deveco_studio_version or "blocked: DevEco Studio not found",
             "harmony_sdk_api": toolchain.harmony_sdk_api or "blocked: HarmonyOS SDK API not recorded",
-            "harmony_sdk_version": toolchain.harmony_sdk_api or "blocked: HarmonyOS SDK version not recorded",
+            "harmony_sdk_version": toolchain.project_compatible_sdk or toolchain.harmony_sdk_api or "blocked: HarmonyOS SDK version not recorded",
             "hvigor_version": toolchain.hvigor.version or "blocked: hvigor not found",
             "ohpm_version": toolchain.ohpm.version or "blocked: ohpm not found",
             "hdc_version": toolchain.hdc.version or "blocked: hdc not found",
@@ -850,7 +850,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--package", default=DEFAULT_PACKAGE, help=f"Harmony bundle name. Default: {DEFAULT_PACKAGE}")
     parser.add_argument("--hdc-target", default="", help="Exact HDC target to inspect when multiple devices are connected.")
     parser.add_argument("--run-build", action="store_true", help="Run make release in the Harmony app before inspecting artifacts.")
-    parser.add_argument("--signature-certificate", type=Path, help="Public signing certificate/profile file to hash; private keys are never required.")
+    parser.add_argument("--signature-certificate", type=Path, help="Public signing certificate/profile file to hash; sensitive signing inputs are never required.")
     parser.add_argument("--signature-certificate-sha256", default="", help="Precomputed signing certificate SHA-256 when the certificate file cannot be shared.")
     parser.add_argument("--deveco-version", default="", help="Manual DevEco Studio version override when CLI detection cannot read it.")
     parser.add_argument("--harmony-sdk-path", default="", help="Manual HarmonyOS SDK path override.")
