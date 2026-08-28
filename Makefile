@@ -9,6 +9,7 @@ EVIDENCE_EXPECTED_MODEL ?=
 EVIDENCE_EXPECTED_DEVICE ?=
 EVIDENCE_EXPECTED_ANDROID_RELEASE ?=
 EVIDENCE_EXPECTED_SDK ?=
+EVIDENCE_ALLOW_EXISTING_LOCKS ?=
 EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
@@ -77,6 +78,13 @@ CLIPBOARD_E2E_LAN_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/trusted-lan-preflight.json
 CLIPBOARD_E2E_ANDROID_INSTRUMENTATION_LOG ?= $(EVIDENCE_DIR)/android-clipboard-instrumentation.txt
 CLIPBOARD_E2E_PRODUCT_JSON ?= $(EVIDENCE_DIR)/product-e2e.json
 CLIPBOARD_E2E_REQUIRE_PASS ?=
+FILE_TRANSFER_ANDROID_SMOKE_GATE_JSON ?= $(EVIDENCE_DIR)/file-transfer-android-smoke-gate.json
+FILE_TRANSFER_ANDROID_SMOKE_HOST_READINESS_JSON ?= $(EVIDENCE_DIR)/host-readiness.json
+FILE_TRANSFER_ANDROID_SMOKE_USB_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/usb-smoke-preflight.json
+FILE_TRANSFER_ANDROID_SMOKE_LAN_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/trusted-lan-preflight.json
+FILE_TRANSFER_ANDROID_SMOKE_ANDROID_INSTRUMENTATION_LOG ?= $(EVIDENCE_DIR)/android-file-transfer-instrumentation.txt
+FILE_TRANSFER_ANDROID_SMOKE_PRODUCT_JSON ?= $(EVIDENCE_DIR)/file-transfer-product-e2e.json
+FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS ?=
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
@@ -205,6 +213,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	baseline-android-dependency-audit \
 	evidence-tools-test \
 	release-tools-test \
+	file-transfer-android-smoke \
 	phase0-stable-release-gate \
 	require-evidence-serial \
 	require-host-pid \
@@ -553,6 +562,7 @@ evidence-usb-smoke-preflight: require-evidence-serial
 		$(if $(strip $(EVIDENCE_EXPECTED_DEVICE)),--expected-device $(EVIDENCE_EXPECTED_DEVICE),) \
 		$(if $(strip $(EVIDENCE_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(EVIDENCE_EXPECTED_ANDROID_RELEASE),) \
 		$(if $(strip $(EVIDENCE_EXPECTED_SDK)),--expected-sdk $(EVIDENCE_EXPECTED_SDK),) \
+		$(if $(filter 1 true yes,$(EVIDENCE_ALLOW_EXISTING_LOCKS)),--allow-existing-locks,) \
 		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
 
 evidence-touch-rerun-preflight: require-evidence-serial
@@ -971,6 +981,24 @@ clipboard-e2e-gate:
 	status=$$?; \
 	if [ $$status -ne 0 ]; then \
 		if [ -z "$(strip $(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		exit $$status; \
+	fi
+
+file-transfer-android-smoke:
+	@mkdir -p "$(dir $(FILE_TRANSFER_ANDROID_SMOKE_GATE_JSON))"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.file_transfer_android_smoke \
+		--host-readiness "$(FILE_TRANSFER_ANDROID_SMOKE_HOST_READINESS_JSON)" \
+		--usb-preflight "$(FILE_TRANSFER_ANDROID_SMOKE_USB_PREFLIGHT_JSON)" \
+		--trusted-lan-preflight "$(FILE_TRANSFER_ANDROID_SMOKE_LAN_PREFLIGHT_JSON)" \
+		--android-file-transfer-instrumentation-log "$(FILE_TRANSFER_ANDROID_SMOKE_ANDROID_INSTRUMENTATION_LOG)" \
+		--product-e2e "$(FILE_TRANSFER_ANDROID_SMOKE_PRODUCT_JSON)" \
+		--serial-label "REDACTED_P0110_USB_SERIAL" \
+		--output "$(FILE_TRANSFER_ANDROID_SMOKE_GATE_JSON)" \
+		$(if $(filter 1 true yes,$(FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS)),--require-pass,); \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		if [ -z "$(strip $(FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
 
