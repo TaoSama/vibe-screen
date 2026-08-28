@@ -94,6 +94,26 @@ func TestConfigValidatesDatabaseURLPolicy(t *testing.T) {
 	}
 }
 
+func TestConfigRequiresProductionDatabaseTLSWhenRequested(t *testing.T) {
+	cfg := testConfig()
+	cfg.StoreBackend = StoreBackendPostgres
+	cfg.DatabaseTLSMode = "verify-full"
+	cfg.DatabaseURL = "postgres://authority@127.0.0.1/vibescreen?sslmode=disable"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "verify-full") {
+		t.Fatalf("expected production TLS mode rejection, got %v", err)
+	}
+
+	cfg.DatabaseURL = "postgres://authority@example.com/vibescreen?sslmode=verify-full"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("verify-full URL rejected: %v", err)
+	}
+
+	cfg.DatabaseTLSMode = "require"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), databaseTLSModeEnv) {
+		t.Fatalf("expected invalid TLS mode rejection, got %v", err)
+	}
+}
+
 func TestConfigRejectsSessionTTLDurationOverflow(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxSessionTTLSeconds = math.MaxInt64/int64(time.Second) + 1
