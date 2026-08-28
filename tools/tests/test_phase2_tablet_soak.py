@@ -16,16 +16,19 @@ from vibescreen_evidence.phase2_tablet_soak import (
     archive_host_telemetry,
     append_preflight_blockers,
     build_readiness,
+    command_serial_values,
     is_sha256_digest,
     main,
     run_or_preflight,
     runner_required_artifacts,
+    sanitize_text,
     write_readme,
     write_log_derivatives,
 )
 
 SCHEMA_PATH = Path(__file__).parents[1] / "schemas" / "phase2-soak-readiness.schema.json"
 REPO_ROOT = Path(__file__).parents[2]
+MAKEFILE = REPO_ROOT / "Makefile"
 GATE_OWNERS = (
     "stand_mounted_charging=phase2-device-environment,"
     "thermal_power_sampling=phase2-device-environment,"
@@ -104,6 +107,17 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertNotIn("summary.json", artifacts)
         self.assertNotIn("host.log", artifacts)
 
+    def test_makefile_soak_wrapper_passes_required_gate_owners(self):
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+        target_start = makefile.index("phase2-tablet-soak-preflight phase2-tablet-soak-run")
+        target_end = makefile.index("phase2-device-memory-gate:", target_start)
+        recipe = makefile[target_start:target_end]
+
+        self.assertIn(
+            '--gate-owners "$(PHASE2_GATE_OWNERS)"',
+            recipe,
+        )
+
     def test_preflight_manifest_artifacts_use_missing_apk_identity_marker(self):
         artifacts = runner_required_artifacts("preflight", has_apk_identity=False)
 
@@ -118,6 +132,72 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertFalse(is_sha256_digest("g" * 64))
         self.assertFalse(is_sha256_digest("readiness-only-no-apk-hash"))
         self.assertFalse(is_sha256_digest(None))
+
+    def test_command_serial_values_only_extracts_serial_arguments(self):
+        serials = command_serial_values([
+            "python3",
+            "-m",
+            "vibescreen_evidence.phase2_tablet_soak",
+            "--serial",
+            "test-p0110-adb-serial",
+            "--video-preferences",
+            "preflight only",
+        ])
+
+        self.assertEqual(serials, ("test-p0110-adb-serial",))
+        self.assertEqual(
+            sanitize_text("python3 preflight only test-p0110-adb-serial", *serials),
+            "python3 preflight only <device-serial>",
+        )
+
+    def test_sanitize_text_removes_local_paths_and_sensitive_values(self):
+        user_path = "/".join(["", "Users", "example"])
+        tcc_filename = "TCC" + ".db"
+        tcc_support_path = "Application Support" + "/" + "com.apple.TCC"
+        token_key = "token" + "="
+        credential_key = "credential" + "="
+        private_key = "private_key" + "="
+        wifi_mac_value = "12:34:56" + ":78:9A:BC"
+        bluetooth_blob_value = (
+            "8:02:01"
+            + ":06:18:16"
+            + ":AA:FE:40"
+        )
+        raw = (
+            "adb -s test-p0110-adb-serial shell getprop\n"
+            f"{user_path}/Library/Android/sdk/platform-tools/adb\n"
+            f"{user_path}/Library/{tcc_support_path}/{tcc_filename}\n"
+            f"{token_key}secret-token {credential_key}secret-credential {private_key}secret-key\n"
+            '{"password": "secret-password", "secret": "secret-json"}\n'
+            "token%3Dsecret-url\n"
+            "[net.hostname]: [lab-device-name]\n"
+            f"[persist.sys.wifi.mac]: [{wifi_mac_value}]\n"
+            f"[persist.vendor.qcom.bluetooth.fmd_header]: [{bluetooth_blob_value}]\n"
+        )
+
+        sanitized = sanitize_text(raw, "test-p0110-adb-serial")
+
+        self.assertIn("adb -s <device-serial> shell getprop", sanitized)
+        self.assertIn("<android-sdk>/platform-tools/adb", sanitized)
+        self.assertIn("<tcc-database>", sanitized)
+        self.assertIn(token_key + "<redacted-secret>", sanitized)
+        self.assertIn(credential_key + "<redacted-secret>", sanitized)
+        self.assertIn(private_key + "<redacted-secret>", sanitized)
+        self.assertIn('"password": "<redacted-secret>"', sanitized)
+        self.assertIn('"secret": "<redacted-secret>"', sanitized)
+        self.assertIn("token%3D<redacted-secret>", sanitized)
+        self.assertIn("[net.hostname]: [<device-detail>]", sanitized)
+        self.assertIn("[persist.sys.wifi.mac]: [<network-detail>]", sanitized)
+        self.assertIn("[persist.vendor.qcom.bluetooth.fmd_header]: [<network-detail>]", sanitized)
+        self.assertNotIn("test-p0110-adb-serial", sanitized)
+        self.assertNotIn(user_path, sanitized)
+        self.assertNotIn(tcc_filename, sanitized)
+        self.assertNotIn("secret-token", sanitized)
+        self.assertNotIn("secret-password", sanitized)
+        self.assertNotIn("secret-url", sanitized)
+        self.assertNotIn("lab-device-name", sanitized)
+        self.assertNotIn(wifi_mac_value, sanitized)
+        self.assertNotIn(bluetooth_blob_value, sanitized)
 
     def test_generated_readme_names_readiness_close_contract(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -146,7 +226,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
             lock = directory / "android.lock"
-            lock.write_text("owned by another run\n", encoding="utf-8")
+            lock.write_text("owned by test-p0110-adb-serial under /Users/example/project\n", encoding="utf-8")
 
             with (
                 patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", directory / "soak.lock"),
@@ -167,6 +247,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertEqual(readiness["result"], "blocked")
         self.assertFalse(readiness["can_close_phase2_gate"])
         self.assertIn("device coordination lock exists", " ".join(readiness["blockers"]))
+        self.assertNotIn("test-p0110-adb-serial", json.dumps(readiness))
+        self.assertNotIn("/Users/example", json.dumps(readiness))
         self.assertEqual(output_files, ["README.md", "phase2-soak-readiness.json"])
         self.assertEqual(persisted["result"], "blocked")
         run.assert_not_called()
@@ -303,6 +385,98 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertIn("apk-identity-missing.txt", manifest["required_artifacts"])
         self.assertNotIn("apk-sha256.txt", manifest["required_artifacts"])
         runner_class.assert_called_once()
+
+    def test_preflight_public_artifacts_redact_serial_and_local_path(self):
+        test_serial = "test-p0110-adb-serial"
+        device_info = {
+            "device": {
+                "adb_serial": test_serial,
+                "device_serial": test_serial,
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "codename": "pacific",
+                "android_release": "16",
+                "sdk": 36,
+                "build_fingerprint": "nubia/pacific/test",
+                "abi": "arm64-v8a",
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            with (
+                patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", directory / "soak.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.ANDROID_LOCK", directory / "android.lock"),
+                patch("vibescreen_evidence.phase2_tablet_soak.collect_static_artifacts") as collect,
+                patch("vibescreen_evidence.phase2_tablet_soak.start_logcat") as start_logcat,
+                patch("vibescreen_evidence.phase2_tablet_soak.SoakRunner") as runner_class,
+                patch("vibescreen_evidence.phase2_tablet_soak.collect_after_artifacts", return_value=[]),
+                patch("vibescreen_evidence.phase2_tablet_soak.stop_process"),
+            ):
+                collect.return_value = (
+                    device_info,
+                    [],
+                    [{"path": "device-info.json", "kind": "device_info"}],
+                    None,
+                )
+                start_logcat.return_value = (object(), object())
+
+                def fake_run():
+                    soak_dir = directory / "soak-preflight"
+                    soak_dir.mkdir()
+                    (soak_dir / "samples.jsonl").write_text(
+                        json.dumps(
+                            {
+                                "device": {
+                                    "identity": {
+                                        "adb_serial": test_serial,
+                                        "device_serial": test_serial,
+                                    }
+                                }
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    (soak_dir / "summary.json").write_text(
+                        json.dumps(
+                            {
+                                "status": "complete",
+                                "configuration": {"serial": test_serial},
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    return {"status": "complete", "configuration": {"serial": test_serial}}
+
+                runner_class.return_value.run.side_effect = fake_run
+
+                readiness = run_or_preflight(
+                    make_args(directory, apk_sha256=None, serial=test_serial),
+                    ["phase2-tablet-soak"],
+                )
+
+                manifest = json.loads((directory / "phase2-tablet-manifest.json").read_text(encoding="utf-8"))
+                device_info_written = json.loads((directory / "device-info.json").read_text(encoding="utf-8"))
+                readme = (directory / "README.md").read_text(encoding="utf-8")
+                soak_summary = (directory / "soak-preflight" / "summary.json").read_text(encoding="utf-8")
+
+        serialized_evidence = json.dumps(
+            {
+                "readiness": readiness,
+                "manifest": manifest,
+                "device_info": device_info_written,
+                "readme": readme,
+                "soak_summary": soak_summary,
+            },
+            sort_keys=True,
+        )
+        self.assertEqual(manifest["device"]["identity"]["adb_serial"], "<device-serial>")
+        self.assertEqual(device_info_written["device"]["adb_serial"], "<device-serial>")
+        self.assertNotIn(test_serial, serialized_evidence)
+        self.assertNotIn("/Users/example", serialized_evidence)
 
     def test_preflight_invalid_apk_sha256_blocks_without_sha_artifact(self):
         device_info = {
