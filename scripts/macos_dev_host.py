@@ -43,7 +43,7 @@ SYSTEM_SETTINGS_PATH = (
     "and Accessibility"
 )
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
-    "Login item probe not run by default; run readiness with "
+    "Login item not probed by default; probe not run. Run readiness with "
     "--include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or "
     "--probe-login-items during an attended diagnostic session to inspect it with "
     "/usr/bin/sfltool dumpbtm."
