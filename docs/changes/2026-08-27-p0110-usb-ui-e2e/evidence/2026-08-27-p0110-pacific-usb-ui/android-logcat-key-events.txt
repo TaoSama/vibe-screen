@@ -1,0 +1,45 @@
+# Initial Protocol v1 USB stream
+08-27 07:07:32.816 D/SC: Protocol v1 upgrade accepted
+08-27 07:07:32.817 D/SC: Connected to 127.0.0.1:54321
+08-27 07:07:32.825 D/MA: onHostActionsAvailable: move-window, return-windows
+08-27 07:07:32.843 D/MA: onDisplaysAvailable: count=3 selected=1 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=1:Built-in Retina Display:1512x982:primary=true, 2:DELL U2723QE:1920x1080:primary=false, telemachus-virtual-extended:Vibe Screen Virtual (extended):2000x1200:primary=false
+08-27 07:07:32.873 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:07:32.948 D/VD: Decoder started: 1512x982 @ 60.000004Hz, surface=<redacted-surface>, valid=true
+08-27 07:07:32.969 D/SC: First frame: size=835, keyframe=true, metadata=true, session_epoch=1, config_epoch=1, callback=true
+08-27 07:07:32.970 D/VD: First frame: size=835, keyframe=true, surface=<redacted-surface>, valid=true
+08-27 07:07:32.996 D/VD: First output frame! size=1, flags=1, session_epoch=1
+
+# Display switch to external display
+08-27 07:13:53.387 D/MA: capsule selectDisplay target=2 from=1
+08-27 07:13:54.448 D/MA: onVideoConfiguration: 1920x1080 @ 0 deg epoch=2
+08-27 07:13:54.528 D/VD: Decoder started: 1920x1080 @ 120.00001Hz, surface=<redacted-surface>, valid=true
+08-27 07:13:54.531 D/MA: display selection confirmed active=2
+08-27 07:13:54.741 D/VD: First output frame! size=1, flags=1, session_epoch=1
+
+# Video preferences
+08-27 07:16:35.781 D/MA: onVideoConfiguration: 1920x1080 @ 0 deg epoch=3
+08-27 07:16:35.860 D/MA: Applied authoritative video preferences epoch=3 bitrate=50Mbps fps=60
+08-27 07:17:01.631 D/MA: onVideoConfiguration: 1920x1080 @ 0 deg epoch=4
+08-27 07:17:01.710 D/MA: Applied authoritative video preferences epoch=4 bitrate=50Mbps fps=30
+08-27 07:17:06.044 D/MA: onVideoConfiguration: 1920x1080 @ 0 deg epoch=5
+08-27 07:17:06.117 D/MA: Applied authoritative video preferences epoch=5 bitrate=100Mbps fps=30
+
+# Force-stop / relaunch reconnect samples
+08-27 07:18:06.944 D/SC: Protocol v1 upgrade accepted
+08-27 07:18:07.020 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:18:07.089 D/VD: Decoder started: 1512x982 @ 120.00001Hz, surface=<redacted-surface>, valid=true
+08-27 07:18:17.506 D/SC: Protocol v1 upgrade accepted
+08-27 07:18:17.564 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:18:17.635 D/VD: Decoder started: 1512x982 @ 120.00001Hz, surface=<redacted-surface>, valid=true
+08-27 07:19:50.730 D/SC: Protocol v1 upgrade accepted
+08-27 07:19:50.817 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:19:50.887 D/VD: Decoder started: 1512x982 @ 60.000004Hz, surface=<redacted-surface>, valid=true
+08-27 07:20:06.024 D/SC: Protocol v1 upgrade accepted
+08-27 07:20:06.275 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:20:06.341 D/VD: Decoder started: 1512x982 @ 60.000004Hz, surface=<redacted-surface>, valid=true
+08-27 07:24:19.029 D/SC: Protocol v1 upgrade accepted
+08-27 07:24:19.088 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=1
+08-27 07:24:19.160 D/VD: Decoder started: 1512x982 @ 120.00001Hz, surface=<redacted-surface>, valid=true
+
+# Notes
+The missing-reverse/manual-empty-state attempts produced noisy fallback and heartbeat-timeout snippets and are intentionally not used for gate closure.

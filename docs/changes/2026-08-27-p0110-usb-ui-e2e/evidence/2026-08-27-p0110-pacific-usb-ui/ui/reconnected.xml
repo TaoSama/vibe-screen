@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt source="24-final-reconnected.xml">
+  <node resource-id="dev.telemachus.display:id/videoViewport" class="android.widget.FrameLayout" bounds="[427,0][2373,1264]" />
+  <node resource-id="dev.telemachus.display:id/surfaceView" class="android.view.SurfaceView" bounds="[427,0][2373,1264]" />
+  <node resource-id="dev.telemachus.display:id/inputViewport" class="android.view.View" content-desc="Show stream controls" clickable="true" focusable="true" focused="true" bounds="[427,0][2373,1264]" />
+</sanitized-ui-excerpt>
