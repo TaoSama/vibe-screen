@@ -28,6 +28,7 @@ adb -s REDACTED_P0110_USB_SERIAL shell am instrument -w \
   -e class 'dev.telemachus.display.ControlBarLayoutInstrumentedTest#fileTransferControlPreservesTouchTargetsWhenVisible,dev.telemachus.display.ControlBarLayoutInstrumentedTest#productionApplierCoversStackedColumnAndHiddenSelectorBoundaries' \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/2026-08-28-p0110-file-transfer-current-source-refresh
+jq '.configuration.serial = "REDACTED_P0110_USB_SERIAL" | .device.identity.adb_serial = "REDACTED_P0110_USB_SERIAL" | .device.identity.device_serial = "REDACTED_P0110_USB_SERIAL"' /tmp/vibe-screen-current-usb-smoke.json > docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-28-nubia-p0110-file-transfer-current-source-blocked/usb-live-smoke.json
 make protocol-tests
 cd baseline/MacHost && swift build
 cd baseline/MacHost && swift test --filter ProtocolV1FileTransferTests

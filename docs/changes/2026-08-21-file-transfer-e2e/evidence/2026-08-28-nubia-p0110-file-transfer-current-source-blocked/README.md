@@ -18,6 +18,14 @@ visible, labelled, clickable, and non-overlapping at phone widths when shown,
 and that the production layout applier accounts for the extra action in
 COMPACT, INLINE, STACKED, and COLUMN mode decisions.
 
+The separate read-only USB live-stream prerequisite reference in
+`usb-live-smoke.json` reports `verdict=pass` for the same nubia P0110 / pacific
+/ Android 16 / SDK 36 device, with `UsbFfs tcp:54321 tcp:54321`, the Android app
+foreground, 142 current-process `stream_stats` events, average FPS about 29.99,
+decoder output around 27060 frames, and dropped frames at 0. This confirms a
+live USB stream prerequisite only; it does not prove file-transfer packets,
+approval, destination writes, digest equality, or cleanup.
+
 ## Blockers
 
 - Host readiness is blocked. A Host listener was observed on TCP 54321, but the
@@ -49,6 +57,8 @@ the readiness command used the default path without
 - `host-readiness.json` and `host-signing-and-permissions.txt` - read-only
   macOS Host readiness output.
 - `usb-smoke-preflight.json` - P0110 USB preflight output with redacted serial.
+- `usb-live-smoke.json` - read-only live USB stream prerequisite reference;
+  not file-transfer product evidence.
 - `android-file-transfer-instrumentation.txt` - P0110 focused Android
   instrumentation log.
 - `android-focused-jvm-tests.txt` - focused Android JVM file-transfer and

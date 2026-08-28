@@ -184,3 +184,10 @@ file-transfer path, no trusted-LAN preflight was collected, and no
 file-transfer-product-e2e.json exists. This evidence does not claim Android
 <-> macOS product file transfer, receiver approval, destination file SHA-256
 equality, positive session epoch, or cancel cleanup.
+
+A follow-up read-only USB live-stream smoke from the main controller is retained
+as usb-live-smoke.json. It passed for the same nubia P0110 / pacific / Android
+16 / SDK 36 device with adb reverse `UsbFfs tcp:54321 tcp:54321`, the Android
+app foreground, 142 `stream_stats` events, average FPS about 29.99, decoder
+output around 27060, and dropped frames at 0. This is only a live-stream
+prerequisite reference and still does not close file-transfer E2E.
