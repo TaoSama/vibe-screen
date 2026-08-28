@@ -1072,6 +1072,18 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertEqual(report["verdict"], "blocked")
 
+    def test_missing_inputs_do_not_leak_absolute_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+
+            result = derive_gate(root)
+
+        serialized = json.dumps(result, sort_keys=True)
+        self.assertNotIn(raw_directory, serialized)
+        self.assertNotIn("/Users/", serialized)
+        self.assertIn("datachannel-record-layer.json", serialized)
+        self.assertIn("latency/direct/latency-evidence.json", serialized)
+
     def test_android_evidence_template_names_match_required_raw_artifacts(self) -> None:
         template = (
             REPOSITORY_ROOT
