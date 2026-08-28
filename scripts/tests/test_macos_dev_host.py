@@ -1720,7 +1720,12 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 ),
                 login_item=macos_dev_host.LoginItemReadiness("unverified", False, "not checked", ()),
                 displays=macos_dev_host.HostDisplayReadiness(False, 0, (), "not checked", None),
-                logs=macos_dev_host.LogReadiness("<user-host-log>", False, "not checked", ()),
+                logs=macos_dev_host.LogReadiness(
+                    path="<user-host-log>",
+                    readable=False,
+                    markers=(),
+                    error="not checked",
+                ),
         )
 
         self.assertEqual(document["status"], "blocked")

@@ -115,6 +115,17 @@ def make_docs(root: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("fixture\n", encoding="utf-8")
 
+
+def requirement_texts(items: object) -> set[str]:
+    if not isinstance(items, list):
+        return set()
+    return {
+        item["requirement"]
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("requirement"), str)
+    }
+
+
 class IOSCurrentBaseManifestTests(unittest.TestCase):
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -251,7 +262,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
             "ios native-input gate current-base commit does not match repository HEAD",
-            manifest["native_input_gate"]["missing_requirements"],
+            requirement_texts(manifest["native_input_gate"]["missing_requirements"]),
         )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
@@ -292,11 +303,11 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
             "ios native-input gate owner role is not the dedicated current-base owner",
-            manifest["native_input_gate"]["missing_requirements"],
+            requirement_texts(manifest["native_input_gate"]["missing_requirements"]),
         )
         self.assertIn(
             "ios native-input gate requires_signed_app must be true",
-            manifest["native_input_gate"]["missing_requirements"],
+            requirement_texts(manifest["native_input_gate"]["missing_requirements"]),
         )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
@@ -330,9 +341,10 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertTrue(native_gate["provided"])
         self.assertEqual(native_gate["verdict"], "blocked")
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
-        self.assertIn("ios native-input gate kind mismatch", native_gate["missing_requirements"])
-        self.assertIn("ios native-input gate profile mismatch", native_gate["missing_requirements"])
-        self.assertIn("ios native-input gate requires_signed_app must be true", native_gate["missing_requirements"])
+        missing = requirement_texts(native_gate["missing_requirements"])
+        self.assertIn("ios native-input gate kind mismatch", missing)
+        self.assertIn("ios native-input gate profile mismatch", missing)
+        self.assertIn("ios native-input gate requires_signed_app must be true", missing)
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -349,7 +361,15 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         native_gate = manifest["native_input_gate"]
         self.assertEqual(native_gate["verdict"], "blocked")
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
-        self.assertEqual(native_gate["blocking_reasons"], ["still missing physical-device trace"])
+        self.assertEqual(
+            native_gate["blocking_reasons"],
+            [
+                {
+                    "field": "native_input_gate",
+                    "requirement": "still missing physical-device trace",
+                }
+            ],
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -512,7 +532,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
             "ios native-input gate current-base commit does not match repository HEAD",
-            manifest["native_input_gate"]["missing_requirements"],
+            requirement_texts(manifest["native_input_gate"]["missing_requirements"]),
         )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
@@ -731,6 +751,52 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(set(manifest), set(schema["properties"]))
         for field in schema["required"]:
             self.assertIn(field, manifest)
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_native_input_gate_lists_match_manifest_schema_shape(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            native_input_gate = write_native_input_gate(
+                root,
+                blocking_reasons=["still missing physical-device trace"],
+                disallowed_evidence=["simulator trace supplied as input evidence"],
+            )
+
+            manifest = build_manifest(command=[], repo=root, native_input_gate=native_input_gate)
+
+        native_gate = manifest["native_input_gate"]
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        native_schema = schema["properties"]["native_input_gate"]
+        self.assertEqual(
+            native_schema["properties"]["missing_requirements"]["items"]["type"],
+            "object",
+        )
+        self.assertTrue(
+            all(isinstance(item, dict) and "requirement" in item for item in native_gate["missing_requirements"]),
+            native_gate["missing_requirements"],
+        )
+        self.assertEqual(
+            native_gate["blocking_reasons"],
+            [
+                {
+                    "field": "native_input_gate",
+                    "requirement": "still missing physical-device trace",
+                }
+            ],
+        )
+        self.assertEqual(
+            native_gate["disallowed_evidence"],
+            [
+                {
+                    "field": "native_input_gate",
+                    "reason": "simulator trace supplied as input evidence",
+                }
+            ],
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
