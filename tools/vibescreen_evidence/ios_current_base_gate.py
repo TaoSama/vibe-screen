@@ -18,9 +18,7 @@ from .ios_current_base_manifest import (
     FORMAL_DEVICE_GATES,
     GATE_OWNERS,
     KIND as MANIFEST_KIND,
-    NATIVE_INPUT_GATE_KIND,
     NATIVE_INPUT_GATE_OWNER,
-    NATIVE_INPUT_GATE_PROFILE,
     NATIVE_INPUT_KIND,
     NATIVE_INPUT_OWNER_BRANCH,
     NATIVE_INPUT_OWNER_PR,
@@ -686,6 +684,8 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         "dedicated_native_input_gate": _check(
             native_gate.get("kind") == NATIVE_INPUT_KIND
+            and native_gate.get("profile") == NATIVE_INPUT_PROFILE
+            and native_gate.get("gate_owner") == NATIVE_INPUT_GATE_OWNER
             and native_gate.get("verdict") == "pass"
             and native_gate.get("can_close_ios_native_input_gate") is True,
             "ios-native-input-gate.json passes and is bound into current-base readiness",
