@@ -222,13 +222,15 @@
       "id": "module_ownership_extraction",
       "title": "Phase 0 module ownership extraction",
       "required_for_stable_release": true,
-      "verdict": "open",
+      "verdict": "blocked",
       "evidence_strength": "partial-current-source",
       "evidence_paths": [
         "README.md",
         "docs/changes/2026-08-04-phase-0-baseline/TECH.md",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt"
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+        "docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-module-ownership-manifest.json",
+        "tools/vibescreen_evidence/phase0_module_ownership.py"
       ],
       "owner_prs": [
         211,
@@ -239,7 +241,8 @@
       ],
       "blockers": [
         "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
-        "Broader protocol/session, decoder, renderer, and UI ownership are not yet all enforced by current-base module contracts."
+        "The current-base module ownership manifest records Android TCP transport and several StreamClient owner slices as closed, but the manifest still evaluates to blocked for Phase 0 closure.",
+        "Protocol/session, full file-transfer and wake-host product ownership, decoder, renderer, and UI/product session boundaries remain partial or open with fail-closed checklists."
       ]
     }
   ],
