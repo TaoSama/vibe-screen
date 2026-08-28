@@ -1,0 +1,35 @@
+HarmonyOS device manifest is structurally valid but not acceptance evidence:
+- repository.status: dirty
+- toolchain.deveco_studio_version: blocked: DevEco Studio not found
+- toolchain.harmony_sdk_api: blocked: HarmonyOS SDK API not recorded
+- toolchain.hvigor_version: blocked: hvigor not found
+- toolchain.ohpm_version: blocked: ohpm not found
+- toolchain.hdc_version: blocked: hdc not found
+- device.manufacturer: blocked: HDC MatePad Mini identity not recorded
+- device.model: blocked: MatePad Mini identity not recorded
+- device.product: blocked: MatePad Mini product not recorded
+- device.os_build: blocked: OS build not recorded
+- device.hdc_target: blocked: HDC target not selected
+- device.platform: blocked: HarmonyOS NEXT device identity not verified
+- deveco_sdk_and_api_checker: blocked
+- signed_release_hap: blocked
+- hap_install_launch: blocked
+- hap_in_place_upgrade: blocked
+- hap_rollback_behavior: blocked
+- hap_uninstall_cleanup: blocked
+- permission_denial_retry: blocked
+- huks_backed_secure_pairing: blocked
+- authenticated_transport_records: blocked
+- credential_revocation_replay: blocked
+- h264_hardware_decode: blocked
+- hevc_hardware_decode: blocked
+- host_protocol_v1_interop: blocked
+- resume_background_foreground: blocked
+- resume_network_roam: blocked
+- resume_host_restart: blocked
+- resume_capable_host_interop: blocked
+- no_old_epoch_render: blocked
+- ui_device_identity_record: blocked
+- input_touch_keyboard_pointer_stylus: blocked
+- eight_hour_soak: blocked
+- external_latency: blocked

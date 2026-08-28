@@ -206,6 +206,10 @@ currently no key migration step.
 
 ## Advanced feature use
 
+Advanced host integrations remain bound by the
+`phase5-host-advanced-adapters-gate readiness contract` until retained iOS
+device evidence closes each product-flow gate.
+
 - Open **功能** while streaming to exchange clipboard content, select a file,
   approve/reject incoming files, export verified files, configure gestures, or
   request Wake-on-LAN.
