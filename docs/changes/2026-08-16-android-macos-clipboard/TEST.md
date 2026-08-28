@@ -243,3 +243,21 @@ No Android `ClipboardManager` -> macOS `NSPasteboard` or macOS `NSPasteboard` ->
 Android `ClipboardManager` product transfer was executed. The 1 MiB ceiling,
 old-peer fallback, and clipboard deny-wins behavior remain offline/protocol
 evidence only for this run, not real USB/LAN product smoke evidence.
+
+## 2026-08-28 Nubia P0110 current-source USB refresh
+
+Evidence:
+[`../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source`](../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`f5db90a761e158798065ce1078bf49428031ce49`, confirmed the device as nubia P0110
+/ pacific / Android 16 / SDK 36, and ran the Android local
+`ClipboardManagerInstrumentedTest` on the handset. The Gradle instrumentation
+task completed successfully after 3 tests.
+
+The generated `clipboard-e2e-gate.json` is intentionally `blocked` and
+`gate_closed=false`: Host stable-signing/TCC readiness is still blocked, no
+trusted-LAN preflight was supplied, the retained product session did not
+negotiate clipboard capability, and no bidirectional Android ClipboardManager
+<-> macOS NSPasteboard product-flow evidence exists. The P0110 evidence must not
+be relabeled as Xiaomi 13/fuxi evidence.

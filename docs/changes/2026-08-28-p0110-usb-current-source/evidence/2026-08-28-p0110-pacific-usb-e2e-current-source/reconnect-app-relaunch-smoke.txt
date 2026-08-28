@@ -1,0 +1,19 @@
+before_sfltool=
+date_utc=2026-08-28T11:36:13Z
+host_pid_before=4810
+reverse_before:
+UsbFfs tcp:54321 tcp:54321
+
+force_stop:
+launch:
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+Error type 3
+Error: Activity class {dev.telemachus.display/dev.telemachus.display.MainActivity} does not exist.
+foreground:
+  mCurrentFocus=Window{1a5d416 u0 com.android.launcher3/com.obric.feature.ObricLauncher}
+  mFocusedApp=ActivityRecord{201001555 u0 com.android.launcher3/com.obric.feature.ObricLauncher t539}
+pid_after:
+host_pid_after=4810
+diag_tail:
+run-as: unknown package: dev.telemachus.display
+after_sfltool=
