@@ -1,0 +1,9 @@
+Command:
+make protocol
+
+Result: PASS
+
+Key output:
+Ran 45 tests in 64.624s
+
+OK
