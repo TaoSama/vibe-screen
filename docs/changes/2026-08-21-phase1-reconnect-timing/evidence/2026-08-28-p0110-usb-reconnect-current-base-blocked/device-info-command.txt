@@ -1,2 +1,2 @@
-mkdir -p .build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial EP0110PZ0B9110300B --package dev.telemachus.display --output .build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3/device-info.json
+mkdir -p ../evidence/2026-08-28-p0110-usb-reconnect-current-base-v9
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial EP0110PZ0B9110300B --package dev.telemachus.display --output ../evidence/2026-08-28-p0110-usb-reconnect-current-base-v9/device-info.json

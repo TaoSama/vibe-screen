@@ -1,9 +1,17 @@
 # Commands
-git fetch origin --prune && git rebase origin/main
+git fetch origin main codex/p0110-usb-reconnect-current-base
+git rebase origin/main
+git worktree add --detach .build/reconnect-source-v9 655c8fec4ea8237c5f57d43eadf12a4ea5159005
 pgrep -x sfltool || true
-make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3
+git -C .build/reconnect-source-v9 rev-parse HEAD
+git -C .build/reconnect-source-v9 rev-parse origin/main
+git -C .build/reconnect-source-v9 status --short --branch
+make -C .build/reconnect-source-v9 evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=../evidence/2026-08-28-p0110-usb-reconnect-current-base-v9
 adb -s EP0110PZ0B9110300B reverse --list
 adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
 adb -s EP0110PZ0B9110300B shell dumpsys window
 lsof -nP -iTCP:54321 -sTCP:LISTEN
-make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3
+make -C .build/reconnect-source-v9 baseline-macos-host-readiness EVIDENCE_DIR=../evidence/2026-08-28-p0110-usb-reconnect-current-base-v9
+make evidence-reconnect-timing-blocked EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked ...
+pgrep -x sfltool || true
+make evidence-reconnect-timing-blocked EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked ...

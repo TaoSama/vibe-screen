@@ -10,8 +10,8 @@ not be used to close the README gate.
 - Gate profile: `phase1-reconnect-within-3s`
 - Required full-gate disruption scenarios: `client-kill`,
   `adb-reverse-disconnect`, and `lan-network-interrupt`
-- Current source commit: `0c3e2e95d74ceedcd746a9c89d354d0ae102e794`, based
-  on latest `origin/main` commit `0c1b3fd5a3d917acd5308b7ef10bc95900a45039`
+- Current source commit: `655c8fec4ea8237c5f57d43eadf12a4ea5159005`, based
+  on latest `origin/main` commit `43d31c35d2bb4457c74218d179ba1406c2fda815`
 
 ## Readiness observations
 
@@ -32,7 +32,7 @@ source-bound stable Host prerequisite was not satisfied:
 - The configured `Vibe Screen Dev` signing identity could not be resolved from
   the current keychain for rebuilding a source-bound Host.
 - The installed Host has no source commit/tree provenance, so it cannot be tied
-  to current source commit `0c3e2e95d74ceedcd746a9c89d354d0ae102e794`.
+  to current source commit `655c8fec4ea8237c5f57d43eadf12a4ea5159005`.
 - TCC Screen Recording and Accessibility could not be verified read-only for the
   installed Host because the user and system TCC database reads failed.
 

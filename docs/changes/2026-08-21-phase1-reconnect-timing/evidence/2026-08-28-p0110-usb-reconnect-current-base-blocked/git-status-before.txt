@@ -1,1 +1,1 @@
-## codex/p0110-usb-reconnect-current-base...origin/codex/p0110-usb-reconnect-current-base [ahead 2, behind 1]
+## HEAD (no branch)
