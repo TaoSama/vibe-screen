@@ -576,9 +576,9 @@ Host PID or Host telemetry JSONL was provided, no physical 8-9 inch tablet
 evidence exists, and no eight-hour soak gate artifact was produced. The current
 aggregate owner report consumes that blocked keyboard summary and blocked
 tablet preflight, and still reports `can_close_readme_phase2_gates=false`; see
-[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/README.md)
+[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
-[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
+[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC

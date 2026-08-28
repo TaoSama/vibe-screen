@@ -1,0 +1,172 @@
+{
+  "android_log_metrics": {
+    "frame_drop_log_lines": 0,
+    "reconnect_log_lines": 0,
+    "telemetry_events": 4
+  },
+  "artifacts": [
+    {
+      "kind": "device_info",
+      "path": "device-info.json"
+    },
+    {
+      "kind": "raw_adb",
+      "path": "device.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "wm-size.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "wm-density.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "adb-battery-before.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "adb-power-before.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "thermal-before.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb_stderr",
+      "path": "thermal-before.err"
+    },
+    {
+      "kind": "raw_adb",
+      "path": "android-pid.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "host_identity",
+      "path": "host.txt"
+    },
+    {
+      "kind": "command",
+      "path": "build.txt"
+    },
+    {
+      "kind": "android_artifact_missing",
+      "path": "apk-identity-missing.txt"
+    },
+    {
+      "kind": "phase2_manifest",
+      "path": "phase2-tablet-manifest.json"
+    },
+    {
+      "kind": "soak_samples",
+      "path": "soak-preflight/samples.jsonl"
+    },
+    {
+      "kind": "soak_summary",
+      "path": "soak-preflight/summary.json"
+    },
+    {
+      "kind": "android_logcat",
+      "path": "raw-logcat.txt"
+    },
+    {
+      "kind": "android_telemetry",
+      "path": "decoder-telemetry.jsonl"
+    },
+    {
+      "kind": "android_log_filter",
+      "path": "reconnects.log"
+    },
+    {
+      "kind": "android_log_filter",
+      "path": "frame-drops.log"
+    },
+    {
+      "kind": "raw_adb",
+      "path": "adb-battery-after.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "adb-power-after.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb",
+      "path": "thermal-after.txt",
+      "returncode": 0
+    },
+    {
+      "kind": "raw_adb_stderr",
+      "path": "thermal-after.err"
+    },
+    {
+      "kind": "raw_adb",
+      "path": "android-pid-after.txt",
+      "returncode": 0
+    }
+  ],
+  "blockers": [
+    "APK identity was not provided; preflight cannot close the Phase 2 gate",
+    "device_class is not physical_8_9_inch_tablet, so this run cannot close the tablet hardware gate",
+    "host PID was not provided, so Host RSS cannot be sampled",
+    "host telemetry JSONL path was not provided"
+  ],
+  "can_close_phase2_gate": false,
+  "command": [
+    "/opt/homebrew/opt/python@3.11/bin/python3.11",
+    "-m",
+    "vibescreen_evidence.phase2_tablet_soak",
+    "--serial",
+    "<device-serial>",
+    "--output-dir",
+    "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base",
+    "--mode",
+    "preflight",
+    "--package",
+    "dev.telemachus.display",
+    "--device-class",
+    "android_substitute",
+    "--stand-setup",
+    "bench substitute phone, no 8-9 inch tablet stand",
+    "--charger",
+    "USB-C charger observed for readiness smoke",
+    "--cable-or-dock",
+    "USB-C data cable",
+    "--transport",
+    "usb",
+    "--video-preferences",
+    "preflight only",
+    "--host-identity",
+    "Darwin arm64",
+    "--host-build",
+    "not stable-signed formal Host for 8h gate",
+    "--gate-owners",
+    "stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate",
+    "--duration",
+    "8h",
+    "--preflight-duration",
+    "2s",
+    "--interval",
+    "1s",
+    "--thermal-limit-status",
+    "2"
+  ],
+  "created_at": "2026-08-28T22:54:30.307991Z",
+  "device_class": "android_substitute",
+  "kind": "phase2_tablet_soak_readiness",
+  "mode": "preflight",
+  "output_dir": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base",
+  "phase2_gate_verdict": null,
+  "result": "blocked",
+  "run_id": "81c26699-da39-4dfa-9312-08ec24b894fb",
+  "schema_version": "vibescreen.evidence/v1",
+  "soak_summary_status": "complete"
+}
