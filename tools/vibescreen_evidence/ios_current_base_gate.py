@@ -18,17 +18,19 @@ from .ios_current_base_manifest import (
     FORMAL_DEVICE_GATES,
     GATE_OWNERS,
     KIND as MANIFEST_KIND,
-    REPOSITORY_FULL_NAME,
-    SCOPE_PRS,
-    SOURCE_DOCS,
-    SIGNING_READINESS_OWNER_BRANCH,
-    SIGNING_READINESS_OWNER_ROLE,
+    NATIVE_INPUT_GATE_KIND,
     NATIVE_INPUT_GATE_OWNER,
+    NATIVE_INPUT_GATE_PROFILE,
     NATIVE_INPUT_KIND,
     NATIVE_INPUT_OWNER_BRANCH,
     NATIVE_INPUT_OWNER_PR,
     NATIVE_INPUT_OWNER_ROLE,
     NATIVE_INPUT_PROFILE,
+    REPOSITORY_FULL_NAME,
+    SCOPE_PRS,
+    SOURCE_DOCS,
+    SIGNING_READINESS_OWNER_BRANCH,
+    SIGNING_READINESS_OWNER_ROLE,
     VIDEOTOOLBOX_READINESS_KIND,
     VIDEOTOOLBOX_READINESS_PROFILE,
     VIDEOTOOLBOX_RUNTIME_CLASSES,
@@ -41,6 +43,11 @@ PASS_STATUSES = {"pass", "passed", "passed-offline"}
 OPEN_STATUSES = {"open", "blocked", "blocked-readiness", "not-evidence"}
 DEVICE_ROLES = {"iphone", "ipad"}
 HDR_OWNER_EVIDENCE_MARKERS = ("ios-hdr-edr-gate", "can_close_ios_hdr_output_gate=true")
+NATIVE_INPUT_EVIDENCE_MARKERS = (
+    "ios-native-input-gate.json",
+    "verdict=pass",
+    "can_close_ios_native_input_gate=true",
+)
 REQUIRED_SIGNING_FIELDS = {
     "status",
     "bundle_id",
@@ -159,6 +166,12 @@ def _hdr_owner_evidence_present(record: dict[str, Any]) -> bool:
     evidence = _string_list(record.get("evidence"))
     joined = "\n".join(evidence)
     return all(marker in joined for marker in HDR_OWNER_EVIDENCE_MARKERS)
+
+
+def _native_input_owner_evidence_present(record: dict[str, Any]) -> bool:
+    evidence = _string_list(record.get("evidence"))
+    joined = "\n".join(evidence)
+    return all(marker in joined for marker in NATIVE_INPUT_EVIDENCE_MARKERS)
 
 
 def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, blocking: bool = False) -> dict[str, Any]:
@@ -722,10 +735,13 @@ def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], d
     broader: dict[str, dict[str, Any]] = {}
     for name, requirement in FORMAL_DEVICE_GATES.items():
         record = gates.get(name) if isinstance(gates.get(name), dict) else {}
+        has_required_evidence = _evidence_present(record)
+        if name == "input":
+            has_required_evidence = _native_input_owner_evidence_present(record)
         formal[name] = _check(
             record.get("owner_pr") == GATE_OWNERS[name]
             and _status_pass(record.get("status"))
-            and _evidence_present(record),
+            and has_required_evidence,
             requirement,
             evidence=[str(record.get("owner_pr"))] + _string_list(record.get("evidence")),
             blocking=True,
@@ -779,9 +795,9 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     metadata = _metadata_checks(manifest, manifest_path)
     environment = _environment_checks(manifest)
     signing = _signing_checks(manifest)
+    native_input = _native_input_checks(manifest)
     devices = _device_checks(manifest)
     videotoolbox_readiness = _videotoolbox_readiness_checks(manifest)
-    native_input = _native_input_checks(manifest)
     formal, broader = _gate_checks(manifest)
     substitutions = _substitution_checks(manifest)
 
@@ -789,9 +805,9 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     blocking_groups = {
         **environment,
         **signing,
+        **native_input,
         **devices,
         **videotoolbox_readiness,
-        **native_input,
         **formal,
     }
     blocking_missing = [name for name, item in blocking_groups.items() if not item["passed"]]
@@ -834,9 +850,9 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
             "metadata": metadata,
             "environment": environment,
             "signing": signing,
+            "native_input": native_input,
             "devices": devices,
             "videotoolbox_readiness": videotoolbox_readiness,
-            "native_input": native_input,
             "formal_device_gates": formal,
             "broader_phase5_gates": broader,
             "evidence_substitution": substitutions,

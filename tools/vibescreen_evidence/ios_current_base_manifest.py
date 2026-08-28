@@ -67,9 +67,6 @@ SOURCE_DOCS = [
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
 SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
-VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
-VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
-VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
 NATIVE_INPUT_KIND = "ios_native_input_behavior"
 NATIVE_INPUT_PROFILE = "ios-native-input-behavior"
 NATIVE_INPUT_GATE_OWNER = "phase5-ios-native-input-behavior"
@@ -77,6 +74,10 @@ NATIVE_INPUT_OWNER_ROLE = "ios_native_input_behavior_current_base_owner"
 NATIVE_INPUT_OWNER_BRANCH = "codex/ios-native-input-readiness-gate"
 NATIVE_INPUT_OWNER_PR = "#257"
 NATIVE_INPUT_GATE_KIND = NATIVE_INPUT_KIND
+NATIVE_INPUT_GATE_PROFILE = NATIVE_INPUT_PROFILE
+VIDEOTOOLBOX_READINESS_KIND = "ios_hardware_videotoolbox_readiness"
+VIDEOTOOLBOX_READINESS_PROFILE = "ios-hardware-videotoolbox-readiness"
+VIDEOTOOLBOX_RUNTIME_CLASSES = ("physical_iphone", "physical_ipad")
 
 FORMAL_DEVICE_GATES = {
     "signing": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
