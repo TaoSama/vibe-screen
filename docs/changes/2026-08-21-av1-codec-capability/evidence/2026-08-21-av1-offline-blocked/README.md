@@ -11,24 +11,24 @@ Android device identity, if used in a future Android run, must be recorded as:
 - Manufacturer/model: Nubia P0110
 - Codename: pacific
 - Android: 16
-- Serial: EP0110PZ0B9110300B
+- Serial: `<redacted-device-serial>`
 
 Do not label any result from this device as Xiaomi 13/fuxi evidence.
 
 ## 2026-08-22 device capability probe
 
 Before issuing device commands, `/tmp/vibe-screen-device-android.lock` was
-checked and was absent. The following read-only ADB checks used the explicit
-serial `EP0110PZ0B9110300B`:
+checked and was absent. The following read-only ADB checks used the required
+explicit device selector. The public command excerpts redact the device serial:
 
-    adb -s EP0110PZ0B9110300B get-state
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-    adb -s EP0110PZ0B9110300B shell cmd media.codec list
-    adb -s EP0110PZ0B9110300B shell 'grep -Rin "av1" /vendor/etc/*media*codec*.xml /vendor/etc/media_codecs*.xml 2>/dev/null | head -80'
+    adb -s <redacted-device-serial> get-state
+    adb -s <redacted-device-serial> shell getprop ro.product.manufacturer
+    adb -s <redacted-device-serial> shell getprop ro.product.model
+    adb -s <redacted-device-serial> shell getprop ro.product.device
+    adb -s <redacted-device-serial> shell getprop ro.build.version.release
+    adb -s <redacted-device-serial> shell getprop ro.build.version.sdk
+    adb -s <redacted-device-serial> shell cmd media.codec list
+    adb -s <redacted-device-serial> shell 'grep -Rin "av1" /vendor/etc/*media*codec*.xml /vendor/etc/media_codecs*.xml 2>/dev/null | head -80'
 
 The connected device reported `nubia / P0110 / pacific / Android 16 / SDK 36`.
 `cmd media.codec list` failed with `Can't find service: media.codec`, so no
@@ -53,7 +53,8 @@ output frame, or sustained AV1 stream.
 1. Record repository commit, branch, dirty-tree status, macOS version, Xcode
    version, Host bundle signing identity, and Host binary SHA-256.
 2. Record exact device identity before the run. For the current Android device,
-   use Nubia P0110 / pacific / Android 16 / serial EP0110PZ0B9110300B.
+   use Nubia P0110 / pacific / Android 16 / SDK 36 and redact the serial from
+   public evidence.
 3. Capture Host-side AV1 hardware encoder support and confirm the Host build has
    an AV1 encoder implementation, AV1 frame packaging, and an advertised
    CODEC_AV1 path gated by that support.
