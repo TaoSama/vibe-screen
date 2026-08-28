@@ -1,7 +1,7 @@
 # HarmonyOS current-base aggregate owner audit
 
 Date: 2026-08-23; rebased check: 2026-08-27
-Base: `origin/main` at `74a539c033b67733af72e651f81d6364603a8a07`
+Base: `origin/main` at `3b2ba11e832a3618eaedfc67f92414b161423a00`
 Scope: current-base owner selection and fail-closed evidence routing only. This
 record does not close any HarmonyOS real-device gate.
 
@@ -9,7 +9,7 @@ record does not close any HarmonyOS real-device gate.
 
 This branch is the current-base aggregate owner successor for the Phase 4
 README gate surface. It refreshes the owner-gate approach from PR #283 onto
-`74a539c033b67733af72e651f81d6364603a8a07`, expands the aggregate scope to the
+`3b2ba11e832a3618eaedfc67f92414b161423a00`, expands the aggregate scope to the
 full DevEco/HAP/decode/HUKS/authenticated-transport/resume/MatePad surface, and
 absorbs the strict evidence-root hardening from PR #269. PR #250 remains a
 README-only support change that clarifies component-level decode and resume
@@ -60,6 +60,10 @@ directory as evidence root. A final pass therefore requires local relative
 evidence files or explicitly referenced evidence directories under the package.
 URLs, absolute paths, missing artifacts, directory/file type mismatches, and path
 traversal fail closed.
+
+## 2026-08-27 current-base rerun
+
+The 2026-08-27 rerun on `3b2ba11e832a3618eaedfc67f92414b161423a00` produced a fail-closed blocked bundle at `docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/`. The run exercised portable readiness, AVCodec preflight, current-base aggregation, and MatePad acceptance packaging from the current source tree. It did not have DevEco/Hvigor/OHPM/HDC, a signed HAP, a MatePad Mini target, a HUKS pairing run, authenticated Harmony transport evidence, or a resume-capable Host/device interop run, so it does not close any HarmonyOS real-device gate.
 
 ## Evidence boundary
 
