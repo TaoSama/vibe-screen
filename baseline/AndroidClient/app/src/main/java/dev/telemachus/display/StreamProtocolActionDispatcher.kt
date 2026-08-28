@@ -115,20 +115,27 @@ internal class StreamProtocolActionDispatcher(
         fun onFileAcceptReceived(
             out: DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             response: FileAccept,
         )
 
         fun onFileProgressReceived(
             out: DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             progress: FileTransferProgress,
         )
 
-        fun onFileCancelReceived(cancellation: FileTransferCancel)
+        fun onFileCancelReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            cancellation: FileTransferCancel,
+        )
 
         fun onFileCompleteReceived(
             out: DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             result: FileTransferComplete,
         )
 
@@ -140,6 +147,8 @@ internal class StreamProtocolActionDispatcher(
         )
 
         fun onWakeHostCompleted(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
             accepted: Boolean,
             rejectionReason: String,
         )
@@ -230,12 +239,14 @@ internal class StreamProtocolActionDispatcher(
                 is ProtocolV1Session.Action.ManagedPolicyReceived -> sink.onManagedPolicyReceived(action.status)
                 is ProtocolV1Session.Action.FileOfferReceived ->
                     sink.onFileOfferReceived(out, session, connectionGeneration, action.offer)
-                is ProtocolV1Session.Action.FileAcceptReceived -> sink.onFileAcceptReceived(out, session, action.response)
+                is ProtocolV1Session.Action.FileAcceptReceived ->
+                    sink.onFileAcceptReceived(out, session, connectionGeneration, action.response)
                 is ProtocolV1Session.Action.FileProgressReceived ->
-                    sink.onFileProgressReceived(out, session, action.progress)
-                is ProtocolV1Session.Action.FileCancelReceived -> sink.onFileCancelReceived(action.cancellation)
+                    sink.onFileProgressReceived(out, session, connectionGeneration, action.progress)
+                is ProtocolV1Session.Action.FileCancelReceived ->
+                    sink.onFileCancelReceived(session, connectionGeneration, action.cancellation)
                 is ProtocolV1Session.Action.FileCompleteReceived ->
-                    sink.onFileCompleteReceived(out, session, action.result)
+                    sink.onFileCompleteReceived(out, session, connectionGeneration, action.result)
                 is ProtocolV1Session.Action.WakeHost ->
                     sink.onWakeHostRequested(
                         session = session,
@@ -244,7 +255,7 @@ internal class StreamProtocolActionDispatcher(
                         correlationId = action.correlationId,
                     )
                 is ProtocolV1Session.Action.WakeHostCompleted ->
-                    sink.onWakeHostCompleted(action.accepted, action.rejectionReason)
+                    sink.onWakeHostCompleted(session, connectionGeneration, action.accepted, action.rejectionReason)
                 is ProtocolV1Session.Action.Disconnected ->
                     return ReceiveResult.Disconnected(
                         sink.onDisconnected(action.reasonCode, action.mayResume),
