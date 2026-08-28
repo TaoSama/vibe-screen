@@ -1,0 +1,19 @@
+$ pgrep -x sfltool || true
+$ git status --short --branch
+## codex/lan-smoke-unblock-check-fix
+$ git rev-parse HEAD
+8dd1a2367495cf92c8991077e14d489de78214d1
+$ make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28
+mkdir -p /tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28
+python3 scripts/macos_dev_host.py readiness \
+		--report /tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28/host-signing-and-permissions.txt \
+		--json-output /tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28/host-readiness.json \
+		--port 54321
+Wrote /tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28/host-signing-and-permissions.txt
+Wrote /tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28/host-readiness.json
+make: *** [baseline-macos-host-readiness] Error 2
+
+The formatted JSON report is retained as host-readiness.json in this evidence
+directory. It records generated_at 2026-08-28T10:51:00.826983+00:00 and did not
+pass any login-item probe flag. It reports the same blocked prerequisites and
+does not close trusted-LAN, runtime, headless-login, or controller gates.
