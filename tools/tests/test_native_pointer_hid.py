@@ -27,9 +27,10 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
                 "android_release": "16",
                 "sdk": "36",
             },
-            "external_mouse_devices": [{"name": "USB Mouse", "sources": "MOUSE", "is_external": "true"}],
+            "external_mouse_devices": [{"device_id": 11, "name": "USB Mouse", "sources": "MOUSE", "is_external": "true"}],
             "required_pointer_events": ["move", "press", "release"],
             "observed_android_pointer_events": ["move", "press", "release"],
+            "observed_android_pointer_device_ids_by_event": {"move": [11], "press": [11], "release": [11]},
             "observed_host_pointer_events": ["move", "press", "release"],
             "host_stable_signed_tcc_ready": True,
             "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
@@ -75,6 +76,41 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["observations"]["physical_mouse_attached"])
         self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
+
+    def test_android_forwarding_device_ids_must_match_external_mouse(self) -> None:
+        record = self.complete_record()
+        record["observed_android_pointer_device_ids_by_event"] = {"move": [99], "press": [99], "release": [99]}
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
+    def test_synthetic_negative_device_id_cannot_close_gate(self) -> None:
+        record = self.complete_record()
+        record["external_mouse_devices"] = [{"device_id": -1, "name": "Virtual mouse", "sources": "MOUSE", "is_external": "true"}]
+        record["observed_android_pointer_device_ids_by_event"] = {"move": [-1], "press": [-1], "release": [-1]}
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["observations"]["physical_mouse_attached"])
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+
+    def test_virtual_named_mouse_cannot_close_gate_even_when_external(self) -> None:
+        record = self.complete_record()
+        record["external_mouse_devices"] = [
+            {"device_id": 11, "name": "uinput synthetic mouse", "sources": "MOUSE", "is_external": "true"},
+            {"device_id": 12, "name": "Virtual Bluetooth Trackpad", "sources": "TOUCHPAD", "is_external": "true"},
+        ]
+        record["observed_android_pointer_device_ids_by_event"] = {"move": [11], "press": [11], "release": [11]}
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["observations"]["physical_mouse_attached"])
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
 
     def test_p0110_identity_cannot_be_relabeled_as_xiaomi(self) -> None:
         record = self.complete_record()
@@ -220,6 +256,47 @@ class NativePointerHIDCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         summary = json.loads(result.stdout)
         self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
+    def test_cli_reuses_existing_output_run_id_when_rerun_without_explicit_id(self) -> None:
+        with self.subTest("existing output run_id is stable"):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                input_path = Path(temporary_directory) / "result.json"
+                output_path = Path(temporary_directory) / "native-pointer-hid-summary.json"
+                input_path.write_text(json.dumps({"status": "blocked", "reason": "No physical mouse."}), encoding="utf-8")
+                output_path.write_text(json.dumps({"run_id": "stable-run"}), encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, "-m", MODULE, str(input_path), "--output", str(output_path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 2, result.stderr)
+                summary = json.loads(output_path.read_text(encoding="utf-8"))
+                self.assertEqual(summary["run_id"], "stable-run")
+
+        with self.subTest("malformed existing run_id is ignored"):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                input_path = Path(temporary_directory) / "result.json"
+                output_path = Path(temporary_directory) / "native-pointer-hid-summary.json"
+                input_path.write_text(json.dumps({"status": "blocked", "reason": "No physical mouse."}), encoding="utf-8")
+                output_path.write_text(json.dumps({"run_id": ""}), encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, "-m", MODULE, str(input_path), "--output", str(output_path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 2, result.stderr)
+                summary = json.loads(output_path.read_text(encoding="utf-8"))
+                self.assertRegex(summary["run_id"], r"^[0-9a-f-]{36}$")
 
 
 if __name__ == "__main__":
