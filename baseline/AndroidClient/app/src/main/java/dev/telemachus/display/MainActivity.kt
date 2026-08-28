@@ -5598,7 +5598,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 val guidance = ConnectionGuidanceFactory.from(e, guidanceContext)
-                if (!automatic && e !is SessionProtocolException) {
+                if (e !is SessionProtocolException || e.failure.retryable) {
                     inlineGuidance = guidance
                 }
             } finally {

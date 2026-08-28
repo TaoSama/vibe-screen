@@ -84,9 +84,9 @@ embedded source commit/tree/dirty state, and read-only TCC state to:
 ```
 
 The script does not import certificates, store passwords, update Keychain ACLs,
-modify `TCC.db`, run `tccutil`, or grant permissions. If codesign cannot access
-the private key, fix the Keychain item ownership/ACL for `/usr/bin/codesign` on
-that machine instead of switching to ad-hoc signing.
+modify macOS privacy databases, run `tccutil`, or grant permissions. If
+codesign cannot access the signing material, fix the Keychain item ownership/ACL
+for `/usr/bin/codesign` on that machine instead of switching to ad-hoc signing.
 
 ## First-run permissions
 
@@ -162,8 +162,11 @@ commit/tree/dirty state, read-only Screen Recording and Accessibility TCC rows,
 TCP listener observation for port `54321`, and whether the bundle carries the
 virtual HID entitlement needed by controller runtime acceptance. The command is
 read-only: it does not start Vibe Screen, import certificates, change Keychain
-settings, modify `TCC.db`, request macOS privacy grants, configure ADB, or touch
-Android state.
+settings, modify macOS privacy databases, request macOS privacy grants,
+configure ADB, or touch Android state. It also skips Launch at Login probing by default so automated
+tests and CI do not invoke `/usr/bin/sfltool dumpbtm` or trigger macOS
+authorization prompts. For an explicit manual diagnostic, run
+`make baseline-macos-host-readiness MACOS_HOST_READINESS_PROBE_LOGIN_ITEM=1 EVIDENCE_DIR=<evidence-dir>`.
 
 The `can_start_*` fields are prerequisite flags only. They say whether a run may
 begin collecting runtime evidence from the current Host identity; they never
