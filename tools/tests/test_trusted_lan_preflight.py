@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import fcntl
+import os
 import sys
 import tempfile
 import unittest
@@ -8,7 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from vibescreen_evidence.trusted_lan_preflight import (
+    CommandCapture,
+    DeviceLock,
+    DeviceLockError,
+    DeviceLockSnapshot,
     _default_route_interface,
+    device_lock_path,
     _identity_stage,
     _private_ipv4_candidates,
     _route_result_reaches_wifi,
@@ -47,6 +54,21 @@ class FakeADBClient:
 
     def identity(self):
         return dict(DEVICE_IDENTITY, adb_serial=self.serial)
+
+
+class FakeDeviceLock:
+    def __init__(self, serial: str) -> None:
+        self.serial = serial
+
+    def __enter__(self) -> DeviceLockSnapshot:
+        return DeviceLockSnapshot(f"/tmp/vibe-screen-android-<device-serial>.lock", True, "acquired")
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+
+def clean_sfltool_processes() -> dict[str, object]:
+    return CommandCapture(["pgrep", "-x", "sfltool"], 1, "", "").as_json()
 
 
 class TrustedLANPreflightTests(unittest.TestCase):
@@ -133,8 +155,53 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertIn("device model is not P0110", stage["summary"])
         self.assertIn("device codename is not pacific", stage["summary"])
 
+    def test_device_lock_reuses_stale_unlocked_marker(self) -> None:
+        serial = "TESTLOCK_STALE"
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                path.write_text("stale marker", encoding="utf-8")
+
+                with DeviceLock(serial) as snapshot:
+                    self.assertTrue(snapshot.acquired)
+                    self.assertIn("TESTLOCK_STALE", path.read_text(encoding="utf-8"))
+
+                self.assertFalse(path.exists())
+
+    def test_device_lock_blocks_when_flocked_by_another_process(self) -> None:
+        serial = "TESTLOCK_ACTIVE"
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                with path.open("w", encoding="utf-8") as handle:
+                    handle.write("owner=other\n")
+                    handle.flush()
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    with self.assertRaises(DeviceLockError):
+                        with DeviceLock(serial):
+                            pass
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def test_device_lock_rejects_preexisting_symlink_without_following(self) -> None:
+        serial = "EP0110PZ0B9110300B"
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
+                path = device_lock_path(serial)
+                target = Path(directory) / "symlink-target"
+                path.symlink_to(target)
+
+                with self.assertRaisesRegex(DeviceLockError, "symlink"):
+                    with DeviceLock(serial):
+                        pass
+
+                self.assertTrue(path.is_symlink())
+                self.assertFalse(target.exists())
+                self.assertNotIn(serial, os.readlink(path))
+
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient", FakeADBClient)
+    @patch("vibescreen_evidence.trusted_lan_preflight.DeviceLock", FakeDeviceLock)
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_preflight")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_android_network")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_network")
@@ -143,9 +210,11 @@ class TrustedLANPreflightTests(unittest.TestCase):
         host_network,
         android_network,
         host_preflight,
+        sfltool_processes,
         repository_state,
     ) -> None:
         repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = clean_sfltool_processes()
         host_network.return_value = {
             "mac_ipv4_candidates": ["10.0.0.10"],
             "host_port": 54321,
@@ -182,11 +251,15 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertFalse(document["claims"]["real_lan_stream"])
         self.assertFalse(document["claims"]["trusted_lan_encrypted"])
         self.assertIn("android_wifi_association: Wi-Fi is not associated", document["blockers"])
+        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertEqual(document["android_device"]["identity"]["adb_serial"], "<device-serial>")
         self.assertEqual(document["safety"]["starts_host"], False)
         self.assertEqual(document["safety"]["writes_pairing_token"], False)
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient", FakeADBClient)
+    @patch("vibescreen_evidence.trusted_lan_preflight.DeviceLock", FakeDeviceLock)
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_preflight")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_android_network")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_network")
@@ -195,9 +268,11 @@ class TrustedLANPreflightTests(unittest.TestCase):
         host_network,
         android_network,
         host_preflight,
+        sfltool_processes,
         repository_state,
     ) -> None:
         repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = clean_sfltool_processes()
         host_network.return_value = {
             "mac_ipv4_candidates": ["10.0.0.10"],
             "host_port": 54321,
@@ -237,6 +312,8 @@ class TrustedLANPreflightTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient", FakeADBClient)
+    @patch("vibescreen_evidence.trusted_lan_preflight.DeviceLock", FakeDeviceLock)
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_preflight")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_android_network")
     @patch("vibescreen_evidence.trusted_lan_preflight.collect_host_network")
@@ -245,9 +322,11 @@ class TrustedLANPreflightTests(unittest.TestCase):
         host_network,
         android_network,
         host_preflight,
+        sfltool_processes,
         repository_state,
     ) -> None:
         repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = clean_sfltool_processes()
         private_endpoint = "100." + "72.239.103"
         host_network.return_value = {
             "mac_ipv4_candidates": [private_endpoint],
@@ -291,7 +370,81 @@ class TrustedLANPreflightTests(unittest.TestCase):
         encoded = json.dumps(document)
 
         self.assertNotIn(private_endpoint, encoded)
+        self.assertNotIn("EP0110PZ0B9110300B", encoded)
         self.assertIn("<redacted-cgnat-ipv4>", encoded)
+
+    @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
+    @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient")
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
+    def test_sfltool_process_blocks_before_adb(self, sfltool_processes, adb_client, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = CommandCapture(["pgrep", "-x", "sfltool"], 0, "123\n", "").as_json()
+
+        document = build_document(
+            serial="EP0110PZ0B9110300B",
+            adb_path="adb",
+            adb_timeout=1,
+            repo=Path("."),
+            host_port=54321,
+            mac_host_ipv4=[],
+            host_preflight_command=[sys.executable, "scripts/macos_dev_host.py", "preflight"],
+            require_host_listener=False,
+        )
+
+        self.assertEqual(document["result"], "blocked")
+        self.assertIn("sfltool_process_check", document["blockers"][0])
+        adb_client.assert_not_called()
+
+    @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
+    @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient")
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
+    def test_sfltool_probe_failure_blocks_before_adb(self, sfltool_processes, adb_client, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = CommandCapture(["pgrep", "-x", "sfltool"], 2, "", "pgrep failed").as_json()
+
+        document = build_document(
+            serial="EP0110PZ0B9110300B",
+            adb_path="adb",
+            adb_timeout=1,
+            repo=Path("."),
+            host_port=54321,
+            mac_host_ipv4=[],
+            host_preflight_command=[sys.executable, "scripts/macos_dev_host.py", "preflight"],
+            require_host_listener=False,
+        )
+
+        self.assertEqual(document["result"], "blocked")
+        self.assertIn("Could not confirm sfltool absence", document["stages"][0]["summary"])
+        adb_client.assert_not_called()
+
+    @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
+    @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient")
+    @patch("vibescreen_evidence.trusted_lan_preflight.collect_sfltool_processes")
+    @patch("vibescreen_evidence.trusted_lan_preflight.DeviceLock")
+    def test_device_lock_blocks_before_adb(self, device_lock, sfltool_processes, adb_client, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        sfltool_processes.return_value = clean_sfltool_processes()
+        device_lock.return_value.__enter__.side_effect = DeviceLockError(
+            path=Path("/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock"),
+            detail="owner=other pid=1 serial=EP0110PZ0B9110300B",
+        )
+
+        document = build_document(
+            serial="EP0110PZ0B9110300B",
+            adb_path="adb",
+            adb_timeout=1,
+            repo=Path("."),
+            host_port=54321,
+            mac_host_ipv4=[],
+            host_preflight_command=[sys.executable, "scripts/macos_dev_host.py", "preflight"],
+            require_host_listener=False,
+        )
+
+        self.assertEqual(document["result"], "blocked")
+        self.assertIn("device_lock", document["blockers"][0])
+        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertIn("serial=<device-serial>", document["device_lock"]["detail"])
+        adb_client.assert_not_called()
 
 
 class TrustedLANPreflightCliTests(unittest.TestCase):
