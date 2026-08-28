@@ -759,16 +759,6 @@ harmony-current-base-gate:
 		--evidence-root "$(EVIDENCE_DIR)" \
 		--output "$(HARMONY_CURRENT_BASE_GATE_JSON)"
 
-harmony-host-interop-preflight:
-	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS Host interop evidence directory" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py --evidence-dir "$(EVIDENCE_DIR)"
-
-harmony-host-interop-gate:
-	@test -f "$(HARMONY_HOST_INTEROP_JSON)" || (echo "error: set HARMONY_HOST_INTEROP_JSON to a sanitized HarmonyOS Host interop manifest" >&2; exit 2)
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_host_interop_preflight.py \
-		--evidence-root "$(EVIDENCE_DIR)" \
-		"$(HARMONY_HOST_INTEROP_JSON)"
-
 harmony-matepad-acceptance:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS MatePad Mini acceptance evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_matepad_acceptance.py \
