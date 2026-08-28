@@ -267,6 +267,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             raise IOSCurrentBaseGateError(
                 f"manifest schema violation: native_input_gate.{field} must be {type_name}"
             )
+
     videotoolbox_readiness_gates = manifest.get("videotoolbox_readiness_gates")
     if not isinstance(videotoolbox_readiness_gates, list):
         raise IOSCurrentBaseGateError(
