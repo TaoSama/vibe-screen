@@ -120,6 +120,9 @@ class MainActivityTerminalGuidanceContractTest {
         val source = mainActivitySource()
         val setupUi = extractMethod(source, "private fun setupUI")
         val inlineGuidance = extractMethod(source, "private fun showUsbConnectionGuidance")
+        val clearGuidance = extractMethod(source, "private fun clearUsbConnectionGuidance")
+        val updateMainStatus = extractMethod(source, "private fun updateMainStatus")
+        val compactUpdateMainStatus = updateMainStatus.replace(Regex("\\s+"), "")
 
         assertFalse(
             "USB validation guidance must use string resources instead of hardcoded text",
@@ -136,6 +139,21 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Inline USB guidance should expand details so the failed checklist item is visible",
             inlineGuidance.contains("setConnectionDetailsVisible(true)"),
+        )
+        assertTrue(
+            "Inline USB guidance should make the primary status indicator visibly fail",
+            inlineGuidance.contains("binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_red)"),
+        )
+        assertTrue(
+            "Checklist refreshes must preserve the red status indicator while inline USB guidance is visible",
+            compactUpdateMainStatus.contains(
+                "if(binding.connectionErrorContainer.visibility==View.VISIBLE){" +
+                    "binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_red)return}",
+            ),
+        )
+        assertTrue(
+            "Clearing USB guidance should return the indicator to the neutral waiting state",
+            clearGuidance.contains("binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)"),
         )
     }
 

@@ -1564,6 +1564,7 @@ class MainActivity : AppCompatActivity() {
             LiveRegionTextApplier.apply(binding.connectionErrorTitle, guidanceStatus(guidance))
             LiveRegionTextApplier.show(binding.connectionErrorMessage, guidanceMessage(guidance))
             binding.connectionErrorContainer.visibility = View.VISIBLE
+            binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_red)
             if (!connectionDetailsVisible) {
                 setConnectionDetailsVisible(true)
             } else {
@@ -1612,6 +1613,7 @@ class MainActivity : AppCompatActivity() {
     private fun clearUsbConnectionGuidance() {
         if (!::binding.isInitialized) return
         binding.connectionErrorContainer.visibility = View.GONE
+        binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
         LiveRegionTextApplier.apply(binding.connectionErrorTitle, getString(R.string.connection_issue))
         LiveRegionTextApplier.hide(binding.connectionErrorMessage)
     }
@@ -6667,6 +6669,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMainStatus(allReady: Boolean) {
+        if (binding.connectionErrorContainer.visibility == View.VISIBLE) {
+            binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_red)
+            return
+        }
         binding.statusIndicator.setBackgroundResource(
             if (allReady) {
                 R.drawable.status_indicator_green

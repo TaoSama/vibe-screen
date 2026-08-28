@@ -1,0 +1,31 @@
+== window-controlbar-revealed.xml
+text='' desc='Show stream controls' id='dev.telemachus.display:id/inputViewport' bounds=[277,0][2524,1264] clickable=true
+text='' desc='USB connection, ADB reverse' id='dev.telemachus.display:id/connectionSecurityGroup' bounds=[518,238][938,406] clickable=false
+text='USB' desc='' id='dev.telemachus.display:id/connectionSecurityLabel' bounds=[546,267][910,324] clickable=false
+text='ADB reverse' desc='' id='dev.telemachus.display:id/connectionSecurityDetail' bounds=[546,324][910,377] clickable=false
+text='' desc='Choose display, currently DELL U2723QE' id='dev.telemachus.display:id/displayCapsuleGroup' bounds=[959,238][1820,406] clickable=true
+text='DELL U2723QE' desc='' id='dev.telemachus.display:id/controlDisplaysLabel' bounds=[1078,291][1708,353] clickable=false
+text='' desc='Window actions' id='dev.telemachus.display:id/controlHostActionsButton' bounds=[1834,238][2002,406] clickable=true
+text='' desc='Settings' id='dev.telemachus.display:id/controlSettingsButton' bounds=[2030,238][2198,406] clickable=true
+text='' desc='Disconnect' id='dev.telemachus.display:id/controlDisconnectButton' bounds=[2254,238][2422,406] clickable=true
+
+== window-settings-retry.xml
+text='Display settings' desc='' id='' bounds=[406,266][2534,397] clickable=false
+text='Show Stats' desc='' id='' bounds=[448,507][772,588] clickable=false
+text='FPS, bitrate, resolution' desc='' id='' bounds=[448,588][924,650] clickable=false
+text='' desc='Show Stats' id='dev.telemachus.display:id/showStatsSwitch' bounds=[1225,495][1393,663] clickable=true
+text='Sustained use' desc='' id='' bounds=[448,789][852,870] clickable=false
+text='No device warnings' desc='' id='dev.telemachus.display:id/deviceHealthStatus' bounds=[448,884][1393,950] clickable=false
+text='Battery 100% · charging · power saver off · thermal normal' desc='' id='dev.telemachus.display:id/deviceHealthSummary' bounds=[448,964][1393,1054] clickable=false
+text='Video' desc='' id='' bounds=[1547,495][1711,576] clickable=false
+text='Quality' desc='' id='' bounds=[1547,618][1692,680] clickable=false
+text='AUTO' desc='' id='dev.telemachus.display:id/videoQualityAuto' bounds=[1547,708][2492,876] clickable=true
+text='SMOOTH' desc='' id='dev.telemachus.display:id/videoQualitySmooth' bounds=[1547,872][2492,1040] clickable=true
+text='BALANCED' desc='' id='dev.telemachus.display:id/videoQualityBalanced' bounds=[1547,1036][2492,1054] clickable=true
+
+== window-disconnect-confirm-retry2.xml
+text='Disconnect?' desc='' id='dev.telemachus.display:id/alertTitle' bounds=[774,436][1091,512] clickable=false
+text='This ends the current screen session with the Mac.' desc='' id='android:id/message' bounds=[690,540][2250,606] clickable=false
+text='CANCEL' desc='' id='android:id/button2' bounds=[1534,715][1799,883] clickable=true
+text='DISCONNECT' desc='' id='android:id/button1' bounds=[1827,715][2222,883] clickable=true
+
