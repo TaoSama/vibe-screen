@@ -1,0 +1,14 @@
+2ec861f1bf3efa35aa623d26435a17a1ddc11a621b8171350fbaf18025d90f83  ./android-file-transfer-instrumentation.txt
+5d9824a088bc1290291fbf8c22c7f24f54ff4cf9a0270852826055b5f9a231dd  ./android-focused-jvm-tests.txt
+e106fc7049adef3387a67a5d52b177caa8ae6f2961d6177d067c3cf22ff897fd  ./android-install-debug-test.log
+07bbc202650936c88f65a1143c443f6d69dfddc45e338c82e57f5c300c5321bf  ./blocked.json
+98c3183b796a0efe9b7abfa2b432da00ae75c9c5957fa895a9dc2e2ce1c40ffd  ./commands.txt
+3aa0d194ad5c357e37452e7e4f7c262ae2b4719a9d50c22089bd2749dc3bcf2c  ./file-transfer-gate-unit-tests.txt
+7230865fd86253d704f2b54e2273b058fbfdceeab3042b2e22a6406e3b44468d  ./host-readiness.json
+0981e1deba078da6a461e138b6d96b6552f8880da2a9741ac02517f055801818  ./host-signing-and-permissions.txt
+82cce0496a70dcc7062750ae77f7b9090695ba4b693bf6778e1e315c118e8158  ./macos-host-file-transfer-xctest-attempt.txt
+49c4ed6a8097c0e7f0449621e16344cd244b9038f037692d2ac2d3b1c8db9317  ./macos-host-swift-build.txt
+e271d90140d310ad4d42b430597dd42434c411c5214f83a117e6cf14a84ffc93  ./protocol-tests.txt
+b01af6a82f67595e488c80671ce46393949678808d465dce424ddfdd82e05815  ./README.md
+e77b6b5f78e1b3e7c14f941e42434555b19a4d5e7f0d653cb606ef9b177a65a0  ./usb-live-smoke.json
+21835eb12a20cd96252e284ff9eb9702e1e515faa534399484b362dd2d5e409f  ./usb-smoke-preflight.json
