@@ -51,7 +51,8 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.PHASE5_TEST).write_text(
-                "Host-side advanced adapter readiness gate does not close host-side multi-client/display",
+                "does not advertise `.multiClient` in production; does not close the "
+                "multi-client/display routing boundary",
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.README).write_text(
@@ -59,7 +60,8 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.IOS_README).write_text(
-                "Advanced host integrations phase5-host-advanced-adapters-gate readiness contract",
+                "Advanced host integrations require independent per-client epochs "
+                "and deny-wins managed policy",
                 encoding="utf-8",
             )
 
@@ -67,6 +69,77 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "fail")
         failed = [check for check in report["checks"] if check["status"] == "fail"]
+        self.assertEqual(
+            [check["name"] for check in failed],
+            ["production-host-defaults-do-not-advertise-hdr-audio-multiclient"],
+        )
+
+    def test_accepts_explicit_multi_client_opt_in_gate(self) -> None:
+        capability_body = (
+            "static func productionHostCapabilities(\n"
+            "    touchEnabled: Bool,\n"
+            "    maximumClients: Int = 1\n"
+            ") -> Set<VSCapability> {\n"
+            "if maximumClients > 1 { capabilities.insert(.multiClient) }\n"
+            "return capabilities\n"
+            "}\n"
+        )
+
+        result = phase5_host_advanced_adapters.check_default_advanced_capabilities(
+            capability_body
+        )
+
+        self.assertEqual(result.status, "pass")
+
+    def test_rejects_unconditional_multiclient_alongside_guarded_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name)
+            for relative in (
+                phase5_host_advanced_adapters.PROTOCOL_SESSION,
+                phase5_host_advanced_adapters.PHASE5_TECH,
+                phase5_host_advanced_adapters.PHASE5_TEST,
+                phase5_host_advanced_adapters.README,
+                phase5_host_advanced_adapters.IOS_README,
+            ):
+                (repo / relative).parent.mkdir(parents=True, exist_ok=True)
+            (repo / phase5_host_advanced_adapters.PROTOCOL_SESSION).write_text(
+                "static func productionHostCapabilities(maximumClients: Int = 1) {\\n"
+                "if fileTransferAllowed && managedPolicy.fileTransferAllowed {}\\n"
+                "if wakeHostAvailable && managedPolicy.wakeAllowed {}\\n"
+                "if managedPolicy.clipboardAllowed {}\\n"
+                "if touchEnabled && managedPolicy.hostActionsAllowed {}\\n"
+                "if hdrVideoAvailable {}\\n"
+                "if audioCaptureAvailable && managedPolicy.audioAllowed {}\\n"
+                ".colorManagement .multiDisplay .clientVideoControl\\n"
+                "if maximumClients > 1 { capabilities.insert(.multiClient) }\\n"
+                "capabilities.insert(.multiClient)\\n"
+                "return capabilities\\n"
+                "}\\n",
+                encoding="utf-8",
+            )
+            (repo / phase5_host_advanced_adapters.PHASE5_TECH).write_text(
+                "Host-side advanced adapter readiness owner phase5-host-advanced-adapters-gate",
+                encoding="utf-8",
+            )
+            (repo / phase5_host_advanced_adapters.PHASE5_TEST).write_text(
+                "does not advertise `.multiClient` in production; does not close the "
+                "multi-client/display routing boundary",
+                encoding="utf-8",
+            )
+            (repo / phase5_host_advanced_adapters.README).write_text(
+                "host-side advanced adapter readiness owner phase5-host-advanced-adapters-gate",
+                encoding="utf-8",
+            )
+            (repo / phase5_host_advanced_adapters.IOS_README).write_text(
+                "Advanced host integrations require independent per-client epochs "
+                "and deny-wins managed policy",
+                encoding="utf-8",
+            )
+
+            report = phase5_host_advanced_adapters.build_report(repo)
+
+        failed = [check for check in report["checks"] if check["status"] == "fail"]
+        self.assertEqual(report["verdict"], "fail")
         self.assertEqual(
             [check["name"] for check in failed],
             ["production-host-defaults-do-not-advertise-hdr-audio-multiclient"],

@@ -1,0 +1,16 @@
+## branch
+## codex/host-display-rotation-current-base-20260827
+ M docs/changes/2026-08-05-phase-1-android-client/TEST.md
+?? docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/
+
+## HEAD
+3b2ba11e832a3618eaedfc67f92414b161423a00
+
+## origin/main
+3b2ba11e832a3618eaedfc67f92414b161423a00
+
+## ahead behind
+0	0
+
+## remote
+git@github.com:TaoSama/vibe-screen.git
