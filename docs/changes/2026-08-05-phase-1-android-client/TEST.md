@@ -803,3 +803,30 @@ the gate still requires forwarded move, press, and release logs whose positive
 Evidence:
 
 - [`evidence/2026-08-27-p0110-native-pointer-hid-followup-blocked/`](evidence/2026-08-27-p0110-native-pointer-hid-followup-blocked/)
+## P0110 rotated host-display current-base refresh
+
+On 2026-08-27, the current-base owner record was refreshed again from clean
+`origin/main` at `3b2ba11e832a3618eaedfc67f92414b161423a00`. Read-only ADB
+identity and package probes used an explicit redacted serial and identified the
+connected device as nubia P0110 / pacific / Android 16 / SDK 36 with
+`dev.telemachus.display` and `dev.telemachus.display.test` installed.
+
+The run remained blocked before any real rotated host-display attempt. The
+installed Host bundle had identifier `dev.telemachus.display` and Authority
+`Vibe Screen Dev`, but `security find-identity -v -p codesigning` returned zero
+valid identities in the current shell, the installed Host lacked source
+commit/tree provenance, and the preflight could not prove Screen Recording,
+Accessibility, or signing/TCC match. No Android install, launch, ADB reverse
+mutation, Host stream, macOS display rotation, or input injection was performed.
+
+The retained `host-display-rotation.json` intentionally contains no completed
+physical or virtual runs. The formal evidence gate output is `status=failed`,
+with missing physical and virtual host-display evidence and missing 90/180/270
+coverage for both display kinds. The current-base aggregate gate returns
+`verdict=blocked`, `can_close_current_base_aggregate=false`, and
+`can_claim_real_device_pass=false`. This remains blocked/readiness evidence
+only; the rotated host-display acceptance gate is still open.
+
+Evidence:
+
+- [`evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-27-p0110-host-display-rotation-current-base-blocked/)

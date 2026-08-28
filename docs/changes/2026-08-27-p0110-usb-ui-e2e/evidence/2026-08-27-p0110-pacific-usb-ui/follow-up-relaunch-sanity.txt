@@ -1,0 +1,46 @@
+# Follow-up relaunch sanity
+
+Date: 2026-08-27
+Device: nubia P0110 / pacific / Android 16 / SDK 36
+Scope: current availability check for the Android USB UI/E2E owner PR.
+
+## Commands
+
+- git fetch origin --prune
+- git status --short --branch
+- adb -s <android-device-serial> get-state
+- adb -s <android-device-serial> shell getprop ro.product.manufacturer
+- adb -s <android-device-serial> shell getprop ro.product.model
+- adb -s <android-device-serial> shell getprop ro.product.device
+- adb -s <android-device-serial> shell getprop ro.build.version.release
+- adb -s <android-device-serial> shell getprop ro.build.version.sdk
+- adb -s <android-device-serial> reverse --list
+- adb -s <android-device-serial> shell am force-stop dev.telemachus.display
+- adb -s <android-device-serial> shell am start -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+- adb -s <android-device-serial> logcat -d -v time -s MA SC VD VibeScreenTelemetry
+
+## Observed state
+
+- Device state: device.
+- Device identity: nubia P0110 / pacific / Android 16 / SDK 36.
+- ADB reverse: UsbFfs tcp:54321 tcp:54321.
+- Android foreground component after relaunch: dev.telemachus.display/.MainActivity.
+- Host listener: 127.0.0.1:54321 observed.
+- UI hierarchy included videoViewport, surfaceView, inputViewport with
+  "Show stream controls", USB / ADB reverse labels, Settings, and Disconnect.
+
+## Key logcat excerpt
+
+    08-27 09:46:45.482 D/SC: Connected to 127.0.0.1:54321
+    08-27 09:46:48.622 D/MA: onVideoConfiguration: 1512x982 @ 0 deg epoch=0
+    08-27 09:46:48.703 D/VD: Decoder started: 1512x982 @ 60.000004Hz, surface=<redacted-surface>, valid=true
+
+## Boundary
+
+This is a short availability and relaunch sanity check only. It does not close
+performance, two-hour soak, Host RSS, current-source Host signing/TCC,
+native HID mouse, stylus, controller, LAN, Internet, or Xiaomi/fuxi gates.
+
+Raw screenshots and unfiltered device logs from this follow-up run are kept out
+of git. Public files use sanitized device references and preserve the P0110
+identity only.
