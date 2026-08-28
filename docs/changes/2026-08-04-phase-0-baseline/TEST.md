@@ -417,6 +417,19 @@ unsynchronized telemetry, decoder timing, RTT, screenshots, and ADB-generated
 input cannot close these gates. Evidence is retained under
 [evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/README.md).
 
+On 2026-08-28 Asia/Shanghai local time / 2026-08-28 UTC, origin/main commit
+`20cd27b1d59dfcc66e28df41aba421e14b6171f4` refreshed the latency current-base
+owner record. The connected Nubia P0110/pacific Android 16 / SDK 36 substitute
+and the installed Mac Host binary identity were recorded, USB reverse and a
+local Host listener were visible, and `wlan0` reported `NO-CARRIER` /
+`state DOWN` with no route output. `make evidence-latency-preflight` returned
+exit `2`, with all three profiles reporting `can_close_performance_gate=false`:
+there is still no retained high-frame-rate external-camera package, annotated
+latency sample set, formal latency manifest, synchronized-clock input proof,
+trusted-LAN stream artifact, or physical-input result artifact. Evidence is
+retained under
+[evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;

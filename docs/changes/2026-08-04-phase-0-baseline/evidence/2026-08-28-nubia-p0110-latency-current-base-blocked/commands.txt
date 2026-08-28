@@ -1,0 +1,98 @@
+# Commands
+
+Repository state:
+
+```bash
+pgrep -x sfltool || true
+git fetch origin main --prune
+git switch -c codex/p0110-latency-current-base-20260828 origin/main
+git rev-parse HEAD
+git rev-parse origin/main
+git remote get-url origin
+```
+
+Result: no `sfltool` process was present at the start of the run. `HEAD` and
+`origin/main` were both `20cd27b1d59dfcc66e28df41aba421e14b6171f4`; origin is
+GitHub. No `/usr/bin/sfltool dumpbtm` command was executed, and no login-item
+diagnostic opt-in argument was passed.
+
+Device identity checks used the required explicit ADB target form. Public
+artifacts redact the raw Android serial.
+
+```bash
+adb -s <redacted-serial> get-state
+adb -s <redacted-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-serial> shell getprop ro.product.model
+adb -s <redacted-serial> shell getprop ro.product.device
+adb -s <redacted-serial> shell getprop ro.build.version.release
+adb -s <redacted-serial> shell getprop ro.build.version.sdk
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.device_info \
+  --serial <redacted-serial> \
+  --no-connect \
+  --output <evidence-dir>/device-info.raw.json
+```
+
+Observed values:
+
+```text
+state: device
+manufacturer: nubia
+model: P0110
+device: pacific
+Android release: 16
+SDK: 36
+```
+
+The generated device-info file was then redacted so both `adb_serial` and
+`device_serial` are `nubia-p0110-pacific-device-1`, the local Android SDK path
+is replaced with `[redacted-android-sdk]`, and the fingerprint tail is replaced
+with `[redacted-build]` markers.
+
+Host identity checks used:
+
+```bash
+sysctl -n hw.model
+sw_vers
+shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen
+codesign -dv --verbose=4 /Applications/Vibe\ Screen.app
+```
+
+Camera and formal-package preflight used read-only checks:
+
+```bash
+system_profiler SPCameraDataType
+find docs/changes/2026-08-04-phase-0-baseline/evidence -maxdepth 2 \( -name raw-camera.mov -o -name manifest.json -o -name samples.csv -o -name latency-evidence-report.json \) -print | sort
+```
+
+Transport readiness checks used:
+
+```bash
+adb -s <redacted-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s <redacted-serial> shell ip addr show wlan0
+adb -s <redacted-serial> shell ip route
+adb -s <redacted-serial> shell pidof dev.telemachus.display
+```
+
+Latency preflight command:
+
+```bash
+make evidence-latency-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked \
+  LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/device-info.json \
+  LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/preflight-input.json \
+  LATENCY_REPOSITORY_REVISION=20cd27b1d59dfcc66e28df41aba421e14b6171f4
+```
+
+Result: exit `2`, meaning blocked readiness rather than malformed input or a
+failed latency measurement. The generated `latency-preflight.json` reports
+`status=blocked` and `can_close_performance_gate=false` for all three profiles.
+
+End-of-run process check:
+
+```bash
+pgrep -x sfltool || true
+```
+
+Result: no `sfltool` process was present at the end of the run.
