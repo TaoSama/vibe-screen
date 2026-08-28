@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from vibescreen_evidence.host_display_rotation_current_base_manifest import (
     SOURCE_DOCS,
     SUPPORTING_GATES,
     build_manifest,
+    collect_environment,
     main,
 )
 from vibescreen_evidence.manifest import ManifestError
@@ -156,6 +158,62 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "host-display-rotation-current-base-gate"])
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.repository_state")
+    def test_cli_resolves_relative_output_for_host_preflight_report(
+        self, state, environment, device
+    ):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {"codesigning_identities": {"target_identity_available": False}}
+        device.return_value = blocked_device()
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name) / "repo"
+            root.mkdir()
+            make_docs(root)
+            caller = Path(directory_name) / "caller"
+            caller.mkdir()
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(caller)
+                exit_code = main([
+                    "--repo",
+                    str(root),
+                    "--output",
+                    "evidence/manifest.json",
+                    "--",
+                    "make",
+                    "host-display-rotation-current-base-gate",
+                ])
+            finally:
+                os.chdir(previous_cwd)
+
+            expected_output = (caller / "evidence" / "manifest.json").resolve()
+            manifest = json.loads(expected_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        environment.assert_called_once_with(root.resolve(), expected_output.parent / "host-preflight.txt")
+        self.assertEqual(manifest["command"], ["make", "host-display-rotation-current-base-gate"])
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._host_preflight_probe")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._installed_host_codesign_probe")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._signing_probe")
+    def test_collect_environment_writes_host_preflight_report_inside_evidence(
+        self, signing, installed_codesign, run_probe, host_preflight
+    ):
+        signing.return_value = {"status": "blocked"}
+        installed_codesign.return_value = {"status": "blocked"}
+        run_probe.return_value = {"status": "blocked"}
+        host_preflight.return_value = {"status": "blocked"}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            report = root / "evidence" / "host-preflight.txt"
+
+            collect_environment(root, report)
+
+        host_preflight.assert_called_once_with(root, report)
 
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
