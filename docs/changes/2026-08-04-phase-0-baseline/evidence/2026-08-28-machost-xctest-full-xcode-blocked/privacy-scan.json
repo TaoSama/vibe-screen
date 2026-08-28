@@ -1,0 +1,87 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2601,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "2c6f8f5f8a7642ec038ace4ab7d716faf8c836fe67cba5e62caeb8ad7fb6b48a"
+    },
+    {
+      "bytes": 3559,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "a22394028c6415c39a8e5737fada6e359a48ef1010933fbaae8a98b7f03cf245"
+    },
+    {
+      "bytes": 776,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "environment.txt",
+      "result": "pass",
+      "sha256": "0b0a12bfd4175dcfb96b9c92c7f26106f736187f89f865198a04f171a23f2d5b"
+    },
+    {
+      "bytes": 3309,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "readiness.json",
+      "result": "pass",
+      "sha256": "8249b0771aff6394bdf602db6536366c85f27237d2c4173a53aa02f090a845f0"
+    },
+    {
+      "bytes": 946,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "xctest-toolchain.txt",
+      "result": "pass",
+      "sha256": "5fd44d996c17c7ed9008b7e8f717644bfe6239f4ca246f558abac0893355183e"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
