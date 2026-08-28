@@ -2,7 +2,7 @@
 
 This record refreshes current-base ownership for the README USB/LAN/input
 latency gates on origin/main commit
-`b54ee0e929c53459e6ba7e060f2c9de0c846f408`. The evidence date is 2026-08-28 in
+`43d31c35d2bb4457c74218d179ba1406c2fda815`. The evidence date is 2026-08-28 in
 Asia/Shanghai local time; machine-readable collection timestamps remain in UTC.
 It uses the connected Android acceptance substitute recorded as
 `nubia-p0110-pacific-device-1`.
@@ -28,7 +28,7 @@ readiness rather than malformed input or a failed latency measurement.
 ## Current-base owner boundary
 
 - This record is based on the latest fetched `origin/main` commit
-  `b54ee0e929c53459e6ba7e060f2c9de0c846f408`.
+  `43d31c35d2bb4457c74218d179ba1406c2fda815`.
 - The connected Android target was checked with the required explicit ADB target
   form. Public artifacts redact the raw Android serial to the stable evidence id
   `nubia-p0110-pacific-device-1`.

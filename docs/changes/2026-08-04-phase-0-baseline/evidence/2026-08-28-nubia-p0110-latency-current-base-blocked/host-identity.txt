@@ -1,6 +1,6 @@
 # Host identity preflight
 
-Repository revision: `b54ee0e929c53459e6ba7e060f2c9de0c846f408`
+Repository revision: `43d31c35d2bb4457c74218d179ba1406c2fda815`
 Branch: `codex/p0110-latency-current-base-20260828` tracking `origin/main`
 
 ## Commands
