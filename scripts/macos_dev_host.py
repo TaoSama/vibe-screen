@@ -151,7 +151,7 @@ def tcc_database_report_label(database_path: Path) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build/install the local Vibe Screen Host or fail-closed before an Android touch rerun. The tool never modifies TCC."
+        description="Build/install the local Vibe Screen Host or fail-closed before Android device evidence. The tool never modifies TCC."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     install = subparsers.add_parser("install", help="build, sign, and install the stable local development Host bundle")
@@ -1166,7 +1166,7 @@ Next action
 -----------
 Create or import the stable local codesigning identity, or set
 ${package_macos.SIGN_IDENTITY_ENV} to an existing stable identity, then rebuild
-and reinstall the Host before rerunning touch evidence. Do not use ad-hoc
+and reinstall the Host before rerunning device evidence. Do not use ad-hoc
 signing for fixed-binary device reruns because it changes the code-signing hash
 and invalidates macOS Screen Recording/Accessibility grants.
 
@@ -1174,8 +1174,7 @@ Safety
 ------
 This blocked operation did not start the Host, run Android instrumentation,
 modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
-is a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi
-result.
+is a Host signing prerequisite, not an Android device-identity result.
 System permission path: {SYSTEM_SETTINGS_PATH}
 """
 
@@ -1703,7 +1702,7 @@ def install_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if errors:
         print(
-            "Permissions are not ready for touch rerun yet; grant the listed items in "
+            "Permissions are not ready for device evidence yet; grant the listed items in "
             f"{SYSTEM_SETTINGS_PATH}, relaunch Vibe Screen, then run preflight."
         )
     return 0
