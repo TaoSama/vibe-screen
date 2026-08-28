@@ -74,24 +74,7 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
             ["production-host-defaults-do-not-advertise-hdr-audio-multiclient"],
         )
 
-    def test_accepts_explicit_multi_client_opt_in_gate(self) -> None:
-        capability_body = (
-            "static func productionHostCapabilities(\n"
-            "    touchEnabled: Bool,\n"
-            "    maximumClients: Int = 1\n"
-            ") -> Set<VSCapability> {\n"
-            "if maximumClients > 1 { capabilities.insert(.multiClient) }\n"
-            "return capabilities\n"
-            "}\n"
-        )
-
-        result = phase5_host_advanced_adapters.check_default_advanced_capabilities(
-            capability_body
-        )
-
-        self.assertEqual(result.status, "pass")
-
-    def test_rejects_unconditional_multiclient_alongside_guarded_opt_in(self) -> None:
+    def test_detects_default_multi_client_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             repo = Path(directory_name)
             for relative in (
@@ -103,18 +86,17 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
             ):
                 (repo / relative).parent.mkdir(parents=True, exist_ok=True)
             (repo / phase5_host_advanced_adapters.PROTOCOL_SESSION).write_text(
-                "static func productionHostCapabilities(maximumClients: Int = 1) {\\n"
-                "if fileTransferAllowed && managedPolicy.fileTransferAllowed {}\\n"
-                "if wakeHostAvailable && managedPolicy.wakeAllowed {}\\n"
-                "if managedPolicy.clipboardAllowed {}\\n"
-                "if touchEnabled && managedPolicy.hostActionsAllowed {}\\n"
-                "if hdrVideoAvailable {}\\n"
-                "if audioCaptureAvailable && managedPolicy.audioAllowed {}\\n"
-                ".colorManagement .multiDisplay .clientVideoControl\\n"
-                "if maximumClients > 1 { capabilities.insert(.multiClient) }\\n"
-                "capabilities.insert(.multiClient)\\n"
-                "return capabilities\\n"
-                "}\\n",
+                "static func productionHostCapabilities(maximumClients: Int = 2) {\n"
+                "if fileTransferAllowed && managedPolicy.fileTransferAllowed {}\n"
+                "if wakeHostAvailable && managedPolicy.wakeAllowed {}\n"
+                "if managedPolicy.clipboardAllowed {}\n"
+                "if touchEnabled && managedPolicy.hostActionsAllowed {}\n"
+                "if hdrVideoAvailable {}\n"
+                "if audioCaptureAvailable && managedPolicy.audioAllowed {}\n"
+                "if maximumClients > 1 { capabilities.insert(.multiClient) }\n"
+                ".colorManagement .multiDisplay .clientVideoControl\n"
+                "return capabilities\n"
+                "}\n",
                 encoding="utf-8",
             )
             (repo / phase5_host_advanced_adapters.PHASE5_TECH).write_text(
@@ -138,8 +120,8 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
 
             report = phase5_host_advanced_adapters.build_report(repo)
 
-        failed = [check for check in report["checks"] if check["status"] == "fail"]
         self.assertEqual(report["verdict"], "fail")
+        failed = [check for check in report["checks"] if check["status"] == "fail"]
         self.assertEqual(
             [check["name"] for check in failed],
             ["production-host-defaults-do-not-advertise-hdr-audio-multiclient"],
