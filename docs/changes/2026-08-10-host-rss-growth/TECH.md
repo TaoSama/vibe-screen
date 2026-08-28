@@ -163,6 +163,13 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 - 短窗诊断报告现在显式输出
   `gate.can_close_host_rss_no_growth_gate=false`，让自动化不能把 10-17 分钟
   `host_memory_diagnostic` 的 `pass` 误当成正式两小时 no-growth 通过。
+- 2026-08-28 current-base follow-up 进一步收紧正式门禁聚合：`host_rss_gate`
+  现在同时要求来源 soak 样本自身 `elapsed_seconds` 跨度满足 7056 秒，
+  `real_device_gate --require-host-rss-gate` 必须消费同一 exact-window report，
+  防止把 wall-clock 拉长但 elapsed 样本很短的证据误判为两小时通过。本轮
+  readiness 仍阻塞于 stable-signing、TCC、已安装 Host provenance、virtual HID
+  entitlement 和 full-Xcode/XCTest 前置条件，见
+  [`evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md)。
 - 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
   本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
   运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。

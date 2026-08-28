@@ -132,7 +132,8 @@
         "docs/changes/2026-08-10-host-rss-growth/TECH.md",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/README.md",
-        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/README.md"
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/README.md",
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md"
       ],
       "owner_prs": [
         158,
