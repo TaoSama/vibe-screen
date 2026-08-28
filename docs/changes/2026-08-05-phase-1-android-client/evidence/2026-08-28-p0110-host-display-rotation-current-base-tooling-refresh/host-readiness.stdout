@@ -1,0 +1,7 @@
+mkdir -p docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh
+python3 scripts/macos_dev_host.py readiness \
+		--report docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/host-signing-and-permissions.txt \
+		--json-output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/host-readiness.json \
+		--port 54321
+Wrote docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/host-signing-and-permissions.txt
+Wrote docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/host-readiness.json

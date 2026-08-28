@@ -22,6 +22,7 @@ import harmony_host_interop_preflight
 import package_macos
 import prepare_release
 import android_stylus_acceptance
+from phase3.evidence_privacy import scan_content as scan_phase3_evidence_content
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -1435,6 +1436,14 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn("hardware_identifier", findings)
         self.assertIn("endpoint", findings)
 
+    def test_evidence_privacy_scan_accepts_redacted_serial_placeholders(self) -> None:
+        findings = scan_phase3_evidence_content(
+            b'{"adb_serial":"<redacted-adb-serial>",'
+            b'"hardware_serial":"[redacted-device-serial]"}'
+        )
+
+        self.assertNotIn("hardware_identifier", findings)
+
     def test_release_scan_rejects_windows_user_path(self) -> None:
         findings = prepare_release.release_scan_findings(
             b"C:\\Users\\random-user\\private.bin"
@@ -1613,6 +1622,23 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn("swift build -c release --show-bin-path", makefile)
         self.assertNotIn(
             '"baseline/MacHost/.build/release/Vibe Screen" --host-self-test',
+            makefile,
+        )
+
+    def test_host_display_rotation_gate_make_target_runs_formal_verifier(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertRegex(makefile, r"(?m)^host-display-rotation-gate:")
+        self.assertIn(
+            "python3 -m vibescreen_evidence.host_display_rotation_gate",
+            makefile,
+        )
+        self.assertIn(
+            '"$(EVIDENCE_DIR)/host-display-rotation.json" --check-artifacts',
+            makefile,
+        )
+        self.assertIn(
+            '--output "$(EVIDENCE_DIR)/host-display-rotation-gate.json"',
             makefile,
         )
 

@@ -186,6 +186,7 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
 
 
 def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str, dict[str, Any]]:
+    repository = manifest.get("repository") if isinstance(manifest.get("repository"), dict) else {}
     owner = manifest.get("owner") if isinstance(manifest.get("owner"), dict) else {}
     scope_prs = set(_string_list(manifest.get("scope_prs")))
     source_docs = set(_string_list(manifest.get("source_docs")))
@@ -206,6 +207,18 @@ def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str,
             source_doc_exists.append((source_root / candidate).is_file())
 
     return {
+        "repository_current_base": _check(
+            _non_empty_string(repository.get("revision"))
+            and len(str(repository.get("revision"))) == 40
+            and all(character in "0123456789abcdefABCDEF" for character in str(repository.get("revision")))
+            and repository.get("dirty") is False
+            and repository.get("status_porcelain") == [],
+            "current-base evidence records a clean repository source revision",
+            evidence=[
+                str(repository.get("revision")) if repository.get("revision") else "<missing-revision>",
+                f"dirty={repository.get('dirty')}",
+            ],
+        ),
         "schema_version": _check(manifest.get("schema_version") == SCHEMA_VERSION, SCHEMA_VERSION),
         "kind": _check(manifest.get("kind") == MANIFEST_KIND, MANIFEST_KIND),
         "aggregate_owner": _check(
