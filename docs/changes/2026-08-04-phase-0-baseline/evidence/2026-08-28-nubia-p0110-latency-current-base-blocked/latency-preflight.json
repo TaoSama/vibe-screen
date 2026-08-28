@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-28T21:00:58Z",
+  "checked_at": "2026-08-28T21:30:22Z",
   "claim_boundary": "This preflight is readiness evidence only. It cannot close USB, LAN, or input latency gates; only a passing formal latency evidence report with retained real measurement artifacts can do that.",
   "device": {
     "abi": "arm64-v8a",
@@ -160,7 +160,7 @@
     "No synchronized-clock input package with sub-5 ms total error budget is retained for input latency.",
     "Unsynchronized host/client telemetry, decoder timings, RTT, screenshots, and ADB-generated input remain diagnostics only and cannot close these gates."
   ],
-  "repository_revision": "181167a81ea3176be466c5e5ec7c0c02bb915038",
+  "repository_revision": "3c68a48b4646590f5761962a41913f42690a8818",
   "run_id": "2026-08-28-nubia-p0110-latency-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
   "status": "blocked"
