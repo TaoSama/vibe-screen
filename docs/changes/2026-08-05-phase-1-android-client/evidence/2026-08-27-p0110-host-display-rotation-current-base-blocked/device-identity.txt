@@ -1,0 +1,4 @@
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
+adb get-state: device
+Package dev.telemachus.display: installed
+Package dev.telemachus.display.test: installed
