@@ -74,6 +74,16 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertEqual(exit_code, 127)
         self.assertEqual(output, "command unavailable: vibe-screen-tool")
 
+    def test_signing_prerequisite_report_uses_shared_device_evidence_wording(self) -> None:
+        report = macos_dev_host.format_signing_prerequisite_report(
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            sign_identity="Vibe Screen Dev",
+            error="codesign identity not found",
+        )
+
+        self.assertIn("before rerunning device evidence", report)
+        self.assertNotIn("touch evidence", report)
+
     def test_xctest_preflight_command_passes_with_full_xcode_toolchain(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "xctest-toolchain.txt"
@@ -786,7 +796,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Host signing prerequisite", report_text)
             self.assertIn("Vibe Screen Dev", report_text)
-            self.assertIn("not an Android device identity or Xiaomi/fuxi result", " ".join(report_text.split()))
+            self.assertIn("not an Android device-identity result", " ".join(report_text.split()))
         package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
         replace_mock.assert_not_called()
 
