@@ -8,11 +8,16 @@ Android device are ready to begin a real trusted-LAN smoke run.
 from __future__ import annotations
 
 import argparse
+import errno
+import fcntl
+import hashlib
 import ipaddress
 import json
+import os
 import platform
 import re
 import shlex
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -32,6 +37,9 @@ EXPECTED_ANDROID_RELEASE = "16"
 EXPECTED_SDK = 36
 DEFAULT_HOST_PORT = 54321
 DEFAULT_HOST_PREFLIGHT_COMMAND = (sys.executable, "scripts/macos_dev_host.py", "preflight")
+REDACTED_DEVICE_SERIAL = "<device-serial>"
+DEVICE_LOCK_DIR = Path("/tmp") / f"vibe-screen-{os.getuid()}" / "trusted-lan-locks"
+DEVICE_LOCK_PREFIX = "vibe-screen-android-"
 SSID_REDACTIONS = (
     (re.compile(r"(SSID: )[^,\n]+"), r"\1<redacted>"),
     (re.compile(r"(BSSID: )[^,\n]+"), r"\1<redacted>"),
@@ -47,6 +55,15 @@ CARRIER_GRADE_NAT = ipaddress.ip_network("100.64.0.0/10")
 
 class TrustedLANPreflightError(RuntimeError):
     """Raised when the preflight cannot collect trustworthy evidence."""
+
+
+class DeviceLockError(TrustedLANPreflightError):
+    """Raised when another process already owns the Android device lock."""
+
+    def __init__(self, *, path: Path, detail: str) -> None:
+        super().__init__(detail)
+        self.path = path
+        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -100,6 +117,13 @@ def redact_network_endpoints(value: str) -> str:
     return IPV4_ENDPOINT_RE.sub(replace, value)
 
 
+def redact_device_serial(value: str, serials: Sequence[str]) -> str:
+    redacted = value
+    for serial in sorted({serial for serial in serials if serial}, key=len, reverse=True):
+        redacted = redacted.replace(serial, REDACTED_DEVICE_SERIAL)
+    return redacted
+
+
 def redact_network_endpoints_in_value(value: Any) -> Any:
     if isinstance(value, str):
         return redact_network_endpoints(value)
@@ -113,6 +137,19 @@ def redact_network_endpoints_in_value(value: Any) -> Any:
     return value
 
 
+def redact_public_value(value: Any, serials: Sequence[str]) -> Any:
+    if isinstance(value, str):
+        return redact_device_serial(redact_network_endpoints(value), serials)
+    if isinstance(value, list):
+        return [redact_public_value(item, serials) for item in value]
+    if isinstance(value, dict):
+        return {
+            redact_device_serial(redact_network_endpoints(str(key)), serials): redact_public_value(item, serials)
+            for key, item in value.items()
+        }
+    return value
+
+
 def redact_command_part(value: str) -> str:
     lowered = value.lower()
     if lowered.startswith("telemachus://") or lowered.startswith("vibescreen://"):
@@ -120,6 +157,81 @@ def redact_command_part(value: str) -> str:
     if "token=" in lowered:
         return "<redacted-token-argument>"
     return value
+
+
+def device_lock_path(serial: str) -> Path:
+    serial_hash = hashlib.sha256(serial.encode("utf-8")).hexdigest()[:24]
+    return DEVICE_LOCK_DIR / f"{DEVICE_LOCK_PREFIX}{serial_hash}.lock"
+
+
+@dataclass(frozen=True)
+class DeviceLockSnapshot:
+    path: str
+    acquired: bool
+    detail: str
+
+    def as_json(self) -> dict[str, Any]:
+        return {"path": self.path, "acquired": self.acquired, "detail": self.detail}
+
+
+class DeviceLock:
+    def __init__(self, serial: str) -> None:
+        self.serial = serial
+        self.path = device_lock_path(serial)
+        self._handle: Any | None = None
+        self.snapshot = DeviceLockSnapshot(str(self.path), False, "not acquired")
+
+    def __enter__(self) -> DeviceLockSnapshot:
+        try:
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(self.path.parent, 0o700)
+            flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+            fd = os.open(self.path, flags, 0o600)
+            stat_result = os.fstat(fd)
+            if not stat.S_ISREG(stat_result.st_mode):
+                os.close(fd)
+                raise OSError(errno.EINVAL, "device lock path is not a regular file")
+            self._handle = os.fdopen(fd, "r+", encoding="utf-8")
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            if self._handle is not None:
+                self._handle.close()
+                self._handle = None
+            if error.errno == errno.ELOOP:
+                detail = "device lock path is a symlink; refusing to follow it"
+            elif error.errno in (errno.EACCES, errno.EAGAIN):
+                try:
+                    detail = self.path.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError:
+                    detail = "locked by another process"
+            else:
+                detail = f"failed to acquire lock: {error}"
+            raise DeviceLockError(path=self.path, detail=detail) from error
+        self._handle.truncate(0)
+        self._handle.seek(0)
+        self._handle.write(
+            "owner=trusted-lan-preflight\n"
+            f"pid={os.getpid()}\n"
+            f"serial={self.serial}\n"
+            f"created_at={datetime.now(timezone.utc).isoformat()}\n"
+        )
+        self._handle.flush()
+        self.snapshot = DeviceLockSnapshot(str(self.path), True, "acquired")
+        return self.snapshot
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        if self._handle is None:
+            return
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+        finally:
+            try:
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._handle.close()
+                self._handle = None
 
 
 def run_capture(
@@ -150,6 +262,10 @@ def run_capture(
         completed.stdout,
         completed.stderr,
     )
+
+
+def collect_sfltool_processes(*, timeout_seconds: float) -> dict[str, Any]:
+    return run_capture(["pgrep", "-x", "sfltool"], timeout_seconds=timeout_seconds).as_json()
 
 
 def _stage(name: str, status: str, summary: str, *, details: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -453,6 +569,95 @@ def _blockers_from_stages(stages: Sequence[dict[str, Any]]) -> list[str]:
     ]
 
 
+def _sfltool_stage(sfltool_processes: dict[str, Any]) -> dict[str, Any]:
+    process_ids = [line for line in str(sfltool_processes.get("stdout", "")).splitlines() if line.strip()]
+    if sfltool_processes.get("timed_out") or sfltool_processes.get("returncode") not in (0, 1):
+        return _stage(
+            "sfltool_process_check",
+            "blocked",
+            "Could not confirm sfltool absence before trusted-LAN readiness collection",
+            details={"returncode": sfltool_processes.get("returncode")},
+        )
+    if process_ids:
+        return _stage(
+            "sfltool_process_check",
+            "blocked",
+            "sfltool process is still running before trusted-LAN readiness collection",
+            details={"process_count": len(process_ids)},
+        )
+    return _stage("sfltool_process_check", "pass", "No sfltool process was running")
+
+
+def _device_lock_stage(device_lock: dict[str, Any]) -> dict[str, Any]:
+    if device_lock.get("acquired") is True:
+        return _stage(
+            "device_lock",
+            "pass",
+            f"Acquired Android device lock {device_lock.get('path')}",
+        )
+    return _stage(
+        "device_lock",
+        "blocked",
+        f"Could not acquire Android device lock {device_lock.get('path')}",
+        details={"detail": device_lock.get("detail", "")},
+    )
+
+
+def _base_document(
+    *,
+    repo: Path,
+    host_port: int,
+    host_preflight_command: Sequence[str],
+    require_host_listener: bool,
+    sfltool_processes: dict[str, Any],
+    device_lock: dict[str, Any] | None,
+    stages: Sequence[dict[str, Any]],
+    android_device: dict[str, Any] | None = None,
+    host: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    blockers = _blockers_from_stages(stages)
+    result = "ready" if not blockers else "blocked"
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "trusted_lan_preflight",
+        "profile": "trusted-lan-current-worktree-preflight",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "result": result,
+        "blockers": blockers,
+        "stages": list(stages),
+        "claims": {
+            "can_start_trusted_lan_smoke": result == "ready",
+            "real_lan_stream": False,
+            "trusted_lan_encrypted": False,
+            "legacy_plaintext": False,
+            "reconnect": False,
+            "latency": False,
+            "stability": False,
+        },
+        "repository": repository_state(repo.resolve()),
+        "host": host
+        or {
+            "network": None,
+            "preflight": None,
+            "host_preflight_command": [redact_command_part(part) for part in host_preflight_command],
+            "require_host_listener": require_host_listener,
+        },
+        "android_device": android_device or {"identity": None, "network": None},
+        "device_lock": device_lock,
+        "sfltool_process_check": sfltool_processes,
+        "safety": {
+            "read_only": True,
+            "starts_host": False,
+            "runs_instrumentation": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "modifies_wifi_credentials": False,
+            "writes_pairing_token": False,
+            "writes_qr_payload": False,
+        },
+    }
+
+
 def build_document(
     *,
     serial: str,
@@ -466,62 +671,70 @@ def build_document(
 ) -> dict[str, Any]:
     if host_port <= 0 or host_port > 65535:
         raise ValueError("host_port must be between 1 and 65535")
-    client = ADBClient(serial, adb_path=adb_path, timeout_seconds=adb_timeout)
-    client.require_device()
-    identity = client.identity()
-    host_network = collect_host_network(host_port, timeout_seconds=adb_timeout)
-    mac_candidates = _validated_mac_candidates(mac_host_ipv4, host_network["mac_ipv4_candidates"])
-    android_network = collect_android_network(serial, adb_path, adb_timeout, mac_candidates)
-    host_preflight = collect_host_preflight(host_preflight_command, timeout_seconds=30.0, repo=repo)
+    sfltool_processes = collect_sfltool_processes(timeout_seconds=adb_timeout)
+    sfltool_stage = _sfltool_stage(sfltool_processes)
+    if sfltool_stage["status"] == "blocked":
+        document = _base_document(
+            repo=repo,
+            host_port=host_port,
+            host_preflight_command=host_preflight_command,
+            require_host_listener=require_host_listener,
+            sfltool_processes=sfltool_processes,
+            device_lock=None,
+            stages=[sfltool_stage, *_post_preflight_acceptance_stages()],
+        )
+        return redact_public_value(document, [serial])
+
+    try:
+        with DeviceLock(serial) as lock:
+            device_lock = lock.as_json()
+            client = ADBClient(serial, adb_path=adb_path, timeout_seconds=adb_timeout)
+            client.require_device()
+            identity = client.identity()
+            host_network = collect_host_network(host_port, timeout_seconds=adb_timeout)
+            mac_candidates = _validated_mac_candidates(mac_host_ipv4, host_network["mac_ipv4_candidates"])
+            android_network = collect_android_network(serial, adb_path, adb_timeout, mac_candidates)
+            host_preflight = collect_host_preflight(host_preflight_command, timeout_seconds=30.0, repo=repo)
+    except DeviceLockError as error:
+        device_lock = DeviceLockSnapshot(str(error.path), False, error.detail).as_json()
+        document = _base_document(
+            repo=repo,
+            host_port=host_port,
+            host_preflight_command=host_preflight_command,
+            require_host_listener=require_host_listener,
+            sfltool_processes=sfltool_processes,
+            device_lock=device_lock,
+            stages=[sfltool_stage, _device_lock_stage(device_lock), *_post_preflight_acceptance_stages()],
+        )
+        return redact_public_value(document, [serial])
+
     stages = [
+        sfltool_stage,
+        _device_lock_stage(device_lock),
         _identity_stage(identity, serial),
         *_network_stages(android_network, mac_candidates),
         *_host_preflight_stages(host_preflight),
         _listener_stage(host_network, require_host_listener),
         *_post_preflight_acceptance_stages(),
     ]
-    blockers = _blockers_from_stages(stages)
-    result = "ready" if not blockers else "blocked"
-    document = {
-        "schema_version": SCHEMA_VERSION,
-        "kind": "trusted_lan_preflight",
-        "profile": "trusted-lan-current-worktree-preflight",
-        "collected_at": datetime.now(timezone.utc).isoformat(),
-        "result": result,
-        "blockers": blockers,
-        "stages": stages,
-        "claims": {
-            "can_start_trusted_lan_smoke": result == "ready",
-            "real_lan_stream": False,
-            "trusted_lan_encrypted": False,
-            "legacy_plaintext": False,
-            "reconnect": False,
-            "latency": False,
-            "stability": False,
-        },
-        "repository": repository_state(repo.resolve()),
-        "host": {
+    document = _base_document(
+        repo=repo,
+        host_port=host_port,
+        host_preflight_command=host_preflight_command,
+        require_host_listener=require_host_listener,
+        sfltool_processes=sfltool_processes,
+        device_lock=device_lock,
+        stages=stages,
+        host={
             "network": host_network,
             "preflight": host_preflight,
             "host_preflight_command": host_preflight["command"],
             "require_host_listener": require_host_listener,
         },
-        "android_device": {
-            "identity": identity,
-            "network": android_network,
-        },
-        "safety": {
-            "read_only": True,
-            "starts_host": False,
-            "runs_instrumentation": False,
-            "modifies_tcc": False,
-            "modifies_keychain": False,
-            "modifies_wifi_credentials": False,
-            "writes_pairing_token": False,
-            "writes_qr_payload": False,
-        },
-    }
-    return redact_network_endpoints_in_value(document)
+        android_device={"identity": identity, "network": android_network},
+    )
+    device_serial = str(identity.get("device_serial", ""))
+    return redact_public_value(document, [serial, device_serial])
 
 
 def write_json(path: Path | None, document: dict[str, Any]) -> None:

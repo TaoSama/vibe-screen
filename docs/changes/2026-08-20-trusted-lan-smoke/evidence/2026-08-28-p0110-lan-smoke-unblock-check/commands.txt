@@ -1,0 +1,24 @@
+# Commands
+
+```sh
+pgrep -x sfltool || true
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+: "${ANDROID_SERIAL:?Set ANDROID_SERIAL to the local device serial}"
+make evidence-trusted-lan-preflight   EVIDENCE_SERIAL="$ANDROID_SERIAL"   EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28
+make baseline-macos-host-readiness   EVIDENCE_DIR=/tmp/vibe-screen-lan-smoke-unblock-check-fix-2-2026-08-28
+jq '{result, blockers, claims, repository, stages: [.stages[].name], device_lock, sfltool_process_check}'   trusted-lan-preflight.json
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest   tools.tests.test_trusted_lan_preflight   tools.tests.test_trusted_lan_smoke -v
+make trusted-lan-smoke-evidence-check   EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-28-p0110-lan-smoke-unblock-check
+```
+
+The trusted-LAN preflight and Host readiness commands exited `2`, which is the
+expected blocked-readiness result for these collectors. The collector ran from a
+clean repository state, recorded `pgrep -x sfltool` and the `device_lock` stage,
+acquired a private mode-0700 hashed serial lock, released it, and redacted the
+device serial in `trusted-lan-preflight.json`. Host readiness was also regenerated
+on 2026-08-28 without a login-item probe flag. No `sfltool dumpbtm` or sfltool
+opt-in command was run.
