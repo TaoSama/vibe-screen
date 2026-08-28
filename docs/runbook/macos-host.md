@@ -148,7 +148,7 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 The target writes both files below without launching the Host, mutating the
 machine, or probing Launch at Login. Keep login-item probing out of default CI
 and test runs; use `python3 scripts/macos_dev_host.py readiness
---include-login-item-diagnostic ...` only during an explicit human diagnostic because macOS
+	--include-login-item-diagnostic ...` only during an explicit human diagnostic because macOS
 may request administrator authorization for the underlying service dump.
 
 ```text
