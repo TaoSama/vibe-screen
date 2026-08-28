@@ -1,0 +1,44 @@
+{
+  "schema_version": "vibescreen.host-rss-readiness-summary/v1",
+  "created_at": "2026-08-27T10:39:02+08:00",
+  "baseline_commit": "77441edf982a15101bf9fe15f44a49af74b16b9d",
+  "readiness_probe_source_commit": "afca8bc7246a8056bffba35ccfe07e2fbfe51833",
+  "readiness_probe_rebased_without_rerun": true,
+  "readiness_probe_note": "Retained blocked readiness probe from the earlier PR source; the final current-base refresh re-ran local offline gates only and does not close the Host RSS gate.",
+  "branch": "codex/host-rss-current-base-build-fix",
+  "device_identity": "nubia P0110 / pacific / Android 16 / SDK 36",
+  "readiness": {
+    "status": "blocked",
+    "can_start_host_rss_gate": false,
+    "can_close_runtime_gates": false,
+    "current_source_dirty": false,
+    "listener_status": "ready",
+    "signing_tcc_status": "blocked",
+    "virtual_hid_status": "blocked",
+    "login_headless_status": "blocked"
+  },
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain",
+    "installed Host lacks source commit/tree provenance",
+    "TCC permissions cannot be verified read-only from this environment",
+    "installed Host is missing com.apple.developer.hid.virtual.device",
+    "Launch at Login is not verified enabled",
+    "no active display is visible to the current WindowServer session"
+  ],
+  "verification": {
+    "baseline_macos_build": "pass",
+    "baseline_macos_self_test": "pass",
+    "release_tools_test": "pass: 230 tests",
+    "phase3_test": "pass",
+    "protocol": "pass",
+    "evidence_tools_test": "pass",
+    "host_rss_python_tool_tests": "pass: 102 tests",
+    "swift_protocol_v1_session_tests": "blocked: local toolchain cannot import XCTest"
+  },
+  "does_not_close": [
+    "two-hour Host RSS no-growth gate",
+    "native HID pointer gate",
+    "Xiaomi 13/fuxi evidence"
+  ],
+  "gate_status": "open"
+}
