@@ -3141,12 +3141,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         let resolvedSessionID = sessionID ?? self.sessionID
         let resolvedSessionEpoch = sessionEpoch ?? self.sessionEpoch
         let session = makeSession(
+            hostCapabilities: hostCapabilities,
             sessionID: resolvedSessionID,
             sessionEpoch: resolvedSessionEpoch,
             displayID: displayID,
             displayRouter: displayRouter,
             maximumClients: maximumClients,
-            hostCapabilities: hostCapabilities,
             maximumVideoStreamsPerClient: maximumVideoStreamsPerClient
         )
         var hello = clientHello()
