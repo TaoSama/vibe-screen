@@ -28,4 +28,3 @@ text='Disconnect?' desc='' id='dev.telemachus.display:id/alertTitle' bounds=[774
 text='This ends the current screen session with the Mac.' desc='' id='android:id/message' bounds=[690,540][2250,606] clickable=false
 text='CANCEL' desc='' id='android:id/button2' bounds=[1534,715][1799,883] clickable=true
 text='DISCONNECT' desc='' id='android:id/button1' bounds=[1827,715][2222,883] clickable=true
-
