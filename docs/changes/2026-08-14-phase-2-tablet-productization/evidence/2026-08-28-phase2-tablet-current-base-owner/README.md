@@ -2,16 +2,16 @@
 
 Result: `blocked`. This record refreshes the Phase 2 tablet sustained-use
 current-base owner on `origin/main` commit
-`a6b36ce69c2fe6abf6219678296a812b793e4d41`. It consumes the latest Nubia
-P0110 soak preflight plus the retained device-environment, hardware-keyboard,
-and macOS login/headless blocked summaries. It does not close any README Phase 2
-tablet gate.
+`b54ee0e929c53459e6ba7e060f2c9de0c846f408`. It consumes the latest Nubia
+P0110 soak preflight plus the retained device-environment, current-base
+hardware-keyboard, and macOS login/headless blocked summaries. It does not close
+any README Phase 2 tablet gate.
 
 Input summaries used by the aggregate report:
 
 - `../2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/phase2-tablet-manifest.json`
 - `../2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json`
-- `../2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
+- `../2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
 - `../2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
 - `../2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
 
@@ -33,7 +33,7 @@ make phase2-aggregate-owner \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner \
   PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/phase2-tablet-manifest.json \
   PHASE2_SOAK_READINESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json \
-  PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-24-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json \
+  PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json \
   PHASE2_DEVICE_ENVIRONMENT=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json \
   PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json
 ```

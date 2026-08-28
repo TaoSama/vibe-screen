@@ -17,8 +17,8 @@
       "status": "blocked"
     },
     "device_memory": {
-      "provided": false,
-      "status": null
+      "provided": true,
+      "status": "insufficient"
     },
     "hardware_keyboard": {
       "provided": true,
@@ -37,8 +37,8 @@
       "status": null
     },
     "tablet_gate": {
-      "provided": false,
-      "status": null
+      "provided": true,
+      "status": "insufficient"
     },
     "tablet_manifest": {
       "provided": true,
@@ -100,13 +100,13 @@
   ],
   "open_reasons": [
     "tablet_ui_ergonomics: missing gate output",
-    "physical_8_9_inch_tablet: missing gate output",
+    "physical_8_9_inch_tablet: verdict is insufficient",
     "physical_8_9_inch_tablet: manifest device_class is not physical_8_9_inch_tablet",
     "physical_8_9_inch_tablet: known phone substitute cannot close the physical 8-9 inch tablet gate",
     "physical_8_9_inch_tablet: tablet gate is not package-aware or evidence_package did not pass",
     "eight_hour_sustained_stream: gate output has no pass verdict or close boolean",
     "eight_hour_sustained_stream: tablet gate is not package-aware or evidence_package did not pass",
-    "device_memory: missing gate output",
+    "device_memory: verdict is insufficient",
     "stand_mounted_charging: can_close_stand_charging_gate is false",
     "stand_mounted_charging: tablet gate is not package-aware or evidence_package did not pass",
     "thermal_power_sampling: can_close_device_environment_gate is false",
@@ -152,13 +152,13 @@
         "title": "Add Phase 2 tablet acceptance preflight"
       },
       "reasons": [
-        "missing gate output",
+        "verdict is insufficient",
         "manifest device_class is not physical_8_9_inch_tablet",
         "known phone substitute cannot close the physical 8-9 inch tablet gate",
         "tablet gate is not package-aware or evidence_package did not pass"
       ],
       "requirement": "Phase 2 tablet gate pass with manifest device.device_class=physical_8_9_inch_tablet.",
-      "status": "blocked"
+      "status": "insufficient"
     },
     {
       "can_close": false,
@@ -196,10 +196,10 @@
         "title": "test: add phase2 device memory gate"
       },
       "reasons": [
-        "missing gate output"
+        "verdict is insufficient"
       ],
       "requirement": "Device-memory gate pass or explicit close boolean from the memory owner.",
-      "status": "blocked"
+      "status": "insufficient"
     },
     {
       "can_close": false,
@@ -305,7 +305,7 @@
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main b54ee0e929c53459e6ba7e060f2c9de0c846f408",
+  "source_baseline": "origin/main 20cd27b1d59dfcc66e28df41aba421e14b6171f4",
   "stale_prs": [
     {
       "pr_number": 240,

@@ -550,8 +550,9 @@ artifact was produced.
 Current-base aggregate evidence is under
 [`evidence/2026-08-28-phase2-tablet-current-base-owner`](evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
 It consumes the new P0110 soak preflight plus retained device-environment,
-hardware-keyboard, and login/headless blocked summaries. The report records
-`source_baseline=origin/main a6b36ce69c2fe6abf6219678296a812b793e4d41`,
+current-base hardware-keyboard, and login/headless blocked summaries. The
+report records
+`source_baseline=origin/main b54ee0e929c53459e6ba7e060f2c9de0c846f408`,
 `verdict=blocked`, and `can_close_readme_phase2_gates=false`; it also records
 that Nubia P0110/pacific is substitute readiness only and must not be relabeled
 as another device or 8-9 inch tablet evidence.
@@ -563,3 +564,43 @@ Validation performed for this update:
 - `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner ...`
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
 - `shasum -a 256 -c SHA256SUMS` in both new 2026-08-28 evidence directories
+
+## 2026-08-28 hardware-keyboard current-base refresh
+
+This follow-up refreshed the Android-attached hardware-keyboard owner on current
+`origin/main` (`20cd27b1d59dfcc66e28df41aba421e14b6171f4`) without claiming a
+workflow pass. Evidence is under
+[`evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
+
+The readiness collector used explicit ADB serial `EP0110PZ0B9110300B`, redacted
+it to `<device-serial>` in public artifacts, and recorded the device as nubia
+P0110 / pacific / Android 16 / SDK 36. It produced `verdict=blocked` and
+`can_close_hardware_keyboard_gate=false` because no external Android-attached
+physical keyboard was visible in `dumpsys input`, and Host stable signed/TCC
+readiness failed because the `Vibe Screen Dev` signing identity was unavailable.
+A Host listener on TCP `54321` was present, but listener presence alone does not
+close the Host path. The collector did not synthesize soft-keyboard or
+`adb shell input keyevent` input.
+
+The current-base aggregate owner evidence is under
+[`evidence/2026-08-28-phase2-hardware-keyboard-current-base-owner`](evidence/2026-08-28-phase2-hardware-keyboard-current-base-owner/README.md).
+It consumes the refreshed hardware-keyboard blocked summary and records
+`verdict=blocked` with `can_close_readme_phase2_gates=false`; no README gate is
+closed by this update.
+
+Tooling was tightened so the shared macOS Host signing/TCC prerequisite report
+uses neutral device-evidence wording instead of touch-specific wording, and the
+Phase 2 aggregate owner report now derives `source_baseline` from the local
+`origin/main` ref instead of a stale hard-coded SHA.
+
+Validation performed for this update:
+
+- `make hardware-keyboard-readiness EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base` (blocked readiness; summary records `verdict=blocked`)
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base` (expected non-pass for blocked evidence)
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-hardware-keyboard-current-base-owner PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json PHASE2_DEVICE_ENVIRONMENT=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json PHASE2_SOAK_READINESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-nubia-p0110-phase2-soak-preflight-current-base-230933/phase2-soak-readiness.json PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/hardware_keyboard_readiness.py scripts/macos_dev_host.py`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest scripts.tests.test_hardware_keyboard_readiness scripts.tests.test_hardware_keyboard_readiness_redaction scripts.tests.test_macos_dev_host tools.tests.test_hardware_keyboard tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make evidence-tools-test`
+- `cd baseline/MacHost && swift build`
+- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-28 evidence directories
+- `git diff --check`

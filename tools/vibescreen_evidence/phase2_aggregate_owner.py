@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Sequence
 
@@ -20,9 +20,11 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main a6b36ce69c2fe6abf6219678296a812b793e4d41"
+CURRENT_BASE_REF = "origin/main"
+CURRENT_BASE = f"{CURRENT_BASE_REF} unknown"
 REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -268,6 +270,24 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return document
 
 
+def current_base_label() -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", CURRENT_BASE_REF],
+            check=False,
+            capture_output=True,
+            cwd=REPO_ROOT,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return CURRENT_BASE
+    sha = completed.stdout.strip()
+    if completed.returncode != 0 or not sha:
+        return CURRENT_BASE
+    return f"{CURRENT_BASE_REF} {sha}"
+
+
 def _owner_document(owner: OwnerPr) -> dict[str, Any]:
     return {
         "pr_number": owner.number,
@@ -358,31 +378,6 @@ def _known_phone_substitute(identity: dict[str, Any] | None) -> bool:
     model = str(identity.get("model", "")).lower()
     codename = str(identity.get("codename", "")).lower()
     return model == "p0110" or codename == "pacific"
-
-
-def _git_revision(repo: Path, ref: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", ref],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if result.returncode != 0:
-        return None
-    revision = result.stdout.strip()
-    return revision or None
-
-
-def current_source_baseline(repo: Path | None = None) -> str:
-    revision = _git_revision(repo or Path.cwd(), "origin/main")
-    if revision is None:
-        return CURRENT_BASE
-    return f"origin/main {revision}"
 
 
 def _substitute_notes(manifest: dict[str, Any] | None) -> list[str]:
@@ -506,7 +501,7 @@ def derive_report(
         "kind": KIND,
         "verdict": verdict,
         "can_close_readme_phase2_gates": can_close,
-        "source_baseline": source_baseline or current_source_baseline(),
+        "source_baseline": source_baseline or current_base_label(),
         "audit_summary": {
             "single_prs_against_origin_main": (
                 "#179, #189, #213, #315, #321, #338, #342, and #343 are merged into current base. "

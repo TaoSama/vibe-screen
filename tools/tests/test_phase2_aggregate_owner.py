@@ -1,13 +1,14 @@
 import json
-from unittest import mock
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from vibescreen_evidence.phase2_aggregate_owner import derive_report
 from vibescreen_evidence.phase2_aggregate_owner import CURRENT_BASE
+from vibescreen_evidence.phase2_aggregate_owner import current_base_label
+from vibescreen_evidence.phase2_aggregate_owner import derive_report
 
 
 MODULE = "vibescreen_evidence.phase2_aggregate_owner"
@@ -53,23 +54,34 @@ def close_signal(field):
 
 
 class Phase2AggregateOwnerTest(unittest.TestCase):
-    def test_source_baseline_tracks_current_origin_main(self):
+    def test_source_baseline_can_be_supplied_explicitly(self):
         report = derive_report(source_baseline="origin/main test-sha")
 
         self.assertEqual(report["source_baseline"], "origin/main test-sha")
 
-    def test_source_baseline_defaults_to_current_origin_main(self):
-        with mock.patch(f"{MODULE}._git_revision", return_value="abc123") as revision:
+    def test_source_baseline_reads_current_origin_main(self):
+        with mock.patch(
+            "vibescreen_evidence.phase2_aggregate_owner.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                ["git", "rev-parse", "origin/main"],
+                0,
+                stdout="f" * 40 + "\n",
+                stderr="",
+            ),
+        ):
             report = derive_report()
 
-        revision.assert_called_once_with(Path.cwd(), "origin/main")
-        self.assertEqual(report["source_baseline"], "origin/main abc123")
+        self.assertEqual(
+            report["source_baseline"],
+            "origin/main ffffffffffffffffffffffffffffffffffffffff",
+        )
 
-    def test_source_baseline_falls_back_when_origin_main_is_unavailable(self):
-        with mock.patch(f"{MODULE}._git_revision", return_value=None):
-            report = derive_report()
-
-        self.assertEqual(report["source_baseline"], CURRENT_BASE)
+    def test_source_baseline_falls_back_when_git_is_unavailable(self):
+        with mock.patch(
+            "vibescreen_evidence.phase2_aggregate_owner.subprocess.run",
+            side_effect=FileNotFoundError("git"),
+        ):
+            self.assertEqual(current_base_label(), CURRENT_BASE)
 
     def test_missing_child_gates_are_blocked_and_keep_readme_open(self):
         report = derive_report()
