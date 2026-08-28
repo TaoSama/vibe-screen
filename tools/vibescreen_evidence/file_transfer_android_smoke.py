@@ -12,6 +12,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -34,13 +35,13 @@ SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
 TCC_DATABASE_COMPONENT = "TCC" + r"\.db"
-SENSITIVE_TEXT_PATTERNS = (
-    re.compile(r"EP[0-9A-Z]{14,}", re.IGNORECASE),
-    re.compile(TCC_PATH_COMPONENT, re.IGNORECASE),
-    re.compile(TCC_BUNDLE_COMPONENT, re.IGNORECASE),
-    re.compile(TCC_DATABASE_COMPONENT, re.IGNORECASE),
-    re.compile(r"/Users/[^\r\n<>\"']+"),
-    re.compile(r"/home/[^\r\n<>\"']+"),
+SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"EP[0-9A-Z]{14,}", re.IGNORECASE), SAFE_SERIAL_LABEL),
+    (re.compile(TCC_PATH_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
+    (re.compile(TCC_BUNDLE_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
+    (re.compile(TCC_DATABASE_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
+    (re.compile(r"/Users/[^\r\n<>\"']+"), "<redacted-local-path>"),
+    (re.compile(r"/home/[^\r\n<>\"']+"), "<redacted-local-path>"),
 )
 
 
@@ -70,18 +71,9 @@ def _write_json(path: Path, document: dict[str, Any]) -> None:
 
 def sanitize_text(value: Any) -> str:
     text = str(value)
-    for pattern in SENSITIVE_TEXT_PATTERNS:
-        text = pattern.sub(_replacement_for_pattern(pattern), text)
+    for pattern, replacement in SENSITIVE_TEXT_PATTERNS:
+        text = pattern.sub(replacement, text)
     return text
-
-
-def _replacement_for_pattern(pattern: re.Pattern[str]) -> str:
-    pattern_text = pattern.pattern.lower()
-    if pattern_text.startswith("ep"):
-        return SAFE_SERIAL_LABEL
-    if "users" in pattern_text or "home" in pattern_text:
-        return "<redacted-local-path>"
-    return "<redacted-tcc-reference>"
 
 
 def sanitize_value(value: Any) -> Any:
@@ -218,7 +210,7 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android file-transfer instrumentation log is missing"],
         )
     text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
-    passed = re.search(r"^OK \(\d+ tests?\)$", text, re.MULTILINE) is not None
+    passed = re.search(r"^OK \(\d+ tests?\)\r?$", text, re.MULTILINE) is not None
     reasons = [] if passed else ["Android file-transfer instrumentation log does not show an OK result"]
     return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
@@ -399,6 +391,7 @@ def derive_gate(
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "verdict": verdict,
         "result": verdict,
         "gate_closed": verdict == PASS,
@@ -435,6 +428,7 @@ def _failure_report(error: str) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "verdict": BLOCKED,
         "result": BLOCKED,
         "gate_closed": False,

@@ -548,7 +548,7 @@ evidence-usb-smoke-preflight: require-evidence-serial
 		$(if $(strip $(EVIDENCE_EXPECTED_DEVICE)),--expected-device $(EVIDENCE_EXPECTED_DEVICE),) \
 		$(if $(strip $(EVIDENCE_EXPECTED_ANDROID_RELEASE)),--expected-android-release $(EVIDENCE_EXPECTED_ANDROID_RELEASE),) \
 		$(if $(strip $(EVIDENCE_EXPECTED_SDK)),--expected-sdk $(EVIDENCE_EXPECTED_SDK),) \
-		$(if $(strip $(EVIDENCE_ALLOW_EXISTING_LOCKS)),--allow-existing-locks,) \
+		$(if $(filter 1 true yes,$(EVIDENCE_ALLOW_EXISTING_LOCKS)),--allow-existing-locks,) \
 		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
 
 evidence-touch-rerun-preflight: require-evidence-serial

@@ -48,3 +48,5 @@ exchange was observed.
 - `host-readiness.json` is the shared Host prerequisite readiness result.
 - `host-signing-and-permissions.txt` is the human-readable Host preflight
   excerpt used by the USB readiness probe.
+- `commands.txt` records the commands run during this readiness pass.
+- `SHA256SUMS` binds the retained artifact digests.

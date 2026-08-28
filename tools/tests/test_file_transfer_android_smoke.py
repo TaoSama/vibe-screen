@@ -247,6 +247,29 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_android_log_accepts_crlf_ok_summary_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "test session start\r\nOK (3 tests)\r\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
+        android_gate = next(
+            item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
+        )
+        self.assertEqual(android_gate["status"], "pass")
+
     def test_missing_device_identity_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
