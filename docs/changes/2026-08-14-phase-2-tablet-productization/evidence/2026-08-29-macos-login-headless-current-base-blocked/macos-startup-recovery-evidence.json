@@ -1,0 +1,104 @@
+{
+  "android_device": {
+    "android_release": "not_observed",
+    "codename": "not_observed",
+    "device_info": "host-readiness.json",
+    "manufacturer": "not_observed",
+    "model": "not_observed",
+    "sdk": "not_observed"
+  },
+  "android_reconnect": {
+    "client_render_after_reconnect_observed": false,
+    "client_render_artifact": "host-readiness.json",
+    "disconnect_observed": false,
+    "reconnect_attempt_observed": false,
+    "reconnect_log": "host-readiness.json",
+    "reconnect_succeeded": false,
+    "trigger": "not_attempted_missing_login_item_tcc_and_headless_mac_mini_prerequisites"
+  },
+  "automatic_startup": {
+    "auto_start_enabled": true,
+    "client_render_artifact": "host-readiness.json",
+    "client_render_observed": false,
+    "first_server_start_observed": false,
+    "onboarding_completed": true,
+    "startup_log": "host-readiness.json",
+    "startup_mode": "usb"
+  },
+  "display": {
+    "capturable_display_observed": false,
+    "claims_headless_from_attached_monitor": false,
+    "dimensions": {
+      "logical_height": 982,
+      "logical_width": 1512,
+      "physical_height": 1964,
+      "physical_width": 3024
+    },
+    "display_report": "host-readiness.json",
+    "display_uuid": "224A9A9F-32F9-45A3-973B-122B5276BE88",
+    "first_frame_artifact": "host-readiness.json",
+    "first_frame_observed": false,
+    "topology": "physical"
+  },
+  "generated_at": "2026-08-28T20:57:42.812923+00:00",
+  "kind": "macos_startup_recovery_evidence",
+  "login_item": {
+    "launch_log": "host-readiness.json",
+    "login_launch_observed": false,
+    "manual_launch_used": false,
+    "reboot_or_logout_login_performed": false,
+    "requires_approval": null,
+    "sfltool_dumpbtm_was_run": false,
+    "status": "unverified",
+    "system_settings_artifact": "host-readiness.json"
+  },
+  "mac_host": {
+    "accessibility_permission": "unverified",
+    "architecture": "arm64",
+    "host_binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "host_bundle_identifier": "dev.telemachus.display",
+    "host_cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "host_log": "host-readiness.json",
+    "host_signing": "identity_signed",
+    "macos_build": "25E253",
+    "macos_version": "26.4.1",
+    "model": "Mac16,8",
+    "permission_report": "host-signing-and-permissions.txt",
+    "screen_recording_permission": "unverified",
+    "signing_report": "host-signing-and-permissions.txt",
+    "source_commit": "",
+    "source_dirty": null,
+    "source_tree": ""
+  },
+  "remote_access": {
+    "access_artifact": "host-readiness.json",
+    "filevault_or_first_login_blocker_absent": false,
+    "method": "physical_console",
+    "operator_intervention_path_verified": false,
+    "requires_unavailable_local_intervention": false
+  },
+  "run_id": "2026-08-29-macos-login-headless-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_commit": "181167a81ea3176be466c5e5ec7c0c02bb915038",
+  "unattended_recovery": {
+    "bounded_exhaustion_observed": false,
+    "full_speed_loop_observed": false,
+    "logs_retained": false,
+    "observed": false,
+    "recovery_log": "host-readiness.json",
+    "restart_succeeded": false,
+    "retry_delays_seconds": [],
+    "trigger": "not_attempted_missing_login_item_tcc_and_headless_mac_mini_prerequisites"
+  },
+  "window_recovery": {
+    "accessibility_error_observed": false,
+    "after_artifact": "host-readiness.json",
+    "before_artifact": "host-readiness.json",
+    "disconnect_or_failure_trigger_observed": false,
+    "move_observed": false,
+    "original_frame": {},
+    "restored_frame": {},
+    "restored_observed": false,
+    "window_log": "host-readiness.json"
+  }
+}

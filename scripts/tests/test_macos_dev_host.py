@@ -633,6 +633,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             readiness = macos_dev_host.read_login_item_readiness()
 
         self.assertEqual(readiness.state, "enabled")
+        self.assertTrue(readiness.sfltool_dumpbtm_was_run)
         run_mock.assert_called_once_with("/usr/bin/sfltool", "dumpbtm", timeout_seconds=15)
 
     def test_read_login_item_readiness_fails_closed_when_sfltool_fails(self) -> None:
@@ -645,6 +646,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(readiness.state, "unverified")
         self.assertFalse(readiness.matched)
+        self.assertTrue(readiness.sfltool_dumpbtm_was_run)
         self.assertIn("command timed out", readiness.detail)
 
     def test_xctest_preflight_does_not_run_host_readiness_probe(self) -> None:
@@ -865,7 +867,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 stored_keys=(),
                 defaults_used=(),
             ),
-            macos_dev_host.LoginItemReadiness("enabled", True, "enabled", ("enabled",)),
+            macos_dev_host.LoginItemReadiness("enabled", True, "enabled", ("enabled",), True),
             macos_dev_host.HostDisplayReadiness(True, 1, ({"id": "1", "source": "CoreGraphics"},), active_display_count=1),
             macos_dev_host.LogReadiness("<user-host-log>", True, ("Auto-start deferred",)),
         )
@@ -996,6 +998,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
         login_probe.assert_not_called()
         self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+        self.assertFalse(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
         self.assertEqual(
             document["login_headless"]["login_item"]["detail"],
             macos_dev_host.LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
@@ -1359,12 +1362,14 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertFalse(document["can_start_trusted_lan_gate"])
             self.assertFalse(document["can_start_controller_runtime_gate"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertFalse(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
             self.assertIn("not probed", document["login_headless"]["login_item"]["detail"])
             self.assertFalse(document["can_close_runtime_gates"])
             self.assertEqual(document["host"]["current_source_commit"], "c" * 40)
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertFalse(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
             self.assertEqual(
                 document["login_headless"]["login_item"]["detail"],
                 macos_dev_host.LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
@@ -1456,6 +1461,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             login_mock.assert_called_once_with()
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
+            self.assertTrue(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
 
     def test_readiness_command_probes_login_item_only_when_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1521,6 +1527,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless_status"], "ready")
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
+            self.assertTrue(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
         login_probe_mock.assert_called_once_with()
 
     def test_readiness_command_checks_login_item_only_when_opted_in(self) -> None:
@@ -1591,6 +1598,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["status"], "ready")
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
+            self.assertTrue(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
 
     def test_readiness_command_login_item_diagnostic_is_explicit_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1657,6 +1665,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             login_probe.assert_called_once_with()
             document = json.loads(json_output.read_text(encoding="utf-8"))
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
+            self.assertTrue(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
 
     def test_inspect_host_without_throwing_keeps_source_identity_when_bundle_inspection_fails(self) -> None:
         source_identity = macos_dev_host.package_macos.SourceIdentity(
@@ -1985,6 +1994,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
         login_item_probe.assert_not_called()
         self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+        self.assertFalse(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
         self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
         self.assertIn("Launch at Login is not verified enabled: unverified", "\n".join(document["blockers"]))
 
