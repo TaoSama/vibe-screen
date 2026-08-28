@@ -91,6 +91,13 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 make baseline-macos-host-preflight
 ```
 
+The default `baseline-macos-host-readiness` path intentionally skips the
+Launch at Login `sfltool dumpbtm` probe because that system command can display
+a macOS administrator prompt. Default tests and CI must keep this path skipped.
+Only run `scripts/macos_dev_host.py readiness --include-login-item-diagnostic ...` during an
+explicit manual diagnostic, after confirming no stale `sfltool` process is
+present.
+
 `baseline-macos-touch-preflight` is retained as an alias for existing touch
 gesture workflows. Do not use ad-hoc signing, an unproven bundle id, stale app
 provenance, or a dirty source checkout to close a compatibility row. If any of
