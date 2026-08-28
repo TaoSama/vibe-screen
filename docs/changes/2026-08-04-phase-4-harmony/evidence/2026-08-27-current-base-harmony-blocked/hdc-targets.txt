@@ -1,0 +1,2 @@
+# hdc list targets failed with exit 127
+# no HDC target listed

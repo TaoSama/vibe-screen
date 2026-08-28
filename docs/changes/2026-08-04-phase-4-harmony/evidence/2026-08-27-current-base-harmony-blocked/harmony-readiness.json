@@ -1,0 +1,160 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_path": null,
+    "hap_sha256": null,
+    "hap_zip_readable": false,
+    "sha256sums_contains_hap": false,
+    "sha256sums_path": null,
+    "sha256sums_sha256": null,
+    "signature_certificate_sha256": null,
+    "signature_markers": [],
+    "version_name": "0.1.0"
+  },
+  "blocking_reasons": [
+    "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+    "hvigor not found on PATH",
+    "ohpm not found on PATH",
+    "hdc not found on PATH",
+    "hdc is unavailable",
+    "signed HAP not found; pass --hap or create exactly one apps/harmony/dist/*/*.hap",
+    "signature certificate SHA-256 is required and must be non-zero 64-hex",
+    "SHA256SUMS manifest not found beside the HAP; pass --sha256sums",
+    "repository has uncommitted changes; final device evidence must bind a clean tree",
+    "Protocol v1 Host commit is required",
+    "Protocol v1 Host build SHA-256 is required"
+  ],
+  "command": [
+    "scripts/harmony_readiness.py",
+    "--output",
+    "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.json"
+  ],
+  "created_at": "2026-08-26T23:40:16Z",
+  "device": null,
+  "device_gate_prefill": {
+    "artifact": {
+      "bundle_name": "dev.vibescreen.harmony",
+      "hap_sha256": null,
+      "sha256sums_sha256": null,
+      "signature_certificate_sha256": null,
+      "version_name": "0.1.0"
+    },
+    "device": null,
+    "host": {
+      "build_sha256": null,
+      "commit": null,
+      "protocol": "Protocol v1"
+    },
+    "repository": {
+      "commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+      "status": "dirty",
+      "tree": "a36d465ea8a20a42b561b1e453bcad7957ffce15"
+    },
+    "toolchain": {
+      "deveco_studio_version": null,
+      "harmony_sdk_api": null,
+      "harmony_sdk_version": null,
+      "hdc_version": null,
+      "hvigor_version": null,
+      "ohpm_version": null
+    }
+  },
+  "hdc": {
+    "targets": []
+  },
+  "host": {
+    "build_sha256": null,
+    "commit": null,
+    "protocol": "Protocol v1"
+  },
+  "kind": "harmony_readiness_preflight",
+  "limitations": [
+    "This readiness preflight is not HarmonyOS device acceptance evidence.",
+    "It does not build, install, launch, pair, stream, decode, inject input, soak, or measure external-camera latency."
+  ],
+  "repository": {
+    "dirty": true,
+    "revision": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "status_porcelain": [
+      "M Makefile",
+      " M docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md",
+      " M scripts/harmony_device_gate.py",
+      " M scripts/harmony_matepad_acceptance.py",
+      " M scripts/harmony_readiness.py",
+      " M scripts/tests/test_harmony_matepad_acceptance.py",
+      " M scripts/tests/test_harmony_readiness.py",
+      " M scripts/tests/test_release_tools.py",
+      " M tools/tests/test_harmony_avcodec_preflight.py",
+      " M tools/tests/test_harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_avcodec_preflight.py",
+      " M tools/vibescreen_evidence/harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_hap_readiness.py",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/README.md",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gates.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness-summary.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/hdc-targets.txt",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/package-prestate.txt"
+    ]
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "toolchain": {
+    "deveco_studio": {
+      "detail": "DevEco Studio app not found; set DEVECO_STUDIO_APP or --deveco-studio-app",
+      "name": "deveco_studio",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hdc": {
+      "detail": "hdc not found on PATH",
+      "name": "hdc",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "hvigor": {
+      "detail": "hvigor not found on PATH",
+      "name": "hvigor",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    },
+    "ohpm": {
+      "detail": "ohpm not found on PATH",
+      "name": "ohpm",
+      "path": null,
+      "status": "blocked",
+      "version": null
+    }
+  },
+  "verdict": "blocked"
+}

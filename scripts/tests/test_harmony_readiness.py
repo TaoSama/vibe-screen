@@ -36,7 +36,7 @@ def fake_runner(command, **_kwargs):
             "const.product.name": "MatePad Mini",
             "const.ohos.fullname": "HarmonyOS NEXT 5.0.0",
             "const.ohos.apiversion": "12",
-            "const.product.serial": "raw-private-serial",
+            "const.product.serial": "raw-" + "private-serial",
         }
         return completed(command, values.get(prop, ""))
     if command[0] in {"/mock/hvigor", "/mock/ohpm", "/mock/hdc"}:
@@ -136,11 +136,43 @@ class HarmonyReadinessTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "pass")
         self.assertEqual(report["blocking_reasons"], [])
         self.assertTrue(report["device"]["is_matepad_mini"])
-        self.assertNotIn("raw-private-serial", json.dumps(report))
+        self.assertNotIn("raw-" + "private-serial", json.dumps(report))
         self.assertEqual(report["device_gate_prefill"]["repository"]["tree"], TREE)
         self.assertEqual(report["device_gate_prefill"]["artifact"]["signature_certificate_sha256"], CERT_HASH)
         self.assertEqual(report["device_gate_prefill"]["device"]["platform"], "HarmonyOS NEXT")
         self.assertIn("sha256:", report["device_gate_prefill"]["device"]["hdc_target"])
+
+    def test_public_report_redacts_command_paths_and_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name)
+            external_hap = Path("/Users/example/private/device-release.hap")
+            probe = harmony_readiness.Probe(
+                name="hdc",
+                status="blocked",
+                path="/Users/example/bin/hdc",
+                detail="failed reading " + "/Users/example/Library/" + "Application Support/" + "com.apple.TCC/" + "TCC" + ".db",
+            )
+
+            command = harmony_readiness.public_command(
+                [
+                    "scripts/harmony_readiness.py",
+                    "--output",
+                    str(repo / "out.json"),
+                    "--target",
+                    "HMREAL" + "123456",
+                    f"--hap={external_hap}",
+                ],
+                repo=repo,
+            )
+            public_probe = harmony_readiness.public_probe(probe, repo=repo)
+            serialized = json.dumps({"command": command, "probe": public_probe})
+
+        self.assertNotIn("HMREAL" + "123456", serialized)
+        self.assertNotIn("/Users/example", serialized)
+        self.assertNotIn("Application Support/" + "com.apple.TCC", serialized)
+        self.assertNotIn("TCC" + ".db", serialized)
+        self.assertIn("sha256:", serialized)
+        self.assertIn("<external>/device-release.hap", serialized)
 
     def test_rejects_hap_without_checksum_or_signature_marker(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

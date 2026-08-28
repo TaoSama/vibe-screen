@@ -37,6 +37,7 @@ ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
+DEFAULT_XCTEST_PREFLIGHT_OUTPUT = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
@@ -44,7 +45,8 @@ SYSTEM_SETTINGS_PATH = (
 DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item state was not probed by default; run readiness with "
-    "--include-login-item-diagnostic during an attended diagnostic session to inspect it."
+    "--include-login-item-diagnostic or --inspect-login-items during an attended "
+    "diagnostic session to inspect it with /usr/bin/sfltool dumpbtm."
 )
 
 @dataclass(frozen=True)
@@ -192,10 +194,12 @@ def parse_args() -> argparse.Namespace:
     readiness.add_argument(
         "--include-login-item-diagnostic",
         "--inspect-login-items",
+        "--probe-login-items",
         action="store_true",
         help=(
-            "opt in to the real macOS login-item diagnostic. This may invoke system tools "
-            "that require attended approval; default CI/test readiness skips it fail-closed."
+            "opt in to the real macOS login-item diagnostic by calling "
+            "/usr/bin/sfltool dumpbtm. This may trigger macOS administrator "
+            "authorization prompts; default CI/test readiness skips it fail-closed."
         ),
     )
     return parser.parse_args()
@@ -268,6 +272,9 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
         )
+    except FileNotFoundError as error:
+        executable = str(error.filename or (command[0] if command else "command"))
+        return 127, f"command not found: {Path(executable).name}"
     except OSError as error:
         executable = command[0] if command else "command"
         return 127, f"command unavailable: command not found: {executable}: {error.strerror or error}"
@@ -377,10 +384,11 @@ def build_xctest_preflight_document(status: XCTestPreflightStatus) -> dict[str, 
         "sdk_path": status.sdk_path,
         "blockers": list(status.errors),
         "safety": {
-            "does_not_start_host": True,
-            "does_not_access_tcc_database": True,
-            "does_not_access_keychain": True,
-            "does_not_access_android_device": True,
+            "read_only": True,
+            "starts_host": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "modifies_android": False,
         },
     }
 
@@ -1574,14 +1582,16 @@ def metadata_and_permissions(
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(validate_preflight(
-        metadata,
-        permissions,
-        install_path=install_path,
-        expected_sign_identity=expected_sign_identity,
-        source_identity=source_identity,
-        allow_source_mismatch=allow_source_mismatch,
-    ))
+    errors.extend(
+        validate_preflight(
+            metadata,
+            permissions,
+            install_path=install_path,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+            allow_source_mismatch=allow_source_mismatch,
+        )
+    )
     return metadata, source_identity, permissions, errors
 
 
@@ -1742,6 +1752,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
+    login_item = read_login_item_readiness() if getattr(args, "include_login_item_diagnostic", False) else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
@@ -1771,11 +1782,6 @@ partition lists, modify macOS privacy databases, or request/override macOS priva
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
 """
     write_report(args.report, report)
-    login_item = (
-        read_login_item_readiness()
-        if getattr(args, "include_login_item_diagnostic", False) is True
-        else skipped_login_item_readiness()
-    )
     document = build_readiness_document(inspection, listener, entitlements, login_item=login_item)
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")

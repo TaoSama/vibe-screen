@@ -1,0 +1,204 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_path": null,
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "version_name": "0.1.0"
+  },
+  "blockers": [
+    "hdc not found; no HarmonyOS target can be enumerated",
+    "ohpm not found; DevEco-managed dependencies cannot be synchronized",
+    "hvigor/hvigorw not found; no DevEco HAP build can be produced",
+    "DevEco CLI not found; ArkTS/API checker provenance is unavailable",
+    "no explicit HarmonyOS HDC target was provided",
+    "no signed HarmonyOS release HAP was provided",
+    "no HarmonyOS AVCodecKit hardware run artifacts were provided"
+  ],
+  "codecs": [
+    {
+      "artifacts": [
+        "blocked preflight: no HarmonyOS AVCodecKit hardware run"
+      ],
+      "codec": "h264",
+      "decoder_name": "blocked: not collected from HarmonyOS hardware",
+      "gates": {
+        "buffer_callback": "blocked",
+        "decoder_capability": "blocked",
+        "eos_completed": "blocked",
+        "flush_completed": "blocked",
+        "hardware_decoder": "blocked",
+        "input_buffer_pushed": "blocked",
+        "output_buffer_freed": "blocked",
+        "output_rendered": "blocked",
+        "protocol_media_header": "blocked",
+        "pts_preserved": "blocked",
+        "reconfigure_completed": "blocked",
+        "release_completed": "blocked",
+        "xcomponent_surface": "blocked"
+      },
+      "media_header": {
+        "codec": "h264",
+        "config_epoch": 1,
+        "first_frame_id": 1,
+        "fragment_count": 1,
+        "fragment_index": 0,
+        "payload_length": 1,
+        "session_epoch": 1,
+        "stream_id": 1
+      },
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        "blocked preflight: no HarmonyOS AVCodecKit hardware run"
+      ],
+      "codec": "hevc",
+      "decoder_name": "blocked: not collected from HarmonyOS hardware",
+      "gates": {
+        "buffer_callback": "blocked",
+        "decoder_capability": "blocked",
+        "eos_completed": "blocked",
+        "flush_completed": "blocked",
+        "hardware_decoder": "blocked",
+        "input_buffer_pushed": "blocked",
+        "output_buffer_freed": "blocked",
+        "output_rendered": "blocked",
+        "protocol_media_header": "blocked",
+        "pts_preserved": "blocked",
+        "reconfigure_completed": "blocked",
+        "release_completed": "blocked",
+        "xcomponent_surface": "blocked"
+      },
+      "media_header": {
+        "codec": "hevc",
+        "config_epoch": 1,
+        "first_frame_id": 1,
+        "fragment_count": 1,
+        "fragment_index": 0,
+        "payload_length": 1,
+        "session_epoch": 1,
+        "stream_id": 1
+      },
+      "status": "blocked"
+    }
+  ],
+  "created_at": "2026-08-26T23:40:18.414106+00:00",
+  "device": {
+    "hdc_target": "blocked: no target",
+    "manufacturer": "blocked: not collected from HarmonyOS hardware",
+    "model": "MatePad Mini",
+    "os_build": "blocked: not collected from HarmonyOS hardware",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "hdc_error": null,
+  "hdc_targets": null,
+  "host": {
+    "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "commit": "0000000000000000000000000000000000000000",
+    "protocol": "Protocol v1"
+  },
+  "kind": "harmony_avcodec_hardware_decode_preflight",
+  "notes": [
+    "This blocked preflight is not HarmonyOS hardware decode acceptance evidence.",
+    "Android, emulator, simulator, and portable source results cannot close the H.264/HEVC AVCodecKit gate."
+  ],
+  "repository": {
+    "dirty": true,
+    "revision": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "status_porcelain": [
+      "M Makefile",
+      " M docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md",
+      " M scripts/harmony_device_gate.py",
+      " M scripts/harmony_matepad_acceptance.py",
+      " M scripts/harmony_readiness.py",
+      " M scripts/tests/test_harmony_matepad_acceptance.py",
+      " M scripts/tests/test_harmony_readiness.py",
+      " M scripts/tests/test_release_tools.py",
+      " M tools/tests/test_harmony_avcodec_preflight.py",
+      " M tools/tests/test_harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_avcodec_preflight.py",
+      " M tools/vibescreen_evidence/harmony_current_base_gate.py",
+      " M tools/vibescreen_evidence/harmony_hap_readiness.py",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-allow-blocked-validate.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-avcodec-preflight.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-current-base-gate.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-allow-blocked.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gate-template.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-device-gates.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness-summary.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.README.md",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-hap-readiness.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-matepad-acceptance.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.exit",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.json",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.stderr",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/harmony-readiness.stdout",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/hdc-targets.txt",
+      "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-27-current-base-harmony-blocked/package-prestate.txt"
+    ],
+    "tree": "a36d465ea8a20a42b561b1e453bcad7957ffce15"
+  },
+  "run_id": "c9bbdc79-4135-4b3a-bc07-0e3425f7f4b9",
+  "schema_version": "vibescreen.evidence/v1",
+  "tool_probe": {
+    "deveco": {
+      "error": "not found",
+      "name": "deveco",
+      "path": null,
+      "version": null
+    },
+    "hdc": {
+      "error": "not found",
+      "name": "hdc",
+      "path": null,
+      "version": null
+    },
+    "hvigor": {
+      "error": "not found",
+      "name": "hvigor",
+      "path": null,
+      "version": null
+    },
+    "hvigorw": {
+      "error": "not found",
+      "name": "hvigorw",
+      "path": null,
+      "version": null
+    },
+    "ohpm": {
+      "error": "not found",
+      "name": "ohpm",
+      "path": null,
+      "version": null
+    }
+  },
+  "toolchain": {
+    "deveco_studio_version": "blocked: DevEco CLI not found",
+    "harmony_sdk_api": "API 12 required; blocked until DevEco SDK is available",
+    "harmony_sdk_version": "blocked: DevEco SDK not inspected",
+    "hdc_version": "blocked: hdc not found",
+    "hvigor_version": "blocked: hvigor/hvigorw not found",
+    "ohpm_version": "blocked: ohpm not found"
+  }
+}
