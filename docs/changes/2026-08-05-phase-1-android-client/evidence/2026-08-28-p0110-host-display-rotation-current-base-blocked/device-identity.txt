@@ -1,0 +1,16 @@
+manufacturer=nubia
+manufacturer_exit_code=0
+model=P0110
+model_exit_code=0
+device=pacific
+device_exit_code=0
+product=pacific
+product_exit_code=0
+android_release=16
+android_release_exit_code=0
+sdk=36
+sdk_exit_code=0
+fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+fingerprint_exit_code=0
+serial=REDACTED_P0110_USB_SERIAL
+serial_exit_code=0
