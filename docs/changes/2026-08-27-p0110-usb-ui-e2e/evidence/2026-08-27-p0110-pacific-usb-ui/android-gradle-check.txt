@@ -1,0 +1,14 @@
+Command:
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+Result:
+BUILD SUCCESSFUL in 7s
+68 actionable tasks: 3 executed, 65 up-to-date
+
+Executed gates:
+- :app:testDebugUnitTest
+- :app:lintDebug
+- :app:assembleDebug
+
+APK:
+baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
