@@ -320,7 +320,7 @@ def template_manifest() -> dict[str, Any]:
             }
             for gate_id in REQUIRED_GATE_IDS
         ],
-        "notes": ["Do not commit raw serials, credentials, IP addresses, or screen content."],
+        "notes": ["Do not commit raw serials, sensitive identifiers, IP addresses, or screen content."],
     }
 
 
