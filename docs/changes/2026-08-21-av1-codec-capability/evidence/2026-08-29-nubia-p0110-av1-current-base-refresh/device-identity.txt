@@ -1,0 +1,10 @@
+ro.product.manufacturer=nubia
+ro.product.model=P0110
+ro.product.device=pacific
+ro.product.name=pacific
+ro.build.version.release=16
+ro.build.version.sdk=36
+ro.hardware=qcom
+ro.board.platform=sun
+ro.product.cpu.abi=arm64-v8a
+ro.build.fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
