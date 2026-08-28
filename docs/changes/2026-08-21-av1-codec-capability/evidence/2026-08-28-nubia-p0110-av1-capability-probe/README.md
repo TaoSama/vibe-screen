@@ -5,14 +5,14 @@ Status: capability snapshot captured; real AV1 stream still blocked
 
 ## Device identity
 
-The read-only ADB probes used the explicit serial EP0110PZ0B9110300B after
-acquiring /tmp/vibe-screen-android-EP0110PZ0B9110300B.lock.
+The read-only ADB probes used the explicit serial <redacted-device-serial> after
+acquiring /tmp/vibe-screen-android-<redacted-device-serial>.lock.
 
 - Manufacturer/model: Nubia P0110
 - Codename: pacific
 - Android: 16
 - SDK: 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-device-serial>
 - Product name: pacific
 
 Do not label any result from this device as Xiaomi 13/fuxi evidence.
@@ -25,20 +25,20 @@ codex/av1-android-decode-capability-probe. The command outputs are retained
 beside this README.
 
     pgrep -x sfltool || true
-    adb -s EP0110PZ0B9110300B devices -l
-    adb -s EP0110PZ0B9110300B get-state
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.name
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
-    adb -s EP0110PZ0B9110300B shell dumpsys media.codec
-    adb -s EP0110PZ0B9110300B shell cmd media.codec list
-    adb -s EP0110PZ0B9110300B shell 'service list | grep -i -E "media|codec"'
-    adb -s EP0110PZ0B9110300B shell 'dumpsys -l | grep -i -E "media|codec"'
-    adb -s EP0110PZ0B9110300B shell 'grep -Rin "av1" /vendor/etc/*media*codec*.xml /vendor/etc/media_codecs*.xml /system/etc/*media*codec*.xml /system/etc/media_codecs*.xml 2>/dev/null | head -160'
+    adb -s <redacted-device-serial> devices -l
+    adb -s <redacted-device-serial> get-state
+    adb -s <redacted-device-serial> shell getprop ro.product.manufacturer
+    adb -s <redacted-device-serial> shell getprop ro.product.model
+    adb -s <redacted-device-serial> shell getprop ro.product.device
+    adb -s <redacted-device-serial> shell getprop ro.product.name
+    adb -s <redacted-device-serial> shell getprop ro.build.version.release
+    adb -s <redacted-device-serial> shell getprop ro.build.version.sdk
+    adb -s <redacted-device-serial> shell getprop ro.build.fingerprint
+    adb -s <redacted-device-serial> shell dumpsys media.codec
+    adb -s <redacted-device-serial> shell cmd media.codec list
+    adb -s <redacted-device-serial> shell 'service list | grep -i -E "media|codec"'
+    adb -s <redacted-device-serial> shell 'dumpsys -l | grep -i -E "media|codec"'
+    adb -s <redacted-device-serial> shell 'grep -Rin "av1" /vendor/etc/*media*codec*.xml /vendor/etc/media_codecs*.xml /system/etc/*media*codec*.xml /system/etc/media_codecs*.xml 2>/dev/null | head -160'
 
 pgrep -x sfltool || true returned no output before any device command was run,
 so no stale sfltool process was observed. No /usr/bin/sfltool dumpbtm command
@@ -47,7 +47,7 @@ was executed.
 ## Captured results
 
 - adb-devices-l.txt reports product:pacific model:P0110 device:pacific for
-  serial EP0110PZ0B9110300B.
+  serial <redacted-device-serial>.
 - device-identity.txt reports nubia / P0110 / pacific / Android 16 / SDK 36.
 - dumpsys media.codec returned no stdout and stderr
   'Can't find service: media.codec' with exit code 0.
