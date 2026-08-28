@@ -43,7 +43,6 @@ struct ProtocolV1SessionConfiguration {
         if controllerAvailable { capabilities.insert(.controller) }
         if peripheralInputFrameworkAvailable { capabilities.insert(.peripheralInputFramework) }
         if hdrVideoAvailable { capabilities.insert(.hdrVideo) }
-        if maximumClients > 1 { capabilities.insert(.multiClient) }
         if fileTransferAllowed && managedPolicy.fileTransferAllowed {
             capabilities.insert(.fileTransfer)
         }

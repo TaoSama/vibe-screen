@@ -459,7 +459,12 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     func testSharedHostRouterAdvertisesClientAndStreamCaps() throws {
         let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
-        let session = makeMultiDisplaySession(displayRouter: router, maximumClients: 2, maximumVideoStreamsPerClient: 2)
+        let session = makeMultiDisplaySession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
+            displayRouter: router,
+            maximumClients: 2,
+            maximumVideoStreamsPerClient: 2
+        )
         var hello = clientHello()
         hello.clientHello.capabilities.append(.multiClient)
         var limits = VSResourceLimits()
@@ -2879,6 +2884,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     private func makeMultiDisplaySession(
+        hostCapabilities: Set<VSCapability>? = nil,
         displayRouter: HostMultiClientDisplayRouter? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
@@ -2891,7 +2897,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+            hostCapabilities: hostCapabilities ?? ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 maximumClients: maximumClients
             ),

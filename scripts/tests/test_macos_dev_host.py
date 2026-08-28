@@ -579,6 +579,20 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertFalse(readiness.matched)
         self.assertIn("command timed out", readiness.detail)
 
+    def test_xctest_preflight_does_not_run_host_readiness_probe(self) -> None:
+        with (
+            mock.patch.object(sys, "argv", ["macos_dev_host.py", "xctest-preflight"]),
+            mock.patch.object(macos_dev_host, "xctest_preflight_command", return_value=0) as xctest_mock,
+            mock.patch.object(macos_dev_host, "preflight_command") as preflight_mock,
+            mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_probe,
+        ):
+            result = macos_dev_host.main()
+
+        self.assertEqual(result, 0)
+        xctest_mock.assert_called_once()
+        preflight_mock.assert_not_called()
+        login_probe.assert_not_called()
+
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
