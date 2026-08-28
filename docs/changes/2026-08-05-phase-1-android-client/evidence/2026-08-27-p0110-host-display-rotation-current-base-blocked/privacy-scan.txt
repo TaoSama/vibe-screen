@@ -1,0 +1,3 @@
+Privacy scan for committed evidence artifacts
+Patterns: real Android serial, local home path, TCC database path, obvious private key markers
+status=passed
