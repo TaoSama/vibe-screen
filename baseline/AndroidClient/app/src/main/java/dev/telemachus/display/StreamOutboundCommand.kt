@@ -39,11 +39,15 @@ internal sealed interface StreamOutboundCommand {
     ) : StreamOutboundCommand
 
     data class ProtocolReceive(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
         val envelope: Envelope,
         val completion: CompletableFuture<Unit>,
     ) : StreamOutboundCommand
 
     data class ProtocolBulk(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
         val chunk: FileChunk,
         val completion: CompletableFuture<Unit>,
     ) : StreamOutboundCommand
