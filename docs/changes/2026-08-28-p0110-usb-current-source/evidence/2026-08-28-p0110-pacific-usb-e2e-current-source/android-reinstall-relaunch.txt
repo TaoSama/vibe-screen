@@ -1,0 +1,60 @@
+date_utc=2026-08-28T11:38:05Z
+install_debug_apk:
+Performing Streamed Install
+Success
+configure_reverse:
+reverse:
+UsbFfs tcp:54321 tcp:54321
+
+launch:
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+foreground:
+  mCurrentFocus=Window{6991b16 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{43078441 u0 dev.telemachus.display/.MainActivity t652}
+pid:
+31872
+diag_tail:
+[1787917085215] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787917085216] MA: lifecycle foreground connected=false
+[1787917085266] MA: surfaceCreated
+[1787917085266] MA: surfaceChanged: 1264x2800
+[1787917085482] SC: Protocol v1 upgrade accepted
+[1787917085482] SC: Connected to 127.0.0.1:54321
+[1787917085491] MA: onHostActionsAvailable: move-window, return-windows
+[1787917085496] MA: onDisplaysAvailable: count=3 selected=2 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=2:DELL U2723QE:1920x1080:primary=false, 1:Built-in Retina Display:1512x982:primary=true, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+[1787917085496] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false customGestures=true hostActions=true clipboard=false fileTransfer=false peripheralInputFramework=false
+[1787917085536] MA: onVideoConfiguration: 1920x1080 @ 0° epoch=1
+[1787917085536] MA: Video config arrived, initializing decoder 1920x1080
+[1787917085536] MA: initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0x4f37d8, valid=true, encoded=1920x1080
+[1787917085541] VD: setupDecoder: 1920x1080, decoder=c2.qti.hevc.decoder
+[1787917085574] VD: Configured with full low-latency
+[1787917085575] VD: Surface frame rate requested: 60.000004Hz fixed-source
+[1787917085608] VD: Decoder started: 1920x1080 @ 60.000004Hz, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0x4f37d8, valid=true
+[1787917085611] MA: Decoder configuration committed 1920x1080 epoch=1
+[1787917085616] MA: onDisplayGeometry: 1920x1080 @ 0°
+[1787917085636] SC: First frame: size=55550, keyframe=true, metadata=true, session_epoch=1, config_epoch=1, callback=true
+[1787917085637] VD: First frame: size=55550, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0x4f37d8, valid=true
+[1787917085648] MA: surfaceChanged: 1264x711
+[1787917085668] VD: Output format changed: {crop-right=1919, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=1079, max-width=8192, crop-left=0, width=1920, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=1, height=1088}
+[1787917085669] VD: First output frame! size=1, flags=1, session_epoch=1
+[1787917085679] MA: surfaceChanged: 1264x711
+[1787917085681] MA: surfaceChanged: 2247x1264
+[1787917087514] VD: Decode stats: input=60, output=59, dropped=0, availBufs=10
+[1787917087520] VD: Output #60: decoder latency avg=8.4ms max=32.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787917089505] VD: Decode stats: input=120, output=119, dropped=0, availBufs=10
+[1787917089512] VD: Output #120: decoder latency avg=7.4ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787917091515] VD: Decode stats: input=180, output=179, dropped=0, availBufs=10
+[1787917091520] VD: Output #180: decoder latency avg=7.9ms max=17.4ms over 60 samples, input bufs avail=9, dropped=0
+[1787917093511] VD: Decode stats: input=240, output=239, dropped=0, availBufs=10
+[1787917093519] VD: Output #240: decoder latency avg=8.1ms max=18.0ms over 60 samples, input bufs avail=9, dropped=0
+[1787917095507] VD: Decode stats: input=300, output=299, dropped=0, availBufs=10
+[1787917095513] VD: Output #300: decoder latency avg=8.8ms max=16.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787917097539] VD: Decode stats: input=360, output=359, dropped=0, availBufs=10
+[1787917097548] VD: Output #360: decoder latency avg=8.4ms max=15.2ms over 60 samples, input bufs avail=9, dropped=0
+[1787917099510] VD: Decode stats: input=420, output=419, dropped=0, availBufs=10
+[1787917099528] VD: Output #420: decoder latency avg=9.1ms max=20.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787917101610] VD: Decode stats: input=480, output=479, dropped=0, availBufs=10
+[1787917101617] VD: Output #480: decoder latency avg=9.4ms max=21.1ms over 60 samples, input bufs avail=10, dropped=0
+sfltool=
+UI hierchary dumped to: /sdcard/vibescreen-relaunch-ui.xml
+/sdcard/vibescreen-relaunch-ui.xml: 1 file pulled, 0 skipped. 1.3 MB/s (3497 bytes in 0.003s)
