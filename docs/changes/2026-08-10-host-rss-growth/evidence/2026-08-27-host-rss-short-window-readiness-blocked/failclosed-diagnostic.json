@@ -1,0 +1,54 @@
+{
+  "attribution": "inconclusive",
+  "derivation_status": "failed",
+  "errors": [
+    "host telemetry file does not exist: .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl"
+  ],
+  "host_pid": 64697,
+  "interpretation": "This verdict applies only to the complete 10-17 minute diagnostic window. A pass means the required memory signals remained within the short-window stability thresholds while stream telemetry and bounded queues remained healthy. It is not the formal two-hour Host RSS no-growth gate and cannot close it; only host_rss_gate can evaluate the two-hour requirement.",
+  "kind": "host_memory_short_diagnostic",
+  "metrics": {},
+  "reasons": [
+    "the short-run diagnostic could not be completed"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "sufficiency": {
+    "collection_complete": false,
+    "duration": false,
+    "error_free": false,
+    "heap_allocated_bytes_complete": false,
+    "heap_node_count_complete": false,
+    "heap_samples": false,
+    "heap_window_coverage": false,
+    "malloc_small_dirty_bytes_complete": false,
+    "malloc_zone_allocated_bytes_complete": false,
+    "malloc_zone_dirty_bytes_complete": false,
+    "malloc_zone_fragmentation_bytes_complete": false,
+    "memory_samples": false,
+    "memory_window_coverage": false,
+    "physical_footprint_bytes_complete": false,
+    "rss_bytes_complete": false,
+    "stream_telemetry": false
+  },
+  "telemetry": {},
+  "thresholds": {
+    "fragmentation_minimum_drift_bytes": 524288,
+    "heap_minimum_node_drift": 500,
+    "live_minimum_drift_bytes": 524288,
+    "live_minimum_slope_bytes_per_minute": 16384,
+    "maximum_boundary_gap_seconds": 60.0,
+    "maximum_memory_internal_gap_seconds": 90.0,
+    "maximum_telemetry_boundary_gap_seconds": 30.0,
+    "maximum_telemetry_internal_gap_seconds": 10.0,
+    "minimum_duration_seconds": 600.0,
+    "minimum_heap_sample_count": 3,
+    "minimum_memory_sample_count": 20,
+    "pressure_minimum_drift_bytes": 1048576,
+    "pressure_minimum_slope_bytes_per_minute": 32768,
+    "stable_maximum_drift_bytes": 262144,
+    "stable_maximum_node_drift": 100,
+    "stable_maximum_slope_bytes_per_minute": 16384
+  },
+  "verdict": "insufficient",
+  "window": {}
+}

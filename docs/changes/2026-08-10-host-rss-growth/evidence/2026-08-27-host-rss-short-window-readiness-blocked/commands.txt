@@ -1,0 +1,333 @@
+$ pgrep -x sfltool || true
+
+$ git status --short --branch
+## codex/host-rss-short-window-regression
+
+$ git rev-parse HEAD
+27d2b0e493e807ae439fbd43b06b4c2f0ce9c503
+
+$ python3 scripts/macos_dev_host.py readiness --json-output .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/host-readiness.json
+{
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+    "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "Host listener is not observed on TCP port 54321",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified"
+  ],
+  "can_close_runtime_gates": false,
+  "can_start_controller_runtime_gate": false,
+  "can_start_hardware_keyboard_gate": false,
+  "can_start_headless_login_gate": false,
+  "can_start_host_rss_gate": false,
+  "can_start_native_hid_gate": false,
+  "can_start_stylus_gate": false,
+  "can_start_trusted_lan_gate": false,
+  "entitlements": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "error": null,
+    "keys": [],
+    "virtual_hid": false
+  },
+  "generated_at": "2026-08-27T16:18:20.984736+00:00",
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "authorities": [
+      "Vibe Screen Dev",
+      "Vibe Screen Dev Root"
+    ],
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "current_source_commit": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
+    "current_source_dirty": false,
+    "current_source_tree": "41870d87db15b3a2ba253ee5a3cc201a136d90c2",
+    "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
+    "identifier": "dev.telemachus.display",
+    "identity": "Vibe Screen Dev",
+    "is_ad_hoc": false,
+    "source_commit": null,
+    "source_dirty": null,
+    "source_tree": null,
+    "team_identifier": "not set"
+  },
+  "kind": "macos_host_shared_prerequisite_readiness",
+  "listener": {
+    "error": "listener not observed",
+    "observed": false,
+    "output": "",
+    "port": 54321
+  },
+  "listener_status": "blocked",
+  "login_headless": {
+    "blockers": [
+      "Launch at Login is not verified enabled: unverified"
+    ],
+    "display_inventory": {
+      "active_display_count": 2,
+      "display_count": 2,
+      "displays": [
+        {
+          "id": "1",
+          "logical": "1512 x 982 @ 120.00Hz",
+          "main": "1",
+          "name": "Color LCD",
+          "physical": "3024 x 1964",
+          "source": "system_profiler"
+        },
+        {
+          "id": "2",
+          "logical": "1920 x 1080 @ 60.00Hz",
+          "main": "0",
+          "name": "DELL U2723QE",
+          "physical": "3840 x 2160",
+          "source": "system_profiler"
+        }
+      ],
+      "error": null,
+      "readable": true
+    },
+    "does_not_prove": [
+      "macOS launched Vibe Screen after logout/login or reboot",
+      "a headless Mac mini exposes a capturable display after reboot",
+      "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+      "USB or LAN streaming rendered on an Android client",
+      "unattended recovery succeeded or exhausted during a real listener/capture/display failure"
+    ],
+    "host_log": {
+      "error": null,
+      "path": "<user-host-log>",
+      "readable": true,
+      "startup_recovery_markers": []
+    },
+    "login_item": {
+      "detail": "Login item state was not probed by default; run readiness with --include-login-item-diagnostic during an attended diagnostic session to inspect it.",
+      "evidence": [],
+      "matched": false,
+      "state": "unverified"
+    },
+    "recommended_next_evidence": [
+      "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+      "record the intended headless display setup and first successful capture after login",
+      "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs"
+    ],
+    "startup_settings": {
+      "auto_start_streaming_on_launch": true,
+      "defaults_used": [],
+      "display_source": "selectedDisplay",
+      "domain": "dev.telemachus.display",
+      "error": null,
+      "has_completed_onboarding": true,
+      "readable": true,
+      "selected_display_id": 2,
+      "selected_display_uuid": "224A9A9F-32F9-45A3-973B-122B5276BE88",
+      "startup_mode": "usb",
+      "stored_keys": [
+        "Telemachus_adbDeviceSerial",
+        "Telemachus_autoStartStreamingOnLaunch",
+        "Telemachus_bitrate",
+        "Telemachus_connectionMode",
+        "Telemachus_dismissedPostUpdatePermissionHintFingerprint",
+        "Telemachus_displaySource",
+        "Telemachus_hasCompletedOnboarding",
+        "Telemachus_hasPosition_1446320657_60_0",
+        "Telemachus_hiDPI",
+        "Telemachus_internetHostDeviceID",
+        "Telemachus_lastKnownBinaryFingerprint",
+        "Telemachus_pendingPostUpdatePermissionHintFingerprint",
+        "Telemachus_positionX_1446320657_60_0",
+        "Telemachus_positionY_1446320657_60_0",
+        "Telemachus_quality",
+        "Telemachus_refreshRate",
+        "Telemachus_rotation",
+        "Telemachus_selectedDisplayID",
+        "Telemachus_selectedDisplayUUID",
+        "Telemachus_startupMode"
+      ]
+    },
+    "status": "blocked"
+  },
+  "login_headless_status": "blocked",
+  "permissions": {
+    "accessibility_granted": false,
+    "database_path": "<user-tcc-db>; <system-tcc-db>",
+    "error": "<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "readable": false,
+    "rows": [],
+    "screen_recording_granted": false
+  },
+  "safety": {
+    "closes_runtime_gates": false,
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.host-readiness/v1",
+  "signing_tcc_status": "blocked",
+  "status": "blocked",
+  "virtual_hid_status": "blocked"
+}
+Wrote <worktree>/.build/dev-macos-host/host-signing-and-permissions.txt
+Wrote .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/host-readiness.json
+readiness_exit=2
+
+$ xcode-select -p
+/Library/Developer/CommandLineTools
+xcode_select_exit=0
+
+$ xcrun --find xctest
+xcrun: error: unable to find utility "xctest", not a developer tool or in PATH
+xcrun_xctest_exit=72
+
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic --host-pid 64697 --duration-seconds 600 --interval-seconds 30 --telemetry-jsonl .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl --samples .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/failclosed-samples.jsonl --output .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/failclosed-diagnostic.json
+{"attribution": "inconclusive", "derivation_status": "failed", "errors": ["host telemetry file does not exist: .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/missing-host-telemetry.jsonl"], "host_pid": 64697, "interpretation": "This verdict applies only to the complete 10-17 minute diagnostic window. A pass means the required memory signals remained within the short-window stability thresholds while stream telemetry and bounded queues remained healthy. It is not the formal two-hour Host RSS no-growth gate and cannot close it; only host_rss_gate can evaluate the two-hour requirement.", "kind": "host_memory_short_diagnostic", "metrics": {}, "reasons": ["the short-run diagnostic could not be completed"], "schema_version": "vibescreen.evidence/v1", "sufficiency": {"collection_complete": false, "duration": false, "error_free": false, "heap_allocated_bytes_complete": false, "heap_node_count_complete": false, "heap_samples": false, "heap_window_coverage": false, "malloc_small_dirty_bytes_complete": false, "malloc_zone_allocated_bytes_complete": false, "malloc_zone_dirty_bytes_complete": false, "malloc_zone_fragmentation_bytes_complete": false, "memory_samples": false, "memory_window_coverage": false, "physical_footprint_bytes_complete": false, "rss_bytes_complete": false, "stream_telemetry": false}, "telemetry": {}, "thresholds": {"fragmentation_minimum_drift_bytes": 524288, "heap_minimum_node_drift": 500, "live_minimum_drift_bytes": 524288, "live_minimum_slope_bytes_per_minute": 16384, "maximum_boundary_gap_seconds": 60.0, "maximum_memory_internal_gap_seconds": 90.0, "maximum_telemetry_boundary_gap_seconds": 30.0, "maximum_telemetry_internal_gap_seconds": 10.0, "minimum_duration_seconds": 600.0, "minimum_heap_sample_count": 3, "minimum_memory_sample_count": 20, "pressure_minimum_drift_bytes": 1048576, "pressure_minimum_slope_bytes_per_minute": 32768, "stable_maximum_drift_bytes": 262144, "stable_maximum_node_drift": 100, "stable_maximum_slope_bytes_per_minute": 16384}, "verdict": "insufficient", "window": {}}
+host_memory_diagnostic_failclosed_exit=1
+
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_memory_diagnostic -v
+test_attribute_type_failure_is_invalid_and_not_admitted (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_attribute_type_failure_is_invalid_and_not_admitted) ... ok
+test_attributes_fragmentation_with_flat_live_heap_to_allocator_high_water (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_attributes_fragmentation_with_flat_live_heap_to_allocator_high_water) ... ok
+test_attributes_synchronized_live_growth_to_retained_objects (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_attributes_synchronized_live_growth_to_retained_objects) ... ok
+test_cli_catches_unexpected_exception_and_writes_failure_report (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_catches_unexpected_exception_and_writes_failure_report) ... ok
+test_cli_rejects_interval_that_cannot_meet_sample_minimum (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_rejects_interval_that_cannot_meet_sample_minimum) ... ok
+test_cli_returns_one_for_interrupted_partial_report (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_returns_one_for_interrupted_partial_report) ... ok
+test_cli_uses_distinct_exit_code_for_attributed_growth (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_uses_distinct_exit_code_for_attributed_growth) ... ok
+test_cli_writes_inconclusive_failure_report (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_writes_inconclusive_failure_report) ... ok
+test_cli_zero_only_means_complete_without_attribution (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_cli_zero_only_means_complete_without_attribution) ... ok
+test_custom_heap_watch_extends_required_diagnostic_classes (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_custom_heap_watch_extends_required_diagnostic_classes) ... ok
+test_decreasing_required_signals_still_pass_short_window (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_decreasing_required_signals_still_pass_short_window) ... ok
+test_each_core_stream_record_field_is_validated_before_admission (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_each_core_stream_record_field_is_validated_before_admission) ... ok
+test_encoder_capacity_change_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_encoder_capacity_change_fails_even_when_attribution_inconclusive) ... ok
+test_encoder_capacity_overage_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_encoder_capacity_overage_fails_even_when_attribution_inconclusive) ... ok
+test_final_state_validation_is_active_under_optimized_python (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_final_state_validation_is_active_under_optimized_python) ... ok
+test_final_state_validation_uses_explicit_evidence_input_errors (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_final_state_validation_uses_explicit_evidence_input_errors) ... ok
+test_frame_registry_count_overage_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_frame_registry_count_overage_fails_even_when_attribution_inconclusive) ... ok
+test_heap_watch_summary_uses_union_of_first_and_last_snapshots (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_heap_watch_summary_uses_union_of_first_and_last_snapshots) ... ok
+test_invalid_cli_arguments_use_pipeline_failure_exit_code (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_invalid_cli_arguments_use_pipeline_failure_exit_code) ... ok
+test_invalid_present_optional_field_rejects_record (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_invalid_present_optional_field_rejects_record) ... ok
+test_invalid_stream_record_is_counted_once_and_cannot_pollute_analysis (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_invalid_stream_record_is_counted_once_and_cannot_pollute_analysis) ... ok
+test_keyboard_interrupt_writes_partial_report_in_every_phase (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_keyboard_interrupt_writes_partial_report_in_every_phase) ... ok
+test_latest_pixel_buffer_overage_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_latest_pixel_buffer_overage_fails_even_when_attribution_inconclusive) ... ok
+test_memory_samples_must_cover_report_window_finish (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_memory_samples_must_cover_report_window_finish) ... ok
+test_missing_memory_metric_fails_closed (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_missing_memory_metric_fails_closed) ... ok
+test_non_positive_stream_fps_is_pipeline_anomaly (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_non_positive_stream_fps_is_pipeline_anomaly) ... ok
+test_optional_surface_growth_prevents_short_window_pass (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_optional_surface_growth_prevents_short_window_pass) ... ok
+test_queue_capacity_change_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_queue_capacity_change_fails_even_when_attribution_inconclusive) ... ok
+test_queue_capacity_overage_fails_even_when_attribution_inconclusive (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_queue_capacity_overage_fails_even_when_attribution_inconclusive) ... ok
+test_real_cli_signals_write_partial_report_in_every_phase (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_real_cli_signals_write_partial_report_in_every_phase) ... ok
+test_run_command_error_contains_full_shell_quoted_context (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_run_command_error_contains_full_shell_quoted_context) ... ok
+test_sample_commit_rolls_disk_back_when_interrupted (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_sample_commit_rolls_disk_back_when_interrupted) ... ok
+test_short_window_fails_closed (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_short_window_fails_closed) ... ok
+test_signal_handler_requires_main_thread (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_signal_handler_requires_main_thread) ... ok
+test_signal_handlers_are_restored_after_partial_request (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_signal_handlers_are_restored_after_partial_request) ... ok
+test_stable_short_run_passes_short_window_but_cannot_close_two_hour_gate (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stable_short_run_passes_short_window_but_cannot_close_two_hour_gate) ... ok
+test_stream_record_counts_are_mutually_exclusive_and_reconcile (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_record_counts_are_mutually_exclusive_and_reconcile) ... ok
+test_stream_telemetry_gap_fails_closed (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_gap_fails_closed) ... ok
+test_stream_telemetry_rejects_non_boolean_frame_lifecycle_fields (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_rejects_non_boolean_frame_lifecycle_fields) ... ok
+test_stream_telemetry_reports_frame_lifecycle_boolean_values (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_reports_frame_lifecycle_boolean_values) ... ok
+test_stream_telemetry_requires_encoder_capacity_when_registry_count_present (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_encoder_capacity_when_registry_count_present) ... ok
+test_stream_telemetry_requires_encoder_in_flight_pair_when_present (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_encoder_in_flight_pair_when_present) ... ok
+test_stream_telemetry_requires_encoder_pair_even_with_registry_count (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_encoder_pair_even_with_registry_count) ... ok
+test_stream_telemetry_requires_fields_on_every_record (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_fields_on_every_record) ... ok
+test_stream_telemetry_requires_latest_pixel_buffer_pair_when_present (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_latest_pixel_buffer_pair_when_present) ... ok
+test_stream_telemetry_requires_one_continuous_session_epoch (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_requires_one_continuous_session_epoch) ... ok
+test_stream_telemetry_schema_mismatch_fails_closed (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_schema_mismatch_fails_closed) ... ok
+test_stream_telemetry_treats_encoder_in_flight_fields_as_optional (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_treats_encoder_in_flight_fields_as_optional) ... ok
+test_stream_telemetry_treats_latest_pixel_buffer_fields_as_optional (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_treats_latest_pixel_buffer_fields_as_optional) ... ok
+test_stream_telemetry_treats_legacy_encoder_pair_without_registry_as_complete (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_stream_telemetry_treats_legacy_encoder_pair_without_registry_as_complete) ... ok
+test_zero_memory_records_fail_every_completeness_check (tools.tests.test_host_memory_diagnostic.HostMemoryAnalysisTests.test_zero_memory_records_fail_every_completeness_check) ... ok
+test_footprint_errors_fail_closed (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_footprint_errors_fail_closed) ... ok
+test_footprint_requires_malloc_small_category (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_footprint_requires_malloc_small_category) ... ok
+test_heap_parses_average_with_human_readable_unit (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_heap_parses_average_with_human_readable_unit) ... ok
+test_heap_parses_typed_and_non_object_rows (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_heap_parses_typed_and_non_object_rows) ... ok
+test_heap_payload_keeps_watched_autorelease_class_outside_top_twenty (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_heap_payload_keeps_watched_autorelease_class_outside_top_twenty) ... ok
+test_parses_real_footprint_shape_and_scales_units (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_parses_real_footprint_shape_and_scales_units) ... ok
+test_vmmap_keeps_zone_named_total_and_skips_aggregate_before_trailing_rows (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_vmmap_keeps_zone_named_total_and_skips_aggregate_before_trailing_rows) ... ok
+test_vmmap_parses_zone_totals_without_double_counting_total_row (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_vmmap_parses_zone_totals_without_double_counting_total_row) ... ok
+test_vmmap_rejects_malformed_content_before_first_zone (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_vmmap_rejects_malformed_content_before_first_zone) ... ok
+test_vmmap_stops_at_first_non_row_after_zone_rows (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_vmmap_stops_at_first_non_row_after_zone_rows) ... ok
+test_vmmap_supports_a_zone_table_without_aggregate_total (tools.tests.test_host_memory_diagnostic.HostMemoryParserTests.test_vmmap_supports_a_zone_table_without_aggregate_total) ... ok
+
+----------------------------------------------------------------------
+Ran 62 tests in 1.269s
+
+OK
+test_host_memory_diagnostic_exit=0
+
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate -v
+test_cli_fails_closed_on_invalid_input (tools.tests.test_host_rss_gate.HostRSSGateTest.test_cli_fails_closed_on_invalid_input) ... ok
+test_cli_returns_failure_when_output_cannot_be_written (tools.tests.test_host_rss_gate.HostRSSGateTest.test_cli_returns_failure_when_output_cannot_be_written) ... ok
+test_cli_writes_structured_insufficient_for_missing_telemetry_gaps (tools.tests.test_host_rss_gate.HostRSSGateTest.test_cli_writes_structured_insufficient_for_missing_telemetry_gaps) ... ok
+test_exact_window_encoder_in_flight_over_capacity_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_encoder_in_flight_over_capacity_fails) ... ok
+test_exact_window_encoder_missing_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_encoder_missing_fails) ... ok
+test_exact_window_frame_queue_drop_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_frame_queue_drop_fails) ... ok
+test_exact_window_frame_registry_over_capacity_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_frame_registry_over_capacity_fails) ... ok
+test_exact_window_heartbeat_mismatch_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_heartbeat_mismatch_fails) ... ok
+test_exact_window_latest_pixel_buffer_over_capacity_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_latest_pixel_buffer_over_capacity_fails) ... ok
+test_exact_window_non_positive_fps_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_non_positive_fps_fails) ... ok
+test_exact_window_queue_over_capacity_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_queue_over_capacity_fails) ... ok
+test_exact_window_telemetry_gap_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_exact_window_telemetry_gap_fails) ... ok
+test_flat_noisy_two_hour_window_passes (tools.tests.test_host_rss_gate.HostRSSGateTest.test_flat_noisy_two_hour_window_passes) ... ok
+test_historical_growth_rate_fails (tools.tests.test_host_rss_gate.HostRSSGateTest.test_historical_growth_rate_fails) ... ok
+test_large_internal_sampling_gap_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_large_internal_sampling_gap_is_insufficient) ... ok
+test_late_step_fails_platform_and_drift_criteria (tools.tests.test_host_rss_gate.HostRSSGateTest.test_late_step_fails_platform_and_drift_criteria) ... ok
+test_missing_end_of_window_coverage_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_missing_end_of_window_coverage_is_insufficient) ... ok
+test_missing_exact_window_report_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_missing_exact_window_report_is_insufficient) ... ok
+test_partial_exact_window_report_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_partial_exact_window_report_is_insufficient) ... ok
+test_partial_source_summary_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_partial_source_summary_is_insufficient) ... ok
+test_short_window_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_short_window_is_insufficient) ... ok
+test_single_in_window_sample_is_insufficient (tools.tests.test_host_rss_gate.HostRSSGateTest.test_single_in_window_sample_is_insufficient) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 1.048s
+
+OK
+test_host_rss_gate_exit=0
+
+$ python3 scripts/macos_dev_host.py xctest-preflight --report .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/xctest-toolchain.txt
+MacHost XCTest toolchain preflight
+---------------------------------
+Status: FAIL
+xcode-select -p: exit_code=0
+/Library/Developer/CommandLineTools
+xcrun --find swift: exit_code=0
+/Library/Developer/CommandLineTools/usr/bin/swift
+swift --version: exit_code=0
+swift-driver version: 1.148.6 Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)
+Target: arm64-apple-macosx26.0
+xcrun --find xcodebuild: exit_code=72
+xcrun: error: unable to find utility "xcodebuild", not a developer tool or in PATH
+xcodebuild -version: exit_code=1
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+Blocking issues:
+- full Xcode is not selected; Command Line Tools cannot run this XCTest suite
+- xcodebuild is not available from the selected Apple developer directory
+Safety: read-only; does not build, install, sign, modify TCC, or touch devices.
+
+Wrote .build/evidence/2026-08-28-host-rss-short-window-regression-readiness/xctest-toolchain.txt
+xctest_preflight_exit=2
+
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/readiness.json >/dev/null
+json_readiness_exit=0
+
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/host-readiness.json >/dev/null
+json_host_readiness_exit=0
+
+$ python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/failclosed-diagnostic.json >/dev/null
+json_failclosed_diagnostic_exit=0
+
+$ git diff --check
+git_diff_check_exit=0
+
+$ rg -n --no-heading '/Users/[A-Za-z0-9_]+' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
+local_path_scan_exit=1
+$ rg -n --no-heading '\$(HOME|USER|LOGNAME|SHELL|TMPDIR|XDG_[A-Z_]+)' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
+private_var_scan_exit=1
+$ rg -n --no-heading -e '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
+private_key_scan_exit=1
+$ rg -n --no-heading '(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|bearer[[:space:]]+[A-Za-z0-9._-]+)' docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/
+token_scan_exit=1
+# rg exit code 1 means no matches were found; the retained evidence files contain no user-local home paths, shell private variables, private key material, or bearer/API tokens.
+Result: no matches found in retained evidence files.
