@@ -1,0 +1,1 @@
+env PYTHONPATH=tools python3 -m vibescreen_evidence.harmony_avcodec_preflight --allow-blocked --validate docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/harmony-avcodec-preflight.json --evidence-root docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked

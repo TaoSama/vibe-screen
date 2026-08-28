@@ -1,0 +1,1 @@
+make harmony-matepad-acceptance EVIDENCE_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked HARMONY_MATEPAD_ACCEPTANCE_WRITE_BLOCKED=1

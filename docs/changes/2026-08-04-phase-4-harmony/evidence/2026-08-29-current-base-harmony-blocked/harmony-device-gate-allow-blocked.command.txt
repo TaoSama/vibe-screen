@@ -1,0 +1,1 @@
+python3 scripts/harmony_device_gate.py --allow-blocked --evidence-root docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/harmony-device-gates.json

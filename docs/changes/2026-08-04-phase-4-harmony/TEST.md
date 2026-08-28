@@ -336,6 +336,16 @@ DevEco, MatePad Mini hardware, signed HAP metadata, HUKS/authenticated
 transport artifacts, and Host resume evidence, its correct result is `blocked`
 and the README gates remain open.
 
+The current-base blocked evidence was refreshed on 2026-08-29 after the evidence
+collectors learned to exclude only their active output directory from git
+cleanliness checks. The rerun is archived at
+`docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/`
+and records clean repository state for the readiness, HAP lifecycle readiness,
+and AVCodec preflight manifests. Its aggregate result remains `blocked` with
+`can_close_readme_phase4_owner_gates=false` and
+`can_claim_harmony_device_pass=false`; no DevEco/HAP/MatePad/HUKS/authenticated
+transport/resume evidence was present.
+
 ## 2026-08-22 MatePad Mini acceptance package readiness
 
 The MatePad Mini path now has a final redacted package validator layered after
@@ -401,7 +411,7 @@ apps/ios/Scripts/build_ios.py
 ## Environment evidence
 
 ```text
-base commit: 36905b40b2457c9f156e0b9b273fd437303a1efe
+base commit: 181167a81ea3176be466c5e5ec7c0c02bb915038
 node: v26.5.0
 pnpm: 11.15.1
 TypeScript: 5.9.3
