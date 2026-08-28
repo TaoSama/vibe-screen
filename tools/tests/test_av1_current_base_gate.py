@@ -14,6 +14,11 @@ AV1_BLOCKED_EVIDENCE_PATH = (
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
     / "2026-08-21-av1-offline-blocked/README.md"
 )
+AV1_P0110_CAPABILITY_EVIDENCE_PATH = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-21-av1-codec-capability/evidence"
+    / "2026-08-28-nubia-p0110-av1-capability-probe/README.md"
+)
 MAC_CODEC_LIMITS_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/CodecLimits.swift"
 MAC_VIDEO_ENCODER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/VideoEncoder.swift"
 MAC_STREAMING_SERVER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/StreamingServer.swift"
@@ -134,6 +139,8 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         gate = AV1_GATE_PATH.read_text(encoding="utf-8")
         normalized_gate = " ".join(gate.split())
         blocked_evidence = AV1_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
+        p0110_capability_evidence = AV1_P0110_CAPABILITY_EVIDENCE_PATH.read_text(encoding="utf-8")
+        normalized_p0110_capability_evidence = " ".join(p0110_capability_evidence.split())
 
         self.assertIn("current-base closure owner", gate)
         self.assertIn("tools/tests/test_av1_current_base_gate.py", gate)
@@ -152,6 +159,24 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("Can't find service: media.codec", blocked_evidence)
         self.assertIn("diagnostic only", blocked_evidence)
         self.assertIn("must not be cited as AV1 Host/device streaming evidence", blocked_evidence)
+        self.assertIn("2026-08-28 Nubia P0110 Android decoder capability probe", gate)
+        self.assertIn("capability/readiness snapshot", gate)
+        self.assertIn("does not add AV1 Host/device real-stream evidence", normalized_gate)
+        self.assertIn("Nubia P0110", p0110_capability_evidence)
+        self.assertIn("pacific", p0110_capability_evidence)
+        self.assertIn("Android: 16", p0110_capability_evidence)
+        self.assertIn("SDK: 36", p0110_capability_evidence)
+        self.assertIn("EP0110PZ0B9110300B", p0110_capability_evidence)
+        self.assertIn("/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock", p0110_capability_evidence)
+        self.assertIn("pgrep -x sfltool || true", p0110_capability_evidence)
+        self.assertIn("No /usr/bin/sfltool dumpbtm command was executed", normalized_p0110_capability_evidence)
+        self.assertIn("dumpsys media.codec", p0110_capability_evidence)
+        self.assertIn("'Can't find service: media.codec' with exit code 0", p0110_capability_evidence)
+        self.assertIn("cmd: Can't find service: media.codec", p0110_capability_evidence)
+        self.assertIn("'cmd: Can't find service: media.codec' with exit code 20", p0110_capability_evidence)
+        self.assertIn("c2.qti.av1.decoder", p0110_capability_evidence)
+        self.assertIn("c2.android.av1-dav1d.decoder", p0110_capability_evidence)
+        self.assertIn("does not prove Vibe Screen AV1 negotiation", normalized_p0110_capability_evidence)
 
 
 if __name__ == "__main__":
