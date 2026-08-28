@@ -1,6 +1,6 @@
 # Root USB Smoke Summary - 2026-08-21 22:35 Asia/Shanghai
 
-Device: Nubia P0110 / pacific / Android 16 / SDK 36, serial EP0110PZ0B9110300B.
+Device: Nubia P0110 / pacific / Android 16 / SDK 36, serial <redacted-adb-serial>.
 
 Scope: short USB smoke only. This is not a long soak, latency gate, input gate, UI gate, or Xiaomi/fuxi evidence.
 

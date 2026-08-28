@@ -1,15 +1,15 @@
 $ ps -o pid,stat,etime,command  (Telemachus)
 85622 R 00:05 .build/release/Telemachus
-$ adb -s 8a023e3a reverse --list
+$ adb -s <redacted-xiaomi-adb-serial> reverse --list
 UsbFfs tcp:54321 tcp:54321
 $ lsof -nP -iTCP:54321
-Telemachu 85622 luwentao 7u IPv4 TCP 127.0.0.1:54321 (LISTEN)
+Telemachu 85622 <user> 7u IPv4 TCP 127.0.0.1:54321 (LISTEN)
 $ foreground launch log (proves permissions):
 🚀 Telemachus starting...
 Loaded settings: 2560x1440 @ 60Hz, bitrate=35, quality=ultralow
 ✅ App launched
 ✅ Accessibility permission granted
 🔌 Setting up ADB reverse for port 54321...
-📱 Found ADB at: /Users/luwentao/Library/Android/sdk/platform-tools/adb
+📱 Found ADB at: <android-sdk>/platform-tools/adb
 ✅ ADB reverse setup successful: tcp:54321 -> tcp:54321
 ✅ Server started on port 54321

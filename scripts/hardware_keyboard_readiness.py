@@ -31,7 +31,11 @@ from vibescreen_evidence.hardware_keyboard import summarize  # noqa: E402
 BLOCKED_EXIT = 2
 DEFAULT_PACKAGE = "dev.telemachus.display"
 DEFAULT_PORT = 54321
-P0110_SERIAL = "EP0110PZ0B9110300B"
+P0110_MANUFACTURER = "nubia"
+P0110_MODEL = "P0110"
+P0110_CODENAME = "pacific"
+P0110_ANDROID_RELEASE = "16"
+P0110_SDK = "36"
 DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-soak.lock"),
     Path("/tmp/vibe-screen-device-android.lock"),
@@ -364,9 +368,13 @@ def package_identity_recorded(package: PackageIdentity | None) -> bool:
 def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) -> bool:
     if device is None:
         return False
-    if serial != P0110_SERIAL:
-        return all((device.manufacturer, device.model, device.device, device.android_release, device.sdk))
-    return is_nubia_p0110_android16(device)
+    if serial == REDACTED_DEVICE_SERIAL:
+        return is_nubia_p0110_android16(device)
+    if is_nubia_p0110_android16(device):
+        return True
+    if serial != device.serial and serial != device.device_serial:
+        return False
+    return all((device.manufacturer, device.model, device.device, device.android_release, device.sdk))
 
 
 def inspect_host(port: int, preflight_report: Path, *serials: str) -> HostPreflight:
@@ -518,11 +526,11 @@ def redacted_device_identity(device: DeviceIdentity) -> RedactedDeviceIdentity:
 
 def is_nubia_p0110_android16(device: DeviceIdentity) -> bool:
     return (
-        device.manufacturer.lower() == "nubia"
-        and device.model == "P0110"
-        and device.device == "pacific"
-        and device.android_release == "16"
-        and device.sdk == "36"
+        device.manufacturer.lower() == P0110_MANUFACTURER
+        and device.model == P0110_MODEL
+        and device.device == P0110_CODENAME
+        and device.android_release == P0110_ANDROID_RELEASE
+        and device.sdk == P0110_SDK
     )
 
 

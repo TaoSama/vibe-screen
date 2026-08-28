@@ -78,7 +78,7 @@ hardware serial `[redacted]`, fingerprint
 1264×2800 at 560 dpi. It is not the Xiaomi 13 (model 2211133C, codename fuxi)
 primary target; this record is Nubia P0110 evidence only. Later Xiaomi 13
 streaming, display-switch, and input evidence is recorded under
-`../2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/` and
+`../2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-<redacted-xiaomi-adb-serial>/` and
 the fuxi Phase 1 evidence directories.
 
 The device-run APK installed with `adb install -r -t` at
@@ -840,7 +840,7 @@ precheck found no `sfltool` process, and the run did not execute `sfltool
 dumpbtm` or any login-item opt-in diagnostic.
 
 The connected Android device was sampled only under the
-`/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock` lease, and every ADB command
+`/tmp/vibe-screen-android-<redacted-adb-serial>.lock` lease, and every ADB command
 used the explicit P0110 serial before the public evidence was redacted. The
 device identified as nubia P0110 / pacific / Android 16 / SDK 36, the Android
 packages were installed, and `adb reverse --list` retained

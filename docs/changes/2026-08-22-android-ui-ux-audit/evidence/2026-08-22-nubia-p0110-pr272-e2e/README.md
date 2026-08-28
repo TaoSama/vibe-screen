@@ -1,11 +1,11 @@
 # Nubia P0110 PR272 Android UI/UX E2E
 
-This record covers the PR #272 Android display-selection UI confirmation path and a focused UI/UX walk-through on the connected Android device. The run held `/tmp/vibe-screen-device-android.lock` for this task and used explicit `adb -s EP0110PZ0B9110300B` targeting for every device command.
+This record covers the PR #272 Android display-selection UI confirmation path and a focused UI/UX walk-through on the connected Android device. The run held `/tmp/vibe-screen-device-android.lock` for this task and used explicit `adb -s <redacted-adb-serial>` targeting for every device command.
 
 ## Device
 
 - Device identity: nubia P0110 / pacific / Android 16 / SDK 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Physical size: 1264x2800
 - Physical density: 560
 

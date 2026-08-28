@@ -3,7 +3,7 @@
 Date: 2026-08-20
 Source commit at preflight: `3ff86f22909f12ed81339a0ff7b8d518712e3655`
 Branch: `codex/trusted-lan-smoke-evidence`
-Target device serial: `EP0110PZ0B9110300B`
+Target device serial: `<redacted-adb-serial>`
 
 ## Intended gate
 
@@ -24,7 +24,7 @@ any pairing token to the device. Two prerequisites were not met:
 
 1. The Android device was reachable over USB and identified as Nubia P0110 /
    pacific / Android 16, but Wi-Fi was not associated. After `adb -s
-   EP0110PZ0B9110300B shell svc wifi enable`, `cmd wifi status` still reported
+   <redacted-adb-serial> shell svc wifi enable`, `cmd wifi status` still reported
    `Wifi is not connected`, `wlan0` had no IPv4 address, and a ping to the Mac
    LAN candidate failed with `Network is unreachable`.
 2. The local Mac has no valid codesigning identities, so
@@ -41,7 +41,7 @@ reconnect was observed.
 ## Captured artifacts
 
 - `device-info.txt`: device identity and basic display/battery state collected
-  with `adb -s EP0110PZ0B9110300B`.
+  with `adb -s <redacted-adb-serial>`.
 - `android-network-blocker-sanitized.txt`: redacted Wi-Fi and route preflight
   showing no Wi-Fi association, no `wlan0` IPv4 address, and no route to the Mac
   LAN candidate.

@@ -55,7 +55,7 @@
     }
   },
   "android_device_claim_boundary": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "expected_identity": "nubia P0110 / pacific / Android 16 / SDK 36",
     "source": "fresh adb get-state/getprop check on 2026-08-24 in this current-base worktree",
     "not_xiaomi_fuxi": true
@@ -84,7 +84,7 @@
       "exit_code": 0
     },
     "adb_device_identity": {
-      "command": "adb -s EP0110PZ0B9110300B get-state && adb -s EP0110PZ0B9110300B shell getprop ro.product.*",
+      "command": "adb -s <redacted-adb-serial> get-state && adb -s <redacted-adb-serial> shell getprop ro.product.*",
       "exit_code": 0,
       "identity": "nubia P0110 / pacific / Android 16 / SDK 36"
     },

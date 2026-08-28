@@ -253,8 +253,8 @@ def write_manifest(
         "run_id": "phase2-run",
         "device": {
             "identity": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",

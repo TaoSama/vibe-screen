@@ -43,7 +43,7 @@ def make_args(directory: Path, **overrides):
         "mode": "preflight",
         "allow_existing_device_lock": False,
         "device_class": "android_substitute",
-        "serial": "EP0110PZ0B9110300B",
+        "serial": "<redacted-adb-serial>",
         "adb": "adb",
         "adb_timeout": 1.0,
         "host_pid": None,
@@ -274,7 +274,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_device_lock_releases_owned_file_after_inner_lock_failure(self):
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
-            owner = {"pid": 123, "serial": "EP0110PZ0B9110300B"}
+            owner = {"pid": 123, "serial": "<redacted-adb-serial>"}
             android_lock = directory / "android.lock"
             soak_lock = directory / "soak.lock"
 
@@ -298,7 +298,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", soak_lock),
             ):
                 with self.assertRaises(FileExistsError):
-                    acquire_device_locks({"pid": 123, "serial": "EP0110PZ0B9110300B"})
+                    acquire_device_locks({"pid": 123, "serial": "<redacted-adb-serial>"})
 
             self.assertFalse(android_lock.exists())
             self.assertEqual(soak_lock.read_text(encoding="utf-8"), "owned by another run\n")
@@ -306,8 +306,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_with_precondition_blocker_does_not_start_soak(self):
         device_info = {
             "device": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -335,8 +335,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_preflight_missing_apk_identity_blocks_but_still_runs_soak(self):
         device_info = {
             "device": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -481,8 +481,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_preflight_invalid_apk_sha256_blocks_without_sha_artifact(self):
         device_info = {
             "device": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -538,7 +538,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 }
                 exit_code = main([
                     "--serial",
-                    "EP0110PZ0B9110300B",
+                    "<redacted-adb-serial>",
                     "--output-dir",
                     str(directory),
                     "--mode",
@@ -592,8 +592,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_logcat_failure_blocks_and_skips_gate(self):
         device_info = {
             "device": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "test",
                 "model": "Tablet",
                 "codename": "tablet",
@@ -639,8 +639,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_derives_gate_with_manifest_and_evidence_dir(self):
         device_info = {
             "device": {
-                "adb_serial": "EP0110PZ0B9110300B",
-                "device_serial": "EP0110PZ0B9110300B",
+                "adb_serial": "<redacted-adb-serial>",
+                "device_serial": "<redacted-adb-serial>",
                 "manufacturer": "test",
                 "model": "Tablet",
                 "codename": "tablet",
@@ -717,7 +717,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     main([
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        "<redacted-adb-serial>",
                         "--output-dir",
                         str(directory),
                         "--mode",
@@ -751,7 +751,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     main([
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        "<redacted-adb-serial>",
                         "--output-dir",
                         str(directory),
                         "--mode",
@@ -826,7 +826,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_device_lock_is_exclusive_and_releases_owned_file(self):
         with tempfile.TemporaryDirectory() as directory_name:
             path = Path(directory_name) / "device.lock"
-            owner = {"pid": 123, "serial": "EP0110PZ0B9110300B"}
+            owner = {"pid": 123, "serial": "<redacted-adb-serial>"}
 
             with DeviceLock(path, owner=owner):
                 self.assertTrue(path.exists())

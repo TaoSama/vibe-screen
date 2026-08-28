@@ -7,7 +7,7 @@
     "utc_offset": "+08:00"
   },
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",
@@ -26,7 +26,7 @@
   "host": {
     "binary_path": "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen",
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
-    "defaults_original_target": "bac5b092",
+    "defaults_original_target": "<redacted-xiaomi-adb-serial>",
     "defaults_temporary_target_during_test": "P0110",
     "defaults_restored_after_test": true,
     "screen_recording_cgpreflight_tcc": "blocked",

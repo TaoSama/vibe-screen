@@ -95,6 +95,7 @@ secret manager:
 cd deploy/phase3
 cp config/relay.production.example.json config/relay.production.json
 install -d -m 0700 secrets tls
+install -d -m 0700 -o 65532 -g 65532 coturn-state
 ```
 
 Review `config/relay.production.json` and set `turn_realm` to
@@ -139,10 +140,11 @@ Deploy only after the preflight checklist is green:
 
 ```bash
 cd deploy/phase3
-docker compose -f docker-compose.production.yml pull relay coturn
-docker compose -f docker-compose.production.yml up -d --wait relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
+docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
 
 The `relay-migrate` job runs database migration first. Relay startup is valid only

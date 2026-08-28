@@ -4,7 +4,7 @@ Date: 2026-08-22
 Target branch: `codex/trusted-lan-preflight`
 Target PR: #261
 Target commit before preflight: `ab4926f08940b5ef82246ce7c2264e697c0eb007`
-Target device serial: `EP0110PZ0B9110300B`
+Target device serial: `<redacted-adb-serial>`
 
 ## Intended gate
 
@@ -34,10 +34,10 @@ trusted-LAN stream or reconnect gate.
 
 ## Captured artifacts
 
-- `adb-*.txt`: explicit-serial ADB identity checks for `EP0110PZ0B9110300B`.
+- `adb-*.txt`: explicit-serial ADB identity checks for `<redacted-adb-serial>`.
 - `trusted-lan-preflight.json`: machine-readable fail-closed preflight result.
 - `commands.txt`: command summary; every Android command used `adb -s
-  EP0110PZ0B9110300B ...`.
+  <redacted-adb-serial> ...`.
 - `device-lock.txt`: local Android device lock acquisition and release record.
 - `SHA256SUMS`: hashes for retained artifacts.
 

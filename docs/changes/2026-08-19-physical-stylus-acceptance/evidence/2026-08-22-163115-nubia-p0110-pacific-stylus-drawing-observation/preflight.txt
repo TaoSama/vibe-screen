@@ -25,4 +25,4 @@ Host process:
 92943 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
 Host log:
--rw-------@ 1 luwentao  staff  726594 Aug 22 16:31 /Users/luwentao/Library/Logs/Telemachus/telemachus.log
+-rw-------@ 1 <user>  staff  726594 Aug 22 16:31 <user-home>/Library/Logs/Telemachus/telemachus.log

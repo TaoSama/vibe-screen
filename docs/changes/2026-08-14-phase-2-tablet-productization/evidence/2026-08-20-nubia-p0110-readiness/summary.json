@@ -4,7 +4,7 @@
   "base_commit_sha": "18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee",
   "source_state": "base commit plus the working-tree instrumentation screenshot helper added by this change",
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",

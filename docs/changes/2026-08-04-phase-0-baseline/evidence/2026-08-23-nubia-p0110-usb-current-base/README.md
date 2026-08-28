@@ -2,7 +2,7 @@
 
 This evidence record covers an attempted Android USB end-to-end current-base
 verification on the connected Nubia P0110 (pacific) device, serial
-`EP0110PZ0B9110300B`, running Android 16 / SDK 36. It is P0110/pacific evidence
+`<redacted-adb-serial>`, running Android 16 / SDK 36. It is P0110/pacific evidence
 only; it is not Xiaomi 13/fuxi evidence.
 
 ## Verdict
@@ -52,7 +52,7 @@ P0110 / pacific / Android 16 / SDK 36 only, never Xiaomi 13/fuxi.
   fingerprint
   `nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys`.
 - A second Android device was connected, so every recorded device command used
-  `adb -s EP0110PZ0B9110300B` explicitly.
+  `adb -s <redacted-adb-serial>` explicitly.
 - Current-tree Host executable:
   `baseline/MacHost/.build/release/Vibe Screen`, SHA-256
   `93b91e1fa22f41f4531efd43d37b8cc431be06c3e67c5f0379e0ef0c8c4ff57f`.
@@ -93,14 +93,14 @@ Representative commands used for this evidence:
 
 ```bash
 make evidence-device-info \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<redacted-adb-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base
 
 make baseline-android-apk
 
 cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest
 
-adb -s EP0110PZ0B9110300B install -r -t \
+adb -s <redacted-adb-serial> install -r -t \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 
 make baseline-macos-touch-preflight
@@ -117,14 +117,14 @@ while ! lsof -nP -a -iTCP@127.0.0.1:54321 -sTCP:LISTEN >/dev/null 2>&1; do
   sleep 1
 done
 
-adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
+adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321
 
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m unittest tools.tests.test_usb_live_smoke -v
 
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m vibescreen_evidence.usb_live_smoke \
-  --serial EP0110PZ0B9110300B \
+  --serial <redacted-adb-serial> \
   --package dev.telemachus.display \
   --port 54321 \
   --allow-existing-device-lock \

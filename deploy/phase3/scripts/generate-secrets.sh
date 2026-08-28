@@ -14,5 +14,6 @@ for secret_name in turn_secret client_token usage_token metrics_token admin_toke
   fi
   openssl rand -base64 48 > "$destination"
 done
+chmod 0444 "$secret_dir"/*.txt
 
-echo "generated six mode-0600 secret files under $secret_dir"
+echo "generated six container-readable local secret files under $secret_dir"

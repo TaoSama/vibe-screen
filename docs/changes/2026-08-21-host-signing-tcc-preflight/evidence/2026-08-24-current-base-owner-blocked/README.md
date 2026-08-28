@@ -10,8 +10,8 @@ provenance, and same-commit Host self-test output.
 - Owner branch: `codex/host-signing-tcc-current-owner`.
 - Required Host bundle id: `dev.telemachus.display`.
 - Android substitute identity, when an Android helper run is needed: Nubia P0110,
-  codename `pacific`, Android 16 / SDK 36, serial `EP0110PZ0B9110300B`, targeted
-  explicitly with `adb -s EP0110PZ0B9110300B`. Nubia P0110 evidence must not be
+  codename `pacific`, Android 16 / SDK 36, serial `<redacted-adb-serial>`, targeted
+  explicitly with `adb -s <redacted-adb-serial>`. Nubia P0110 evidence must not be
   relabeled as Xiaomi 13/fuxi evidence.
 
 The generated `macos-hardware-compatibility-gate.json` is expected to report

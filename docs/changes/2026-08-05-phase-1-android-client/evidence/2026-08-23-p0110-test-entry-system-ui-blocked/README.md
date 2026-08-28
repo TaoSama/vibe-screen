@@ -8,7 +8,7 @@ read-only check and retained under `${EVIDENCE_DIR}`.
 
 ## Device
 
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Manufacturer: nubia
 - Model: P0110
 - Device/codename: pacific

@@ -184,7 +184,7 @@ class CollectionTests(unittest.TestCase):
             stdout = responses.get(key, "")
             return subprocess.CompletedProcess(command, 0, stdout, "")
 
-        return ADBClient("EP0110PZ0B9110300B", command_runner=run), commands
+        return ADBClient("<redacted-adb-serial>", command_runner=run), commands
 
     def test_all_adb_commands_include_serial(self):
         responses = {
@@ -199,14 +199,14 @@ class CollectionTests(unittest.TestCase):
         }
         # identity uses shell getprop
         def identity(self):
-            return {"adb_serial": "EP0110PZ0B9110300B", "manufacturer": "nubia", "model": "P0110", "device": "pacific", "product": "pacific", "android_release": "16", "sdk": 36, "build_fingerprint": "nubia/pacific/pacific:16/...", "abi": "arm64-v8a", "device_serial": "EP0110PZ0B9110300B"}
+            return {"adb_serial": "<redacted-adb-serial>", "manufacturer": "nubia", "model": "P0110", "device": "pacific", "product": "pacific", "android_release": "16", "sdk": 36, "build_fingerprint": "nubia/pacific/pacific:16/...", "abi": "arm64-v8a", "device_serial": "<redacted-adb-serial>"}
 
         client, commands = self._client(responses)
         client.identity = lambda: identity(client)
         document = collect_usb_live_smoke(client)
         for command in commands:
             self.assertIn("-s", command)
-            self.assertIn("EP0110PZ0B9110300B", command)
+            self.assertIn("<redacted-adb-serial>", command)
         flattened = "\n".join(" ".join(command) for command in commands)
         self.assertNotIn(" force-stop ", flattened)
         self.assertNotIn(" reverse tcp:", flattened)
@@ -289,7 +289,7 @@ class CollectionTests(unittest.TestCase):
     @staticmethod
     def _p0110_identity():
         return {
-            "adb_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "<redacted-adb-serial>",
             "manufacturer": "nubia",
             "model": "P0110",
             "device": "pacific",
@@ -298,7 +298,7 @@ class CollectionTests(unittest.TestCase):
             "sdk": 36,
             "build_fingerprint": "nubia/pacific/pacific:16/...",
             "abi": "arm64-v8a",
-            "device_serial": "EP0110PZ0B9110300B",
+            "device_serial": "<redacted-adb-serial>",
         }
 
     @staticmethod
@@ -319,7 +319,7 @@ class CollectionTests(unittest.TestCase):
     def test_lock_blocked_document_does_not_run_adb(self):
         locks = [{"path": "/tmp/vibe-screen-device-android.lock"}]
         document = build_lock_blocked_document(
-            serial="EP0110PZ0B9110300B",
+            serial="<redacted-adb-serial>",
             package_name="dev.telemachus.display",
             port=54321,
             locks=locks,
@@ -335,7 +335,7 @@ class CollectionTests(unittest.TestCase):
 
     def test_lock_blocked_document_preserves_custom_log_limits(self):
         document = build_lock_blocked_document(
-            serial="EP0110PZ0B9110300B",
+            serial="<redacted-adb-serial>",
             package_name="dev.telemachus.display",
             port=54321,
             logcat_lines=321,

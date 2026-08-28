@@ -5,24 +5,24 @@ Date UTC: 2026-08-22
 Branch: codex/trusted-lan-p0110-evidence
 HEAD: 392b86882869f9bf431cfd35be834f6cdc15fd37
 
-All ADB commands used explicit `-s EP0110PZ0B9110300B`. The run did not alter
+All ADB commands used explicit `-s <redacted-adb-serial>`. The run did not alter
 saved Wi-Fi credentials, TCC, Keychain, app data, pairing tokens, or QR payloads.
 
 ```sh
 git fetch origin --prune
 git switch -c codex/trusted-lan-p0110-evidence origin/main
 test -e /tmp/vibe-screen-device-android.lock
-adb -s EP0110PZ0B9110300B devices -l
-adb -s EP0110PZ0B9110300B get-state
-adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-adb -s EP0110PZ0B9110300B shell cmd wifi status
-adb -s EP0110PZ0B9110300B shell ip addr show wlan0
-adb -s EP0110PZ0B9110300B shell ip route
-make evidence-trusted-lan-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/2026-08-23-p0110-trusted-lan-preflight
+adb -s <redacted-adb-serial> devices -l
+adb -s <redacted-adb-serial> get-state
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell cmd wifi status
+adb -s <redacted-adb-serial> shell ip addr show wlan0
+adb -s <redacted-adb-serial> shell ip route
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence/2026-08-23-p0110-trusted-lan-preflight
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight -v
 make evidence-tools-test
 ```

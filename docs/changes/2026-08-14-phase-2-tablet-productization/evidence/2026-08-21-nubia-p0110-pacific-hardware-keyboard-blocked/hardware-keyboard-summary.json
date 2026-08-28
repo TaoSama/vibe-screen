@@ -107,7 +107,7 @@
       "requirement": "retain Android logs/input snapshots covering the keyboard workflow"
     }
   ],
-  "notes": "Target serial for a future run is EP0110PZ0B9110300B and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
+  "notes": "Target serial for a future run is <redacted-adb-serial> and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
   "observations": {
     "android_device_lock_acquired": false,
     "android_keyboard_source_observed": false,

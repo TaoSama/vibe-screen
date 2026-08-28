@@ -1,6 +1,6 @@
-$ adb -s EP0110PZ0B9110300B shell stat -c %u /proc/27526
+$ adb -s <redacted-adb-serial> shell stat -c %u /proc/27526
 10259
-$ adb -s EP0110PZ0B9110300B shell ls -l /proc/27526/fd | grep socket
+$ adb -s <redacted-adb-serial> shell ls -l /proc/27526/fd | grep socket
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 105 -> socket:[163721470]
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 106 -> socket:[163721471]
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 111 -> socket:[163721472]
@@ -23,7 +23,7 @@ lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 89 -> socket:[163688933]
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 90 -> socket:[163688934]
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 91 -> socket:[163717900]
 lrwx------ 1 u0_a259 u0_a259 64 2026-08-22 00:35 95 -> socket:[163721469]
-$ adb -s EP0110PZ0B9110300B shell cat /proc/27526/net/tcp /proc/27526/net/tcp6
+$ adb -s <redacted-adb-serial> shell cat /proc/27526/net/tcp /proc/27526/net/tcp6
   sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 00000000:22C6 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10056        0 87835 1 ffffff88e13a2580 100 0 0 10 0
    1: 0100007F:22A8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1002        0 49891 1 ffffff892983d780 100 0 0 10 0

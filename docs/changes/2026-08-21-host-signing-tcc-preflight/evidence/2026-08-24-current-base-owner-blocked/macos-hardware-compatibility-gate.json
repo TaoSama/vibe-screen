@@ -290,7 +290,7 @@
   "profile": "macos-host-compatibility-row",
   "row_scope": {
     "accessibility_tcc": "unverified",
-    "android_counterpart": "Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B",
+    "android_counterpart": "Nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>",
     "capture_backend": "unavailable",
     "cgdisplaystream_result": "unavailable_terminal",
     "compatibility_scope": "readiness only; does not close any real Host-backed Android gate",

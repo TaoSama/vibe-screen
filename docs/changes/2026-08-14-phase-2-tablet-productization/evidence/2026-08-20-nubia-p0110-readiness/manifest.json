@@ -3,7 +3,7 @@
   "result": "passed_readiness_only",
   "base_commit_sha": "18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee",
   "source_state": "base commit plus the working-tree instrumentation screenshot helper added by this change",
-  "device_serial": "EP0110PZ0B9110300B",
+  "device_serial": "<redacted-adb-serial>",
   "device_model": "nubia P0110",
   "device_codename": "pacific",
   "android_release": "16",

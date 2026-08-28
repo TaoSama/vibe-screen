@@ -13,7 +13,7 @@
     "branch": "codex/p0110-usb-smoke-evidence"
   },
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",

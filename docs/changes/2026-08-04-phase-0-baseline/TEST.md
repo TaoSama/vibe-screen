@@ -196,7 +196,7 @@ Android 16 / SDK 36, fingerprint
 It is not the Xiaomi 13 (model 2211133C, codename fuxi) primary target, so this
 run proves interoperability on the recorded Nubia device but does not close the
 Xiaomi-specific Phase 0 criterion; later Xiaomi 13 evidence is recorded under
-`evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/` and
+`evidence/2026-08-08-xiaomi12-fuxi-redacted/` and
 `evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/`.
 
 - The final APK was installed exactly once with `adb install -r -t`; install

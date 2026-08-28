@@ -1,18 +1,18 @@
 Date: 2026-08-23
-Worktree: /Users/luwentao/.codex/worktrees/a85b/vibe-screen
+Worktree: <codex-worktrees>/a85b/vibe-screen
 Branch: codex/controller-virtual-gamepad-gate
 Base: origin/main 781992d7dc6e99d62ddd5326853f689c30c53d67
 
 Controller runtime readiness
 ----------------------------
 Command:
-python3 scripts/controller_runtime_readiness.py --serial EP0110PZ0B9110300B --allow-existing-device-lock --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" --host-app "/Applications/Vibe Screen.app" --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness --run-id 2026-08-23-current-base-controller-runtime-readiness
+python3 scripts/controller_runtime_readiness.py --serial <redacted-adb-serial> --allow-existing-device-lock --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" --host-app "/Applications/Vibe Screen.app" --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-23-current-base-controller-runtime-readiness --run-id 2026-08-23-current-base-controller-runtime-readiness
 
 Result: exit 2. Summary verdict is blocked. can_close_runtime_gate=false.
 Blocking reasons: no physical Android controller, no Apple identity-signed Host,
 no approved virtual HID entitlement in the running app, and no Host
 virtual-gamepad runtime availability. Device identity was recorded as nubia
-P0110 / pacific / Android 16 / SDK 36 with serial EP0110PZ0B9110300B. APK
+P0110 / pacific / Android 16 / SDK 36 with serial <redacted-adb-serial>. APK
 identity was not recorded because dumpsys package reported that
 dev.telemachus.display was not installed.
 

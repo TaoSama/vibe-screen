@@ -2,7 +2,7 @@
 codex android system-ui intercept handling 2026-08-22T23:24:29Z
 --- adb devices -l ---
 List of devices attached
-EP0110PZ0B9110300B     device usb:1-1 product:pacific model:P0110 device:pacific transport_id:1
+<redacted-adb-serial>     device usb:1-1 product:pacific model:P0110 device:pacific transport_id:1
 emulator-5554          device product:sdk_phone64_arm64 model:Android_SDK_built_for_arm64 device:emu64a transport_id:13
 
 --- identity ---

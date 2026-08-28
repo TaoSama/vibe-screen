@@ -4,23 +4,23 @@ import XCTest
 final class ADBDeviceSelectionPolicyTests: XCTestCase {
     func testConfiguredOnlineDeviceWinsRegardlessOfEnumerationOrder() {
         for connectedSerials in [
-            ["8a023e3a", "bac5b092"],
-            ["bac5b092", "8a023e3a"]
+            ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"],
+            ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"]
         ] {
             XCTAssertEqual(
                 ADBDeviceSelectionPolicy.resolveTargetSerial(
-                    configuredSerial: "bac5b092",
+                    configuredSerial: "<redacted-xiaomi-adb-serial>",
                     connectedSerials: connectedSerials
                 ),
-                "bac5b092"
+                "<redacted-xiaomi-adb-serial>"
             )
         }
     }
 
     func testConfiguredOfflineDeviceDoesNotFallBackToAnotherDevice() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
-            configuredSerial: "bac5b092",
-            connectedSerials: ["8a023e3a"]
+            configuredSerial: "<redacted-xiaomi-adb-serial>",
+            connectedSerials: ["<redacted-xiaomi-adb-serial>"]
         ))
     }
 
@@ -28,16 +28,16 @@ final class ADBDeviceSelectionPolicyTests: XCTestCase {
         XCTAssertEqual(
             ADBDeviceSelectionPolicy.resolveTargetSerial(
                 configuredSerial: "",
-                connectedSerials: ["bac5b092"]
+                connectedSerials: ["<redacted-xiaomi-adb-serial>"]
             ),
-            "bac5b092"
+            "<redacted-xiaomi-adb-serial>"
         )
     }
 
     func testUnconfiguredHostRequiresSelectionWhenSeveralDevicesAreOnline() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
             configuredSerial: "",
-            connectedSerials: ["8a023e3a", "bac5b092"]
+            connectedSerials: ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"]
         ))
     }
 

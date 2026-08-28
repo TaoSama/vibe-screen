@@ -1,11 +1,11 @@
 # Nubia P0110 PR272 final Android UI/UX evidence
 
-This evidence records a final focused Android UI/UX pass for PR #272 on the connected Nubia device. Every device command used explicit serial targeting with `adb -s EP0110PZ0B9110300B`.
+This evidence records a final focused Android UI/UX pass for PR #272 on the connected Nubia device. Every device command used explicit serial targeting with `adb -s <redacted-adb-serial>`.
 
 ## Device
 
 - Device identity: nubia P0110 / pacific / Android 16 / SDK 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Physical size: 1264x2800
 - Physical density: 560
 - Power state: AC powered, 100% battery during the run
@@ -19,11 +19,11 @@ See `device-and-preconditions.txt` and `commands.txt` for the raw identity and s
 ```sh
 cd baseline/AndroidClient
 ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.ControlBarLayoutInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.ControlBarLayoutInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.DisplayCapsulePolicyTest :app:compileDebugAndroidTestKotlin
 ```
 
