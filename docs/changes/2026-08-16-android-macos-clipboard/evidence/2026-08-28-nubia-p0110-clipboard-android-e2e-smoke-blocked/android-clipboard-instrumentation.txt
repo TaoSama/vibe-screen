@@ -5,5 +5,3 @@ dev.telemachus.display.ClipboardManagerInstrumentedTest:...
 Time: 1.42
 
 OK (3 tests)
-
-

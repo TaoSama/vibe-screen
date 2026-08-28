@@ -1,7 +1,7 @@
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-device.exit
 e649e533cccd4782b32720d6ce24f45d4cb361caf524b476aadcfdb43b5bb316  ./adb-device.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-devices.exit
-bedf8f08bbff5c5d533219ecd874cf021c4e17829b3b1f6eb6d14e08c3a3fc03  ./adb-devices.txt
+a55fae5b7d8d9e9eb637249d0f3a51c2d7a0aa877e6e7a9a2bb4dd86141a3cce  ./adb-devices.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-get-state.exit
 64b074ab251c6eb77126bf166a50170b46e9723ba55639b12e817dc1f0b23a4f  ./adb-get-state.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-install-app.exit
@@ -15,7 +15,7 @@ c9d80e61cd2d690457b3f295bcbab2ecab8b970754392ce8b28f1b19d23d85da  ./adb-manufact
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-release.exit
 cfe71ffe4b5021c3c765787b481eb69833b3fdd91bfb0a3a406db00abd3d6829  ./adb-release.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-reverse-list.exit
-1a0abae04b863e1e99b137771912454448b22d5beebbdca80d0aaf6ede42e36f  ./adb-reverse-list.txt
+5c12463964228ea36c39c242e69caf022f289d9aa23c525915c0d3d54e6ede99  ./adb-reverse-list.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-reverse.exit
 2681974b6ad5f6c0b774169417c3e6f5ed91482558795771ff2b7f4656fdf258  ./adb-reverse.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./adb-sdk.exit
@@ -23,7 +23,7 @@ cfe71ffe4b5021c3c765787b481eb69833b3fdd91bfb0a3a406db00abd3d6829  ./adb-release.
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-apk-build.exit
 cfa0c4bd61120423f4b606da0ea29d7c4c8a3b6a36cb4dfa536441acd4ff3b74  ./android-apk-build.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-clipboard-instrumentation.exit
-66614479fdca0b99c9afb173e36b6072adc34958704abe30d60494fc71181f71  ./android-clipboard-instrumentation.txt
+66317aa8903e4f7aaea3f261ff8c2943bdc8e8f91e5fcde45d474c4bf57cbb1d  ./android-clipboard-instrumentation.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-focused-jvm-tests.exit
 3f96e77c6f7b81261a40c7d885fcf08b9db3ed799c9bb459c877b2b9033fe81d  ./android-focused-jvm-tests.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./clipboard-e2e-gate.exit
@@ -43,7 +43,7 @@ fc3fff634723571158d0431326a71d066216014c9105f19a5b531be332527c6c  ./device-lock-
 dc6ecb162f8559211f266e55c0108a6909c32f321b382d81f07554b5300dd8fd  ./mac-clipboard-xctest.txt
 4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./pgrep-sfltool.exit
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./pgrep-sfltool.txt
-f6474f3b89605ac2e1b9c79310fe971edf85950fa5bf195957f6f03a8f20d99c  ./privacy-scan.json
+339abc670a1f25f970f60d4ad5305567ede8bc318dd57d2d97be8aec838c022b  ./privacy-scan.json
 f5595d23109c62688f9dd41a2debce7cbb69b8279a14313d226b30748bfa3b31  ./README.md
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./repository-privacy-unittest.exit
 36b1890543150a8c179edf250419a76806bda8795954a33f6b85424797508a7e  ./repository-privacy-unittest.txt

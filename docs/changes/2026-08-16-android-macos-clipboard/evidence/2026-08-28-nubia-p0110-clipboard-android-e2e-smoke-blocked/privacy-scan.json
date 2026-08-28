@@ -53,7 +53,7 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "bytes": 102,
+      "bytes": 101,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -63,7 +63,7 @@
       ],
       "path": "adb-devices.txt",
       "result": "pass",
-      "sha256": "bedf8f08bbff5c5d533219ecd874cf021c4e17829b3b1f6eb6d14e08c3a3fc03"
+      "sha256": "a55fae5b7d8d9e9eb637249d0f3a51c2d7a0aa877e6e7a9a2bb4dd86141a3cce"
     },
     {
       "bytes": 2,
@@ -235,7 +235,7 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "bytes": 78,
+      "bytes": 77,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -245,7 +245,7 @@
       ],
       "path": "adb-reverse-list.txt",
       "result": "pass",
-      "sha256": "1a0abae04b863e1e99b137771912454448b22d5beebbdca80d0aaf6ede42e36f"
+      "sha256": "5c12463964228ea36c39c242e69caf022f289d9aa23c525915c0d3d54e6ede99"
     },
     {
       "bytes": 2,
@@ -339,7 +339,7 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "bytes": 280,
+      "bytes": 278,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -349,7 +349,7 @@
       ],
       "path": "android-clipboard-instrumentation.txt",
       "result": "pass",
-      "sha256": "66614479fdca0b99c9afb173e36b6072adc34958704abe30d60494fc71181f71"
+      "sha256": "66317aa8903e4f7aaea3f261ff8c2943bdc8e8f91e5fcde45d474c4bf57cbb1d"
     },
     {
       "bytes": 2,
