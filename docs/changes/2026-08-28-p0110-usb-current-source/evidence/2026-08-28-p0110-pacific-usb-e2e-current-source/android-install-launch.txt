@@ -1,0 +1,193 @@
+before_sfltool=
+date_utc=2026-08-28T11:33:20Z
+lock=p0110-usb-e2e-current-source pid=61377 cwd=<redacted-local-path> started=2026-08-28T11:30:26Z
+adb_reverse_before:
+UsbFfs tcp:54321 tcp:54321
+
+install_debug_apk:
+Performing Streamed Install
+Success
+install_android_test_apk:
+Performing Streamed Install
+Success
+configure_reverse:
+adb_reverse_after:
+UsbFfs tcp:54321 tcp:54321
+
+force_stop_before_launch:
+launch:
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+foreground:
+  mCurrentFocus=Window{a301652 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{176089475 u0 dev.telemachus.display/.MainActivity t650}
+pid:
+27621
+package:
+    versionCode=100000 minSdk=26 targetSdk=34
+    versionName=0.0.0
+    lastUpdateTime=2026-08-28 19:33:19
+      firstInstallTime=2026-08-25 13:54:23
+diag_tail:
+[1787916682782] VD: Output #30480: decoder latency avg=8.8ms max=15.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787916684774] VD: Decode stats: input=30540, output=30539, dropped=0, availBufs=10
+[1787916684778] VD: Output #30540: decoder latency avg=9.6ms max=17.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916686775] VD: Decode stats: input=30600, output=30599, dropped=0, availBufs=10
+[1787916686782] VD: Output #30600: decoder latency avg=9.8ms max=17.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916688771] VD: Decode stats: input=30660, output=30659, dropped=0, availBufs=10
+[1787916688775] VD: Output #30660: decoder latency avg=9.2ms max=15.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916690774] VD: Decode stats: input=30720, output=30719, dropped=0, availBufs=10
+[1787916690780] VD: Output #30720: decoder latency avg=9.5ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916692771] VD: Decode stats: input=30780, output=30779, dropped=0, availBufs=10
+[1787916692779] VD: Output #30780: decoder latency avg=10.1ms max=17.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916694775] VD: Decode stats: input=30840, output=30839, dropped=0, availBufs=10
+[1787916694785] VD: Output #30840: decoder latency avg=9.0ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916696776] VD: Decode stats: input=30900, output=30899, dropped=0, availBufs=10
+[1787916696782] VD: Output #30900: decoder latency avg=9.1ms max=16.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916698773] VD: Decode stats: input=30960, output=30959, dropped=0, availBufs=10
+[1787916698784] VD: Output #30960: decoder latency avg=10.0ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916700774] VD: Decode stats: input=31020, output=31019, dropped=0, availBufs=10
+[1787916700780] VD: Output #31020: decoder latency avg=9.9ms max=18.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787916702774] VD: Decode stats: input=31080, output=31079, dropped=0, availBufs=10
+[1787916702788] VD: Output #31080: decoder latency avg=9.2ms max=16.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916704771] VD: Decode stats: input=31140, output=31139, dropped=0, availBufs=10
+[1787916704776] VD: Output #31140: decoder latency avg=9.0ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916706772] VD: Decode stats: input=31200, output=31199, dropped=0, availBufs=10
+[1787916706778] VD: Output #31200: decoder latency avg=9.3ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916708775] VD: Decode stats: input=31260, output=31259, dropped=0, availBufs=10
+[1787916708786] VD: Output #31260: decoder latency avg=9.6ms max=16.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787916710772] VD: Decode stats: input=31320, output=31319, dropped=0, availBufs=10
+[1787916710778] VD: Output #31320: decoder latency avg=9.8ms max=17.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916712775] VD: Decode stats: input=31380, output=31379, dropped=0, availBufs=10
+[1787916712790] VD: Output #31380: decoder latency avg=9.4ms max=15.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916714773] VD: Decode stats: input=31440, output=31439, dropped=0, availBufs=10
+[1787916714780] VD: Output #31440: decoder latency avg=9.5ms max=16.3ms over 60 samples, input bufs avail=9, dropped=0
+[1787916716775] VD: Decode stats: input=31500, output=31499, dropped=0, availBufs=10
+[1787916716784] VD: Output #31500: decoder latency avg=9.3ms max=17.7ms over 60 samples, input bufs avail=9, dropped=0
+[1787916718776] VD: Decode stats: input=31560, output=31559, dropped=0, availBufs=10
+[1787916718783] VD: Output #31560: decoder latency avg=9.6ms max=17.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916720775] VD: Decode stats: input=31620, output=31619, dropped=0, availBufs=10
+[1787916720788] VD: Output #31620: decoder latency avg=9.5ms max=16.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916722774] VD: Decode stats: input=31680, output=31679, dropped=0, availBufs=10
+[1787916722783] VD: Output #31680: decoder latency avg=8.9ms max=17.6ms over 60 samples, input bufs avail=9, dropped=0
+[1787916724777] VD: Decode stats: input=31740, output=31739, dropped=0, availBufs=10
+[1787916724788] VD: Output #31740: decoder latency avg=7.7ms max=17.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916726778] VD: Decode stats: input=31800, output=31799, dropped=0, availBufs=10
+[1787916726790] VD: Output #31800: decoder latency avg=9.7ms max=17.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787916728771] VD: Decode stats: input=31860, output=31859, dropped=0, availBufs=10
+[1787916728776] VD: Output #31860: decoder latency avg=9.5ms max=15.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787916730772] VD: Decode stats: input=31920, output=31919, dropped=0, availBufs=10
+[1787916730779] VD: Output #31920: decoder latency avg=9.3ms max=16.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916732774] VD: Decode stats: input=31980, output=31979, dropped=0, availBufs=10
+[1787916732790] VD: Output #31980: decoder latency avg=9.3ms max=17.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916734777] VD: Decode stats: input=32040, output=32039, dropped=0, availBufs=10
+[1787916734787] VD: Output #32040: decoder latency avg=10.1ms max=15.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787916736776] VD: Decode stats: input=32100, output=32099, dropped=0, availBufs=10
+[1787916736789] VD: Output #32100: decoder latency avg=9.8ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916738779] VD: Decode stats: input=32160, output=32159, dropped=0, availBufs=10
+[1787916738791] VD: Output #32160: decoder latency avg=9.1ms max=17.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787916740780] VD: Decode stats: input=32220, output=32219, dropped=0, availBufs=10
+[1787916740786] VD: Output #32220: decoder latency avg=9.7ms max=17.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916742782] VD: Decode stats: input=32280, output=32279, dropped=0, availBufs=10
+[1787916742796] VD: Output #32280: decoder latency avg=9.9ms max=18.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916744776] VD: Decode stats: input=32340, output=32339, dropped=0, availBufs=10
+[1787916744780] VD: Output #32340: decoder latency avg=9.5ms max=18.2ms over 60 samples, input bufs avail=9, dropped=0
+[1787916746772] VD: Decode stats: input=32400, output=32399, dropped=0, availBufs=10
+[1787916746787] VD: Output #32400: decoder latency avg=9.6ms max=15.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916748775] VD: Decode stats: input=32460, output=32459, dropped=0, availBufs=10
+[1787916748789] VD: Output #32460: decoder latency avg=9.0ms max=17.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916750783] VD: Decode stats: input=32520, output=32519, dropped=0, availBufs=10
+[1787916750799] VD: Output #32520: decoder latency avg=9.4ms max=16.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787916752783] VD: Decode stats: input=32580, output=32579, dropped=0, availBufs=10
+[1787916752791] VD: Output #32580: decoder latency avg=9.2ms max=16.3ms over 60 samples, input bufs avail=9, dropped=0
+[1787916754783] VD: Decode stats: input=32640, output=32639, dropped=0, availBufs=10
+[1787916754793] VD: Output #32640: decoder latency avg=9.7ms max=16.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916756792] VD: Decode stats: input=32700, output=32699, dropped=0, availBufs=10
+[1787916756804] VD: Output #32700: decoder latency avg=9.1ms max=17.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916758783] VD: Decode stats: input=32760, output=32759, dropped=0, availBufs=10
+[1787916758796] VD: Output #32760: decoder latency avg=9.7ms max=18.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916760783] VD: Decode stats: input=32820, output=32819, dropped=0, availBufs=10
+[1787916760792] VD: Output #32820: decoder latency avg=9.5ms max=18.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916762775] VD: Decode stats: input=32880, output=32879, dropped=0, availBufs=10
+[1787916762783] VD: Output #32880: decoder latency avg=9.7ms max=15.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916764780] VD: Decode stats: input=32940, output=32939, dropped=0, availBufs=10
+[1787916764787] VD: Output #32940: decoder latency avg=9.7ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916766772] VD: Decode stats: input=33000, output=32999, dropped=0, availBufs=10
+[1787916766779] VD: Output #33000: decoder latency avg=9.1ms max=17.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916768782] VD: Decode stats: input=33060, output=33059, dropped=0, availBufs=10
+[1787916768796] VD: Output #33060: decoder latency avg=9.7ms max=16.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916770771] VD: Decode stats: input=33120, output=33119, dropped=0, availBufs=10
+[1787916770778] VD: Output #33120: decoder latency avg=9.8ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916772783] VD: Decode stats: input=33180, output=33179, dropped=0, availBufs=10
+[1787916772794] VD: Output #33180: decoder latency avg=9.5ms max=16.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787916774780] VD: Decode stats: input=33240, output=33239, dropped=0, availBufs=10
+[1787916774785] VD: Output #33240: decoder latency avg=9.3ms max=17.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916776783] VD: Decode stats: input=33300, output=33299, dropped=0, availBufs=10
+[1787916776794] VD: Output #33300: decoder latency avg=9.3ms max=17.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916778775] VD: Decode stats: input=33360, output=33359, dropped=0, availBufs=10
+[1787916778788] VD: Output #33360: decoder latency avg=9.8ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916780771] VD: Decode stats: input=33420, output=33419, dropped=0, availBufs=10
+[1787916780778] VD: Output #33420: decoder latency avg=9.6ms max=17.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916782782] VD: Decode stats: input=33480, output=33479, dropped=0, availBufs=10
+[1787916782798] VD: Output #33480: decoder latency avg=9.5ms max=16.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916784779] VD: Decode stats: input=33540, output=33539, dropped=0, availBufs=10
+[1787916784782] VD: Output #33540: decoder latency avg=7.1ms max=17.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916786771] VD: Decode stats: input=33600, output=33599, dropped=0, availBufs=10
+[1787916786777] VD: Output #33600: decoder latency avg=9.1ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916788779] VD: Decode stats: input=33660, output=33659, dropped=0, availBufs=10
+[1787916788784] VD: Output #33660: decoder latency avg=9.4ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916790782] VD: Decode stats: input=33720, output=33719, dropped=0, availBufs=10
+[1787916790797] VD: Output #33720: decoder latency avg=9.0ms max=16.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916792782] VD: Decode stats: input=33780, output=33779, dropped=0, availBufs=10
+[1787916792793] VD: Output #33780: decoder latency avg=9.8ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916794781] VD: Decode stats: input=33840, output=33839, dropped=0, availBufs=10
+[1787916794789] VD: Output #33840: decoder latency avg=10.2ms max=18.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916796775] VD: Decode stats: input=33900, output=33899, dropped=0, availBufs=10
+[1787916796783] VD: Output #33900: decoder latency avg=8.9ms max=17.8ms over 60 samples, input bufs avail=9, dropped=0
+[1787916798803] VD: Decode stats: input=33960, output=33959, dropped=0, availBufs=10
+[1787916798810] VD: Output #33960: decoder latency avg=8.1ms max=15.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787916800618] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787916800618] MA: lifecycle foreground connected=false
+[1787916800664] MA: surfaceCreated
+[1787916800665] MA: surfaceChanged: 1264x2800
+[1787916800843] SC: Protocol v1 upgrade accepted
+[1787916800843] SC: Connected to 127.0.0.1:54321
+[1787916800853] MA: onHostActionsAvailable: move-window, return-windows
+[1787916800858] MA: onDisplaysAvailable: count=3 selected=2 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=2:DELL U2723QE:1920x1080:primary=false, 1:Built-in Retina Display:1512x982:primary=true, telemachus-virtual-extended:Vibe Screen Virtual (扩展屏):2000x1200:primary=false
+[1787916800858] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false customGestures=true hostActions=true clipboard=false fileTransfer=false peripheralInputFramework=false
+[1787916800895] MA: onVideoConfiguration: 1920x1080 @ 0° epoch=1
+[1787916800895] MA: Video config arrived, initializing decoder 1920x1080
+[1787916800895] MA: initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376613998225696)/@0xf13f6bb, valid=true, encoded=1920x1080
+[1787916800903] VD: setupDecoder: 1920x1080, decoder=c2.qti.hevc.decoder
+[1787916800938] VD: Configured with full low-latency
+[1787916800939] VD: Surface frame rate requested: 120.00001Hz fixed-source
+[1787916800967] VD: Decoder started: 1920x1080 @ 120.00001Hz, surface=Surface(name=null mNativeObject=-5476376613998225696)/@0xf13f6bb, valid=true
+[1787916800968] MA: Decoder configuration committed 1920x1080 epoch=1
+[1787916800971] MA: onDisplayGeometry: 1920x1080 @ 0°
+[1787916800989] SC: First frame: size=17761, keyframe=true, metadata=true, session_epoch=1, config_epoch=1, callback=true
+[1787916800989] VD: First frame: size=17761, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376613998225696)/@0xf13f6bb, valid=true
+[1787916801009] MA: surfaceChanged: 1264x711
+[1787916801022] VD: Output format changed: {crop-right=1919, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=1079, max-width=8192, crop-left=0, width=1920, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=1, height=1088}
+[1787916801022] VD: First output frame! size=1, flags=1, session_epoch=1
+[1787916801026] MA: surfaceChanged: 1264x711
+[1787916801027] MA: surfaceChanged: 2247x1264
+[1787916802848] VD: Decode stats: input=60, output=59, dropped=0, availBufs=10
+[1787916802853] VD: Output #60: decoder latency avg=7.1ms max=34.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787916804850] VD: Decode stats: input=120, output=119, dropped=0, availBufs=10
+[1787916804857] VD: Output #120: decoder latency avg=7.3ms max=17.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787916806846] VD: Decode stats: input=180, output=179, dropped=0, availBufs=10
+[1787916806849] VD: Output #180: decoder latency avg=7.7ms max=17.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787916808844] VD: Decode stats: input=240, output=239, dropped=0, availBufs=10
+[1787916808852] VD: Output #240: decoder latency avg=7.4ms max=17.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787916810841] VD: Decode stats: input=300, output=299, dropped=0, availBufs=10
+[1787916810848] VD: Output #300: decoder latency avg=7.2ms max=15.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787916812844] VD: Decode stats: input=360, output=359, dropped=0, availBufs=10
+[1787916812856] VD: Output #360: decoder latency avg=8.1ms max=16.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787916814848] VD: Decode stats: input=420, output=419, dropped=0, availBufs=10
+[1787916814857] VD: Output #420: decoder latency avg=7.6ms max=17.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787916816850] VD: Decode stats: input=480, output=479, dropped=0, availBufs=10
+[1787916816859] VD: Output #480: decoder latency avg=7.5ms max=14.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787916818846] VD: Decode stats: input=540, output=539, dropped=0, availBufs=10
+[1787916818855] VD: Output #540: decoder latency avg=7.5ms max=16.6ms over 60 samples, input bufs avail=10, dropped=0
+after_sfltool=
+UI hierchary dumped to: /sdcard/vibescreen-current-ui.xml
+/sdcard/vibescreen-current-ui.xml: 1 file pulled, 0 skipped. 0.8 MB/s (3497 bytes in 0.004s)
