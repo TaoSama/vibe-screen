@@ -1,0 +1,12 @@
+Command:
+cd baseline/AndroidClient
+./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+
+Result: PASS
+
+Final rerun key output:
+> Task :app:testDebugUnitTest
+> Task :app:lintDebug
+
+BUILD SUCCESSFUL in 1m 14s
+71 actionable tasks: 70 executed, 1 up-to-date
