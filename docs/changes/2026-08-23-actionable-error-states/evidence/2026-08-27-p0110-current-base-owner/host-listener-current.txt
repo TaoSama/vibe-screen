@@ -1,0 +1,3 @@
+Host listener precondition for 2026-08-27 current-base run.
+Observation: a local process was listening on TCP 54321, so TCP-unavailable could not be safely reproduced without interrupting a shared Host process.
+Privacy note: process owner, PID, and executable path are intentionally omitted.

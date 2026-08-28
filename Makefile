@@ -4,6 +4,7 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
+MACOS_HOST_READINESS_PROBE_LOGIN_ITEM ?=
 EVIDENCE_EXPECTED_MANUFACTURER ?=
 EVIDENCE_EXPECTED_MODEL ?=
 EVIDENCE_EXPECTED_DEVICE ?=
@@ -490,7 +491,8 @@ baseline-macos-host-readiness:
 	python3 scripts/macos_dev_host.py readiness \
 		--report $(EVIDENCE_DIR)/host-signing-and-permissions.txt \
 		--json-output $(EVIDENCE_DIR)/host-readiness.json \
-		--port $(EVIDENCE_PORT)
+		--port $(EVIDENCE_PORT) \
+		$(if $(filter 1 true yes,$(MACOS_HOST_READINESS_PROBE_LOGIN_ITEM)),--include-login-item-diagnostic,)
 
 baseline-macos-touch-preflight: baseline-macos-host-preflight
 

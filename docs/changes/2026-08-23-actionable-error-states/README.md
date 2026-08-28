@@ -72,14 +72,14 @@ actionable-error states, including blocked records that intentionally cannot
 close the README gate:
 
     make actionable-error-current-base-owner-record \
-      EVIDENCE_DIR=docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner
+      EVIDENCE_DIR=docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner
 
 The input manifest is `actionable-error-current-base.json`; the generated
 report is `actionable-error-current-base-gate.json`. The gate is read-only and
 validates all of the following:
 
 - the retained device identity is exactly Nubia P0110 / pacific / Android 16 /
-  SDK 36 with ADB serial `EP0110PZ0B9110300B`;
+  SDK 36 with the public ADB serial redacted as `<redacted-adb-serial>`;
 - every required README-facing state is present: Screen Recording denied,
   Accessibility denied/limited, TCP `54321` unavailable, ADB reverse missing,
   USB disconnected, LAN route unavailable, and stale epoch/session errors;
@@ -95,6 +95,16 @@ missing local TCP `54321` listener, Android bounded retry logs, and a sanitized
 LAN route blocker. It does not include TCC denial, missing-reverse mutation,
 physical USB-disconnect capture, or stale epoch/session acceptance. Do not use
 that report to close the README Phase 1 actionable-errors item.
+
+The 2026-08-27 P0110 record is also intentionally `blocked`: it is bound to
+current `origin/main`, installs a current-source Android debug APK, confirms the
+public evidence redacts the ADB serial, and safely exercises ADB reverse removal
+with restoration afterwards. That run exposed a UI gap: after removing
+`tcp:54321`, the app remained on the visible USB waiting/checklist surface rather
+than showing the ADB-route-unavailable recovery copy, so the state is retained as
+`insufficient` and the README gate remains open. The same run records that a
+local TCP `54321` listener was present, so TCP-unavailable was not safely
+reproduced on 2026-08-27.
 
 ## Device evidence boundary
 

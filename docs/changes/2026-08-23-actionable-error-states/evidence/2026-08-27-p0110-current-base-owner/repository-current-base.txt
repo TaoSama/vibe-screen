@@ -1,0 +1,17 @@
+repository=TaoSama/vibe-screen
+branch=codex/actionable-error-device-evidence
+head=3b2ba11e832a3618eaedfc67f92414b161423a00
+origin_main=3b2ba11e832a3618eaedfc67f92414b161423a00
+status_short=
+ M docs/changes/2026-08-23-actionable-error-states/README.md
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/README.md
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/SHA256SUMS
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base-gate.json
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base.json
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/lan-route-blocked-readonly-sanitized.txt
+ M docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt
+ M tools/schemas/actionable-error-current-base-gate.schema.json
+ M tools/schemas/actionable-error-current-base.schema.json
+ M tools/tests/test_actionable_error_current_base.py
+ M tools/vibescreen_evidence/actionable_error_current_base.py
+?? docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner/
