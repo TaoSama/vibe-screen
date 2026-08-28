@@ -852,6 +852,48 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             },
         )
 
+    def test_readiness_document_default_skips_login_item_probe(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=self.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=TEST_PRIVACY_DATABASE,
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            errors=[],
+        )
+
+        with mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_probe:
+            document = macos_dev_host.build_readiness_document(
+                inspection,
+                macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+                macos_dev_host.EntitlementStatus(
+                    app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    virtual_hid=True,
+                    keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                    raw_output="",
+                ),
+                settings=self.login_ready_inputs()[0],
+                displays=self.login_ready_inputs()[2],
+                logs=self.login_ready_inputs()[3],
+            )
+
+        login_probe.assert_not_called()
+        self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+        self.assertEqual(
+            document["login_headless"]["login_item"]["detail"],
+            macos_dev_host.LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
+        )
+        self.assertFalse(document["can_start_headless_login_gate"])
+
     def test_login_headless_allows_lan_startup_mode(self) -> None:
         settings, login_item, displays, logs = self.login_ready_inputs()
         settings = macos_dev_host.HostStartupSettings(
@@ -1215,6 +1257,11 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(document["host"]["current_source_tree"], "d" * 40)
             self.assertFalse(document["host"]["current_source_dirty"])
             self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertEqual(
+                document["login_headless"]["login_item"]["detail"],
+                macos_dev_host.LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
+            )
+            self.assertIn("--include-login-item-diagnostic", document["login_headless"]["login_item"]["detail"])
             self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
             login_probe.assert_not_called()
@@ -1769,6 +1816,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             permissions=permissions,
             errors=["cannot verify TCC permissions read-only: " + str(permissions.error)],
         )
+        settings, _login_item, displays, logs = MacOSDevHostMetadataTests.login_ready_inputs()
         with mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_probe:
             document = macos_dev_host.build_readiness_document(
                 inspection,
@@ -1779,9 +1827,9 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                     keys=(),
                     raw_output="",
                 ),
-                settings=MacOSDevHostMetadataTests.login_ready_inputs()[0],
-                displays=MacOSDevHostMetadataTests.login_ready_inputs()[2],
-                logs=MacOSDevHostMetadataTests.login_ready_inputs()[3],
+                settings=settings,
+                displays=displays,
+                logs=logs,
             )
         login_probe.assert_not_called()
         serialized_document = json.dumps(document, sort_keys=True)
