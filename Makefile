@@ -211,6 +211,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
+	trusted-lan-smoke-evidence-check \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
@@ -577,6 +578,13 @@ evidence-trusted-lan-preflight: require-evidence-serial
 		$(if $(strip $(TRUSTED_LAN_HOST_IPV4)),--mac-host-ipv4 $(TRUSTED_LAN_HOST_IPV4),) \
 		$(if $(strip $(TRUSTED_LAN_REQUIRE_HOST_LISTENER)),--require-host-listener,) \
 		--output $(EVIDENCE_DIR)/trusted-lan-preflight.json
+
+trusted-lan-smoke-evidence-check:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a trusted-LAN smoke evidence directory" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.trusted_lan_smoke \
+		--evidence-dir $(EVIDENCE_DIR) \
+		--output $(EVIDENCE_DIR)/trusted-lan-smoke-verdict.json
 
 evidence-reconnect-timing-blocked:
 	mkdir -p $(EVIDENCE_DIR)

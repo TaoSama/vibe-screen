@@ -47,7 +47,7 @@ macOS TCC grants are bound to the signing identity.
 `make baseline-macos-host-readiness` keeps login-item state fail-closed by
 default and does not invoke the macOS login-item diagnostic. For an attended
 manual investigation only, run `python3 scripts/macos_dev_host.py readiness
-	--probe-login-item ...` to include the real login-item probe. Do
+	--include-login-item-diagnostic ...` to include the real login-item probe. Do
 not enable that flag in default tests or CI.
 
 ## Real-device evidence
@@ -68,7 +68,7 @@ For every device run, record:
   `host-readiness.json` and `host-signing-and-permissions.txt`. A blocked
   readiness snapshot is prerequisite evidence only and cannot close the runtime
   gate by itself. The default readiness target must not probe Launch at Login;
-  use the explicit `--probe-login-item` readiness diagnostic only for a human
+  use the explicit `--include-login-item-diagnostic` readiness diagnostic only for a human
   opt-in run;
 - APK version/signing identity and install timestamp;
 - ADB reverse mapping and host listener;

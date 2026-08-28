@@ -44,7 +44,7 @@ SYSTEM_SETTINGS_PATH = (
 DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item state was not probed by default; run readiness with "
-    "--probe-login-item during an attended diagnostic session to inspect it."
+    "--include-login-item-diagnostic during an attended diagnostic session to inspect it."
 )
 
 @dataclass(frozen=True)
@@ -184,12 +184,13 @@ def parse_args() -> argparse.Namespace:
         help="path for the structured readiness JSON report",
     )
     readiness.add_argument(
-        "--probe-login-item",
+        "--include-login-item-diagnostic",
+        "--inspect-login-items",
         action="store_true",
-        dest="probe_login_item",
+        dest="include_login_item_diagnostic",
         help=(
-            "opt in to the real macOS login-item diagnostic. This may invoke sfltool dumpbtm "
-            "and require attended approval; default CI/test readiness skips it fail-closed."
+            "opt in to the real macOS login-item diagnostic. This may invoke system tools "
+            "that require attended approval; default CI/test readiness skips it fail-closed."
         ),
     )
     return parser.parse_args()
@@ -565,7 +566,7 @@ def read_login_item_readiness() -> LoginItemReadiness:
 
 def skipped_login_item_readiness() -> LoginItemReadiness:
     return LoginItemReadiness(
-        state="manual_probe_required",
+        state="unverified",
         matched=False,
         detail=LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
         evidence=(),
@@ -1730,7 +1731,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    login_item = read_login_item_readiness() if args.probe_login_item is True else skipped_login_item_readiness()
+    login_item = read_login_item_readiness() if getattr(args, "include_login_item_diagnostic", False) else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
             inspection.metadata,
