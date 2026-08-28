@@ -47,6 +47,7 @@ ANDROID_DUMPSYS_TOKEN_RE = re.compile(
     r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
     r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
 )
+ADB_TCP_ENDPOINT_RE = re.compile(r"^[^\s:]+:[0-9]+$")
 TMP_EVIDENCE_PATH_RE = re.compile(r"/tmp/vibe-screen-[^\s\n]+")
 
 
@@ -366,6 +367,14 @@ def package_identity_recorded(package: PackageIdentity | None) -> bool:
     )
 
 
+def is_adb_tcp_endpoint(serial: str) -> bool:
+    return ADB_TCP_ENDPOINT_RE.fullmatch(serial) is not None
+
+
+def adb_endpoint_matches_claim(serial: str, endpoint: str) -> bool:
+    return bool(endpoint) and endpoint.split(maxsplit=1)[0] == serial
+
+
 def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) -> bool:
     if device is None:
         return False
@@ -382,7 +391,12 @@ def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) ->
         )
     ):
         return False
-    if device.serial != serial or device.device_serial != serial:
+    if device.serial != serial:
+        return False
+    if is_adb_tcp_endpoint(serial):
+        if not adb_endpoint_matches_claim(serial, device.endpoint):
+            return False
+    elif device.device_serial != serial:
         return False
     if device.model == "P0110" or device.device == "pacific" or device.product == "pacific":
         return is_nubia_p0110_android16(device)

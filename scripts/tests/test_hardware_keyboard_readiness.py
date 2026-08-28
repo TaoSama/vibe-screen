@@ -109,6 +109,52 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
         self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, mismatched))
         self.assertFalse(readiness.device_identity_matches_claim(TEST_ADB_SERIAL, missing_physical_serial))
 
+    def test_p0110_identity_accepts_adb_endpoint_with_distinct_physical_serial(self) -> None:
+        endpoint = "192.0.2.10:5555"
+        matching = readiness.DeviceIdentity(
+            serial=endpoint,
+            endpoint=f"{endpoint} device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            product="pacific",
+            android_release="16",
+            sdk="36",
+            build_fingerprint="nubia/pacific/fingerprint",
+            abi="arm64-v8a",
+            device_serial="physical-p0110-serial",
+        )
+        missing_physical_serial = readiness.DeviceIdentity(
+            serial=endpoint,
+            endpoint=f"{endpoint} device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            product="pacific",
+            android_release="16",
+            sdk="36",
+            build_fingerprint="nubia/pacific/fingerprint",
+            abi="arm64-v8a",
+            device_serial="",
+        )
+        mismatched_endpoint = readiness.DeviceIdentity(
+            serial=endpoint,
+            endpoint="192.0.2.11:5555 device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            product="pacific",
+            android_release="16",
+            sdk="36",
+            build_fingerprint="nubia/pacific/fingerprint",
+            abi="arm64-v8a",
+            device_serial="physical-p0110-serial",
+        )
+
+        self.assertTrue(readiness.device_identity_matches_claim(endpoint, matching))
+        self.assertFalse(readiness.device_identity_matches_claim(endpoint, missing_physical_serial))
+        self.assertFalse(readiness.device_identity_matches_claim(endpoint, mismatched_endpoint))
+
     def test_non_p0110_identity_requires_recorded_public_fields(self) -> None:
         complete = readiness.DeviceIdentity(
             serial="other-adb-serial",
