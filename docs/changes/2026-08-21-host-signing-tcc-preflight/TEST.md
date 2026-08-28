@@ -25,11 +25,30 @@ reconnect, controller, Host RSS, or HID runtime evidence. The retained blocked
 record is under
 [`evidence/2026-08-25-current-base-host-readiness-blocked`](evidence/2026-08-25-current-base-host-readiness-blocked/README.md).
 
+The 2026-08-27 macOS Host compatibility owner pass also remains fail-closed on
+current `origin/main`: one local Apple silicon Mac16,8 / macOS 26.4.1 /
+single-external-display readiness snapshot was recorded, but the Host/TCC/source
+prerequisites blocked packaged runtime collection before any Protocol v1 stream,
+input, or reconnect probe could start. The retained matrix summary is under
+[`evidence/2026-08-27-macos-host-compatibility-readiness-blocked`](evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md)
+and reports `verdict=blocked` with
+`can_close_macos_host_compatibility_row=false`.
+
 ## Verification
+
+Before continuing macOS readiness validation after the 2026-08-27 prompt report,
+`pgrep -x sfltool` returned no process IDs. Default readiness and CI paths now
+skip the Launch at Login `sfltool dumpbtm` probe; unit tests mock
+`read_login_item_readiness()` on both the CLI readiness path and the default
+document-builder path so a regression raises immediately. The real login-item
+probe is available only through the explicit manual diagnostic flag
+`--include-login-item-diagnostic`, and should be run only after confirming no stale
+`sfltool` process remains.
 
 The focused implementation checks for this change are:
 
 ```bash
+pgrep -x sfltool || true
 python3 -m py_compile scripts/macos_dev_host.py scripts/tests/test_macos_dev_host.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v
 make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/host-readiness-current-base-clean
