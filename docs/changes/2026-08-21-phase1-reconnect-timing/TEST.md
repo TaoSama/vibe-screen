@@ -21,18 +21,23 @@ trusted-LAN encrypted record path and rule out legacy plaintext fallback.
 ## Current blocked result
 
 Current-base reconnect matrix owner evidence is under
+[`evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked`](evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
+It records the latest `origin/main`-based worktree state at
+current source commit `0c3e2e95d74ceedcd746a9c89d354d0ae102e794`, based on
+`origin/main` commit `0c1b3fd5a3d917acd5308b7ef10bc95900a45039`. The P0110 target identity was
+confirmed as nubia P0110 / pacific / Android 16 / SDK 36, ADB reverse still
+showed `tcp:54321 tcp:54321`, and the Host now had a TCP `54321` listener,
+but the real USB timing attempts were blocked before disruption because the
+source-bound stable Host prerequisite was not satisfied: the configured
+`Vibe Screen Dev` signing identity was unavailable for rebuild, the installed
+Host lacked source commit/tree provenance, and TCC authorization could not be
+verified read-only. The generated summary reports `verdict=blocked`,
+`can_close_timing_gate=false`, and all three full-gate disruptions missing. No
+client kill, ADB reverse removal/restoration, or trusted-LAN interruption was
+run.
+
+Earlier current-base blocked matrix evidence remains under
 [`evidence/2026-08-24-p0110-current-base-reconnect-blocked`](evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
-It records the latest `origin/main`-based worktree state after PR #250
-(`6cdb34a1`) plus the reconnect timing verifier update on branch
-`codex/reconnect-timing-p0110-matrix`. The P0110 target identity was confirmed
-as nubia P0110 / pacific / Android 16 / SDK 36, and ADB reverse still showed
-`tcp:54321 tcp:54321`, but the real matrix was blocked before disruption
-because the Host had no TCP `54321` listener, the stable `Vibe Screen Dev`
-signing identity was unavailable, and the P0110 had no Wi-Fi association or
-wlan0 route for trusted-LAN interruption. The generated summary reports
-`verdict=blocked`, `can_close_timing_gate=false`, and all three full-gate
-disruptions missing. No client kill, ADB reverse removal/restoration, or
-trusted-LAN interruption was run.
 
 Current worktree evidence is under
 [`evidence/2026-08-21-p0110-reconnect-timing-blocked`](evidence/2026-08-21-p0110-reconnect-timing-blocked/README.md).

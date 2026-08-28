@@ -1,0 +1,9 @@
+# Commands
+git fetch origin --prune && git rebase origin/main
+pgrep -x sfltool || true
+make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3
+adb -s EP0110PZ0B9110300B reverse --list
+adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
+adb -s EP0110PZ0B9110300B shell dumpsys window
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/2026-08-28-p0110-usb-reconnect-current-base-v3

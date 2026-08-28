@@ -1,0 +1,49 @@
+{
+  "artifact_paths": [
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/adb-reverse-before.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/device-info.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-54321-listener.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
+    "Installed Host lacks source commit/tree provenance for current source commit 0c3e2e95d74ceedcd746a9c89d354d0ae102e794",
+    "TCC permissions could not be verified read-only for the installed Host"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Blocked current-base readiness record only; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
+    "Installed Host lacks source commit/tree provenance for current source commit 0c3e2e95d74ceedcd746a9c89d354d0ae102e794",
+    "TCC permissions could not be verified read-only for the installed Host"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "5f42b35a-befa-4580-a7dc-56682cab64ca",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}

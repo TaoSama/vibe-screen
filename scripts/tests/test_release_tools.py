@@ -842,6 +842,32 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
 
+    def test_reconnect_timing_make_targets_are_fail_closed(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / SDK 36 / $(EVIDENCE_SERIAL)",
+            makefile,
+        )
+        self.assertIn("RECONNECT_TIMING_REQUIRE_DISRUPTIONS ?=", makefile)
+        self.assertIn(
+            "RECONNECT_TIMING_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/reconnect-timing-observations.json",
+            makefile,
+        )
+        self.assertRegex(
+            makefile,
+            r"(?m)^evidence-reconnect-timing-blocked:\s+require-evidence-serial\s*$",
+        )
+        self.assertIn("evidence-reconnect-timing-gate:", makefile)
+        self.assertIn(
+            "error: set EVIDENCE_DIR to a reconnect timing evidence directory",
+            makefile,
+        )
+        self.assertIn("missing reconnect timing observations", makefile)
+        self.assertIn("$(foreach disruption,$(RECONNECT_TIMING_REQUIRE_DISRUPTIONS),--require-disruption $(disruption))", makefile)
+        self.assertIn("--base-dir $(EVIDENCE_DIR)", makefile)
+        self.assertEqual(makefile.count("python3 -m vibescreen_evidence.reconnect_timing"), 2)
+
     def test_harmony_readiness_make_target_uses_fail_closed_collector(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
         target_match = re.search(
