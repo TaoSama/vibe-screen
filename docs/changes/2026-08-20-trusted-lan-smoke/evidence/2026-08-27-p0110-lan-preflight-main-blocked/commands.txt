@@ -1,0 +1,7 @@
+git fetch origin --prune
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-27-p0110-lan-preflight-main-blocked
+make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-27-p0110-lan-preflight-main-blocked
+make evidence-reconnect-timing-blocked EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-27-p0110-lan-preflight-main-blocked RECONNECT_TIMING_TARGET_DEVICE="Nubia P0110 / pacific / Android 16 / SDK 36" ...
