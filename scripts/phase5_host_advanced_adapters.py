@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -273,7 +274,19 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
             status="fail",
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
-    if ".multiClient" in capability_body:
+    if not re.search(r"\bmaximumClients\s*:\s*Int\s*=\s*1\b", capability_body):
+        return CheckResult(
+            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            status="fail",
+            detail="multi-client default must remain maximumClients: Int = 1",
+        )
+    normalized_body = capability_body.replace("\\n", "\n")
+    multiclient_lines = [
+        line.strip()
+        for line in normalized_body.splitlines()
+        if ".multiClient" in line and "insert" in line
+    ]
+    if len(multiclient_lines) > 1:
         return CheckResult(
             name=check_name,
             status="fail",
