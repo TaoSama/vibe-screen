@@ -276,7 +276,7 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
         )
     if not re.search(r"\bmaximumClients\s*:\s*Int\s*=\s*1\b", capability_body):
         return CheckResult(
-            name="production-host-defaults-do-not-advertise-hdr-audio-multiclient",
+            name=check_name,
             status="fail",
             detail="multi-client default must remain maximumClients: Int = 1",
         )
@@ -286,7 +286,10 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
         for line in normalized_body.splitlines()
         if ".multiClient" in line and "insert" in line
     ]
-    if len(multiclient_lines) > 1:
+    unguarded = [
+        line for line in multiclient_lines if "maximumClients > 1" not in line
+    ]
+    if unguarded:
         return CheckResult(
             name=check_name,
             status="fail",

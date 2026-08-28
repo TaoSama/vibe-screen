@@ -56,8 +56,10 @@ The covered contract is:
 No AV1-capable macOS Host stream, Android MediaCodec stream, or iOS
 VideoToolbox stream was run. The README AV1 gate remains open.
 
-The retained blocked evidence record is
-[`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md).
+The retained blocked evidence records are
+[`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md)
+and
+[`evidence/2026-08-27-av1-current-base-blocked/README.md`](evidence/2026-08-27-av1-current-base-blocked/README.md).
 
 ## 2026-08-21 verification
 
@@ -78,15 +80,15 @@ The retained blocked evidence record is
 
 A read-only Android decoder capability snapshot was captured on `origin/main`
 `27d2b0e493e807ae439fbd43b06b4c2f0ce9c503` for the connected Nubia P0110
-(`pacific`, Android 16 / SDK 36, serial `EP0110PZ0B9110300B`). The run first
+(`pacific`, Android 16 / SDK 36, serial `<redacted-device-serial>`). The run first
 checked `pgrep -x sfltool || true`, which returned no output, and no
 `/usr/bin/sfltool dumpbtm` command was executed. Android device commands were
-run after acquiring `/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock`.
+run after acquiring `/tmp/vibe-screen-android-<redacted-device-serial>.lock`.
 
 The preferred service-level probes remained unavailable on this device:
-`adb -s EP0110PZ0B9110300B shell dumpsys media.codec` returned no stdout and
+`adb -s <redacted-device-serial> shell dumpsys media.codec` returned no stdout and
 `Can't find service: media.codec` on stderr with exit code `0`, and
-`adb -s EP0110PZ0B9110300B shell cmd media.codec list` returned
+`adb -s <redacted-device-serial> shell cmd media.codec list` returned
 `cmd: Can't find service: media.codec` with exit code `20`. Vendor/system XML
 inspection still declares diagnostic AV1 decoder entries including
 `c2.qti.av1.decoder`, `c2.qti.av1.decoder.low_latency`,
@@ -344,3 +346,71 @@ identity remains Nubia P0110 / pacific / Android 16 / SDK 36.
   - Result: passed.
 - `git diff --check`
   - Result: passed.
+
+## 2026-08-27 current-base refresh
+
+The current-base closure owner was replayed on `origin/main`
+`32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3`. The audit kept AV1
+fail-closed and blocked: Protocol v1 only reserves `CODEC_AV1`, the current
+Host still does not advertise AV1, Android product sessions still do not offer
+AV1, and no Host/device AV1 real-stream evidence was added. Public AV1 gate
+evidence now redacts Android device serials and local sensitive paths.
+
+Retained device diagnostic identity: nubia P0110 / pacific / Android 16 / SDK
+36. Local ADB probes used the required explicit `adb -s` selector, but the
+public evidence records it as `<redacted-device-serial>`.
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 7 tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `make protocol`
+  - Result: blocked by current-base shared-model drift before this AV1 refresh: `ManagedPolicyStatus` now has `restriction_results` and `denied_hosts` fields missing from `contracts/shared-models/v1/manifest.json`, causing 7 shared-protocol-model test failures.
+- `cd baseline/MacHost && swift build`
+  - Result: blocked by current-base MacHost build failures before this AV1 refresh, including missing `HostMultiClientDisplayRouter`, `ProtocolV1SessionCoordinator.close`, and extra `ProtocolV1SessionConfiguration` arguments in `StreamingServer.swift` / `ProtocolV1SelfTest.swift`.
+- `git diff --check`
+  - Result: passed.
+
+## 2026-08-27 routing-boundary follow-up
+
+The PR branch was refreshed after the Host Protocol v1 routing boundary was
+restored locally. This follow-up resolves the unrelated MacHost compile blocker
+and the Phase 5 host-adapter readiness script now treats `.multiClient` as
+valid only when it is explicitly gated behind `maximumClients > 1`; production
+defaults still keep the Host single-client and do not close the Phase 5
+multi-client/display gate. AV1 remains fail-closed and blocked: no Host/device
+AV1 stream was attempted or recorded.
+
+Retained device diagnostic identity: nubia P0110 / pacific / Android 16 / SDK
+36. Local ADB probes used the required explicit selector and public evidence
+keeps the serial redacted.
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 7 tests.
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_phase5_host_advanced_adapters -v`
+  - Result: passed, 5 tests.
+- `make release-tools-test`
+  - Result: passed, 223 tests.
+- `make evidence-tools-test`
+  - Result: passed, 1000 tests.
+- `make protocol`
+  - Result: passed, including 45 protocol contract tests.
+- `swift build --package-path baseline/MacHost -c release`
+  - Result: passed.
+- `baseline/MacHost/.build/release/"Vibe Screen" --protocol-v1-self-test`
+  - Result: passed.
+- `make baseline-macos-self-test`
+  - Result: passed.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy -v`
+  - Result: passed, 10 tests.
+- `git diff --check`
+  - Result: passed.
+- Diff privacy scan for the real Android serial, local user path, TCC paths, and
+  private-key headers
+  - Result: passed, no matches.
