@@ -14,6 +14,11 @@ AV1_BLOCKED_EVIDENCE_PATH = (
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
     / "2026-08-21-av1-offline-blocked/README.md"
 )
+AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-21-av1-codec-capability/evidence"
+    / "2026-08-27-av1-current-base-blocked/README.md"
+)
 AV1_P0110_CAPABILITY_EVIDENCE_PATH = (
     REPOSITORY_ROOT
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
@@ -139,6 +144,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         gate = AV1_GATE_PATH.read_text(encoding="utf-8")
         normalized_gate = " ".join(gate.split())
         blocked_evidence = AV1_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
+        current_evidence = AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
         p0110_capability_evidence = AV1_P0110_CAPABILITY_EVIDENCE_PATH.read_text(encoding="utf-8")
         normalized_p0110_capability_evidence = " ".join(p0110_capability_evidence.split())
 
@@ -153,12 +159,20 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("pacific", blocked_evidence)
         self.assertIn("Android 16", blocked_evidence)
         self.assertIn("SDK 36", blocked_evidence)
-        self.assertIn("EP0110PZ0B9110300B", blocked_evidence)
-        self.assertIn("adb -s EP0110PZ0B9110300B", blocked_evidence)
+        self.assertIn("<redacted-device-serial>", blocked_evidence)
+        self.assertIn("adb -s <redacted-device-serial>", blocked_evidence)
         self.assertIn("c2.qti.av1.decoder", blocked_evidence)
         self.assertIn("Can't find service: media.codec", blocked_evidence)
         self.assertIn("diagnostic only", blocked_evidence)
         self.assertIn("must not be cited as AV1 Host/device streaming evidence", blocked_evidence)
+        self.assertIn("current-base owner refresh", current_evidence)
+        self.assertIn("nubia P0110", current_evidence)
+        self.assertIn("pacific", current_evidence)
+        self.assertIn("Android 16", current_evidence)
+        self.assertIn("SDK: 36", current_evidence)
+        self.assertIn("<redacted-device-serial>", current_evidence)
+        self.assertIn("c2.qti.av1.decoder", current_evidence)
+        self.assertIn("must not be cited as AV1 Host/device real-stream acceptance", current_evidence)
         self.assertIn("2026-08-28 Nubia P0110 Android decoder capability probe", gate)
         self.assertIn("capability/readiness snapshot", gate)
         self.assertIn("does not add AV1 Host/device real-stream evidence", normalized_gate)
@@ -166,8 +180,8 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("pacific", p0110_capability_evidence)
         self.assertIn("Android: 16", p0110_capability_evidence)
         self.assertIn("SDK: 36", p0110_capability_evidence)
-        self.assertIn("EP0110PZ0B9110300B", p0110_capability_evidence)
-        self.assertIn("/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock", p0110_capability_evidence)
+        self.assertIn("<redacted-device-serial>", p0110_capability_evidence)
+        self.assertIn("/tmp/vibe-screen-android-<redacted-device-serial>.lock", p0110_capability_evidence)
         self.assertIn("pgrep -x sfltool || true", p0110_capability_evidence)
         self.assertIn("No /usr/bin/sfltool dumpbtm command was executed", normalized_p0110_capability_evidence)
         self.assertIn("dumpsys media.codec", p0110_capability_evidence)
@@ -177,6 +191,32 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("c2.qti.av1.decoder", p0110_capability_evidence)
         self.assertIn("c2.android.av1-dav1d.decoder", p0110_capability_evidence)
         self.assertIn("does not prove Vibe Screen AV1 negotiation", normalized_p0110_capability_evidence)
+
+    def test_public_av1_gate_materials_do_not_expose_sensitive_local_values(self) -> None:
+        public_paths = [
+            README_PATH,
+            AV1_GATE_PATH,
+            AV1_BLOCKED_EVIDENCE_PATH,
+            AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH,
+            AV1_P0110_CAPABILITY_EVIDENCE_PATH,
+            Path(__file__),
+        ]
+        forbidden_values = [
+            "EP" + "0110PZ0B9110300B",
+            "/Users/" + "luwentao",
+            "Application Support/" + "com.apple.TCC",
+            "TCC" + ".db",
+            "BEGIN " + "RSA PRIVATE KEY",
+            "BEGIN " + "OPENSSH PRIVATE KEY",
+            "BEGIN " + "EC PRIVATE KEY",
+            "BEGIN " + "DSA PRIVATE KEY",
+        ]
+
+        for path in public_paths:
+            content = path.read_text(encoding="utf-8")
+            for forbidden in forbidden_values:
+                self.assertNotIn(forbidden, content, str(path))
+
 
 
 if __name__ == "__main__":
