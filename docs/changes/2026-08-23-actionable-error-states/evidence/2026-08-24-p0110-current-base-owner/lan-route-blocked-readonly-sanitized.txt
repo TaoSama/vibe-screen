@@ -1,6 +1,6 @@
 Read-only trusted-LAN preflight excerpt, sanitized for saved Wi-Fi identifiers.
 
-Device: Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>
 Observed state: Wi-Fi enabled but disconnected. No wlan0 IPv4 address and no route table entries were present.
 
 Retained raw command facts:
