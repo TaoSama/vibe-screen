@@ -490,6 +490,17 @@ baseline-macos-touch-preflight: baseline-macos-host-preflight
 baseline-android-test:
 	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
 
+baseline-android-protocol-side-effect-owner:
+	cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+		--tests dev.telemachus.display.StreamProtocolSideEffectOwnerTest \
+		--tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest \
+		--tests dev.telemachus.display.StreamProtocolActionDispatcherTest \
+		--tests dev.telemachus.display.WakeHostTest \
+		--tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.signedWakeHostRequestSendsMagicPacketAndRejectsReplay" \
+		--tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.queuedWakeHostRequestAfterDisconnectDoesNotSendPacketOrResult" \
+		--tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept" \
+		--tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.unsignedWakeHostRequestFailsClosedWithoutSendingPacket"
+
 baseline-android-transport-boundary:
 	cd baseline/AndroidClient && ./gradlew :transport:check --configuration-cache --configuration-cache-problems=fail
 

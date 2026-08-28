@@ -1219,6 +1219,69 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun queuedWakeHostRequestAfterDisconnectDoesNotSendPacketOrResult() = runBlocking {
+        ServerSocket(0).use { server ->
+            val secret = ByteArray(32) { it.toByte() }
+            val requestId = ByteString.copyFrom(byteArrayOf(0x53))
+            val targetMac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+            val sentPackets = Collections.synchronizedList(mutableListOf<ByteArray>())
+            val queuedWakeHost = AtomicReference<Runnable?>()
+            val wakeHostQueued = CountDownLatch(1)
+            val serverMayFinish = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        var clientDeviceId = ""
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_WAKE_HOST,
+                            onClientHello = { clientDeviceId = it.deviceId },
+                        )
+                        write(
+                            peer,
+                            signedWakeHostRequest(
+                                id = 6,
+                                requestId = requestId,
+                                targetMac = targetMac,
+                                clientDeviceId = clientDeviceId,
+                                secret = secret,
+                            ),
+                        )
+                        assertTrue(wakeHostQueued.await(8, TimeUnit.SECONDS))
+                        serverMayFinish.await(8, TimeUnit.SECONDS)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    wakeHostPolicy = SharedSecretWakeHostPolicy(secret.copyOf(), nowUnixSeconds = { 1_010L }),
+                    wakeHostPacketSender = WakeHostPacketSender { packet -> sentPackets += packet },
+                    wakeHostExecutor = Executor { command ->
+                        queuedWakeHost.set(command)
+                        wakeHostQueued.countDown()
+                    },
+                )
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(wakeHostQueued.await(8, TimeUnit.SECONDS))
+            client.disconnect()
+            queuedWakeHost.get()?.run()
+            serverMayFinish.countDown()
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sentPackets.isEmpty())
+        }
+    }
+
+    @Test
     fun unsignedWakeHostRequestFailsClosedWithoutSendingPacket() = runBlocking {
         ServerSocket(0).use { server ->
             val sentPackets = Collections.synchronizedList(mutableListOf<ByteArray>())
@@ -1719,6 +1782,58 @@ class StreamClientProtocolV1IntegrationTest {
             } finally {
                 client.disconnect()
             }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun staleHostFileOfferDecisionAfterDisconnectSendsNoAccept() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 33).toByte() })
+            val content = "stale-host-file".toByteArray(Charsets.UTF_8)
+            val offered = CountDownLatch(1)
+            val serverMayFinish = CountDownLatch(1)
+            val capturedOffer = AtomicReference<FileOffer?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "stale.txt",
+                                content = content,
+                            ),
+                        )
+                        assertTrue(offered.await(8, TimeUnit.SECONDS))
+                        serverMayFinish.await(8, TimeUnit.SECONDS)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer ->
+                capturedOffer.set(offer)
+                offered.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(offered.await(8, TimeUnit.SECONDS))
+            client.disconnect()
+            assertFalse(client.respondToFileOffer(checkNotNull(capturedOffer.get()), accepted = true))
+            serverMayFinish.countDown()
+
+            withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
             Unit
         }
