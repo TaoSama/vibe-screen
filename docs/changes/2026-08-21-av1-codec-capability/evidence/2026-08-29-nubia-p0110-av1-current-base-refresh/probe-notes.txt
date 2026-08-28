@@ -1,0 +1,5 @@
+Probe date: 2026-08-29
+Local serial used: <redacted-device-serial> (redacted in public files)
+Lock path: /tmp/vibe-screen-android-<redacted-device-serial>.lock
+No /usr/bin/sfltool dumpbtm command was executed.
+No login-item diagnostic opt-in argument was used.
