@@ -460,6 +460,7 @@ def derive_report(
     tablet_ui: dict[str, Any] | None = None,
     recovery: dict[str, Any] | None = None,
     login_headless: dict[str, Any] | None = None,
+    source_baseline: str | None = None,
 ) -> dict[str, Any]:
     inputs = {
         "tablet_gate": tablet_gate,
@@ -500,7 +501,7 @@ def derive_report(
         "kind": KIND,
         "verdict": verdict,
         "can_close_readme_phase2_gates": can_close,
-        "source_baseline": current_base_label(),
+        "source_baseline": source_baseline or current_base_label(),
         "audit_summary": {
             "single_prs_against_origin_main": (
                 "#179, #189, #213, #315, #321, #338, #342, and #343 are merged into current base. "

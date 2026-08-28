@@ -29,8 +29,8 @@ def tablet_manifest(device_class="physical_8_9_inch_tablet"):
     }
     if device_class == "android_substitute":
         identity = {
-            "adb_serial": "EP0110PZ0B9110300B",
-            "device_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "P0110_TEST_SERIAL",
+            "device_serial": "P0110_TEST_SERIAL",
             "manufacturer": "nubia",
             "model": "P0110",
             "codename": "pacific",
@@ -54,6 +54,11 @@ def close_signal(field):
 
 
 class Phase2AggregateOwnerTest(unittest.TestCase):
+    def test_source_baseline_can_be_supplied_explicitly(self):
+        report = derive_report(source_baseline="origin/main test-sha")
+
+        self.assertEqual(report["source_baseline"], "origin/main test-sha")
+
     def test_source_baseline_reads_current_origin_main(self):
         with mock.patch(
             "vibescreen_evidence.phase2_aggregate_owner.subprocess.run",
