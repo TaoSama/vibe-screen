@@ -54,7 +54,7 @@ def make_manifest(root: Path) -> dict[str, object]:
     ) as environment, patch(
         "vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device"
     ) as device:
-        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        state.return_value = {"revision": "a" * 40, "dirty": False, "status_porcelain": []}
         environment.return_value = {"codesigning_identities": {"target_identity_available": False}}
         device.return_value = make_device()
         return build_manifest(command=[], repo=root, adb_serial=TEST_ADB_SERIAL)
@@ -130,6 +130,40 @@ class HostDisplayRotationCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_claim_real_device_pass"])
         self.assertIn("blocked: physical_host_display_rotation", report["reasons"])
+
+    def test_dirty_repository_blocks_current_base_gate(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            repository = manifest["repository"]
+            assert isinstance(repository, dict)
+            repository["revision"] = "a" * 40
+            repository["dirty"] = True
+            repository["status_porcelain"] = ["?? evidence/partial.txt"]
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_claim_real_device_pass"])
+        self.assertIn("metadata: repository_current_base", report["reasons"])
+
+    def test_short_repository_revision_blocks_current_base_gate(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            repository = manifest["repository"]
+            assert isinstance(repository, dict)
+            repository["revision"] = "abc"
+            repository["dirty"] = False
+            repository["status_porcelain"] = []
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_claim_real_device_pass"])
+        self.assertIn("metadata: repository_current_base", report["reasons"])
 
     def test_client_local_substitution_is_a_failure(self):
         with tempfile.TemporaryDirectory() as directory_name:

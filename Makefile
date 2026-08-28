@@ -275,6 +275,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase3-android-current-base-interop-gate \
 	phase3-internet-soak-manifest \
 	phase3-internet-soak-gate \
+	host-display-rotation-gate \
 	host-display-rotation-current-base-manifest \
 	host-display-rotation-current-base-gate \
 	wake-host-current-base-gate
@@ -1003,6 +1004,10 @@ file-transfer-android-smoke:
 		if [ -z "$(strip $(FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
+
+host-display-rotation-gate:
+	@test -f "$(EVIDENCE_DIR)/host-display-rotation.json" || (echo "error: collect $(EVIDENCE_DIR)/host-display-rotation.json first" >&2; exit 2)
+	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate "$(EVIDENCE_DIR)/host-display-rotation.json" --check-artifacts --output "$(EVIDENCE_DIR)/host-display-rotation-gate.json"
 
 host-display-rotation-current-base-manifest:
 	@mkdir -p $(EVIDENCE_DIR)
