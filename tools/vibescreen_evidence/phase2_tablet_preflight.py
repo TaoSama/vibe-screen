@@ -18,6 +18,8 @@ import sys
 from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
+from .phase2_tablet_manifest import NUBIA_P0110_CODENAME
+from .phase2_tablet_manifest import NUBIA_P0110_MODEL
 
 PREFLIGHT_KIND = "phase2_tablet_acceptance_preflight"
 TABLET_DEVICE_CLASS = "physical_8_9_inch_tablet"
@@ -242,6 +244,12 @@ def _manifest_identity(document: dict[str, Any]) -> dict[str, Any]:
     return identity if isinstance(identity, dict) else {}
 
 
+def _known_phone_substitute(identity: dict[str, Any]) -> bool:
+    model = str(identity.get("model", "")).strip().lower()
+    codename = str(identity.get("codename", "")).strip().lower()
+    return model == NUBIA_P0110_MODEL or codename == NUBIA_P0110_CODENAME
+
+
 def _identity_mismatches(manifest: dict[str, Any], device_info: dict[str, Any]) -> list[str]:
     manifest_identity = _manifest_identity(manifest)
     device_identity = _device_identity(device_info)
@@ -282,6 +290,12 @@ def _physical_tablet_gate(
     if device_class != TABLET_DEVICE_CLASS:
         reasons.append(
             f"device_class is {device_class!r}; Phase 2 tablet acceptance requires {TABLET_DEVICE_CLASS!r}"
+        )
+        return _gate("physical_8_9_inch_tablet", BLOCKED, evidence=evidence, reasons=reasons)
+    manifest_identity = _manifest_identity(manifest)
+    if _known_phone_substitute(manifest_identity):
+        reasons.append(
+            "Nubia P0110/pacific is a known Android phone substitute and cannot close the physical 8-9 inch tablet gate"
         )
         return _gate("physical_8_9_inch_tablet", BLOCKED, evidence=evidence, reasons=reasons)
     if size is None:
