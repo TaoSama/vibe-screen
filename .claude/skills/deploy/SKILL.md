@@ -40,6 +40,12 @@ gives a different checkout.
   `VIBE_RELAY_DATABASE_URL_FILE`. Those PostgreSQL URLs must include
   `sslmode=verify-full`; the production Compose profile sets
   `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` and fails closed on weaker modes.
+- Production signaling requires separate migration and runtime PostgreSQL URL
+  secret files supplied through `VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE` and
+  `VIBE_SIGNALING_DATABASE_URL_FILE`. Those PostgreSQL URLs must include
+  `sslmode=verify-full`; the production Compose profile sets
+  `VIBE_SIGNALING_DATABASE_TLS_MODE=verify-full` and fails closed on weaker
+  modes.
 - In `production_authority` mode, `authority_url` and `authority_source_id` are
   both required. Keep `authority_url` private and use placeholders in tracked
   docs; do not write a real internal Authority URL to the repository.
