@@ -531,7 +531,7 @@ keeps `can_close_readme_phase2_gates=false`.
 
 Evidence is under
 [`evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base`](evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/README.md).
-The 2-second preflight ran against the attached `EP0110PZ0B9110300B` device and
+The 2-second preflight ran against the attached `<device-serial>` device and
 records it as nubia P0110 / pacific / Android 16 / SDK 36 with
 `device_class=android_substitute`. It exited `2` as expected, wrote
 `phase2-soak-readiness.json` with `result=blocked` and
@@ -559,7 +559,7 @@ as another device or 8-9 inch tablet evidence.
 
 Validation performed for this update:
 
-- `make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B ... PHASE2_SOAK_PREFLIGHT_DURATION=2s PHASE2_SOAK_INTERVAL=1s` (exit `2`, expected blocked readiness)
+- `make phase2-tablet-soak-preflight EVIDENCE_SERIAL=<device-serial> ... PHASE2_SOAK_PREFLIGHT_DURATION=2s PHASE2_SOAK_INTERVAL=1s` (exit `2`, expected blocked readiness)
 - `make phase2-tablet-preflight EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base` (exit `2`, expected blocked bundle verifier)
 - `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner ...`
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
