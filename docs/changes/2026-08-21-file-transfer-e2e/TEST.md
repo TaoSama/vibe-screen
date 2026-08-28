@@ -116,3 +116,23 @@ reported zero valid identities, xcodebuild is unavailable, and MacHost XCTest
 cannot import XCTest in this environment. A valid gate pass still requires a
 recorded USB and/or LAN session with sender file selection, receiver explicit
 approval, saved destination files, and matching SHA-256 on both sides.
+
+## 2026-08-28 Nubia P0110 current-source USB refresh
+
+Evidence:
+[`../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source`](../2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`f5db90a761e158798065ce1078bf49428031ce49`, confirmed the device as nubia P0110
+/ pacific / Android 16 / SDK 36, and reran targeted Android file-transfer and
+Protocol v1 session JVM coverage successfully. Short USB live-smoke evidence
+also passed before and after the Android instrumentation uninstall/reinstall
+cycle.
+
+The generated `file-transfer-current-source-gate.json` is intentionally
+`blocked` and `gate_closed=false`: the available Host was not a
+current-source, stable-signed/TCC-proven Host, the retained live session did not
+negotiate file-transfer capability, and no Android <-> macOS product
+file-transfer flow with user approval, chunk progress, final digest, and
+destination-file match was captured. The P0110 evidence must not be relabeled as
+Xiaomi 13/fuxi evidence.

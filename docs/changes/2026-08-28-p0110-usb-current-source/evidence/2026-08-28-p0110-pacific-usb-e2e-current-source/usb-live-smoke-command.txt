@@ -1,0 +1,8 @@
+pgrep -x sfltool || true
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --package dev.telemachus.display \
+  --port 54321 \
+  --allow-existing-device-lock \
+  --output docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/usb-live-smoke.json
+pgrep -x sfltool || true
