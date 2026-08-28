@@ -20,7 +20,7 @@ STATUS_INSUFFICIENT = "insufficient"
 VERDICT_PASS = "pass"
 VERDICT_BLOCKED = "blocked"
 VERDICT_INSUFFICIENT = "insufficient"
-CURRENT_BASE = "origin/main 20cd27b1d59dfcc66e28df41aba421e14b6171f4"
+CURRENT_BASE = "origin/main a11df1ce7eeea456143de57895d1cbf48acbc3de"
 REDACTED_DEVICE_SERIAL = "<device-serial>"
 SERIAL_IDENTITY_FIELDS = frozenset({"adb_serial", "device_serial"})
 

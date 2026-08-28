@@ -2,7 +2,7 @@
 
 Result: `blocked`. This record refreshes the Phase 2 tablet sustained-use
 current-base owner on `origin/main` commit
-`20cd27b1d59dfcc66e28df41aba421e14b6171f4`. It consumes the latest Nubia
+`a11df1ce7eeea456143de57895d1cbf48acbc3de`. It consumes the latest Nubia
 P0110 soak preflight plus the retained device-environment, hardware-keyboard,
 and macOS login/headless blocked summaries. It does not close any README Phase 2
 tablet gate.

@@ -141,7 +141,8 @@
         "adb_timeout_seconds",
         "host_preflight_timeout_seconds",
         "expected_device",
-        "lock_globs"
+        "lock_globs",
+        "allow_existing_locks"
       ],
       "properties": {
         "serial": {"type": "string", "minLength": 1},
@@ -164,7 +165,8 @@
         "lock_globs": {
           "type": "array",
           "items": {"type": "string", "minLength": 1}
-        }
+        },
+        "allow_existing_locks": {"type": "boolean"}
       }
     },
     "safety": {
@@ -175,6 +177,7 @@
         "ran_adb",
         "checked_device_locks",
         "existing_locks",
+        "allows_existing_locks",
         "starts_host",
         "starts_android_app",
         "installs_apk",
@@ -190,6 +193,7 @@
         "ran_adb": {"type": "boolean"},
         "checked_device_locks": {"const": true},
         "existing_locks": {"type": "array", "items": {"type": "string"}},
+        "allows_existing_locks": {"type": "boolean"},
         "starts_host": {"const": false},
         "starts_android_app": {"const": false},
         "installs_apk": {"const": false},

@@ -1,0 +1,16 @@
+pgrep -x sfltool || true
+git fetch origin main
+git rev-parse origin/main
+git switch -c codex/file-transfer-android-smoke-readiness origin/main
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> get-state
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> shell getprop ro.product.manufacturer
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> shell getprop ro.product.model
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> shell getprop ro.product.device
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> shell getprop ro.build.version.release
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock adb -s <redacted-p0110-serial> shell getprop ro.build.version.sdk
+lockf /tmp/vibe-screen-android-<redacted-p0110-serial>.lock make evidence-usb-smoke-preflight EVIDENCE_SERIAL=<redacted-p0110-serial> EVIDENCE_EXPECTED_MANUFACTURER=nubia EVIDENCE_EXPECTED_MODEL=P0110 EVIDENCE_EXPECTED_DEVICE=pacific EVIDENCE_EXPECTED_ANDROID_RELEASE=16 EVIDENCE_EXPECTED_SDK=36 EVIDENCE_ALLOW_EXISTING_LOCKS=1 EVIDENCE_DIR=.build/evidence/2026-08-28-file-transfer-android-smoke
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/2026-08-28-file-transfer-android-smoke
+make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/2026-08-28-file-transfer-android-smoke
+make evidence-tools-test
+PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q tools/vibescreen_evidence
+git diff --check
