@@ -1,5 +1,5 @@
 To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to <redacted-url> in the Gradle documentation.
-Daemon will be stopped at the end of the build 
+Daemon will be stopped at the end of the build
 > Task :app:generateReleaseDependencyLicenses UP-TO-DATE
 > Task :app:generateReleaseSbom UP-TO-DATE
 > Task :app:syncOpenSourceNotices UP-TO-DATE

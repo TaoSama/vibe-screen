@@ -313,7 +313,7 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "bytes": 5084,
+      "bytes": 5083,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -323,7 +323,7 @@
       ],
       "path": "android-apk-build.txt",
       "result": "pass",
-      "sha256": "fd8c8153c7a6453ba6fb642a4fc469b113aac04a4cae47ec0e8f7a24fdd4ac9f"
+      "sha256": "cfa0c4bd61120423f4b606da0ea29d7c4c8a3b6a36cb4dfa536441acd4ff3b74"
     },
     {
       "bytes": 2,
@@ -365,7 +365,7 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "bytes": 2480,
+      "bytes": 2479,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -375,7 +375,7 @@
       ],
       "path": "android-focused-jvm-tests.txt",
       "result": "pass",
-      "sha256": "a8d8605fd1234b81e115cb20685d35be61d75bb2483f72ad541e47e6f3eddaee"
+      "sha256": "3f96e77c6f7b81261a40c7d885fcf08b9db3ed799c9bb459c877b2b9033fe81d"
     },
     {
       "bytes": 2,
@@ -560,7 +560,7 @@
       "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
     },
     {
-      "bytes": 16355,
+      "bytes": 16300,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -570,7 +570,7 @@
       ],
       "path": "mac-clipboard-xctest.txt",
       "result": "pass",
-      "sha256": "6920c360843a9030569761066abc1f33a44c00239de0decf6f0b86a0db8cbf65"
+      "sha256": "dc6ecb162f8559211f266e55c0108a6909c32f321b382d81f07554b5300dd8fd"
     },
     {
       "bytes": 2,
