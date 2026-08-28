@@ -404,6 +404,19 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             result["errors"],
         )
 
+    def test_requires_each_inverse_touch_point_within_tolerance_flag(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["points"][0][
+            "within_tolerance"
+        ] = False
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.points[0].within_tolerance: must be true",
+            result["errors"],
+        )
+
     def test_requires_device_identity_and_host_preflight(self) -> None:
         document = complete_document()
         document["runs"][0]["device"]["manufacturer"] = ""
