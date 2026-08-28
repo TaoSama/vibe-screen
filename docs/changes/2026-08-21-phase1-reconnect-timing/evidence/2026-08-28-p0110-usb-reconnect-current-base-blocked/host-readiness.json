@@ -20,7 +20,7 @@
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-28T17:33:30.595139+00:00",
+  "generated_at": "2026-08-28T22:52:50.202425+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [
@@ -30,9 +30,9 @@
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
     "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
     "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
-    "current_source_commit": "655c8fec4ea8237c5f57d43eadf12a4ea5159005",
+    "current_source_commit": "083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443",
     "current_source_dirty": false,
-    "current_source_tree": "3cedde15783bdfeb8a6a0b1019257c09ce6bc5c1",
+    "current_source_tree": "da9cb78fd686e54f745355a8d9ac38bfcf9894bb",
     "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
     "identifier": "dev.telemachus.display",
     "identity": "Vibe Screen Dev",
