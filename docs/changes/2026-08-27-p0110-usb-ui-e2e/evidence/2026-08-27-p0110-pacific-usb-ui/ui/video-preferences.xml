@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt sources="10-settings-smooth-stats.xml,12-settings-fps-bitrate.xml">
+  <node resource-id="dev.telemachus.display:id/showStatsSwitch" class="android.widget.Switch" content-desc="Show Stats" checkable="true" checked="true" clickable="true" />
+  <node resource-id="dev.telemachus.display:id/videoQualitySmooth" class="android.widget.CompoundButton" text="SMOOTH" checkable="true" checked="true" clickable="true" />
+  <node resource-id="dev.telemachus.display:id/videoFps30" class="android.widget.CompoundButton" text="30 FPS" checkable="true" checked="true" clickable="true" />
+  <node class="android.widget.TextView" text="Bitrate" />
+  <node resource-id="dev.telemachus.display:id/videoBitrateValue" class="android.widget.TextView" text="100 Mbps" />
+  <node resource-id="dev.telemachus.display:id/videoBitrateSlider" class="android.widget.SeekBar" content-desc="Bitrate" clickable="true" focusable="true" />
+  <node class="android.widget.SeekBar" content-desc="Bitrate,Value, 100" />
+</sanitized-ui-excerpt>
