@@ -150,7 +150,11 @@ class StreamClient(
     private val outgoingFileTransfers = ConcurrentHashMap<ByteString, OutgoingFileTransfer>()
     private var remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
     private val fileTransferPolicy = FileTransferPolicy()
-    private val pendingInboundWakeHostRequests = ArrayDeque<ByteString>()
+    private val protocolSideEffectOwner =
+        StreamProtocolSideEffectOwner(
+            isConnected = { localSessionState.isConnected && !localSessionState.stopRequested },
+            acceptsConnectionGeneration = localSessionState::acceptsEpoch,
+        )
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
@@ -266,6 +270,7 @@ class StreamClient(
             executor = terminationExecutor,
             onClaim = { request ->
                 localSessionState.markTerminationClaimed(request.failure)
+                protocolSideEffectOwner.clear()
             },
             complete = ::completeConnectionEnd,
         )
@@ -641,6 +646,7 @@ class StreamClient(
                 pendingLegacyFirstByte = null
                 val session = createProtocolSession(transport)
                 protocolSession = session
+                protocolSideEffectOwner.activate(session, localSessionState.connectionEpoch)
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
                 writeProtocolEnvelope(output, session.clientHello())
@@ -1141,7 +1147,12 @@ class StreamClient(
                 val completion = CompletableFuture<Unit>()
                 val submission = submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = StreamOutboundCommand.ProtocolReceive(envelope, completion),
+                    command = StreamOutboundCommand.ProtocolReceive(
+                        session = checkNotNull(protocolSession),
+                        connectionGeneration = localSessionState.connectionEpoch,
+                        envelope = envelope,
+                        completion = completion,
+                    ),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
                 if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
@@ -1213,7 +1224,12 @@ class StreamClient(
                 val completion = CompletableFuture<Unit>()
                 val submission = submitOutbound(
                     kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
-                    command = StreamOutboundCommand.ProtocolBulk(chunk, completion),
+                    command = StreamOutboundCommand.ProtocolBulk(
+                        session = checkNotNull(protocolSession),
+                        connectionGeneration = localSessionState.connectionEpoch,
+                        chunk = chunk,
+                        completion = completion,
+                    ),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
                 if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
@@ -1708,14 +1724,18 @@ class StreamClient(
         out: java.io.DataOutputStream,
         command: StreamOutboundCommand.ProtocolReceive,
     ) {
-        val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
+        val session = command.session
+        if (!isCurrentProtocolSession(session, command.connectionGeneration)) {
+            command.completion.complete(Unit)
+            return
+        }
         try {
             val actions = session.receive(command.envelope)
             when (
                 val result = protocolActionDispatcher.dispatchReceivedActions(
                     out = out,
                     session = session,
-                    connectionGeneration = localSessionState.connectionEpoch,
+                    connectionGeneration = command.connectionGeneration,
                     actions = actions,
                 )
             ) {
@@ -1772,7 +1792,11 @@ class StreamClient(
         out: java.io.DataOutputStream,
         command: StreamOutboundCommand.ProtocolBulk,
     ) {
-        val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
+        val session = command.session
+        if (!isCurrentProtocolSession(session, command.connectionGeneration)) {
+            command.completion.complete(Unit)
+            return
+        }
         val manager = incomingFileTransfers.get()
         if (!session.canTransferFiles || manager == null) {
             session.fileCancel(command.chunk.header.transferId, "policy_denied")?.let { writeProtocolEnvelope(out, it) }
@@ -1780,19 +1804,28 @@ class StreamClient(
             return
         }
         try {
-            val received = manager.append(command.chunk, session.activeSessionEpoch)
-            session.fileProgress(command.chunk.header.transferId, received)?.let { writeProtocolEnvelope(out, it) }
-            if (command.chunk.header.final) {
-                val completed = manager.finish(command.chunk.header.transferId)
-                session.fileComplete(
-                    transferId = completed.transferId,
-                    accepted = true,
-                    sha256 = completed.sha256,
-                    rejectionReason = "",
-                )?.let { writeProtocolEnvelope(out, it) }
-                onIncomingFileCompleted?.invoke(completed)
+            val completedFile = protocolSideEffectOwner.runIfCurrent(session, command.connectionGeneration) {
+                val received = manager.append(command.chunk, session.activeSessionEpoch)
+                session.fileProgress(command.chunk.header.transferId, received)?.let { writeProtocolEnvelope(out, it) }
+                if (command.chunk.header.final) {
+                    val completed = manager.finish(command.chunk.header.transferId)
+                    session.fileComplete(
+                        transferId = completed.transferId,
+                        accepted = true,
+                        sha256 = completed.sha256,
+                        rejectionReason = "",
+                    )?.let { writeProtocolEnvelope(out, it) }
+                    completed
+                } else {
+                    null
+                }
+            }
+            if (!isCurrentProtocolSession(session, command.connectionGeneration)) {
+                command.completion.complete(Unit)
+                return
             }
             out.flush()
+            completedFile?.let { onIncomingFileCompleted?.invoke(it) }
             command.completion.complete(Unit)
         } catch (failure: FileTransferException) {
             manager.cancel(command.chunk.header.transferId)
@@ -1819,24 +1852,26 @@ class StreamClient(
         ) {
             return
         }
-        val manager = incomingFileTransfers.get()
-        val response =
-            if (!command.acceptedByUser || manager == null) {
-                rejectedFileAccept(command.offer.transferId, if (command.acceptedByUser) "policy_denied" else "user_denied")
-            } else {
-                try {
-                    manager.accept(
-                        command.offer,
-                        remotePolicy = remoteManagedPolicy,
-                        negotiatedPolicy = session.negotiatedFilePolicy,
-                        sessionEpoch = session.activeSessionEpoch,
-                    )
-                } catch (failure: FileTransferException) {
-                    rejectedFileAccept(command.offer.transferId, failure.reasonCode)
+        protocolSideEffectOwner.runIfCurrent(session, command.connectionGeneration) {
+            val manager = incomingFileTransfers.get()
+            val response =
+                if (!command.acceptedByUser || manager == null) {
+                    rejectedFileAccept(command.offer.transferId, if (command.acceptedByUser) "policy_denied" else "user_denied")
+                } else {
+                    try {
+                        manager.accept(
+                            command.offer,
+                            remotePolicy = remoteManagedPolicy,
+                            negotiatedPolicy = session.negotiatedFilePolicy,
+                            sessionEpoch = session.activeSessionEpoch,
+                        )
+                    } catch (failure: FileTransferException) {
+                        rejectedFileAccept(command.offer.transferId, failure.reasonCode)
+                    }
                 }
-            }
-        session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
-        out.flush()
+            session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+            out.flush()
+        }
     }
 
     private inner class StreamProtocolActionSink : StreamProtocolActionDispatcher.Sink {
@@ -2040,20 +2075,29 @@ class StreamClient(
         ) {
             if (!isCurrentProtocolSession(session, connectionGeneration)) return
             val callback = fileTransferApprovalCallback
-            if (callback == null) {
-                session.fileAccept(rejectedFileAccept(offer.transferId, "user_denied"))?.let {
+            val rejectionReason = when {
+                callback == null -> "user_denied"
+                !protocolSideEffectOwner.trackFileOffer(offer.transferId, session, connectionGeneration) ->
+                    "file_offer_pending_limit"
+                else -> null
+            }
+            if (rejectionReason != null) {
+                if (!isCurrentProtocolSession(session, connectionGeneration)) return
+                session.fileAccept(rejectedFileAccept(offer.transferId, rejectionReason))?.let {
                     writeProtocolEnvelope(out, it)
                 }
             } else {
-                callback.invoke(offer)
+                checkNotNull(callback).invoke(offer)
             }
         }
 
         override fun onFileAcceptReceived(
             out: java.io.DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             response: FileAccept,
         ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             if (response.accepted) {
                 outgoingFileTransfers[response.transferId]?.let { transfer ->
                     transfer.applyAcceptedMaximumChunkBytes(response.maximumChunkBytes)
@@ -2068,8 +2112,10 @@ class StreamClient(
         override fun onFileProgressReceived(
             out: java.io.DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             progress: dev.vibescreen.protocol.v1.FileTransferProgress,
         ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             outgoingFileTransfers[progress.transferId]?.let { transfer ->
                 val rejectionReason = transfer.acknowledgeOffset(progress.receivedBytes)
                 if (rejectionReason == null) {
@@ -2084,7 +2130,12 @@ class StreamClient(
             }
         }
 
-        override fun onFileCancelReceived(cancellation: dev.vibescreen.protocol.v1.FileTransferCancel) {
+        override fun onFileCancelReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            cancellation: dev.vibescreen.protocol.v1.FileTransferCancel,
+        ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             incomingFileTransfers.get()?.cancel(cancellation.transferId)
             outgoingFileTransfers.remove(cancellation.transferId)?.cancel()
             onFileTransferResult?.invoke(false, cancellation.reasonCode)
@@ -2093,8 +2144,10 @@ class StreamClient(
         override fun onFileCompleteReceived(
             out: java.io.DataOutputStream,
             session: ProtocolV1Session,
+            connectionGeneration: Long,
             result: dev.vibescreen.protocol.v1.FileTransferComplete,
         ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             val transfer = outgoingFileTransfers.remove(result.transferId)
             transfer?.cancel()
             val reason = when {
@@ -2128,9 +2181,12 @@ class StreamClient(
         }
 
         override fun onWakeHostCompleted(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
             accepted: Boolean,
             rejectionReason: String,
         ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             onWakeHostResult?.invoke(accepted, rejectionReason)
         }
 
@@ -2226,11 +2282,13 @@ class StreamClient(
         }
     }
 
-    private fun performWakeHostRequest(request: WakeHostRequestContext): Pair<Boolean, String> =
+    private fun performWakeHostRequest(
+        request: WakeHostRequestContext,
+        sendPacket: (ByteArray) -> Boolean,
+    ): Pair<Boolean, String> =
         try {
             val packet = WakeHostDecision.magicPacket(request, wakeHostPolicy)
-            wakeHostPacketSender.send(packet)
-            true to ""
+            if (sendPacket(packet)) true to "" else false to "stale_session"
         } catch (failure: WakeHostRequestException) {
             false to
                 when (failure.failure) {
@@ -2259,7 +2317,8 @@ class StreamClient(
         request: WakeHostRequestContext,
         correlationId: Long,
     ) {
-        if (!trackInboundWakeHostRequest(request.requestId)) {
+        if (!isCurrentProtocolSession(session, connectionGeneration)) return
+        if (!protocolSideEffectOwner.trackWakeHostRequest(request.requestId, session, connectionGeneration)) {
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                 command = StreamOutboundCommand.ProtocolWakeHostCompletion(
@@ -2275,7 +2334,19 @@ class StreamClient(
             return
         }
         wakeHostExecutor.execute {
-            val (accepted, reason) = performWakeHostRequest(request)
+            if (!isCurrentProtocolSession(session, connectionGeneration)) {
+                protocolSideEffectOwner.releaseWakeHostRequest(request.requestId, session, connectionGeneration)
+                return@execute
+            }
+            val (accepted, reason) = performWakeHostRequest(request) { packet ->
+                protocolSideEffectOwner.runIfCurrent(session, connectionGeneration) {
+                    wakeHostPacketSender.send(packet)
+                } != null
+            }
+            if (reason == "stale_session") {
+                protocolSideEffectOwner.releaseWakeHostRequest(request.requestId, session, connectionGeneration)
+                return@execute
+            }
             val submission =
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -2290,7 +2361,7 @@ class StreamClient(
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
             if (!isOutboundAdmitted(submission)) {
-                releaseInboundWakeHostRequest(request.requestId)
+                protocolSideEffectOwner.releaseWakeHostRequest(request.requestId, session, connectionGeneration)
                 requestConnectionEnd(
                     SessionFailure.protocol(
                         SessionFailureKind.OUTBOUND_BACKPRESSURE,
@@ -2299,19 +2370,6 @@ class StreamClient(
                 )
             }
         }
-    }
-
-    @Synchronized
-    private fun trackInboundWakeHostRequest(requestId: ByteString): Boolean {
-        if (pendingInboundWakeHostRequests.contains(requestId)) return false
-        if (pendingInboundWakeHostRequests.size >= MAX_PENDING_INBOUND_WAKE_HOST_REQUESTS) return false
-        pendingInboundWakeHostRequests.addLast(requestId)
-        return true
-    }
-
-    @Synchronized
-    private fun releaseInboundWakeHostRequest(requestId: ByteString) {
-        pendingInboundWakeHostRequests.remove(requestId)
     }
 
     private fun processWakeHostCompletion(
@@ -2327,7 +2385,11 @@ class StreamClient(
                 correlationId = command.correlationId,
             )?.let { writeProtocolEnvelope(out, it) }
         } finally {
-            releaseInboundWakeHostRequest(command.requestId)
+            protocolSideEffectOwner.releaseWakeHostRequest(
+                command.requestId,
+                command.session,
+                command.connectionGeneration,
+            )
         }
     }
 
@@ -2420,11 +2482,7 @@ class StreamClient(
     private fun isCurrentProtocolSession(
         expectedSession: ProtocolV1Session,
         expectedConnectionGeneration: Long,
-    ): Boolean =
-        localSessionState.isConnected &&
-            localSessionState.connectionEpoch == expectedConnectionGeneration &&
-            localSessionState.acceptsEpoch(expectedConnectionGeneration) &&
-            protocolSession === expectedSession
+    ): Boolean = protocolSideEffectOwner.isCurrent(expectedSession, expectedConnectionGeneration)
 
     private fun writeProtocolEnvelope(
         out: java.io.DataOutputStream,
@@ -2535,19 +2593,21 @@ class StreamClient(
     }
 
     fun respondToFileOffer(offer: FileOffer, accepted: Boolean): Boolean {
-        val session = protocolSession ?: return false
-        if (!localSessionState.isConnected || wireMode != WireMode.V1 || !session.canTransferFiles) return false
+        val owner = protocolSideEffectOwner.claimFileOffer(offer.transferId) ?: return false
+        val session = owner.session
+        if (wireMode != WireMode.V1 || !session.canTransferFiles) return false
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
             command = StreamOutboundCommand.ProtocolFileOfferDecision(
                 session = session,
-                connectionGeneration = localSessionState.connectionEpoch,
+                connectionGeneration = owner.connectionGeneration,
                 offer = offer,
                 acceptedByUser = accepted,
             ),
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
         )
         if (!isOutboundAdmitted(submission)) {
+            protocolSideEffectOwner.releaseFileOffer(offer.transferId)
             requestConnectionEnd(
                 SessionFailure.protocol(
                     SessionFailureKind.OUTBOUND_BACKPRESSURE,
@@ -2630,7 +2690,7 @@ class StreamClient(
         incomingFileTransfers.getAndSet(null)?.cancelAll()
         cancelActiveFileTransfers()
         remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
-        pendingInboundWakeHostRequests.clear()
+        protocolSideEffectOwner.clear()
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = null
         lanSecureRecordSession?.close()
@@ -3005,7 +3065,6 @@ class StreamClient(
         private const val AUTH_RESPONSE_BYTES = 5
         private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
         private const val WAKE_HOST_REQUEST_ID_BYTES = 16
-        private const val MAX_PENDING_INBOUND_WAKE_HOST_REQUESTS = 16
         private const val INITIAL_AUDIO_PROGRESS_LOG_PACKETS = 4L
         private const val AUDIO_PROGRESS_LOG_INTERVAL_PACKETS = 64L
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000

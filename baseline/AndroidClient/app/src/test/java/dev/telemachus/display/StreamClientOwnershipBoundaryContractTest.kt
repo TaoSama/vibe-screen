@@ -52,18 +52,21 @@ class StreamClientOwnershipBoundaryContractTest {
             "local product-session lifecycle state",
             "Protocol v1",
             "action dispatch",
+            "side-effect owner",
             "input envelope routing",
             "media-frame routing",
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
         assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
+        assertTrue(readme.normalizedWhitespace().contains("file-transfer and wake-host flows"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
         assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
-        assertTrue(phaseZeroTech.contains("Protocol, session, decoder,"))
+        assertTrue(phaseZeroTech.contains("side-effect owner gates file-transfer and WakeHost"))
+        assertTrue(phaseZeroTech.contains("Broader protocol/session, decoder,"))
     }
 
     private fun source(relativePath: String): String {
@@ -115,6 +118,8 @@ class StreamClientOwnershipBoundaryContractTest {
             "app/src/main/java/dev/telemachus/display/StreamProtocolActionDispatcher.kt"
         const val PRODUCTION_MEDIA_FRAME_ROUTER =
             "app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt"
+        const val PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER =
+            "app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt"
 
         val REQUIRED_BOUNDARY_OWNERS =
             listOf(
@@ -122,6 +127,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 PRODUCTION_INPUT_DISPATCHER,
                 PRODUCTION_PROTOCOL_ACTION_DISPATCHER,
                 PRODUCTION_MEDIA_FRAME_ROUTER,
+                PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER,
             )
 
         val REQUIRED_OWNER_TESTS =
@@ -129,6 +135,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "app/src/test/java/dev/telemachus/display/StreamClientLocalSessionStateTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
+                "app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
             )
@@ -140,6 +147,13 @@ class StreamClientOwnershipBoundaryContractTest {
                 "private val protocolActionDispatcher =",
                 "StreamProtocolActionDispatcher(StreamProtocolActionSink())",
                 "private val mediaFrameRouter =",
+                "private val protocolSideEffectOwner =",
+                "protocolSideEffectOwner.isCurrent(",
+                "protocolSideEffectOwner.runIfCurrent(",
+                "protocolSideEffectOwner.trackFileOffer(",
+                "protocolSideEffectOwner.claimFileOffer(",
+                "protocolSideEffectOwner.releaseFileOffer(",
+                "protocolSideEffectOwner.trackWakeHostRequest(",
                 "mediaFrameRouter.receiveLegacyFrame(",
                 "mediaFrameRouter.receiveProtocolFrame(",
             )
@@ -157,6 +171,8 @@ class StreamClientOwnershipBoundaryContractTest {
                 "internal fun isSyncFrame",
                 "NativeInputReleaseBatch.build(",
                 "ProtocolV1Framing.decodeVideo(",
+                "private val pendingInboundWakeHostRequests",
+                "private fun trackInboundWakeHostRequest",
             )
 
         val OWNER_LAYER_FORBIDDEN_REFERENCES =
@@ -200,6 +216,18 @@ class StreamClientOwnershipBoundaryContractTest {
                     name = "StreamMediaFrameRouter",
                     path = PRODUCTION_MEDIA_FRAME_ROUTER,
                     forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES,
+                ),
+                BoundaryOwnerRule(
+                    name = "StreamProtocolSideEffectOwner",
+                    path = PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf(
+                            "DataInputStream",
+                            "DataOutputStream",
+                            "FileTransfer",
+                            "WakeHostPacketSender",
+                            "WakeHostDecision",
+                        ),
                 ),
             )
     }
