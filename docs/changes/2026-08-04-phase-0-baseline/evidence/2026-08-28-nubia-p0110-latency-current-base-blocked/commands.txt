@@ -14,9 +14,10 @@ git remote get-url origin
 Result: no `sfltool` process was present at the start of the run. The initial
 branch was created from `origin/main` at
 `20cd27b1d59dfcc66e28df41aba421e14b6171f4`. During CI babysitting, `origin/main`
-advanced to `47361dd7f56fefef50da55a69e0368531c8ada33`; the branch was updated
-and this evidence record was refreshed against that current-base commit. Origin
-is GitHub. No `/usr/bin/sfltool dumpbtm` command was executed, and no login-item
+advanced to `47361dd7f56fefef50da55a69e0368531c8ada33`, then to
+`181167a81ea3176be466c5e5ec7c0c02bb915038`; the branch was updated and this
+evidence record was refreshed against the latest current-base commit. Origin is
+GitHub. No `/usr/bin/sfltool dumpbtm` command was executed, and no login-item
 diagnostic opt-in argument was passed.
 
 Device identity checks used the required explicit ADB target form. Public
@@ -85,7 +86,7 @@ make evidence-latency-preflight \
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked \
   LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/device-info.json \
   LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/preflight-input.json \
-  LATENCY_REPOSITORY_REVISION=47361dd7f56fefef50da55a69e0368531c8ada33
+  LATENCY_REPOSITORY_REVISION=181167a81ea3176be466c5e5ec7c0c02bb915038
 ```
 
 Result: exit `2`, meaning blocked readiness rather than malformed input or a
