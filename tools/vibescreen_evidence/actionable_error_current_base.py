@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -20,13 +21,23 @@ from . import SCHEMA_VERSION
 MANIFEST_KIND = "phase1_actionable_error_current_base"
 REPORT_KIND = "phase1_actionable_error_current_base_gate"
 EXPECTED_DEVICE = {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",
     "android_release": "16",
     "sdk": "36",
 }
+REDACTED_ADB_SERIAL = EXPECTED_DEVICE["adb_serial"]
+SENSITIVE_TEXT_PATTERNS = (
+    (re.compile(r"EP[0-9A-Z]{12,24}"), "raw ADB serial"),
+    (re.compile(r"/Users/[^\s'\"]+"), "local user home path"),
+    (re.compile(r"Application Support/com\.apple\.TCC"), "macOS privacy database path"),
+    (re.compile(r"\bTCC\.db\b"), "macOS privacy database filename"),
+    (re.compile("token" + r"s/", re.IGNORECASE), "token directory"),
+    (re.compile("credential" + r"s/", re.IGNORECASE), "credential directory"),
+    (re.compile("private" + r"[ -]key", re.IGNORECASE), "sensitive key material"),
+)
 REQUIRED_STATE_IDS = (
     "host_screen_recording_denied",
     "accessibility_denied_or_limited",
@@ -56,7 +67,8 @@ NON_PASS_STATUSES = VALID_STATUSES.difference(PASS_STATUSES)
 INTERPRETATION = (
     "A pass means every required Phase 1 actionable-error state has retained "
     "current-base real-device evidence from the exact Nubia P0110/pacific "
-    "Android 16 device and can close the README actionable-errors gate. "
+    "Android 16 device, with the ADB serial redacted from public reports, and "
+    "can close the README actionable-errors gate. "
     "Blocked, insufficient, not-run, offline-only, or relabeled evidence cannot "
     "close that gate."
 )
@@ -163,8 +175,35 @@ def _validate_top_level(manifest: dict[str, Any], errors: list[str]) -> None:
             value = device.get(field)
             if not _non_empty_string(value):
                 errors.append(f"device.{field}: must be a non-empty string")
+            elif field == "adb_serial" and value != REDACTED_ADB_SERIAL:
+                errors.append(
+                    "device.adb_serial: public current-base evidence must redact the "
+                    "ADB serial as <redacted-adb-serial>"
+                )
             elif str(value).lower() != expected.lower():
                 errors.append(f"device.{field}: expected {expected}, got {value}")
+
+
+def _validate_public_artifact_text(
+    artifact_path: Path,
+    display_path: Any,
+    prefix: str,
+    errors: list[str],
+) -> None:
+    try:
+        data = artifact_path.read_bytes()
+    except OSError as error:
+        errors.append(f"{prefix}.path: could not read {display_path}: {error}")
+        return
+    if b"\x00" in data:
+        return
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+    for pattern, label in SENSITIVE_TEXT_PATTERNS:
+        if pattern.search(text):
+            errors.append(f"{prefix}.path: public artifact contains {label}")
 
 
 def _validate_artifacts(
@@ -201,6 +240,7 @@ def _validate_artifacts(
         if not artifact_path.is_file():
             errors.append(f"{prefix}.path: missing file {artifact.get('path')}")
             continue
+        _validate_public_artifact_text(artifact_path, artifact.get("path"), prefix, errors)
         expected_sha = artifact.get("sha256")
         if not _non_empty_string(expected_sha) or len(str(expected_sha)) != 64:
             errors.append(f"{prefix}.sha256: must be a 64-character hex digest")
