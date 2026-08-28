@@ -61,6 +61,7 @@ RECONNECT_PASS_MARKERS = (
 LOCK_MARKERS = (
     "/tmp/vibe-screen-device-android.lock",
     "android_device_lock_acquired",
+    "<android-device-lock>",
 )
 SERIAL_LOCK_MARKER_RE = re.compile(
     (

@@ -21,6 +21,7 @@ from vibescreen_evidence.trusted_lan_preflight import (
     _route_result_reaches_wifi,
     _validated_mac_candidates,
     build_document,
+    redact_local_runtime_paths,
     redact_network_endpoints,
     redact_lsof_user_columns,
     main,
@@ -61,7 +62,12 @@ class FakeDeviceLock:
         self.serial = serial
 
     def __enter__(self) -> DeviceLockSnapshot:
-        return DeviceLockSnapshot(f"/tmp/vibe-screen-android-<device-serial>.lock", True, "acquired")
+        return DeviceLockSnapshot(
+            "/tmp/vibe-screen-<runtime>/trusted-lan-locks/"
+            "vibe-screen-android-<serial-hash>.lock",
+            True,
+            "acquired",
+        )
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         return None
@@ -79,13 +85,19 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertIn("BSSID: <redacted>", text)
         self.assertNotIn("Office-WiFi", text)
 
-    def test_redacts_cgnat_lan_endpoints_from_public_output(self) -> None:
+    def test_redacts_ipv4_endpoints_from_public_output(self) -> None:
         private_endpoint = "100." + "72.239.103"
-        redacted = redact_network_endpoints(f"route to {private_endpoint}:54321 via 10.0.0.1")
+        other_endpoint = "10." + "0.0.1"
+        redacted = redact_network_endpoints(f"route to {private_endpoint}:54321 via {other_endpoint}")
 
-        self.assertIn("<redacted-cgnat-ipv4>", redacted)
-        self.assertIn("10.0.0.1", redacted)
+        self.assertEqual(redacted.count("<redacted-ipv4>"), 2)
         self.assertNotIn(private_endpoint, redacted)
+        self.assertNotIn(other_endpoint, redacted)
+
+    def test_redacts_serial_specific_runtime_lock_path(self) -> None:
+        path = "/tmp/vibe-screen-<runtime>/trusted-lan-locks/vibe-screen-android-<serial-hash>.lock"
+
+        self.assertEqual(redact_local_runtime_paths(path), "<android-device-lock>")
 
     def test_redacts_lsof_user_column_from_listener_output(self) -> None:
         redacted = redact_lsof_user_columns(
@@ -251,7 +263,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertFalse(document["claims"]["real_lan_stream"])
         self.assertFalse(document["claims"]["trusted_lan_encrypted"])
         self.assertIn("android_wifi_association: Wi-Fi is not associated", document["blockers"])
-        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertEqual(document["device_lock"]["path"], "<android-device-lock>")
         self.assertEqual(document["android_device"]["identity"]["adb_serial"], "<device-serial>")
         self.assertEqual(document["safety"]["starts_host"], False)
         self.assertEqual(document["safety"]["writes_pairing_token"], False)
@@ -371,7 +383,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
 
         self.assertNotIn(private_endpoint, encoded)
         self.assertNotIn("EP0110PZ0B9110300B", encoded)
-        self.assertIn("<redacted-cgnat-ipv4>", encoded)
+        self.assertIn("<redacted-ipv4>", encoded)
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient")
@@ -442,7 +454,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
 
         self.assertEqual(document["result"], "blocked")
         self.assertIn("device_lock", document["blockers"][0])
-        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertEqual(document["device_lock"]["path"], "<android-device-lock>")
         self.assertIn("serial=<device-serial>", document["device_lock"]["detail"])
         adb_client.assert_not_called()
 

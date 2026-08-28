@@ -47,10 +47,14 @@ SSID_REDACTIONS = (
 )
 IPV4_RE = re.compile(r"\binet\s+(\d+\.\d+\.\d+\.\d+)(?:/\d+)?")
 IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?::[0-9]{1,5})?(?![0-9.])")
+DEVICE_LOCK_PATH_RE = re.compile(
+    r"/tmp/vibe-screen-(?:<[^>/\n]+>|[0-9A-Za-z._-]+)/trusted-lan-locks/"
+    r"vibe-screen-android-(?:<[^>/\n]+>|[0-9a-fA-F]{20,})\.lock"
+    r"|/tmp/vibe-screen-android-(?:<[^>/\n]+>|[0-9A-Za-z._-]+)\.lock"
+)
 IFACE_RE = re.compile(r"^([A-Za-z0-9_.-]+):\s+flags=")
 EXCLUDED_INTERFACE_PREFIXES = ("lo", "utun", "ipsec", "ppp", "gif", "stf")
 EXCLUDED_INTERFACE_NAMES = {"awdl0", "llw0"}
-CARRIER_GRADE_NAT = ipaddress.ip_network("100.64.0.0/10")
 
 
 class TrustedLANPreflightError(RuntimeError):
@@ -107,14 +111,16 @@ def redact_lsof_user_columns(value: str) -> str:
 def redact_network_endpoints(value: str) -> str:
     def replace(match: re.Match[str]) -> str:
         try:
-            address = ipaddress.ip_address(match.group(1))
+            ipaddress.ip_address(match.group(1))
         except ValueError:
             return match.group(0)
-        if address in CARRIER_GRADE_NAT:
-            return "<redacted-cgnat-ipv4>"
-        return match.group(0)
+        return "<redacted-ipv4>"
 
     return IPV4_ENDPOINT_RE.sub(replace, value)
+
+
+def redact_local_runtime_paths(value: str) -> str:
+    return DEVICE_LOCK_PATH_RE.sub("<android-device-lock>", value)
 
 
 def redact_device_serial(value: str, serials: Sequence[str]) -> str:
@@ -139,7 +145,9 @@ def redact_network_endpoints_in_value(value: Any) -> Any:
 
 def redact_public_value(value: Any, serials: Sequence[str]) -> Any:
     if isinstance(value, str):
-        return redact_device_serial(redact_network_endpoints(value), serials)
+        return redact_device_serial(
+            redact_local_runtime_paths(redact_network_endpoints(value)), serials
+        )
     if isinstance(value, list):
         return [redact_public_value(item, serials) for item in value]
     if isinstance(value, dict):

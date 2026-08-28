@@ -38,7 +38,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
                 "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
-                "The /tmp/vibe-screen-android-<device-serial>.lock was acquired.\n"
+                "The <android-device-lock> was acquired.\n"
                 "wlan0 reported NO-CARRIER state DOWN and Wifi is not connected.\n"
                 "Host preflight failed because the Vibe Screen Dev codesign identity is missing.\n"
                 "No real trusted-LAN stream was observed.\n",
