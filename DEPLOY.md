@@ -55,10 +55,10 @@ Production deployment is blocked until all of these are true:
   `VIBE_RELAY_MIGRATION_DATABASE_URL_FILE` and
   `VIBE_RELAY_DATABASE_URL_FILE`; keep those files outside Git and out of
   shell history.
-- Both relay PostgreSQL URLs use `sslmode=verify-full`; the production Compose
-  profile enforces `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` for migration and
-  runtime, so weaker `sslmode` values fail startup instead of silently
-  downgrading TLS.
+- Relay and signaling PostgreSQL URLs use `sslmode=verify-full`; the production
+  Compose profile enforces `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` and
+  `VIBE_SIGNALING_DATABASE_TLS_MODE=verify-full` for migration and runtime, so
+  weaker `sslmode` values fail startup instead of silently downgrading TLS.
 - Required inbound ports are open: UDP/TCP `3478`, TCP `5349`, and UDP
   `49152-65535`.
 - The relay image repository and exact SHA-256 digest are known.
@@ -119,6 +119,13 @@ export VIBE_RELAY_IMAGE_REPOSITORY=<registry>/<vibe-relay-image>
 export VIBE_RELAY_IMAGE_SHA256=<64-character-image-digest>
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=<path-to-migration-db-url-secret>
 export VIBE_RELAY_DATABASE_URL_FILE=<path-to-runtime-db-url-secret>
+export VIBE_SIGNALING_IMAGE_REPOSITORY=<registry>/<vibe-signaling-image>
+export VIBE_SIGNALING_IMAGE_SHA256=<64-character-image-digest>
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=<path-to-signaling-migration-db-url-secret>
+export VIBE_SIGNALING_DATABASE_URL_FILE=<path-to-signaling-runtime-db-url-secret>
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=<path-to-signaling-issuer-token-secret>
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=<path-to-signaling-metrics-token-secret>
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=<path-to-signaling-authority-token-secret>
 ```
 
 Validate the effective Compose model before starting anything:

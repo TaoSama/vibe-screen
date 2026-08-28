@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	issuerTokenEnv    = "VIBE_SIGNALING_ISSUER_TOKEN"
-	metricsTokenEnv   = "VIBE_SIGNALING_METRICS_TOKEN"
-	authorityTokenEnv = "VIBE_SIGNALING_AUTHORITY_TOKEN"
-	databaseURLEnv    = "VIBE_SIGNALING_DATABASE_URL"
+	issuerTokenEnv     = "VIBE_SIGNALING_ISSUER_TOKEN"
+	metricsTokenEnv    = "VIBE_SIGNALING_METRICS_TOKEN"
+	authorityTokenEnv  = "VIBE_SIGNALING_AUTHORITY_TOKEN"
+	databaseURLEnv     = "VIBE_SIGNALING_DATABASE_URL"
+	databaseTLSModeEnv = "VIBE_SIGNALING_DATABASE_TLS_MODE"
 
 	// AuthorityModeLocalDevelopment keeps the historical in-process session
 	// issuance and role-token authorization. It is intended only for local
@@ -58,6 +59,7 @@ type Config struct {
 	MetricsToken            string `json:"-"`
 	AuthorityToken          string `json:"-"`
 	DatabaseURL             string `json:"-"`
+	DatabaseTLSMode         string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -92,6 +94,7 @@ func LoadConfig(path string) (Config, error) {
 		}
 		*value.destination = loaded
 	}
+	cfg.DatabaseTLSMode = strings.TrimSpace(os.Getenv(databaseTLSModeEnv))
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -106,7 +109,7 @@ func LoadDatabaseURL() (string, error) {
 	if value == "" {
 		return "", fmt.Errorf("%s is required", databaseURLEnv)
 	}
-	if err := validateDatabaseURL(value); err != nil {
+	if err := validateDatabaseURL(value, strings.TrimSpace(os.Getenv(databaseTLSModeEnv))); err != nil {
 		return "", fmt.Errorf("%s: %w", databaseURLEnv, err)
 	}
 	return value, nil
@@ -191,7 +194,7 @@ func (c Config) Validate() error {
 		if c.DatabaseURL == "" {
 			return fmt.Errorf("%s is required when store_backend is postgres", databaseURLEnv)
 		}
-		if err := validateDatabaseURL(c.DatabaseURL); err != nil {
+		if err := validateDatabaseURL(c.DatabaseURL, c.DatabaseTLSMode); err != nil {
 			return fmt.Errorf("database URL: %w", err)
 		}
 	default:
@@ -218,7 +221,10 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func validateDatabaseURL(value string) error {
+func validateDatabaseURL(value, requiredTLSMode string) error {
+	if requiredTLSMode != "" && requiredTLSMode != "verify-full" {
+		return fmt.Errorf("%s must be empty or verify-full", databaseTLSModeEnv)
+	}
 	parsed, err := url.Parse(value)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
@@ -231,6 +237,9 @@ func validateDatabaseURL(value string) error {
 		return errors.New("URL must include user, host, and database name")
 	}
 	sslMode := parsed.Query().Get("sslmode")
+	if requiredTLSMode == "verify-full" && sslMode != requiredTLSMode {
+		return errors.New("production signaling requires sslmode=verify-full")
+	}
 	if isLoopbackHost(parsed.Hostname()) {
 		return nil
 	}
