@@ -347,11 +347,17 @@ left-click and release. A pass requires all three evidence layers from the same
 observation window: Android `MA` logcat lines showing forwarded native pointer
 `MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` from a mouse-like source; newly
 appended Host log lines for native pointer `changed`, `began`, and `ended`
-injection; and an operator-visible Mac result note. If no external Android input
-device with a mouse, relative mouse, touchpad, or trackball source is present,
-the script exits with code `2` and writes a `blocked` evidence bundle instead of
-fabricating a device result. Evidence from a Nubia P0110 must remain labeled
-P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
+injection; and an operator-visible Mac result note. The Android forwarding lines
+must include a positive `deviceId` for each required event, and those IDs must
+match an external mouse-like device in the retained `dumpsys input` inventory.
+Synthetic ADB pointer/touch events, including virtual-device events such as
+`deviceId=-1`, are diagnostics only and cannot close the gate. If no external
+Android input device with a mouse, relative mouse, touchpad, or trackball source
+is present, the script exits with code `2` and writes a `blocked` evidence bundle
+instead of fabricating a device result. Re-checking that bundle with the
+`--require-pass` gate is expected to return non-zero; Make may surface that as
+`Error 1`. Evidence from a Nubia P0110 must remain labeled P0110/pacific; it
+must not be relabeled as Xiaomi 13/fuxi.
 
 The collection step writes `native-pointer-hid-summary.json` by running the
 independent `vibescreen_evidence.native_pointer_hid` gate. The README gate can

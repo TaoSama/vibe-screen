@@ -31,7 +31,7 @@ class MacOSDevHostMetadataTests(unittest.TestCase):
             exit_code, output = macos_dev_host.run_best_effort("/missing/vibe-screen-tool")
 
         self.assertEqual(exit_code, 127)
-        self.assertIn("command not found", output)
+        self.assertIn("command unavailable", output)
         self.assertIn("vibe-screen-tool", output)
 
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
@@ -72,7 +72,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
 
         self.assertEqual(exit_code, 127)
-        self.assertEqual(output, "command not found: vibe-screen-tool")
+        self.assertEqual(output, "command unavailable: vibe-screen-tool")
 
     def test_xctest_preflight_command_passes_with_full_xcode_toolchain(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -213,7 +213,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
 
         self.assertEqual(exit_code, 127)
-        self.assertEqual(output, "command not found: defaults")
+        self.assertEqual(output, "command unavailable: defaults")
 
     def test_validate_preflight_rejects_unexpected_named_identity(self) -> None:
         errors = macos_dev_host.validate_preflight(
@@ -1452,23 +1452,19 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
             with (
                 mock.patch.object(
-                    macos_dev_host.package_macos,
-                    "resolve_sign_identity",
-                    side_effect=SystemExit("missing identity"),
-                ),
-                mock.patch.object(
                     macos_dev_host,
-                    "current_source_identity",
-                    return_value=macos_dev_host.package_macos.SourceIdentity(
-                        commit="c" * 40,
-                        tree="d" * 40,
-                        dirty=False,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=None,
+                        source_identity=None,
+                        permissions=macos_dev_host.PermissionStatus(
+                            database_path=macos_dev_host.USER_TCC_DATABASE_LABEL,
+                            rows=(),
+                            readable=False,
+                            error="permission state unavailable",
+                        ),
+                        errors=["Host bundle not found"],
                     ),
-                ),
-                mock.patch.object(
-                    macos_dev_host,
-                    "collect_signing_metadata",
-                    side_effect=SystemExit(f"Host bundle not found: {macos_dev_host.DEFAULT_INSTALL_PATH}"),
                 ),
                 mock.patch.object(
                     macos_dev_host,
@@ -1488,15 +1484,10 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                         virtual_hid=False,
                         keys=(),
                         raw_output="",
-                        error="bundle missing",
                     ),
                 ),
+                mock.patch.object(macos_dev_host, "read_login_item_readiness", return_value=self.login_ready_inputs()[1]) as login_probe,
                 mock.patch.object(macos_dev_host, "read_startup_settings", return_value=self.login_ready_inputs()[0]),
-                mock.patch.object(
-                    macos_dev_host,
-                    "read_login_item_readiness",
-                    return_value=self.login_ready_inputs()[1],
-                ) as login_probe,
                 mock.patch.object(macos_dev_host, "read_display_readiness", return_value=self.login_ready_inputs()[2]),
                 mock.patch.object(macos_dev_host, "summarize_host_log", return_value=self.login_ready_inputs()[3]),
                 redirect_stdout(StringIO()),
@@ -1664,7 +1655,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         status, output = macos_dev_host.run_best_effort("/definitely/missing/vibe-screen-tool")
 
         self.assertEqual(status, 127)
-        self.assertEqual(output, "command not found: vibe-screen-tool")
+        self.assertEqual(output, "command unavailable: vibe-screen-tool")
 
     def test_readiness_artifacts_keep_default_tcc_paths_redacted(self) -> None:
         with mock.patch.object(
@@ -1969,7 +1960,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertEqual(document["status"], "blocked")
         self.assertEqual(
             document["login_headless"]["startup_settings"]["error"],
-            "command not found: defaults",
+            "command unavailable: defaults",
         )
         serialized_document = json.dumps(document, sort_keys=True)
         self.assertNotIn(str(Path.home()), serialized_document)

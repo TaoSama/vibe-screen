@@ -1317,6 +1317,7 @@ class MainActivity : AppCompatActivity() {
         if (!shouldLogNativePointerForward(nativePointerInput.action)) return
         mainDiag(
             "native pointer forwarded action=${nativePointerInput.action} " +
+                "deviceId=${event.deviceId} " +
                 "source=${NativeInputWire.mouseLikeSourceNames(event.source, event.device?.sources).joinToString("+").ifEmpty { "OTHER" }} " +
                 "buttonState=${event.buttonState} actionButton=${event.actionButton} " +
                 "wireButtons=${NativeInputWire.buttonMask(event.buttonState)} " +
