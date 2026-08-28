@@ -1,7 +1,7 @@
 # P0110 current-base actionable-error owner record
 
 Date: 2026-08-24
-Device: Nubia P0110 / pacific / Android 16 / SDK 36 / `EP0110PZ0B9110300B`
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / `<redacted-adb-serial>`
 Repository: `TaoSama/vibe-screen`
 
 This is a current-base owner record for the README Phase 1 actionable-error

@@ -17,7 +17,7 @@
     ]
   },
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",
@@ -126,7 +126,7 @@
         },
         {
           "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt",
-          "sha256": "28a784d9794554c3ff699b57f913dcb7918f273b48d033c0e71e12a21da0c476",
+          "sha256": "c53f5aad24c5b0543664863df19fd5488111f498549c213f73dbdf033a40f7f9",
           "kind": "android_logcat",
           "description": "App-tag-filtered logcat shows TRANSPORT_CLOSED and reconnect_scheduled after protocol upgrade probe closure."
         },
@@ -232,7 +232,7 @@
         },
         {
           "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/lan-route-blocked-readonly-sanitized.txt",
-          "sha256": "a2aff821261a86cba8ca3092b8c98efdca1bfbbfa1e9b948168c489827c9a7b5",
+          "sha256": "0fcbf380dcf03e0577743199d12edafe57606a0f021d324bff1d8321b5d22777",
           "kind": "lan_route_preflight",
           "description": "Sanitized read-only LAN route blocker: Wi-Fi disconnected, wlan0 DOWN, no route."
         }
@@ -259,7 +259,7 @@
       "artifacts": [
         {
           "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt",
-          "sha256": "28a784d9794554c3ff699b57f913dcb7918f273b48d033c0e71e12a21da0c476",
+          "sha256": "c53f5aad24c5b0543664863df19fd5488111f498549c213f73dbdf033a40f7f9",
           "kind": "android_logcat",
           "description": "Negative evidence boundary: pre-session TRANSPORT_CLOSED retry logs are retained but do not prove stale epoch/session rejection."
         }
