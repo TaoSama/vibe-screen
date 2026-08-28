@@ -1394,10 +1394,6 @@ final class ProtocolV1SessionCoordinator {
         return target.displayID == configuration.displayID && target.streamID == streamID
     }
 
-    private var sessionKey: HostClientSessionKey {
-        HostClientSessionKey(sessionID: configuration.sessionID, epoch: configuration.sessionEpoch)
-    }
-
     private func allocateStreamID(for displayID: String) throws -> UInt64 {
         guard let router = configuration.displayRouter else {
             return 1
