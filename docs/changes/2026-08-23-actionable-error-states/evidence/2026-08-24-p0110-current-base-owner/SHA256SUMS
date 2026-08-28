@@ -1,5 +1,5 @@
 1db376b65acb901befeaeb922594a195c8d3183e4638fa7c7474e589be61e2ca  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/repository.txt
-9337220329780d880a5f0ea56508f981e62bf1fab82392f324ee4411697f99d9  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/README.md
+e577fefddb5043aa45c9f5c44c92c7ce76845cf0cc9e30481a302f4d38833eb9  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/README.md
 19f99cebadc7f40940aa2b2a4ccfe2e1f5619b62e3906b7a4a7f31028c3ea5a2  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/repository-current-base.txt
 659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/device-identity.txt
 efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/adb-reverse-before.txt
@@ -7,8 +7,8 @@ efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c  docs/changes/2
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/host-listener-before.txt
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/host-listener-after.txt
 2f70b01a764d2327a2f746fb69fc2ac84733764b2f23c53aad166ebe14c14bab  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/usb-before-connect-ui.xml
-28a784d9794554c3ff699b57f913dcb7918f273b48d033c0e71e12a21da0c476  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt
+c53f5aad24c5b0543664863df19fd5488111f498549c213f73dbdf033a40f7f9  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/logcat-usb-host-not-listening-sanitized.txt
 5532764b15fb39f4adb5432c007b7e5bd5474b0bc90326a8ae20fad5de211ce9  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/diag-usb-host-not-listening.txt
-a2aff821261a86cba8ca3092b8c98efdca1bfbbfa1e9b948168c489827c9a7b5  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/lan-route-blocked-readonly-sanitized.txt
-ee471a29f2f5dc5ae9d2538ee0b1803eb0152efa41efd8ccad0b1fd3cc8772cb  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base.json
-995d716294a09e31ff1c28ab019025ecf418f8e51ae0f13246db67e5544323d6  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base-gate.json
+0fcbf380dcf03e0577743199d12edafe57606a0f021d324bff1d8321b5d22777  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/lan-route-blocked-readonly-sanitized.txt
+bc7082d543d37ce021ff6b0341b6d5ddf9c8b7dccbdb92a221a2aafe294b88a7  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base.json
+51858543203bfdfcbc5abe1d7215b876bfc96c17704df994b8028353b1cb9b2d  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/actionable-error-current-base-gate.json

@@ -66,6 +66,14 @@ class MainActivityTerminalGuidanceContractTest {
             "Manual USB connection failures should render inline guidance",
             connect.contains("inlineGuidance?.let(::showUsbConnectionGuidance)"),
         )
+        assertFalse(
+            "Automatic USB retry failures should still render actionable inline guidance",
+            connect.contains("!automatic && e !is SessionProtocolException"),
+        )
+        assertTrue(
+            "Retryable protocol failures should still show pre-session inline guidance while retrying",
+            connect.contains("if (e !is SessionProtocolException || e.failure.retryable)"),
+        )
         assertTrue(
             "Terminal guidance must route through the mode-specific inline guidance presenter",
             disconnected.contains("showTerminalConnectionGuidance(mode, guidance)"),
