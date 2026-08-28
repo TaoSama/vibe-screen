@@ -1,0 +1,4 @@
+owner=phase2-hardware-keyboard-readiness
+pid=20822
+worktree=<repo-root>
+created_at=2026-08-28T12:56:16Z

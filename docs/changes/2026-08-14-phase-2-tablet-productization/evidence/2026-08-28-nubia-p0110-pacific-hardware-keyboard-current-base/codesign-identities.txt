@@ -1,0 +1,3 @@
+$ security find-identity -v -p codesigning
+     0 valid identities found
+exit_code=0

@@ -565,9 +565,11 @@ device identity and fail-closed battery, power, and thermal snapshots, but it is
 not a gate pass because the device is a phone substitute and no stand-mounted
 tablet setup, controlled thermal-load recovery, or eight-hour window was
 available. The latest P0110/pacific hardware-keyboard current-base readiness
-record captures the real device identity and fails closed because no external
-Android-attached keyboard or stable signed/TCC-ready Host was available; a Host
-listener alone is not enough, and this is not a gate pass.
+record captures the real device identity and fails closed on current
+`origin/main` because no external Android-attached keyboard or stable
+signed/TCC-ready Host was available; a Host listener alone is not enough, and
+this is not a gate pass. The current aggregate owner now consumes that blocked
+keyboard summary instead of treating the hardware-keyboard row as missing.
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
