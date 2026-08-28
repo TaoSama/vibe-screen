@@ -1,0 +1,201 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256sums_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "version_name": "0.1.0"
+  },
+  "device": {
+    "hdc_target": "recorded hdc list targets -v target",
+    "manufacturer": "Huawei",
+    "model": "MatePad Mini",
+    "os_build": "recorded Settings build",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "gates": [
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "deveco_sdk_and_api_checker",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "signed_release_hap",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "hap_install_launch",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "hap_in_place_upgrade",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "hap_rollback_behavior",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "hap_uninstall_cleanup",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "permission_denial_retry",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "huks_backed_secure_pairing",
+      "secure_pairing_manifest": {
+        "path": "harmony-secure-pairing.json",
+        "schema": "dev.vibescreen.harmony-secure-pairing-gate/v1",
+        "status": "blocked"
+      },
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "authenticated_transport_records",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "credential_revocation_replay",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "evidence/harmony-avcodec-preflight.json"
+      ],
+      "id": "h264_hardware_decode",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "evidence/harmony-avcodec-preflight.json"
+      ],
+      "id": "hevc_hardware_decode",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "host_protocol_v1_interop",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "resume_background_foreground",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "resume_network_roam",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "resume_host_restart",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "resume_capable_host_interop",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "no_old_epoch_render",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "ui_device_identity_record",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "input_touch_keyboard_pointer_stylus",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "eight_hour_soak",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "replace with redacted raw evidence path or artifact id"
+      ],
+      "id": "external_latency",
+      "status": "blocked"
+    }
+  ],
+  "host": {
+    "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "commit": "0000000000000000000000000000000000000000",
+    "protocol": "Protocol v1"
+  },
+  "notes": [
+    "Do not commit raw serials, sensitive identifiers, IP addresses, or screen content."
+  ],
+  "repository": {
+    "commit": "0000000000000000000000000000000000000000",
+    "status": "clean",
+    "tree": "0000000000000000000000000000000000000000"
+  },
+  "schema": "dev.vibescreen.harmony-device-gates/v1",
+  "toolchain": {
+    "deveco_studio_version": "recorded from DevEco Studio",
+    "harmony_sdk_api": "API 12",
+    "harmony_sdk_version": "recorded SDK version",
+    "hdc_version": "recorded hdc -v",
+    "hvigor_version": "recorded hvigor --version",
+    "ohpm_version": "recorded ohpm --version"
+  }
+}
