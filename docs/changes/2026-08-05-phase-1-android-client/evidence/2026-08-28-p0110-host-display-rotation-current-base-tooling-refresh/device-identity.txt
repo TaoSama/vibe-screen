@@ -1,0 +1,6 @@
+manufacturer=nubia
+model=P0110
+codename=pacific
+android_release=16
+sdk=36
+fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
