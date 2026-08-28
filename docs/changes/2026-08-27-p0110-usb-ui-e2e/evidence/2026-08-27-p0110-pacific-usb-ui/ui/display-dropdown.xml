@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sanitized-ui-excerpt source="04-display-menu.xml">
+  <node resource-id="dev.telemachus.display:id/displayCapsuleGroup" content-desc="Choose display, currently Built-in Retina Display" clickable="true" focusable="true" />
+  <display-option text="Built-in Retina Display" role="Primary" size="1512x982" />
+  <display-option text="DELL U2723QE" role="External" size="1920x1080" />
+  <display-option text="Vibe Screen Virtual (extended)" role="Virtual" size="2000x1200" />
+</sanitized-ui-excerpt>
