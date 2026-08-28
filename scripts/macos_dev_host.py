@@ -274,7 +274,7 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
         )
     except FileNotFoundError as error:
         executable = str(error.filename or (command[0] if command else "command"))
-        return 127, f"command not found: {Path(executable).name}"
+        return 127, f"command unavailable: {Path(executable).name}"
     except OSError as error:
         executable = command[0] if command else "command"
         return 127, f"command unavailable: command not found: {executable}: {error.strerror or error}"
