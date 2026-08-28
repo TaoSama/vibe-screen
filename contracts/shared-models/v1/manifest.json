@@ -157,6 +157,15 @@
         "restriction_results": 11,
         "denied_hosts": 12
       }
+    },
+    "ManagedRestrictionResult": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/advanced.proto",
+      "fields": {
+        "restriction": 1,
+        "allowed": 2,
+        "source": 3,
+        "reason": 4
+      }
     }
   },
   "envelopePayloads": {
@@ -433,7 +442,9 @@
         "host_actions_allowed": true,
         "maximum_file_bytes": 4096,
         "allowed_hosts": [" MacBook-Pro.LOCAL ", "studio.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": []
       },
       "remote": {
         "managed": false,
@@ -445,7 +456,9 @@
         "host_actions_allowed": false,
         "maximum_file_bytes": 0,
         "allowed_hosts": [],
-        "allowed_hosts_restricted": false
+        "allowed_hosts_restricted": false,
+        "restriction_results": [],
+        "denied_hosts": []
       },
       "effective": {
         "managed": true,
@@ -457,7 +470,9 @@
         "host_actions_allowed": true,
         "maximum_file_bytes": 4096,
         "allowed_hosts": ["macbook-pro.local", "studio.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": []
       }
     },
     {
@@ -472,7 +487,9 @@
         "host_actions_allowed": true,
         "maximum_file_bytes": 8192,
         "allowed_hosts": [],
-        "allowed_hosts_restricted": false
+        "allowed_hosts_restricted": false,
+        "restriction_results": [],
+        "denied_hosts": []
       },
       "remote": {
         "managed": true,
@@ -484,7 +501,9 @@
         "host_actions_allowed": false,
         "maximum_file_bytes": 1024,
         "allowed_hosts": ["HOST-A.local", "host-b.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": []
       },
       "effective": {
         "managed": true,
@@ -496,7 +515,9 @@
         "host_actions_allowed": false,
         "maximum_file_bytes": 1024,
         "allowed_hosts": ["host-a.local", "host-b.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": []
       }
     },
     {
@@ -511,7 +532,9 @@
         "host_actions_allowed": true,
         "maximum_file_bytes": 2048,
         "allowed_hosts": ["alpha.local", "beta.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": ["beta.local"]
       },
       "remote": {
         "managed": true,
@@ -523,7 +546,9 @@
         "host_actions_allowed": true,
         "maximum_file_bytes": 4096,
         "allowed_hosts": ["beta.local", "gamma.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": []
       },
       "effective": {
         "managed": true,
@@ -534,8 +559,10 @@
         "custom_gestures_allowed": true,
         "host_actions_allowed": true,
         "maximum_file_bytes": 2048,
-        "allowed_hosts": ["beta.local"],
-        "allowed_hosts_restricted": true
+        "allowed_hosts": [],
+        "allowed_hosts_restricted": true,
+        "restriction_results": [],
+        "denied_hosts": ["beta.local"]
       }
     }
   ],

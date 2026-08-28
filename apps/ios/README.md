@@ -260,6 +260,9 @@ device evidence closes each product-flow gate.
   remain terminal;
 - one host connection can route up to four negotiated display streams; actual
   multi-client admission and virtual-display allocation remain host work;
+- Advanced host integrations are tracked by the
+  `phase5-host-advanced-adapters-gate readiness contract`; it is source
+  readiness only and does not close signed iPhone/iPad or product-flow gates;
 - touch, hardware-keyboard capture, and hover-pointer input are exposed in the
   app, but have no signed iPhone/iPad or physical-accessory evidence yet;
 - PCM S16LE playback has deterministic core queue coverage and an iOS app
