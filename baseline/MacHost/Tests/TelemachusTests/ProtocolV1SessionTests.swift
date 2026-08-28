@@ -492,6 +492,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testRuntimeDisplayRebindRejectsDuplicateDisplayAsInvalidState() throws {
         let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
         let session = makeMultiDisplaySession(
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
             displayRouter: router,
             maximumClients: 2,
             maximumVideoStreamsPerClient: 2
@@ -606,7 +607,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             sessionEpoch: 1,
             displayRouter: router,
             maximumClients: 2,
-            clientCapabilities: [.touch, .multiDisplay, .multiClient]
+            clientCapabilities: [.touch, .multiDisplay, .multiClient],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient])
         )
         XCTAssertEqual(router.activeClientCount, 1)
         var notice = VSDisconnectNotice()
@@ -3133,7 +3135,8 @@ final class ProtocolV1SessionTests: XCTestCase {
         displayRouter: HostMultiClientDisplayRouter? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1,
-        clientCapabilities: [VSCapability] = [.touch, .multiDisplay]
+        clientCapabilities: [VSCapability] = [.touch, .multiDisplay],
+        hostCapabilities: Set<VSCapability>? = nil
     ) throws -> ProtocolV1SessionCoordinator {
         let resolvedSessionID = sessionID ?? self.sessionID
         let resolvedSessionEpoch = sessionEpoch ?? self.sessionEpoch
@@ -3143,6 +3146,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             displayID: displayID,
             displayRouter: displayRouter,
             maximumClients: maximumClients,
+            hostCapabilities: hostCapabilities,
             maximumVideoStreamsPerClient: maximumVideoStreamsPerClient
         )
         var hello = clientHello()
