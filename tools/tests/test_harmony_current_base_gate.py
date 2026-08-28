@@ -394,6 +394,20 @@ class HarmonyCurrentBaseGateTests(unittest.TestCase):
         self.assertTrue(report["can_close_readme_phase4_owner_gates"])
         self.assertEqual(set(report["checks"]["owner_gates"]), set(OWNER_GATES))
 
+    def test_source_paths_are_public_when_inputs_are_absolute(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            readiness_path = write_json(root, "harmony-readiness.json", blocked_readiness())
+            missing_device_path = root / "missing-device-gates.json"
+
+            report = derive_gate(readiness_path, missing_device_path, evidence_root=root)
+            serialized = json.dumps(report)
+
+        self.assertNotIn(directory_name, serialized)
+        self.assertEqual(report["source"]["readiness"], "<external>/harmony-readiness.json")
+        self.assertEqual(report["source"]["device_gates"], "<external>/missing-device-gates.json")
+        self.assertIn("blocked: device-gate manifest missing: <external>/missing-device-gates.json", report["reasons"])
+
     def test_report_matches_schema_required_top_level_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)

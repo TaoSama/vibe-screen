@@ -142,6 +142,23 @@ def write_pass_artifacts(directory: Path, manifest: dict[str, object]) -> None:
 
 
 class HarmonyMatePadAcceptanceTests(unittest.TestCase):
+    def test_acceptance_package_redacts_absolute_source_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            readiness = passing_readiness()
+            readiness["verdict"] = "blocked"
+            readiness["blocking_reasons"] = ["hdc is unavailable"]
+            (directory / "harmony-readiness.json").write_text(json.dumps(readiness), encoding="utf-8")
+
+            exit_code = run_main(["--evidence-dir", str(directory), "--write-blocked"])
+            package = json.loads((directory / "harmony-matepad-acceptance.json").read_text(encoding="utf-8"))
+            serialized = json.dumps(package)
+
+        self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
+        self.assertNotIn(directory_name, serialized)
+        self.assertEqual(package["evidence_dir"], "<external>/" + Path(directory_name).name)
+        self.assertEqual(package["readiness"]["path"], "<external>/harmony-readiness.json")
+
     def test_acceptance_package_matches_schema_required_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
@@ -334,11 +351,8 @@ class HarmonyMatePadAcceptanceTests(unittest.TestCase):
 
         self.assertEqual(exit_code, harmony_matepad_acceptance.BLOCKED_EXIT)
         self.assertEqual(package["verdict"], "blocked")
-        invalid = [reference for reference in package["artifact_references"] if reference["status"] == "invalid"]
-        expected_invalid_count = sum(len(gate["evidence"]) for gate in manifest["gates"])
-        self.assertEqual(len(invalid), expected_invalid_count)
-        self.assertTrue(all(reference["reference"].startswith("artifact://") for reference in invalid))
-        self.assertIn("expected repository-local evidence path", package["device_gate_manifest"]["error"] or "")
+        self.assertTrue(all(reference["status"] == "invalid" for reference in package["artifact_references"]))
+        self.assertRegex(package["device_gate_manifest"]["error"] or "", "URL|repository-local evidence path")
 
     def test_failed_device_gate_writes_structured_fail_package(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

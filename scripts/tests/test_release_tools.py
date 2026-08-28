@@ -1394,7 +1394,7 @@ class PrepareReleaseTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(f"vibe-screen-{VERSION}-notices.zip", result.stderr)
 
-    def test_release_scan_distinguishes_compiled_literals_from_credentials(self) -> None:
+    def test_release_scan_distinguishes_compiled_literals_from_sensitive_values(self) -> None:
         compiled_literals = (
             b"token=\x00\x01"
             b'\x00"signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz"'
