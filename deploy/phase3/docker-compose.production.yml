@@ -10,6 +10,7 @@ services:
       - /usr/share/vibe-screen/migrations/001_signaling.sql
     environment:
       VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_migration_database_url
+      VIBE_SIGNALING_DATABASE_TLS_MODE: verify-full
     secrets:
       - signaling_migration_database_url
     security_opt:
@@ -27,6 +28,7 @@ services:
         condition: service_completed_successfully
     environment:
       VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_database_url
+      VIBE_SIGNALING_DATABASE_TLS_MODE: verify-full
       VIBE_SIGNALING_ISSUER_TOKEN_FILE: /run/secrets/signaling_issuer_token
       VIBE_SIGNALING_METRICS_TOKEN_FILE: /run/secrets/signaling_metrics_token
       VIBE_SIGNALING_AUTHORITY_TOKEN_FILE: /run/secrets/signaling_authority_token

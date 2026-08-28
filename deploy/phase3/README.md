@@ -127,6 +127,9 @@ secret files, and independent issuer, metrics, and Authority client token files.
 The migration and runtime PostgreSQL URLs may use different credentials, but
 they must target the same PostgreSQL database and schema so the migration job
 creates the exact schema used by runtime readiness and traffic.
+Both URLs must include `sslmode=verify-full`; the production profile sets
+`VIBE_SIGNALING_DATABASE_TLS_MODE=verify-full` for migration and runtime so
+weaker modes fail closed at startup.
 
 ```bash
 export VIBE_SIGNALING_IMAGE_REPOSITORY=<registry>/<vibe-signaling-image>
