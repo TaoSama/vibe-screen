@@ -159,6 +159,7 @@ class AuthorityProductionGateTests(unittest.TestCase):
     def test_signaling_production_credentials_are_file_backed(self) -> None:
         text = SIGNALING_PRODUCTION_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_database_url", text)
+        self.assertEqual(text.count("VIBE_SIGNALING_DATABASE_TLS_MODE: verify-full"), 2)
         self.assertIn("VIBE_SIGNALING_ISSUER_TOKEN_FILE: /run/secrets/signaling_issuer_token", text)
         self.assertIn("VIBE_SIGNALING_METRICS_TOKEN_FILE: /run/secrets/signaling_metrics_token", text)
         self.assertIn("VIBE_SIGNALING_AUTHORITY_TOKEN_FILE: /run/secrets/signaling_authority_token", text)
