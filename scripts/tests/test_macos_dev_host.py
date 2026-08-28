@@ -1534,7 +1534,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             exit_code, output = macos_dev_host.run_best_effort("/usr/bin/defaults", "export")
 
         self.assertEqual(exit_code, 127)
-        self.assertIn("command not found: defaults", output)
+        self.assertIn("command unavailable: defaults", output)
 
     def test_tcc_database_paths_includes_system_database_for_default_user_database(self) -> None:
         paths = macos_dev_host.tcc_database_paths(macos_dev_host.default_tcc_database())
