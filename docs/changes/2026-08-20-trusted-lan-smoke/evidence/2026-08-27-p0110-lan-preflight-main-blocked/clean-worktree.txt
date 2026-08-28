@@ -1,0 +1,3 @@
+Preparing worktree (detached HEAD 3b2ba11e8)
+HEAD is now at 3b2ba11e8 Add Host Protocol v1 routing boundary
+clean_repo=<clean-origin-main-worktree>/repo
