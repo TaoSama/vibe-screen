@@ -205,6 +205,54 @@ class HarmonyHapReadinessTests(unittest.TestCase):
         )
         self.assertEqual(failed_output, "# hdc list targets failed with exit 127\n# no HDC target listed\n")
 
+    def test_repository_state_can_ignore_current_evidence_directory(self) -> None:
+        def fake_run(command, **_kwargs):
+            if command[:3] == ["git", "rev-parse", "HEAD"]:
+                return readiness.CommandResult(command, 0, "a" * 40 + "\n", "")
+            if command[:3] == ["git", "rev-parse", "HEAD^{tree}"]:
+                return readiness.CommandResult(command, 0, "b" * 40 + "\n", "")
+            if command[:3] == ["git", "status", "--porcelain"]:
+                return readiness.CommandResult(
+                    command,
+                    0,
+                    "?? docs/changes/2026-08-04-phase-4-harmony/evidence/run/harmony-hap-readiness.json\n",
+                    "",
+                )
+            raise AssertionError(command)
+
+        with mock.patch.object(readiness, "run_command", side_effect=fake_run):
+            state = readiness.repository_state(
+                Path("/repo"),
+                ignore_paths=[Path("/repo/docs/changes/2026-08-04-phase-4-harmony/evidence/run")],
+            )
+
+        self.assertEqual(state.status, "clean")
+        self.assertEqual(state.porcelain, "")
+
+    def test_repository_state_keeps_unrelated_dirty_files_when_ignoring_evidence(self) -> None:
+        def fake_run(command, **_kwargs):
+            if command[:3] == ["git", "rev-parse", "HEAD"]:
+                return readiness.CommandResult(command, 0, "a" * 40 + "\n", "")
+            if command[:3] == ["git", "rev-parse", "HEAD^{tree}"]:
+                return readiness.CommandResult(command, 0, "b" * 40 + "\n", "")
+            if command[:3] == ["git", "status", "--porcelain"]:
+                return readiness.CommandResult(
+                    command,
+                    0,
+                    " M apps/harmony/README.md\n?? docs/changes/2026-08-04-phase-4-harmony/evidence/run/harmony-hap-readiness.json\n",
+                    "",
+                )
+            raise AssertionError(command)
+
+        with mock.patch.object(readiness, "run_command", side_effect=fake_run):
+            state = readiness.repository_state(
+                Path("/repo"),
+                ignore_paths=[Path("/repo/docs/changes/2026-08-04-phase-4-harmony/evidence/run")],
+            )
+
+        self.assertEqual(state.status, "dirty")
+        self.assertEqual(state.porcelain, " M apps/harmony/README.md\n")
+
     def test_requested_missing_hdc_target_is_not_recorded_as_device_evidence(self) -> None:
         with (
             mock.patch.object(readiness, "list_hdc_targets", return_value=readiness.CommandResult(["hdc", "list", "targets", "-v"], 0, "OTHER device\n", "")),
