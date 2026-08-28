@@ -179,7 +179,7 @@
   "result": "blocked",
   "schema": "dev.vibescreen.phase3-release-gate-manifest/v1",
   "source": {
-    "commit": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
-    "tree_status": "dirty"
+    "commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "tree_status": "clean"
   }
 }

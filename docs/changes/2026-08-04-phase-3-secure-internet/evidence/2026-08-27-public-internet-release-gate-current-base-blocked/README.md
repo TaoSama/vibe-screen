@@ -6,7 +6,7 @@ This is a current-base blocked record, not public Internet release evidence. No 
 
 **BLOCKED.** `phase3-internet-release-gate.json`, `phase3-internet-soak-gate.json`, and `public-nat-turn-preflight.json` all report blocked. This record does not close the Phase 3 release gate.
 
-The source snapshot recorded in `blocked-evidence.json` is `27d2b0e493e807ae439fbd43b06b4c2f0ce9c503`. The tree was dirty when this package was generated because this change adds the evidence package itself; it is therefore not a current-source pass record.
+The source snapshot recorded in `blocked-evidence.json` is `3b2ba11e832a3618eaedfc67f92414b161423a00`, the evaluated `origin/main` base commit. The tree was clean when this package was generated. This is a blocked readiness record, not a current-source pass record.
 
 ## Blockers
 

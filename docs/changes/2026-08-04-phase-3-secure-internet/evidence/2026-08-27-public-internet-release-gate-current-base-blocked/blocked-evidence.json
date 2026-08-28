@@ -47,8 +47,8 @@
   "result": "blocked",
   "schema": "dev.vibescreen.phase3-network-recovery-blocked/v1",
   "source": {
-    "commit": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
-    "status_sha256": "62f69396fdf9a01d1b96182d4c2714f212436031623c7b257ae9a9a76e6cd5e8",
-    "tree_status": "dirty"
+    "commit": "3b2ba11e832a3618eaedfc67f92414b161423a00",
+    "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tree_status": "clean"
   }
 }

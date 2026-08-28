@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2343,
+      "bytes": 2351,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "c484589b7c98fcb807c659c571a2c60e23bc0d3c2d59d095b46337599d792772"
+      "sha256": "7ac9581ec121cab0131056a1a3e4a6baf656d22c2c4434b02df1132499f33aaf"
     },
     {
       "bytes": 2150,
@@ -24,7 +24,7 @@
       ],
       "path": "blocked-evidence.json",
       "result": "pass",
-      "sha256": "9315292c753bb07ff79eb57e2870144f718a98ffdb36da03b604dab25fb2df69"
+      "sha256": "0fabc8d06a35097eb989723c42ea364bf9171fd7ddff016a5b4ed3c7d42fa361"
     },
     {
       "bytes": 8599,
@@ -76,7 +76,7 @@
       ],
       "path": "release-gate-manifest.json",
       "result": "pass",
-      "sha256": "01755cdaa84c18daa0431460206c829c0991813ce3f80268f0bc4efacd0251ac"
+      "sha256": "36c142c37b00f2fbe5ed81a75ba8b866ef0291d090c09596addf224e6afa5c72"
     }
   ],
   "categories": [
