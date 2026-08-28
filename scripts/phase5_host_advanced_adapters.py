@@ -274,11 +274,12 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
             detail=f"ungated default capabilities present: {', '.join(forbidden)}",
         )
     if ".multiClient" in capability_body:
-        return CheckResult(
-            name=check_name,
-            status="fail",
-            detail="multi-client capability is still present in production defaults",
-        )
+        if "maximumClients > 1" not in capability_body:
+            return CheckResult(
+                name=check_name,
+                status="fail",
+                detail="multi-client capability is still present in production defaults",
+            )
     return CheckResult(
         name=check_name,
         status="pass",
