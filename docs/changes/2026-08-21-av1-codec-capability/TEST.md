@@ -61,6 +61,67 @@ The retained blocked evidence records are
 and
 [`evidence/2026-08-27-av1-current-base-blocked/README.md`](evidence/2026-08-27-av1-current-base-blocked/README.md).
 
+## 2026-08-29 Nubia P0110 current-base refresh
+
+The current-base closure owner was refreshed on `origin/main`
+`b54ee0e929c53459e6ba7e060f2c9de0c846f408`. This refresh keeps AV1
+fail-closed and blocked: Protocol v1 still only reserves `CODEC_AV1`, the
+current Host still does not advertise AV1, Android product sessions still do
+not offer AV1, and no Host/device AV1 real-stream evidence was added.
+
+Retained diagnostic device identity: nubia P0110 / pacific / Android 16 / SDK
+36. The read-only Android probes used an explicit `adb -s` selector after
+acquiring `/tmp/vibe-screen-android-<redacted-device-serial>.lock`; public
+evidence redacts the serial as `<redacted-device-serial>`. The run checked
+`pgrep -x sfltool || true` before device probing and after evidence capture;
+both checks returned no output. It did not execute `/usr/bin/sfltool dumpbtm`
+and did not pass a login-item diagnostic opt-in argument.
+
+Device diagnostics show that `dumpsys media.player` and vendor/system XML expose
+AV1 decoder capability signals on the P0110, including `c2.qti.av1.decoder`,
+`c2.qti.av1.decoder.low_latency`, `c2.qti.av1.decoder.secure`,
+`c2.android.av1.decoder`, and `c2.android.av1-dav1d.decoder`. The preferred
+`dumpsys media.codec` and `cmd media.codec list` service-level probes remain
+unavailable with `Can't find service: media.codec` and
+`cmd: Can't find service: media.codec`, respectively.
+
+Host diagnostics still block a real AV1 stream: a VideoToolbox AV1 compression
+session probe returned `status=-12908 session=false` for both a
+hardware-required encoder specification and the default encoder specification.
+The retained raw outputs and hashes are recorded under
+[`evidence/2026-08-29-nubia-p0110-av1-current-base-refresh/README.md`](evidence/2026-08-29-nubia-p0110-av1-current-base-refresh/README.md).
+
+This is only a current-base readiness snapshot and fail-closed evidence. It does
+not prove Vibe Screen AV1 negotiation, MediaCodec configuration, first decoded
+output frame, sustained AV1 playback, reconnect behavior, or any macOS Host AV1
+encoder path, and it does not change the README AV1 gate status.
+
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  - Result: passed, 7 tests.
+- `cd docs/changes/2026-08-21-av1-codec-capability/evidence/2026-08-29-nubia-p0110-av1-current-base-refresh && shasum -a 256 -c SHA256SUMS.txt`
+  - Result: passed for every retained evidence file.
+- `make protocol`
+  - Result: passed, including 45 protocol contract tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`
+  - Result: passed.
+- `cd apps/ios && swift run vibescreen-ios-selftest`
+  - Result: passed.
+- `make baseline-macos-self-test`
+  - Result: passed; existing Swift Sendable warnings were emitted in
+    `StreamingServer.swift`.
+- `cd baseline/MacHost && swift test --filter CodecLimitsTests --filter ProtocolV1SessionTests --filter InternetProductProtocolCodecTests`
+  - Result: blocked in this local Command Line Tools environment before test
+    execution with `no such module 'XCTest'`; `make baseline-macos-self-test`
+    compiled the product and passed the MacHost self-test suite.
+- `make evidence-tools-test`
+  - Result: passed, 1054 tests.
+- `git diff --check`
+  - Result: passed.
+- Sensitive-info scan over the 2026-08-29 AV1 evidence directory, `TEST.md`,
+  and `tools/tests/test_av1_current_base_gate.py`
+  - Result: passed; no matching raw device serial, local user path, TCC path,
+    or private-key marker.
+
 ## 2026-08-21 verification
 
 - `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest`

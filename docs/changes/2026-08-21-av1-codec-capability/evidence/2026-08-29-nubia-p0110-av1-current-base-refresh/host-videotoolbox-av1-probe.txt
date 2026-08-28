@@ -1,0 +1,2 @@
+AV1 hw encoder RequireHardwareAcceleratedVideoEncoder=true: status=-12908 session=false
+AV1 sw/default encoder encoderSpecification=nil: status=-12908 session=false
