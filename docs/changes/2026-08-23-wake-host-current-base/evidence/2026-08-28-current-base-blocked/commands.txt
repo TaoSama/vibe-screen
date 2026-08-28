@@ -1,0 +1,16 @@
+pgrep -x sfltool || true
+git fetch origin main --prune
+git rev-parse origin/main
+PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base tools.tests.test_schemas -v
+make wake-host-current-base-gate EVIDENCE_DIR=.build/evidence/wake-host-current-base-smoke-20260828-main; test $? -eq 2
+jq -e '.verdict == "blocked" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false) and (.current_main_sha == null)' .build/evidence/wake-host-current-base-smoke-20260828-main/wake-host-current-base-gate.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-28-current-base-blocked/wake-host-current-base-observations.json --output docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-28-current-base-blocked/wake-host-current-base-gate.json; test $? -eq 1
+jq -e '.verdict == "blocked" and .current_main_sha == "43d31c35d2bb4457c74218d179ba1406c2fda815" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-28-current-base-blocked/wake-host-current-base-gate.json
+(cd baseline/MacHost && swift build -c release)
+(cd baseline/MacHost && "./.build/release/Vibe Screen" --protocol-v1-self-test)
+(cd baseline/MacHost && swift test --filter WakeHostTests)
+Outcome: blocked by local Command Line Tools environment; Swift failed with `no such module 'XCTest'`. `xcrun --find xctest` also reported that the utility was unavailable.
+xcode-select -p; xcrun --find xctest || true; swift --version
+(cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.signedWakeHostRequestSendsMagicPacketAndRejectsReplay" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.queuedWakeHostRequestAfterDisconnectDoesNotSendPacketOrResult" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.unsignedWakeHostRequestFailsClosedWithoutSendingPacket")
+git diff --check
+pgrep -x sfltool || true
