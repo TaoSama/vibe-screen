@@ -1,0 +1,4 @@
+--------- beginning of main
+08-28 20:52:03.922 I/VibeScreenTelemetry(23514): {"schema_version":1,"timestamp_ms":1787921523922,"event":"stream_stats","session_epoch":2,"fps":30.798845043310877,"mbps":0.07054475457170357}
+08-28 20:52:04.958 I/VibeScreenTelemetry(23514): {"schema_version":1,"timestamp_ms":1787921524958,"event":"stream_stats","session_epoch":2,"fps":30.03875968992248,"mbps":0.0689767441860465}
+08-28 20:52:05.986 I/VibeScreenTelemetry(23514): {"schema_version":1,"timestamp_ms":1787921525986,"event":"stream_stats","session_epoch":2,"fps":30.03875968992248,"mbps":0.0689767441860465}
