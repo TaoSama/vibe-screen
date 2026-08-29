@@ -422,9 +422,12 @@ input cannot close these gates. Evidence is retained under
 - Developer ID signing and notarization;
 - real-window restore after disconnect on device;
 - a host-RSS-stable two-hour no-growth run (the two-hour Xiaomi 13 soak ran but
-  host RSS grew about 18.3 MB), native-pointer HID move/click with a physical
-  mouse, controller runtime acceptance with a physical Android controller and
-  entitled Host, and external USB/LAN glass-to-glass plus input latency.
+  host RSS grew about 18.3 MB, and current-source reruns remain blocked by
+  stable-signing, TCC, and full Xcode/XCTest readiness prerequisites; see
+  [2026-08-28 host-rss fail-closed readiness blocked](../2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md)),
+  native-pointer HID move/click with a physical mouse, controller runtime
+  acceptance with a physical Android controller and entitled Host, and external
+  USB/LAN glass-to-glass plus input latency.
 
 Private `CGVirtualDisplay` creation/capture and HiDPI, graceful mirror-mode
 fallback, keyboard/scroll input, and Protocol v1 real-device interoperability

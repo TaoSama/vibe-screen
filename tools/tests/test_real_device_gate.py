@@ -18,6 +18,7 @@ from vibescreen_evidence.real_device_gate import (
     summarize_requested_gates,
     write_json,
 )
+from tools.tests.test_host_rss_gate import write_exact_window_report, write_inputs
 
 
 class RealDeviceGateTests(unittest.TestCase):
@@ -251,8 +252,41 @@ class RealDeviceGateTests(unittest.TestCase):
 
         self.assertEqual(document["result"], "blocked")
         self.assertIn(
-            "Host RSS gate requires --soak-summary and --soak-samples",
+            "Host RSS gate requires --soak-summary, --soak-samples, "
+            "and --host-rss-exact-window-report",
             "\n".join(document["insufficiencies"]),
+        )
+
+    def test_host_rss_gate_uses_exact_window_report_when_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary, samples = write_inputs(root)
+            exact_window = write_exact_window_report(root)
+            gate_output = root / "host-rss-gate.json"
+
+            requested, blockers, insufficiencies = summarize_requested_gates(
+                require_soak_summary=False,
+                require_host_rss_gate=True,
+                soak_summary=summary,
+                soak_samples=samples,
+                host_rss_gate_output=gate_output,
+                latency_reports=[],
+                input_summaries=[],
+                host_rss_exact_window_report=exact_window,
+            )
+            written = json.loads(gate_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(blockers, [])
+        self.assertEqual(insufficiencies, [])
+        self.assertEqual(requested["host_rss"]["report"]["verdict"], "pass")
+        self.assertEqual(written["verdict"], "pass")
+        self.assertTrue(
+            requested["host_rss"]["report"]["telemetry_sufficiency"]
+            ["window_matches_summary"]["passed"]
+        )
+        self.assertTrue(
+            requested["host_rss"]["report"]["telemetry_criteria"]
+            ["queue_depth_within_capacity"]["passed"]
         )
 
     def test_requested_gate_report_with_false_closure_flag_is_insufficient(self) -> None:
