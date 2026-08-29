@@ -36,6 +36,29 @@
     "role": "ios_app_signing_readiness_current_base_owner",
     "scope": "Phase 5 iOS app-signing readiness prerequisite only"
   },
+  "readiness_requirements": {
+    "all_requirements_recorded": false,
+    "android_evidence_used": false,
+    "labels": {
+      "bundle_id": "unique non-default iPhoneOS bundle identifier",
+      "codesign_identity": "non-ad-hoc Apple codesign identity recorded as a SHA-256 digest or local-only raw value",
+      "device_udids": "registered physical iPhone/iPad UDID hashes retained from the provisioning profile",
+      "entitlements": "signed-app entitlements match Team ID and bundle ID with a retained entitlement plist SHA-256",
+      "provisioning_profile": "provisioning profile UUID recorded as a SHA-256 digest or local-only raw value",
+      "team_id": "Apple Team ID recorded as a SHA-256 digest or local-only raw value"
+    },
+    "requirements": {
+      "bundle_id": false,
+      "codesign_identity": false,
+      "device_udids": false,
+      "entitlements": false,
+      "provisioning_profile": false,
+      "team_id": false
+    },
+    "simulator_build_used": false,
+    "status": "blocked",
+    "unsigned_build_used": false
+  },
   "recorded_fields": {
     "artifacts": false,
     "bundle_id": false,
