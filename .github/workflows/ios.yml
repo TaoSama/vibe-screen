@@ -1,4 +1,4 @@
-name: iOS engineering gates
+name: iOS engineering gates (Simulator & macOS Core Loopback, no device acceptance)
 
 on:
   workflow_dispatch:
@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Verify generated Protocol v1 bindings are current
         run: apps/ios/Scripts/verify-generated-protocol.sh
       - name: Resolve pinned dependencies
@@ -40,12 +42,41 @@ jobs:
       - name: Run baseline MacHost self-tests
         timeout-minutes: 20
         run: make baseline-macos-self-test
+      - name: Generate fail-closed iOS current-base readiness artifact
+        if: always()
+        run: |
+          set +e
+          make ios-current-base-gate EVIDENCE_DIR=.build/evidence/ios-current-base-ci
+          status=$?
+          set -e
+          test -f .build/evidence/ios-current-base-ci/ios-current-base-manifest.json
+          test -f .build/evidence/ios-current-base-ci/ios-current-base-gate.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('.build/evidence/ios-current-base-ci/ios-current-base-gate.json').read_text(encoding='utf-8'))
+          if report.get('verdict') != 'blocked':
+              raise SystemExit(f"expected fail-closed blocked readiness artifact, got {report.get('verdict')!r}")
+          if report.get('can_claim_device_pass') is not False:
+              raise SystemExit('iOS engineering CI artifact must not claim a device pass')
+          PY
+          test "$status" -ne 0
+      - name: Upload fail-closed iOS current-base readiness artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-current-base-readiness-blocked
+          path: .build/evidence/ios-current-base-ci
+          if-no-files-found: error
 
   app-build-test-archive:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Build and test on an iPhone simulator, then create an unsigned archive
         run: apps/ios/Scripts/build_ios.py
       - name: Upload unsigned archive
