@@ -1,0 +1,32 @@
+Android markers:
+{
+  "AudioConfig": false,
+  "AudioConfigResult": false,
+  "AudioTrack": false,
+  "CAPABILITY_AUDIO": false,
+  "audio_capture_failed": false,
+  "audio_capture_start_failed": false,
+  "audio_capture_started": false,
+  "audio_frame": false,
+  "audio_send": false,
+  "channel 3": false,
+  "channel=3": false,
+  "pcm": false,
+  "s16": false
+}
+
+Host markers:
+{
+  "AudioConfig": false,
+  "audio_capture_failed": false,
+  "audio_capture_start_failed": false,
+  "audio_capture_started": false,
+  "audio_capture_stopped": false,
+  "audio_frame": false,
+  "audio_send": false,
+  "channel 3": false,
+  "channel=3": false
+}
+
+Matching lines:
+No audio playback markers were found in retained logs.
