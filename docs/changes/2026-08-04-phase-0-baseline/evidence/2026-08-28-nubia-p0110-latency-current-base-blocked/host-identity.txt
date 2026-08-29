@@ -1,6 +1,6 @@
 # Host identity preflight
 
-Repository revision: `869ef6d0a05f19f707b100b8a3c5ff78c5a28021`
+Repository revision: `dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e`
 Push target branch: `codex/p0110-latency-current-base-20260828`
 
 ## Commands
