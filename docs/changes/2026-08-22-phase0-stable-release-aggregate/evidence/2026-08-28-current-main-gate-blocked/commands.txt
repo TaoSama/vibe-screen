@@ -1,0 +1,128 @@
+# Command ledger
+
+Working directory:
+<isolated-phase0-stable-aggregate-worktree>
+
+1. Check for residual login-item diagnostic process before the refresh:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Result: exit 0, no output.
+
+2. Create the isolated worktree from latest origin/main:
+
+```sh
+git fetch origin main
+mkdir -p .claude/worktrees
+git worktree add -B codex/phase0-stable-aggregate-gate \
+  .claude/worktrees/phase0-stable-aggregate-gate origin/main
+```
+
+Result: worktree created at commit 1430c3cc18948b93b50b7054e992844f287b6fbc.
+
+3. Run the existing release-claim gate before edits:
+
+```sh
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
+```
+
+Result: exit 2. The command wrote a blocked aggregate summary with
+`can_mark_phase0_stable_release=false`.
+
+4. Inspect workflow status for current main:
+
+```sh
+gh run list --repo TaoSama/vibe-screen \
+  --commit 1430c3cc18948b93b50b7054e992844f287b6fbc --limit 20
+```
+
+Result: retained in `github-runs.txt`.
+
+Also inspect the successful PR #381 Phase 0 checks run used as retained CI
+evidence for the merge source:
+
+```sh
+gh pr view 381 --repo TaoSama/vibe-screen \
+  --json number,title,mergeCommit,statusCheckRollup,url
+gh run view 33166723901 --repo TaoSama/vibe-screen \
+  --json databaseId,headSha,conclusion,status,event,displayTitle,workflowName,url,createdAt,updatedAt,jobs
+```
+
+Result: retained in `github-runs.txt`. PR #381 merged as
+`1430c3cc18948b93b50b7054e992844f287b6fbc`; its Phase 0 checks run
+`33166723901` completed successfully. The later main push Phase 0 run
+`33169708257` was cancelled and is not counted as closing evidence.
+
+5. Re-run the release-claim gate after refreshing the aggregate owner and binding
+the manifest to the audited source commit:
+
+```sh
+make phase0-stable-release-gate \
+  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=1430c3cc18948b93b50b7054e992844f287b6fbc \
+  PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
+```
+
+Result: exit 2, retained in `phase0-stable-release-exit.txt`. This is expected
+because six required gates remain blocked/open/insufficient.
+
+6. Check for residual login-item diagnostic process after the refresh:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Result: exit 0, no output.
+
+7. Run focused and full evidence-tool tests after tightening the aggregate
+checker:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest tools.tests.test_phase0_stable_release -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest discover -s tools/tests -v
+```
+
+Result: focused suite passed 29 tests; full evidence-tool suite passed 1040
+tests.
+
+8. Verify stale source binding fails closed:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.phase0_stable_release \
+  --manifest docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json \
+  --readme README.md \
+  --expected-source-commit 0000000000000000000000000000000000000000
+```
+
+Result: exit 0 in report mode with `aggregate_verdict=insufficient` and
+`source_guard.verdict=insufficient`.
+
+9. Regenerate artifact checksums after the retained summary and GitHub run
+   evidence were refreshed:
+
+```sh
+shasum -a 256 \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/README.md \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/commands.txt \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/github-runs.txt \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/head.txt \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/phase0-stable-release-exit.txt \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/phase0-stable-release-summary.json \
+  > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/SHA256SUMS
+shasum -a 256 -c \
+  docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/SHA256SUMS
+```
+
+Result: all retained artifacts verified OK.
+
+10. Final residual login-item diagnostic process check before commit:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Result: exit 0, no output.

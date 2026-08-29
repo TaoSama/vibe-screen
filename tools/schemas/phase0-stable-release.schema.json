@@ -16,6 +16,7 @@
     "blocking_required_gates",
     "gate_summaries",
     "readme_guard",
+    "source_guard",
     "manifest_source",
     "reasons"
   ],
@@ -49,6 +50,17 @@
             }
           }
         },
+        "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "source_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "expected_source_commit", "manifest_base_commit", "reasons"],
+      "properties": {
+        "verdict": {"enum": ["pass", "insufficient"]},
+        "expected_source_commit": {"type": ["string", "null"]},
+        "manifest_base_commit": {"type": ["string", "null"]},
         "reasons": {"type": "array", "items": {"type": "string"}}
       }
     },
