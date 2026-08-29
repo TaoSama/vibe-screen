@@ -1,0 +1,3 @@
+$ adb -s REDACTED_P0110_USB_SERIAL devices
+List of devices attached
+REDACTED_P0110_USB_SERIAL	device

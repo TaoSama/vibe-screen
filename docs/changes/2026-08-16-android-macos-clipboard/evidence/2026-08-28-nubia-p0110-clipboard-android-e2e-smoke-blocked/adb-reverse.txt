@@ -1,0 +1,1 @@
+$ adb -s REDACTED_P0110_USB_SERIAL reverse tcp:54321 tcp:54321

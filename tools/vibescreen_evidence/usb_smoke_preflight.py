@@ -114,10 +114,13 @@ def run_probe(
     )
 
 
-def collect_locks(lock_globs: Sequence[str]) -> list[str]:
+def collect_locks(lock_globs: Sequence[str], held_locks: Sequence[str] = ()) -> list[str]:
+    held = {str(Path(lock).resolve()) for lock in held_locks}
     locks: list[str] = []
     for pattern in lock_globs:
-        locks.extend(glob.glob(pattern))
+        for match in glob.glob(pattern):
+            if str(Path(match).resolve()) not in held:
+                locks.append(match)
     return sorted(set(locks))
 
 
@@ -399,6 +402,7 @@ def build_document(
     package_name: str,
     port: int,
     lock_globs: Sequence[str],
+    held_locks: Sequence[str],
     expected_device: dict[str, str | None],
     host_preflight_report: Path,
     allow_existing_locks: bool = False,
@@ -406,7 +410,7 @@ def build_document(
     wall_clock=utc_now,
 ) -> dict[str, Any]:
     blockers: list[dict[str, str]] = []
-    locks = collect_locks(lock_globs)
+    locks = collect_locks(lock_globs, held_locks)
     probes_blocked_by_locks = bool(locks and not allow_existing_locks)
     if probes_blocked_by_locks:
         blockers.append(
@@ -477,13 +481,14 @@ def build_document(
             "host_preflight_timeout_seconds": host_preflight_timeout,
             "expected_device": expected_device,
             "lock_globs": list(lock_globs),
+            "held_locks": [sanitize_lock_path(lock) for lock in held_locks],
             "allow_existing_locks": allow_existing_locks,
         },
         "safety": {
             "read_only": True,
             "ran_adb": not probes_blocked_by_locks,
             "checked_device_locks": True,
-            "existing_locks": locks,
+            "existing_locks": [sanitize_lock_path(lock) for lock in locks],
             "allows_existing_locks": allow_existing_locks,
             "starts_host": False,
             "starts_android_app": False,
@@ -562,7 +567,12 @@ def public_path(path: str | Path, repository_root: Path) -> str:
 
 def sanitize_lock_path(path: str) -> str:
     name = Path(path).name
-    return f"/tmp/{name}" if name.startswith("vibe-screen-") else path
+    if name.startswith("vibe-screen-"):
+        return f"/tmp/{name}"
+    # Non-vibe-screen lock file paths must not leak arbitrary absolute paths.
+    if name.endswith(".lock"):
+        return "<redacted-lock-path>"
+    return path
 
 
 def sanitize_public_value(value: Any, *, serial: str, serial_label: str, repository_root: Path) -> Any:
@@ -676,6 +686,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
     parser.add_argument("--lock-glob", action="append", default=[DEFAULT_LOCK_GLOB])
     parser.add_argument(
+        "--held-lock",
+        action="append",
+        default=[],
+        help=(
+            "device lease lock already held by this caller; it is excluded from "
+            "competing-lock detection while all other matching locks still block"
+        ),
+    )
+    parser.add_argument(
         "--allow-existing-locks",
         action="store_true",
         help="Continue read-only probes while recording existing locks. Use only when the caller owns the device lock.",
@@ -723,6 +742,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         package_name=arguments.package,
         port=arguments.port,
         lock_globs=arguments.lock_glob,
+        held_locks=arguments.held_lock,
         expected_device=expected_device,
         host_preflight_report=host_report,
         allow_existing_locks=arguments.allow_existing_locks,
