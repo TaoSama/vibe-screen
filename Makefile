@@ -183,6 +183,10 @@ PHASE3_ANDROID_UI_NOTE ?=
 PHASE3_ADVANCED_DATACHANNEL_MANIFEST_JSON ?= $(EVIDENCE_DIR)/advanced-datachannel-manifest.json
 PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT ?= 0
 PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
+PHASE3_WEBRTC_BULK_MANIFEST_JSON ?= $(EVIDENCE_DIR)/webrtc-bulk-product-flow-manifest.json
+PHASE3_WEBRTC_BULK_GATE_JSON ?= $(EVIDENCE_DIR)/webrtc-bulk-product-flow-gate.json
+PHASE3_WEBRTC_BULK_WRITE_DEFAULT ?= 0
+PHASE3_WEBRTC_BULK_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)"; then printf clean; else printf dirty; fi)
 
 .PHONY: \
 	protocol \
@@ -199,6 +203,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase3-adaptive-media-current-base \
 	phase3-advanced-datachannel-current-base \
 	phase3-advanced-datachannel-blocked-baseline \
+	phase3-webrtc-bulk-product-flow \
+	phase3-webrtc-bulk-product-flow-blocked-baseline \
 	phase3-internet-soak-manifest \
 	phase3-internet-soak-gate \
 	phase3-internet-release-gate \
@@ -411,6 +417,30 @@ phase3-advanced-datachannel-current-base:
 
 phase3-advanced-datachannel-blocked-baseline:
 	$(MAKE) phase3-advanced-datachannel-current-base PHASE3_ADVANCED_DATACHANNEL_WRITE_DEFAULT=1
+
+phase3-webrtc-bulk-product-flow:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR" >&2; exit 2)
+	@if ! echo " 1 true yes " | grep -q " $(PHASE3_WEBRTC_BULK_WRITE_DEFAULT) "; then \
+		test -f "$(PHASE3_WEBRTC_BULK_MANIFEST_JSON)" || (echo "error: set PHASE3_WEBRTC_BULK_MANIFEST_JSON to retained evidence or run phase3-webrtc-bulk-product-flow-blocked-baseline" >&2; exit 2); \
+	fi
+	mkdir -p "$(dir $(PHASE3_WEBRTC_BULK_GATE_JSON))"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.phase3_webrtc_bulk_product_flow \
+		--manifest "$(PHASE3_WEBRTC_BULK_MANIFEST_JSON)" \
+		--output "$(PHASE3_WEBRTC_BULK_GATE_JSON)" \
+		--repo "." \
+		--source-commit "$$(git rev-parse HEAD)" \
+		--tree-status "$(PHASE3_WEBRTC_BULK_TREE_STATUS)" \
+		$(if $(filter 1 true yes,$(PHASE3_WEBRTC_BULK_WRITE_DEFAULT)),--write-default-manifest,); \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		if [ $$status -eq 1 ]; then exit 0; fi; \
+		exit $$status; \
+	fi
+
+phase3-webrtc-bulk-product-flow-blocked-baseline:
+	$(MAKE) phase3-webrtc-bulk-product-flow PHASE3_WEBRTC_BULK_WRITE_DEFAULT=1
 
 phase3-internet-soak-manifest:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a Phase 3 Internet soak evidence directory" >&2; exit 2)
