@@ -2,7 +2,7 @@
 
 Created: 2026-08-26T23:05:44Z
 Run ID: 20260826T230544Z
-Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <device-serial>
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial [redacted-device-serial]
 APK: dev.telemachus.display 0.0.0 (100000)
 Android device lock acquired: true
 External keyboard devices visible: 0

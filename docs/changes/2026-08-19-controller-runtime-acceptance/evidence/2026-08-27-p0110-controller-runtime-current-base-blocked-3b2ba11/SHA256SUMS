@@ -1,6 +1,6 @@
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./command-exit.txt
 6d7f66feec460aed9665feec6f0ab31a50e0638f51f1987868b9a0ff79656499  ./controller-runtime-observations.json
-02707a08b0c0f97eb2c70cbd1e93a733b3613455ff656b47c5f63be67d25b2c1  ./controller-runtime-readiness.json
+bdc3ac148274f1ef49abd7f07c4f4bbe21551df51a537b09810dc89bac945816  ./controller-runtime-readiness.json
 0e8d18ece1f6e11e1f76abf7a62f796d9e20ff0526e9221fee99997d072d75f5  ./controller-runtime-summary.json
-6c0ba25093a1ebbc47f096ba3a9b0135a341aa2c3ad4ea8d06c6f3c7d7986c98  ./device-info.json
-be8735a8601c2718d4be6c75fb2d395786991de495bcc7221428d922be4313bf  ./README.md
+1c65ed6c857c045e911054416ba994616065efc9dfcea115ebc850d71c7ea902  ./device-info.json
+9cccab80724f1a17c08a75b77348faabad82e53441de798fed5a9370acfd6526  ./README.md

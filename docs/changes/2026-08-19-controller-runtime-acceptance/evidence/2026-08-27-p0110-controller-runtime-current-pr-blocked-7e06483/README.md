@@ -3,7 +3,7 @@
 Created: 2026-08-27T10:29:37Z
 Run ID: 20260827T102937Z
 Source commit: 7e06483becdc1b63f0de74dfed56342eed2d0aba
-Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <device-serial>
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial [redacted-device-serial]
 APK: dev.telemachus.display 0.0.0 (100000)
 Physical controller devices: 0
 Host identity signed: false

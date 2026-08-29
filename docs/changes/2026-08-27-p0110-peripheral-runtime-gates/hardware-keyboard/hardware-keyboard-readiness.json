@@ -5,13 +5,13 @@
     "android_release": "16",
     "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
     "device": "pacific",
-    "device_serial": "<device-serial>",
-    "endpoint": "<device-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:25",
+    "device_serial": "[redacted-device-serial]",
+    "endpoint": "[redacted-device-serial]     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:25",
     "manufacturer": "nubia",
     "model": "P0110",
     "product": "pacific",
     "sdk": "36",
-    "serial": "<device-serial>"
+    "serial": "[redacted-device-serial]"
   },
   "device_lock": {
     "acquired": true,

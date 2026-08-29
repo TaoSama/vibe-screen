@@ -13,7 +13,7 @@
     "manufacturer": "nubia",
     "model": "P0110",
     "sdk": "36",
-    "serial": "<device-serial>"
+    "serial": "[redacted-device-serial]"
   },
   "host_availability": {
     "host_log": "redacted-host-log",

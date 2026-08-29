@@ -1,0 +1,607 @@
+{
+  "artifacts": [
+    {
+      "bytes": 6444,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "5e1269e0dad49d13f9107993ab2deaf443207c8e9ab99cf9462d156a5401e151"
+    },
+    {
+      "bytes": 2997,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/README.md",
+      "result": "pass",
+      "sha256": "fdd6350f942be44795f4f2d2b4b68f61966c356cdfb74ec99fd1e04abbdf2e5b"
+    },
+    {
+      "bytes": 128,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/adb-devices.txt",
+      "result": "pass",
+      "sha256": "d7c0bdde964d822dd34805864cf251361ffab1543b5a42957f9467ef5f7f49bc"
+    },
+    {
+      "bytes": 85,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/codesign-identities.txt",
+      "result": "pass",
+      "sha256": "4c05b7b67cf400634989742a8fd48d936ba7615f5e399d8cf042c024e03fb2e2"
+    },
+    {
+      "bytes": 894,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/device-info.json",
+      "result": "pass",
+      "sha256": "08a94ae88fbef68f99b1a0d0c87141ceefefe33d592bb2f12fad7f6b1b62c186"
+    },
+    {
+      "bytes": 104,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/device-lock.txt",
+      "result": "pass",
+      "sha256": "237258aa178f731cde6e4d5abadd7d0e70ca1a2a1a611cb6a41aa1f72cbc691d"
+    },
+    {
+      "bytes": 36400,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/dumpsys-input.txt",
+      "result": "pass",
+      "sha256": "b87cdce5ae485ce67befb51cddb5ce7f79888256b53bae2d54f50739d6028b08"
+    },
+    {
+      "bytes": 7227,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/dumpsys-package.txt",
+      "result": "pass",
+      "sha256": "ec33b080701de5d958632da7cba916849a1faa88ba6ea3943cfed05861df7711"
+    },
+    {
+      "bytes": 2668,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/hardware-keyboard-observations.json",
+      "result": "pass",
+      "sha256": "1b383ef48925d97847967bccf6ec947925172b8316df52c0d51b39f2ea94f290"
+    },
+    {
+      "bytes": 12819,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/hardware-keyboard-readiness.json",
+      "result": "pass",
+      "sha256": "2fd30148d00b4609b0b4ef630d6572793733e9062d092d532bf4691770bc0a35"
+    },
+    {
+      "bytes": 6317,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/hardware-keyboard-summary.json",
+      "result": "pass",
+      "sha256": "2b969244f1319463c58b16da36f682d5de79787331a60b912934048637493e5c"
+    },
+    {
+      "bytes": 206,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/host-listener.txt",
+      "result": "pass",
+      "sha256": "795a9ad03dfbfecd9d9aacaa23d9db6db2aceda7895c96537a884ab6f9f6b2d6"
+    },
+    {
+      "bytes": 1999,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/host-preflight-command.txt",
+      "result": "pass",
+      "sha256": "e8693e6b426b1ebc039f913ceeccc2687de69b8a70bf51c49ead00ac9317e0f6"
+    },
+    {
+      "bytes": 1871,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "8ebe1a29085d135d9ccb2b1a84099f88b8e65800624db5855d02251ec388bfc4"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 2997,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/README.md",
+      "result": "pass",
+      "sha256": "5af144fda8c92fd5160f4921efa125bc204688a6efd0762da4ae3bd143821c95"
+    },
+    {
+      "bytes": 128,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/adb-devices.txt",
+      "result": "pass",
+      "sha256": "d7c0bdde964d822dd34805864cf251361ffab1543b5a42957f9467ef5f7f49bc"
+    },
+    {
+      "bytes": 85,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/codesign-identities.txt",
+      "result": "pass",
+      "sha256": "4c05b7b67cf400634989742a8fd48d936ba7615f5e399d8cf042c024e03fb2e2"
+    },
+    {
+      "bytes": 894,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/device-info.json",
+      "result": "pass",
+      "sha256": "ebffbf0563aba4e90905d4c595ec3b1466a67f69d3c496bc999b7784954dbc93"
+    },
+    {
+      "bytes": 104,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/device-lock.txt",
+      "result": "pass",
+      "sha256": "582880fec1a8e72d29d1a70422d343d8e3bde224ffb9ff0ae530aa50360ea127"
+    },
+    {
+      "bytes": 41489,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/dumpsys-input.txt",
+      "result": "pass",
+      "sha256": "7d70f5f335d12c617efa12919c8dd15c9bbbfd9cf711f9de4c139a461e5528b9"
+    },
+    {
+      "bytes": 7228,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/dumpsys-package.txt",
+      "result": "pass",
+      "sha256": "0a573f280886bce0e913dde68e9763d7914d7964af14df7d38efd82e18421d6c"
+    },
+    {
+      "bytes": 2668,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/hardware-keyboard-observations.json",
+      "result": "pass",
+      "sha256": "7496832d1d194c046c81d8bd7ce0dfb582480fa4a050c0a332a8ed3bce3ac867"
+    },
+    {
+      "bytes": 13465,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/hardware-keyboard-readiness.json",
+      "result": "pass",
+      "sha256": "9048c400c4fe7c95c575f56a1fc820fc42fb038185981d99cf5beb91cfc56c8c"
+    },
+    {
+      "bytes": 6317,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/hardware-keyboard-summary.json",
+      "result": "pass",
+      "sha256": "9979093aea30bd7c50d7aa53190fa8b60e1d7c6b6ce1f210e8800173e4949a82"
+    },
+    {
+      "bytes": 206,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/host-listener.txt",
+      "result": "pass",
+      "sha256": "795a9ad03dfbfecd9d9aacaa23d9db6db2aceda7895c96537a884ab6f9f6b2d6"
+    },
+    {
+      "bytes": 2621,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/host-preflight-command.txt",
+      "result": "pass",
+      "sha256": "41f845a27d57552a8c69ef4aef1e038c359b38e2fc5aeeaeae785efd5647ee12"
+    },
+    {
+      "bytes": 2289,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "8e3dbf7d210b9bb9ffac4941af3a199c8aa4cca51e87a5971a7b776d0a628c4b"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "hardware-keyboard-current-pr/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 6571,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness/host-readiness.json",
+      "result": "pass",
+      "sha256": "66ad1a3a50a490e73e2b73122becc4558fe4f0bc8b8e4ff5cde2c1761d12173a"
+    },
+    {
+      "bytes": 2219,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness/host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "4d189aa3fe7860f9471794efc37718a9f05db7d6d32dcc683c2f542b571d9cee"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 6299,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness-current-pr-head/host-readiness.json",
+      "result": "pass",
+      "sha256": "111624159eb6dcdc2de0228870b7b28aa1bfaba87e12033b790ce0ab3b78422d"
+    },
+    {
+      "bytes": 2219,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness-current-pr-head/host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "ae9b64debdd404211bc44f155bc6e8aad8a20adeaf65b65be0a1bcf97680f86a"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness-current-pr-head/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 1349,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid/README.md",
+      "result": "pass",
+      "sha256": "8705e8fc9c2f43000bf36de6ab34e557502ccc16f496a78b37087aaac60dfe6e"
+    },
+    {
+      "bytes": 36400,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid/dumpsys-input.txt",
+      "result": "pass",
+      "sha256": "6f8a5b70cf88de82cdb9f35ad10fdbfd0cea9ff51637a2869da188659aa4eb13"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 3763,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid/native-pointer-hid-summary.json",
+      "result": "pass",
+      "sha256": "7c0111ff8bbba5aa82543e964cbd80d7c88b94634269d377500a7e15e709ba7a"
+    },
+    {
+      "bytes": 1707,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid/result.json",
+      "result": "pass",
+      "sha256": "8c94d82d8f97befaf95241129d1c54a94d604536c6accf97691b071385646419"
+    },
+    {
+      "bytes": 1349,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid-current-pr/README.md",
+      "result": "pass",
+      "sha256": "0c6d9087928ea116368329b7f7f07e992bbed38de41267a643b80af33dbc85b2"
+    },
+    {
+      "bytes": 41489,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid-current-pr/dumpsys-input.txt",
+      "result": "pass",
+      "sha256": "f24eee59b86f1cedc16163b7c5e0d625310d4cd08d0db572f4c8325d07b29c3c"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid-current-pr/make-exit.txt",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 3763,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid-current-pr/native-pointer-hid-summary.json",
+      "result": "pass",
+      "sha256": "b8c8062ac0adc0bb7d2e7db59da5ebdbe79f655143b3a694307b907deae4da29"
+    },
+    {
+      "bytes": 1707,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "native-pointer-hid-current-pr/result.json",
+      "result": "pass",
+      "sha256": "c83702e9ea5171ee93c8e5b6982533cd3396063ee757fa5231edf022c64ae6ea"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

@@ -9,7 +9,7 @@ merging `origin/main` at `c0e4263f7af2d2ab1131e7fc15e5e9d3e3fef443` into
 snapshot.
 
 Device under test: `nubia P0110 / pacific / Android 16 / SDK 36`; public
-evidence redacts the ADB serial as `<device-serial>`. Do not relabel this
+evidence redacts the ADB serial as `[redacted-device-serial]`. Do not relabel this
 evidence as Xiaomi 13/fuxi.
 
 ## Scope
@@ -44,14 +44,14 @@ make baseline-macos-host-readiness \
   EVIDENCE_DIR=docs/changes/2026-08-27-p0110-peripheral-runtime-gates/host-readiness-current-pr-head
 
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/controller_runtime_readiness.py \
-  --serial <device-serial> \
+  --serial [redacted-device-serial] \
   --host-log <host-log> \
   --host-app "/Applications/Vibe Screen.app" \
   --redact-identifiers \
   --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-27-p0110-controller-runtime-current-pr-blocked-7e06483
 
 make physical-stylus-acceptance \
-  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_SERIAL=[redacted-device-serial] \
   EVIDENCE_PACKAGE=dev.telemachus.display \
   EVIDENCE_DIR=docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-27-nubia-p0110-pacific-stylus-current-pr-blocked-7e06483 \
   STYLUS_HOST_LOG=<host-log> \
@@ -59,14 +59,14 @@ make physical-stylus-acceptance \
   STYLUS_DRAWING_OBSERVATION=""
 
 make native-pointer-hid-acceptance \
-  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_SERIAL=[redacted-device-serial] \
   EVIDENCE_DIR=docs/changes/2026-08-27-p0110-peripheral-runtime-gates/native-pointer-hid-current-pr \
   NATIVE_POINTER_HOST_LOG=<host-log> \
   NATIVE_POINTER_OBSERVE_SECONDS=0 \
   NATIVE_POINTER_VISIBLE_RESULT_NOTE=""
 
 make hardware-keyboard-readiness \
-  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_SERIAL=[redacted-device-serial] \
   EVIDENCE_PACKAGE=dev.telemachus.display \
   EVIDENCE_PORT=54321 \
   EVIDENCE_DIR=docs/changes/2026-08-27-p0110-peripheral-runtime-gates/hardware-keyboard-current-pr
