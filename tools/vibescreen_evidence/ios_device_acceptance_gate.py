@@ -90,6 +90,7 @@ REQUIRED_SIGNING_READINESS_FIELDS = (
     "verdict",
     "signing_status",
     "signing_summary",
+    "readiness_requirements",
     "can_close_ios_app_signing_readiness",
     "can_close_ios_device_acceptance",
     "recorded_fields",
@@ -118,6 +119,14 @@ REQUIRED_SIGNING_RECORDED_FIELDS = (
     "entitlements",
     "signed_artifact",
     "artifacts",
+)
+REQUIRED_SIGNING_REQUIREMENT_FIELDS = (
+    "team_id",
+    "provisioning_profile",
+    "bundle_id",
+    "codesign_identity",
+    "device_udids",
+    "entitlements",
 )
 REQUIRED_VIDEOTOOLBOX_RUNTIMES = {
     "physical_iphone": "iphone",
@@ -437,6 +446,53 @@ def _validate_signing_readiness_gate(
         if not _is_sha256(signing_summary.get("signed_artifact_sha256")):
             missing.append(
                 "signing_readiness_gate.signing_summary.signed_artifact_sha256: must be a SHA-256 digest"
+            )
+
+    readiness_requirements = _require_gate_object(
+        gate, "readiness_requirements", "signing_readiness_gate", missing
+    )
+    if readiness_requirements is not None:
+        if readiness_requirements.get("status") != PASS:
+            missing.append("signing_readiness_gate.readiness_requirements.status: must be pass")
+        requirements = _require_gate_object(
+            readiness_requirements,
+            "requirements",
+            "signing_readiness_gate.readiness_requirements",
+            missing,
+        )
+        if requirements is not None:
+            for field in REQUIRED_SIGNING_REQUIREMENT_FIELDS:
+                if requirements.get(field) is not True:
+                    missing.append(
+                        f"signing_readiness_gate.readiness_requirements.requirements.{field}: must be true"
+                    )
+        labels = _require_gate_object(
+            readiness_requirements,
+            "labels",
+            "signing_readiness_gate.readiness_requirements",
+            missing,
+        )
+        if labels is not None:
+            for field in REQUIRED_SIGNING_REQUIREMENT_FIELDS:
+                if not isinstance(labels.get(field), str) or not labels[field].strip():
+                    missing.append(
+                        f"signing_readiness_gate.readiness_requirements.labels.{field}: must be present"
+                    )
+        if readiness_requirements.get("all_requirements_recorded") is not True:
+            missing.append(
+                "signing_readiness_gate.readiness_requirements.all_requirements_recorded: must be true"
+            )
+        if readiness_requirements.get("simulator_build_used") is not False:
+            failures.append(
+                "signing_readiness_gate.readiness_requirements.simulator_build_used: must be false"
+            )
+        if readiness_requirements.get("unsigned_build_used") is not False:
+            failures.append(
+                "signing_readiness_gate.readiness_requirements.unsigned_build_used: must be false"
+            )
+        if readiness_requirements.get("android_evidence_used") is not False:
+            failures.append(
+                "signing_readiness_gate.readiness_requirements.android_evidence_used: must be false"
             )
 
     recorded_fields = _require_gate_object(
