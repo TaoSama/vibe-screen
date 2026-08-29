@@ -16,6 +16,10 @@ available only through an explicit legacy fallback switch and is reported as
 plaintext. The real two-process loopback covers the secure Core boundary; it is
 not iOS-device, UI, hardware VideoToolbox, real-network LAN, or advanced-host
 evidence.
+Advanced host integrations are tracked by the phase5-host-advanced-adapters-gate readiness contract.
+That contract keeps unsupported advanced adapters fail-closed and does not close
+iOS device, native input, hardware VideoToolbox, signing, or real-network LAN
+acceptance gates.
 
 ## Requirements
 
