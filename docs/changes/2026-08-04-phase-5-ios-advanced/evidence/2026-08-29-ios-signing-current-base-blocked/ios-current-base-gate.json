@@ -1,0 +1,544 @@
+{
+  "can_claim_device_pass": false,
+  "can_close_current_base_aggregate": false,
+  "can_close_ios_device_acceptance": false,
+  "checks": {
+    "broader_phase5_gates": {
+      "advanced_adapters": {
+        "blocking": false,
+        "evidence": [
+          "#253"
+        ],
+        "expected": "iOS app/product adapters for multi-client/display, audio, clipboard, files, HDR/color, actions, wake, and managed policy",
+        "passed": false
+      },
+      "hdr_output": {
+        "blocking": false,
+        "evidence": [
+          "#196"
+        ],
+        "expected": "dedicated ios-hdr-edr-gate pass for HDR/EDR output on iOS hardware, not SDR fallback only",
+        "passed": false
+      },
+      "host_advanced_adapters": {
+        "blocking": false,
+        "evidence": [
+          "#253"
+        ],
+        "expected": "MacHost advanced adapters for multi-client/display streams, audio capture, clipboard/file handlers, HDR/color retry, host actions, wake helper, and managed policy",
+        "passed": false
+      },
+      "trusted_lan_secure_records": {
+        "blocking": false,
+        "evidence": [
+          "#208"
+        ],
+        "expected": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
+        "passed": false
+      }
+    },
+    "devices": {
+      "ipad_install": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "ipad signed install/launch evidence retained",
+        "passed": false
+      },
+      "ipad_physical_device": {
+        "blocking": true,
+        "evidence": [
+          "missing"
+        ],
+        "expected": "ipad evidence comes from physical iOS hardware",
+        "passed": false
+      },
+      "iphone_install": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "iphone signed install/launch evidence retained",
+        "passed": false
+      },
+      "iphone_physical_device": {
+        "blocking": true,
+        "evidence": [
+          "missing"
+        ],
+        "expected": "iphone evidence comes from physical iOS hardware",
+        "passed": false
+      }
+    },
+    "environment": {
+      "ios_sdk_available": {
+        "blocking": true,
+        "evidence": [
+          "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance"
+        ],
+        "expected": "xcodebuild -showsdks lists an iPhoneOS SDK",
+        "passed": false
+      },
+      "xcodebuild_available": {
+        "blocking": true,
+        "evidence": [
+          "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance"
+        ],
+        "expected": "full Xcode xcodebuild is available",
+        "passed": false
+      }
+    },
+    "evidence_substitution": {
+      "no_android_evidence_for_ios": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "Android evidence is not used for iOS gates",
+        "passed": true
+      },
+      "no_simulator_or_android_device_substitution": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "device records are missing or physical iOS hardware only",
+        "passed": true
+      }
+    },
+    "formal_device_gates": {
+      "audio_playback": {
+        "blocking": true,
+        "evidence": [
+          "#209"
+        ],
+        "expected": "PCM S16LE AVAudioEngine playback with audible confirmation",
+        "passed": false
+      },
+      "device_install": {
+        "blocking": true,
+        "evidence": [
+          "#290"
+        ],
+        "expected": "signed app installed and launched on both iPhone and iPad-class hardware",
+        "passed": false
+      },
+      "input": {
+        "blocking": true,
+        "evidence": [
+          "#257"
+        ],
+        "expected": "touch, drag, keyboard modifiers, and pointer/hover behavior with host acknowledgement",
+        "passed": false
+      },
+      "protocol_session": {
+        "blocking": true,
+        "evidence": [
+          "#290"
+        ],
+        "expected": "real iOS app/device trusted-LAN session envelopes against the host",
+        "passed": false
+      },
+      "reconnect": {
+        "blocking": true,
+        "evidence": [
+          "#238"
+        ],
+        "expected": "network interruption and heartbeat reconnect with stale-epoch rejection",
+        "passed": false
+      },
+      "signing": {
+        "blocking": true,
+        "evidence": [
+          "#290"
+        ],
+        "expected": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
+        "passed": false
+      },
+      "videotoolbox_h264": {
+        "blocking": true,
+        "evidence": [
+          "#251"
+        ],
+        "expected": "hardware H.264 VideoToolbox decode on iOS hardware",
+        "passed": false
+      },
+      "videotoolbox_hevc": {
+        "blocking": true,
+        "evidence": [
+          "#251"
+        ],
+        "expected": "hardware HEVC VideoToolbox decode on iOS hardware",
+        "passed": false
+      }
+    },
+    "metadata": {
+      "aggregate_owner": {
+        "blocking": false,
+        "evidence": [
+          "current-base-ios-acceptance"
+        ],
+        "expected": "current-base-ios-acceptance",
+        "passed": true
+      },
+      "aggregate_owner_pr": {
+        "blocking": false,
+        "evidence": [
+          "#290"
+        ],
+        "expected": "current-base aggregate owner #290",
+        "passed": true
+      },
+      "device_acceptance_owner": {
+        "blocking": false,
+        "evidence": [
+          "#290"
+        ],
+        "expected": "device acceptance evidence owner #290",
+        "passed": true
+      },
+      "kind": {
+        "blocking": false,
+        "evidence": [],
+        "expected": "ios_current_base_readiness_manifest",
+        "passed": true
+      },
+      "schema_version": {
+        "blocking": false,
+        "evidence": [],
+        "expected": "vibescreen.evidence/v1",
+        "passed": true
+      },
+      "scope_prs": {
+        "blocking": false,
+        "evidence": [
+          "#182",
+          "#196",
+          "#207",
+          "#208",
+          "#209",
+          "#238",
+          "#251",
+          "#253",
+          "#257",
+          "#279",
+          "#282"
+        ],
+        "expected": "all current-base iOS PRs are in scope",
+        "passed": true
+      },
+      "source_docs": {
+        "blocking": false,
+        "evidence": [
+          "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
+          "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
+          "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
+          "docs/runbook/hdr-color-acceptance.md",
+          "docs/runbook/ios-device-acceptance.md"
+        ],
+        "expected": "Phase 5 PRD/TECH/TEST and iOS device runbook are referenced and present",
+        "passed": true
+      }
+    },
+    "native_input": {
+      "dedicated_native_input_artifacts": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "ios-native-input-gate.json retains sanitized iOS/Host native-input artifacts",
+        "passed": false
+      },
+      "dedicated_native_input_current_base": {
+        "blocking": true,
+        "evidence": [
+          "exclusively reserve the iPhone and iPad used for this run",
+          "record iPhone and iPad model, OS/build, and device family",
+          "run on real iPhone and iPad hardware, not Simulator",
+          "record native-input behavior from a signed iPhone app run",
+          "record native-input behavior from a signed iPad app run",
+          "record the iOS app source revision and dirty-tree state",
+          "install a signed app build on the recorded iOS device",
+          "record the Local Network permission result",
+          "record the baseline MacHost listener and build identity",
+          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
+          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
+          "record the selected display ID and stream ID used by input events",
+          "observe a real touch tap forwarded from the iOS app",
+          "observe a real touch drag forwarded from the iOS app",
+          "attach and identify a physical iOS hardware keyboard",
+          "prove key-down and key-up forwarding for the same USB HID usage",
+          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
+          "prove modifiers clear after release and do not leak into a later plain key",
+          "attach and identify a real iOS hover/pointer accessory",
+          "observe hover or pointer movement over the selected stream",
+          "retain Host-side acknowledgements or logs for every input family",
+          "retain sanitized iOS app/device logs for the input workflow",
+          "retain sanitized Host logs for the input workflow",
+          "ios native-input gate is unreadable"
+        ],
+        "expected": "ios-native-input-gate.json current_base matches clean repository HEAD",
+        "passed": false
+      },
+      "dedicated_native_input_gate": {
+        "blocking": true,
+        "evidence": [
+          "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/ios-native-input-gate.json"
+        ],
+        "expected": "ios-native-input-gate.json passes and is bound into current-base readiness",
+        "passed": false
+      },
+      "dedicated_native_input_owner": {
+        "blocking": true,
+        "evidence": [
+          "exclusively reserve the iPhone and iPad used for this run",
+          "record iPhone and iPad model, OS/build, and device family",
+          "run on real iPhone and iPad hardware, not Simulator",
+          "record native-input behavior from a signed iPhone app run",
+          "record native-input behavior from a signed iPad app run",
+          "record the iOS app source revision and dirty-tree state",
+          "install a signed app build on the recorded iOS device",
+          "record the Local Network permission result",
+          "record the baseline MacHost listener and build identity",
+          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
+          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
+          "record the selected display ID and stream ID used by input events",
+          "observe a real touch tap forwarded from the iOS app",
+          "observe a real touch drag forwarded from the iOS app",
+          "attach and identify a physical iOS hardware keyboard",
+          "prove key-down and key-up forwarding for the same USB HID usage",
+          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
+          "prove modifiers clear after release and do not leak into a later plain key",
+          "attach and identify a real iOS hover/pointer accessory",
+          "observe hover or pointer movement over the selected stream",
+          "retain Host-side acknowledgements or logs for every input family",
+          "retain sanitized iOS app/device logs for the input workflow",
+          "retain sanitized Host logs for the input workflow",
+          "ios native-input gate is unreadable"
+        ],
+        "expected": "ios-native-input-gate.json declares the dedicated current-base native-input owner",
+        "passed": false
+      },
+      "dedicated_native_input_readiness_flags": {
+        "blocking": true,
+        "evidence": [
+          "exclusively reserve the iPhone and iPad used for this run",
+          "record iPhone and iPad model, OS/build, and device family",
+          "run on real iPhone and iPad hardware, not Simulator",
+          "record native-input behavior from a signed iPhone app run",
+          "record native-input behavior from a signed iPad app run",
+          "record the iOS app source revision and dirty-tree state",
+          "install a signed app build on the recorded iOS device",
+          "record the Local Network permission result",
+          "record the baseline MacHost listener and build identity",
+          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
+          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
+          "record the selected display ID and stream ID used by input events",
+          "observe a real touch tap forwarded from the iOS app",
+          "observe a real touch drag forwarded from the iOS app",
+          "attach and identify a physical iOS hardware keyboard",
+          "prove key-down and key-up forwarding for the same USB HID usage",
+          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
+          "prove modifiers clear after release and do not leak into a later plain key",
+          "attach and identify a real iOS hover/pointer accessory",
+          "observe hover or pointer movement over the selected stream",
+          "retain Host-side acknowledgements or logs for every input family",
+          "retain sanitized iOS app/device logs for the input workflow",
+          "retain sanitized Host logs for the input workflow",
+          "ios native-input gate is unreadable"
+        ],
+        "expected": "ios-native-input-gate.json declares real-device readiness flags with no outstanding or disallowed evidence",
+        "passed": false
+      }
+    },
+    "signing": {
+      "bundle_id_recorded": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "unique development bundle ID value is retained in the aggregate signing row",
+        "passed": false
+      },
+      "certificate_identity_recorded": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "redacted signing certificate identity recorded",
+        "passed": false
+      },
+      "dedicated_signing_readiness_current_base": {
+        "blocking": true,
+        "evidence": [
+          "3508f229a5fb1218388e9e9ee5fec919d6b5bebf"
+        ],
+        "expected": "ios-app-signing-readiness-gate.json current_base matches clean repository HEAD",
+        "passed": false
+      },
+      "dedicated_signing_readiness_gate": {
+        "blocking": true,
+        "evidence": [
+          "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json"
+        ],
+        "expected": "ios-app-signing-readiness-gate.json passes and is bound into current-base readiness",
+        "passed": false
+      },
+      "dedicated_signing_readiness_owner": {
+        "blocking": true,
+        "evidence": [
+          "ios_app_signing_readiness_current_base_owner",
+          "codex/ios-app-signing-readiness-current-base-20260829"
+        ],
+        "expected": "ios-app-signing-readiness-gate.json declares the dedicated current-base signing owner",
+        "passed": true
+      },
+      "dedicated_signing_readiness_summary": {
+        "blocking": true,
+        "evidence": [
+          "blocked"
+        ],
+        "expected": "ios-app-signing-readiness-gate.json carries a complete sanitized signing summary",
+        "passed": false
+      },
+      "device_udid_hashes_recorded": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "physical-device UDID hashes recorded in the provisioning profile evidence",
+        "passed": false
+      },
+      "entitlements_recorded": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "signed-app entitlements recorded",
+        "passed": false
+      },
+      "provisioning_profile_recorded": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "redacted provisioning profile UUID recorded",
+        "passed": false
+      },
+      "signed_archive_sha256": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "signed archive SHA-256 is a 64-character hex digest",
+        "passed": false
+      },
+      "signing_matches_readiness_summary": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "current-base signing row matches the bound signing readiness summary",
+        "passed": false
+      },
+      "signing_status": {
+        "blocking": true,
+        "evidence": [
+          "blocked"
+        ],
+        "expected": "signing.status is pass",
+        "passed": false
+      },
+      "team_id_redacted": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "Apple Team ID is recorded only as a redacted presence marker",
+        "passed": false
+      },
+      "unique_bundle_id": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "unique development bundle ID recorded",
+        "passed": false
+      }
+    },
+    "videotoolbox_readiness": {
+      "physical_ipad_videotoolbox_readiness": {
+        "blocking": true,
+        "evidence": [
+          "retain physical iPad VideoToolbox hardware decode artifacts"
+        ],
+        "expected": "physical_ipad VideoToolbox readiness summary is a physical-device pass with retained artifacts",
+        "passed": false
+      },
+      "physical_iphone_videotoolbox_readiness": {
+        "blocking": true,
+        "evidence": [
+          "retain physical iPhone VideoToolbox hardware decode artifacts"
+        ],
+        "expected": "physical_iphone VideoToolbox readiness summary is a physical-device pass with retained artifacts",
+        "passed": false
+      },
+      "videotoolbox_h264_links_to_readiness": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "videotoolbox_h264 evidence references retained VideoToolbox readiness artifacts",
+        "passed": false
+      },
+      "videotoolbox_hevc_links_to_readiness": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "videotoolbox_hevc evidence references retained VideoToolbox readiness artifacts",
+        "passed": false
+      }
+    }
+  },
+  "derivation_status": "complete",
+  "gate_owners": {
+    "advanced_adapters": "#253",
+    "audio_playback": "#209",
+    "device_install": "#290",
+    "hdr_output": "#196",
+    "host_advanced_adapters": "#253",
+    "input": "#257",
+    "protocol_session": "#290",
+    "reconnect": "#238",
+    "signing": "#290",
+    "trusted_lan_secure_records": "#208",
+    "videotoolbox_h264": "#251",
+    "videotoolbox_hevc": "#251"
+  },
+  "interpretation": "A pass means the current-base iOS aggregate has signed iPhone and iPad device evidence for the formal acceptance gates plus reviewed broader Phase 5 gates. Simulator, unsigned archive, MacHost loopback, Android, and plaintext legacy-fallback evidence remain readiness only.",
+  "kind": "ios_current_base_readiness_gate",
+  "owner": {
+    "aggregate": "current-base-ios-acceptance",
+    "aggregate_pr": "#290",
+    "device_acceptance_pr": "#290",
+    "repository": "TaoSama/vibe-screen"
+  },
+  "reasons": [
+    "blocked: xcodebuild_available",
+    "blocked: ios_sdk_available",
+    "blocked: dedicated_signing_readiness_gate",
+    "blocked: dedicated_signing_readiness_current_base",
+    "blocked: dedicated_signing_readiness_summary",
+    "blocked: signing_matches_readiness_summary",
+    "blocked: signing_status",
+    "blocked: bundle_id_recorded",
+    "blocked: unique_bundle_id",
+    "blocked: team_id_redacted",
+    "blocked: certificate_identity_recorded",
+    "blocked: provisioning_profile_recorded",
+    "blocked: device_udid_hashes_recorded",
+    "blocked: entitlements_recorded",
+    "blocked: signed_archive_sha256",
+    "blocked: dedicated_native_input_gate",
+    "blocked: dedicated_native_input_owner",
+    "blocked: dedicated_native_input_current_base",
+    "blocked: dedicated_native_input_readiness_flags",
+    "blocked: dedicated_native_input_artifacts",
+    "blocked: ipad_physical_device",
+    "blocked: ipad_install",
+    "blocked: iphone_physical_device",
+    "blocked: iphone_install",
+    "blocked: physical_iphone_videotoolbox_readiness",
+    "blocked: physical_ipad_videotoolbox_readiness",
+    "blocked: videotoolbox_h264_links_to_readiness",
+    "blocked: videotoolbox_hevc_links_to_readiness",
+    "blocked: signing",
+    "blocked: device_install",
+    "blocked: protocol_session",
+    "blocked: videotoolbox_h264",
+    "blocked: videotoolbox_hevc",
+    "blocked: input",
+    "blocked: reconnect",
+    "blocked: audio_playback",
+    "insufficient: hdr_output",
+    "insufficient: advanced_adapters",
+    "insufficient: host_advanced_adapters",
+    "insufficient: trusted_lan_secure_records"
+  ],
+  "run_id": "7c54c4f3-ecd2-4216-a951-1ff3d5cd0e4d",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "manifest": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/ios-current-base-manifest.json"
+  },
+  "verdict": "blocked"
+}
