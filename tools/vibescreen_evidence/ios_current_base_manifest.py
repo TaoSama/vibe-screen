@@ -327,43 +327,24 @@ def _blocked_signing_requirements() -> dict[str, Any]:
     }
 
 
-def _normalize_signing_requirements(
-    value: Any, signing_summary: dict[str, Any], verdict: Any
-) -> dict[str, Any]:
-    if isinstance(value, dict) and isinstance(value.get("requirements"), dict):
-        raw_requirements = value["requirements"]
-        requirements = {
-            field: raw_requirements.get(field) is True
-            for field in SIGNING_REQUIREMENT_FIELDS
-        }
-        status = value.get("status") if isinstance(value.get("status"), str) else verdict
-        return {
-            "status": status if status in {"pass", "blocked", "fail"} else "blocked",
-            "requirements": requirements,
-            "all_requirements_recorded": value.get("all_requirements_recorded") is True
-            and all(requirements.values()),
-            "simulator_build_used": value.get("simulator_build_used") is True,
-            "unsigned_build_used": value.get("unsigned_build_used") is True,
-            "android_evidence_used": value.get("android_evidence_used") is True,
-        }
+def _normalize_signing_requirements(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or not isinstance(value.get("requirements"), dict):
+        return _blocked_signing_requirements()
 
+    raw_requirements = value["requirements"]
     requirements = {
-        "team_id": signing_summary.get("team_id_recorded") is True,
-        "provisioning_profile": signing_summary.get("provisioning_profile_recorded") is True,
-        "bundle_id": signing_summary.get("unique_bundle_id") is True
-        and isinstance(signing_summary.get("bundle_id"), str)
-        and bool(signing_summary["bundle_id"].strip()),
-        "codesign_identity": signing_summary.get("codesign_identity_recorded") is True,
-        "device_udids": signing_summary.get("device_udid_hashes_recorded") is True,
-        "entitlements": signing_summary.get("entitlements_recorded") is True,
+        field: raw_requirements.get(field) is True
+        for field in SIGNING_REQUIREMENT_FIELDS
     }
+    status = value.get("status") if isinstance(value.get("status"), str) else None
     return {
-        "status": "pass" if verdict == "pass" and all(requirements.values()) else "blocked",
+        "status": status if status in {"pass", "blocked", "fail"} else "blocked",
         "requirements": requirements,
-        "all_requirements_recorded": all(requirements.values()),
-        "simulator_build_used": False,
-        "unsigned_build_used": False,
-        "android_evidence_used": False,
+        "all_requirements_recorded": value.get("all_requirements_recorded") is True
+        and all(requirements.values()),
+        "simulator_build_used": value.get("simulator_build_used") is True,
+        "unsigned_build_used": value.get("unsigned_build_used") is True,
+        "android_evidence_used": value.get("android_evidence_used") is True,
     }
 
 
@@ -427,7 +408,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         else {}
     )
     readiness_requirements = _normalize_signing_requirements(
-        document.get("readiness_requirements"), signing_summary, document.get("verdict")
+        document.get("readiness_requirements")
     )
     requirements_complete = (
         readiness_requirements.get("status") == "pass"

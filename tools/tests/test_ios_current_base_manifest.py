@@ -654,6 +654,40 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_missing_signing_readiness_requirements_fail_closed(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = make_signing_readiness_gate()
+            signing_gate.pop("readiness_requirements")
+            path = root / "ios-app-signing-readiness-gate.json"
+            path.write_text(json.dumps(signing_gate), encoding="utf-8")
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=path)
+
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertFalse(manifest["signing_readiness_gate"]["readiness_requirements"]["all_requirements_recorded"])
+        self.assertEqual(
+            manifest["signing_readiness_gate"]["readiness_requirements"]["requirements"],
+            {
+                "team_id": False,
+                "provisioning_profile": False,
+                "bundle_id": False,
+                "codesign_identity": False,
+                "device_udids": False,
+                "entitlements": False,
+            },
+        )
+        self.assertIn(
+            "ios app-signing readiness gate readiness_requirements are incomplete",
+            manifest["signing_readiness_gate"]["missing"],
+        )
+        self.assertEqual(manifest["signing"]["status"], "blocked")
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_signing_readiness_commit_must_match_repository_head(self, state, environment):
         state.return_value = {"revision": "f" * 40, "dirty": False, "status_porcelain": []}
         environment.return_value = {}
