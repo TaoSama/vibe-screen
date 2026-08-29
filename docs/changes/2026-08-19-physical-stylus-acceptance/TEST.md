@@ -82,7 +82,7 @@ Evidence:
 
 ## 2026-08-29 P0110 current-base fail-closed refresh
 
-The latest `origin/main` snapshot at `d225fbe` was rechecked with one online
+The latest `origin/main` snapshot at `71541c6` was rechecked with one online
 Android device and explicit `adb -s DEVICE_SERIAL ...` collector calls. The
 device identified as nubia P0110 / pacific / Android 16 / SDK 36. No device
 coordination lock was present. The collector again found one pass-eligible
