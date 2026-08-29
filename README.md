@@ -298,7 +298,11 @@ a +96.5 KiB/min second-half slope, so the two-hour no-growth gate stays open;
 see [docs/changes/2026-08-10-host-rss-growth/TECH.md](docs/changes/2026-08-10-host-rss-growth/TECH.md)
 and the v2 soak evidence at
 [docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md).
-The Xiaomi 13 baseline evidence is recorded in the Phase 0 evidence set. The display-switch round-trip and offline self-tests are recorded under
+Current-source rerun readiness remains blocked by stable-signing, TCC, and full
+Xcode/XCTest prerequisites; see
+[docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md).
+The Xiaomi 13 baseline evidence is recorded under
+[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md). The display-switch round-trip and offline self-tests are recorded under
 [docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch/roundtrip-verification.md).
 
 Implementation status and evidence are tracked in the

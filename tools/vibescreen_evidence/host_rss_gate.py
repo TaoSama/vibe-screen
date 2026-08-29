@@ -133,6 +133,7 @@ def _evaluate(
     points: list[tuple[datetime, float]],
     started: datetime,
     finished: datetime,
+    elapsed_span_seconds: float,
 ) -> dict[str, Any]:
     duration_seconds = (finished - started).total_seconds()
     midpoint = started + (finished - started) / 2
@@ -149,6 +150,11 @@ def _evaluate(
             "measured_seconds": duration_seconds,
             "minimum_seconds": MINIMUM_DURATION_SECONDS,
             "passed": duration_seconds >= MINIMUM_DURATION_SECONDS,
+        },
+        "elapsed_span": {
+            "measured_seconds": elapsed_span_seconds,
+            "minimum_seconds": MINIMUM_DURATION_SECONDS,
+            "passed": elapsed_span_seconds >= MINIMUM_DURATION_SECONDS,
         },
         "sample_count": {
             "measured": len(points),
@@ -258,6 +264,7 @@ def derive_gate(
     if read_errors:
         raise EvidenceInputError("; ".join(read_errors))
     points: list[tuple[datetime, float]] = []
+    elapsed_values: list[float] = []
     previous_index: int | None = None
     previous_elapsed: float | None = None
     previous_captured_at: datetime | None = None
@@ -275,6 +282,7 @@ def derive_gate(
         previous_captured_at = captured_at
         if not (started <= captured_at <= finished):
             continue
+        elapsed_values.append(elapsed)
         rss_value = record.get("host", {}).get("rss_kb")
         if not isinstance(rss_value, (int, float)) or isinstance(rss_value, bool):
             continue
@@ -289,7 +297,8 @@ def derive_gate(
         raise EvidenceInputError("samples: no host RSS records in the summary exact window")
 
     duration_seconds = (finished - started).total_seconds()
-    evaluation = _evaluate(points, started, finished)
+    elapsed_span_seconds = max(elapsed_values) - min(elapsed_values)
+    evaluation = _evaluate(points, started, finished, elapsed_span_seconds)
     if summary.get("status") != "complete" or summary.get("errors"):
         evaluation["verdict"] = "insufficient"
         evaluation["reasons"] = [
@@ -321,6 +330,7 @@ def derive_gate(
             "started_at": summary["started_at"],
             "finished_at": summary["finished_at"],
             "duration_seconds": duration_seconds,
+            "elapsed_span_seconds": elapsed_span_seconds,
             "host_rss_sample_count": len(points),
         },
         "source_summary": {
