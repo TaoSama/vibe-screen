@@ -2,6 +2,8 @@
 
 Created: 2026-08-29T17:14:49Z
 Run ID: 20260829T171449Z
+Collection date: 2026-08-30 in the local Asia/Shanghai environment; the
+machine-readable timestamps remain in UTC and therefore read 2026-08-29.
 Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <device-serial>
 APK: dev.telemachus.display 0.0.0 (100000)
 Android device lock acquired: true

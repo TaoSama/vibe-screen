@@ -11,7 +11,7 @@ Input summaries used by the aggregate report:
 - `../2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
 - `../2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
 - `../2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
-- `../2026-08-27-nubia-p0110-phase2-soak-preflight-current-base-230933/phase2-soak-readiness.json`
+- `../2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json`
 - `../2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
 
 The hardware-keyboard input summary records `verdict=blocked` and
@@ -27,7 +27,7 @@ is substitute readiness only; it is not relabeled as Xiaomi/fuxi or physical
 This aggregate report consumes the refreshed hardware-keyboard summary
 instead of reporting the hardware-keyboard row as a missing gate output. It still
 cannot close any README Phase 2 gate: there is no physical 8-9 inch tablet
-package, the retained P0110 package is a phone substitute, the tablet gate is
+package, the retained P0110 package is an Android substitute, the tablet gate is
 insufficient, hardware-keyboard evidence is blocked, device-memory evidence is
 insufficient, device-environment evidence is blocked, and recovery and tablet UI
 child outputs remain unavailable.
