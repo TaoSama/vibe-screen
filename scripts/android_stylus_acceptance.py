@@ -44,8 +44,14 @@ STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
 NUMBER_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 APPLICATION_TOKEN_RE = re.compile(r"\b(applicationInfo\.token=)([^\s,]+)")
-URL_SECRET_RE = re.compile(r"(?<![A-Za-z0-9_.])((?:access_)?token|key|secret)=([^\s&]+)", re.IGNORECASE)
-DB_URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s]*(?:db|database)[^\s]*", re.IGNORECASE)
+URL_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])([A-Za-z][A-Za-z0-9_-]*(?:token|secret)|token|secret|(?:access_)?key)=([^\s,&]+)",
+    re.IGNORECASE,
+)
+DB_URL_RE = re.compile(
+    r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis(?:s)?|sqlite)://[^\s<>\"']+",
+    re.IGNORECASE,
+)
 CONTACT_RE = re.compile(r"\bcontact=(?:contact|CONTACT|STYLUS_CONTACT_STATE_CONTACT)\b")
 PHASE_RE = re.compile(r"\bphase=([^\s]+)")
 PRESSURE_RE = re.compile(rf"\bpressure=({NUMBER_RE})\b")

@@ -278,13 +278,18 @@ Input Reader State:
             output_dir = Path(temporary_directory) / "evidence"
             sample_ip = ".".join(["192", "168", "1", "20"])
             sample_db_url = "post" + "gres://" + "user:pass@host/database"
+            sample_prod_db_url = "post" + "gres://" + "user:pass@host/prod"
+            sample_channel_token = "android.os." + "Binder" + "Proxy@55c37ef"
 
             android_stylus_acceptance.write_evidence(
                 output_dir,
                 args,
                 [],
                 {},
-                f"applicationInfo.token=abc123 token=def456 {sample_db_url}\n",
+                (
+                    f"applicationInfo.token=abc123 token=def456 {sample_db_url}\n"
+                    f"inputChannelToken={sample_channel_token} {sample_prod_db_url}\n"
+                ),
                 [candidate],
                 f"SC: Connected to {sample_ip}:54321 token=diag-token\n",
                 None,
@@ -298,6 +303,7 @@ Input Reader State:
 
         self.assertIn("applicationInfo.token=<redacted-token>", dumpsys_text)
         self.assertIn("token=<redacted-secret>", dumpsys_text)
+        self.assertIn("inputChannelToken=<redacted-secret>", dumpsys_text)
         self.assertIn("<redacted-db-url>", dumpsys_text)
         self.assertIn("<redacted-ip>", diag_text)
         self.assertIn("token=<redacted-secret>", diag_text)
@@ -306,6 +312,8 @@ Input Reader State:
         self.assertNotIn(sample_ip, diag_text)
         self.assertNotIn("abc123", dumpsys_text)
         self.assertNotIn(sample_db_url, dumpsys_text)
+        self.assertNotIn(sample_prod_db_url, dumpsys_text)
+        self.assertNotIn(sample_channel_token, dumpsys_text)
         self.assertNotIn("host-secret", host_text)
 
     def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
