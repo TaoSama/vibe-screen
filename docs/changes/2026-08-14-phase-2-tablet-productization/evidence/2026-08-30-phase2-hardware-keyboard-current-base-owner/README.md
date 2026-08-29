@@ -1,7 +1,7 @@
 # Phase 2 hardware-keyboard current-base owner refresh
 
 Result: blocked. This record refreshes the Phase 2 hardware-keyboard owner on
-current `origin/main` (`8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`) and keeps
+current `origin/main` (`1217c585f5a0185402bdc47fc588ac8092066067`) and keeps
 the README Phase 2 gates open.
 
 Input summaries used by the aggregate report:
@@ -17,7 +17,8 @@ Input summaries used by the aggregate report:
 The hardware-keyboard input summary records `verdict=blocked` and
 `can_close_hardware_keyboard_gate=false`. The child readiness bundle records the
 attached Android device as nubia P0110 / pacific / Android 16 / SDK 36 with the
-serial redacted to `<device-serial>`. No external Android-attached physical
+local ADB serial intentionally redacted to `<device-serial>` in committed
+public artifacts. No external Android-attached physical
 keyboard was visible in `dumpsys input`. No macOS Host listener on TCP `54321`
 was observed during this refresh, and stable signed/TCC Host readiness failed
 because the `Vibe Screen Dev` signing identity was unavailable. The P0110 output
@@ -37,5 +38,5 @@ Generation command is recorded in `phase2-aggregate-owner-command.txt`.
 Validation:
 
 - `make phase2-aggregate-owner ...` generated `phase2-aggregate-owner.json` with
-  `source_baseline=origin/main 8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`,
+  `source_baseline=origin/main 1217c585f5a0185402bdc47fc588ac8092066067`,
   `verdict=blocked`, and `can_close_readme_phase2_gates=false`.

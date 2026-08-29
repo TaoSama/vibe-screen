@@ -645,13 +645,13 @@ Validation performed for this update:
 ## 2026-08-30 hardware-keyboard current-base refresh
 
 This follow-up refreshes the Android-attached hardware-keyboard owner on current
-`origin/main` (`8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`) without claiming a
+`origin/main` (`1217c585f5a0185402bdc47fc588ac8092066067`) without claiming a
 workflow pass. Evidence is under
 [`evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
 
-The readiness collector used explicit ADB serial `<device-serial>`, redacted
-it to `<device-serial>` in public artifacts, and recorded the device as nubia
-P0110 / pacific / Android 16 / SDK 36. It produced `verdict=blocked` and
+The readiness collector used an explicit local ADB serial, redacted it to
+`<device-serial>` in committed public artifacts, and recorded the device as
+nubia P0110 / pacific / Android 16 / SDK 36. It produced `verdict=blocked` and
 `can_close_hardware_keyboard_gate=false` because no external Android-attached
 physical keyboard was visible in `dumpsys input`, no macOS Host listener on TCP
 `54321` was observed during the refresh window, and Host stable signed/TCC
