@@ -108,11 +108,14 @@ artifact SHA-256, and retained local artifacts for the
 archive command, codesign entitlements, and provisioning profile output.
 
 ```sh
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
-The target writes `ios-app-signing-readiness-gate.json` next to the input. The
+`ios-app-signing-current-base-gate` is the dedicated current-base entry point
+and aliases the retained `ios-app-signing-readiness-gate` implementation for
+compatibility. The target writes `ios-app-signing-readiness-gate.json` next to
+the input. The
 gate output declares `owner.role=ios_app_signing_readiness_current_base_owner`
 and records `current_base.commit`, `current_base.branch`, and
 `current_base.dirty`. `blocked` means required signing material, clean commit
@@ -122,9 +125,13 @@ readiness pass can unblock the current-base signing prerequisite only after the
 same gate JSON is bound into `ios-current-base-manifest`;
 `ios-current-base-gate` validates both the gate result and owner identity before
 accepting the gate's sanitized `signing_summary` as the aggregate `signing` row,
-including UDID-hash and entitlements coverage. It still reports
-`can_close_ios_device_acceptance=false` because install, launch, decode, input,
-reconnect, and audio behavior require real iPhone and iPad runs. The
+including UDID-hash and entitlements coverage. The gate also emits explicit
+`readiness_requirements` booleans for Team ID, provisioning profile, bundle ID,
+codesign identity, device UDID hashes, and entitlements; the current-base and
+device-acceptance gates require those booleans before accepting signing
+readiness. It still reports `can_close_ios_device_acceptance=false` because
+install, launch, decode, input, reconnect, and audio behavior require real
+iPhone and iPad runs. The
 current-base manifest's local codesigning probe records only status and the
 number of valid identities; raw certificate hashes, identity names, Team IDs,
 profile UUIDs, device UDIDs, and local paths must stay out of committed

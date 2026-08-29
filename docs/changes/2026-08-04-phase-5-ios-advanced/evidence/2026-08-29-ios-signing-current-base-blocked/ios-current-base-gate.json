@@ -361,7 +361,7 @@
           "3508f229a5fb1218388e9e9ee5fec919d6b5bebf"
         ],
         "expected": "ios-app-signing-readiness-gate.json current_base matches clean repository HEAD",
-        "passed": false
+        "passed": true
       },
       "dedicated_signing_readiness_gate": {
         "blocking": true,
@@ -379,6 +379,12 @@
         ],
         "expected": "ios-app-signing-readiness-gate.json declares the dedicated current-base signing owner",
         "passed": true
+      },
+      "dedicated_signing_readiness_requirements": {
+        "blocking": true,
+        "evidence": [],
+        "expected": "ios-app-signing-readiness-gate.json explicitly records Team ID, provisioning profile, bundle ID, codesign identity, physical-device UDID hashes, and entitlements",
+        "passed": false
       },
       "dedicated_signing_readiness_summary": {
         "blocking": true,
@@ -497,8 +503,8 @@
     "blocked: xcodebuild_available",
     "blocked: ios_sdk_available",
     "blocked: dedicated_signing_readiness_gate",
-    "blocked: dedicated_signing_readiness_current_base",
     "blocked: dedicated_signing_readiness_summary",
+    "blocked: dedicated_signing_readiness_requirements",
     "blocked: signing_matches_readiness_summary",
     "blocked: signing_status",
     "blocked: bundle_id_recorded",
