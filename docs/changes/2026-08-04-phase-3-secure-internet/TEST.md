@@ -266,6 +266,8 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     real-media-continuity.json
     adaptive-media-fluctuation.json
     adaptive-media-current-base.json
+    webrtc-bulk-product-flow-manifest.json
+    webrtc-bulk-product-flow-gate.json
     packet-capture-notes.md
     packet-capture-confidentiality.json
     datachannel-record-layer.json
@@ -752,6 +754,33 @@ evidence, local loopback, forced local coturn, synthetic Protocol v1 peers, or
 raw audio/bulk hook tests must not be used as pass evidence for this gate. A
 pass would remain a child gate and would not close the broader public Internet
 release gate.
+
+For the narrower public Internet WebRTC bulk file-transfer product-flow owner,
+run `make phase3-webrtc-bulk-product-flow` with
+`PHASE3_WEBRTC_BULK_MANIFEST_JSON` pointing at
+`webrtc-bulk-product-flow-manifest.json` in the retained evidence directory. To
+archive the current fail-closed state before a real run exists, run
+`make phase3-webrtc-bulk-product-flow-blocked-baseline`. The child gate passes
+only when retained artifacts prove a real macOS Host and real Android device used
+a deployed public TURN relay WebRTC route for approved bidirectional
+`vibescreen.bulk.v1` file transfer, including offer/request/chunk/progress/
+completion observations, final SHA-256 equality, bounded queue/backpressure
+behavior, cancel and disconnect cleanup, no plaintext fallback, no synthetic
+peer, and AES-256-GCM channel/session/key separation. It also carries a release
+closure checklist for relay production readiness, real capture-to-MediaCodec
+continuity, network handoff, cross-service revocation, external-camera latency,
+two-hour mixed-route soak, and packet-capture confidentiality.
+
+Relay deployment preflight hardening cannot satisfy this product-flow gate by
+itself. A PR or run that checks relay DNS, `/readyz`, disk, TLS, quotas, secret
+source wiring, or similar deployment prerequisites remains readiness evidence
+only until it is paired with the real product WebRTC bulk transfer and the
+broader release evidence package. Existing USB/LAN file-transfer records, local
+loopback, forced local coturn, synthetic Protocol v1 peers, and raw bulk hook
+tests must stay blocked if presented as public Internet product E2E. Even a pass
+sets only `can_close_public_internet_bulk_product_flow_gate=true`;
+`gate_can_close_phase3_release` remains false and the aggregate release gate must
+still pass separately.
 
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not

@@ -73,6 +73,10 @@ REQUIRED_RAW_ARTIFACTS = (
     "host.log",
     "raw-logcat.txt",
     "datachannel-record-layer.json",
+    "webrtc-bulk-product-flow-gate.json",
+)
+WEBRTC_BULK_PRODUCT_FLOW_GATE_SCHEMA = (
+    Path(__file__).resolve().parents[1] / "schemas" / "phase3-webrtc-bulk-product-flow-gate.schema.json"
 )
 
 BUILD_SIGNING_PATTERNS = (
@@ -326,6 +330,72 @@ def _status_from_json(document: dict[str, Any] | None) -> str | None:
         return None
     value = document.get("verdict", document.get("status", document.get("result")))
     return value if isinstance(value, str) else None
+
+
+def _schema_type_matches(value: Any, expected_type: Any) -> bool:
+    if isinstance(expected_type, list):
+        return any(_schema_type_matches(value, item) for item in expected_type)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return True
+
+
+def _validate_schema_node(value: Any, node: dict[str, Any], root_schema: dict[str, Any], path: str) -> list[str]:
+    reasons: list[str] = []
+    reference = node.get("$ref")
+    if isinstance(reference, str):
+        if not reference.startswith("#/$defs/"):
+            return [f"{path} schema reference is unsupported"]
+        target = root_schema.get("$defs", {}).get(reference.removeprefix("#/$defs/"))
+        if not isinstance(target, dict):
+            return [f"{path} schema reference is missing"]
+        return _validate_schema_node(value, target, root_schema, path)
+    if "const" in node and value != node["const"]:
+        reasons.append(f"{path} must be {node['const']!r}")
+    enum = node.get("enum")
+    if isinstance(enum, list) and value not in enum:
+        reasons.append(f"{path} must be one of {enum!r}")
+    expected_type = node.get("type")
+    if expected_type is not None and not _schema_type_matches(value, expected_type):
+        reasons.append(f"{path} must be {expected_type}")
+        return reasons
+    if expected_type == "object" and isinstance(value, dict):
+        required = node.get("required")
+        if isinstance(required, list):
+            for key in required:
+                if isinstance(key, str) and key not in value:
+                    reasons.append(f"{path}.{key} is required")
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            for key, child in properties.items():
+                if key in value and isinstance(child, dict):
+                    reasons.extend(_validate_schema_node(value[key], child, root_schema, f"{path}.{key}"))
+    if expected_type == "array" and isinstance(value, list):
+        item_schema = node.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                reasons.extend(_validate_schema_node(item, item_schema, root_schema, f"{path}[{index}]"))
+    return reasons
+
+
+def _schema_reasons(document: Any, schema_path: Path, label: str) -> list[str]:
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [f"{label} schema could not be loaded: {error}"]
+    if not isinstance(schema, dict):
+        return [f"{label} schema must be an object"]
+    return [f"{label} schema violation: {reason}" for reason in _validate_schema_node(document, schema, schema, "$")]
 
 
 def _string_or_none(value: Any) -> str | None:
@@ -623,6 +693,53 @@ def _datachannel_record_layer_gate(root: Path, path: Path | None) -> dict[str, A
     return _gate(
         "webrtc_datachannel_record_layer",
         PASS if not reasons else BLOCKED,
+        evidence=[item for item in evidence if item],
+        reasons=reasons,
+    )
+
+
+def _bulk_product_flow_gate(root: Path, path: Path | None) -> dict[str, Any]:
+    document, error = _read_optional_json(path, "WebRTC bulk product-flow evidence", root=root)
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate(
+            "webrtc_bulk_product_flow",
+            BLOCKED,
+            evidence=[item for item in evidence if item],
+            reasons=[error],
+        )
+    reasons: list[str] = []
+    reasons.extend(_schema_reasons(document, WEBRTC_BULK_PRODUCT_FLOW_GATE_SCHEMA, "bulk product-flow gate"))
+    if (document or {}).get("schema_version") != SCHEMA_VERSION:
+        reasons.append(f"bulk product-flow schema_version must be {SCHEMA_VERSION}")
+    if (document or {}).get("kind") != "phase3_webrtc_bulk_product_flow_gate":
+        reasons.append("bulk product-flow kind must be phase3_webrtc_bulk_product_flow_gate")
+    if _status_from_json(document) != PASS:
+        reasons.append("bulk product-flow gate verdict must be pass")
+    if (document or {}).get("can_close_public_internet_bulk_product_flow_gate") is not True:
+        reasons.append("bulk product-flow gate must report can_close_public_internet_bulk_product_flow_gate=true")
+    if (document or {}).get("gate_can_close_phase3_release") is not False:
+        reasons.append("bulk product-flow child gate must not directly close Phase 3 release")
+    safety = (document or {}).get("safety") if isinstance((document or {}).get("safety"), dict) else {}
+    for field in (
+        "relay_preflight_does_not_close_product_e2e",
+        "offline_tests_do_not_close_gate",
+        "usb_lan_evidence_do_not_close_internet_gate",
+        "synthetic_evidence_do_not_close_gate",
+        "public_output_sanitized",
+    ):
+        if safety.get(field) is not True:
+            reasons.append(f"bulk product-flow safety.{field} must be true")
+    checklist = (document or {}).get("closure_checklist")
+    if not isinstance(checklist, dict) or not checklist:
+        reasons.append("bulk product-flow closure_checklist is required")
+        checklist = {}
+    for name, check in checklist.items():
+        if not isinstance(check, dict) or check.get("passed") is not True:
+            reasons.append(f"bulk product-flow closure_checklist.{name} must pass")
+    return _gate(
+        "webrtc_bulk_product_flow",
+        PASS if not reasons else (BLOCKED if _status_from_json(document) == BLOCKED else INSUFFICIENT),
         evidence=[item for item in evidence if item],
         reasons=reasons,
     )
@@ -1067,6 +1184,7 @@ def derive_gate(
         _device_identity_gate(root, manifest, device_info),
         _raw_artifacts_gate(root),
         _datachannel_record_layer_gate(root, root / "datachannel-record-layer.json"),
+        _bulk_product_flow_gate(root, root / "webrtc-bulk-product-flow-gate.json"),
         _latency_gate(root, "direct", direct_latency or root / "latency/direct/latency-evidence.json"),
         _latency_gate(root, "relay", relay_latency or root / "latency/relay/latency-evidence.json"),
         _real_media_gate(root, real_media or root / "real-media-continuity.json"),
@@ -1124,12 +1242,14 @@ def derive_gate(
             "decoded by Android MediaCodec, external-camera latency evidence for direct and "
             "relay routes, network handoff, cross-service revocation, packet-capture "
             "confidentiality, a four-channel AES-256-GCM DataChannel record-layer "
-            "contract, and a two-hour mixed-route soak. The DataChannel record-layer "
+            "contract, a public Internet WebRTC bulk product-flow child gate, and "
+            "a two-hour mixed-route soak. The DataChannel record-layer "
             "contract is transport-boundary evidence only: audio capture/playback, "
             "clipboard sync, and file-transfer product flows must remain not_claimed "
             "until real public Internet product evidence exists. Local loopback, USB, "
             "trusted LAN, forced local coturn, synthetic peers, synthetic media, missing "
-            "raw samples, or blocked attempts cannot close the Phase 3 release gate."
+            "raw samples, relay deployment preflights, or blocked attempts cannot close "
+            "the Phase 3 release gate."
         ),
     }
 

@@ -1,0 +1,7 @@
+git rev-parse HEAD
+git status --porcelain
+EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-29-public-internet-webrtc-bulk-current-base-blocked make phase3-webrtc-bulk-product-flow-blocked-baseline
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase3_webrtc_bulk_product_flow tools.tests.test_phase3_internet_release_gate -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_schemas -v
+make phase3-test
+git diff --check
