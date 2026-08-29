@@ -195,6 +195,32 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         environment.assert_called_once_with(root.resolve(), expected_output.parent / "host-preflight.txt")
         self.assertEqual(manifest["command"], ["make", "host-display-rotation-current-base-gate"])
+        state.assert_called_once_with(root.resolve(), ignore_paths=[expected_output.parent])
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.repository_state")
+    def test_cli_ignores_only_current_evidence_output_for_repository_state(
+        self, state, environment, device
+    ):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {"codesigning_identities": {"target_identity_available": False}}
+        device.return_value = blocked_device()
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name) / "repo"
+            root.mkdir()
+            make_docs(root)
+            output = root / "docs" / "changes" / "run" / "host-display-rotation-current-base-manifest.json"
+
+            exit_code = main([
+                "--repo",
+                str(root),
+                "--output",
+                str(output),
+            ])
+
+        self.assertEqual(exit_code, 0)
+        state.assert_called_once_with(root.resolve(), ignore_paths=[output.resolve().parent])
 
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._host_preflight_probe")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
