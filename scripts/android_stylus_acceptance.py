@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,16 @@ ANDROID_DUMPSYS_TOKEN_RE = re.compile(
 REQUIRED_STYLUS_AXES = ("PRESSURE", "TILT")
 STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
 NUMBER_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
+IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+APPLICATION_TOKEN_RE = re.compile(r"\b(applicationInfo\.token=)([^\s,]+)")
+URL_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])([A-Za-z][A-Za-z0-9_-]*(?:token|secret)|token|secret|(?:access_)?key)=([^\s,&]+)",
+    re.IGNORECASE,
+)
+DB_URL_RE = re.compile(
+    r"\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis(?:s)?|sqlite)://[^\s<>\"']+",
+    re.IGNORECASE,
+)
 CONTACT_RE = re.compile(r"\bcontact=(?:contact|CONTACT|STYLUS_CONTACT_STATE_CONTACT)\b")
 PHASE_RE = re.compile(r"\bphase=([^\s]+)")
 PRESSURE_RE = re.compile(rf"\bpressure=({NUMBER_RE})\b")
@@ -272,6 +283,13 @@ def redacted_device_identity(identity: dict[str, str]) -> dict[str, str]:
     if redacted.get("fingerprint"):
         redacted["fingerprint"] = "redacted-build-fingerprint"
     return redacted
+
+
+def redact_sensitive_evidence_text(text: str) -> str:
+    redacted = IPV4_RE.sub("<redacted-ip>", text)
+    redacted = APPLICATION_TOKEN_RE.sub(r"\1<redacted-token>", redacted)
+    redacted = URL_SECRET_RE.sub(r"\1=<redacted-secret>", redacted)
+    return DB_URL_RE.sub("<redacted-db-url>", redacted)
 
 
 def parse_input_devices(dumpsys_input: str) -> list[InputDeviceCapability]:
@@ -532,7 +550,11 @@ def is_contact_pressure_sample(line: str) -> bool:
 
 
 def evidence_text(text: str) -> str:
-    return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+    return "\n".join(line.rstrip() for line in redact_sensitive_evidence_text(text).splitlines()) + "\n"
+
+
+def runtime_evidence_text(text: str) -> str:
+    return redact_sensitive_evidence_text(text)
 
 
 def redact_android_dumpsys_text(text: str) -> str:
@@ -553,11 +575,13 @@ def write_evidence(
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "dumpsys-input.txt").write_text(evidence_text(redact_android_dumpsys_text(dumpsys_input)), encoding="utf-8")
+    redacted_host_log_excerpt = runtime_evidence_text(host_log_excerpt)
     if diag_log:
-        (output_dir / "android-diag.log").write_text(diag_log, encoding="utf-8")
-    if host_log_excerpt:
-        (output_dir / "host-stylus.log").write_text(host_log_excerpt, encoding="utf-8")
+        (output_dir / "android-diag.log").write_text(runtime_evidence_text(diag_log), encoding="utf-8")
+    if redacted_host_log_excerpt:
+        (output_dir / "host-stylus.log").write_text(redacted_host_log_excerpt, encoding="utf-8")
     summary = {
+        "run_id": str(uuid.uuid4()),
         "status": status,
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "device_identity": redacted_device_identity(identity),
@@ -566,8 +590,8 @@ def write_evidence(
         "pass_eligible_stylus_candidates": [candidate.__dict__ for candidate in candidates if candidate.pass_eligible],
         "diag_log_read_error": diag_error,
         "host_log_name": args.host_log.name if args.host_log else None,
-        "host_log_appended_bytes": len(host_log_excerpt.encode("utf-8")) if host_log_excerpt else 0,
-        "host_log_appended_sha256": hashlib.sha256(host_log_excerpt.encode("utf-8")).hexdigest(),
+        "host_log_appended_bytes": len(redacted_host_log_excerpt.encode("utf-8")) if redacted_host_log_excerpt else 0,
+        "host_log_appended_sha256": hashlib.sha256(redacted_host_log_excerpt.encode("utf-8")).hexdigest(),
         "host_stable_signed_tcc_ready": bool(getattr(args, "host_stable_signed_tcc_ready", False)),
         "observation_seconds": float(args.observe_seconds) if args.observed_physical_drawing else 0.0,
         "observed_physical_drawing": bool(args.observed_physical_drawing),
@@ -581,6 +605,7 @@ def write_evidence(
 def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, locks: Sequence[dict[str, object]]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     summary = {
+        "run_id": str(uuid.uuid4()),
         "status": "blocked_device_coordination_lock",
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "requested_serial": redacted_requested_serial(args.serial),
