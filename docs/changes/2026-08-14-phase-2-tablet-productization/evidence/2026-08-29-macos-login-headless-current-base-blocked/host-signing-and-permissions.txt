@@ -13,8 +13,8 @@ Designated requirement: identifier "dev.telemachus.display" and certificate leaf
 Source commit: missing
 Source tree: missing
 Source dirty: missing
-Current source commit: 181167a81ea3176be466c5e5ec7c0c02bb915038
-Current source tree: f045124c659b6d910844303354935a3dfabcf736
+Current source commit: 6fe5b9cfae8d14b4a47449dfa63bc96226e3ecaf
+Current source tree: 794fe2ca90de2a80396b34f8f6507181948d0c55
 Current source dirty: False
 Source mismatch allowed: False
 Verification: valid on disk (codesign --verify --deep --strict)

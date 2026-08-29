@@ -35,7 +35,7 @@
       "physical_width": 3024
     },
     "display_report": "host-readiness.json",
-    "display_uuid": "224A9A9F-32F9-45A3-973B-122B5276BE88",
+    "display_uuid": "<display-uuid>",
     "first_frame_artifact": "host-readiness.json",
     "first_frame_observed": false,
     "topology": "physical"
@@ -79,7 +79,7 @@
   },
   "run_id": "2026-08-29-macos-login-headless-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
-  "source_commit": "181167a81ea3176be466c5e5ec7c0c02bb915038",
+  "source_commit": "6fe5b9cfae8d14b4a47449dfa63bc96226e3ecaf",
   "unattended_recovery": {
     "bounded_exhaustion_observed": false,
     "full_speed_loop_observed": false,

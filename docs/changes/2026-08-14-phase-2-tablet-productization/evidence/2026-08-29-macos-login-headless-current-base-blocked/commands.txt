@@ -2,10 +2,10 @@ Current-base source setup:
 
   git fetch origin main --prune
   git rev-parse origin/main
-  # 181167a81ea3176be466c5e5ec7c0c02bb915038
+  # 6fe5b9cfae8d14b4a47449dfa63bc96226e3ecaf
 
-  git worktree add --detach /private/tmp/vibe-login-headless-source.eBAKPA origin/main
-  git -C /private/tmp/vibe-login-headless-source.eBAKPA status --short --branch
+  git worktree add --detach <redacted-source-worktree> origin/main
+  git -C <redacted-source-worktree> status --short --branch
   # ## HEAD (no branch)
 
 Safety checks around the run:
@@ -16,7 +16,7 @@ Safety checks around the run:
 Default Host readiness collection, with no login-item diagnostic opt-in flags:
 
   python3 scripts/macos_dev_host.py readiness \
-    --source-root /private/tmp/vibe-login-headless-source.eBAKPA \
+    --source-root <redacted-source-worktree> \
     --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked/host-signing-and-permissions.txt \
     --json-output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked/host-readiness.json \
     --port 54321
