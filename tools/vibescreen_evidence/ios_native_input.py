@@ -35,6 +35,23 @@ EXIT_STATUS_BY_VERDICT = {
     STATUS_FAIL: 3,
 }
 COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+DISALLOWED_TEXT_PATTERNS = (
+    re.compile(r"\b(?:android|adb|xiaomi|fuxi|nubia|p0110|pacific|mediacodec)\b", re.IGNORECASE),
+    re.compile(r"\b(?:simulator|iphonesimulator|unsigned|ad-hoc|adhoc|synthetic)\b", re.IGNORECASE),
+    re.compile(r"\b" + "8a" + "023e3a" + r"\b", re.IGNORECASE),
+    re.compile(r"\bEP[0-9A-Z]{16}\b"),
+    re.compile(r"(?:^|/)Users/[^/\s]+", re.IGNORECASE),
+    re.compile(r"(?:^|/)home/[^/\s]+", re.IGNORECASE),
+    re.compile(r"[A-Za-z]:\\Users\\[^\s]+", re.IGNORECASE),
+    re.compile(r"^(?:~|\$HOME)(?:/|\\)", re.IGNORECASE),
+    re.compile(r"Application Support/com\.apple\.TCC", re.IGNORECASE),
+    re.compile(r"\bTCC\.db\b", re.IGNORECASE),
+    re.compile(r"\b(?:private|secret)[_-]?key(?:\b|[_.-])", re.IGNORECASE),
+    re.compile(r"\b(?:api|access|refresh|session)[_-]?(?:key|token|secret|id)(?:\b|[_.-])", re.IGNORECASE),
+    re.compile(r"\b(?:token|secret|password|passwd|credential|credentials)\s*[:=]", re.IGNORECASE),
+    re.compile(r"\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_]{8,}", re.IGNORECASE),
+)
 
 REQUIRED_FIELDS = (
     ("ios_device_lock_acquired", "exclusively reserve the iPhone and iPad used for this run"),
@@ -149,6 +166,15 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
     return value
 
 
+def _disallowed_text_finding(value: str, field: str) -> dict[str, str] | None:
+    if any(pattern.search(value) for pattern in DISALLOWED_TEXT_PATTERNS):
+        return {
+            "field": field,
+            "reason": "public native-input evidence text must be sanitized and iOS-only",
+        }
+    return None
+
+
 def _artifact_paths(record: dict[str, Any], evidence_dir: Path | None = None) -> list[str]:
     paths = _string_list(record, "artifact_paths")
     for index, reference in enumerate(paths):
@@ -200,6 +226,9 @@ def summarize(
     evidence_dir: Path | None = None,
 ) -> dict[str, Any]:
     artifact_paths = _artifact_paths(record, evidence_dir=evidence_dir)
+    blocking_notes = _string_list(record, "blocking_notes")
+    notes = _string_value(record, "notes")
+    input_run_id = _explicit_run_id(run_id) or _optional_run_id(record)
     observations = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     missing = [
         {"field": field, "requirement": requirement}
@@ -218,6 +247,18 @@ def summarize(
         for field, reason in DISALLOWED_EVIDENCE_FIELDS.items()
         if observations[field]
     ]
+    public_text_values = [
+        ("artifact_paths", artifact) for artifact in artifact_paths
+    ] + [("blocking_notes", note) for note in blocking_notes]
+    if notes:
+        public_text_values.append(("notes", notes))
+    if input_run_id:
+        public_text_values.append(("run_id", input_run_id))
+    for field, value in public_text_values:
+        finding = _disallowed_text_finding(value, field)
+        if finding is not None:
+            disallowed_evidence.append(finding)
+    contaminated_fields = {item["field"] for item in disallowed_evidence}
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
@@ -233,9 +274,9 @@ def summarize(
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "run_id": (
-            _explicit_run_id(run_id) or _optional_run_id(record) or str(uuid.uuid4())
-        ),
+        "run_id": input_run_id
+        if input_run_id and not _disallowed_text_finding(input_run_id, "run_id")
+        else str(uuid.uuid4()),
         "kind": "ios_native_input_behavior",
         "profile": GATE_PROFILE,
         "gate_owner": GATE_OWNER,
@@ -260,9 +301,11 @@ def summarize(
         "missing_requirements": missing,
         "blocking_reasons": blocking_reasons,
         "disallowed_evidence": disallowed_evidence,
-        "artifact_paths": artifact_paths,
-        "blocking_notes": _string_list(record, "blocking_notes"),
-        "notes": _string_value(record, "notes"),
+        "artifact_paths": [] if "artifact_paths" in contaminated_fields else artifact_paths,
+        "blocking_notes": []
+        if "blocking_notes" in contaminated_fields
+        else blocking_notes,
+        "notes": "" if "notes" in contaminated_fields else notes,
     }
 
 
