@@ -74,6 +74,75 @@
     }
   ],
   "can_close_macos_host_compatibility_row": false,
+  "closure_checklist": [
+    {
+      "id": "source_and_host_identity",
+      "missing_fields": [
+        "host_self_test_provenance_recorded",
+        "signing_and_tcc_state_recorded",
+        "source_bound_host_recorded",
+        "xcode_swift_recorded"
+      ],
+      "next_steps": [
+        "record Xcode and Swift versions used for local build/test evidence",
+        "record signing stability plus Screen Recording and Accessibility state",
+        "record installed Host source commit/tree provenance and require it to match this current-base row",
+        "record Host self-test provenance from the same current-base source revision",
+        "record the source commit embedded in the installed Host bundle",
+        "record the source tree embedded in the installed Host bundle",
+        "record whether the installed Host was packaged from a clean source tree",
+        "record the commit used for Host self-test output",
+        "Screen Recording TCC must be authorized for the packaged Host",
+        "Accessibility TCC must be authorized for the packaged Host"
+      ],
+      "status": "blocked",
+      "title": "Source and Host identity"
+    },
+    {
+      "id": "display_and_encoder_capability",
+      "missing_fields": [],
+      "next_steps": [],
+      "status": "pass",
+      "title": "Display and encoder capability"
+    },
+    {
+      "id": "runtime_acceptance",
+      "missing_fields": [
+        "automated_macos_checks_passed",
+        "display_selection_observed",
+        "input_smoke_observed",
+        "packaged_host_launch_observed",
+        "physical_display_capture_observed",
+        "protocol_v1_stream_observed",
+        "reconnect_observed"
+      ],
+      "next_steps": [
+        "run baseline macOS build, XCTest, and self-test commands for this source",
+        "launch the packaged Host on the recorded Mac row",
+        "observe a Protocol v1 USB or trusted-LAN stream on this Host row",
+        "exercise display list and selected-display start on this Host row",
+        "observe physical or current-main display capture on this Host row",
+        "observe at least touch plus keyboard or scroll input through the Host path",
+        "observe a client/process reconnect while the Host PID survives"
+      ],
+      "status": "blocked",
+      "title": "Runtime acceptance"
+    },
+    {
+      "id": "scope_and_artifacts",
+      "missing_fields": [],
+      "next_steps": [],
+      "status": "pass",
+      "title": "Scope and retained artifacts"
+    },
+    {
+      "id": "extrapolation_guard",
+      "missing_fields": [],
+      "next_steps": [],
+      "status": "pass",
+      "title": "No extrapolated support claims"
+    }
+  ],
   "invalid_claim_observations": {
     "ci_runner_only": false,
     "claims_display_topology_from_different_setup": false,
