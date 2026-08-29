@@ -16,7 +16,7 @@ evidence, but they do not close the gate.
 
 ## 2026-08-20 readiness result
 
-The target Android serial was `<redacted-adb-serial>`, which was previously
+The target Android serial was recorded as `DEVICE_SERIAL`, which was previously
 identified in this change as nubia P0110 / pacific / Android 16 / SDK 36. This
 run did not execute ADB capability collection because
 `/tmp/vibe-screen-device-android.lock` already existed before the acceptance
@@ -62,7 +62,7 @@ Evidence:
 ## 2026-08-22 P0110 drawing-app closure attempt
 
 The latest `origin/main` snapshot at `ebd2e3a2` was rechecked on the same target
-serial with explicit `adb -s <redacted-adb-serial> ...` commands. The device again
+device with explicit `adb -s DEVICE_SERIAL ...` commands. The device again
 identified as nubia P0110 / pacific / Android 16 / SDK 36, with no active
 device coordination lock. `dumpsys input` still exposes a pass-eligible
 `goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus
@@ -79,6 +79,31 @@ Evidence:
   `blocked_physical_stylus_not_observed` with one pass-eligible capability
   candidate, no physical drawing observation, no Host stylus log, and no
   drawing-app screenshot.
+
+## 2026-08-29 P0110 current-base fail-closed refresh
+
+The device collection snapshot at `757e5cc` was rechecked with one online
+Android device and explicit `adb -s DEVICE_SERIAL ...` collector calls. The PR
+branch was later rebased onto `origin/main` at `6fe5b9c`; that rebase did not
+add a new physical-stylus drawing attempt. The device identified as nubia P0110
+/ pacific / Android 16 / SDK 36. No device coordination lock was present. The
+collector again found one pass-eligible `goodix_stylus_input` candidate
+declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure, orientation, tilt, X,
+and Y axes. No physical stylus drawing was performed, no stable
+signed/TCC-ready Host preflight was supplied, no Host `Stylus injected:`
+observation window was retained, and no visible macOS drawing-app output was
+captured. The generated `stylus-summary.json` reports `verdict=blocked` and
+`can_close_physical_stylus_gate=false`, so the README drawing-app gate remains
+open. The refreshed collector also redacts raw Android window tokens, IPv4
+addresses, and URL-style secrets before writing evidence artifacts.
+
+Evidence:
+
+- `evidence/2026-08-29-nubia-p0110-pacific-stylus-current-base-blocked/`:
+  current-base fail-closed refresh; status is
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate, no physical drawing observation, no stable signed/TCC-ready Host
+  evidence, no Host stylus log, and no drawing-app screenshot.
 
 ## Tooling change
 
@@ -144,6 +169,13 @@ Results:
   one pass-eligible `goodix_stylus_input` candidate, no physical drawing
   observation, no Host stylus log, and no same-session `Stylus forwarded:`
   samples.
+- 2026-08-29 P0110 current-base refresh: `blocked_physical_stylus_not_observed`
+  again on nubia P0110 / pacific / Android 16 / SDK 36, with no device lock,
+  one pass-eligible `goodix_stylus_input` candidate, no physical drawing
+  observation, no stable signed/TCC-ready Host evidence, no Host stylus log,
+  no same-session `Stylus forwarded:` samples, and no visible drawing-app
+  output. The gate summary reports `verdict=blocked` and
+  `can_close_physical_stylus_gate=false`.
 - Android focused stylus dispatcher/mapper/protocol tests: Gradle
   `BUILD SUCCESSFUL`.
 - MacHost compile check: SwiftPM `Build complete`.
