@@ -145,6 +145,7 @@
             "host_rss_2h_no_growth",
             "native_pointer_hid_mouse",
             "controller_runtime_acceptance",
+            "file_transfer_android_product_e2e",
             "module_ownership_extraction"
           ]
         },
