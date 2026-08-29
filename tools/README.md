@@ -202,6 +202,10 @@ instrumentation-backed playback confirmation, disconnect cleanup, and non-empty
 retained artifacts under the evidence directory. Loopback, synthetic,
 Android-only, or plaintext legacy records return `blocked` or `insufficient` and keep
 `can_close_android_audio_playback_gate=false`.
+For current-base owner records that intentionally preserve a blocked or
+insufficient result, use `make android-audio-playback-owner-record` with the
+same `EVIDENCE_DIR`; it writes the same summary without requiring a passing
+gate.
 
 iOS native-input behavior is owned by the
 `phase5-ios-native-input-behavior` gate. Summarize a sanitized device-run
