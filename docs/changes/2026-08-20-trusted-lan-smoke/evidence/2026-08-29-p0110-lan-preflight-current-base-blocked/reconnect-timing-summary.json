@@ -39,7 +39,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "2e4b5066-3151-4fe9-bad7-802df14bc79d",
+  "run_id": "<redacted-run-id>",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"

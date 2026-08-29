@@ -1,0 +1,4 @@
+{"schema_version":1,"timestamp_ms":1787957662497,"event":"stream_stats","session_epoch":1,"fps":26.418786692759294,"mbps":0.06138551859099804}
+{"schema_version":1,"timestamp_ms":1787957663526,"event":"stream_stats","session_epoch":1,"fps":29.182879377431906,"mbps":0.06719066147859921}
+{"schema_version":1,"timestamp_ms":1787957664594,"event":"stream_stats","session_epoch":1,"fps":26.19270346117867,"mbps":0.06066230121608981}
+{"schema_version":1,"timestamp_ms":1787957665620,"event":"stream_stats","session_epoch":1,"fps":27.290448343079923,"mbps":0.0632046783625731}
