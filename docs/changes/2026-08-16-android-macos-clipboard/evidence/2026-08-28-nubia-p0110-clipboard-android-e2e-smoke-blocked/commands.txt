@@ -1,0 +1,71 @@
+git fetch origin main --prune
+git switch -c codex/clipboard-android-e2e-smoke
+pgrep -x sfltool || true
+pgrep -x sfltool > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.txt 2>&1; pgrep_rc=$?; printf '%s\n' "$pgrep_rc" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/pgrep-sfltool.exit
+python3 scripts/macos_dev_host.py readiness --source-root . --report .build/private-clipboard-e2e-20260828/host-signing-and-permissions.txt --json-output .build/private-clipboard-e2e-20260828/host-readiness.json --port 54321
+cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest --tests dev.telemachus.display.ClientExperienceTest
+swift test --package-path baseline/MacHost --filter 'Clipboard|ProtocolV1SessionClipboard'
+cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+(cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest --tests dev.telemachus.display.ClientExperienceTest) > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-focused-jvm-tests.txt 2>&1; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-focused-jvm-tests.exit
+swift test --package-path baseline/MacHost --filter 'Clipboard|ProtocolV1SessionClipboard' > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/mac-clipboard-xctest.txt 2>&1; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/mac-clipboard-xctest.exit
+perl -0pi -e 's#<local-repo-root-pattern>#<repo-root>#g' docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/mac-clipboard-xctest.txt
+(cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest) > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-apk-build.txt 2>&1; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-apk-build.exit
+python3 - <<'PY'
+import fcntl
+import subprocess
+from pathlib import Path
+
+serial = "<P0110_USB_SERIAL>"
+evidence = Path("docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked")
+lock_path = Path(f"/tmp/vibe-screen-android-{serial}.lock")
+commands = (
+    ("adb-devices", ["adb", "-s", serial, "devices"]),
+    ("adb-get-state", ["adb", "-s", serial, "get-state"]),
+    ("adb-manufacturer", ["adb", "-s", serial, "shell", "getprop", "ro.product.manufacturer"]),
+    ("adb-model", ["adb", "-s", serial, "shell", "getprop", "ro.product.model"]),
+    ("adb-device", ["adb", "-s", serial, "shell", "getprop", "ro.product.device"]),
+    ("adb-release", ["adb", "-s", serial, "shell", "getprop", "ro.build.version.release"]),
+    ("adb-sdk", ["adb", "-s", serial, "shell", "getprop", "ro.build.version.sdk"]),
+    ("adb-reverse", ["adb", "-s", serial, "reverse", "tcp:54321", "tcp:54321"]),
+    ("adb-reverse-list", ["adb", "-s", serial, "reverse", "--list"]),
+    ("adb-install-app", ["adb", "-s", serial, "install", "-r", "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk"]),
+    ("adb-install-test", ["adb", "-s", serial, "install", "-r", "-t", "baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"]),
+    ("android-clipboard-instrumentation", ["adb", "-s", serial, "shell", "am", "instrument", "-w", "-e", "class", "dev.telemachus.display.ClipboardManagerInstrumentedTest", "dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner"]),
+)
+
+with lock_path.open("w", encoding="utf-8") as lock_file:
+    fcntl.flock(lock_file, fcntl.LOCK_EX)
+    (evidence / "device-lock-usb-preflight-acquired.txt").write_text(f"held {lock_path}\n", encoding="utf-8")
+    for name, argv in commands:
+        completed = subprocess.run(argv, check=False, text=True, capture_output=True)
+        (evidence / f"{name}.txt").write_text(completed.stdout + completed.stderr, encoding="utf-8")
+        (evidence / f"{name}.exit").write_text(f"{completed.returncode}\n", encoding="utf-8")
+    (evidence / "device-lock-usb-preflight-released.txt").write_text(f"released {lock_path}\n", encoding="utf-8")
+PY
+PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight --serial <P0110_USB_SERIAL> --serial-label REDACTED_P0110_USB_SERIAL --expected-manufacturer nubia --expected-model P0110 --expected-device pacific --expected-android-release 16 --expected-sdk 36 --host-preflight-report .build/private-clipboard-e2e-20260828/usb-host-preflight.txt --lock-glob /tmp/vibe-screen-*.lock --held-lock /tmp/vibe-screen-android-<P0110_USB_SERIAL>.lock --output .build/private-clipboard-e2e-20260828/usb-smoke-preflight.json
+PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_preflight --serial <P0110_USB_SERIAL> --repo . --host-port 54321 --host-preflight-command python3 scripts/macos_dev_host.py preflight --output .build/private-clipboard-e2e-20260828/trusted-lan-preflight.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.clipboard_e2e_gate --host-readiness .build/private-clipboard-e2e-20260828/host-readiness.json --usb-preflight .build/private-clipboard-e2e-20260828/usb-smoke-preflight.json --trusted-lan-preflight .build/private-clipboard-e2e-20260828/trusted-lan-preflight.json --android-clipboard-instrumentation-log .build/private-clipboard-e2e-20260828/android-clipboard-instrumentation.txt --product-e2e .build/private-clipboard-e2e-20260828/product-e2e.json --serial <P0110_USB_SERIAL> --serial-label REDACTED_P0110_USB_SERIAL --output .build/private-clipboard-e2e-20260828/clipboard-e2e-gate.json
+cp .build/private-clipboard-e2e-20260828/clipboard-e2e-gate.json docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/clipboard-e2e-gate.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_clipboard_e2e_gate tools.tests.test_usb_smoke_preflight
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_clipboard_e2e_gate tools.tests.test_usb_smoke_preflight > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/evidence-tool-unittest.txt 2>&1; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/evidence-tool-unittest.exit
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/repository-privacy-unittest.txt 2>&1; printf '%s\n' "$?" > docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/repository-privacy-unittest.exit
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/privacy-scan.json
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked --check
+cd docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+python3 - <<'PY'
+from hashlib import sha256
+from pathlib import Path
+root = Path('.')
+recorded = {}
+for line in (root / 'SHA256SUMS').read_text().splitlines():
+    digest, relative = line.split('  ./', maxsplit=1)
+    recorded[relative] = digest
+expected = sorted(path.relative_to(root).as_posix() for path in root.rglob('*') if path.is_file() and path.name != 'SHA256SUMS')
+missing = sorted(set(expected) - set(recorded))
+extra = sorted(set(recorded) - set(expected))
+bad = [relative for relative, digest in recorded.items() if relative in expected and sha256((root / relative).read_bytes()).hexdigest() != digest]
+print({'expected_count': len(expected), 'recorded_count': len(recorded), 'missing': missing, 'extra': extra, 'bad': bad})
+raise SystemExit(1 if missing or extra or bad else 0)
+PY
