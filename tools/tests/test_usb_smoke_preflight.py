@@ -11,6 +11,7 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.usb_smoke_preflight import (
     build_document,
     collect_locks,
+    sanitize_lock_path,
     host_process_identity_matches,
     main,
     parse_lsof_listener_pids,
@@ -198,7 +199,7 @@ class USBSmokePreflightTests(unittest.TestCase):
             )
 
         self.assertEqual(document["result"], "blocked")
-        self.assertEqual(document["safety"]["existing_locks"], [str(lock)])
+        self.assertEqual(document["safety"]["existing_locks"], [f"/tmp/{lock.name}"])
         self.assertFalse(document["safety"]["ran_adb"])
         self.assertEqual(commands, [])
         self.assertIsNone(document["host"]["listener"])
@@ -223,7 +224,7 @@ class USBSmokePreflightTests(unittest.TestCase):
             )
 
         self.assertEqual(document["result"], "ready")
-        self.assertEqual(document["safety"]["existing_locks"], [str(lock)])
+        self.assertEqual(document["safety"]["existing_locks"], [f"/tmp/{lock.name}"])
         self.assertTrue(document["safety"]["allows_existing_locks"])
         self.assertTrue(document["safety"]["ran_adb"])
         self.assertTrue(any(command[:3] == ["adb", "-s", SERIAL] for command in commands))
@@ -238,6 +239,57 @@ class USBSmokePreflightTests(unittest.TestCase):
             locks = collect_locks([str(Path(directory) / "vibe-screen-*.lock"), str(first)])
 
         self.assertEqual(locks, [str(first), str(second)])
+
+    def test_collect_locks_excludes_lock_held_by_current_caller(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            held = Path(directory) / "vibe-screen-device-android.lock"
+            other = Path(directory) / "vibe-screen-other.lock"
+            held.write_text("owner\n", encoding="utf-8")
+            other.write_text("owner\n", encoding="utf-8")
+
+            locks = collect_locks(
+                [str(Path(directory) / "vibe-screen-*.lock")],
+                held_locks=[str(held)],
+            )
+
+        self.assertEqual(locks, [str(other)])
+
+    def test_held_lock_does_not_skip_runtime_probes(self) -> None:
+        commands: list[list[str]] = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return _completed(command, _ready_responses(command))
+
+        with tempfile.TemporaryDirectory() as directory:
+            held = Path(directory) / "vibe-screen-device-android.lock"
+            held.write_text("owner\n", encoding="utf-8")
+            document = build_document(
+                serial=SERIAL,
+                repository_root=Path("/repo"),
+                adb_path="adb",
+                adb_timeout=1.0,
+                host_preflight_timeout=1.0,
+                package_name=PACKAGE,
+                port=54321,
+                lock_globs=[str(Path(directory) / "vibe-screen-*.lock")],
+                held_locks=[str(held)],
+                expected_device={
+                    "manufacturer": "nubia",
+                    "model": "P0110",
+                    "device": "pacific",
+                    "android_release": "16",
+                    "sdk": "36",
+                },
+                host_preflight_report=Path(directory) / "host-signing-and-permissions.txt",
+                command_runner=run,
+                wall_clock=lambda: "2026-08-24T00:00:00Z",
+            )
+
+        self.assertEqual(document["result"], "ready")
+        self.assertEqual(document["safety"]["existing_locks"], [])
+        self.assertTrue(document["safety"]["ran_adb"])
+        self.assertIn(["adb", "-s", SERIAL, "get-state"], commands)
 
     def test_atomic_json_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -498,6 +550,64 @@ class USBSmokePreflightTests(unittest.TestCase):
             {"const": False},
         )
 
+    def test_sanitize_lock_path_redacts_non_vibe_screen_lock_paths(self) -> None:
+        # Vibe-screen locks are preserved under /tmp with the original file name.
+        self.assertEqual(
+            sanitize_lock_path("/tmp/vibe-screen-android-REDACTED.lock"),
+            "/tmp/vibe-screen-android-REDACTED.lock",
+        )
+        self.assertEqual(
+            sanitize_lock_path("/private/tmp/vibe-screen-device.lock"),
+            "/tmp/vibe-screen-device.lock",
+        )
+        # Non-vibe-screen lock files must not leak arbitrary absolute paths.
+        self.assertEqual(
+            sanitize_lock_path("/Users/private-account/some.lock"),
+            "<redacted-lock-path>",
+        )
+        self.assertEqual(
+            sanitize_lock_path("/tmp/other.lock"),
+            "<redacted-lock-path>",
+        )
+        # Non-lock strings are left unchanged so general sanitization still works.
+        self.assertEqual(sanitize_lock_path("nubia"), "nubia")
+        self.assertEqual(sanitize_lock_path("blocked"), "blocked")
+        self.assertEqual(sanitize_lock_path("/Applications/Vibe Screen.app"), "/Applications/Vibe Screen.app")
+
+    def test_existing_locks_are_sanitized_in_safety_section(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            vibe_lock = Path(directory) / "vibe-screen-held.lock"
+            other_lock = Path(directory) / "private-other.lock"
+            vibe_lock.write_text("owner\n", encoding="utf-8")
+            other_lock.write_text("owner\n", encoding="utf-8")
+
+            document = build_document(
+                serial=SERIAL,
+                repository_root=Path("/repo"),
+                adb_path="adb",
+                adb_timeout=1.0,
+                host_preflight_timeout=1.0,
+                package_name=PACKAGE,
+                port=54321,
+                lock_globs=[str(Path(directory) / "*.lock")],
+                held_locks=[str(vibe_lock)],
+                expected_device={
+                    "manufacturer": "nubia",
+                    "model": "P0110",
+                    "device": "pacific",
+                    "android_release": "16",
+                    "sdk": "36",
+                },
+                host_preflight_report=Path(directory) / "host-signing-and-permissions.txt",
+                command_runner=lambda *a, **k: _completed([], ""),
+                wall_clock=lambda: "2026-08-24T00:00:00Z",
+            )
+
+        existing = document["safety"]["existing_locks"]
+        self.assertEqual(existing, ["<redacted-lock-path>"])
+        self.assertNotIn(str(other_lock), existing)
+        self.assertNotIn("/Users/", "\n".join(existing))
+
 
 def _build_document(
     directory: str,
@@ -515,6 +625,7 @@ def _build_document(
         package_name=PACKAGE,
         port=54321,
         lock_globs=lock_globs or [str(Path(directory) / "missing-*.lock")],
+        held_locks=[],
         expected_device={
             "manufacturer": "nubia",
             "model": "P0110",
