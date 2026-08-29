@@ -269,6 +269,23 @@ class RepositoryPrivacyTests(unittest.TestCase):
                 expected_category = "hardware_identifier" if category == "adb_identifier" else category
                 self.assertIn(expected_category, scan_content(content))
 
+        for safe_hardware_identifier in (
+            b'{"adb_serial":"<device-serial>"}',
+            b'{"device_serial":"<device-serial>"}',
+            b'device serial: <device-serial>',
+            b'device serial: `<device-serial>`',
+        ):
+            with self.subTest(safe_hardware_identifier=safe_hardware_identifier):
+                self.assertNotIn("hardware_identifier", scan_content(safe_hardware_identifier))
+
+        self.assertEqual(
+            scan_content(
+                b"https://docs.gradle.org/8.6/userguide/gradle_daemon.html#sec:disabling_the_daemon"
+            ),
+            {},
+        )
+        self.assertIn("url", scan_content(b"https://private.example.invalid/session"))
+
     def test_public_deployment_docs_use_placeholder_ssh_alias(self) -> None:
         violations = []
         for relative_path in PUBLIC_DEPLOYMENT_DOCS:

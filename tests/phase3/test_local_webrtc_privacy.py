@@ -114,6 +114,7 @@ def private_evidence(mode: str) -> dict[str, object]:
 class LocalWebRTCPrivacyTests(unittest.TestCase):
     def test_public_projection_redacts_paths_addresses_credentials_and_seeds(self) -> None:
         secret = "runtime-super-secret"
+        bearer_header = "Authorization: Bearer " + "token-value cookie=session-value"
         raw = "\n".join(
             (
                 "/Users/alice/work/file.swift /home/runner/build /private/tmp/item",
@@ -124,7 +125,7 @@ class LocalWebRTCPrivacyTests(unittest.TestCase):
                 "8.8.8.8 ::1 fe80::abcd%en0 fc00::1234 2001:4860:4860::8888",
                 "::ffff:192.0.2.128 8.8.4.4:3478 [2001:4860:4860::8844]:443",
                 "relay.example.test:5349 turnserver:3478 invalid.example:999999",
-                "Authorization: Bearer token-value cookie=session-value",
+                bearer_header,
                 'Authorization: Basic dXNlcjpwYXNz token: abc def password="two word"',
                 "api_key=key-value password=hunter2 seed=seed-value",
                 "serial_number=ABC123 device_id=device-private hostname=runner.internal",
