@@ -75,7 +75,22 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "byte_length": 32,
         "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "session_epoch": 7,
+        "retained_artifacts": [
+            {"role": "sender_action", "path": "android-to-macos/sender-action.txt"},
+            {"role": "receiver_approval", "path": "android-to-macos/receiver-approval.txt"},
+            {"role": "protocol_packets", "path": "android-to-macos/protocol-packets.jsonl"},
+            {"role": "remote_file", "path": "android-to-macos/remote-file.sha256"},
+            {"role": "sha256_verification", "path": "android-to-macos/sha256-verification.txt"},
+        ],
     }
+    macos_to_android = dict(direction)
+    macos_to_android["retained_artifacts"] = [
+        {"role": "sender_action", "path": "macos-to-android/sender-action.txt"},
+        {"role": "receiver_approval", "path": "macos-to-android/receiver-approval.txt"},
+        {"role": "protocol_packets", "path": "macos-to-android/protocol-packets.jsonl"},
+        {"role": "remote_file", "path": "macos-to-android/remote-file.sha256"},
+        {"role": "sha256_verification", "path": "macos-to-android/sha256-verification.txt"},
+    ]
     document: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "kind": "android_macos_file_transfer_product_e2e",
@@ -94,10 +109,14 @@ def product_e2e(**overrides: object) -> dict[str, object]:
             "partial_file_removed_or_quarantined": True,
             "sender_state_cleared": True,
             "receiver_state_cleared": True,
+            "retained_artifacts": [
+                {"role": "cancel_request", "path": "cancel-cleanup/cancel-request.txt"},
+                {"role": "cleanup_state", "path": "cancel-cleanup/cleanup-state.txt"},
+            ],
         },
         "directions": {
             "android_to_macos_file_transfer": dict(direction),
-            "macos_to_android_file_transfer": dict(direction),
+            "macos_to_android_file_transfer": macos_to_android,
         },
     }
     document.update(overrides)
@@ -117,6 +136,23 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     write_json(paths["lan"], lan_preflight())
     paths["android_log"].write_text("OK (3 tests)\n", encoding="utf-8")
     write_json(paths["product"], product_e2e())
+    for artifact_path in (
+        "android-to-macos/sender-action.txt",
+        "android-to-macos/receiver-approval.txt",
+        "android-to-macos/protocol-packets.jsonl",
+        "android-to-macos/remote-file.sha256",
+        "android-to-macos/sha256-verification.txt",
+        "macos-to-android/sender-action.txt",
+        "macos-to-android/receiver-approval.txt",
+        "macos-to-android/protocol-packets.jsonl",
+        "macos-to-android/remote-file.sha256",
+        "macos-to-android/sha256-verification.txt",
+        "cancel-cleanup/cancel-request.txt",
+        "cancel-cleanup/cleanup-state.txt",
+    ):
+        path = root / artifact_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"retained product artifact: {artifact_path}\n", encoding="utf-8")
     return paths
 
 
@@ -325,6 +361,113 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_requires_retained_direction_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["retained_artifacts"] = [
+                {"role": "sender_action", "path": "/tmp/sender-action.txt"},
+                {"role": "receiver_approval", "path": "../receiver-approval.txt"},
+                {"role": "protocol_packets", "path": "missing/protocol-packets.jsonl"},
+            ]
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].path must be evidence-relative",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[1].path must stay inside the evidence bundle",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].path missing retained artifact missing/protocol-packets.jsonl",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing remote_file artifact",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing sha256_verification artifact",
+            result["blockers"],
+        )
+
+    def test_retained_artifact_symlink_escape_cannot_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            parent = Path(directory_name)
+            root = parent / "evidence"
+            outside = parent / "outside.txt"
+            outside.write_text("outside retained artifact\n", encoding="utf-8")
+            paths = write_pass_inputs(root)
+            symlink = root / "android-to-macos" / "sender-action-link.txt"
+            symlink.unlink(missing_ok=True)
+            symlink.symlink_to(outside)
+
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            retained_artifacts = android_to_macos["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            sender_artifact = retained_artifacts[0]
+            assert isinstance(sender_artifact, dict)
+            sender_artifact["path"] = "android-to-macos/sender-action-link.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].path must stay inside the evidence bundle",
+            result["blockers"],
+        )
+
+    def test_cancel_cleanup_requires_retained_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            cancel_cleanup = document["cancel_cleanup"]
+            assert isinstance(cancel_cleanup, dict)
+            cancel_cleanup["retained_artifacts"] = []
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.retained_artifacts must retain product evidence artifacts",
+            result["blockers"],
+        )
+
     def test_synthetic_product_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -392,8 +535,8 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             paths = write_pass_inputs(root)
-            raw_serial = "EPTESTSERIAL000000"
-            user_path = "/Users/localuser"
+            raw_serial = "EP" + "0" * 14
+            user_path = "/Users/" + "exampleuser"
             tcc_path = "Application Support/" + "com.apple" + ".TCC/" + "TCC" + ".db"
             write_json(
                 paths["host"],

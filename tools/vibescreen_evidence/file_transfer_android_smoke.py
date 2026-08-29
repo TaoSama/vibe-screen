@@ -43,6 +43,15 @@ SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"/Users/[^\r\n<>\"']+"), "<redacted-local-path>"),
     (re.compile(r"/home/[^\r\n<>\"']+"), "<redacted-local-path>"),
 )
+RETAINED_ARTIFACTS_FIELD = "retained_artifacts"
+REQUIRED_DIRECTION_ARTIFACT_ROLES = (
+    "sender_action",
+    "receiver_approval",
+    "protocol_packets",
+    "remote_file",
+    "sha256_verification",
+)
+REQUIRED_CANCEL_ARTIFACT_ROLES = ("cancel_request", "cleanup_state")
 
 
 class FileTransferAndroidSmokeGateError(ValueError):
@@ -89,6 +98,70 @@ def sanitize_value(value: Any) -> Any:
 def _list_value(document: dict[str, Any], key: str) -> list[Any]:
     value = document.get(key)
     return value if isinstance(value, list) else []
+
+
+def _retained_artifact_reasons(
+    document: dict[str, Any],
+    label: str,
+    required_roles: Sequence[str],
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifacts = document.get(RETAINED_ARTIFACTS_FIELD)
+    if not isinstance(artifacts, list) or not artifacts:
+        return [f"{label}.{RETAINED_ARTIFACTS_FIELD} must retain product evidence artifacts"]
+
+    reasons: list[str] = []
+    resolved_evidence_dir = evidence_dir.resolve() if evidence_dir is not None else None
+    seen_roles: set[str] = set()
+    for index, artifact in enumerate(artifacts):
+        artifact_label = f"{label}.{RETAINED_ARTIFACTS_FIELD}[{index}]"
+        if not isinstance(artifact, dict):
+            reasons.append(f"{artifact_label} must be an object")
+            continue
+        role = artifact.get("role")
+        if isinstance(role, str) and role.strip():
+            seen_roles.add(role.strip())
+        else:
+            reasons.append(f"{artifact_label}.role must be present")
+
+        path_value = artifact.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            reasons.append(f"{artifact_label}.path must be present")
+            continue
+        path = Path(path_value)
+        if path.is_absolute():
+            reasons.append(f"{artifact_label}.path must be evidence-relative")
+            continue
+        if (path.parts and path.parts[0] == "..") or ".." in path.parts:
+            reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
+            continue
+        if evidence_dir is not None and resolved_evidence_dir is not None:
+            candidate = evidence_dir / path
+            try:
+                resolved_candidate = candidate.resolve(strict=True)
+            except FileNotFoundError:
+                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
+                continue
+            except (OSError, RuntimeError) as error:
+                reasons.append(
+                    f"{artifact_label}.path cannot access retained artifact "
+                    f"{sanitize_text(path_value)}: {sanitize_text(error)}"
+                )
+                continue
+            try:
+                resolved_candidate.relative_to(resolved_evidence_dir)
+            except ValueError:
+                reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
+                continue
+            if not resolved_candidate.is_file():
+                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
+
+    missing_roles = [role for role in required_roles if role not in seen_roles]
+    reasons.extend(
+        f"{label}.{RETAINED_ARTIFACTS_FIELD} missing {role} artifact"
+        for role in missing_roles
+    )
+    return reasons
 
 
 def _gate(
@@ -215,7 +288,9 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
     return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
 
-def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
+def _direction_reasons(
+    direction: dict[str, Any], label: str, evidence_dir: Path | None
+) -> list[str]:
     required_true = (
         "protocol_v1_session",
         "file_offer_observed",
@@ -249,6 +324,14 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
     transport = direction.get("transport")
     if transport not in {"usb", "trusted_lan"}:
         reasons.append(f"{label}.transport must be usb or trusted_lan")
+    reasons.extend(
+        _retained_artifact_reasons(
+            direction,
+            label,
+            REQUIRED_DIRECTION_ARTIFACT_ROLES,
+            evidence_dir,
+        )
+    )
     return reasons
 
 
@@ -256,6 +339,7 @@ def _product_e2e_gate(
     product: dict[str, Any] | None,
     missing: Sequence[str],
     available_transports: set[str],
+    evidence_dir: Path | None,
 ) -> dict[str, Any]:
     reasons = list(missing)
     evidence = ["file-transfer-product-e2e.json"] if product is not None else []
@@ -268,14 +352,14 @@ def _product_e2e_gate(
         android_to_macos = directions.get("android_to_macos_file_transfer")
         macos_to_android = directions.get("macos_to_android_file_transfer")
         if isinstance(android_to_macos, dict):
-            reasons.extend(_direction_reasons(android_to_macos, "android_to_macos_file_transfer"))
+            reasons.extend(_direction_reasons(android_to_macos, "android_to_macos_file_transfer", evidence_dir))
             transport = android_to_macos.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"android_to_macos_file_transfer.transport {transport} is not ready")
         else:
             reasons.append("missing android_to_macos_file_transfer direction evidence")
         if isinstance(macos_to_android, dict):
-            reasons.extend(_direction_reasons(macos_to_android, "macos_to_android_file_transfer"))
+            reasons.extend(_direction_reasons(macos_to_android, "macos_to_android_file_transfer", evidence_dir))
             transport = macos_to_android.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"macos_to_android_file_transfer.transport {transport} is not ready")
@@ -284,7 +368,7 @@ def _product_e2e_gate(
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
 
 
-def _cancel_cleanup_gate(product: dict[str, Any] | None) -> dict[str, Any]:
+def _cancel_cleanup_gate(product: dict[str, Any] | None, evidence_dir: Path | None) -> dict[str, Any]:
     reasons: list[str] = []
     evidence = ["file-transfer-product-e2e.json"] if product is not None else []
     if product is None:
@@ -305,6 +389,14 @@ def _cancel_cleanup_gate(product: dict[str, Any] | None) -> dict[str, Any]:
                 f"cancel_cleanup.{field} must be true"
                 for field in required_true
                 if cancel_cleanup.get(field) is not True
+            )
+            reasons.extend(
+                _retained_artifact_reasons(
+                    cancel_cleanup,
+                    "cancel_cleanup",
+                    REQUIRED_CANCEL_ARTIFACT_ROLES,
+                    evidence_dir,
+                )
             )
     return _gate("cancel_cleanup", PASS if not reasons else BLOCKED, reasons, evidence)
 
@@ -348,6 +440,7 @@ def derive_gate(
     usb, usb_missing = _load_optional(usb_preflight, "USB preflight")
     lan, lan_missing = _load_optional(trusted_lan_preflight, "trusted-LAN preflight")
     product, product_missing = _load_optional(product_e2e, "product E2E evidence")
+    evidence_dir = product_e2e.parent if product_e2e is not None else None
 
     usb_gate = _usb_gate(usb, usb_missing)
     lan_gate = _lan_gate(lan, lan_missing)
@@ -363,8 +456,8 @@ def derive_gate(
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
         _android_file_transfer_gate(android_file_transfer_instrumentation_log),
-        _product_e2e_gate(product, product_missing, available_transports),
-        _cancel_cleanup_gate(product),
+        _product_e2e_gate(product, product_missing, available_transports, evidence_dir),
+        _cancel_cleanup_gate(product, evidence_dir),
     ]
     required_gate_names = {
         "device_identity",
@@ -404,7 +497,7 @@ def derive_gate(
             for item in (
                 "Android -> macOS single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
                 "macOS -> Android single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
-                "receiver approval, session epoch, cancel cleanup, and end-to-end SHA-256 on retained product evidence" if verdict != PASS else "",
+                "receiver approval, session epoch, retained artifacts, cancel cleanup, and end-to-end SHA-256 on retained product evidence" if verdict != PASS else "",
             )
             if item
         ],
@@ -418,8 +511,8 @@ def derive_gate(
             "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, "
             "a current Android file-transfer smoke log, and retained bidirectional product E2E evidence "
             "showing file offer/request/content packets, source file read, explicit user action, receiver "
-            "approval, remote file write, positive session epoch, final SHA-256 equality, and cancel/cleanup "
-            "behavior. Offline or synthetic coverage alone remains readiness evidence."
+            "approval, remote file write, positive session epoch, final SHA-256 equality, retained product "
+            "artifacts, and cancel/cleanup behavior. Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
 
