@@ -202,7 +202,9 @@ observation file with:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_native_input \
   docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-observations.json \
-  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json
+  --repo . \
+  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json \
+  --require-pass
 ```
 
 The CLI is deliberately fail-closed. It requires real iPhone and iPad signed app

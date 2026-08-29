@@ -1231,6 +1231,10 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
     clean_output = ascii_report_text(output or "<empty>")
     return f"{label}: exit_code={exit_code}\n{clean_output}"
 
+def effective_sign_identity(expected_sign_identity: str | None) -> str:
+    return expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+
+
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     report_path = getattr(args, "report", None)
     json_output = getattr(args, "json_output", None)
@@ -1269,10 +1273,15 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     )
 
     errors: list[str] = []
+    xctest_framework_available = False
     if developer_status != 0:
         errors.append("xcode-select did not report a selected developer directory")
     elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
         errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    else:
+        xctest_framework_available = has_xctest_framework(Path(developer_dir.strip()))
+        if not xctest_framework_available:
+            errors.append("XCTest.framework was not found in the selected developer directory")
     if swift_path_status != 0 or swift_version_status != 0:
         errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
     if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
@@ -1288,6 +1297,7 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
             command_report_line("swift --version", swift_version_status, swift_version),
             command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
             command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            f"XCTest.framework present: {str(xctest_framework_available).lower()}",
             "Blocking issues:",
             "\n".join(f"- {error}" for error in errors) if errors else "- none",
             "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
@@ -1309,6 +1319,7 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     print("macOS Host XCTest toolchain preflight passed")
     return 0
 
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
@@ -1329,14 +1340,15 @@ def inspect_host_without_throwing(
     except SystemExit as error:
         source_identity = None
         errors.append(str(error))
-    if expected_sign_identity == "-":
+    configured_sign_identity = effective_sign_identity(expected_sign_identity)
+    if configured_sign_identity == "-":
         errors.append(
             "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
         )
     elif validate_configured_identity:
         try:
             resolved_identity = package_macos.resolve_sign_identity(
-                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                configured_sign_identity
             )
         except SystemExit as error:
             errors.append(str(error))
@@ -1361,7 +1373,7 @@ def inspect_host_without_throwing(
             metadata,
             permissions,
             install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
+            expected_sign_identity=configured_sign_identity,
             source_identity=source_identity,
             allow_source_mismatch=allow_source_mismatch,
         )
@@ -1603,14 +1615,15 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     errors: list[str] = []
     if validate_configured_identity:
-        if expected_sign_identity == "-":
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
+        if configured_sign_identity == "-":
             errors.append(
                 "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
             )
         else:
             try:
                 resolved_identity = package_macos.resolve_sign_identity(
-                    expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                    configured_sign_identity
                 )
             except SystemExit as error:
                 errors.append(str(error))
@@ -1620,6 +1633,8 @@ def metadata_and_permissions(
                         "configured signing identity did not resolve exactly: "
                         f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
                     )
+    else:
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
@@ -1628,7 +1643,7 @@ def metadata_and_permissions(
             metadata,
             permissions,
             install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
+            expected_sign_identity=configured_sign_identity,
             source_identity=source_identity,
             allow_source_mismatch=allow_source_mismatch,
         )
@@ -1779,7 +1794,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if inspection.errors:
         print(report, file=sys.stderr)
-        print("macOS XCTest preflight failed", file=sys.stderr)
+        print("macOS Host preflight failed", file=sys.stderr)
         return 2
     print("macOS Host touch-rerun preflight passed")
     return 0
