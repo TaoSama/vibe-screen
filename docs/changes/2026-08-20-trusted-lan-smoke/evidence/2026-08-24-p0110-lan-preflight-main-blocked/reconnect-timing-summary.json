@@ -24,7 +24,7 @@
     "client-kill",
     "lan-network-interrupt"
   ],
-  "run_id": "0cdc3b4f-d875-4ecd-b627-68ad1c926a09",
+  "run_id": "<redacted-run-id>",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"
