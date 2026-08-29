@@ -1,0 +1,34 @@
+# Host identity preflight
+
+Repository revision: `dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e`
+Push target branch: `codex/p0110-latency-current-base-20260828`
+
+## Commands
+
+```bash
+sysctl -n hw.model
+sw_vers
+shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen
+codesign -dv --verbose=4 /Applications/Vibe\ Screen.app
+```
+
+## Observed values
+
+```text
+hw.model: Mac16,8
+ProductName: macOS
+ProductVersion: 26.4.1
+BuildVersion: 25E253
+Host executable SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+Executable: /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier: dev.telemachus.display
+Format: app bundle with Mach-O thin (arm64)
+Authority: Vibe Screen Dev
+Authority: Vibe Screen Dev Root
+TeamIdentifier: not set
+CDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2
+```
+
+This file records host/build identity for the latency preflight only. It is not
+an external-camera latency package, active-stream artifact, TCC authorization
+proof, or stable release-signing claim.
