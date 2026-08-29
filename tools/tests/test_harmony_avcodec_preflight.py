@@ -208,6 +208,24 @@ class HarmonyAvcodecPreflightTests(unittest.TestCase):
         self.assertEqual("b" * 40, state["tree"])
         run.assert_called_once_with(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0, cwd=repo)
 
+    def test_cli_excludes_own_output_directory_from_repo_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name)
+            output = repo / "docs" / "changes" / "2026-08-04-phase-4-harmony" / "evidence" / "run" / "harmony-avcodec-preflight.json"
+            with (
+                patch.object(harmony_avcodec_preflight, "_tool_probe") as tool_probe,
+                patch.object(harmony_avcodec_preflight, "repository_state") as repository_state,
+            ):
+                tool_probe.side_effect = lambda name, _args: harmony_avcodec_preflight.ToolProbe(
+                    name=name, path=None, version=None, error="not found"
+                )
+                repository_state.return_value = {"revision": "a" * 40, "dirty": False, "status_porcelain": []}
+
+                exit_code = harmony_avcodec_preflight.main(["--output", str(output), "--repo", str(repo)])
+
+        self.assertEqual(exit_code, 2)
+        repository_state.assert_called_once_with(repo.resolve(), ignore_paths=[output.parent])
+
     def test_collector_stays_blocked_until_real_codec_artifacts_are_recorded(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
