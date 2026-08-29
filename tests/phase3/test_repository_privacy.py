@@ -24,6 +24,12 @@ PHASE3_EVIDENCE = (
 )
 MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 ADB_SERIAL_COMMAND_PATTERN = re.compile(rb"\badb\s+-s\s+(?P<serial>\S+)", re.IGNORECASE)
+SSH_COMMAND_TARGET_PATTERN = re.compile(rb"\bssh\s+(?P<target>\S+)")
+PUBLIC_DEPLOYMENT_DOCS = (
+    Path("DEPLOY.md"),
+    Path(".claude/skills/deploy/SKILL.md"),
+)
+PUBLIC_RELAY_SSH_ALIAS_PLACEHOLDER = b"<relay-host-ssh-alias>"
 RAW_ANDROID_SERIAL_PROPERTY_PATTERN = re.compile(
     rb"(?im)^ro\.serialno=(?:[0-9a-f]{8}|EP[0-9A-Z]{16})$"
 )
@@ -258,6 +264,16 @@ class RepositoryPrivacyTests(unittest.TestCase):
             with self.subTest(category=category):
                 expected_category = "hardware_identifier" if category == "adb_identifier" else category
                 self.assertIn(expected_category, scan_content(content))
+
+    def test_public_deployment_docs_use_placeholder_ssh_alias(self) -> None:
+        violations = []
+        for relative_path in PUBLIC_DEPLOYMENT_DOCS:
+            content = (ROOT / relative_path).read_bytes()
+            for match in SSH_COMMAND_TARGET_PATTERN.finditer(content):
+                target = match.group("target").strip(b"'\".,);")
+                if target != PUBLIC_RELAY_SSH_ALIAS_PLACEHOLDER:
+                    violations.append(f"ssh-target:{relative_path}")
+        self.assertEqual(violations, [])
         self.assertEqual(scan_content(b"swiftlang-6.3.1.1.2 and <redacted-ip>"), {})
 
     def test_phase3_privacy_rules_reject_project_credential_schemas(self) -> None:

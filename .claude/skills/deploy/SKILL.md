@@ -18,9 +18,11 @@ gives a different checkout.
 2. Run a read-only status check first: `git status --short --branch`, DNS for
    `relay.taoai.site`, Docker/Compose availability on the target host, disk
    space, and listening ports.
-3. Keep the local SSH alias `lumina-vps` opaque. It is acceptable to run
-   `ssh lumina-vps ...`; do not expand that alias into an address or username in
-   repository files, PR text, commit messages, or public logs.
+3. Keep the operator-local SSH alias private. It is acceptable to run `ssh` with
+   a local alias during private preflight, but do not write the real alias,
+   address, username, or credential into repository files, PR text, commit
+   messages, or public logs. Use `<relay-host-ssh-alias>` as the public
+   placeholder.
 
 ## Open-Source Safety
 
@@ -70,9 +72,9 @@ is deployed. Prefer read-only commands:
 
 ~~~bash
 dig +short relay.taoai.site A relay.taoai.site AAAA
-ssh lumina-vps 'docker --version && docker compose version'
-ssh lumina-vps 'df -h / && docker system df'
-ssh lumina-vps 'ss -ltnup | sed -n "1,160p"'
+ssh <relay-host-ssh-alias> 'docker --version && docker compose version'
+ssh <relay-host-ssh-alias> 'df -h / && docker system df'
+ssh <relay-host-ssh-alias> 'ss -ltnup | sed -n "1,160p"'
 ~~~
 
 Report production as blocked if DNS, TLS, disk headroom, image digest, database
