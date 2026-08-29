@@ -72,7 +72,7 @@ make ios-current-base-gate \
 
 The current-base aggregate accepts this signing row only when the embedded gate
 declares `owner.role=ios_app_signing_readiness_current_base_owner`,
-`owner.head_ref=codex/phase5-ios-signing-readiness`, and
+`owner.head_ref=codex/ios-app-signing-readiness-current-base-20260829`, and
 `owner.repository=TaoSama/vibe-screen`. Its `signing_summary` is the source for
 the aggregate `signing` fields, including UDID-hash and entitlements coverage;
 hand-written manifest fields without that dedicated owner stay blocked.
@@ -289,7 +289,7 @@ gate.
     "kind": "ios_app_signing_readiness_gate",
     "owner": {
       "role": "ios_app_signing_readiness_current_base_owner",
-      "head_ref": "codex/phase5-ios-signing-readiness",
+      "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
       "repository": "TaoSama/vibe-screen",
       "scope": "Phase 5 iOS app-signing readiness prerequisite only"
     },
@@ -299,7 +299,7 @@ gate.
     },
     "current_base": {
       "commit": null,
-      "branch": "codex/phase5-ios-signing-readiness",
+      "branch": "codex/ios-app-signing-readiness-current-base-20260829",
       "dirty": false
     },
     "verdict": "blocked",

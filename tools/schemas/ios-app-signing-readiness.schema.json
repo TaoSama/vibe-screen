@@ -44,20 +44,27 @@
       "type": "object",
       "required": [
         "status",
-        "team_id",
-        "provisioning_profile_uuid",
         "bundle_id",
-        "codesign_identity",
-        "device_udids",
+        "device_udid_hashes",
         "entitlements",
         "signed_artifact_sha256"
       ],
       "properties": {
         "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "team_id_recorded": {"type": "boolean"},
+        "team_id_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
         "team_id": {"type": "string"},
+        "provisioning_profile_recorded": {"type": "boolean"},
+        "provisioning_profile_uuid_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
         "provisioning_profile_uuid": {"type": "string"},
         "bundle_id": {"type": "string"},
+        "codesign_identity_recorded": {"type": "boolean"},
+        "codesign_identity_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
         "codesign_identity": {"type": "string"},
+        "device_udid_hashes": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
+        },
         "device_udids": {
           "type": "array",
           "items": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
@@ -65,13 +72,17 @@
         "entitlements": {
           "type": "object",
           "required": [
-            "application_identifier",
-            "team_identifier",
-            "bundle_identifier",
-            "keychain_access_groups",
+            "application_identifier_matches_team_and_bundle",
+            "team_identifier_matches_team_id",
+            "bundle_identifier_matches_bundle_id",
+            "keychain_access_groups_include_application_identifier",
             "raw_entitlements_sha256"
           ],
           "properties": {
+            "application_identifier_matches_team_and_bundle": {"type": "boolean"},
+            "team_identifier_matches_team_id": {"type": "boolean"},
+            "bundle_identifier_matches_bundle_id": {"type": "boolean"},
+            "keychain_access_groups_include_application_identifier": {"type": "boolean"},
             "application_identifier": {"type": "string"},
             "team_identifier": {"type": "string"},
             "bundle_identifier": {"type": "string"},
