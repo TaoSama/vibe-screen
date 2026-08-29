@@ -75,7 +75,7 @@
   "profile": "physical-stylus-drawing-app",
   "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
   "requires_physical_stylus": true,
-  "run_id": "20dcab18-7c2f-4003-aecf-bbea2cc16aa2",
+  "run_id": "52d51f30-1e90-4092-9f6e-8751a610829e",
   "schema_version": "vibescreen.evidence/v1",
   "synthetic_adb_stylus_is_not_physical_stylus_evidence": true,
   "verdict": "blocked"

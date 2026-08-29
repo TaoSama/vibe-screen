@@ -15,7 +15,7 @@ Result: no output; no `sfltool` process was observed. No
 Device coordination:
 
 ```bash
-LOCK=/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock
+LOCK=/tmp/vibe-screen-android-<device-serial>.lock
 ```
 
 An empty stale serial lock from an aborted local command construction attempt was
@@ -27,12 +27,12 @@ and released it after the read-only snapshot completed. No generic
 Device identity commands run under the serial lock:
 
 ```bash
-adb -s EP0110PZ0B9110300B get-state
-adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s <device-serial> get-state
+adb -s <device-serial> shell getprop ro.product.manufacturer
+adb -s <device-serial> shell getprop ro.product.model
+adb -s <device-serial> shell getprop ro.product.device
+adb -s <device-serial> shell getprop ro.build.version.release
+adb -s <device-serial> shell getprop ro.build.version.sdk
 ```
 
 Result:
@@ -49,7 +49,7 @@ pacific
 Raw Android input capability snapshot:
 
 ```bash
-adb -s EP0110PZ0B9110300B shell getevent -lp \
+adb -s <device-serial> shell getevent -lp \
   > docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot/getevent-lp.txt
 ```
 
@@ -57,7 +57,7 @@ Collector command:
 
 ```bash
 python3 scripts/android_stylus_acceptance.py \
-  --serial EP0110PZ0B9110300B \
+  --serial <device-serial> \
   --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-28-nubia-p0110-pacific-stylus-capability-snapshot
 ```
 

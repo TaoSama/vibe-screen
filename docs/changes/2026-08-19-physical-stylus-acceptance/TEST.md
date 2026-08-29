@@ -16,7 +16,7 @@ evidence, but they do not close the gate.
 
 ## 2026-08-20 readiness result
 
-The target Android serial was recorded as `DEVICE_SERIAL`, which was previously
+The target Android serial was `<device-serial>`, which was previously
 identified in this change as nubia P0110 / pacific / Android 16 / SDK 36. This
 run did not execute ADB capability collection because
 `/tmp/vibe-screen-device-android.lock` already existed before the acceptance
@@ -62,7 +62,7 @@ Evidence:
 ## 2026-08-22 P0110 drawing-app closure attempt
 
 The latest `origin/main` snapshot at `ebd2e3a2` was rechecked on the same target
-device with explicit `adb -s DEVICE_SERIAL ...` commands. The device again
+serial with explicit `adb -s <device-serial> ...` commands. The device again
 identified as nubia P0110 / pacific / Android 16 / SDK 36, with no active
 device coordination lock. `dumpsys input` still exposes a pass-eligible
 `goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus
