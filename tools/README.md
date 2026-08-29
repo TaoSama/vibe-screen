@@ -101,9 +101,10 @@ Phase 5 signing prerequisite. It validates a sanitized JSON summary from an
 operator-controlled Xcode archive/signing check. It is read-only and does not
 run Xcode, install an app, use Simulator output, or operate any device. It exits
 `0` only when the summary records all signing prerequisites from a clean
-current-base commit: Team ID, provisioning profile UUID, unique bundle ID,
-non-ad-hoc codesign identity, registered physical-device UDID hashes, signed-app
-entitlements, signed artifact SHA-256, and retained local artifacts for the
+current-base commit: sanitized Team ID and provisioning profile UUID digests,
+unique bundle ID, sanitized non-ad-hoc codesign identity digest, registered
+physical-device UDID hashes, signed-app entitlement relationship checks, signed
+artifact SHA-256, and retained local artifacts for the
 archive command, codesign entitlements, and provisioning profile output.
 
 ```sh
