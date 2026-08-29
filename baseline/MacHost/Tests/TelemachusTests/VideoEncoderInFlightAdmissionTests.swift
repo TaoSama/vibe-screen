@@ -467,6 +467,45 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
     }
 
+    func testWarmupPumpAllowsNaturalCallbackBeforeForcingCompletion() {
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 1,
+            pollInterval: 0.1,
+            drainDelay: 0.5
+        )
+        var submittedFrames: [Int] = []
+        var retainedInFlight = 0
+        var callbacks = 0
+        var completionCallCount = 0
+        var currentTime = Date(timeIntervalSinceReferenceDate: 0)
+
+        let result = warmup.run(
+            availableCapacity: { max(0, 2 - retainedInFlight) },
+            callbackCount: { callbacks },
+            submitFrame: { index in
+                submittedFrames.append(index)
+                retainedInFlight += 1
+            },
+            completeFrames: {
+                completionCallCount += 1
+                return noErr
+            },
+            drainFrames: { 0 },
+            sleep: { interval in
+                currentTime = currentTime.addingTimeInterval(interval)
+                if !submittedFrames.isEmpty {
+                    callbacks = 1
+                }
+            },
+            now: { currentTime }
+        )
+
+        XCTAssertEqual(result, .init(submittedFrames: 2, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1])
+        XCTAssertEqual(completionCallCount, 0)
+    }
+
     func testWarmupPumpKeepsPumpingWhenCallbacksAreSlow() {
         let warmup = VideoEncoderSelfTest.WarmupPump(
             frameCount: 4,
@@ -987,6 +1026,21 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         VideoEncoderCallbackLifecycle.process(claimedFrame) { _ in }
         XCTAssertEqual(admission.snapshot, .init(inFlight: 0, capacity: 1))
         XCTAssertEqual(registry.count(owner: owner), 0)
+    }
+
+    func testSelfTestDrainReleasesAdmissionAndRequestsReplacementKeyframe() {
+        let encoder = VideoEncoder(width: 16, height: 16, codec: .h264)
+        XCTAssertFalse(encoder.hasPendingKeyframeRequest)
+        XCTAssertTrue(encoder.registerPendingFrameForSelfTest(timestamp: 42, sessionEpoch: 1))
+        XCTAssertEqual(encoder.runtimeStats.inFlight, 1)
+        XCTAssertEqual(encoder.runtimeStats.frameRegistryCount, 1)
+
+        XCTAssertEqual(encoder.drainPendingFramesForSelfTest(), 1)
+
+        XCTAssertTrue(encoder.hasPendingKeyframeRequest)
+        XCTAssertEqual(encoder.runtimeStats.inFlight, 0)
+        XCTAssertEqual(encoder.runtimeStats.frameRegistryCount, 1)
+        XCTAssertEqual(encoder.drainPendingFramesForSelfTest(), 0)
     }
 
     func testLateCallbackAfterTeardownIsNoOp() {
