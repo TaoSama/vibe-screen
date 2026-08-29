@@ -91,6 +91,7 @@
         "verdict",
         "signing_status",
         "signing_summary",
+        "readiness_requirements",
         "can_close_ios_app_signing_readiness",
         "can_close_ios_device_acceptance",
         "recorded_fields",
@@ -158,6 +159,66 @@
             "device_udid_hashes_recorded": {"type": "boolean"},
             "entitlements_recorded": {"type": "boolean"},
             "signed_artifact_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"}
+          }
+        },
+        "readiness_requirements": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "requirements",
+            "labels",
+            "all_requirements_recorded",
+            "simulator_build_used",
+            "unsigned_build_used",
+            "android_evidence_used"
+          ],
+          "properties": {
+            "status": {"enum": ["pass", "blocked", "fail"]},
+            "requirements": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "team_id",
+                "provisioning_profile",
+                "bundle_id",
+                "codesign_identity",
+                "device_udids",
+                "entitlements"
+              ],
+              "properties": {
+                "team_id": {"type": "boolean"},
+                "provisioning_profile": {"type": "boolean"},
+                "bundle_id": {"type": "boolean"},
+                "codesign_identity": {"type": "boolean"},
+                "device_udids": {"type": "boolean"},
+                "entitlements": {"type": "boolean"}
+              }
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "team_id",
+                "provisioning_profile",
+                "bundle_id",
+                "codesign_identity",
+                "device_udids",
+                "entitlements"
+              ],
+              "properties": {
+                "team_id": {"type": "string", "minLength": 1},
+                "provisioning_profile": {"type": "string", "minLength": 1},
+                "bundle_id": {"type": "string", "minLength": 1},
+                "codesign_identity": {"type": "string", "minLength": 1},
+                "device_udids": {"type": "string", "minLength": 1},
+                "entitlements": {"type": "string", "minLength": 1}
+              }
+            },
+            "all_requirements_recorded": {"type": "boolean"},
+            "simulator_build_used": {"const": false},
+            "unsigned_build_used": {"const": false},
+            "android_evidence_used": {"const": false}
           }
         },
         "can_close_ios_app_signing_readiness": {"type": "boolean"},

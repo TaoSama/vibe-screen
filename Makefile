@@ -267,6 +267,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-macos-startup-recovery-gate \
 	phase2-aggregate-owner \
 	ios-app-signing-readiness-gate \
+	ios-app-signing-current-base-gate \
 	ios-device-acceptance-gate \
 	ios-hdr-edr-gate \
 	ios-native-input-gate \
@@ -838,6 +839,8 @@ ios-app-signing-readiness-gate:
 		--readiness "$(IOS_APP_SIGNING_READINESS_JSON)" \
 		--evidence-root "$$(dirname "$(IOS_APP_SIGNING_READINESS_JSON)")" \
 		--output "$(IOS_APP_SIGNING_READINESS_GATE_JSON)"
+
+ios-app-signing-current-base-gate: ios-app-signing-readiness-gate
 
 define SOAK_RECIPE
 	mkdir -p $(EVIDENCE_DIR)/$@

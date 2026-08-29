@@ -136,6 +136,21 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
                 "signed_artifact_sha256": "3" * 64,
             },
         )
+        self.assertEqual(
+            result["readiness_requirements"]["requirements"],
+            {
+                "team_id": True,
+                "provisioning_profile": True,
+                "bundle_id": True,
+                "codesign_identity": True,
+                "device_udids": True,
+                "entitlements": True,
+            },
+        )
+        self.assertTrue(result["readiness_requirements"]["all_requirements_recorded"])
+        self.assertFalse(result["readiness_requirements"]["simulator_build_used"])
+        self.assertFalse(result["readiness_requirements"]["unsigned_build_used"])
+        self.assertFalse(result["readiness_requirements"]["android_evidence_used"])
         self.assertTrue(result["can_close_ios_app_signing_readiness"])
         self.assertFalse(result["can_close_ios_device_acceptance"])
         self.assertEqual(result["missing"], [])
