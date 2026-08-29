@@ -1490,7 +1490,9 @@ def login_headless_record(
             "startup_mode": settings.startup_mode,
             "has_completed_onboarding": settings.has_completed_onboarding,
             "display_source": settings.display_source,
-            "selected_display_uuid": settings.selected_display_uuid,
+            "selected_display_uuid": (
+                "<redacted-display-uuid>" if settings.selected_display_uuid else None
+            ),
             "selected_display_id": settings.selected_display_id,
             "stored_keys": list(settings.stored_keys),
             "defaults_used": list(settings.defaults_used),
