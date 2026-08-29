@@ -83,6 +83,14 @@ REQUIRED_ARTIFACT_MARKERS = {
     "codesign_entitlements": ("codesign", "entitlement"),
     "provisioning_profile": ("profile", "provision"),
 }
+READINESS_REQUIREMENT_LABELS = {
+    "team_id": "Apple Team ID recorded as a SHA-256 digest or local-only raw value",
+    "provisioning_profile": "provisioning profile UUID recorded as a SHA-256 digest or local-only raw value",
+    "bundle_id": "unique non-default iPhoneOS bundle identifier",
+    "codesign_identity": "non-ad-hoc Apple codesign identity recorded as a SHA-256 digest or local-only raw value",
+    "device_udids": "registered physical iPhone/iPad UDID hashes retained from the provisioning profile",
+    "entitlements": "signed-app entitlements match Team ID and bundle ID with a retained entitlement plist SHA-256",
+}
 
 
 class IOSAppSigningReadinessError(ValueError):
@@ -253,6 +261,26 @@ def _signing_summary(document: dict[str, Any], recorded_fields: dict[str, bool],
         "device_udid_hashes_recorded": recorded_fields["device_udid"],
         "entitlements_recorded": recorded_fields["entitlements"],
         "signed_artifact_sha256": signed_artifact_sha256,
+    }
+
+
+def _readiness_requirements(recorded_fields: dict[str, bool], verdict: str) -> dict[str, Any]:
+    requirements = {
+        "team_id": recorded_fields["team_id"],
+        "provisioning_profile": recorded_fields["provisioning_profile"],
+        "bundle_id": recorded_fields["bundle_id"],
+        "codesign_identity": recorded_fields["codesign_identity"],
+        "device_udids": recorded_fields["device_udid"],
+        "entitlements": recorded_fields["entitlements"],
+    }
+    return {
+        "status": PASS if verdict == PASS else verdict,
+        "requirements": requirements,
+        "labels": dict(READINESS_REQUIREMENT_LABELS),
+        "all_requirements_recorded": all(requirements.values()),
+        "simulator_build_used": False,
+        "unsigned_build_used": False,
+        "android_evidence_used": False,
     }
 
 
@@ -557,6 +585,7 @@ def evaluate(
         "verdict": verdict,
         "signing_status": signing_status,
         "signing_summary": _signing_summary(document, recorded_fields, verdict),
+        "readiness_requirements": _readiness_requirements(recorded_fields, verdict),
         "can_close_ios_app_signing_readiness": verdict == PASS,
         "can_close_ios_device_acceptance": False,
         "recorded_fields": recorded_fields,
