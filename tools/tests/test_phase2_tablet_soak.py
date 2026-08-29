@@ -43,7 +43,7 @@ def make_args(directory: Path, **overrides):
         "mode": "preflight",
         "allow_existing_device_lock": False,
         "device_class": "android_substitute",
-        "serial": "<redacted-adb-serial>",
+        "serial": "test-p0110-adb-serial",
         "adb": "adb",
         "adb_timeout": 1.0,
         "host_pid": None,
@@ -163,6 +163,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
             + ":06:18:16"
             + ":AA:FE:40"
         )
+        network_ip_value = "192" + ".168" + ".0" + ".2"
         raw = (
             "adb -s test-p0110-adb-serial shell getprop\n"
             f"{user_path}/Library/Android/sdk/platform-tools/adb\n"
@@ -171,8 +172,10 @@ class Phase2TabletSoakTests(unittest.TestCase):
             '{"password": "secret-password", "secret": "secret-json"}\n'
             "token%3Dsecret-url\n"
             "[net.hostname]: [lab-device-name]\n"
+            "[ro.vendor.emmc_sn]: [0xTESTEMMC]\n"
             f"[persist.sys.wifi.mac]: [{wifi_mac_value}]\n"
             f"[persist.vendor.qcom.bluetooth.fmd_header]: [{bluetooth_blob_value}]\n"
+            f"Host listened only on {network_ip_value}:54321\n"
         )
 
         sanitized = sanitize_text(raw, "test-p0110-adb-serial")
@@ -187,8 +190,10 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertIn('"secret": "<redacted-secret>"', sanitized)
         self.assertIn("token%3D<redacted-secret>", sanitized)
         self.assertIn("[net.hostname]: [<device-detail>]", sanitized)
+        self.assertIn("[ro.vendor.emmc_sn]: [<device-detail>]", sanitized)
         self.assertIn("[persist.sys.wifi.mac]: [<network-detail>]", sanitized)
         self.assertIn("[persist.vendor.qcom.bluetooth.fmd_header]: [<network-detail>]", sanitized)
+        self.assertIn("Host listened only on <network-detail>:54321", sanitized)
         self.assertNotIn("test-p0110-adb-serial", sanitized)
         self.assertNotIn(user_path, sanitized)
         self.assertNotIn(tcc_filename, sanitized)
@@ -196,8 +201,10 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertNotIn("secret-password", sanitized)
         self.assertNotIn("secret-url", sanitized)
         self.assertNotIn("lab-device-name", sanitized)
+        self.assertNotIn("0xTESTEMMC", sanitized)
         self.assertNotIn(wifi_mac_value, sanitized)
         self.assertNotIn(bluetooth_blob_value, sanitized)
+        self.assertNotIn(network_ip_value, sanitized)
 
     def test_generated_readme_names_readiness_close_contract(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -218,6 +225,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
             readme = (directory / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("phase2-soak-readiness.json", readme)
+        self.assertIn("- phase2-soak-readiness.json", readme)
         self.assertIn("can_close_phase2_gate=true", readme)
         self.assertNotIn("phase2-tablet-gate.json reports verdict=pass", readme)
         self.assertIn("APK identity is readiness-only blocker context", readme)
@@ -274,7 +282,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_device_lock_releases_owned_file_after_inner_lock_failure(self):
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
-            owner = {"pid": 123, "serial": "<redacted-adb-serial>"}
+            owner = {"pid": 123, "serial": "test-p0110-adb-serial"}
             android_lock = directory / "android.lock"
             soak_lock = directory / "soak.lock"
 
@@ -298,7 +306,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 patch("vibescreen_evidence.phase2_tablet_soak.SOAK_LOCK", soak_lock),
             ):
                 with self.assertRaises(FileExistsError):
-                    acquire_device_locks({"pid": 123, "serial": "<redacted-adb-serial>"})
+                    acquire_device_locks({"pid": 123, "serial": "test-p0110-adb-serial"})
 
             self.assertFalse(android_lock.exists())
             self.assertEqual(soak_lock.read_text(encoding="utf-8"), "owned by another run\n")
@@ -306,8 +314,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_with_precondition_blocker_does_not_start_soak(self):
         device_info = {
             "device": {
-                "adb_serial": "<redacted-adb-serial>",
-                "device_serial": "<redacted-adb-serial>",
+                "adb_serial": "test-p0110-adb-serial",
+                "device_serial": "test-p0110-adb-serial",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -335,8 +343,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_preflight_missing_apk_identity_blocks_but_still_runs_soak(self):
         device_info = {
             "device": {
-                "adb_serial": "<redacted-adb-serial>",
-                "device_serial": "<redacted-adb-serial>",
+                "adb_serial": "test-p0110-adb-serial",
+                "device_serial": "test-p0110-adb-serial",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -374,6 +382,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 self.assertTrue((directory / "apk-identity-missing.txt").exists())
                 self.assertFalse((directory / "apk-sha256.txt").exists())
                 manifest = json.loads((directory / "phase2-tablet-manifest.json").read_text(encoding="utf-8"))
+                persisted_readiness = json.loads((directory / "phase2-soak-readiness.json").read_text(encoding="utf-8"))
 
         self.assertEqual(readiness["result"], "blocked")
         self.assertIn("APK identity was not provided", "\n".join(readiness["blockers"]))
@@ -382,9 +391,12 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertEqual(manifest["android_artifact"]["identity_status"], "missing")
         self.assertEqual(manifest["session"]["duration_seconds"], 1)
         self.assertEqual(manifest["memory_sampling"]["minimum_duration_seconds"], 28800)
+        self.assertEqual(readiness["run_id"], manifest["run_id"])
+        self.assertEqual(persisted_readiness["run_id"], manifest["run_id"])
+        runner_class.assert_called_once()
+        self.assertEqual(runner_class.call_args.kwargs["run_id"], manifest["run_id"])
         self.assertIn("apk-identity-missing.txt", manifest["required_artifacts"])
         self.assertNotIn("apk-sha256.txt", manifest["required_artifacts"])
-        runner_class.assert_called_once()
 
     def test_preflight_public_artifacts_redact_serial_and_local_path(self):
         test_serial = "test-p0110-adb-serial"
@@ -481,8 +493,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_preflight_invalid_apk_sha256_blocks_without_sha_artifact(self):
         device_info = {
             "device": {
-                "adb_serial": "<redacted-adb-serial>",
-                "device_serial": "<redacted-adb-serial>",
+                "adb_serial": "test-p0110-adb-serial",
+                "device_serial": "test-p0110-adb-serial",
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -538,7 +550,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 }
                 exit_code = main([
                     "--serial",
-                    "<redacted-adb-serial>",
+                    "test-p0110-adb-serial",
                     "--output-dir",
                     str(directory),
                     "--mode",
@@ -592,8 +604,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_logcat_failure_blocks_and_skips_gate(self):
         device_info = {
             "device": {
-                "adb_serial": "<redacted-adb-serial>",
-                "device_serial": "<redacted-adb-serial>",
+                "adb_serial": "test-p0110-adb-serial",
+                "device_serial": "test-p0110-adb-serial",
                 "manufacturer": "test",
                 "model": "Tablet",
                 "codename": "tablet",
@@ -639,8 +651,8 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_formal_run_derives_gate_with_manifest_and_evidence_dir(self):
         device_info = {
             "device": {
-                "adb_serial": "<redacted-adb-serial>",
-                "device_serial": "<redacted-adb-serial>",
+                "adb_serial": "test-p0110-adb-serial",
+                "device_serial": "test-p0110-adb-serial",
                 "manufacturer": "test",
                 "model": "Tablet",
                 "codename": "tablet",
@@ -717,7 +729,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     main([
                         "--serial",
-                        "<redacted-adb-serial>",
+                        "test-p0110-adb-serial",
                         "--output-dir",
                         str(directory),
                         "--mode",
@@ -751,7 +763,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     main([
                         "--serial",
-                        "<redacted-adb-serial>",
+                        "test-p0110-adb-serial",
                         "--output-dir",
                         str(directory),
                         "--mode",
@@ -826,7 +838,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
     def test_device_lock_is_exclusive_and_releases_owned_file(self):
         with tempfile.TemporaryDirectory() as directory_name:
             path = Path(directory_name) / "device.lock"
-            owner = {"pid": 123, "serial": "<redacted-adb-serial>"}
+            owner = {"pid": 123, "serial": "test-p0110-adb-serial"}
 
             with DeviceLock(path, owner=owner):
                 self.assertTrue(path.exists())
