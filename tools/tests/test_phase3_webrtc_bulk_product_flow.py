@@ -106,6 +106,19 @@ def evidence_record(root: Path, name: str) -> dict[str, object]:
     return record
 
 
+def prerequisite_evidence_record(root: Path, name: str) -> dict[str, object]:
+    path = root / "release-prerequisites" / f"{name}.json"
+    write_json(
+        path,
+        {
+            "schema_version": SCHEMA_VERSION,
+            "kind": f"phase3_{name}_evidence",
+            "status": "pass",
+        },
+    )
+    return {"path": path.relative_to(root).as_posix(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 def complete_manifest(root: Path, *, commit: str = "a" * 40) -> dict[str, object]:
     manifest = default_manifest(source_commit=commit, tree_status="clean")
     manifest["evidence_context"].update({key: True for key in manifest["evidence_context"]})
@@ -116,7 +129,7 @@ def complete_manifest(root: Path, *, commit: str = "a" * 40) -> dict[str, object
         manifest["core_gates"][name]["evidence"] = [evidence_record(root, name)]
     for name in RELEASE_CHECKLIST:
         manifest["release_prerequisites"][name]["status"] = "pass"
-        manifest["release_prerequisites"][name]["evidence"] = [f"{name}.json"]
+        manifest["release_prerequisites"][name]["evidence"] = [prerequisite_evidence_record(root, name)]
     manifest["claims"]["internet_webrtc_bulk_file_transfer_product_flow"] = True
     return manifest
 
@@ -170,6 +183,32 @@ class Phase3WebrtcBulkProductFlowTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("blocked: bulk_file_transfer_product_flow", result["blockers"])
+
+    def test_truthy_disallowed_flag_cannot_pass_internet_bulk(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest["core_gates"]["bulk_file_transfer_product_flow"]["evidence"][0]["usb_lan_tcp"] = "true"
+
+            result = derive_gate(manifest, current_commit="a" * 40, tree_clean=True, evidence_root=root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = result["checks"]["bulk_file_transfer_product_flow"]
+        self.assertTrue(any("usb_lan_tcp evidence is disallowed" in item for item in gate["evidence"]))
+
+    def test_missing_release_prerequisite_artifact_blocks_child_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            prerequisite = manifest["release_prerequisites"]["network_handoff"]["evidence"][0]
+            (root / prerequisite["path"]).unlink()
+
+            result = derive_gate(manifest, current_commit="a" * 40, tree_clean=True, evidence_root=root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("blocked: release_prerequisite.network_handoff", result["blockers"])
+        checklist = result["closure_checklist"]["network_handoff"]
+        self.assertTrue(any("retained artifact path is missing" in item for item in checklist["evidence"]))
 
     def test_incomplete_bulk_direction_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

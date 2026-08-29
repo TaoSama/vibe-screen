@@ -340,10 +340,17 @@ def bulk_product_flow_gate() -> dict:
     return {
         "schema_version": "vibescreen.evidence/v1",
         "kind": "phase3_webrtc_bulk_product_flow_gate",
+        "generated_at": "2026-08-29T00:00:00Z",
         "verdict": "pass",
         "gate_closed": True,
         "can_close_public_internet_bulk_product_flow_gate": True,
         "gate_can_close_phase3_release": False,
+        "checks": {
+            "public_relay_webrtc_route": {"passed": True, "evidence": ["bulk-route.json"], "blocking": True},
+            "bulk_file_transfer_product_flow": {"passed": True, "evidence": ["bulk-transfer.json"], "blocking": True},
+            "bulk_backpressure_and_cleanup": {"passed": True, "evidence": ["bulk-cleanup.json"], "blocking": True},
+            "secure_record_layer": {"passed": True, "evidence": ["bulk-record-layer.json"], "blocking": True},
+        },
         "closure_checklist": {
             "relay_production_prerequisites": {"passed": True, "evidence": ["public-nat-turn-preflight.json"]},
             "real_capture_to_mediacodec": {"passed": True, "evidence": ["real-media-continuity.json"]},
@@ -360,6 +367,8 @@ def bulk_product_flow_gate() -> dict:
             "synthetic_evidence_do_not_close_gate": True,
             "public_output_sanitized": True,
         },
+        "blockers": [],
+        "interpretation": "Fixture child gate pass cannot directly close Phase 3 release.",
     }
 
 
@@ -800,6 +809,20 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
             "bulk product-flow closure_checklist.relay_production_prerequisites must pass",
             gate["reasons"],
         )
+
+    def test_bulk_product_flow_child_gate_missing_schema_field_blocks_release(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = bulk_product_flow_gate()
+            del report["generated_at"]
+            write_json(root / "webrtc-bulk-product-flow-gate.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_bulk_product_flow")
+        self.assertIn("bulk product-flow gate schema violation: $.generated_at is required", gate["reasons"])
 
     def test_datachannel_rejects_usb_lan_loopback_and_local_turn(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

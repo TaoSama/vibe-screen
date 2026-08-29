@@ -445,11 +445,11 @@ is only this child gate; the public Internet release gate remains separate.
 Use this gate for the narrower public Internet WebRTC file-transfer owner over
 vibescreen.bulk.v1:
 
-~~~sh
+```sh
 make phase3-webrtc-bulk-product-flow \
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
   PHASE3_WEBRTC_BULK_MANIFEST_JSON=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/webrtc-bulk-product-flow-manifest.json
-~~~
+```
 
 To create the default fail-closed baseline manifest first, run
 `make phase3-webrtc-bulk-product-flow-blocked-baseline`. A pass requires retained

@@ -198,6 +198,41 @@ def _artifact_path(root: Path | None, value: Any) -> Path | None:
     return resolved
 
 
+def _retained_artifact_record(record: dict[str, Any], source: str, evidence_root: Path | None) -> tuple[Path | None, list[str], list[str]]:
+    problems: list[str] = []
+    artifacts: list[str] = []
+    path = _artifact_path(evidence_root, record.get("path"))
+    if path is None or not path.is_file():
+        problems.append(f"{source} retained artifact path is missing or outside the evidence directory")
+    else:
+        artifacts.append(str(record.get("path")))
+    expected_sha = record.get("sha256")
+    if not isinstance(expected_sha, str) or SHA256_RE.fullmatch(expected_sha) is None:
+        problems.append(f"{source} retained artifact sha256 is missing or invalid")
+    elif path is not None and path.is_file() and _sha256(path).lower() != expected_sha.lower():
+        problems.append(f"{source} retained artifact sha256 does not match")
+    return path, problems, artifacts
+
+
+def _retained_artifact_list(value: Any, source: str, evidence_root: Path | None) -> tuple[list[str], list[str]]:
+    if not isinstance(value, list) or not value:
+        return [], [f"{source} retained evidence is required"]
+    problems: list[str] = []
+    artifacts: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            problems.append(f"{source}.evidence[{index}] must be an object with path and sha256")
+            continue
+        _path, item_problems, item_artifacts = _retained_artifact_record(
+            item,
+            f"{source}.evidence[{index}]",
+            evidence_root,
+        )
+        problems.extend(item_problems)
+        artifacts.extend(item_artifacts)
+    return artifacts, problems
+
+
 def _check(passed: bool, expected: str, *, evidence: Sequence[str] = (), blocking: bool = True) -> dict[str, Any]:
     return {"passed": passed, "expected": expected, "evidence": list(evidence), "blocking": blocking}
 
@@ -253,7 +288,7 @@ def _validate_artifact_metadata(record: dict[str, Any], source: str) -> list[str
         if record.get(field) is not True:
             problems.append(f"{source}.{field} must be true ({expected})")
     for field in DISALLOWED_EVIDENCE_FLAGS:
-        if record.get(field) is True:
+        if field in record and record.get(field) is not False:
             problems.append(f"{source}.{field} evidence is disallowed for this gate")
     if not _empty_marker_list(record.get("disallowed_markers")):
         problems.append(f"{source}.disallowed_markers must be empty")
@@ -346,16 +381,8 @@ def _validate_evidence_record(record: Any, *, evidence_root: Path | None) -> tup
     problems.extend(_file_transfer_flow_reasons(record, "manifest evidence"))
     problems.extend(_secure_record_reasons(record, "manifest evidence"))
 
-    path = _artifact_path(evidence_root, record.get("path"))
-    if path is None or not path.is_file():
-        problems.append("retained artifact path is missing or outside the evidence directory")
-    else:
-        artifacts.append(str(record.get("path")))
-    expected_sha = record.get("sha256")
-    if not isinstance(expected_sha, str) or SHA256_RE.fullmatch(expected_sha) is None:
-        problems.append("retained artifact sha256 is missing or invalid")
-    elif path is not None and path.is_file() and _sha256(path).lower() != expected_sha.lower():
-        problems.append("retained artifact sha256 does not match")
+    path, artifact_problems, artifacts = _retained_artifact_record(record, "manifest evidence", evidence_root)
+    problems.extend(artifact_problems)
     if path is not None and path.is_file():
         artifact = _load_json(path)
         problems.extend(_validate_artifact_metadata(artifact, "retained artifact"))
@@ -437,8 +464,16 @@ def derive_gate(
     closure_checklist: dict[str, dict[str, Any]] = {}
     for name, expected in RELEASE_CHECKLIST.items():
         item = _dict(release_prerequisites.get(name))
-        evidence = _string_list(item.get("evidence"))
-        closure_checklist[name] = _check(item.get("status") == PASS and bool(evidence), expected, evidence=evidence)
+        evidence, evidence_problems = _retained_artifact_list(
+            item.get("evidence"),
+            f"release_prerequisite.{name}",
+            evidence_root,
+        )
+        closure_checklist[name] = _check(
+            item.get("status") == PASS and not evidence_problems,
+            expected,
+            evidence=evidence + evidence_problems,
+        )
 
     checks["claim_bulk_file_transfer"] = _check(
         claims.get("internet_webrtc_bulk_file_transfer_product_flow") is True,

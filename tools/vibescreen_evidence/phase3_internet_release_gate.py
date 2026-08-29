@@ -75,6 +75,9 @@ REQUIRED_RAW_ARTIFACTS = (
     "datachannel-record-layer.json",
     "webrtc-bulk-product-flow-gate.json",
 )
+WEBRTC_BULK_PRODUCT_FLOW_GATE_SCHEMA = (
+    Path(__file__).resolve().parents[1] / "schemas" / "phase3-webrtc-bulk-product-flow-gate.schema.json"
+)
 
 BUILD_SIGNING_PATTERNS = (
     re.compile(r"TeamIdentifier=\S+", re.IGNORECASE),
@@ -327,6 +330,72 @@ def _status_from_json(document: dict[str, Any] | None) -> str | None:
         return None
     value = document.get("verdict", document.get("status", document.get("result")))
     return value if isinstance(value, str) else None
+
+
+def _schema_type_matches(value: Any, expected_type: Any) -> bool:
+    if isinstance(expected_type, list):
+        return any(_schema_type_matches(value, item) for item in expected_type)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return True
+
+
+def _validate_schema_node(value: Any, node: dict[str, Any], root_schema: dict[str, Any], path: str) -> list[str]:
+    reasons: list[str] = []
+    reference = node.get("$ref")
+    if isinstance(reference, str):
+        if not reference.startswith("#/$defs/"):
+            return [f"{path} schema reference is unsupported"]
+        target = root_schema.get("$defs", {}).get(reference.removeprefix("#/$defs/"))
+        if not isinstance(target, dict):
+            return [f"{path} schema reference is missing"]
+        return _validate_schema_node(value, target, root_schema, path)
+    if "const" in node and value != node["const"]:
+        reasons.append(f"{path} must be {node['const']!r}")
+    enum = node.get("enum")
+    if isinstance(enum, list) and value not in enum:
+        reasons.append(f"{path} must be one of {enum!r}")
+    expected_type = node.get("type")
+    if expected_type is not None and not _schema_type_matches(value, expected_type):
+        reasons.append(f"{path} must be {expected_type}")
+        return reasons
+    if expected_type == "object" and isinstance(value, dict):
+        required = node.get("required")
+        if isinstance(required, list):
+            for key in required:
+                if isinstance(key, str) and key not in value:
+                    reasons.append(f"{path}.{key} is required")
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            for key, child in properties.items():
+                if key in value and isinstance(child, dict):
+                    reasons.extend(_validate_schema_node(value[key], child, root_schema, f"{path}.{key}"))
+    if expected_type == "array" and isinstance(value, list):
+        item_schema = node.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                reasons.extend(_validate_schema_node(item, item_schema, root_schema, f"{path}[{index}]"))
+    return reasons
+
+
+def _schema_reasons(document: Any, schema_path: Path, label: str) -> list[str]:
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [f"{label} schema could not be loaded: {error}"]
+    if not isinstance(schema, dict):
+        return [f"{label} schema must be an object"]
+    return [f"{label} schema violation: {reason}" for reason in _validate_schema_node(document, schema, schema, "$")]
 
 
 def _string_or_none(value: Any) -> str | None:
@@ -640,6 +709,7 @@ def _bulk_product_flow_gate(root: Path, path: Path | None) -> dict[str, Any]:
             reasons=[error],
         )
     reasons: list[str] = []
+    reasons.extend(_schema_reasons(document, WEBRTC_BULK_PRODUCT_FLOW_GATE_SCHEMA, "bulk product-flow gate"))
     if (document or {}).get("schema_version") != SCHEMA_VERSION:
         reasons.append(f"bulk product-flow schema_version must be {SCHEMA_VERSION}")
     if (document or {}).get("kind") != "phase3_webrtc_bulk_product_flow_gate":
