@@ -32,6 +32,8 @@ STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG ?=
 STYLUS_HOST_READY_ARG ?=
 ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
 ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
+ANDROID_AUDIO_READINESS_LOGCAT_LINES ?= 2000
+ANDROID_AUDIO_READINESS_MAX_LOG_BYTES ?= 262144
 HARMONY_AVCODEC_HDC_TARGET ?=
 HARMONY_AVCODEC_HAP ?=
 PHASE2_DEVICE_CLASS ?=
@@ -229,6 +231,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
+	android-audio-current-base-readiness \
 	android-audio-playback-gate \
 	android-audio-playback-owner-record \
 	native-pointer-hid-acceptance \
@@ -480,6 +483,7 @@ baseline-macos-self-test: baseline-macos-build
 		"$$host_bin" --transport-self-test; \
 		"$$host_bin" --reliability-self-test; \
 		"$$host_bin" --protocol-v1-self-test; \
+		"$$host_bin" --audio-capture-self-test; \
 		"$$host_bin" --video-encoder-self-test; \
 		"$$host_bin" --phase3-real-media-self-test
 
@@ -670,6 +674,16 @@ physical-stylus-acceptance: require-evidence-serial
 physical-stylus-gate:
 	@test -f "$(EVIDENCE_DIR)/stylus-evidence.json" || (echo "error: collect $(EVIDENCE_DIR)/stylus-evidence.json before physical-stylus-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.stylus "$(EVIDENCE_DIR)/stylus-evidence.json" --output "$(EVIDENCE_DIR)/stylus-summary.json" --require-pass
+
+android-audio-current-base-readiness: require-evidence-serial
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/android_audio_current_base_readiness.py \
+		--serial "$(EVIDENCE_SERIAL)" \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		--package "$(EVIDENCE_PACKAGE)" \
+		--port "$(EVIDENCE_PORT)" \
+		--logcat-lines "$(ANDROID_AUDIO_READINESS_LOGCAT_LINES)" \
+		--max-log-bytes "$(ANDROID_AUDIO_READINESS_MAX_LOG_BYTES)"
 
 android-audio-playback-gate:
 	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-gate" >&2; exit 2)
