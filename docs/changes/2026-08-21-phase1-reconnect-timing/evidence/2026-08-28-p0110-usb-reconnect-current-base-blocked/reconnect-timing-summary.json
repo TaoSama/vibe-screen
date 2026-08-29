@@ -10,13 +10,13 @@
   "attempts": [],
   "blocked_reasons": [
     "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
-    "Installed Host lacks source commit/tree provenance for current source commit 083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443",
+    "Installed Host lacks source commit/tree provenance for current source commit b59d4049cfb4a596e72e73a208d1e39fd3868502",
     "TCC permissions could not be verified read-only for the installed Host"
   ],
   "can_close_requested_scope": false,
   "can_close_timing_gate": false,
   "device": {
-    "target": "Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B"
+    "target": "nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B"
   },
   "full_gate_missing_disruptions": [
     "client-kill",
@@ -31,11 +31,11 @@
   "host": {},
   "kind": "reconnect_timing_gate",
   "missing_required_disruptions": [],
-  "notes": "Current-base blocked readiness refresh after rebasing PR #390 onto origin/main b697ddae169bb40328a7c4cb8ba92231210c12bf; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 703f96fae3536fed2216bcae6cae0a7e71bf0158; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
     "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
-    "Installed Host lacks source commit/tree provenance for current source commit 083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443",
+    "Installed Host lacks source commit/tree provenance for current source commit b59d4049cfb4a596e72e73a208d1e39fd3868502",
     "TCC permissions could not be verified read-only for the installed Host"
   ],
   "required_disruptions": [
@@ -43,7 +43,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "6d0df51c-1d43-418b-bc79-536a9c21ad9c",
+  "run_id": "fb1a1b9e-27e6-45e4-b7b3-4ff3a33260af",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"

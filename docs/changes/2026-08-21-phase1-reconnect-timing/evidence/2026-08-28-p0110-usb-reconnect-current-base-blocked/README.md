@@ -6,12 +6,12 @@ not be used to close the README gate.
 
 ## Target
 
-- Device target: Nubia P0110 / pacific / Android 16 / SDK 36 / `EP0110PZ0B9110300B`
+- Device target: nubia P0110 / pacific / Android 16 / SDK 36 / `EP0110PZ0B9110300B`
 - Gate profile: `phase1-reconnect-within-3s`
 - Required full-gate disruption scenarios: `client-kill`,
   `adb-reverse-disconnect`, and `lan-network-interrupt`
-- Current source commit: `083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443`, based
-  on latest `origin/main` commit `b697ddae169bb40328a7c4cb8ba92231210c12bf`
+- Current source commit: `b59d4049cfb4a596e72e73a208d1e39fd3868502`, based
+  on latest `origin/main` commit `703f96fae3536fed2216bcae6cae0a7e71bf0158`
 
 ## Readiness observations
 
@@ -32,7 +32,7 @@ source-bound stable Host prerequisite was not satisfied:
 - The configured `Vibe Screen Dev` signing identity could not be resolved from
   the current keychain for rebuilding a source-bound Host.
 - The installed Host has no source commit/tree provenance, so it cannot be tied
-  to current source commit `083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443`.
+  to current source commit `b59d4049cfb4a596e72e73a208d1e39fd3868502`.
 - TCC Screen Recording and Accessibility could not be verified read-only for the
   installed Host because the user and system TCC database reads failed.
 

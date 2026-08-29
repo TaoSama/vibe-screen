@@ -1,16 +1,17 @@
 # Commands
 git fetch origin main codex/p0110-usb-reconnect-current-base
-git rebase origin/main
-git worktree add --detach .build/reconnect-source-v18-083e8f4ee-1787957538 083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443
+git reset --hard origin/codex/p0110-usb-reconnect-current-base
+git merge --no-edit origin/main
+git worktree add --detach .build/reconnect-source-v21-b59d4049c-<timestamp> b59d4049cfb4a596e72e73a208d1e39fd3868502
 pgrep -x sfltool || true
-git -C .build/reconnect-source-v18-083e8f4ee-1787957538 rev-parse HEAD
-git -C .build/reconnect-source-v18-083e8f4ee-1787957538 rev-parse origin/main
-git -C .build/reconnect-source-v18-083e8f4ee-1787957538 status --short --branch
-make -C .build/reconnect-source-v18-083e8f4ee-1787957538 evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
+git rev-parse HEAD
+git rev-parse origin/main
+git status --short --branch
+make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 adb -s EP0110PZ0B9110300B reverse --list
 adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
 adb -s EP0110PZ0B9110300B shell dumpsys window
 lsof -nP -iTCP:54321 -sTCP:LISTEN
-make -C .build/reconnect-source-v18-083e8f4ee-1787957538 baseline-macos-host-readiness EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+make -C .build/reconnect-source-v21-b59d4049c-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
 make evidence-reconnect-timing-blocked EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked ...
 pgrep -x sfltool || true

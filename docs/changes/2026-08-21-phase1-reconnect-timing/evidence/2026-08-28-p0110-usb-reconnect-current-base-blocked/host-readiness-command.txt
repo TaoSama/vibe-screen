@@ -1,7 +1,7 @@
-mkdir -p /Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
+mkdir -p /Users/luwentao/Workspaces/dotfiles/codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 python3 scripts/macos_dev_host.py readiness \
-		--report /Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt \
-		--json-output /Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json \
+		--report /Users/luwentao/Workspaces/dotfiles/codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt \
+		--json-output /Users/luwentao/Workspaces/dotfiles/codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json \
 		--port 54321 \
 
 {
@@ -26,7 +26,7 @@ python3 scripts/macos_dev_host.py readiness \
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-28T22:52:50.202425+00:00",
+  "generated_at": "2026-08-29T00:28:02.417289+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [
@@ -36,9 +36,9 @@ python3 scripts/macos_dev_host.py readiness \
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
     "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
     "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
-    "current_source_commit": "083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443",
+    "current_source_commit": "b59d4049cfb4a596e72e73a208d1e39fd3868502",
     "current_source_dirty": false,
-    "current_source_tree": "da9cb78fd686e54f745355a8d9ac38bfcf9894bb",
+    "current_source_tree": "ee4ad8660f85e33dd8e231240b2e528bb80841cb",
     "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
     "identifier": "dev.telemachus.display",
     "identity": "Vibe Screen Dev",
@@ -166,6 +166,6 @@ python3 scripts/macos_dev_host.py readiness \
   "status": "blocked",
   "virtual_hid_status": "blocked"
 }
-Wrote /Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt
-Wrote /Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json
+Wrote /Users/luwentao/Workspaces/dotfiles/codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt
+Wrote /Users/luwentao/Workspaces/dotfiles/codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json
 make: *** [baseline-macos-host-readiness] Error 2

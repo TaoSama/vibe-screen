@@ -23,8 +23,8 @@ trusted-LAN encrypted record path and rule out legacy plaintext fallback.
 Current-base reconnect matrix owner evidence is under
 [`evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked`](evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
 It records the latest `origin/main`-based worktree state at
-current source commit `083e8f4ee189ac86e7dbd97b72ed1e32a3c1e443`, based on
-`origin/main` commit `b697ddae169bb40328a7c4cb8ba92231210c12bf`. The P0110 target identity was
+current source commit `b59d4049cfb4a596e72e73a208d1e39fd3868502`, based on
+`origin/main` commit `703f96fae3536fed2216bcae6cae0a7e71bf0158`. The P0110 target identity was
 confirmed as nubia P0110 / pacific / Android 16 / SDK 36, ADB reverse still
 showed `tcp:54321 tcp:54321`, and the Host now had a TCP `54321` listener,
 but the real USB timing attempts were blocked before disruption because the
