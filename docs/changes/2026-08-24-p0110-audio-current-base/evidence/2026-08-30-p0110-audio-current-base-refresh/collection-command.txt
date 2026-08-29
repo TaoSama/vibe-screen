@@ -1,0 +1,1 @@
+python3.11 scripts/android_audio_current_base_readiness.py --serial <ANDROID_SERIAL> --evidence-dir docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-30-p0110-audio-current-base-refresh --package dev.telemachus.display --port 54321 --logcat-lines 2000 --max-log-bytes 262144

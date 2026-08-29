@@ -1,0 +1,5 @@
+$ /usr/sbin/lsof -nP -iTCP:54321 -sTCP:LISTEN
+exit=1
+--- stdout ---
+
+--- stderr ---
