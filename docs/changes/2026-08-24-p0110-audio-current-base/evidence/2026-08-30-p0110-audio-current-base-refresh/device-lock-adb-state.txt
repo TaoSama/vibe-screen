@@ -1,0 +1,5 @@
+$ adb -s <ANDROID_SERIAL> get-state
+exit=0
+--- stdout ---
+device
+--- stderr ---

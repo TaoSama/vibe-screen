@@ -1,0 +1,14 @@
+VSAudioConfig
+VSAudioConfigResult
+audioConfig
+audioConfigResult
+AudioConfigResult referenced an unknown audio stream.
+AudioConfigResult does not match the pending configuration.
+audio_capture_stopped
+audio_frame_encode_failed
+audio_send_failed
+audio_capture_start_failed
+audio_capture_started
+audio_capture_failed
+vibescreen.protocol.v1.AudioConfig
+vibescreen.protocol.v1.AudioConfigResult
