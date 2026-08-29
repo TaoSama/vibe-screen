@@ -82,19 +82,20 @@ Evidence:
 
 ## 2026-08-29 P0110 current-base fail-closed refresh
 
-The latest `origin/main` snapshot at `71541c6` was rechecked with one online
-Android device and explicit `adb -s DEVICE_SERIAL ...` collector calls. The
-device identified as nubia P0110 / pacific / Android 16 / SDK 36. No device
-coordination lock was present. The collector again found one pass-eligible
-`goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS`
-plus pressure, orientation, tilt, X, and Y axes. No physical stylus drawing was
-performed, no stable signed/TCC-ready Host preflight was supplied, no Host
-`Stylus injected:` observation window was retained, and no visible macOS
-drawing-app output was captured. The generated `stylus-summary.json` reports
-`verdict=blocked` and `can_close_physical_stylus_gate=false`, so the README
-drawing-app gate remains open. The refreshed collector also redacts raw Android
-window tokens, IPv4 addresses, and URL-style secrets before writing evidence
-artifacts.
+The device collection snapshot at `757e5cc` was rechecked with one online
+Android device and explicit `adb -s DEVICE_SERIAL ...` collector calls. The PR
+branch was later rebased onto `origin/main` at `6fe5b9c`; that rebase did not
+add a new physical-stylus drawing attempt. The device identified as nubia P0110
+/ pacific / Android 16 / SDK 36. No device coordination lock was present. The
+collector again found one pass-eligible `goodix_stylus_input` candidate
+declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure, orientation, tilt, X,
+and Y axes. No physical stylus drawing was performed, no stable
+signed/TCC-ready Host preflight was supplied, no Host `Stylus injected:`
+observation window was retained, and no visible macOS drawing-app output was
+captured. The generated `stylus-summary.json` reports `verdict=blocked` and
+`can_close_physical_stylus_gate=false`, so the README drawing-app gate remains
+open. The refreshed collector also redacts raw Android window tokens, IPv4
+addresses, and URL-style secrets before writing evidence artifacts.
 
 Evidence:
 
