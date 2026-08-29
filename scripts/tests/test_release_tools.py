@@ -1232,7 +1232,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             errors=["cannot verify TCC permissions read-only: unable to open database file"],
         )
 
-        self.assertIn("(TCC rows unavailable; one or more databases could not be read)", report)
+        self.assertIn("(TCC rows unavailable: unable to open database file)", report)
         self.assertNotIn("(no matching rows)", report)
 
 

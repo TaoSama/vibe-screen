@@ -1134,7 +1134,7 @@ def format_report(
     rows = "\n".join(format_permission_row(row) for row in permissions.rows)
     if not rows:
         if permissions.error:
-            rows = "(TCC rows unavailable; one or more databases could not be read)"
+            rows = f"(TCC rows unavailable: {permissions.error})"
         else:
             rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
