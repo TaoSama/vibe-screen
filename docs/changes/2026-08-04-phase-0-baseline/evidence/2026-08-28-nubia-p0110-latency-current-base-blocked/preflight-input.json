@@ -1,0 +1,54 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-28-nubia-p0110-latency-current-base-blocked",
+  "gate_profiles": [
+    {
+      "profile": "usb-glass-to-glass-sub50",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": true,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "usb_transport_ready": false
+      }
+    },
+    {
+      "profile": "lan-glass-to-glass-sub80",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": true,
+        "external_camera_timebase_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "lan_transport_ready": false
+      }
+    },
+    {
+      "profile": "input-p95-sub50",
+      "checks": {
+        "device_identity_recorded": true,
+        "host_build_identity_recorded": true,
+        "measurement_timebase_ready": false,
+        "sample_annotations_retained": false,
+        "minimum_sample_count_ready": false,
+        "formal_manifest_retained": false,
+        "physical_input_actuation_ready": false,
+        "visible_mac_input_result_ready": false
+      }
+    }
+  ],
+  "notes": [
+    "The connected device identity was refreshed as nubia P0110 / pacific / Android 16 / SDK 36.",
+    "Current Mac host and installed Host binary identity were recorded for this preflight.",
+    "USB reverse and a local Host listener were visible during this preflight, but no formal active-stream latency package was retained.",
+    "The device wlan0 interface reported NO-CARRIER/state DOWN, so no trusted-LAN stream or LAN latency capture was available.",
+    "No external-camera or optical single-timebase package is retained for USB or LAN glass-to-glass latency.",
+    "No synchronized-clock input package with sub-5 ms total error budget is retained for input latency.",
+    "Unsynchronized host/client telemetry, decoder timings, RTT, screenshots, and ADB-generated input remain diagnostics only and cannot close these gates."
+  ]
+}
