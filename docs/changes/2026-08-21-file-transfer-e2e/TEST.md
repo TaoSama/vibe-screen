@@ -133,6 +133,16 @@ saved remote file, positive session epoch, final SHA-256 equality, and
 cancel/cleanup evidence. Nubia P0110 evidence must remain labeled as nubia
 P0110 / pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi.
 
+The retained `file-transfer-product-e2e.json` must include both
+`android_to_macos_file_transfer` and `macos_to_android_file_transfer`. Each
+direction must include evidence-relative `retained_artifacts` entries for
+`sender_action`, `receiver_approval`, `protocol_packets`, `remote_file`, and
+`sha256_verification`; the files must exist under the same evidence bundle.
+The `cancel_cleanup` block must similarly retain `cancel_request` and
+`cleanup_state` artifacts. Absolute paths, `..` escapes, symlink escapes outside
+the bundle, missing artifact files, offline fixtures, and synthetic logs cannot
+close the gate.
+
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
 identity matched nubia P0110 / pacific / Android 16 / SDK 36 and ADB reverse
