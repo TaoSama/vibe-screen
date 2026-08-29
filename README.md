@@ -1113,7 +1113,7 @@ returned `insufficient`. That record is retained under
 [2026-08-23-nubia-p0110-usb-current-base](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
 A 2026-08-24 follow-up on the same P0110 observed an already-running
 `/Applications/Vibe Screen.app` USB/loopback session at PR head `d2b9698f`: the
-Host listened only on `127.0.0.1:54321`, ADB reverse provided
+Host listened only on `<network-detail>:54321`, ADB reverse provided
 `UsbFfs tcp:54321 tcp:54321`, and the read-only USB smoke collector returned
 `pass` with current-process `stream_stats`, first output frame, and continuing
 decoder counters. That record is retained under

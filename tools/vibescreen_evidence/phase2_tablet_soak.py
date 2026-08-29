@@ -101,6 +101,10 @@ SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"\b(?:[0-9A-Fa-f]{2}:){5,}[0-9A-Fa-f]{2}\b"),
         REDACTED_NETWORK_DETAIL,
     ),
+    (
+        re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+        REDACTED_NETWORK_DETAIL,
+    ),
 )
 
 

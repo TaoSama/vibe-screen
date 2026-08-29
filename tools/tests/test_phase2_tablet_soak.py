@@ -163,6 +163,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
             + ":06:18:16"
             + ":AA:FE:40"
         )
+        network_ip_value = "192" + ".168" + ".0" + ".2"
         raw = (
             "adb -s test-p0110-adb-serial shell getprop\n"
             f"{user_path}/Library/Android/sdk/platform-tools/adb\n"
@@ -174,6 +175,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
             "[ro.vendor.emmc_sn]: [0xTESTEMMC]\n"
             f"[persist.sys.wifi.mac]: [{wifi_mac_value}]\n"
             f"[persist.vendor.qcom.bluetooth.fmd_header]: [{bluetooth_blob_value}]\n"
+            f"Host listened only on {network_ip_value}:54321\n"
         )
 
         sanitized = sanitize_text(raw, "test-p0110-adb-serial")
@@ -191,6 +193,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertIn("[ro.vendor.emmc_sn]: [<device-detail>]", sanitized)
         self.assertIn("[persist.sys.wifi.mac]: [<network-detail>]", sanitized)
         self.assertIn("[persist.vendor.qcom.bluetooth.fmd_header]: [<network-detail>]", sanitized)
+        self.assertIn("Host listened only on <network-detail>:54321", sanitized)
         self.assertNotIn("test-p0110-adb-serial", sanitized)
         self.assertNotIn(user_path, sanitized)
         self.assertNotIn(tcc_filename, sanitized)
@@ -201,6 +204,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
         self.assertNotIn("0xTESTEMMC", sanitized)
         self.assertNotIn(wifi_mac_value, sanitized)
         self.assertNotIn(bluetooth_blob_value, sanitized)
+        self.assertNotIn(network_ip_value, sanitized)
 
     def test_generated_readme_names_readiness_close_contract(self):
         with tempfile.TemporaryDirectory() as directory_name:
