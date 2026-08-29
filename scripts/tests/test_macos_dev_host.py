@@ -1380,7 +1380,9 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
         self.assertTrue(status.observed)
         self.assertIn("<redacted-user>", status.output)
+        self.assertIn("<redacted-ipv4>:54321", status.output)
         self.assertNotIn("localuser", status.output)
+        self.assertNotIn("127." + "0.0.1", status.output)
 
     def test_readiness_command_writes_source_bound_blocked_json_when_identity_and_bundle_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1474,8 +1476,8 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 document["login_headless"]["login_item"]["detail"],
                 macos_dev_host.LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
             )
-            self.assertIn("--include-login-item-diagnostic", document["login_headless"]["login_item"]["detail"])
             self.assertIn("probe not run", document["login_headless"]["login_item"]["detail"])
+            self.assertNotIn("sfltool", document["login_headless"]["login_item"]["detail"])
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
             login_probe.assert_not_called()
             run_best_effort_mock.assert_not_called()

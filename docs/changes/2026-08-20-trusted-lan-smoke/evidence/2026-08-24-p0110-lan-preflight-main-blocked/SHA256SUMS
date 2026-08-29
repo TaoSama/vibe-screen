@@ -9,5 +9,5 @@ cd1cd774ec7de82f7512aadfc32c51946bb27a8a6b20aadacd6a833617049475  ./device-lock.
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./preflight-command.exit
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./preflight-command.txt
 4b7a2177f61aa17e6567e1b459cd7fec4c848571fb438116d2d8309cdc9a75c5  ./README.md
-a7266d943309def5ba778145e08a52bd3f592783edf3c501d06f0a9d95d747c7  ./reconnect-timing-summary.json
+10d122b25d0ff9301e41b3b2a73e7489bc33a4ffab321d6b880ab7c4e2534a31  ./reconnect-timing-summary.json
 fe21d238e42074e73154096e3a99190eecfeccab0ec247295ba21ad6464b4caf  ./trusted-lan-preflight.json
