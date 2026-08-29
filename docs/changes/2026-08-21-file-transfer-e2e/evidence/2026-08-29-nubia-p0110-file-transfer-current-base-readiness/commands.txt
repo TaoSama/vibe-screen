@@ -1,0 +1,17 @@
+# Commands
+
+    pgrep -x sfltool || true
+    git fetch origin main
+    git switch -c codex/file-transfer-current-base-readiness
+    make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness EVIDENCE_PORT=54321
+    make evidence-usb-smoke-preflight EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL EVIDENCE_DIR=docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness EVIDENCE_EXPECTED_MANUFACTURER=nubia EVIDENCE_EXPECTED_MODEL=P0110 EVIDENCE_EXPECTED_DEVICE=pacific EVIDENCE_EXPECTED_ANDROID_RELEASE=16 EVIDENCE_EXPECTED_SDK=36
+    cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebugAndroidTest :app:installDebug :app:installDebugAndroidTest
+    adb -s REDACTED_P0110_USB_SERIAL shell am instrument -w -e class dev.telemachus.display.ControlBarLayoutInstrumentedTest#fileTransferControlPreservesTouchTargetsWhenVisible,dev.telemachus.display.ControlBarLayoutInstrumentedTest#productionApplierCoversStackedColumnAndHiddenSelectorBoundaries dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+    make file-transfer-android-smoke EVIDENCE_DIR=docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness
+    cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.hostFileOfferAcceptsBulkChunksAndCompletesStagedFile --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.clientFileOfferSendsBulkChunksAndReportsCompletion --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.fileOfferReturnsFalseWhenCapabilityNotNegotiatedWithoutWireMessage
+    make protocol-tests
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_file_transfer_android_smoke -v
+    pgrep -x sfltool || true
+
+No /usr/bin/sfltool dumpbtm command was run. The raw USB serial and local home
+paths are redacted from the retained public evidence.

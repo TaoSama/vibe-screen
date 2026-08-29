@@ -288,6 +288,37 @@ native-pointer, stylus, or controller gates. Nubia P0110/pacific output includes
 a label guard that keeps `recorded_as_fuxi=false` and scopes the result to a
 general Android substitute.
 
+### File-transfer Android product E2E gate
+
+The Protocol v1 Android/macOS single-file transfer gate is fail-closed. Collect
+the current evidence bundle with:
+
+```bash
+make file-transfer-android-smoke \
+  EVIDENCE_DIR=.build/evidence/file-transfer-android-smoke
+```
+
+The gate writes `file-transfer-android-smoke-gate.json` and exits `0` for a
+machine-readable blocked readiness record unless
+`FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS=1` is set. A passing record requires
+all of the following from one current run: a stable-signed, TCC-ready Host
+readiness pass; either USB or trusted-LAN real transport readiness; an Android
+file-transfer instrumentation log with `OK`; and `file-transfer-product-e2e.json`
+proving Android -> macOS and macOS -> Android product transfers with
+file-offer/request/content packets, explicit sender action, receiver approval,
+saved remote file, positive session epoch, final SHA-256 equality, and
+cancel/cleanup evidence.
+
+Offline protocol/JVM tests, Android control-bar instrumentation, synthetic JSON,
+or a live stream without retained file-transfer product evidence cannot close
+this gate. Nubia P0110 evidence may be used for general Android readiness only
+when it stays labeled nubia P0110 / pacific / Android 16 / SDK 36 and is not
+relabeled as Xiaomi 13/fuxi.
+
+The current 2026-08-29 P0110 current-base readiness record is intentionally
+blocked under
+`docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/`.
+
 ### macOS Host compatibility matrix gate
 
 The macOS compatibility matrix is hardware-gated. A row can close only for the
