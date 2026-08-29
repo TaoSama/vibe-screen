@@ -1,0 +1,168 @@
+{
+  "android_artifact": {
+    "apk_sha256": null,
+    "identity_status": "missing"
+  },
+  "command": [
+    "/opt/homebrew/opt/python@3.11/bin/python3.11",
+    "-m",
+    "vibescreen_evidence.phase2_tablet_soak",
+    "--serial",
+    "<device-serial>",
+    "--output-dir",
+    "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base",
+    "--mode",
+    "preflight",
+    "--package",
+    "dev.telemachus.display",
+    "--device-class",
+    "android_substitute",
+    "--stand-setup",
+    "bench substitute phone, no 8-9 inch tablet stand",
+    "--charger",
+    "USB-C charger observed for readiness smoke",
+    "--cable-or-dock",
+    "USB-C data cable",
+    "--transport",
+    "usb",
+    "--video-preferences",
+    "preflight only",
+    "--host-identity",
+    "Darwin arm64",
+    "--host-build",
+    "not stable-signed formal Host for 8h gate",
+    "--gate-owners",
+    "stand_mounted_charging=phase2-device-environment,thermal_power_sampling=phase2-device-environment,posture_and_mount=phase2-device-environment,eight_hour_sustained_stream=phase2-tablet-gate",
+    "--duration",
+    "8h",
+    "--preflight-duration",
+    "2s",
+    "--interval",
+    "1s",
+    "--thermal-limit-status",
+    "2"
+  ],
+  "created_at": "2026-08-28T22:54:25.236052+00:00",
+  "device": {
+    "device_class": "android_substitute",
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "<device-serial>",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "codename": "pacific",
+      "device_serial": "<device-serial>",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": 36
+    },
+    "tablet_size_inches": null
+  },
+  "gate_owners": {
+    "eight_hour_sustained_stream": "phase2-tablet-gate",
+    "posture_and_mount": "phase2-device-environment",
+    "stand_mounted_charging": "phase2-device-environment",
+    "thermal_power_sampling": "phase2-device-environment"
+  },
+  "host": {
+    "build": "not stable-signed formal Host for 8h gate",
+    "identity": "Darwin arm64"
+  },
+  "kind": "phase2_tablet_sustained_use_manifest",
+  "limitations": [
+    "This manifest is preparation metadata and does not close the Phase 2 gate without raw physical-device evidence.",
+    "Nubia P0110/pacific/Android 16 may be recorded as a general Android substitute only and must not be relabeled as Xiaomi 13/fuxi or as 8-9 inch tablet evidence.",
+    "The recorded device class is not a physical 8-9 inch tablet, so this manifest cannot close the tablet hardware gate."
+  ],
+  "memory_sampling": {
+    "android_pss_source": "ADB dumpsys meminfo app TOTAL PSS",
+    "host_pid": null,
+    "host_rss_source": "soak --host-pid sampling via ps -o rss=",
+    "minimum_duration_seconds": 28800,
+    "require_host_pid": false,
+    "required_fields": [
+      "device.memory.app_total_pss_kb",
+      "host.rss_kb",
+      "device.battery.level",
+      "device.battery.status",
+      "device.thermal.status"
+    ],
+    "sample_interval_seconds": 1
+  },
+  "notes": null,
+  "physical_setup": {
+    "ambient_temperature_celsius": null,
+    "cable_or_dock": "USB-C data cable",
+    "charger": "USB-C charger observed for readiness smoke",
+    "stand_setup": "bench substitute phone, no 8-9 inch tablet stand"
+  },
+  "recovery_scenarios": [],
+  "repository": {
+    "dirty": true,
+    "revision": "b697ddae169bb40328a7c4cb8ba92231210c12bf",
+    "status_porcelain": [
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/adb-battery-before.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/adb-power-before.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/android-pid.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/apk-identity-missing.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/build.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/device-info.json",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/device.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/host.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/thermal-before.err",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/thermal-before.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/wm-density.txt",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/wm-size.txt"
+    ]
+  },
+  "required_artifacts": [
+    "README.md",
+    "phase2-soak-readiness.json",
+    "phase2-tablet-manifest.json",
+    "device-info.json",
+    "device.txt",
+    "host.txt",
+    "build.txt",
+    "apk-identity-missing.txt",
+    "soak-preflight/samples.jsonl",
+    "soak-preflight/summary.json",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-before.err",
+    "thermal-after.txt",
+    "thermal-after.err",
+    "raw-logcat.txt",
+    "reconnects.log",
+    "frame-drops.log",
+    "decoder-telemetry.jsonl"
+  ],
+  "required_gates": [
+    "physical_8_9_inch_tablet",
+    "stand_mounted_charging",
+    "portrait_landscape_ui",
+    "physical_stylus",
+    "hardware_keyboard",
+    "thermal_power_sampling",
+    "device_memory_sampling",
+    "foreground_background_recovery",
+    "transport_reconnect_recovery",
+    "login_startup_or_headless_recovery",
+    "eight_hour_sustained_stream"
+  ],
+  "run_id": "a806aebd-2fb3-45d0-94b5-5cbc90d16a1b",
+  "schema_version": "vibescreen.evidence/v1",
+  "session": {
+    "duration_seconds": 2,
+    "sample_interval_seconds": 1,
+    "transport": "usb",
+    "video_preferences": "preflight only"
+  },
+  "thresholds": {
+    "battery_temperature_limit_celsius": null,
+    "maximum_net_battery_drain_percent": null,
+    "thermal_limit_status": 2
+  }
+}
