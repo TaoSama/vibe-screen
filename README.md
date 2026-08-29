@@ -191,7 +191,8 @@ versions.
 
 ### Clients
 
-- Android uses Kotlin, Compose, and MediaCodec.
+- Android currently uses Kotlin, XML Views/ViewBinding, and MediaCodec;
+  Compose remains the target direction for UI work.
 - HarmonyOS NEXT uses ArkTS, ArkUI, and native hardware decoding APIs.
 - iOS uses SwiftUI and VideoToolbox.
 - Android and iOS currently use native Kotlin and Swift implementations backed
@@ -509,14 +510,17 @@ evidence, while the input-latency gate requires external-camera evidence or a
 documented synchronized-clock setup with a reviewable sub-5 ms total error
 budget. The gate profiles are `usb-glass-to-glass-sub50`,
 `lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
-are diagnostic only and cannot close these gates. As of the 2026-08-24 Nubia
+are diagnostic only and cannot close these gates. As of the 2026-08-28 Nubia
 P0110/pacific reconnect timing current-base owner record, the formal
 `phase1-reconnect-within-3s` summary remains blocked before any disruption
-scenario because the Host has no TCP `54321` listener, stable Host signing is
-unavailable, and the P0110 has no Wi-Fi association or wlan0 route for the
-trusted-LAN interruption scenario. That record has `can_close_timing_gate=false`
+scenario. The P0110 kept the USB reverse mapping, but no Host TCP `54321`
+listener was observed. Source-bound stable Host evidence is still blocked by
+the missing configured `Vibe Screen Dev` signing identity, failed installed
+Host codesign inspection, missing source commit/tree provenance, unverified
+read-only TCC authorization, missing virtual-HID entitlement, and unverified
+login/headless readiness. That record has `can_close_timing_gate=false`
 and does not close the three-second reconnect gate; see
-[the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
+[the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
 As of the 2026-08-28 Nubia P0110/pacific latency preflight, the toolchain has
 formal manifest/checker coverage for external-camera packages and
 synchronized-clock input packages,
