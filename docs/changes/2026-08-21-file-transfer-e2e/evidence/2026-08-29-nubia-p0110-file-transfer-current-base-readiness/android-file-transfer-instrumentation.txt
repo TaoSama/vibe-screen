@@ -1,0 +1,6 @@
+
+dev.telemachus.display.ControlBarLayoutInstrumentedTest:..
+
+Time: 0.613
+
+OK (2 tests)

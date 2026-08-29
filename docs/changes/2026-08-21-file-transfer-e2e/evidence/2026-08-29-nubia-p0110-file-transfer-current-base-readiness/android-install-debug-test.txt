@@ -1,0 +1,10 @@
+# Android install summary
+
+Command: cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebugAndroidTest :app:installDebug :app:installDebugAndroidTest
+
+Result: exit 0; Gradle reported BUILD SUCCESSFUL in 3m 55s and installed the
+debug app plus Android test package on the connected nubia P0110 / pacific /
+Android 16 / SDK 36 device.
+
+The original command output included local build-cache paths and is intentionally
+not retained in this public evidence bundle.
