@@ -840,8 +840,8 @@ precheck found no `sfltool` process, and the run did not execute `sfltool
 dumpbtm` or any login-item opt-in diagnostic.
 
 The connected Android device was sampled only under the
-`/tmp/vibe-screen-android-EP0110PZ0B9110300B.lock` lease, and every ADB command
-used the explicit P0110 serial before the public evidence was redacted. The
+serial-scoped Android device lease, and every ADB command used an explicit P0110
+device selector before the public evidence was redacted. The
 device identified as nubia P0110 / pacific / Android 16 / SDK 36, the Android
 packages were installed, and `adb reverse --list` retained
 `UsbFfs tcp:54321 tcp:54321`. No install, launch, force-stop, reverse mutation,
@@ -885,7 +885,7 @@ listener was observed on TCP `54321`, but that does not satisfy the native HID
 runtime prerequisites.
 
 The native pointer collector was invoked with the explicit serial-scoped
-`adb -s EP0110PZ0B9110300B` endpoint, but it found the shared
+`adb -s <android-device>` endpoint, but it found the shared
 `/tmp/vibe-screen-device-android.lock` coordination lock before running ADB and
 wrote `status=blocked_device_coordination_lock`. The latest collector result
 therefore does not re-collect device identity, input inventory, Android logs,
