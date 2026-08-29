@@ -270,11 +270,44 @@ def build_result_status(build_result: CommandResult | None) -> str:
     return "fail"
 
 
-def repository_state(root: Path) -> RepositoryState:
+def status_path(line: str) -> str:
+    if len(line) < 4:
+        return line.strip()
+    path = line[3:]
+    if " -> " in path:
+        path = path.rsplit(" -> ", 1)[1]
+    return path.strip().strip('"')
+
+
+def ignored_status_line(line: str, ignored_paths: list[Path]) -> bool:
+    path = status_path(line)
+    return any(path == ignored.as_posix() or path.startswith(f"{ignored.as_posix()}/") for ignored in ignored_paths)
+
+
+def relative_ignored_paths(root: Path, ignore_paths: list[Path]) -> list[Path]:
+    root = root.resolve()
+    relative_paths: list[Path] = []
+    for ignore_path in ignore_paths:
+        resolved = (root / ignore_path).resolve() if not ignore_path.is_absolute() else ignore_path.resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            continue
+        if str(relative) != ".":
+            relative_paths.append(relative)
+    return relative_paths
+
+
+def repository_state(root: Path, *, ignore_paths: list[Path] | None = None) -> RepositoryState:
     commit = run_command(["git", "rev-parse", "HEAD"], cwd=root).stdout.strip()
     tree = run_command(["git", "rev-parse", "HEAD^{tree}"], cwd=root).stdout.strip()
     porcelain = run_command(["git", "status", "--porcelain"], cwd=root).stdout
-    return RepositoryState(commit, tree, "clean" if not porcelain.strip() else "dirty", porcelain)
+    lines = [line for line in porcelain.splitlines() if line.strip()]
+    ignored_paths = relative_ignored_paths(root, ignore_paths or [])
+    if ignored_paths:
+        lines = [line for line in lines if not ignored_status_line(line, ignored_paths)]
+    filtered_porcelain = "\n".join(lines) + ("\n" if lines else "")
+    return RepositoryState(commit, tree, "clean" if not lines else "dirty", filtered_porcelain)
 
 
 def first_existing(paths: Iterable[Path]) -> Path | None:
@@ -869,7 +902,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         app_dir = args.app_dir if args.app_dir.is_absolute() else repo_root / args.app_dir
         hap_path = args.hap if args.hap.is_absolute() else repo_root / args.hap
         sha256sums_path = args.sha256sums if args.sha256sums.is_absolute() else repo_root / args.sha256sums
-        repository = repository_state(repo_root)
+        repository = repository_state(repo_root, ignore_paths=[args.evidence_dir])
         toolchain = collect_toolchain(app_dir, args)
         build_result = run_release_build(app_dir, args.run_build)
         signing = collect_signing(app_dir, args.signature_certificate, args.signature_certificate_sha256)
