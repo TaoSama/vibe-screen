@@ -400,10 +400,11 @@ class Phase2TabletSoakTests(unittest.TestCase):
 
     def test_preflight_public_artifacts_redact_serial_and_local_path(self):
         test_serial = "test-p0110-adb-serial"
+        test_device_serial = "test-p0110-real-device-serial"
         device_info = {
             "device": {
                 "adb_serial": test_serial,
-                "device_serial": test_serial,
+                "device_serial": test_device_serial,
                 "manufacturer": "nubia",
                 "model": "P0110",
                 "codename": "pacific",
@@ -441,7 +442,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                                 "device": {
                                     "identity": {
                                         "adb_serial": test_serial,
-                                        "device_serial": test_serial,
+                                        "device_serial": test_device_serial,
                                     }
                                 }
                             },
@@ -454,14 +455,23 @@ class Phase2TabletSoakTests(unittest.TestCase):
                         json.dumps(
                             {
                                 "status": "complete",
-                                "configuration": {"serial": test_serial},
+                                "configuration": {
+                                    "serial": test_serial,
+                                    "device_serial": test_device_serial,
+                                },
                             },
                             sort_keys=True,
                         )
                         + "\n",
                         encoding="utf-8",
                     )
-                    return {"status": "complete", "configuration": {"serial": test_serial}}
+                    return {
+                        "status": "complete",
+                        "configuration": {
+                            "serial": test_serial,
+                            "device_serial": test_device_serial,
+                        },
+                    }
 
                 runner_class.return_value.run.side_effect = fake_run
 
@@ -474,6 +484,7 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 device_info_written = json.loads((directory / "device-info.json").read_text(encoding="utf-8"))
                 readme = (directory / "README.md").read_text(encoding="utf-8")
                 soak_summary = (directory / "soak-preflight" / "summary.json").read_text(encoding="utf-8")
+                soak_samples = (directory / "soak-preflight" / "samples.jsonl").read_text(encoding="utf-8")
 
         serialized_evidence = json.dumps(
             {
@@ -482,12 +493,16 @@ class Phase2TabletSoakTests(unittest.TestCase):
                 "device_info": device_info_written,
                 "readme": readme,
                 "soak_summary": soak_summary,
+                "soak_samples": soak_samples,
             },
             sort_keys=True,
         )
         self.assertEqual(manifest["device"]["identity"]["adb_serial"], "<device-serial>")
+        self.assertEqual(manifest["device"]["identity"]["device_serial"], "<device-serial>")
         self.assertEqual(device_info_written["device"]["adb_serial"], "<device-serial>")
+        self.assertEqual(device_info_written["device"]["device_serial"], "<device-serial>")
         self.assertNotIn(test_serial, serialized_evidence)
+        self.assertNotIn(test_device_serial, serialized_evidence)
         self.assertNotIn("/Users/example", serialized_evidence)
 
     def test_preflight_invalid_apk_sha256_blocks_without_sha_artifact(self):
