@@ -37,14 +37,46 @@ def _run(command: Sequence[str], cwd: Path | None = None) -> str:
         raise ManifestError(
             f"{shlex.join(command)} exited with {result.returncode}: {detail}"
         )
-    return result.stdout.strip()
+    return result.stdout.rstrip("\n")
 
 
-def repository_state(repo: Path) -> dict[str, Any]:
+def _status_path(line: str) -> str:
+    if len(line) < 4:
+        return line.strip()
+    path = line[3:]
+    if " -> " in path:
+        path = path.rsplit(" -> ", 1)[1]
+    return path.strip().strip('"')
+
+
+def _ignored_status_line(line: str, ignored_paths: Sequence[Path]) -> bool:
+    path = _status_path(line)
+    return any(path == ignored.as_posix() or path.startswith(f"{ignored.as_posix()}/") for ignored in ignored_paths)
+
+
+def _relative_ignored_paths(repo: Path, ignore_paths: Sequence[Path]) -> list[Path]:
+    repo_root = repo.resolve()
+    relative_paths: list[Path] = []
+    for ignore_path in ignore_paths:
+        resolved = (repo_root / ignore_path).resolve() if not ignore_path.is_absolute() else ignore_path.resolve()
+        try:
+            relative = resolved.relative_to(repo_root)
+        except ValueError:
+            continue
+        if str(relative) != ".":
+            relative_paths.append(relative)
+    return relative_paths
+
+
+def repository_state(repo: Path, *, ignore_paths: Sequence[Path] = ()) -> dict[str, Any]:
     inside = _run(["git", "rev-parse", "--is-inside-work-tree"], repo)
     if inside != "true":
         raise ManifestError(f"not a Git work tree: {repo}")
     status = _run(["git", "status", "--porcelain=v1", "--untracked-files=all"], repo)
+    ignored_paths = _relative_ignored_paths(repo, ignore_paths)
+    status_lines = [line for line in status.splitlines() if line.strip()]
+    if ignored_paths:
+        status_lines = [line for line in status_lines if not _ignored_status_line(line, ignored_paths)]
     try:
         revision_result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -59,8 +91,8 @@ def repository_state(repo: Path) -> dict[str, Any]:
     revision = revision_result.stdout.strip() if revision_result.returncode == 0 else "UNBORN"
     return {
         "revision": revision,
-        "dirty": bool(status),
-        "status_porcelain": status.splitlines(),
+        "dirty": bool(status_lines),
+        "status_porcelain": status_lines,
     }
 
 

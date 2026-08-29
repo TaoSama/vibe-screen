@@ -1,0 +1,2 @@
+error: toolchain.deveco_studio_version: blocked placeholder is not evidence
+make: *** [harmony-device-gate] Error 1
