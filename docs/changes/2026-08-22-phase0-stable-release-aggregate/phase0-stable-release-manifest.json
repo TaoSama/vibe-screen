@@ -84,12 +84,17 @@
       "evidence_paths": [
         "README.md",
         "docs/runbook/macos-host-compatibility.md",
-        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json"
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/README.md"
       ],
       "owner_prs": [],
       "blockers": [
-        "The latest macOS hardware compatibility gate summary is blocked readiness, not a current-real-device compatibility matrix pass.",
-        "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row evidence before support claims."
+        "The published current-base macos-hardware-compatibility-gate summaries for Mac16,8 readiness are blocked, not passing.",
+        "Stable signing/TCC proof, source-bound installed Host provenance, full macOS checks, packaged runtime launch, Protocol v1 stream, input smoke, and reconnect evidence are missing for that row.",
+        "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row passing evidence before support claims."
       ]
     },
     {
