@@ -191,7 +191,8 @@ versions.
 
 ### Clients
 
-- Android uses Kotlin, Compose, and MediaCodec.
+- Android currently uses Kotlin, XML Views/ViewBinding, and MediaCodec;
+  Compose remains the target direction for UI work.
 - HarmonyOS NEXT uses ArkTS, ArkUI, and native hardware decoding APIs.
 - iOS uses SwiftUI and VideoToolbox.
 - Android and iOS currently use native Kotlin and Swift implementations backed
