@@ -1,9 +1,6 @@
 # Commands
 git fetch origin main codex/p0110-usb-reconnect-current-base
-git switch --detach origin/codex/p0110-usb-reconnect-current-base
 git merge --no-edit origin/main
-git branch -f codex/p0110-usb-reconnect-current-base HEAD
-git switch codex/p0110-usb-reconnect-current-base
 pgrep -x sfltool || true
 git rev-parse HEAD
 git rev-parse origin/main
@@ -13,7 +10,7 @@ adb -s EP0110PZ0B9110300B reverse --list
 adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
 adb -s EP0110PZ0B9110300B shell dumpsys window
 lsof -nP -iTCP:54321 -sTCP:LISTEN
-git worktree add --detach .build/reconnect-source-ce6d1a763-<timestamp> ce6d1a763179a46ae3598d71a92e10e9647aa4d9
-make -C .build/reconnect-source-ce6d1a763-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=$REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+git worktree add --detach .build/reconnect-source-1f572c3aa-<timestamp> 1f572c3aa0fcbc558683feb94b33525e6a688a23
+make -C .build/reconnect-source-1f572c3aa-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=$REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
 python3 - <<'PY'  # summarize blocked reconnect timing record from host-readiness.json
 pgrep -x sfltool || true

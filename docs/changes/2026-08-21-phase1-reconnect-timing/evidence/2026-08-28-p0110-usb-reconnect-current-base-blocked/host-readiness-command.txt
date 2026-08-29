@@ -1,3 +1,41 @@
+Preparing worktree (detached HEAD 1f572c3aa)
+Updating files:  67% (2407/3578)
+Updating files:  68% (2434/3578)
+Updating files:  69% (2469/3578)
+Updating files:  70% (2505/3578)
+Updating files:  71% (2541/3578)
+Updating files:  72% (2577/3578)
+Updating files:  73% (2612/3578)
+Updating files:  74% (2648/3578)
+Updating files:  75% (2684/3578)
+Updating files:  76% (2720/3578)
+Updating files:  77% (2756/3578)
+Updating files:  78% (2791/3578)
+Updating files:  79% (2827/3578)
+Updating files:  80% (2863/3578)
+Updating files:  81% (2899/3578)
+Updating files:  82% (2934/3578)
+Updating files:  83% (2970/3578)
+Updating files:  84% (3006/3578)
+Updating files:  85% (3042/3578)
+Updating files:  86% (3078/3578)
+Updating files:  87% (3113/3578)
+Updating files:  88% (3149/3578)
+Updating files:  89% (3185/3578)
+Updating files:  90% (3221/3578)
+Updating files:  91% (3256/3578)
+Updating files:  92% (3292/3578)
+Updating files:  93% (3328/3578)
+Updating files:  94% (3364/3578)
+Updating files:  95% (3400/3578)
+Updating files:  96% (3435/3578)
+Updating files:  97% (3471/3578)
+Updating files:  98% (3507/3578)
+Updating files:  99% (3543/3578)
+Updating files: 100% (3578/3578)
+Updating files: 100% (3578/3578), done.
+HEAD is now at 1f572c3aa Merge remote-tracking branch 'origin/main' into codex/p0110-usb-reconnect-current-base
+make -C .build/reconnect-source-1f572c3aa-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=$REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
 mkdir -p $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 python3 scripts/macos_dev_host.py readiness \
 		--report $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt \
@@ -26,16 +64,16 @@ python3 scripts/macos_dev_host.py readiness \
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-29T03:48:15.075046+00:00",
+  "generated_at": "2026-08-29T04:18:53.280763+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [],
     "binary_sha256": null,
     "cdhash": null,
     "certificate_sha1": null,
-    "current_source_commit": "ce6d1a763179a46ae3598d71a92e10e9647aa4d9",
+    "current_source_commit": "1f572c3aa0fcbc558683feb94b33525e6a688a23",
     "current_source_dirty": false,
-    "current_source_tree": "3f02830e1d7a5c82c5e580f4af2df65fe5edd120",
+    "current_source_tree": "b8f103cd8e60b420ae3890eeb7ce03ba512e597c",
     "designated_requirement": null,
     "identifier": null,
     "identity": null,
@@ -168,3 +206,4 @@ python3 scripts/macos_dev_host.py readiness \
 Wrote $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt
 Wrote $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json
 make: *** [baseline-macos-host-readiness] Error 2
+make_exit=2

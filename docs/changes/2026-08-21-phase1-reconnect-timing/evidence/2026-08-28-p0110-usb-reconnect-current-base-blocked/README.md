@@ -10,8 +10,8 @@ not be used to close the README gate.
 - Gate profile: `phase1-reconnect-within-3s`
 - Required full-gate disruption scenarios: `client-kill`,
   `adb-reverse-disconnect`, and `lan-network-interrupt`
-- Current source commit: `ce6d1a763179a46ae3598d71a92e10e9647aa4d9`, based
-  on latest `origin/main` commit `07bb40e18074fd737c4a70714b4faf4499ea64ab`
+- Current source commit: `1f572c3aa0fcbc558683feb94b33525e6a688a23`, based
+  on latest `origin/main` commit `9e6621b7194bf5aa051a07944afb6e2b1ccf2232`
 
 ## Readiness observations
 

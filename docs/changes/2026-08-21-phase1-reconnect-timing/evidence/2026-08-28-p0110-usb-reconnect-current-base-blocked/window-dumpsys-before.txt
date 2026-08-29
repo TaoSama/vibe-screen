@@ -1,9 +1,8 @@
 # Redacted excerpt from: adb -s EP0110PZ0B9110300B shell dumpsys window
 # Purpose: retain only foreground-window readiness context for dev.telemachus.display.
 
-mCurrentFocus=Window{<redacted-window-id> u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
-mFocusedApp=ActivityRecord{<redacted-activity-id> u0 dev.telemachus.display/.MainActivity t<redacted-task-id>}
-mFocusedWindow=Window{<redacted-window-id> u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
-mTopFullscreenOpaqueWindowState=Window{<redacted-window-id> u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
-Task{<redacted-task-id> type=standard A=10301:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
-ActivityRecord{<redacted-activity-id> u0 dev.telemachus.display/.MainActivity t<redacted-task-id>}
+mCurrentFocus=Window{<redacted-window-id> 73a75ce u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+mFocusedApp=ActivityRecord{<redacted-activity-id> 241006275 u0 dev.telemachus.display/.MainActivity t<redacted-task-id>}
+mFocusedWindow=Window{<redacted-window-id> 73a75ce u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+mTopFullscreenOpaqueWindowState=Window{<redacted-window-id> 73a75ce u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+ActivityRecord{<redacted-activity-id> 241006275 u0 dev.telemachus.display/.MainActivity t<redacted-task-id>}

@@ -34,7 +34,7 @@
   "host": {},
   "kind": "reconnect_timing_gate",
   "missing_required_disruptions": [],
-  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 07bb40e18074fd737c4a70714b4faf4499ea64ab; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 9e6621b7194bf5aa051a07944afb6e2b1ccf2232; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
     "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
@@ -48,7 +48,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "dc8599e3-453a-4b10-8473-23cf5b21a8ea",
+  "run_id": "6c9f88f4-8284-4d6b-ba8e-5682c659f2fa",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"
