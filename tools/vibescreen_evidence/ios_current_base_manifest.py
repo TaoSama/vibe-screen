@@ -105,6 +105,26 @@ DEFAULT_LIMITATIONS = [
 
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+NATIVE_INPUT_REDACTED_PATH = "ios-native-input-gate.json"
+NATIVE_INPUT_REDACTED_METADATA = {
+    "field": "native_input_gate",
+    "reason": "public native-input gate metadata contained unsafe text and was redacted",
+}
+NATIVE_INPUT_SENSITIVE_TEXT_PATTERNS = (
+    re.compile(r"\b" + "8a" + "023e3a" + r"\b", re.IGNORECASE),
+    re.compile(r"\bEP[0-9A-Z]{16}\b"),
+    re.compile(r"(?:^|/)Users/[^/\s]+", re.IGNORECASE),
+    re.compile(r"(?:^|/)home/[^/\s]+", re.IGNORECASE),
+    re.compile(r"[A-Za-z]:\\Users\\[^\s]+", re.IGNORECASE),
+    re.compile(r"^(?:~|\$HOME)(?:/|\\)", re.IGNORECASE),
+    re.compile(r"Application Support/com\.apple\.TCC", re.IGNORECASE),
+    re.compile(r"\bTCC\.db\b", re.IGNORECASE),
+    re.compile(r"\b(?:private|secret)[_-]?key(?:\b|[_.-])", re.IGNORECASE),
+    re.compile(r"\b(?:api|access|refresh|session)[_-]?(?:key|token|secret|id)(?:\b|[_.-])", re.IGNORECASE),
+    re.compile(r"\b(?:token|secret|password|passwd|credential|credentials)\s*[:=]", re.IGNORECASE),
+    re.compile(r"\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_]{8,}", re.IGNORECASE),
+)
 
 
 def _utc_timestamp() -> str:
@@ -157,6 +177,110 @@ def _ensure_source_docs(repo: Path, source_docs: Sequence[str]) -> list[str]:
     if missing:
         raise ManifestError("missing source document(s): " + ", ".join(missing))
     return list(source_docs)
+
+
+def _contains_disallowed_native_input_text(value: Any) -> bool:
+    if isinstance(value, str):
+        return any(
+            pattern.search(value)
+            for pattern in NATIVE_INPUT_SENSITIVE_TEXT_PATTERNS
+        )
+    if isinstance(value, dict):
+        return any(_contains_disallowed_native_input_text(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_disallowed_native_input_text(item) for item in value)
+    return False
+
+
+def _native_input_path_reference(path: Path | None, repo: Path | None) -> str | None:
+    if path is None:
+        return None
+    if _native_input_path_is_unsafe(path, repo):
+        return NATIVE_INPUT_REDACTED_PATH
+    candidate = path
+    if candidate.is_absolute() and repo is not None:
+        try:
+            candidate = candidate.resolve().relative_to(repo.resolve())
+        except ValueError:
+            return NATIVE_INPUT_REDACTED_PATH
+    text = candidate.as_posix()
+    if _contains_disallowed_native_input_text(text):
+        return NATIVE_INPUT_REDACTED_PATH
+    return text
+
+
+def _native_input_path_is_unsafe(path: Path | None, repo: Path | None) -> bool:
+    if path is None:
+        return False
+    candidate = path
+    if ".." in candidate.parts:
+        return True
+    if candidate.is_absolute():
+        if repo is None:
+            return True
+        try:
+            candidate = candidate.resolve().relative_to(repo.resolve())
+        except ValueError:
+            return True
+    return _contains_disallowed_native_input_text(candidate.as_posix())
+
+
+def _sanitize_native_input_list(value: Any, field: str) -> tuple[list[Any], list[dict[str, str]]]:
+    if not isinstance(value, list):
+        return [], []
+    sanitized: list[Any] = []
+    redactions: list[dict[str, str]] = []
+    for item in value:
+        if _contains_disallowed_native_input_text(item):
+            redactions.append({**NATIVE_INPUT_REDACTED_METADATA, "source_field": field})
+        else:
+            sanitized.append(item)
+    return sanitized, redactions
+
+
+def _sanitize_native_input_artifact_paths(value: Any) -> tuple[list[str], list[dict[str, str]]]:
+    if not isinstance(value, list):
+        return [], []
+    sanitized: list[str] = []
+    redactions: list[dict[str, str]] = []
+    for artifact in value:
+        if not isinstance(artifact, str) or not artifact.strip():
+            continue
+        artifact_path = Path(artifact)
+        if (
+            artifact_path.is_absolute()
+            or ".." in artifact_path.parts
+            or _contains_disallowed_native_input_text(artifact)
+        ):
+            redactions.append({**NATIVE_INPUT_REDACTED_METADATA, "source_field": "artifact_paths"})
+            continue
+        sanitized.append(artifact)
+    return sanitized, redactions
+
+
+def _native_input_observation_failures(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["ios native-input gate observations must be an object"]
+    failures: list[str] = []
+    for field, requirement in ios_native_input.REQUIRED_FIELDS:
+        if value.get(field) is not True:
+            failures.append(
+                f"ios native-input gate observation {field} must be true: {requirement}"
+            )
+    for field, reason in ios_native_input.DISALLOWED_EVIDENCE_FIELDS.items():
+        if value.get(field) is not False:
+            failures.append(
+                f"ios native-input gate observation {field} must be false: {reason}"
+            )
+    return failures
+
+
+def _canonical_native_input_observations(value: Any) -> dict[str, bool]:
+    observations = value if isinstance(value, dict) else {}
+    return {
+        field: observations.get(field) is True
+        for field in ios_native_input.BOOLEAN_FIELDS
+    }
 
 
 def _signing_probe() -> dict[str, Any]:
@@ -317,6 +441,7 @@ def _default_native_input_gate(
     *,
     provided: bool = False,
     path: Path | None = None,
+    repo: Path | None = None,
     reasons: Sequence[str] | None = None,
     failures: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
@@ -330,7 +455,7 @@ def _default_native_input_gate(
     ]
     return {
         "provided": provided,
-        "path": str(path) if path is not None else None,
+        "path": _native_input_path_reference(path, repo),
         "owner": None,
         "current_base": None,
         "kind": NATIVE_INPUT_KIND,
@@ -370,49 +495,59 @@ def _current_base_for_native_input(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
+def _load_native_input_gate(
+    path: Path | None, repository: dict[str, Any], repo: Path | None = None
+) -> dict[str, Any]:
     if path is None:
         return _default_native_input_gate()
+    path_reference = _native_input_path_reference(path, repo)
+    path_redactions = (
+        [{**NATIVE_INPUT_REDACTED_METADATA, "source_field": "path"}]
+        if _native_input_path_is_unsafe(path, repo)
+        else []
+    )
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return _default_native_input_gate(
             provided=True,
             path=path,
-            reasons=[f"ios native-input gate unreadable: {error}"],
+            repo=repo,
+            reasons=["ios native-input gate is unreadable"],
+            failures=path_redactions,
         )
     if not isinstance(document, dict):
         return _default_native_input_gate(
             provided=True,
             path=path,
+            repo=repo,
             reasons=["ios native-input gate must be a JSON object"],
+            failures=path_redactions,
         )
 
     owner = document.get("owner") if isinstance(document.get("owner"), dict) else {}
     current_base = _current_base_for_native_input(document)
-    artifact_paths = document.get("artifact_paths")
-    safe_artifact_paths = (
-        artifact_paths
-        if isinstance(artifact_paths, list)
-        and artifact_paths
-        and all(isinstance(artifact, str) and artifact.strip() for artifact in artifact_paths)
-        else []
+    safe_artifact_paths, artifact_redactions = _sanitize_native_input_artifact_paths(
+        document.get("artifact_paths")
     )
-    missing = (
-        document.get("missing_requirements")
-        if isinstance(document.get("missing_requirements"), list)
-        else []
+    missing, missing_redactions = _sanitize_native_input_list(
+        document.get("missing_requirements"), "missing_requirements"
     )
-    blocking_reasons = (
-        document.get("blocking_reasons")
-        if isinstance(document.get("blocking_reasons"), list)
-        else []
+    blocking_reasons, blocking_redactions = _sanitize_native_input_list(
+        document.get("blocking_reasons"), "blocking_reasons"
     )
-    disallowed_evidence = (
-        document.get("disallowed_evidence")
-        if isinstance(document.get("disallowed_evidence"), list)
-        else []
+    disallowed_evidence, disallowed_redactions = _sanitize_native_input_list(
+        document.get("disallowed_evidence"), "disallowed_evidence"
     )
+    metadata_redactions = [
+        *path_redactions,
+        *artifact_redactions,
+        *missing_redactions,
+        *blocking_redactions,
+        *disallowed_redactions,
+    ]
+    observations = _canonical_native_input_observations(document.get("observations"))
+    observation_failures = _native_input_observation_failures(document.get("observations"))
 
     gate_commit = current_base.get("commit") if isinstance(current_base, dict) else None
     repository_revision = repository.get("revision") if isinstance(repository, dict) else None
@@ -436,6 +571,8 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         and owner.get("repository") == REPOSITORY_FULL_NAME
         and current_base_matches
         and bool(safe_artifact_paths)
+        and not metadata_redactions
+        and not observation_failures
         and document.get("requires_real_ios_device") is True
         and document.get("requires_signed_app") is True
         and document.get("requires_physical_keyboard") is True
@@ -449,6 +586,10 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
     )
     can_close = bool(can_close)
     if not can_close:
+        if metadata_redactions:
+            missing = [*missing, "ios native-input gate metadata contained unsafe text and was redacted"]
+        if observation_failures:
+            missing = [*missing, *observation_failures]
         if document.get("kind") != NATIVE_INPUT_KIND:
             missing = [*missing, "ios native-input gate kind is not ios_native_input_behavior"]
         if document.get("profile") != NATIVE_INPUT_PROFILE:
@@ -502,9 +643,14 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
         if not safe_artifact_paths:
             missing = [*missing, "ios native-input gate must retain sanitized iOS/Host artifacts"]
 
-    raw_blocking_reasons = document.get("blocking_reasons")
-    blocking_reasons = raw_blocking_reasons if isinstance(raw_blocking_reasons, list) else list(missing)
-    normalized = _default_native_input_gate(provided=True, path=path, reasons=missing)
+    blocking_reasons = blocking_reasons if blocking_reasons else list(missing)
+    normalized = _default_native_input_gate(
+        provided=True,
+        path=path,
+        repo=repo,
+        reasons=missing,
+        failures=[*disallowed_evidence, *metadata_redactions],
+    )
     normalized.update(
         {
             "owner": document.get("owner") if isinstance(document.get("owner"), dict) else None,
@@ -521,12 +667,10 @@ def _load_native_input_gate(path: Path | None, repository: dict[str, Any]) -> di
             "android_evidence_is_not_ios_input_evidence": document.get("android_evidence_is_not_ios_input_evidence") is True,
             "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
             "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
-            "observations": document.get("observations") if isinstance(document.get("observations"), dict) else {},
+            "observations": observations,
             "missing_requirements": missing,
             "blocking_reasons": blocking_reasons,
-            "disallowed_evidence": document.get("disallowed_evidence")
-            if isinstance(document.get("disallowed_evidence"), list)
-            else [],
+            "disallowed_evidence": [*disallowed_evidence, *metadata_redactions],
             "artifact_paths": safe_artifact_paths,
         }
     )
@@ -764,7 +908,7 @@ def build_manifest(
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
     repository = repository_state(repo)
     signing_readiness = _load_signing_readiness_gate(signing_readiness_gate, repository)
-    native_input = _load_native_input_gate(native_input_gate, repository)
+    native_input = _load_native_input_gate(native_input_gate, repository, repo=repo)
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,

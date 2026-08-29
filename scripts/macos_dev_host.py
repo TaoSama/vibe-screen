@@ -1270,10 +1270,15 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     )
 
     errors: list[str] = []
+    xctest_framework_available = False
     if developer_status != 0:
         errors.append("xcode-select did not report a selected developer directory")
     elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
         errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    else:
+        xctest_framework_available = has_xctest_framework(Path(developer_dir.strip()))
+        if not xctest_framework_available:
+            errors.append("XCTest.framework was not found in the selected developer directory")
     if swift_path_status != 0 or swift_version_status != 0:
         errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
     if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
@@ -1289,6 +1294,7 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
             command_report_line("swift --version", swift_version_status, swift_version),
             command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
             command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            f"XCTest.framework present: {str(xctest_framework_available).lower()}",
             "Blocking issues:",
             "\n".join(f"- {error}" for error in errors) if errors else "- none",
             "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",

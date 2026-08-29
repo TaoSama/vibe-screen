@@ -207,6 +207,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
+	baseline-android-protocol-side-effect-owner \
 	baseline-android-transport-boundary \
 	baseline-android-check \
 	baseline-android-apk \

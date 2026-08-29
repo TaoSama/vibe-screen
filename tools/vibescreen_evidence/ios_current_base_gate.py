@@ -33,6 +33,7 @@ from .ios_current_base_manifest import (
     VIDEOTOOLBOX_READINESS_PROFILE,
     VIDEOTOOLBOX_RUNTIME_CLASSES,
 )
+from . import ios_native_input
 
 GATE_KIND = "ios_current_base_readiness_gate"
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -170,6 +171,18 @@ def _native_input_owner_evidence_present(record: dict[str, Any]) -> bool:
     evidence = _string_list(record.get("evidence"))
     joined = "\n".join(evidence)
     return all(marker in joined for marker in NATIVE_INPUT_EVIDENCE_MARKERS)
+
+
+def _native_input_observations_pass(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return all(
+        value.get(field) is True
+        for field, _ in ios_native_input.REQUIRED_FIELDS
+    ) and all(
+        value.get(field) is False
+        for field in ios_native_input.DISALLOWED_EVIDENCE_FIELDS
+    )
 
 
 def _check(passed: bool, expected: str, *, evidence: list[str] | None = None, blocking: bool = False) -> dict[str, Any]:
@@ -677,6 +690,7 @@ def _native_input_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     )
     readiness_clear = (
         readiness_flags
+        and _native_input_observations_pass(native_gate.get("observations"))
         and not native_gate.get("missing_requirements")
         and not native_gate.get("blocking_reasons")
         and not native_gate.get("disallowed_evidence")
