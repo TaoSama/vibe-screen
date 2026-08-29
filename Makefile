@@ -103,7 +103,9 @@ TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
 TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
 TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
 TOUCH_RERUN_EVENT_TAP ?= $(EVIDENCE_DIR)/listen-only-event-tap.log
-RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / <device-serial>
+RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / SDK 36 / $(EVIDENCE_SERIAL)
+RECONNECT_TIMING_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/reconnect-timing-observations.json
+RECONNECT_TIMING_REQUIRE_DISRUPTIONS ?=
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
 RECONNECT_TIMING_ARTIFACT_ARGS ?=
 RECONNECT_TIMING_NOTES_ARG ?=
@@ -234,6 +236,7 @@ PHASE3_WEBRTC_BULK_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
 	trusted-lan-smoke-evidence-check \
+	evidence-reconnect-timing-gate \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
@@ -653,7 +656,19 @@ trusted-lan-smoke-evidence-check:
 		--evidence-dir $(EVIDENCE_DIR) \
 		--output $(EVIDENCE_DIR)/trusted-lan-smoke-verdict.json
 
-evidence-reconnect-timing-blocked:
+evidence-reconnect-timing-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a reconnect timing evidence directory" >&2; exit 2)
+	@test -f "$(RECONNECT_TIMING_OBSERVATIONS_JSON)" || (echo "error: missing reconnect timing observations: $(RECONNECT_TIMING_OBSERVATIONS_JSON)" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.reconnect_timing \
+		$(RECONNECT_TIMING_OBSERVATIONS_JSON) \
+		$(foreach disruption,$(RECONNECT_TIMING_REQUIRE_DISRUPTIONS),--require-disruption $(disruption)) \
+		--base-dir $(EVIDENCE_DIR) \
+		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json
+
+evidence-reconnect-timing-blocked: require-evidence-serial
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a reconnect timing evidence directory" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.reconnect_timing \
