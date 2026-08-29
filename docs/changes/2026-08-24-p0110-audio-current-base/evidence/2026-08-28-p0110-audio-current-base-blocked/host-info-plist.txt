@@ -1,0 +1,16 @@
+{
+  "CFBundleDisplayName" => "Vibe Screen"
+  "CFBundleExecutable" => "Vibe Screen"
+  "CFBundleGetInfoString" => "Vibe Screen — a fork of SideScreen"
+  "CFBundleIconFile" => "AppIcon"
+  "CFBundleIdentifier" => "dev.telemachus.display"
+  "CFBundleName" => "Vibe Screen"
+  "CFBundlePackageType" => "APPL"
+  "CFBundleShortVersionString" => "0.12.0"
+  "CFBundleVersion" => "0.12.0"
+  "LSMinimumSystemVersion" => "13.0"
+  "NSHighResolutionCapable" => true
+  "NSHumanReadableCopyright" => "Vibe Screen contributors, 2026. Forked from SideScreen by Tran Vuong Quoc Dat and contributors."
+  "NSLocalNetworkUsageDescription" => "Vibe Screen uses the local network when Wireless mode is selected."
+  "NSScreenCaptureUsageDescription" => "Vibe Screen needs screen recording access to stream a Mac display to your Android tablet."
+}
