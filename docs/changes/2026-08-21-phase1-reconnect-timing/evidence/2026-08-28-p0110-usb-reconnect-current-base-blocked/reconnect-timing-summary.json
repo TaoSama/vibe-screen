@@ -11,7 +11,11 @@
   "attempts": [],
   "blocked_reasons": [
     "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
-    "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: a sealed resource is missing or invalid\nIn subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+    "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.",
+    "/Applications/Vibe Screen.app: a sealed resource is missing or invalid",
+    "In subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework",
+    "file missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp",
+    "file missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
     "Host listener is not observed on TCP port 54321",
     "Host is missing com.apple.developer.hid.virtual.device entitlement",
     "login/headless readiness: Launch at Login is not verified enabled: unverified"
@@ -34,11 +38,15 @@
   "host": {},
   "kind": "reconnect_timing_gate",
   "missing_required_disruptions": [],
-  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 9e6621b7194bf5aa051a07944afb6e2b1ccf2232; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 10f5df00067009b4e86991a617f2f29e61ad5eeb; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
     "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
-    "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: a sealed resource is missing or invalid\nIn subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+    "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.",
+    "/Applications/Vibe Screen.app: a sealed resource is missing or invalid",
+    "In subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework",
+    "file missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp",
+    "file missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
     "Host listener is not observed on TCP port 54321",
     "Host is missing com.apple.developer.hid.virtual.device entitlement",
     "login/headless readiness: Launch at Login is not verified enabled: unverified"
@@ -48,7 +56,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "9c8cff30-3d98-4eb5-9a6d-05c1b4a37f5c",
+  "run_id": "29fd247a-3c07-43ab-a5a4-e8d87a14836c",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"

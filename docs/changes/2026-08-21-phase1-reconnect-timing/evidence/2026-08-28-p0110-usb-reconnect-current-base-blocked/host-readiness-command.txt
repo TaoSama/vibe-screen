@@ -1,11 +1,5 @@
-Preparing worktree (detached HEAD d63082266)
-Updating files:  52% (1884/3578)
-Updating files:  53% (1897/3578)
-Updating files:  54% (1933/3578)
-Updating files:  55% (1968/3578)
-Updating files:  56% (2004/3578)
-Updating files:  57% (2040/3578)
-Updating files:  58% (2076/3578)
+Preparing worktree (detached HEAD 34269f436)
+Updating files:  58% (2102/3578)
 Updating files:  59% (2112/3578)
 Updating files:  60% (2147/3578)
 Updating files:  61% (2183/3578)
@@ -49,8 +43,8 @@ Updating files:  98% (3507/3578)
 Updating files:  99% (3543/3578)
 Updating files: 100% (3578/3578)
 Updating files: 100% (3578/3578), done.
-HEAD is now at d63082266 fix: report concrete TCC readiness errors
-make -C .build/reconnect-source-d63082266-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+HEAD is now at 34269f436 Merge remote-tracking branch 'origin/main' into codex/p0110-usb-reconnect-current-base
+make -C .build/reconnect-source-34269f436-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
 mkdir -p $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 python3 scripts/macos_dev_host.py readiness \
 		--report $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt \
@@ -79,16 +73,16 @@ python3 scripts/macos_dev_host.py readiness \
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-29T04:39:26.711108+00:00",
+  "generated_at": "2026-08-29T05:23:09.158305+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [],
     "binary_sha256": null,
     "cdhash": null,
     "certificate_sha1": null,
-    "current_source_commit": "d63082266d866ac337ad8cdd32973aa7ba272473",
+    "current_source_commit": "34269f43647f1c20dd7de0b98a65d8be462d6f2b",
     "current_source_dirty": false,
-    "current_source_tree": "7aaa3bbb0e6b08d406bb37194f726bc9a282de82",
+    "current_source_tree": "7391213cc881ebb784a16429ffa2bc36c28c9171",
     "designated_requirement": null,
     "identifier": null,
     "identity": null,
