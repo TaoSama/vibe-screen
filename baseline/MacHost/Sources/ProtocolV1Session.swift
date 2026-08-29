@@ -1437,14 +1437,16 @@ final class ProtocolV1SessionCoordinator {
             return false
         }
         guard let target else { return true }
-        if target.displayID.isEmpty && target.streamID == 0 { return true }
-        if let binding = displayRouter.binding(
-            streamID: target.streamID,
-            in: sessionKey
-        ) {
-            return binding.displayID == target.displayID && binding.streamID == streamID
+        let hasDisplayID = !target.displayID.isEmpty
+        let hasStreamID = target.streamID != 0
+        if !hasDisplayID && !hasStreamID { return true }
+        let lookupStreamID = hasStreamID ? target.streamID : streamID
+        guard let binding = displayRouter.binding(streamID: lookupStreamID, in: sessionKey) else {
+            return false
         }
-        return false
+        let displayMatches = !hasDisplayID || binding.displayID == target.displayID
+        let streamMatches = !hasStreamID || target.streamID == streamID
+        return displayMatches && streamMatches
     }
 
     private func acceptsPeripheralKind(_ kind: String) -> Bool {
