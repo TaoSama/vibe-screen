@@ -1,0 +1,225 @@
+{
+  "artifact_file_check": {
+    "empty_paths": [],
+    "enabled": true,
+    "evidence_dir": "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked",
+    "invalid_paths": [],
+    "missing_paths": []
+  },
+  "artifact_paths": [
+    "README.md",
+    "host-identity.txt",
+    "display-topology.txt",
+    "host-readiness.json",
+    "host-signing-and-permissions.txt"
+  ],
+  "blocking_notes": [
+    "Host readiness exited 2 with status=blocked; runtime compatibility probes were not started.",
+    "The configured Vibe Screen Dev signing identity was not found in the keychain lookup used for rebuild/install readiness.",
+    "Installed Host lacks embedded source commit/tree provenance even though the current checkout is clean current-base.",
+    "Screen Recording and Accessibility TCC states are unverified from read-only evidence.",
+    "The Host listener was observed on TCP port 54321, but listener readiness alone does not permit runtime compatibility probes while signing/TCC/source-bound prerequisites are blocked.",
+    "The installed Host does not expose the virtual HID entitlement.",
+    "Launch-at-login/headless readiness is blocked because Launch at Login is unverified in the default no-sfltool path.",
+    "This single Apple silicon multi-display machine cannot provide Intel, macOS-range, dummy/headless, Screen Sharing, built-in-only, single-external-only, or other-display-topology compatibility rows."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record installed Host source commit/tree provenance and require it to match this current-base row"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record Host self-test provenance from the same current-base source revision"
+    },
+    {
+      "field": "automated_macos_checks_passed",
+      "requirement": "run baseline macOS build, XCTest, and self-test commands for this source"
+    },
+    {
+      "field": "packaged_host_launch_observed",
+      "requirement": "launch the packaged Host on the recorded Mac row"
+    },
+    {
+      "field": "protocol_v1_stream_observed",
+      "requirement": "observe a Protocol v1 USB or trusted-LAN stream on this Host row"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source commit embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source tree embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record whether the installed Host was packaged from a clean source tree"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record the commit used for Host self-test output"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    }
+  ],
+  "can_close_macos_host_compatibility_row": false,
+  "invalid_claim_observations": {
+    "ci_runner_only": false,
+    "claims_display_topology_from_different_setup": false,
+    "claims_dummy_headless_from_attached_monitor": false,
+    "claims_intel_from_apple_silicon": false,
+    "claims_os_range_from_single_build": false,
+    "claims_screencapturekit_from_cgdisplaystream": false,
+    "claims_virtual_display_from_current_main_fallback": false,
+    "claims_virtual_display_from_symbol_probe": false,
+    "claims_virtual_display_without_result": false
+  },
+  "invalid_claims": [],
+  "kind": "macos_host_compatibility_matrix_row",
+  "missing_requirements": [
+    {
+      "field": "xcode_swift_recorded",
+      "requirement": "record Xcode and Swift versions used for local build/test evidence"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record installed Host source commit/tree provenance and require it to match this current-base row"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record Host self-test provenance from the same current-base source revision"
+    },
+    {
+      "field": "automated_macos_checks_passed",
+      "requirement": "run baseline macOS build, XCTest, and self-test commands for this source"
+    },
+    {
+      "field": "packaged_host_launch_observed",
+      "requirement": "launch the packaged Host on the recorded Mac row"
+    },
+    {
+      "field": "protocol_v1_stream_observed",
+      "requirement": "observe a Protocol v1 USB or trusted-LAN stream on this Host row"
+    },
+    {
+      "field": "display_selection_observed",
+      "requirement": "exercise display list and selected-display start on this Host row"
+    },
+    {
+      "field": "physical_display_capture_observed",
+      "requirement": "observe physical or current-main display capture on this Host row"
+    },
+    {
+      "field": "input_smoke_observed",
+      "requirement": "observe at least touch plus keyboard or scroll input through the Host path"
+    },
+    {
+      "field": "reconnect_observed",
+      "requirement": "observe a client/process reconnect while the Host PID survives"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source commit embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record the source tree embedded in the installed Host bundle"
+    },
+    {
+      "field": "source_bound_host_recorded",
+      "requirement": "record whether the installed Host was packaged from a clean source tree"
+    },
+    {
+      "field": "host_self_test_provenance_recorded",
+      "requirement": "record the commit used for Host self-test output"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    }
+  ],
+  "notes": "Fail-closed current-base readiness package for the macOS Host compatibility matrix owner. Listener readiness was observed, but the row remains blocked before runtime probes.",
+  "observations": {
+    "artifacts_retained": true,
+    "automated_macos_checks_passed": false,
+    "capture_backend_recorded": true,
+    "claim_scoped_to_exact_row": true,
+    "cpu_architecture_recorded": true,
+    "display_selection_observed": false,
+    "display_topology_recorded": true,
+    "host_build_identity_recorded": true,
+    "host_model_recorded": true,
+    "host_self_test_provenance_recorded": false,
+    "implementation_path_recorded": true,
+    "input_smoke_observed": false,
+    "macos_version_build_recorded": true,
+    "mirror_or_fallback_recorded": true,
+    "owner_recorded": true,
+    "packaged_host_launch_observed": false,
+    "physical_display_capture_observed": false,
+    "protocol_v1_stream_observed": false,
+    "reconnect_observed": false,
+    "repository_commit_recorded": true,
+    "signing_and_tcc_state_recorded": false,
+    "source_bound_host_recorded": false,
+    "video_encoder_path_recorded": true,
+    "virtual_display_or_fallback_recorded": true,
+    "xcode_swift_recorded": false
+  },
+  "profile": "macos-host-compatibility-row",
+  "row_scope": {
+    "accessibility_tcc": "unverified",
+    "android_counterpart": "nubia P0110 / pacific / Android 16 / SDK 36 (not exercised in this blocked readiness run)",
+    "capture_backend": "unavailable",
+    "cgdisplaystream_result": "unavailable_terminal",
+    "compatibility_scope": "blocked readiness for one Apple silicon Mac16,8 / macOS 26.4.1 build 25E253 / multi-display setup with built-in Color LCD plus external DELL U2723QE over intended USB; no compatibility row is closed",
+    "cpu_architecture": "apple_silicon",
+    "current_base_commit": "b54ee0e929c53459e6ba7e060f2c9de0c846f408",
+    "display_topology": "multi_display",
+    "host_build_identity": "/Applications/Vibe Screen.app bundle id dev.telemachus.display, binary sha256 c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996, signing identity Vibe Screen Dev",
+    "host_bundle_id": "dev.telemachus.display",
+    "host_cpu_name": "Apple M4 Pro",
+    "host_model_identifier": "Mac16,8",
+    "host_self_test_commit": "",
+    "host_signing_identity": "Vibe Screen Dev",
+    "host_source_commit": "",
+    "host_source_dirty_state": "",
+    "host_source_tree": "",
+    "implementation_path": "blocked readiness: stable source-bound Host/TCC prerequisites must pass before runtime compatibility row collection",
+    "macos_build": "25E253",
+    "macos_version": "26.4.1",
+    "mirror_result": "unavailable",
+    "owner": "Vibe Screen macOS Host compatibility matrix owner",
+    "repository_commit": "b54ee0e929c53459e6ba7e060f2c9de0c846f408",
+    "repository_dirty_state": "clean",
+    "screen_capturekit_result": "unavailable_terminal",
+    "screen_recording_tcc": "unverified",
+    "stream_transport": "usb",
+    "swift_version": "Apple Swift version 6.3.3",
+    "videotoolbox_result": "unavailable",
+    "virtual_display_result": "unavailable",
+    "xcode_version": "xcodebuild unavailable: active developer directory is Command Line Tools"
+  },
+  "run_id": "2026-08-29-macos-host-compatibility-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}
