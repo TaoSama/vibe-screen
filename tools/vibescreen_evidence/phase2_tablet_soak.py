@@ -86,6 +86,13 @@ SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (
         re.compile(
+            r"(?i)(\[[^\]]*(?:emmc_sn|ufs_sn|hw[_.-]?serial|"
+            r"hardware[_.-]?serial|device_sn|imei|meid)[^\]]*\]:\s*)\[[^\]]*\]"
+        ),
+        r"\1[" + REDACTED_DEVICE_DETAIL + "]",
+    ),
+    (
+        re.compile(
             r"(?i)(\[[^\]]*(?:wifi\.mac|macaddr|mac_address|ipaddr|ip_address|bluetooth|fmd_)[^\]]*\]:\s*)\[[^\]]*\]"
         ),
         r"\1[" + REDACTED_NETWORK_DETAIL + "]",
@@ -567,8 +574,13 @@ def write_readme(output_dir: Path, readiness: dict[str, Any]) -> None:
             if key in log_metrics:
                 lines.append("- " + key + ": " + str(log_metrics[key]))
     lines.extend(["", "## Artifacts"])
-    for artifact in readiness.get("artifacts", []):
-        lines.append("- " + str(artifact.get("path")))
+    artifact_paths = [
+        str(artifact.get("path")) for artifact in readiness.get("artifacts", [])
+    ]
+    if "phase2-soak-readiness.json" not in artifact_paths:
+        artifact_paths.insert(0, "phase2-soak-readiness.json")
+    for artifact_path in artifact_paths:
+        lines.append("- " + artifact_path)
     lines.append("")
     write_text(output_dir / "README.md", sanitize_text("\n".join(lines)))
 
@@ -584,6 +596,7 @@ def build_readiness(
     soak_summary: dict[str, Any] | None,
     gate: dict[str, Any] | None,
     android_log_metrics: dict[str, int] | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     command_serials = command_serial_values(command)
     result = "blocked" if blockers else ("pass" if gate and gate.get("verdict") == "pass" else "ready")
@@ -592,7 +605,7 @@ def build_readiness(
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": "phase2_tablet_soak_readiness",
-        "run_id": str(uuid.uuid4()),
+        "run_id": run_id or str(uuid.uuid4()),
         "created_at": utc_now(),
         "mode": mode,
         "command": list(sanitized_public_copy(list(command), *command_serials)),
@@ -712,6 +725,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
     soak_summary: dict[str, Any] | None = None
     gate: dict[str, Any] | None = None
     manifest: dict[str, Any] | None = None
+    execution_run_id = str(uuid.uuid4())
     android_log_metrics: dict[str, int] = {}
     try:
         gate_owners = _gate_owners(arguments.gate_owners)
@@ -808,6 +822,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     notes=arguments.notes,
                 )
                 manifest = sanitized_public_copy(manifest, arguments.serial)
+                manifest["run_id"] = execution_run_id
                 manifest["required_artifacts"] = runner_required_artifacts(
                     arguments.mode,
                     has_apk_identity=apk_sha256 is not None,
@@ -835,7 +850,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                         host_pid=arguments.host_pid,
                         telemetry_jsonl=arguments.host_telemetry_jsonl,
                         require_stream_telemetry=arguments.mode == "run",
-                        run_id=manifest.get("run_id") if manifest else None,
+                        run_id=execution_run_id,
                     )
                     soak_summary = runner.run()
                     sanitize_evidence_file(soak_dir / "samples.jsonl", arguments.serial)
@@ -915,6 +930,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         soak_summary=soak_summary,
         gate=gate,
         android_log_metrics=android_log_metrics,
+        run_id=execution_run_id,
     )
     readiness = sanitized_public_copy(readiness, arguments.serial)
     write_json(output_dir / "phase2-soak-readiness.json", readiness)

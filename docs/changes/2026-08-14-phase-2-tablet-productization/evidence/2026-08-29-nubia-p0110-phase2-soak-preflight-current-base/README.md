@@ -33,6 +33,7 @@ run.
 - frame_drop_log_lines: 0
 
 ## Artifacts
+- phase2-soak-readiness.json
 - device-info.json
 - device.txt
 - wm-size.txt

@@ -166,7 +166,7 @@
   "output_dir": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base",
   "phase2_gate_verdict": null,
   "result": "blocked",
-  "run_id": "81c26699-da39-4dfa-9312-08ec24b894fb",
+  "run_id": "a806aebd-2fb3-45d0-94b5-5cbc90d16a1b",
   "schema_version": "vibescreen.evidence/v1",
   "soak_summary_status": "complete"
 }
