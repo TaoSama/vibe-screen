@@ -66,7 +66,7 @@ SOURCE_DOCS = [
 ]
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
-SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+SIGNING_READINESS_OWNER_BRANCH = "codex/ios-app-signing-readiness-current-base-20260829"
 NATIVE_INPUT_KIND = "ios_native_input_behavior"
 NATIVE_INPUT_PROFILE = "ios-native-input-behavior"
 NATIVE_INPUT_GATE_OWNER = "phase5-ios-native-input-behavior"
@@ -98,7 +98,7 @@ BROADER_GATES = {
 DEFAULT_LIMITATIONS = [
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
-    "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
+    "The signing gate requires sanitized Team ID, provisioning profile, codesign identity, physical-device UDID hashes, unique bundle ID, and entitlements evidence before it can pass.",
     "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
     "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, while signed app/device and real-network LAN evidence remain open.",
 ]
