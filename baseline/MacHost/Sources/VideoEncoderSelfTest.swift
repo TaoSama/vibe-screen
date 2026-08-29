@@ -243,10 +243,19 @@ enum VideoEncoderSelfTest {
             var capacityFullSince: Date?
 
             while now() < deadline, callbackCount() == 0 {
+                var submittedThisPass = false
                 while submittedFrames < frameCount, availableCapacity() > 0 {
                     submitFrame(submittedFrames)
                     submittedFrames += 1
+                    submittedThisPass = true
                     capacityFullSince = nil
+                }
+
+                if submittedThisPass {
+                    sleep(pollInterval)
+                    if callbackCount() > 0 {
+                        break
+                    }
                 }
 
                 completionStatus = completeFrames()
