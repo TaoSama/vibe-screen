@@ -291,9 +291,21 @@ def _signing_probe() -> dict[str, Any]:
         for line in summaries:
             if isinstance(line, str) and re.search(r"\) [0-9A-Fa-f]{40} \".+\"", line):
                 identity_count += 1
-    result["valid_identity_count"] = identity_count
-    result["status"] = "pass" if identity_count > 0 else "blocked"
-    return result
+    command = result.get("command")
+    if not isinstance(command, list) or not all(isinstance(item, str) for item in command):
+        command = ["security", "find-identity", "-p", "codesigning", "-v"]
+    probe_passed = result.get("status") == "pass"
+    sanitized = {
+        "command": command,
+        "status": "pass" if probe_passed and identity_count > 0 else "blocked",
+        "valid_identity_count": identity_count,
+        "summary": ["codesigning identity output redacted; count retained only"],
+    }
+    if "exit_code" in result:
+        sanitized["exit_code"] = result["exit_code"]
+    if result.get("status") == "blocked" and identity_count == 0 and "detail" in result:
+        sanitized["detail"] = "codesigning identity probe unavailable"
+    return sanitized
 
 
 def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
