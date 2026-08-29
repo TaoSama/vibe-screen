@@ -3,11 +3,11 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "8471dd2bb65eae6bd7ac05b3ba09ef958526265a",
+    "base_commit": "567dae75da22b2faa49ab59e5d95b4a642be1d97",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-22",
+    "audit_date": "2026-08-29",
     "owner": "Vibe Screen core team",
-    "audit_source": "docs/changes/2026-08-22-open-gates-coverage-audit/README.md"
+    "audit_source": "docs/changes/2026-08-21-file-transfer-e2e/TEST.md"
   },
   "readme_guard": {
     "required_phrases": [
@@ -188,6 +188,23 @@
       "blockers": [
         "No physical Android controller runtime run is recorded.",
         "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
+      ]
+    },
+    {
+      "id": "file_transfer_android_product_e2e",
+      "title": "Android/macOS file-transfer product E2E",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json"
+      ],
+      "owner_prs": [],
+      "blockers": [
+        "Host readiness is blocked on stable signing, source provenance, read-only TCC verification, virtual HID entitlement, and login/headless readiness.",
+        "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup."
       ]
     },
     {

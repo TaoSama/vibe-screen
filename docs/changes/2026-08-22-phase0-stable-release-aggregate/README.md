@@ -1,7 +1,7 @@
 # Phase 0 stable-release aggregate owner
 
-Date: 2026-08-22
-Base: origin/main at 8471dd2bb65eae6bd7ac05b3ba09ef958526265a
+Date: 2026-08-29
+Base: origin/main at 567dae75da22b2faa49ab59e5d95b4a642be1d97
 Status: open. This document does not close Phase 0 and does not change product
 status.
 
@@ -36,6 +36,7 @@ stable-release claim is allowed:
 | Host RSS two-hour no-growth | blocked | #158, #195, #222, #230, #237, #260, #329, #387 | The retained two-hour Xiaomi 13 run grew about 18.3 MB; the latest current-base readiness records are still blocked before a stable-signed Host can produce native telemetry; no current-source host_rss_gate pass exists. |
 | Native pointer HID mouse move/click acceptance | blocked | #232, #268 | No physical Android mouse/touchpad/trackball pass has retained Android, Host, and visible Mac evidence from one run. |
 | Controller runtime acceptance | blocked | #217, #220, #270 | No physical controller plus entitled Host plus Mac-side response plus neutral disconnect release pass exists. |
+| Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, and protocol fixtures pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
 | Phase 0 module ownership extraction | open | #211, #218, #221, #259 | Android TCP transport plus several `StreamClient` owner slices are extracted, but the remaining broader protocol/session, decoder/renderer, and UI/product boundaries are not all enforced on current main. |
 
 Trusted LAN current-worktree stream/reconnect, login-item/headless reboot, and
