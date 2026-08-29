@@ -1,56 +1,12 @@
-Preparing worktree (detached HEAD 34269f436)
-Updating files:  58% (2102/3578)
-Updating files:  59% (2112/3578)
-Updating files:  60% (2147/3578)
-Updating files:  61% (2183/3578)
-Updating files:  62% (2219/3578)
-Updating files:  63% (2255/3578)
-Updating files:  64% (2290/3578)
-Updating files:  65% (2326/3578)
-Updating files:  66% (2362/3578)
-Updating files:  67% (2398/3578)
-Updating files:  68% (2434/3578)
-Updating files:  69% (2469/3578)
-Updating files:  70% (2505/3578)
-Updating files:  71% (2541/3578)
-Updating files:  72% (2577/3578)
-Updating files:  73% (2612/3578)
-Updating files:  74% (2648/3578)
-Updating files:  75% (2684/3578)
-Updating files:  76% (2720/3578)
-Updating files:  77% (2756/3578)
-Updating files:  78% (2791/3578)
-Updating files:  79% (2827/3578)
-Updating files:  80% (2863/3578)
-Updating files:  81% (2899/3578)
-Updating files:  82% (2934/3578)
-Updating files:  83% (2970/3578)
-Updating files:  84% (3006/3578)
-Updating files:  85% (3042/3578)
-Updating files:  86% (3078/3578)
-Updating files:  87% (3113/3578)
-Updating files:  88% (3149/3578)
-Updating files:  89% (3185/3578)
-Updating files:  90% (3221/3578)
-Updating files:  91% (3256/3578)
-Updating files:  92% (3292/3578)
-Updating files:  93% (3328/3578)
-Updating files:  94% (3364/3578)
-Updating files:  95% (3400/3578)
-Updating files:  96% (3435/3578)
-Updating files:  97% (3471/3578)
-Updating files:  98% (3507/3578)
-Updating files:  99% (3543/3578)
-Updating files: 100% (3578/3578)
-Updating files: 100% (3578/3578), done.
-HEAD is now at 34269f436 Merge remote-tracking branch 'origin/main' into codex/p0110-usb-reconnect-current-base
-make -C .build/reconnect-source-34269f436-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+Preparing worktree (detached HEAD c0d56a5d0)
+Updating files:  55% (1989/3601)Updating files:  56% (2017/3601)Updating files:  57% (2053/3601)Updating files:  58% (2089/3601)Updating files:  59% (2125/3601)Updating files:  60% (2161/3601)Updating files:  61% (2197/3601)Updating files:  62% (2233/3601)Updating files:  63% (2269/3601)Updating files:  64% (2305/3601)Updating files:  65% (2341/3601)Updating files:  66% (2377/3601)Updating files:  67% (2413/3601)Updating files:  68% (2449/3601)Updating files:  69% (2485/3601)Updating files:  70% (2521/3601)Updating files:  71% (2557/3601)Updating files:  72% (2593/3601)Updating files:  73% (2629/3601)Updating files:  74% (2665/3601)Updating files:  75% (2701/3601)Updating files:  76% (2737/3601)Updating files:  77% (2773/3601)Updating files:  78% (2809/3601)Updating files:  79% (2845/3601)Updating files:  80% (2881/3601)Updating files:  81% (2917/3601)Updating files:  82% (2953/3601)Updating files:  83% (2989/3601)Updating files:  84% (3025/3601)Updating files:  85% (3061/3601)Updating files:  86% (3097/3601)Updating files:  87% (3133/3601)Updating files:  88% (3169/3601)Updating files:  89% (3205/3601)Updating files:  90% (3241/3601)Updating files:  91% (3277/3601)Updating files:  92% (3313/3601)Updating files:  93% (3349/3601)Updating files:  94% (3385/3601)Updating files:  95% (3421/3601)Updating files:  96% (3457/3601)Updating files:  97% (3493/3601)Updating files:  98% (3529/3601)Updating files:  99% (3565/3601)Updating files: 100% (3601/3601)Updating files: 100% (3601/3601), done.
+HEAD is now at c0d56a5d0 Merge branch 'main' into codex/p0110-usb-reconnect-current-base
+make -C .build/reconnect-source-c0d56a5d0-20260829143000 baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
 mkdir -p $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 python3 scripts/macos_dev_host.py readiness \
 		--report $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-signing-and-permissions.txt \
 		--json-output $REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/host-readiness.json \
-		--port 54321 \
-
+		--port 54321
 {
   "blockers": [
     "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
@@ -73,16 +29,16 @@ python3 scripts/macos_dev_host.py readiness \
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-29T05:23:09.158305+00:00",
+  "generated_at": "2026-08-29T06:36:55.028040+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [],
     "binary_sha256": null,
     "cdhash": null,
     "certificate_sha1": null,
-    "current_source_commit": "34269f43647f1c20dd7de0b98a65d8be462d6f2b",
+    "current_source_commit": "c0d56a5d09703273733119b7eb6f34d7e66fc78a",
     "current_source_dirty": false,
-    "current_source_tree": "7391213cc881ebb784a16429ffa2bc36c28c9171",
+    "current_source_tree": "1030f2e33b1104e61867417a12640c39ba16bd2c",
     "designated_requirement": null,
     "identifier": null,
     "identity": null,
