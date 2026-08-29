@@ -1285,6 +1285,16 @@ the input file. The target writes `latency-preflight.json` and
 gate attempt, which is an expected fail-closed outcome when external-camera or
 synchronized-clock artifacts are missing.
 
+When a preflight needs to mark `host_build_identity_recorded=true`, record the
+Host identity with ordinary read-only checks such as `sysctl -n hw.model`,
+`sw_vers`, `shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen`,
+and `codesign -dv --verbose=4 /Applications/Vibe\ Screen.app`. The
+`baseline-macos-host-readiness` target can also produce a broader Host readiness
+report without opting in to login-item diagnostics. Host identity alone does not
+close any latency profile; USB/LAN claims still need the external-camera package,
+and input claims still need either external-camera evidence or synchronized-clock
+proof plus physical-input artifacts.
+
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:
 
