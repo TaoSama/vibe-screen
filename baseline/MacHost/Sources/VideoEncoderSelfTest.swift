@@ -123,7 +123,8 @@ enum VideoEncoderSelfTest {
         group.enter()
         encodeQueue.async {
             defer { group.leave() }
-            for index in warmupFrameCount..<(warmupFrameCount + frameCount) {
+            let firstStreamFrameIndex = warmupResult.submittedFrames
+            for index in firstStreamFrameIndex..<(firstStreamFrameIndex + frameCount) {
                 encoder.encode(
                     pixelBuffer: pixelBuffer,
                     presentationTimeStamp: CMTime(value: CMTimeValue(index), timescale: 60),
@@ -242,11 +243,9 @@ enum VideoEncoderSelfTest {
             var capacityFullSince: Date?
 
             while now() < deadline, callbackCount() == 0 {
-                var submittedThisPass = 0
-                while submittedThisPass < frameCount, availableCapacity() > 0 {
+                while submittedFrames < frameCount, availableCapacity() > 0 {
                     submitFrame(submittedFrames)
                     submittedFrames += 1
-                    submittedThisPass += 1
                     capacityFullSince = nil
                 }
 
