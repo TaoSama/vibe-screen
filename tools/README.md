@@ -1025,7 +1025,22 @@ acceptance marker; existing `connection_opened`, `first_frame_received`, and
 timing evidence and cannot independently prove Protocol v1. Until the
 `protocol_v1_accepted` event is present in the captured logcat, the attempt must
 remain `insufficient` or use the private diag log instead. Run the evaluator on
-the observation JSON:
+the observation JSON through the Makefile wrapper:
+
+```sh
+make evidence-reconnect-timing-gate \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+For incremental single-scenario work, keep the partial scope explicit:
+
+```sh
+make evidence-reconnect-timing-gate \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
+  RECONNECT_TIMING_REQUIRE_DISRUPTIONS=client-kill
+```
+
+Or call the Python module directly:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing observations.json \
@@ -1046,6 +1061,7 @@ older reconnect logs:
 
 ```sh
 make evidence-reconnect-timing-blocked \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
   EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
   RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable" --blocker "Host is not listening on 127.0.0.1:54321"' \
   RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
@@ -1057,7 +1073,7 @@ or pass exact blockers directly:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
-  --target-device "Nubia P0110 / pacific / Android 16 / ${ANDROID_SERIAL}" \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36 / $ADB_SERIAL" \
   --blocker "Vibe Screen Dev signing identity is unavailable" \
   --blocker "Host is not listening on 127.0.0.1:54321" \
   --output reconnect-timing-summary.json

@@ -21,18 +21,24 @@ trusted-LAN encrypted record path and rule out legacy plaintext fallback.
 ## Current blocked result
 
 Current-base reconnect matrix owner evidence is under
+[`evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked`](evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
+It records the latest `origin/main`-based worktree state at
+current source commit `c0d56a5d09703273733119b7eb6f34d7e66fc78a`, based on
+`origin/main` commit `869ef6d0a05f19f707b100b8a3c5ff78c5a28021`. The P0110 target identity was
+confirmed as nubia P0110 / pacific / Android 16 / SDK 36, ADB reverse still
+showed `tcp:54321 tcp:54321`, and `dev.telemachus.display` was running on
+Android, but the real USB timing attempts were blocked before disruption
+because the source-bound stable Host prerequisites were not satisfied: the
+configured `Vibe Screen Dev` signing identity was unavailable for rebuild,
+codesign inspection of `/Applications/Vibe Screen.app` failed, no Host listener
+was observed on TCP `54321`, and TCC permissions were not inspected after Host
+bundle signing inspection failed. The generated summary reports `verdict=blocked`,
+`can_close_timing_gate=false`, and all three full-gate disruptions missing. No
+client kill, ADB reverse removal/restoration, or trusted-LAN interruption was
+run.
+
+Earlier current-base blocked matrix evidence remains under
 [`evidence/2026-08-24-p0110-current-base-reconnect-blocked`](evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
-It records the latest `origin/main`-based worktree state after PR #250
-(`6cdb34a1`) plus the reconnect timing verifier update on branch
-`codex/reconnect-timing-p0110-matrix`. The P0110 target identity was confirmed
-as nubia P0110 / pacific / Android 16 / SDK 36, and ADB reverse still showed
-`tcp:54321 tcp:54321`, but the real matrix was blocked before disruption
-because the Host had no TCP `54321` listener, the stable `Vibe Screen Dev`
-signing identity was unavailable, and the P0110 had no Wi-Fi association or
-wlan0 route for trusted-LAN interruption. The generated summary reports
-`verdict=blocked`, `can_close_timing_gate=false`, and all three full-gate
-disruptions missing. No client kill, ADB reverse removal/restoration, or
-trusted-LAN interruption was run.
 
 Current worktree evidence is under
 [`evidence/2026-08-21-p0110-reconnect-timing-blocked`](evidence/2026-08-21-p0110-reconnect-timing-blocked/README.md).
