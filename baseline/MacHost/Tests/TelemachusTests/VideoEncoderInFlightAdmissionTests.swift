@@ -547,11 +547,11 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             sleep: { _ in }
         )
 
-        XCTAssertEqual(result, .init(submittedFrames: 5, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
-        XCTAssertEqual(submittedFrames, [0, 1, 2, 3, 4])
-        XCTAssertEqual(videoToolbox.submissionCount, 5)
+        XCTAssertEqual(result, .init(submittedFrames: 4, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
+        XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
+        XCTAssertEqual(videoToolbox.submissionCount, 4)
         XCTAssertEqual(completionCallCount, 4)
-        XCTAssertEqual(admission.inFlightCount, 1)
+        XCTAssertEqual(admission.inFlightCount, 0)
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
 
         while videoToolbox.completeFirstFrame() {}
@@ -955,6 +955,38 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(registry.drain(owner: owner), 2)
         XCTAssertEqual(registry.drain(owner: owner), 0)
         XCTAssertEqual(admission.snapshot, .init(inFlight: 0, capacity: 2))
+    }
+
+    func testSelfTestAdmissionReleaseKeepsLateCallbacksClaimable() throws {
+        let admission = VideoEncoderInFlightAdmission(capacity: 1)
+        let registry = VideoEncoderFrameRegistry()
+        let owner = VideoEncoderCallbackOwner()
+        var sourceFrameRefcon: UnsafeMutableRawPointer?
+
+        XCTAssertEqual(admission.submit { lease in
+            sourceFrameRefcon = registry.register(
+                VideoEncoder.FrameContext(
+                    timestamp: 1,
+                    sessionEpoch: 1,
+                    admissionLease: lease
+                ),
+                owner: owner
+            )
+            return noErr
+        }, .submitted(noErr))
+        XCTAssertEqual(admission.snapshot, .init(inFlight: 1, capacity: 1))
+        XCTAssertEqual(registry.count(owner: owner), 1)
+
+        XCTAssertEqual(registry.releaseAdmissionForOwner(owner), 1)
+        XCTAssertEqual(admission.snapshot, .init(inFlight: 0, capacity: 1))
+        XCTAssertEqual(registry.count(owner: owner), 1)
+        XCTAssertEqual(registry.releaseAdmissionForOwner(owner), 0)
+        XCTAssertEqual(registry.count(owner: owner), 1)
+
+        let claimedFrame = try XCTUnwrap(registry.claim(sourceFrameRefcon))
+        VideoEncoderCallbackLifecycle.process(claimedFrame) { _ in }
+        XCTAssertEqual(admission.snapshot, .init(inFlight: 0, capacity: 1))
+        XCTAssertEqual(registry.count(owner: owner), 0)
     }
 
     func testLateCallbackAfterTeardownIsNoOp() {
