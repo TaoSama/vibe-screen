@@ -36,6 +36,7 @@ COMPLETE_MANIFEST_STRENGTHS = {
     "host_rss_2h_no_growth": "current-real-device",
     "native_pointer_hid_mouse": "current-real-device",
     "controller_runtime_acceptance": "current-real-device",
+    "file_transfer_android_product_e2e": "current-real-device",
     "module_ownership_extraction": "current-source",
 }
 
