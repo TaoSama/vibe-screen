@@ -420,14 +420,20 @@ def _blocked_codec(codec: str, artifact: str) -> dict[str, Any]:
     }
 
 
-def _repository_with_tree(repo: Path) -> dict[str, Any]:
-    state = repository_state(repo)
+def _repository_with_tree(repo: Path, *, ignore_paths: Sequence[Path] = ()) -> dict[str, Any]:
+    state = repository_state(repo, ignore_paths=ignore_paths)
     result = _run(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0, cwd=repo)
     state["tree"] = result.stdout.strip() if result.returncode == 0 else "0" * 40
     return state
 
 
-def collect_preflight(*, repo: Path, hdc_target: str | None, hap: Path | None) -> dict[str, Any]:
+def collect_preflight(
+    *,
+    repo: Path,
+    hdc_target: str | None,
+    hap: Path | None,
+    evidence_dir: Path | None = None,
+) -> dict[str, Any]:
     probes = {
         "hvigor": _tool_probe("hvigor", ["--version"]),
         "hvigorw": _tool_probe("hvigorw", ["--version"]),
@@ -465,7 +471,8 @@ def collect_preflight(*, repo: Path, hdc_target: str | None, hap: Path | None) -
 
     placeholder_hash = "0" * 64
     placeholder_commit = "0" * 40
-    repository = _repository_with_tree(repo.resolve())
+    ignore_paths = [evidence_dir] if evidence_dir is not None else []
+    repository = _repository_with_tree(repo.resolve(), ignore_paths=ignore_paths)
     revision = repository.get("revision")
     if not isinstance(revision, str) or HEX_40.fullmatch(revision) is None:
         repository["revision"] = placeholder_commit
@@ -570,7 +577,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if arguments.output is None:
             raise ManifestError("--output is required unless --template or --validate is used")
-        document = collect_preflight(repo=arguments.repo, hdc_target=arguments.hdc_target, hap=arguments.hap)
+        document = collect_preflight(
+            repo=arguments.repo,
+            hdc_target=arguments.hdc_target,
+            hap=arguments.hap,
+            evidence_dir=arguments.output.parent,
+        )
         _write_json(arguments.output, document)
         warnings = validate_manifest(document, allow_blocked=True)
         result = "blocked" if document["blockers"] or warnings else "ready"
