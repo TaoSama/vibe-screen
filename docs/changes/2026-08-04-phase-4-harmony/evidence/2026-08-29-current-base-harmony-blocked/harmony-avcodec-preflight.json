@@ -1,0 +1,156 @@
+{
+  "artifact": {
+    "bundle_name": "dev.vibescreen.harmony",
+    "hap_path": null,
+    "hap_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_certificate_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "version_name": "0.1.0"
+  },
+  "blockers": [
+    "hdc not found; no HarmonyOS target can be enumerated",
+    "ohpm not found; DevEco-managed dependencies cannot be synchronized",
+    "hvigor/hvigorw not found; no DevEco HAP build can be produced",
+    "DevEco CLI not found; ArkTS/API checker provenance is unavailable",
+    "no explicit HarmonyOS HDC target was provided",
+    "no signed HarmonyOS release HAP was provided",
+    "no HarmonyOS AVCodecKit hardware run artifacts were provided"
+  ],
+  "codecs": [
+    {
+      "artifacts": [
+        "blocked preflight: no HarmonyOS AVCodecKit hardware run"
+      ],
+      "codec": "h264",
+      "decoder_name": "blocked: not collected from HarmonyOS hardware",
+      "gates": {
+        "buffer_callback": "blocked",
+        "decoder_capability": "blocked",
+        "eos_completed": "blocked",
+        "flush_completed": "blocked",
+        "hardware_decoder": "blocked",
+        "input_buffer_pushed": "blocked",
+        "output_buffer_freed": "blocked",
+        "output_rendered": "blocked",
+        "protocol_media_header": "blocked",
+        "pts_preserved": "blocked",
+        "reconfigure_completed": "blocked",
+        "release_completed": "blocked",
+        "xcomponent_surface": "blocked"
+      },
+      "media_header": {
+        "codec": "h264",
+        "config_epoch": 1,
+        "first_frame_id": 1,
+        "fragment_count": 1,
+        "fragment_index": 0,
+        "payload_length": 1,
+        "session_epoch": 1,
+        "stream_id": 1
+      },
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        "blocked preflight: no HarmonyOS AVCodecKit hardware run"
+      ],
+      "codec": "hevc",
+      "decoder_name": "blocked: not collected from HarmonyOS hardware",
+      "gates": {
+        "buffer_callback": "blocked",
+        "decoder_capability": "blocked",
+        "eos_completed": "blocked",
+        "flush_completed": "blocked",
+        "hardware_decoder": "blocked",
+        "input_buffer_pushed": "blocked",
+        "output_buffer_freed": "blocked",
+        "output_rendered": "blocked",
+        "protocol_media_header": "blocked",
+        "pts_preserved": "blocked",
+        "reconfigure_completed": "blocked",
+        "release_completed": "blocked",
+        "xcomponent_surface": "blocked"
+      },
+      "media_header": {
+        "codec": "hevc",
+        "config_epoch": 1,
+        "first_frame_id": 1,
+        "fragment_count": 1,
+        "fragment_index": 0,
+        "payload_length": 1,
+        "session_epoch": 1,
+        "stream_id": 1
+      },
+      "status": "blocked"
+    }
+  ],
+  "created_at": "2026-08-28T20:56:54.224507+00:00",
+  "device": {
+    "hdc_target": "blocked: no target",
+    "manufacturer": "blocked: not collected from HarmonyOS hardware",
+    "model": "MatePad Mini",
+    "os_build": "blocked: not collected from HarmonyOS hardware",
+    "platform": "HarmonyOS NEXT",
+    "product": "MatePad Mini",
+    "serial_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "hdc_error": null,
+  "hdc_targets": null,
+  "host": {
+    "build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "commit": "0000000000000000000000000000000000000000",
+    "protocol": "Protocol v1"
+  },
+  "kind": "harmony_avcodec_hardware_decode_preflight",
+  "notes": [
+    "This blocked preflight is not HarmonyOS hardware decode acceptance evidence.",
+    "Android, emulator, simulator, and portable source results cannot close the H.264/HEVC AVCodecKit gate."
+  ],
+  "repository": {
+    "dirty": false,
+    "revision": "93bee18b12f3132debb8416ac2bb521e03263774",
+    "status_porcelain": [],
+    "tree": "5df1e37e6d36bbd62726f4ade4bfd8570f9657a2"
+  },
+  "run_id": "d88a3b1a-4db1-4c30-843f-2e2de7c3a6e9",
+  "schema_version": "vibescreen.evidence/v1",
+  "tool_probe": {
+    "deveco": {
+      "error": "not found",
+      "name": "deveco",
+      "path": null,
+      "version": null
+    },
+    "hdc": {
+      "error": "not found",
+      "name": "hdc",
+      "path": null,
+      "version": null
+    },
+    "hvigor": {
+      "error": "not found",
+      "name": "hvigor",
+      "path": null,
+      "version": null
+    },
+    "hvigorw": {
+      "error": "not found",
+      "name": "hvigorw",
+      "path": null,
+      "version": null
+    },
+    "ohpm": {
+      "error": "not found",
+      "name": "ohpm",
+      "path": null,
+      "version": null
+    }
+  },
+  "toolchain": {
+    "deveco_studio_version": "blocked: DevEco CLI not found",
+    "harmony_sdk_api": "API 12 required; blocked until DevEco SDK is available",
+    "harmony_sdk_version": "blocked: DevEco SDK not inspected",
+    "hdc_version": "blocked: hdc not found",
+    "hvigor_version": "blocked: hvigor/hvigorw not found",
+    "ohpm_version": "blocked: ohpm not found"
+  }
+}
