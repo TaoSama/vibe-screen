@@ -20,7 +20,8 @@ advanced to `47361dd7f56fefef50da55a69e0368531c8ada33`, then to
 `b697ddae169bb40328a7c4cb8ba92231210c12bf`, then to
 `6d8a89ae296b9adc9f357e618e3f93570632fba3`, then to
 `703f96fae3536fed2216bcae6cae0a7e71bf0158`, then to
-`567dae75da22b2faa49ab59e5d95b4a642be1d97`; the branch was updated and this
+`567dae75da22b2faa49ab59e5d95b4a642be1d97`, then to
+`dd555918f9313d40fa9b2b3dc45c8a12cc44c20c`; the branch was updated and this
 evidence record was refreshed against the latest current-base commit. Origin is
 GitHub. No `/usr/bin/sfltool dumpbtm` command was executed, and no login-item
 diagnostic opt-in argument was passed.
@@ -91,7 +92,7 @@ make evidence-latency-preflight \
   EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked \
   LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/device-info.json \
   LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/preflight-input.json \
-  LATENCY_REPOSITORY_REVISION=567dae75da22b2faa49ab59e5d95b4a642be1d97
+  LATENCY_REPOSITORY_REVISION=dd555918f9313d40fa9b2b3dc45c8a12cc44c20c
 ```
 
 Result: exit `2`, meaning blocked readiness rather than malformed input or a
