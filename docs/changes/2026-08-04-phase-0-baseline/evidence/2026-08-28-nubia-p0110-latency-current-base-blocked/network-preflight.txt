@@ -1,0 +1,28 @@
+# USB and LAN transport preflight
+
+## Commands
+
+```bash
+adb -s <redacted-serial> get-state
+adb -s <redacted-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s <redacted-serial> shell ip addr show wlan0
+adb -s <redacted-serial> shell ip route
+adb -s <redacted-serial> shell pidof dev.telemachus.display
+```
+
+## Observed values
+
+```text
+adb state: device
+adb reverse: UsbFfs tcp:54321 tcp:54321
+Host listener: /Applications/Vibe Screen.app listening on 127.0.0.1:54321
+Android app pid: 23514
+wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> state DOWN
+ip route: no route output
+```
+
+The USB reverse and Host listener are useful readiness signals, but this record
+does not retain a formal active-stream latency package. The LAN gate cannot be
+attempted from this preflight because the device Wi-Fi interface had no carrier
+and no route, and no trusted-LAN Protocol v1 stream was observed.
