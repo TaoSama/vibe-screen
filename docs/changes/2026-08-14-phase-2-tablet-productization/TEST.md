@@ -585,7 +585,7 @@ were not available. The bundle verifier also exited `2` and wrote
 The refreshed aggregate owner report consumes the 2026-08-29 P0110 manifest and
 soak-readiness files plus the retained device-environment, hardware-keyboard,
 and login/headless blocked summaries. It records
-`source_baseline=origin/main b697ddae169bb40328a7c4cb8ba92231210c12bf`,
+`source_baseline=origin/main 3508f229a5fb1218388e9e9ee5fec919d6b5bebf`,
 `verdict=blocked`, and `can_close_readme_phase2_gates=false`.
 
 Validation performed for this current-base refresh:
