@@ -170,6 +170,24 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   readiness 仍阻塞于 stable-signing、TCC、已安装 Host provenance、virtual HID
   entitlement 和 full-Xcode/XCTest 前置条件，见
   [`evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md)。
+- 2026-08-29 current-base readiness 在 `origin/main` commit
+  `7c7c2d43568cd452f7a430cbd9657bbada6be3ff` 上重跑，`pgrep -x sfltool || true`
+  在 readiness 前、readiness 后、XCTest preflight 后均无输出，且没有使用
+  `/usr/bin/sfltool dumpbtm` 或任何 login-item 诊断 opt-in 参数。结果仍为
+  `status=blocked`、`can_start_host_rss_gate=false`、`host.current_source_dirty=false`：
+  本机缺少 `Vibe Screen Dev` stable signing identity，已安装 Host 的 WebRTC
+  framework sealed resource 校验失败，Host listener 未出现在 TCP 54321，Host 缺少
+  `com.apple.developer.hid.virtual.device` entitlement，Launch at Login 未验证，且
+  当前 developer directory 仍是 Command Line Tools、不可运行 SwiftPM XCTest。见
+  [`evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md)。
+- 正式 `host_rss_gate` 的 telemetry 侧最小输入来自同一 exact window 的
+  `soak_report`：`stream_stats` 与 `heartbeat_received` 必须存在且窗口间隔不超过
+  90 秒，heartbeat 必须全部 accepted，`fps` 必须为正，`frame_queue_drop_total`
+  必须为 0，queue depth 必须落在固定 queue capacity 内，`encoder_in_flight` 与
+  `frame_registry_count` 必须落在固定 encoder capacity 内，
+  `latest_pixel_buffer_retained` 必须落在固定 latest pixel-buffer capacity 内，并且
+  `encoder_present_values` 必须全程为 `[true]`；这些字段缺失或不完整都会让正式
+  Host RSS gate fail closed 为 `insufficient` 或 `fail`。
 - 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
   本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
   运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。
