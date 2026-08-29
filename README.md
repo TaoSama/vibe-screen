@@ -583,17 +583,24 @@ device identity and fail-closed battery, power, and thermal snapshots, but it is
 not a gate pass because the device is a phone substitute and no stand-mounted
 tablet setup, controlled thermal-load recovery, or eight-hour window was
 available. The latest P0110/pacific hardware-keyboard current-base readiness
-record captures the real device identity and fails closed on current
-`origin/main` because no external Android-attached keyboard or stable
-signed/TCC-ready Host was available; a Host listener alone is not enough, and
-this is not a gate pass. The latest P0110/pacific tablet sustained-use
+record
+[2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/README.md)
+captures the real device identity and fails closed on current
+`origin/main` because no external Android-attached keyboard, macOS Host
+listener, or stable signed/TCC-ready Host was available; readiness alone is not
+enough, and this is not a gate pass. It is substitute Android readiness only and
+must not be relabeled as Xiaomi/fuxi or physical 8-9 inch tablet evidence. The
+latest P0110/pacific tablet sustained-use
 current-base preflight captures the device as nubia P0110 / pacific / Android
 16 / SDK 36 and keeps the Phase 2 tablet gate blocked because the device is an
 `android_substitute` phone, APK identity was not supplied for a formal run, no
 Host PID or Host telemetry JSONL was provided, no physical 8-9 inch tablet
 evidence exists, and no eight-hour soak gate artifact was produced. The current
 aggregate owner report consumes that blocked keyboard summary and blocked
-tablet preflight, and still reports `can_close_readme_phase2_gates=false`; see
+tablet preflight, and still reports `can_close_readme_phase2_gates=false`; the
+dedicated hardware-keyboard current-base owner record is
+[2026-08-30-phase2-hardware-keyboard-current-base-owner](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md).
+See
 [the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
 [the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).

@@ -1,0 +1,9 @@
+make phase2-aggregate-owner \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner \
+  PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json \
+  PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json \
+  PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json \
+  PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json \
+  PHASE2_DEVICE_ENVIRONMENT=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json \
+  PHASE2_SOAK_READINESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-nubia-p0110-phase2-soak-preflight-current-base-230933/phase2-soak-readiness.json \
+  PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json
