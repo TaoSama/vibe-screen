@@ -126,6 +126,25 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
         self.assertIn("must not be cited as Android", content)
         self.assertIn("<ANDROID_SERIAL>", content)
 
+    def test_write_readme_uses_evidence_dir_date_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / "2026-08-30-p0110-audio-current-base-refresh"
+            evidence_dir.mkdir()
+            readiness.write_readme(
+                evidence_dir,
+                commit="3508f229a5fb1218388e9e9ee5fec919d6b5bebf",
+                summary={
+                    "verdict": "blocked",
+                    "can_close_android_audio_playback_gate": False,
+                    "missing_requirements": [],
+                    "blocking_reasons": [],
+                },
+            )
+
+            content = (evidence_dir / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("# P0110 Android audio current-base refresh - 2026-08-30", content)
+
     def test_source_does_not_call_forbidden_sfltool_dump(self) -> None:
         source = Path(readiness.__file__).read_text(encoding="utf-8")
         executable_lines = [line for line in source.splitlines() if "run_command([" in line]

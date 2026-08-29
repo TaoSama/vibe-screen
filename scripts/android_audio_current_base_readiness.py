@@ -167,7 +167,10 @@ def build_observations(
 def write_readme(evidence_dir: Path, *, commit: str, summary: dict[str, Any]) -> None:
     missing_fields = ", ".join(item["field"] for item in summary.get("missing_requirements", [])) or "none"
     blocking_fields = ", ".join(item["field"] for item in summary.get("blocking_reasons", [])) or "none"
-    content = f"""# P0110 Android audio current-base refresh - 2026-08-29
+    run_label = evidence_dir.name or "current-base-refresh"
+    if len(run_label) >= 10 and run_label[:10].count("-") == 2:
+        run_label = run_label[:10]
+    content = f"""# P0110 Android audio current-base refresh - {run_label}
 
 Status: blocked before real USB/LAN audio playback acceptance
 Device: nubia P0110 / pacific / Android 16 / SDK 36

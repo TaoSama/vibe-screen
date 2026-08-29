@@ -1,0 +1,1 @@
+Acquired shared Android device lock for read-only collection.
