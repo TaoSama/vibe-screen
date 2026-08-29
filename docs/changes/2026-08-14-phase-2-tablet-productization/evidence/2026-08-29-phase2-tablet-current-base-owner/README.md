@@ -2,7 +2,7 @@
 
 Result: `blocked`. This record refreshes the Phase 2 tablet sustained-use
 current-base owner on `origin/main` commit
-`1435825b02362626341e0143509811591b2bbf15`. It consumes the 2026-08-29 Nubia
+`b22b9b5f92249cb484bdf71fef22f8f479f575f3`. It consumes the 2026-08-29 Nubia
 P0110 soak preflight plus the retained device-environment, current-base
 hardware-keyboard, and macOS login/headless blocked summaries. It does not close
 any README Phase 2 tablet gate.
@@ -46,7 +46,7 @@ Validation:
   verifier.
 - `make phase2-aggregate-owner ...`: exit `0`, generated
   `phase2-aggregate-owner.json` with `verdict=blocked`,
-  `source_baseline=origin/main 1435825b02362626341e0143509811591b2bbf15`,
+  `source_baseline=origin/main b22b9b5f92249cb484bdf71fef22f8f479f575f3`,
   and `can_close_readme_phase2_gates=false`.
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest
   tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight
