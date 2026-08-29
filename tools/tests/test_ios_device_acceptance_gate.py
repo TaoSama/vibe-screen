@@ -94,7 +94,7 @@ def complete_document() -> dict:
             "kind": "ios_app_signing_readiness_gate",
             "owner": {
                 "role": "ios_app_signing_readiness_current_base_owner",
-                "head_ref": "codex/phase5-ios-signing-readiness",
+                "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
                 "repository": "TaoSama/vibe-screen",
                 "scope": "Phase 5 iOS app-signing readiness prerequisite only",
             },
@@ -104,7 +104,7 @@ def complete_document() -> dict:
             },
             "current_base": {
                 "commit": CURRENT_BASE_COMMIT,
-                "branch": "codex/phase5-ios-signing-readiness",
+                "branch": "codex/ios-app-signing-readiness-current-base-20260829",
                 "dirty": False,
             },
             "verdict": "pass",
@@ -519,7 +519,7 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "fail")
         self.assertIn(
-            "signing_readiness_gate.owner.head_ref: must be codex/phase5-ios-signing-readiness",
+            "signing_readiness_gate.owner.head_ref: must be codex/ios-app-signing-readiness-current-base-20260829",
             result["failures"],
         )
 
