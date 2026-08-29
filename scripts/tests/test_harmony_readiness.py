@@ -210,6 +210,33 @@ class HarmonyReadinessTests(unittest.TestCase):
         self.assertEqual(report["kind"], "harmony_readiness_preflight")
         self.assertEqual(report["verdict"], "blocked")
 
+    def test_collect_readiness_excludes_own_output_directory_from_repo_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name)
+            output = repo / "docs" / "changes" / "2026-08-04-phase-4-harmony" / "evidence" / "run" / "harmony-readiness.json"
+            args = argparse.Namespace(
+                repo=repo,
+                output=output,
+                deveco_studio_app=repo / "missing.app",
+                target=None,
+                hap=None,
+                sha256sums=None,
+                signature_certificate_sha256=None,
+                bundle_name="dev.vibescreen.harmony",
+                version_name="0.1.0",
+                host_commit=None,
+                host_build_sha256=None,
+            )
+            with mock.patch.object(
+                harmony_readiness,
+                "repository_state",
+                return_value={"revision": COMMIT, "dirty": False, "status_porcelain": []},
+            ) as repository_state:
+                report = harmony_readiness.collect_readiness(args, which_runner=lambda _name: None)
+
+        self.assertEqual(report["repository"]["dirty"], False)
+        repository_state.assert_called_once_with(repo.resolve(), ignore_paths=[output.parent])
+
 
 if __name__ == "__main__":
     unittest.main()

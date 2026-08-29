@@ -31,6 +31,47 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaises(ManifestError):
                 repository_state(Path("."))
 
+    def test_repository_state_can_ignore_current_evidence_directory(self) -> None:
+        def fake_run(command, **kwargs):
+            if command[-1] == "--is-inside-work-tree":
+                return subprocess.CompletedProcess(command, 0, "true\n", "")
+            if command[1:3] == ["status", "--porcelain=v1"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    "?? docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(command, 0, "a" * 40 + "\n", "")
+
+        with patch("vibescreen_evidence.manifest.subprocess.run", side_effect=fake_run):
+            state = repository_state(
+                Path("/repo"),
+                ignore_paths=[Path("/repo/docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked")],
+            )
+
+        self.assertFalse(state["dirty"])
+        self.assertEqual(state["status_porcelain"], [])
+
+    def test_repository_state_keeps_unrelated_dirty_files_when_ignoring_evidence(self) -> None:
+        def fake_run(command, **kwargs):
+            if command[-1] == "--is-inside-work-tree":
+                return subprocess.CompletedProcess(command, 0, "true\n", "")
+            if command[1:3] == ["status", "--porcelain=v1"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    " M README.md\n?? docs/changes/2026-08-04-phase-4-harmony/evidence/run/manifest.json\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(command, 0, "a" * 40 + "\n", "")
+
+        with patch("vibescreen_evidence.manifest.subprocess.run", side_effect=fake_run):
+            state = repository_state(Path("/repo"), ignore_paths=[Path("/repo/docs/changes/2026-08-04-phase-4-harmony/evidence/run")])
+
+        self.assertTrue(state["dirty"])
+        self.assertEqual(state["status_porcelain"], [" M README.md"])
+
     @patch("vibescreen_evidence.manifest.repository_state")
     def test_build_and_atomic_write(self, state) -> None:
         state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
