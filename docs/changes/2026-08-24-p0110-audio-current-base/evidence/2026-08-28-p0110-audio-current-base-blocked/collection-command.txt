@@ -1,0 +1,2 @@
+Command: lockf -t 0 /tmp/vibe-screen-device-android.lock sh -c '... read-only P0110 audio current-base preflight ...'
+Started: 2026-08-28T12:58:30Z
