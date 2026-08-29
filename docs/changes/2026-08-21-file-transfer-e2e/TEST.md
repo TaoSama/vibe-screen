@@ -191,3 +191,32 @@ as usb-live-smoke.json. It passed for the same nubia P0110 / pacific / Android
 app foreground, 142 `stream_stats` events, average FPS about 29.99, decoder
 output around 27060, and dropped frames at 0. This is only a live-stream
 prerequisite reference and still does not close file-transfer E2E.
+
+## 2026-08-29 Nubia P0110 current-base readiness owner refresh
+
+Evidence:
+[evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness](evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md).
+
+Status remains open. The run started from `origin/main` at
+`567dae75da22b2faa49ab59e5d95b4a642be1d97` on branch
+`codex/file-transfer-current-base-readiness` and recorded the connected Android
+substitute as nubia P0110 / pacific / Android 16 / SDK 36 with the USB serial
+redacted. The Android debug app and Android test package installed successfully,
+the file-transfer control-bar instrumentation passed with `OK (2 tests)`, the
+focused Android file-transfer/session JVM tests passed, `make protocol-tests`
+passed 45 protocol/fixture/security tests, and the file-transfer gate unit tests
+passed 12 tests.
+
+The generated `file-transfer-android-smoke-gate.json` is intentionally
+`blocked`, with `gate_closed=false` and
+`can_close_file_transfer_android_smoke_gate=false`. Host readiness still blocks
+on stable signing, source provenance, read-only TCC verification, the virtual
+HID entitlement, and login/headless readiness. USB readiness therefore cannot
+prove a real Protocol v1 file-transfer path, no trusted-LAN preflight was
+collected, and no `file-transfer-product-e2e.json` exists. This evidence does
+not claim Android <-> macOS product file transfer, receiver approval,
+destination-file SHA-256 equality, positive session epoch, or cancel cleanup.
+
+The Phase 0 stable-release aggregate now tracks this as its own required
+`file_transfer_android_product_e2e` gate instead of burying file transfer only in
+the broader module-ownership blocker.

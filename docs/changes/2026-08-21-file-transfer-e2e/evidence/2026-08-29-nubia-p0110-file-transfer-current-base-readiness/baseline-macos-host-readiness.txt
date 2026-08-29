@@ -1,0 +1,9 @@
+make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness EVIDENCE_PORT=54321
+make: *** [baseline-macos-host-readiness] Error 2
+
+The generated host-readiness.json is retained in sanitized form. The run was
+read-only and did not start the Host, modify Android state, alter Keychain, or
+write TCC databases. It observed a loopback Host listener on TCP 54321 but kept
+Host readiness blocked because stable signing, source provenance, read-only TCC
+verification, virtual HID entitlement, and login/headless readiness were not all
+available.
