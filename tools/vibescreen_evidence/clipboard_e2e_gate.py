@@ -31,6 +31,7 @@ DEFAULT_DEVICE_IDENTITY = {
     "android_release": "16",
     "sdk": 36,
 }
+LOCAL_MAXIMUM_CLIPBOARD_BYTES = 1_048_576
 SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
@@ -229,6 +230,18 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
 
+EXPECTED_DIRECTION_ENDPOINTS = {
+    "android_clipboardmanager_to_macos_nspasteboard": (
+        "android_clipboardmanager",
+        "macos_nspasteboard",
+    ),
+    "macos_nspasteboard_to_android_clipboardmanager": (
+        "macos_nspasteboard",
+        "android_clipboardmanager",
+    ),
+}
+
+
 def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
     required_true = (
         "protocol_v1_session",
@@ -236,6 +249,9 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
         "explicit_user_action",
         "remote_system_clipboard_write",
         "final_marker_match",
+        "session_epoch_verified",
+        "final_sha256_match",
+        "origin_device_id_verified",
     )
     reasons = [
         f"{label}.{field} must be true"
@@ -245,9 +261,28 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
     marker = direction.get("marker")
     if not isinstance(marker, str) or len(marker.strip()) < 8:
         reasons.append(f"{label}.marker must identify the transferred text marker")
+    change_id = direction.get("change_id_hex")
+    if not isinstance(change_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+        reasons.append(f"{label}.change_id_hex must be a 32-character hex change ID")
+    sha256 = direction.get("sha256")
+    if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
+    byte_length = direction.get("byte_length")
+    if not isinstance(byte_length, int) or byte_length <= 0:
+        reasons.append(f"{label}.byte_length must be a positive integer")
+    elif byte_length > LOCAL_MAXIMUM_CLIPBOARD_BYTES:
+        reasons.append(f"{label}.byte_length must not exceed 1048576 bytes")
+    session_epoch = direction.get("session_epoch")
+    if not isinstance(session_epoch, int) or session_epoch <= 0:
+        reasons.append(f"{label}.session_epoch must be a positive integer")
     transport = direction.get("transport")
     if transport not in {"usb", "trusted_lan"}:
         reasons.append(f"{label}.transport must be usb or trusted_lan")
+    source, destination = EXPECTED_DIRECTION_ENDPOINTS[label]
+    if direction.get("source_system_clipboard") != source:
+        reasons.append(f"{label}.source_system_clipboard must be {source}")
+    if direction.get("destination_system_clipboard") != destination:
+        reasons.append(f"{label}.destination_system_clipboard must be {destination}")
     return reasons
 
 
@@ -266,11 +301,15 @@ def _product_e2e_gate(
         directions = product.get("directions") if isinstance(product.get("directions"), dict) else {}
         android_to_macos = directions.get("android_clipboardmanager_to_macos_nspasteboard")
         macos_to_android = directions.get("macos_nspasteboard_to_android_clipboardmanager")
+        markers: dict[str, str] = {}
         if isinstance(android_to_macos, dict):
             reasons.extend(_direction_reasons(android_to_macos, "android_clipboardmanager_to_macos_nspasteboard"))
             transport = android_to_macos.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"android_clipboardmanager_to_macos_nspasteboard.transport {transport} is not ready")
+            marker = android_to_macos.get("marker")
+            if isinstance(marker, str):
+                markers["android_clipboardmanager_to_macos_nspasteboard"] = marker.strip()
         else:
             reasons.append("missing android_clipboardmanager_to_macos_nspasteboard direction evidence")
         if isinstance(macos_to_android, dict):
@@ -278,12 +317,22 @@ def _product_e2e_gate(
             transport = macos_to_android.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"macos_nspasteboard_to_android_clipboardmanager.transport {transport} is not ready")
+            marker = macos_to_android.get("marker")
+            if isinstance(marker, str):
+                markers["macos_nspasteboard_to_android_clipboardmanager"] = marker.strip()
         else:
             reasons.append("missing macos_nspasteboard_to_android_clipboardmanager direction evidence")
+        if (
+            markers.get("android_clipboardmanager_to_macos_nspasteboard")
+            and markers.get("android_clipboardmanager_to_macos_nspasteboard")
+            == markers.get("macos_nspasteboard_to_android_clipboardmanager")
+        ):
+            reasons.append("direction markers must be distinct so one transfer cannot satisfy both directions")
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
 
 
 def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product: dict[str, Any] | None) -> dict[str, Any]:
+    has_identity_evidence = True
     if product and isinstance(product.get("device"), dict):
         identity = _device_identity(product.get("device"))
     elif usb and isinstance(usb.get("device"), dict):
@@ -292,6 +341,16 @@ def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product
         identity = _device_identity(lan.get("android_device"))
     else:
         identity = dict(DEFAULT_DEVICE_IDENTITY)
+        has_identity_evidence = False
+    if not has_identity_evidence:
+        return {
+            "name": "device_identity",
+            "status": BLOCKED,
+            "reasons": ["missing real P0110 device identity evidence from USB, trusted-LAN, or product evidence"],
+            "evidence": [],
+            "identity": None,
+            "expected_identity": sanitize_value(identity),
+        }
     reasons = _device_identity_failures(identity)
     return {
         "name": "device_identity",
@@ -382,7 +441,9 @@ def derive_gate(
             "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, "
             "a current Android system ClipboardManager smoke, and retained bidirectional product E2E evidence "
             "showing explicit user action, source system clipboard read, remote system clipboard write, "
-            "Protocol v1 session ownership, and final marker match. Offline or synthetic coverage alone remains readiness evidence."
+            "Protocol v1 session ownership, verified session epoch, change ID, SHA-256 digest, bounded byte length, "
+            "exact source/destination system clipboard endpoints, and distinct final marker matches. Offline or synthetic "
+            "coverage alone remains readiness evidence."
         ),
     }
 
