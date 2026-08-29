@@ -67,6 +67,24 @@ NON_PRODUCT_AUDIO_MARKERS = (
     "loopback-only",
 )
 
+LOOPBACK_TRANSPORT_MARKERS = (
+    "client connected via loopback",
+    "loopback usb",
+    "loopback (usb)",
+)
+
+# A real protocol session can only be claimed when the retained logs include
+# enough production session proof. A raw string match for "protocol v1" in old
+# or unrelated logs is not current evidence for this run.
+PROTOCOL_V1_SESSION_PROOF_MARKERS = (
+    "v1 negotiated",
+    "protocol_v1 negotiated",
+    "capabilities exchanged",
+    "capabilities configured",
+    "selected for connection epoch",
+    "protocol v1 selected",
+)
+
 
 def has_non_product_audio_marker(text: str) -> bool:
     lower = text.lower()
@@ -106,6 +124,13 @@ def collect_host_readiness(evidence_dir: Path, port: int, serial: str) -> None:
         write_json(readiness_json, redact_json(load_json(readiness_json), serial))
 
 
+def is_iso_date_prefix(label: str) -> bool:
+    if len(label) < 10:
+        return False
+    prefix = label[:10]
+    return prefix[4] == "-" and prefix[7] == "-" and prefix[:4].isdigit() and prefix[5:7].isdigit() and prefix[8:10].isdigit()
+
+
 def build_observations(
     *,
     run_id: str,
@@ -120,6 +145,10 @@ def build_observations(
     android_markers = marker_summary(android_text, ANDROID_AUDIO_MARKERS)
     host_markers = marker_summary(host_text, HOST_AUDIO_MARKERS)
     combined = f"{android_text}\n{host_text}".lower()
+    protocol_v1_session_observed = (
+        any(marker in combined for marker in PROTOCOL_V1_SESSION_PROOF_MARKERS)
+        and not any(marker in combined for marker in LOOPBACK_TRANSPORT_MARKERS)
+    )
     has_lan_route = "wlan0" in network_text and "<ipv4>" in network_text and "state UP" in network_text
     return {
         "run_id": run_id,
@@ -131,7 +160,7 @@ def build_observations(
         "host_build_identity_recorded": host_build_identity_recorded(host_readiness),
         "host_stable_signed_tcc_ready": host_stable_signed_tcc_ready(host_readiness),
         "host_listener_observed": host_listener_observed(host_readiness),
-        "protocol_v1_session_observed": "protocol v1" in combined or "protocol_v1" in combined,
+        "protocol_v1_session_observed": protocol_v1_session_observed,
         "audio_capability_negotiated": android_markers["CAPABILITY_AUDIO"] or "capability_audio" in combined,
         "audio_config_accepted": (android_markers["AudioConfig"] or host_markers["AudioConfig"]) and "accepted" in combined,
         "host_microphone_capture_started": host_markers["audio_capture_started"],
@@ -142,7 +171,7 @@ def build_observations(
         "disconnect_cleanup_observed": "audio_capture_stopped" in combined and "disconnect" in combined,
         "host_logs_retained": bool(host_text.strip()) and "not found" not in host_text.lower(),
         "android_logs_retained": bool(android_text.strip()),
-        "no_synthetic_or_loopback_markers": not has_non_product_audio_marker(combined),
+        "no_synthetic_or_loopback_markers": not any(marker in combined for marker in NON_PRODUCT_AUDIO_MARKERS),
         "device": {
             "adb_serial": REDACTED_SERIAL,
             "manufacturer": str(device.get("manufacturer", "")),
@@ -167,7 +196,10 @@ def build_observations(
 def write_readme(evidence_dir: Path, *, commit: str, summary: dict[str, Any]) -> None:
     missing_fields = ", ".join(item["field"] for item in summary.get("missing_requirements", [])) or "none"
     blocking_fields = ", ".join(item["field"] for item in summary.get("blocking_reasons", [])) or "none"
-    content = f"""# P0110 Android audio current-base refresh - 2026-08-29
+    run_label = evidence_dir.name or "current-base-refresh"
+    if is_iso_date_prefix(run_label):
+        run_label = run_label[:10]
+    content = f"""# P0110 Android audio current-base refresh - {run_label}
 
 Status: blocked before real USB/LAN audio playback acceptance
 Device: nubia P0110 / pacific / Android 16 / SDK 36

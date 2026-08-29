@@ -1,0 +1,40 @@
+Repository base: origin/main at 757e5ccae0c2b06db02e6ed6c44c43f5ed9660d0.
+
+Commands run:
+
+```bash
+pgrep -x sfltool || true
+git fetch origin main --prune
+git switch -c codex/physical-stylus-drawing-app-closure
+adb devices
+for f in /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock; do ...; done
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/android_stylus_acceptance.py \
+  --serial DEVICE_SERIAL \
+  --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-29-nubia-p0110-pacific-stylus-current-base-blocked \
+  --write-blocked-on-lock
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_release_tools.AndroidStylusAcceptanceTests
+PYTHONPATH=tools python3 -m unittest tools.tests.test_stylus
+make physical-stylus-gate EVIDENCE_DIR=docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-29-nubia-p0110-pacific-stylus-current-base-blocked
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.StreamInputDispatcherTest \
+  --tests dev.telemachus.display.StylusInputMapperTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1SessionTest.stylusRequiresNegotiationAndValidTerminalPressure
+cd baseline/MacHost && swift build
+cd baseline/MacHost && swift test --filter StylusEventFactoryTests
+git diff --check
+pgrep -x sfltool || true
+```
+
+Notes:
+
+- `DEVICE_SERIAL` is intentionally redacted.
+- No `/usr/bin/sfltool dumpbtm` command was executed.
+- No login-item diagnostic opt-in argument was used.
+- No `--observed-physical-drawing` argument was used because no physical
+  stylus drawing, Host stylus injection excerpt, or visible macOS drawing-app
+  output was captured.
+- `make physical-stylus-gate` returned nonzero as expected for this blocked
+  evidence (`can_close_physical_stylus_gate=false`).
+- `swift test --filter StylusEventFactoryTests` was attempted but this local
+  Command Line Tools environment cannot compile XCTest (`no such module
+  'XCTest'`). `swift build` completed successfully.
