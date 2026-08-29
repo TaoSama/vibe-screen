@@ -1,0 +1,7 @@
+VSAudioConfig
+VSAudioConfigResult
+CAPABILITY_AUDIO
+audioConfig
+audioConfigResult
+vibescreen.protocol.v1.AudioConfig
+vibescreen.protocol.v1.AudioConfigResult
