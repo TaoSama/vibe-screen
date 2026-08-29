@@ -40,6 +40,12 @@ it can close.
 
 The retained blocked/readiness record is
 [`evidence/2026-08-21-audio-real-device-blocked/README.md`](evidence/2026-08-21-audio-real-device-blocked/README.md).
+The current P0110 owner record is tracked separately under
+[`../2026-08-24-p0110-audio-current-base/TEST.md`](../2026-08-24-p0110-audio-current-base/TEST.md).
+Use `make android-audio-playback-owner-record EVIDENCE_DIR=<run-dir>` to
+preserve blocked or insufficient current-base evidence, and use
+`make android-audio-playback-gate EVIDENCE_DIR=<run-dir>` only for a formal
+closing attempt because it requires `can_close_android_audio_playback_gate=true`.
 
 ## Open gates
 
