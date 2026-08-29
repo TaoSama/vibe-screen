@@ -188,9 +188,9 @@
     "source_current_base": {
       "blocking": true,
       "evidence": [
-        "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
-        "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
-        "False"
+        "cf49186d3d582ccdf1c452fce13d409eea9743f9",
+        "cf49186d3d582ccdf1c452fce13d409eea9743f9",
+        "True"
       ],
       "expected": "manifest source commit matches a clean current checkout",
       "passed": false
@@ -258,7 +258,7 @@
   },
   "gate_can_close_phase3_release": false,
   "gate_closed": false,
-  "generated_at": "2026-08-29T11:25:00.149222Z",
+  "generated_at": "2026-08-29T14:50:30.047856Z",
   "interpretation": "A pass requires retained evidence for a real public Internet WebRTC relay session, approved bidirectional file transfer over vibescreen.bulk.v1, bounded bulk backpressure and cleanup, AES-256-GCM record-layer separation, and every listed Phase 3 release prerequisite. Relay deployment preflight work, including PR #404-style readyz/DNS/disk hardening, is not product E2E evidence by itself.",
   "kind": "phase3_webrtc_bulk_product_flow_gate",
   "not_proven": [
@@ -283,7 +283,7 @@
   },
   "schema_version": "vibescreen.evidence/v1",
   "source": {
-    "commit": "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
+    "commit": "cf49186d3d582ccdf1c452fce13d409eea9743f9",
     "tree_status": "dirty"
   },
   "verdict": "blocked"
