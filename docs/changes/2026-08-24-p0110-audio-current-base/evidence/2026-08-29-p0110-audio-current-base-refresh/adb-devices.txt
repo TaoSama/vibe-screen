@@ -1,0 +1,6 @@
+$ adb devices -l
+exit=0
+--- stdout ---
+List of devices attached
+<ANDROID_SERIAL>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:26
+--- stderr ---
