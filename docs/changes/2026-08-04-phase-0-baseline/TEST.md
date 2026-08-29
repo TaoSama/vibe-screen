@@ -418,7 +418,7 @@ input cannot close these gates. Evidence is retained under
 [evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/README.md).
 
 On 2026-08-28 Asia/Shanghai local time / 2026-08-28 UTC, origin/main commit
-`10f5df00067009b4e86991a617f2f29e61ad5eeb` refreshed the latency current-base
+`869ef6d0a05f19f707b100b8a3c5ff78c5a28021` refreshed the latency current-base
 owner record. The connected Nubia P0110/pacific Android 16 / SDK 36 substitute
 and the installed Mac Host binary identity were recorded, USB reverse and a
 local Host listener were visible, and `wlan0` reported `NO-CARRIER` /
