@@ -1,0 +1,4 @@
+collected_at=2026-08-28T22:54:24.732628Z
+platform=macOS-26.4.1-arm64-arm-64bit
+machine=arm64
+host_pid=not provided
