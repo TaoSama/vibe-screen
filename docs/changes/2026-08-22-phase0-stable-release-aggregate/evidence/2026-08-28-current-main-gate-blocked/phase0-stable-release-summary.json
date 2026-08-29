@@ -1,0 +1,392 @@
+{
+  "aggregate_verdict": "blocked",
+  "blocking_required_gates": [
+    {
+      "blockers": [
+        "The latest macOS hardware compatibility gate summary is blocked readiness, not a current-real-device compatibility matrix pass.",
+        "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row evidence before support claims."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "README.md",
+        "docs/runbook/macos-host-compatibility.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "macos_host_hardware_compatibility_matrix",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "macOS Host hardware compatibility matrix",
+      "verdict": "open"
+    },
+    {
+      "blockers": [
+        "The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/latency-preflight.json"
+      ],
+      "evidence_strength": "partial",
+      "id": "telemetry_and_latency_archive",
+      "issues": [],
+      "owner_prs": [
+        167
+      ],
+      "required_for_stable_release": true,
+      "title": "Telemetry and external latency artifact archive",
+      "verdict": "insufficient"
+    },
+    {
+      "blockers": [
+        "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
+        "The latest current-base Host RSS short-window record is blocked readiness: no stable-signed current-source Host with native telemetry and no USB/LAN stream window was collected.",
+        "No current-source host_rss_gate pass exists."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-10-host-rss-growth/TECH.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md",
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/README.md"
+      ],
+      "evidence_strength": "historical-fail",
+      "id": "host_rss_2h_no_growth",
+      "issues": [],
+      "owner_prs": [
+        158,
+        222,
+        230,
+        237,
+        376
+      ],
+      "required_for_stable_release": true,
+      "title": "Host RSS two-hour no-growth gate",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
+        "The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/testing.md",
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/native-pointer-hid-summary.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "native_pointer_hid_mouse",
+      "issues": [],
+      "owner_prs": [
+        232,
+        268,
+        361
+      ],
+      "required_for_stable_release": true,
+      "title": "Native pointer HID mouse move/click acceptance",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "No physical Android controller runtime run is recorded.",
+        "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "controller_runtime_acceptance",
+      "issues": [],
+      "owner_prs": [
+        217,
+        220,
+        270
+      ],
+      "required_for_stable_release": true,
+      "title": "Controller runtime acceptance",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
+        "Broader protocol/session, decoder, renderer, and UI ownership are not yet all enforced by current-base module contracts."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "README.md",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt"
+      ],
+      "evidence_strength": "partial-current-source",
+      "id": "module_ownership_extraction",
+      "issues": [],
+      "owner_prs": [
+        211,
+        218,
+        221,
+        259,
+        372
+      ],
+      "required_for_stable_release": true,
+      "title": "Phase 0 module ownership extraction",
+      "verdict": "open"
+    }
+  ],
+  "can_mark_phase0_stable_release": false,
+  "closed_required_gate_count": 5,
+  "gate_summaries": [
+    {
+      "blockers": [],
+      "can_close": true,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/UPSTREAM.md",
+        "THIRD_PARTY.md"
+      ],
+      "evidence_strength": "current-source",
+      "id": "upstream_provenance_and_license",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "Upstream provenance and license pin",
+      "verdict": "pass"
+    },
+    {
+      "blockers": [],
+      "can_close": true,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
+      ],
+      "evidence_strength": "current-ci",
+      "id": "protocol_contract_ci",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "Protocol v1 contract and CI gates",
+      "verdict": "pass"
+    },
+    {
+      "blockers": [],
+      "can_close": true,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
+      ],
+      "evidence_strength": "current-ci",
+      "id": "android_clean_build",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "Android tests and debug APK clean build",
+      "verdict": "pass"
+    },
+    {
+      "blockers": [],
+      "can_close": true,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
+      ],
+      "evidence_strength": "current-ci",
+      "id": "macos_release_build_xcode_tests",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "macOS release build and full-Xcode unit tests",
+      "verdict": "pass"
+    },
+    {
+      "blockers": [
+        "The latest macOS hardware compatibility gate summary is blocked readiness, not a current-real-device compatibility matrix pass.",
+        "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row evidence before support claims."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "README.md",
+        "docs/runbook/macos-host-compatibility.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "macos_host_hardware_compatibility_matrix",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "macOS Host hardware compatibility matrix",
+      "verdict": "open"
+    },
+    {
+      "blockers": [],
+      "can_close": true,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md"
+      ],
+      "evidence_strength": "real-device",
+      "id": "android_device_usb_stream_reconnect_codec",
+      "issues": [],
+      "owner_prs": [],
+      "required_for_stable_release": true,
+      "title": "Android USB stream, reconnect, stale epoch, and codec fallback",
+      "verdict": "pass"
+    },
+    {
+      "blockers": [
+        "The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/latency-preflight.json"
+      ],
+      "evidence_strength": "partial",
+      "id": "telemetry_and_latency_archive",
+      "issues": [],
+      "owner_prs": [
+        167
+      ],
+      "required_for_stable_release": true,
+      "title": "Telemetry and external latency artifact archive",
+      "verdict": "insufficient"
+    },
+    {
+      "blockers": [
+        "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
+        "The latest current-base Host RSS short-window record is blocked readiness: no stable-signed current-source Host with native telemetry and no USB/LAN stream window was collected.",
+        "No current-source host_rss_gate pass exists."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-10-host-rss-growth/TECH.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md",
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/README.md"
+      ],
+      "evidence_strength": "historical-fail",
+      "id": "host_rss_2h_no_growth",
+      "issues": [],
+      "owner_prs": [
+        158,
+        222,
+        230,
+        237,
+        376
+      ],
+      "required_for_stable_release": true,
+      "title": "Host RSS two-hour no-growth gate",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
+        "The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/testing.md",
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/native-pointer-hid-summary.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "native_pointer_hid_mouse",
+      "issues": [],
+      "owner_prs": [
+        232,
+        268,
+        361
+      ],
+      "required_for_stable_release": true,
+      "title": "Native pointer HID mouse move/click acceptance",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "No physical Android controller runtime run is recorded.",
+        "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json"
+      ],
+      "evidence_strength": "readiness",
+      "id": "controller_runtime_acceptance",
+      "issues": [],
+      "owner_prs": [
+        217,
+        220,
+        270
+      ],
+      "required_for_stable_release": true,
+      "title": "Controller runtime acceptance",
+      "verdict": "blocked"
+    },
+    {
+      "blockers": [
+        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
+        "Broader protocol/session, decoder, renderer, and UI ownership are not yet all enforced by current-base module contracts."
+      ],
+      "can_close": false,
+      "evidence_paths": [
+        "README.md",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt"
+      ],
+      "evidence_strength": "partial-current-source",
+      "id": "module_ownership_extraction",
+      "issues": [],
+      "owner_prs": [
+        211,
+        218,
+        221,
+        259,
+        372
+      ],
+      "required_for_stable_release": true,
+      "title": "Phase 0 module ownership extraction",
+      "verdict": "open"
+    }
+  ],
+  "kind": "phase0_stable_release_closure_summary",
+  "manifest_source": {
+    "audit_date": "2026-08-28",
+    "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/README.md",
+    "base_commit": "1430c3cc18948b93b50b7054e992844f287b6fbc",
+    "base_ref": "origin/main",
+    "owner": "Vibe Screen core team"
+  },
+  "missing_required_gate_ids": [],
+  "phase": "phase0",
+  "readme_guard": {
+    "forbidden_matches": [],
+    "missing_required_phrases": [],
+    "reasons": [],
+    "verdict": "pass"
+  },
+  "reasons": [
+    "macos_host_hardware_compatibility_matrix: The latest macOS hardware compatibility gate summary is blocked readiness, not a current-real-device compatibility matrix pass.",
+    "macos_host_hardware_compatibility_matrix: Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row evidence before support claims.",
+    "telemetry_and_latency_archive: The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive.",
+    "host_rss_2h_no_growth: The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
+    "host_rss_2h_no_growth: The latest current-base Host RSS short-window record is blocked readiness: no stable-signed current-source Host with native telemetry and no USB/LAN stream window was collected.",
+    "host_rss_2h_no_growth: No current-source host_rss_gate pass exists.",
+    "native_pointer_hid_mouse: No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
+    "native_pointer_hid_mouse: The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window.",
+    "controller_runtime_acceptance: No physical Android controller runtime run is recorded.",
+    "controller_runtime_acceptance: No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle.",
+    "module_ownership_extraction: Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
+    "module_ownership_extraction: Broader protocol/session, decoder, renderer, and UI ownership are not yet all enforced by current-base module contracts."
+  ],
+  "required_gate_count": 11,
+  "schema_version": "vibescreen.evidence/v1",
+  "source_guard": {
+    "expected_source_commit": "1430c3cc18948b93b50b7054e992844f287b6fbc",
+    "manifest_base_commit": "1430c3cc18948b93b50b7054e992844f287b6fbc",
+    "reasons": [],
+    "verdict": "pass"
+  }
+}
