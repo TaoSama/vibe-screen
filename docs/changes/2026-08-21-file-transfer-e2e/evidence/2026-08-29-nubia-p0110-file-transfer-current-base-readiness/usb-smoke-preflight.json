@@ -1,0 +1,53 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "usb_smoke_preflight",
+  "source": {
+    "base_ref": "origin/main",
+    "base_commit": "567dae75da22b2faa49ab59e5d95b4a642be1d97"
+  },
+  "device": {
+    "serial_label": "REDACTED_P0110_USB_SERIAL",
+    "identity": {
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "device": "pacific",
+      "android_release": "16",
+      "sdk": 36
+    },
+    "label_guard": {
+      "device_matches_expected_p0110": true,
+      "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only",
+      "recorded_as_expected_device_only": true
+    }
+  },
+  "claims": {
+    "device_matches_expected_p0110": true,
+    "adb_reverse_tcp_54321_present": true,
+    "android_app_installed": true,
+    "android_app_running": true,
+    "android_app_foreground": true,
+    "host_listener_observed": true,
+    "can_start_usb_smoke": false,
+    "live_usb_stream_observed": false,
+    "readme_gate_closure": false,
+    "can_close_latency_gate": false,
+    "can_close_controller_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "can_close_native_pointer_hid_gate": false,
+    "can_close_stylus_gate": false,
+    "can_close_two_hour_soak_gate": false
+  },
+  "result": "blocked",
+  "blockers": [
+    {
+      "field": "host.preflight",
+      "message": "macOS Host stable-signing/TCC preflight failed: Host signing prerequisite"
+    }
+  ],
+  "safety": {
+    "raw_serial_redacted": true,
+    "does_not_modify_adb_reverse": true,
+    "does_not_start_host": true,
+    "does_not_claim_file_transfer_e2e": true
+  }
+}
