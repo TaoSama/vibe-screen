@@ -372,7 +372,10 @@ The gate is passive and fail-closed. It requires retained Team ID, provisioning
 profile UUID, unique bundle ID, non-ad-hoc codesign identity, physical-device
 UDID hashes, signed-app entitlements, signed artifact SHA-256, a clean
 current-base commit, and signing artifact paths for the archive command,
-codesign entitlements, and provisioning profile output. Missing any one of
+codesign entitlements, and provisioning profile output. Public retained evidence
+must use sanitized presence fields, hashes, and redaction flags rather than raw
+Team IDs, profile UUIDs, certificate hashes, identity names, physical-device
+UDIDs, or local filesystem paths. Missing any one of
 those fields returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived
 material returns `fail`. A pass only unblocks the app-signing prerequisite for
 `ios-current-base-gate` when the resulting

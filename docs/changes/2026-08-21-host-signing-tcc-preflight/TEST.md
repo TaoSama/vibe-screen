@@ -34,6 +34,22 @@ input, or reconnect probe could start. The retained matrix summary is under
 and reports `verdict=blocked` with
 `can_close_macos_host_compatibility_row=false`.
 
+The 2026-08-29 macOS Host compatibility owner pass refreshed that result on
+current `origin/main` commit `b54ee0e929c53459e6ba7e060f2c9de0c846f408` from a
+clean checkout. It retained exact local host identity for Apple silicon Mac16,8
+/ Apple M4 Pro on macOS 26.4.1 build 25E253 with a multi-display topology: the
+built-in Color LCD plus one DELL U2723QE external display. The shared readiness
+snapshot observed a Host listener on TCP `54321`, but the row remains blocked because the configured
+`Vibe Screen Dev` signing identity was unavailable to rebuild/install
+readiness, the installed Host lacks embedded source commit/tree provenance,
+Screen Recording and Accessibility could not be verified from read-only TCC
+evidence, the installed Host lacks the virtual HID entitlement, and Launch at
+Login remains unverified in the default no-`sfltool` path. No Android runtime
+probe was started. The retained matrix summary is under
+[`evidence/2026-08-29-macos-host-compatibility-current-base-blocked`](evidence/2026-08-29-macos-host-compatibility-current-base-blocked/README.md)
+and reports `verdict=blocked`, `invalid_claims=[]`, and
+`can_close_macos_host_compatibility_row=false`.
+
 ## Verification
 
 Before continuing macOS readiness validation after the 2026-08-27 prompt report,
@@ -55,6 +71,24 @@ make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/host-readiness-c
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_controller_runtime -v
 git diff --check
 ```
+
+The focused checks for the 2026-08-29 compatibility-matrix refresh are:
+
+```bash
+pgrep -x sfltool || true
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/macos-host-compatibility-current-base-2026-08-29-clean
+make macos-hardware-compatibility-gate EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_hardware_compatibility -v
+make phase0-stable-release-gate
+git diff --check
+pgrep -x sfltool || true
+```
+
+`make baseline-macos-host-readiness` is expected to exit `2` for this local
+environment until the stable source-bound Host/TCC prerequisites are satisfied.
+`make macos-hardware-compatibility-gate` is expected to write a blocked summary
+and return non-zero for this evidence package; the retained summary must show
+`verdict=blocked` and an empty `invalid_claims` list.
 
 The Host readiness command is expected to exit `2` when the local machine lacks
 the configured signing identity, installed source-bound Host, TCC grants,

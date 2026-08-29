@@ -56,7 +56,10 @@ The input must retain or summarize Team ID, provisioning profile UUID, unique
 bundle ID, codesign identity, registered physical-device UDID hashes, signed-app
 entitlements, signed artifact SHA-256, a clean current-base commit, and local
 artifacts for the archive command, codesign entitlements, and provisioning
-profile output. Missing any one of those values returns `blocked`; Simulator,
+profile output. Keep the public JSON sanitized: record booleans, hashes, and
+explicit redaction flags instead of raw Team IDs, profile UUIDs, certificate
+hashes, identity names, device UDIDs, or local filesystem paths. Missing any one
+of those values returns `blocked`; Simulator,
 unsigned, ad-hoc, or Android-derived material returns `fail`. Pass the produced
 `ios-app-signing-readiness-gate.json` into the current-base manifest before
 reporting aggregate readiness:
