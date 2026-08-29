@@ -1,0 +1,2 @@
+$ adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.manufacturer
+nubia
