@@ -586,6 +586,7 @@ def summarize_requested_gates(
     host_rss_gate_output: Path | None,
     latency_reports: Sequence[Path],
     input_summaries: Sequence[Path],
+    host_rss_exact_window_report: Path | None = None,
     required_latency_report_count: int = 0,
     required_input_summary_count: int = 0,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
@@ -606,11 +607,16 @@ def summarize_requested_gates(
         insufficiencies.append("soak summary is required but --soak-summary was not provided")
 
     if require_host_rss_gate:
-        if soak_summary is None or soak_samples is None:
-            insufficiencies.append("Host RSS gate requires --soak-summary and --soak-samples")
+        if soak_summary is None or soak_samples is None or host_rss_exact_window_report is None:
+            insufficiencies.append(
+                "Host RSS gate requires --soak-summary, --soak-samples, "
+                "and --host-rss-exact-window-report"
+            )
         else:
             try:
-                report = derive_host_rss_gate(soak_summary, soak_samples)
+                report = derive_host_rss_gate(
+                    soak_summary, soak_samples, host_rss_exact_window_report
+                )
                 requested["host_rss"]["report"] = report
                 if host_rss_gate_output is not None:
                     write_json(host_rss_gate_output, report)
@@ -704,6 +710,7 @@ def build_document(
     require_host_rss_gate: bool = False,
     soak_summary: Path | None = None,
     soak_samples: Path | None = None,
+    host_rss_exact_window_report: Path | None = None,
     host_rss_gate_output: Path | None = None,
     latency_reports: Sequence[Path] = (),
     input_summaries: Sequence[Path] = (),
@@ -810,6 +817,7 @@ def build_document(
         require_host_rss_gate=require_host_rss_gate,
         soak_summary=soak_summary,
         soak_samples=soak_samples,
+        host_rss_exact_window_report=host_rss_exact_window_report,
         host_rss_gate_output=host_rss_gate_output,
         latency_reports=latency_reports,
         input_summaries=input_summaries,
@@ -906,6 +914,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-host-rss-gate", action="store_true")
     parser.add_argument("--soak-summary", type=Path)
     parser.add_argument("--soak-samples", type=Path)
+    parser.add_argument("--host-rss-exact-window-report", type=Path)
     parser.add_argument("--host-rss-gate-output", type=Path)
     parser.add_argument("--latency-report", action="append", default=[])
     parser.add_argument("--input-summary", action="append", default=[])
@@ -964,6 +973,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_host_rss_gate=args.require_host_rss_gate,
         soak_summary=args.soak_summary,
         soak_samples=args.soak_samples,
+        host_rss_exact_window_report=args.host_rss_exact_window_report,
         host_rss_gate_output=args.host_rss_gate_output,
         latency_reports=_append_path(args.latency_report),
         input_summaries=_append_path(args.input_summary),
