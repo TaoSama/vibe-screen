@@ -101,7 +101,7 @@
   "device_lock": {
     "acquired": true,
     "detail": "acquired",
-    "path": "/tmp/vibe-screen-501/trusted-lan-locks/vibe-screen-android-500ca033f6d0ccc26a771eae.lock"
+    "path": "<android-device-lock>"
   },
   "host": {
     "host_preflight_command": [
@@ -205,7 +205,7 @@
     {
       "name": "device_lock",
       "status": "pass",
-      "summary": "Acquired Android device lock /tmp/vibe-screen-501/trusted-lan-locks/vibe-screen-android-500ca033f6d0ccc26a771eae.lock"
+      "summary": "Acquired Android device lock <android-device-lock>"
     },
     {
       "details": {

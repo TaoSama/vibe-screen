@@ -95,7 +95,7 @@
       ]
     },
     "login_item": {
-      "detail": "Login item not probed by default; probe not run. Run readiness with --include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or --probe-login-items during an attended diagnostic session to inspect it with /usr/bin/sfltool dumpbtm.",
+      "detail": "Login item not probed by default; probe not run. Use an attended diagnostic session outside default readiness to inspect login-item state.",
       "evidence": [],
       "matched": false,
       "state": "unverified"
