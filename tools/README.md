@@ -468,11 +468,13 @@ formal `host-rss-gate` target. Pass
 `--require-latency-report <count>` or `--require-input-summary <count>` to make
 missing retained latency/input evidence explicit in the same JSON report.
 Additional `--lock-glob` values are checked in addition to the default
-`/tmp/vibe-screen-device-*.lock` ownership guards.
-For single-device owner runs that already hold their coordination lock, pass
-`EVIDENCE_ALLOW_EXISTING_LOCKS=1` so the preflight records the lock and
-continues read-only probing instead of treating that owned lock as an external
-blocker.
+`/tmp/vibe-screen-device-*.lock` ownership guards. When a hardware-owner script
+already holds a specific lease file, pass that exact path with `--held-lock` so
+the preflight ignores the caller-owned lock while still blocking on every other
+matching lock. For single-device owner runs that already hold their coordination
+lock through the Make target, pass `EVIDENCE_ALLOW_EXISTING_LOCKS=1` so the
+preflight records the lock and continues read-only probing instead of treating
+that owned lock as an external blocker.
 
 ### File-transfer Android smoke gate
 
