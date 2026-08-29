@@ -1,0 +1,6 @@
+No host display rotation run was started for this current-base blocked record.
+
+The current-base manifest ran a read-only `system_profiler SPDisplaysDataType`
+probe, but this retained summary intentionally does not publish hardware serials
+or display identifiers. No physical or virtual display was rotated, no
+restoration plan was exercised, and this file is blocker context only.
