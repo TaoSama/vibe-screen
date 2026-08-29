@@ -1,0 +1,10 @@
+# 2026-08-29 host display rotation current-base blocked commands
+pgrep -x sfltool || true
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base --is-ancestor origin/main HEAD
+make host-display-rotation-current-base-manifest EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked
+make host-display-rotation-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked/host-display-rotation.json --check-artifacts --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked/host-display-rotation-gate.json
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked --check
+pgrep -x sfltool || true
