@@ -23,15 +23,16 @@ trusted-LAN encrypted record path and rule out legacy plaintext fallback.
 Current-base reconnect matrix owner evidence is under
 [`evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked`](evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
 It records the latest `origin/main`-based worktree state at
-current source commit `7deda66b9ad2149c750f034cb6b7aeba5dc318eb`, based on
-`origin/main` commit `567dae75da22b2faa49ab59e5d95b4a642be1d97`. The P0110 target identity was
+current source commit `ce6d1a763179a46ae3598d71a92e10e9647aa4d9`, based on
+`origin/main` commit `07bb40e18074fd737c4a70714b4faf4499ea64ab`. The P0110 target identity was
 confirmed as nubia P0110 / pacific / Android 16 / SDK 36, ADB reverse still
-showed `tcp:54321 tcp:54321`, and the Host now had a TCP `54321` listener,
-but the real USB timing attempts were blocked before disruption because the
-source-bound stable Host prerequisite was not satisfied: the configured
-`Vibe Screen Dev` signing identity was unavailable for rebuild, the installed
-Host lacked source commit/tree provenance, and TCC authorization could not be
-verified read-only. The generated summary reports `verdict=blocked`,
+showed `tcp:54321 tcp:54321`, and `dev.telemachus.display` was running on
+Android, but the real USB timing attempts were blocked before disruption
+because the source-bound stable Host prerequisites were not satisfied: the
+configured `Vibe Screen Dev` signing identity was unavailable for rebuild,
+codesign inspection of `/Applications/Vibe Screen.app` failed, no Host listener
+was observed on TCP `54321`, and TCC permissions were not inspected after Host
+bundle signing inspection failed. The generated summary reports `verdict=blocked`,
 `can_close_timing_gate=false`, and all three full-gate disruptions missing. No
 client kill, ADB reverse removal/restoration, or trusted-LAN interruption was
 run.

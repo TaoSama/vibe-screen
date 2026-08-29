@@ -1,17 +1,19 @@
 # Commands
 git fetch origin main codex/p0110-usb-reconnect-current-base
-git reset --hard origin/codex/p0110-usb-reconnect-current-base
+git switch --detach origin/codex/p0110-usb-reconnect-current-base
 git merge --no-edit origin/main
-git worktree add --detach .build/reconnect-source-v22-7deda66b9-<timestamp> 7deda66b9ad2149c750f034cb6b7aeba5dc318eb
+git branch -f codex/p0110-usb-reconnect-current-base HEAD
+git switch codex/p0110-usb-reconnect-current-base
 pgrep -x sfltool || true
 git rev-parse HEAD
 git rev-parse origin/main
 git status --short --branch
-make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
+make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=$REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
 adb -s EP0110PZ0B9110300B reverse --list
 adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
 adb -s EP0110PZ0B9110300B shell dumpsys window
 lsof -nP -iTCP:54321 -sTCP:LISTEN
-make -C .build/reconnect-source-v22-7deda66b9-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=/Users/luwentao/.codex/worktrees/baf4/vibe-screen/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
-make evidence-reconnect-timing-blocked EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked ...
+git worktree add --detach .build/reconnect-source-ce6d1a763-<timestamp> ce6d1a763179a46ae3598d71a92e10e9647aa4d9
+make -C .build/reconnect-source-ce6d1a763-<timestamp> baseline-macos-host-readiness EVIDENCE_DIR=$REPO/docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+python3 - <<'PY'  # summarize blocked reconnect timing record from host-readiness.json
 pgrep -x sfltool || true

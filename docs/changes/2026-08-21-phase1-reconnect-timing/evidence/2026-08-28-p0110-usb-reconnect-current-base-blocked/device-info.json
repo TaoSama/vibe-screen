@@ -1,6 +1,6 @@
 {
-  "adb_version": "Android Debug Bridge version 1.0.41\nVersion 37.0.0-14910828\nInstalled as /Users/luwentao/Library/Android/sdk/platform-tools/adb\nRunning on Darwin 25.4.0 (arm64)",
-  "collected_at": "2026-08-29T01:27:51.701148+00:00",
+  "adb_version": "Android Debug Bridge version 1.0.41\nVersion 37.0.0-14910828\nInstalled as $ANDROID_HOME/platform-tools/adb\nRunning on Darwin 25.4.0 (arm64)",
+  "collected_at": "2026-08-29T03:41:29.493059+00:00",
   "connection": "already connected to EP0110PZ0B9110300B",
   "device": {
     "abi": "arm64-v8a",

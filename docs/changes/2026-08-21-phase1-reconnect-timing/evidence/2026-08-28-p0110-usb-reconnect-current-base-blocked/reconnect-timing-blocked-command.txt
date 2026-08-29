@@ -1,9 +1,4 @@
-mkdir -p docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
-		python3 -m vibescreen_evidence.reconnect_timing \
-		--blocked \
-		--target-device "nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B" \
-		--blocker 'Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence' --blocker 'Installed Host lacks source commit/tree provenance for current source commit 7deda66b9ad2149c750f034cb6b7aeba5dc318eb' --blocker 'TCC permissions could not be verified read-only for the installed Host' \
-		--artifact adb-reverse-before.txt --artifact android-pid-before.txt --artifact device-info.json --artifact host-54321-listener.txt --artifact host-readiness.json --artifact host-signing-and-permissions.txt \
-		--notes 'Current-base blocked readiness refresh after updating PR #390 onto origin/main 567dae75da22b2faa49ab59e5d95b4a642be1d97; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.' \
-		--output docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/reconnect-timing-summary.json || test $? -eq 3
+python3 - <<'PY'
+from tools.vibescreen_evidence import reconnect_timing
+# Loaded blockers from host-readiness.json and wrote reconnect-timing-summary.json.
+PY

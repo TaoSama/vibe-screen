@@ -10,8 +10,8 @@ not be used to close the README gate.
 - Gate profile: `phase1-reconnect-within-3s`
 - Required full-gate disruption scenarios: `client-kill`,
   `adb-reverse-disconnect`, and `lan-network-interrupt`
-- Current source commit: `7deda66b9ad2149c750f034cb6b7aeba5dc318eb`, based
-  on latest `origin/main` commit `567dae75da22b2faa49ab59e5d95b4a642be1d97`
+- Current source commit: `ce6d1a763179a46ae3598d71a92e10e9647aa4d9`, based
+  on latest `origin/main` commit `07bb40e18074fd737c4a70714b4faf4499ea64ab`
 
 ## Readiness observations
 
@@ -21,9 +21,9 @@ Read-only device probes used explicit `adb -s EP0110PZ0B9110300B ...` commands.
 existing USB reverse mapping `UsbFfs tcp:54321 tcp:54321`, and
 `android-pid-before.txt` shows `dev.telemachus.display` was running.
 
-The Host listener prerequisite improved compared with the 2026-08-24 blocked
-record: `host-54321-listener.txt` records `/Applications/Vibe Screen.app` PID
-`4810` listening on `127.0.0.1:54321`.
+The Host listener prerequisite was not ready in this refresh:
+`host-54321-listener.txt` is empty, `host-54321-listener.exit` is `1`, and
+`host-readiness.json` reports `listener_status=blocked`.
 
 The real USB timing attempts were still blocked before disruption because the
 source-bound stable Host prerequisite was not satisfied:
@@ -31,13 +31,14 @@ source-bound stable Host prerequisite was not satisfied:
 - `host-readiness.json` reports `status=blocked`.
 - The configured `Vibe Screen Dev` signing identity could not be resolved from
   the current keychain for rebuilding a source-bound Host.
-- The installed Host has no source commit/tree provenance, so it cannot be tied
-  to current source commit `7deda66b9ad2149c750f034cb6b7aeba5dc318eb`.
-- TCC Screen Recording and Accessibility could not be verified read-only for the
-  installed Host because the user and system TCC database reads failed.
+- Codesign inspection of `/Applications/Vibe Screen.app` failed because the
+  embedded WebRTC framework has missing sealed-resource entries.
+- No Host listener was observed on TCP `54321`.
+- TCC permissions were not inspected after Host bundle signing inspection
+  failed.
 
 No `client-kill`, ADB reverse removal/restoration, or trusted-LAN network
-interruption was run for this blocked record. The observed Host listener, ADB
+interruption was run for this blocked record. The Host listener probe, ADB
 reverse mapping, and running Android process are readiness context only; they
 are not Protocol v1 recovery timing evidence.
 
