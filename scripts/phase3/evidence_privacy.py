@@ -85,8 +85,22 @@ def _network_violations(content: bytes) -> list[str]:
 
 
 def _is_safe_credential_value(value: bytes) -> bool:
-    normalized = value.strip().strip(b"\"'").strip().lower()
-    if normalized in {b"", b"null", b"none", b"redacted", b"<redacted>", b"[redacted]", b"..."}:
+    stripped = value.strip()
+    # JSON literals true/false/null are only safe when unquoted. A quoted
+    # "false"/"true"/"null" is a string value that could be a credential.
+    if stripped in (b"true", b"false", b"null"):
+        return True
+    if re.fullmatch(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", stripped):
+        return True
+    normalized = stripped.strip(b"\"\'").strip().lower()
+    if normalized in {
+        b"",
+        b"none",
+        b"redacted",
+        b"<redacted>",
+        b"[redacted]",
+        b"...",
+    }:
         return True
     if re.fullmatch(rb"[<\[]redacted[-_a-z0-9]*[>\]]", normalized):
         return True

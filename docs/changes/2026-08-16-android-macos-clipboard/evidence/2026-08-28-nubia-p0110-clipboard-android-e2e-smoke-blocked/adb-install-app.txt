@@ -1,0 +1,3 @@
+$ adb -s REDACTED_P0110_USB_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+Performing Streamed Install
+Success
