@@ -1,0 +1,14 @@
+# Command log
+
+Commit: 3a81482b7350194a792408efae23f3a543ef2c3d
+Started: 2026-08-28T12:10:00Z
+
+- `pgrep -x sfltool || true` before readiness: no output.
+- `python3 scripts/macos_dev_host.py readiness --report /tmp/... --json-output /tmp/...`: exit 2.
+- `pgrep -x sfltool || true` after readiness: no output.
+- `python3 scripts/macos_dev_host.py xctest-preflight --report /tmp/... --json-output /tmp/...`: exit 2.
+- `pgrep -x sfltool || true` after xctest preflight: no output.
+
+Forbidden commands/options were not used: `/usr/bin/sfltool dumpbtm`,
+`--include-login-item-diagnostic`, `--inspect-login-items`,
+`--probe-login-item`, or `--probe-login-items`.
