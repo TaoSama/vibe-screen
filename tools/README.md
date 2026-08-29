@@ -1092,6 +1092,11 @@ recording contradictory capture backend results is `failed`. The Python CLI exit
 `0` only for `pass`, `1` for `blocked` or `insufficient`, and `2` for `failed`;
 Make reports any non-pass verdict as target failure after writing the summary.
 The collection checklist is in `docs/runbook/macos-host-compatibility.md`.
+Each generated summary also includes `closure_checklist`, grouped as source and
+Host identity, display and encoder capability, runtime acceptance, retained
+scope/artifacts, and extrapolation guard. Use it as the next-action checklist
+for blocked current-base evidence; it is derived from the same fail-closed
+requirements and does not weaken the top-level verdict.
 
 ## Latency evidence
 
