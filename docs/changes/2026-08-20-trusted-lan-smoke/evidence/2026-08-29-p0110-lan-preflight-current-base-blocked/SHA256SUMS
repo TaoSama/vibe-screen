@@ -1,11 +1,11 @@
-d809ec1d1b8478e5cf5b97297a166985e95d11da0048718f7933fbf2c5295d8d  ./README.md
 e558bc28e6c7de283d71e1f7cbcd832258381664e8ef6bc07900916b48fb2b39  ./commands.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./host-readiness-command.exit
 a61ea5cfb7c362dd5422aee4a82bf894112da34cfea0d61bb1abc69d0e5a4ac3  ./host-readiness.json
 afefba5a8378cd12b604218a992016aaf1e45486de4b106ca75c64f0fe1fa5f1  ./host-signing-and-permissions.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./preflight-command.exit
+d809ec1d1b8478e5cf5b97297a166985e95d11da0048718f7933fbf2c5295d8d  ./README.md
 1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2  ./reconnect-timing-command.exit
 40676f4acb11635390fa7ecee6d0f694cde53b1aef8ed9fc660645fa8493919d  ./reconnect-timing-summary.json
 2e989410a4ed078755788057e4913d2fb9b9fd610c8781711d6440891f95b97c  ./trusted-lan-preflight.json
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./trusted-lan-smoke-evidence-check.exit
-a7155b5a402e3f21bbb19b3cb0313e412b6fe3b22a30fb54fc755767b592c677  ./trusted-lan-smoke-verdict.json
+db2d5df5aa8657ff87d405f396f3e65537f3a77bd4ba847d52b87a07fb9fa5b2  ./trusted-lan-smoke-verdict.json

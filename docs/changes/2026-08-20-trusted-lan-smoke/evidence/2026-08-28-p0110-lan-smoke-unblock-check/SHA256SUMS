@@ -9,6 +9,6 @@ e5f8ab8fafdd8b6d8a0e3f91d4f21fb62433eb7543baa0d5b8d1c1210258d3cc  ./host-readine
 27c93238eb08c26559904965bc36991a3bb46f7f69f94dcf7c977d15abe2f71e  ./README.md
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./tool-verification-preflight-command.exit
 1e6d80c3dff44ca5960b40269800616499ad8992689bbc4d08efa26ed4388302  ./tool-verification-preflight-command.txt
-d9cd0983eed51bb0e6c44ce541415465cfcf84016111faaa36e33c2eb2405f61  ./trusted-lan-preflight-tool-verification.json
-545e67070dd50576ba705944cd4d2c3897b6767f522cef8be4db94e030b6f59a  ./trusted-lan-preflight.json
-2b3f580141eff759644ff4ddd8d68d57c98767feaab17b14cb8d9e3c7885c8ca  ./trusted-lan-smoke-verdict.json
+2dde619000dca09810181c6e9fe4e3da4c621677f0e15dbba0ecb404b7de4912  ./trusted-lan-preflight-tool-verification.json
+4921e96420ad1826d3a1e9464bdafa8498f0431aa243ad27eebb2abd9045aba8  ./trusted-lan-preflight.json
+84b78fbabbaf83f6429281538d9b181f118eb4e67a641574ed165a58d5330aaf  ./trusted-lan-smoke-verdict.json

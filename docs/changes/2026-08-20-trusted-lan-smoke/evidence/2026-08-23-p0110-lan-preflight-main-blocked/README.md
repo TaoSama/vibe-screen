@@ -3,7 +3,7 @@
 Date: 2026-08-23
 Target branch: `codex/trusted-lan-p0110-evidence`
 Base commit: `392b86882869f9bf431cfd35be834f6cdc15fd37`
-Target device serial: `EP0110PZ0B9110300B`
+Target device serial: `<device-serial>`
 
 ## Intended gate
 
@@ -35,7 +35,7 @@ the README trusted-LAN stream, reconnect, latency, or stability gates.
 
 - `trusted-lan-preflight.json`: machine-readable fail-closed preflight result.
 - `commands.txt`: command summary; every Android command used `adb -s
-  EP0110PZ0B9110300B ...`.
+  <device-serial> ...`.
 - `device-lock.txt`: local Android device lock acquisition and release record.
 - `SHA256SUMS`: hashes for retained artifacts.
 

@@ -160,7 +160,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
         )
 
     if any(FORBIDDEN_DEVICE_CLAIM_RE.search(label) for label in device_labels):
-        errors.append("README.md must not label Nubia P0110/pacific evidence as Xiaomi 13/fuxi")
+        errors.append("README.md must not label Nubia P0110/pacific evidence as another device")
 
     missing_pass = _missing_pass_markers(lowered)
     has_pass_signals = not missing_pass
@@ -204,7 +204,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
         "can_close_trusted_lan_reconnect_gate": verdict == STATUS_PASS,
         "device_identity_requirement": (
             "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as "
-            "Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi."
+            "Nubia P0110/pacific and must not be relabeled as another device."
         ),
         "errors": errors,
         "warnings": warnings,
@@ -240,7 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "can_close_trusted_lan_reconnect_gate": False,
             "device_identity_requirement": (
                 "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as "
-                "Nubia P0110/pacific and must not be relabeled as Xiaomi 13/fuxi."
+                "Nubia P0110/pacific and must not be relabeled as another device."
             ),
             "errors": [str(error)],
             "warnings": [],

@@ -32,5 +32,5 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./preflight-co
 bb407acbea2e5197924f936f564903ebd87450420ececde61ee359dc8a340b82  ./reconnect-timing-command.txt
 46ae966e08743c81e21714d0a8def0db99250ae15a357a0479198af4b8cbc76e  ./reconnect-timing-summary.json
 9c6e93fe709d24ac0831a91b37e2502e082cffb6ded91860dd3c4f3a98ee14a5  ./trusted-lan-preflight.json
-54a7077ba32eca1e5042949ad1d7232a109acacbbaa7a482eefb61af44769a32  ./trusted-lan-smoke-verdict.json
+7a75a41c4eb87f3964a84a4600dd7f1b120aca8825e0dbf6497ed998d8c16b87  ./trusted-lan-smoke-verdict.json
 6f9bc3a54a75fa953f758e1aadfbc9f16c254cd631aaea9026c126a55b054641  ./xcodebuild-version.txt

@@ -161,7 +161,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
             _validated_mac_candidates(["8.8.8.8"], ["10.0.0.5"])
 
     def test_identity_stage_requires_exact_p0110_identity(self) -> None:
-        stage = _identity_stage(dict(DEVICE_IDENTITY, model="2211133C", device="fuxi"), "P0110_SERIAL_PLACEHOLDER")
+        stage = _identity_stage(dict(DEVICE_IDENTITY, model="OTHER_MODEL", device="other_device"), "P0110_SERIAL_PLACEHOLDER")
 
         self.assertEqual(stage["status"], "blocked")
         self.assertIn("device model is not P0110", stage["summary"])
