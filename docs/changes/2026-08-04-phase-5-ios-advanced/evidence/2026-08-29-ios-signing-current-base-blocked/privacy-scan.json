@@ -27,7 +27,7 @@
       "sha256": "6032028b3d938b22b07cc707e03e23e2ac24f8a45e633fdfb5baee84c449fd5d"
     },
     {
-      "bytes": 3321,
+      "bytes": 4366,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,7 +37,7 @@
       ],
       "path": "ios-app-signing-readiness-gate.json",
       "result": "pass",
-      "sha256": "ef25c45a6348009015a1f1ea4eb9948787a1e8dda7ff8d6b94b222a94af10216"
+      "sha256": "74ff385170ac89dc443f4ba67b72555a4e3c7a64e5a41a5756dbe37813998712"
     },
     {
       "bytes": 1618,
@@ -53,7 +53,7 @@
       "sha256": "3ba17b138daf19ba56ab05ba5e2fdf025bdf3b8e7633b50c85caebb0cd8d2823"
     },
     {
-      "bytes": 20772,
+      "bytes": 21091,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -63,10 +63,10 @@
       ],
       "path": "ios-current-base-gate.json",
       "result": "pass",
-      "sha256": "0bd65d05ba62dfc2f9aef39a4f08cd14844c09162bcca1c52e3904e7087d72fe"
+      "sha256": "70e7c8420b0467fe7dd5c9d880631a5d8ae7c98124aa0be71e6707f561769fc7"
     },
     {
-      "bytes": 17507,
+      "bytes": 17786,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -76,7 +76,7 @@
       ],
       "path": "ios-current-base-manifest.json",
       "result": "pass",
-      "sha256": "75ae55b06e1a23c696e47f6bb0ab536f2ed5b3cf632a9e5d438ed9fca4f21693"
+      "sha256": "17def1dd35b06249bee6b33c3ccadd6857797d2e3bc3c3bd4c4413c94876c52b"
     }
   ],
   "categories": [
