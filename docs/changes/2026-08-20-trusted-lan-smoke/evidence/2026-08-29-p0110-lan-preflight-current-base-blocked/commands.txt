@@ -4,6 +4,7 @@ Branch: `codex/trusted-lan-current-base-evidence`
 Head commit: `2da3f86e24cf51c6966dcea7848f55623cb67a40`
 Target device serial: `<device-serial>`
 Device: nubia P0110 / pacific / Android 16 / SDK 36
+DEVICE_SERIAL='<device-serial>'
 
 Initial safety check:
 
@@ -15,7 +16,7 @@ Trusted-LAN preflight, expected blocked exit `2`:
 
 ```sh
 make evidence-trusted-lan-preflight \
-  EVIDENCE_SERIAL=<device-serial> \
+  EVIDENCE_SERIAL="$DEVICE_SERIAL" \
   EVIDENCE_DIR=.build/evidence/trusted-lan-current-base-2026-08-29-clean
 ```
 

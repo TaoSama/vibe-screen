@@ -1,6 +1,6 @@
 c9af850499f194bcd56611ddd008cd2742c26389dcedd6cb75eaca23def2b8e3  ./android-lan-security-tests.txt
 a2331d2d6f4adbe6c29838c797fd62710044a633b755030ace8fe11bda17054b  ./android-network-blocker-sanitized.txt
-f6045e2728d25b1ee9f056ba334185a3bb1e5f4e4fb2a612a69978a50bc1a7ed  ./commands.txt
+e25fa144a0e008dc220fefe7767688fe9d556a00e25c7b7c539dd2dee6c889ef  ./commands.txt
 0f4510612134506e6d377870e01186fe30f93d0f69f653f4a81eaab1e024b21a  ./device-info.txt
 8bc51aaee3d2ce8786a6387e46897a3daf0ce071affca4f075d49f036ac819e9  ./host-preflight-console.txt
 dbdfae4aec0adfc089a1e9bc2e985cb76ca75f3efbdb4a0c435639990ae3eaed  ./mac-lan-preflight.txt

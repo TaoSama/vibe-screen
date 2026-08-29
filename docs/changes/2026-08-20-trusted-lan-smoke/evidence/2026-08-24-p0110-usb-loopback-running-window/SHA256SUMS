@@ -23,7 +23,7 @@ da3fac4547d3e32294bd30bf0066c72eacf977fd765e93935a0b8e96a4ecb008  ./android-wifi
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./codesigning-identities.exit
 0ad30eb1563c325d77f4dc564c5d96851d5a39205307f5cdd7d762b59688f87a  ./codesigning-identities.txt
 6e29f8ec684dac95db1ecb81b2450582b2d6c1caf3cde08d3d36f2a7f8efcfe3  ./collected-at.txt
-d631818459bfc1b950fa831c24119cfb90288b2a61e2a503a4713ddf3325cdd6  ./commands.txt
+f3beb6c730c050ad4be7b53a02870591c102f329efed584d883abe17895f4e1b  ./commands.txt
 d5aea11d612a5f0fa4cf6cbd07348af19dd09eaf73f542ca59d1753ae2044475  ./git-head.txt
 6e7b90edabb97963da57e628863e702ac4b0a29632298ff96042665cd14cba3a  ./git-origin-main.txt
 493320ee2fe177361e6967cf278a09b09c90a3ada4c0979baad2286370e4dd78  ./git-remote-origin.txt
@@ -41,4 +41,4 @@ a3ba19ac2a0ece3ba68d3ff58929a004b9458ac7c2f4718f5a08301d6a1d3f6c  ./README.md
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./usb-live-smoke.exit
 2ae4ba3af92d6ec873a703ca958707b4ebe7b082944b915be90d640ae8462bc0  ./usb-live-smoke.json
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./window-focus.exit
-e31a549e6cd52647d49531bb7d79c1a5d2296a13d3eb83ed73b4a616ec808d1c  ./window-focus.txt
+af2278d08c7f97d7f962f4d8d9ec534ad00dfe35e33dded0d0c076ae0c83db1d  ./window-focus.txt

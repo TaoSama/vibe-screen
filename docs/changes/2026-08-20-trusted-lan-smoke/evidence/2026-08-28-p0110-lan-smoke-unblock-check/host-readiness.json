@@ -114,7 +114,7 @@
       "has_completed_onboarding": true,
       "readable": true,
       "selected_display_id": 2,
-      "selected_display_uuid": "224A9A9F-32F9-45A3-973B-122B5276BE88",
+      "selected_display_uuid": "<redacted-display-uuid>",
       "startup_mode": "usb",
       "stored_keys": [
         "Telemachus_adbDeviceSerial",

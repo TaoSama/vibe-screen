@@ -2,7 +2,7 @@ b623b9ce552c74b937c88dd83a1a05606e408b668ca9bc1776c24f870597c4c0  ./commands.txt
 4ac05c6faa851dac8892b47e0e8d47243c81ba9ff586d082677e875d74b088c1  ./device-lock.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./host-readiness-command.exit
 ae734865ffdf84165d1019ff13d750378138c5ba35389680d91909a555b11e43  ./host-readiness-command.txt
-e5f8ab8fafdd8b6d8a0e3f91d4f21fb62433eb7543baa0d5b8d1c1210258d3cc  ./host-readiness.json
+a594948cfdf46df7cc88905624f415588932b10b84c6e2fddc9c9c6b931a598f  ./host-readiness.json
 2fc7018e5f7d475acfb2e83447b1d41eba5f90ba38f270e674cf04219852a7a7  ./host-signing-and-permissions.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./preflight-command.exit
 8876556776a88c6665d162cd68c235234c550ec0e922d3895e72abb8f75ac38c  ./preflight-command.txt

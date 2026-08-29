@@ -1380,7 +1380,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
         self.assertTrue(status.observed)
         self.assertIn("<redacted-user>", status.output)
-        self.assertIn("<redacted-ipv4>", status.output)
+        self.assertIn("<redacted-ipv4>:54321", status.output)
         self.assertNotIn("localuser", status.output)
         self.assertNotIn("127." + "0.0.1", status.output)
 

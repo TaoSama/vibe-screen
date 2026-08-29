@@ -1,6 +1,6 @@
-e558bc28e6c7de283d71e1f7cbcd832258381664e8ef6bc07900916b48fb2b39  ./commands.txt
+2f4ed3cb4fdd3f6d75d20f68932961bbc3ad37587ed8d99f11f12969a78907f8  ./commands.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./host-readiness-command.exit
-a61ea5cfb7c362dd5422aee4a82bf894112da34cfea0d61bb1abc69d0e5a4ac3  ./host-readiness.json
+fcf95e586af3d183066ceea113f7404bd46b506ca47bb3175894ec71845e8da8  ./host-readiness.json
 afefba5a8378cd12b604218a992016aaf1e45486de4b106ca75c64f0fe1fa5f1  ./host-signing-and-permissions.txt
 53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3  ./preflight-command.exit
 d809ec1d1b8478e5cf5b97297a166985e95d11da0048718f7933fbf2c5295d8d  ./README.md

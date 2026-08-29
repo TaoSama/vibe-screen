@@ -46,7 +46,7 @@ SSID_REDACTIONS = (
     (re.compile(r"(link/ether\s+)[0-9a-fA-F:]{17}"), r"\1<redacted>"),
 )
 IPV4_RE = re.compile(r"\binet\s+(\d+\.\d+\.\d+\.\d+)(?:/\d+)?")
-IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?::[0-9]{1,5})?(?![0-9.])")
+IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(:[0-9]{1,5})?(?![0-9.])")
 DEVICE_LOCK_PATH_RE = re.compile(
     r"/tmp/vibe-screen-(?:<[^>/\n]+>|[0-9A-Za-z._-]+)/trusted-lan-locks/"
     r"vibe-screen-android-(?:<[^>/\n]+>|[0-9a-fA-F]{20,})\.lock"
@@ -114,7 +114,7 @@ def redact_network_endpoints(value: str) -> str:
             ipaddress.ip_address(match.group(1))
         except ValueError:
             return match.group(0)
-        return "<redacted-ipv4>"
+        return "<redacted-ipv4>" + (match.group(2) or "")
 
     return IPV4_ENDPOINT_RE.sub(replace, value)
 

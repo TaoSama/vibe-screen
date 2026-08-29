@@ -91,6 +91,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         redacted = redact_network_endpoints(f"route to {private_endpoint}:54321 via {other_endpoint}")
 
         self.assertEqual(redacted.count("<redacted-ipv4>"), 2)
+        self.assertIn("<redacted-ipv4>:54321", redacted)
         self.assertNotIn(private_endpoint, redacted)
         self.assertNotIn(other_endpoint, redacted)
 

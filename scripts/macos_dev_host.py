@@ -399,7 +399,7 @@ TCC_QUERY_TIMEOUT_SECONDS = 5
 DEFAULTS_PREFIX = "Telemachus_"
 STARTUP_MODES = {"usb", "wireless", "lan"}
 DEFAULT_HOST_LOG_PATH = Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log"
-IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?::[0-9]{1,5})?(?![0-9.])")
+IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(:[0-9]{1,5})?(?![0-9.])")
 
 
 def redact_local_report_text(value: str) -> str:
@@ -418,7 +418,7 @@ def redact_network_endpoints(value: str) -> str:
             ipaddress.ip_address(match.group(1))
         except ValueError:
             return match.group(0)
-        return "<redacted-ipv4>"
+        return "<redacted-ipv4>" + (match.group(2) or "")
 
     return IPV4_ENDPOINT_RE.sub(replace, value)
 

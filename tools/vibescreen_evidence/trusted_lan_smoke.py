@@ -21,6 +21,11 @@ DERIVED_OUTPUT_FILES = {"trusted-lan-smoke-verdict.json"}
 EXPECTED_DEVICE_MARKERS = ("nubia", "p0110", "pacific", "android 16", "sdk 36")
 FORBIDDEN_DEVICE_CLAIM_RE = re.compile(r"\b(xiaomi\s*13|fuxi)\b", re.IGNORECASE)
 DEVICE_LABEL_RE = re.compile(r"^(?:device|target device|observed device)\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+APPROVED_DEVICE_LABEL_RE = re.compile(
+    r"^nubia\s+p0110\s*/\s*pacific\s*/\s*android\s+16\s*/\s*sdk\s+36"
+    r"(?:,\s*serial\s+`?<device-serial>`?)?\.?$",
+    re.IGNORECASE,
+)
 BLOCKED_HEADING_RE = re.compile(r"^# .*\bblocked\b", re.IGNORECASE | re.MULTILINE)
 SENSITIVE_PAIRING_RE = re.compile(
     (
@@ -131,6 +136,11 @@ def _blocked_state(readme_lower: str, lowered: str) -> list[str]:
     return missing
 
 
+def _is_approved_device_label(label: str) -> bool:
+    normalized = re.sub(r"\s+", " ", label.strip())
+    return APPROVED_DEVICE_LABEL_RE.fullmatch(normalized) is not None
+
+
 def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
     files = read_text_files(evidence_dir)
     text = _joined_text(files)
@@ -144,11 +154,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
         errors.append("README.md is required")
 
     device_labels = DEVICE_LABEL_RE.findall(readme)
-    valid_device_label = any(
-        all(marker in label.lower() for marker in EXPECTED_DEVICE_MARKERS)
-        and not FORBIDDEN_DEVICE_CLAIM_RE.search(label)
-        for label in device_labels
-    )
+    valid_device_label = any(_is_approved_device_label(label) for label in device_labels)
     if not valid_device_label:
         errors.append(
             "README.md must include a Device label for Nubia P0110/pacific/Android 16/SDK 36"
@@ -159,7 +165,7 @@ def evaluate_evidence_dir(evidence_dir: Path) -> dict[str, Any]:
             "/tmp/vibe-screen-android-<serial>.lock, or equivalent lock observation"
         )
 
-    if any(FORBIDDEN_DEVICE_CLAIM_RE.search(label) for label in device_labels):
+    if any(FORBIDDEN_DEVICE_CLAIM_RE.search(label) or not _is_approved_device_label(label) for label in device_labels):
         errors.append("README.md must not label Nubia P0110/pacific evidence as another device")
 
     missing_pass = _missing_pass_markers(lowered)
