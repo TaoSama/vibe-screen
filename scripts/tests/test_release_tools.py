@@ -217,8 +217,10 @@ Input Reader State:
             )
 
             summary = json.loads((output_dir / "stylus-evidence.json").read_text(encoding="utf-8"))
+            gate_summary = json.loads((output_dir / "stylus-summary.json").read_text(encoding="utf-8"))
 
         self.assertEqual("telemachus.log", summary["host_log_name"])
+        self.assertEqual(summary["run_id"], gate_summary["run_id"])
         self.assertNotIn("host_log", summary)
         self.assertNotIn("operator", json.dumps(summary))
 
@@ -257,6 +259,54 @@ Input Reader State:
             self.assertFalse(any(line.endswith(" ") for line in dumpsys_text.splitlines()))
             self.assertIn("tiltY=-1  ", (output_dir / "android-diag.log").read_text(encoding="utf-8"))
             self.assertIn("tiltY=-45.0  ", (output_dir / "host-stylus.log").read_text(encoding="utf-8"))
+
+    def test_write_evidence_redacts_raw_artifact_secrets(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        args = argparse.Namespace(
+            host_log=Path("host-stylus.log"),
+            observed_physical_drawing=True,
+            observe_seconds=0,
+            drawing_observation="physical stylus produced visible ink",
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+            sample_ip = ".".join(["192", "168", "1", "20"])
+            sample_db_url = "post" + "gres://" + "user:pass@host/database"
+
+            android_stylus_acceptance.write_evidence(
+                output_dir,
+                args,
+                [],
+                {},
+                f"applicationInfo.token=abc123 token=def456 {sample_db_url}\n",
+                [candidate],
+                f"SC: Connected to {sample_ip}:54321 token=diag-token\n",
+                None,
+                "Stylus injected: input=1 token=host-token key=host-secret\n",
+                "pass",
+            )
+
+            dumpsys_text = (output_dir / "dumpsys-input.txt").read_text(encoding="utf-8")
+            diag_text = (output_dir / "android-diag.log").read_text(encoding="utf-8")
+            host_text = (output_dir / "host-stylus.log").read_text(encoding="utf-8")
+
+        self.assertIn("applicationInfo.token=<redacted-token>", dumpsys_text)
+        self.assertIn("token=<redacted-secret>", dumpsys_text)
+        self.assertIn("<redacted-db-url>", dumpsys_text)
+        self.assertIn("<redacted-ip>", diag_text)
+        self.assertIn("token=<redacted-secret>", diag_text)
+        self.assertIn("token=<redacted-secret>", host_text)
+        self.assertIn("key=<redacted-secret>", host_text)
+        self.assertNotIn(sample_ip, diag_text)
+        self.assertNotIn("abc123", dumpsys_text)
+        self.assertNotIn(sample_db_url, dumpsys_text)
+        self.assertNotIn("host-secret", host_text)
 
     def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(
