@@ -73,6 +73,10 @@ has verdict `pass` with closing-strength evidence. Historical real-device
 evidence is accepted only for the Android USB baseline gate; current-source
 runtime, latency, Host RSS, hardware compatibility, HID, controller, and module
 ownership gates require their gate-specific closing evidence.
+Pass `PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse HEAD)` when
+refreshing or auditing the aggregate owner so the summary records whether the
+manifest is bound to the evaluated source commit; a mismatch is reported as
+`source_guard.verdict=insufficient` and cannot pass the release-claim gate.
 
 The iOS HDR output / EDR rendering row has a narrower dedicated owner. It
 validates retained physical-device HDR observations and returns nonzero for the
@@ -97,17 +101,21 @@ Phase 5 signing prerequisite. It validates a sanitized JSON summary from an
 operator-controlled Xcode archive/signing check. It is read-only and does not
 run Xcode, install an app, use Simulator output, or operate any device. It exits
 `0` only when the summary records all signing prerequisites from a clean
-current-base commit: Team ID, provisioning profile UUID, unique bundle ID,
-non-ad-hoc codesign identity, registered physical-device UDID hashes, signed-app
-entitlements, signed artifact SHA-256, and retained local artifacts for the
+current-base commit: sanitized Team ID and provisioning profile UUID digests,
+unique bundle ID, sanitized non-ad-hoc codesign identity digest, registered
+physical-device UDID hashes, signed-app entitlement relationship checks, signed
+artifact SHA-256, and retained local artifacts for the
 archive command, codesign entitlements, and provisioning profile output.
 
 ```sh
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
-The target writes `ios-app-signing-readiness-gate.json` next to the input. The
+`ios-app-signing-current-base-gate` is the dedicated current-base entry point
+and aliases the retained `ios-app-signing-readiness-gate` implementation for
+compatibility. The target writes `ios-app-signing-readiness-gate.json` next to
+the input. The
 gate output declares `owner.role=ios_app_signing_readiness_current_base_owner`
 and records `current_base.commit`, `current_base.branch`, and
 `current_base.dirty`. `blocked` means required signing material, clean commit
@@ -117,9 +125,17 @@ readiness pass can unblock the current-base signing prerequisite only after the
 same gate JSON is bound into `ios-current-base-manifest`;
 `ios-current-base-gate` validates both the gate result and owner identity before
 accepting the gate's sanitized `signing_summary` as the aggregate `signing` row,
-including UDID-hash and entitlements coverage. It still reports
-`can_close_ios_device_acceptance=false` because install, launch, decode, input,
-reconnect, and audio behavior require real iPhone and iPad runs.
+including UDID-hash and entitlements coverage. The gate also emits explicit
+`readiness_requirements` booleans for Team ID, provisioning profile, bundle ID,
+codesign identity, device UDID hashes, and entitlements; the current-base and
+device-acceptance gates require those booleans before accepting signing
+readiness. It still reports `can_close_ios_device_acceptance=false` because
+install, launch, decode, input, reconnect, and audio behavior require real
+iPhone and iPad runs. The
+current-base manifest's local codesigning probe records only status and the
+number of valid identities; raw certificate hashes, identity names, Team IDs,
+profile UUIDs, device UDIDs, and local paths must stay out of committed
+evidence and PR text.
 
 ## Phase 5 multi-client/display current-base gate
 
@@ -194,6 +210,10 @@ instrumentation-backed playback confirmation, disconnect cleanup, and non-empty
 retained artifacts under the evidence directory. Loopback, synthetic,
 Android-only, or plaintext legacy records return `blocked` or `insufficient` and keep
 `can_close_android_audio_playback_gate=false`.
+For current-base owner records that intentionally preserve a blocked or
+insufficient result, use `make android-audio-playback-owner-record` with the
+same `EVIDENCE_DIR`; it writes the same summary without requiring a passing
+gate.
 
 iOS native-input behavior is owned by the
 `phase5-ios-native-input-behavior` gate. Summarize a sanitized device-run
@@ -202,7 +222,9 @@ observation file with:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_native_input \
   docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-observations.json \
-  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json
+  --repo . \
+  --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>/ios-native-input-gate.json \
+  --require-pass
 ```
 
 The CLI is deliberately fail-closed. It requires real iPhone and iPad signed app
@@ -1003,7 +1025,22 @@ acceptance marker; existing `connection_opened`, `first_frame_received`, and
 timing evidence and cannot independently prove Protocol v1. Until the
 `protocol_v1_accepted` event is present in the captured logcat, the attempt must
 remain `insufficient` or use the private diag log instead. Run the evaluator on
-the observation JSON:
+the observation JSON through the Makefile wrapper:
+
+```sh
+make evidence-reconnect-timing-gate \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+For incremental single-scenario work, keep the partial scope explicit:
+
+```sh
+make evidence-reconnect-timing-gate \
+  EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
+  RECONNECT_TIMING_REQUIRE_DISRUPTIONS=client-kill
+```
+
+Or call the Python module directly:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing observations.json \
@@ -1024,6 +1061,7 @@ older reconnect logs:
 
 ```sh
 make evidence-reconnect-timing-blocked \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
   EVIDENCE_DIR=docs/changes/<change>/evidence/<run> \
   RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable" --blocker "Host is not listening on 127.0.0.1:54321"' \
   RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
@@ -1035,7 +1073,7 @@ or pass exact blockers directly:
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
-  --target-device "Nubia P0110 / pacific / Android 16 / ${ANDROID_SERIAL}" \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36 / $ADB_SERIAL" \
   --blocker "Vibe Screen Dev signing identity is unavailable" \
   --blocker "Host is not listening on 127.0.0.1:54321" \
   --output reconnect-timing-summary.json
@@ -1070,6 +1108,11 @@ recording contradictory capture backend results is `failed`. The Python CLI exit
 `0` only for `pass`, `1` for `blocked` or `insufficient`, and `2` for `failed`;
 Make reports any non-pass verdict as target failure after writing the summary.
 The collection checklist is in `docs/runbook/macos-host-compatibility.md`.
+Each generated summary also includes `closure_checklist`, grouped as source and
+Host identity, display and encoder capability, runtime acceptance, retained
+scope/artifacts, and extrapolation guard. Use it as the next-action checklist
+for blocked current-base evidence; it is derived from the same fail-closed
+requirements and does not weaken the top-level verdict.
 
 ## Latency evidence
 
@@ -1246,6 +1289,16 @@ the input file. The target writes `latency-preflight.json` and
 `latency-preflight-exit.txt`. Exit `2` means the run is blocked before a formal
 gate attempt, which is an expected fail-closed outcome when external-camera or
 synchronized-clock artifacts are missing.
+
+When a preflight needs to mark `host_build_identity_recorded=true`, record the
+Host identity with ordinary read-only checks such as `sysctl -n hw.model`,
+`sw_vers`, `shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen`,
+and `codesign -dv --verbose=4 /Applications/Vibe\ Screen.app`. The
+`baseline-macos-host-readiness` target can also produce a broader Host readiness
+report without opting in to login-item diagnostics. Host identity alone does not
+close any latency profile; USB/LAN claims still need the external-camera package,
+and input claims still need either external-camera evidence or synchronized-clock
+proof plus physical-input artifacts.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:

@@ -1,0 +1,167 @@
+{
+  "checked_at": "2026-08-29T07:12:47Z",
+  "claim_boundary": "This preflight is readiness evidence only. It cannot close USB, LAN, or input latency gates; only a passing formal latency evidence report with retained real measurement artifacts can do that.",
+  "device": {
+    "abi": "arm64-v8a",
+    "adb_serial": "nubia-p0110-pacific-device-1",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/[redacted-build]/[redacted-build-tail]:userdebug/test-keys",
+    "device": "pacific",
+    "device_serial": "nubia-p0110-pacific-device-1",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "product": "pacific",
+    "sdk": 36
+  },
+  "gate_profiles": [
+    {
+      "artifact_paths": [],
+      "can_attempt_formal_gate": false,
+      "can_close_performance_gate": false,
+      "checks": {
+        "device_identity_recorded": true,
+        "external_camera_timebase_ready": false,
+        "formal_manifest_retained": false,
+        "host_build_identity_recorded": true,
+        "minimum_sample_count_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false,
+        "usb_transport_ready": false
+      },
+      "latency_kind": "glass-to-glass",
+      "missing_requirements": [
+        {
+          "field": "external_camera_timebase_ready",
+          "requirement": "capture Mac stimulus/result and Android display/input in one 120 FPS or higher external-camera timebase"
+        },
+        {
+          "field": "raw_camera_recording_retained",
+          "requirement": "retain the raw high-frame-rate camera recording in the evidence directory"
+        },
+        {
+          "field": "sample_annotations_retained",
+          "requirement": "retain latency samples derived from the same camera timebase"
+        },
+        {
+          "field": "minimum_sample_count_ready",
+          "requirement": "annotate at least five valid samples for the selected profile"
+        },
+        {
+          "field": "formal_manifest_retained",
+          "requirement": "write a formal latency manifest bound to the raw recording, samples, device, host, and build"
+        },
+        {
+          "field": "usb_transport_ready",
+          "requirement": "record ADB reverse/USB connection setup and active USB stream proof for the run"
+        }
+      ],
+      "profile": "usb-glass-to-glass-sub50",
+      "status": "blocked",
+      "transport": "usb"
+    },
+    {
+      "artifact_paths": [],
+      "can_attempt_formal_gate": false,
+      "can_close_performance_gate": false,
+      "checks": {
+        "device_identity_recorded": true,
+        "external_camera_timebase_ready": false,
+        "formal_manifest_retained": false,
+        "host_build_identity_recorded": true,
+        "lan_transport_ready": false,
+        "minimum_sample_count_ready": false,
+        "raw_camera_recording_retained": false,
+        "sample_annotations_retained": false
+      },
+      "latency_kind": "glass-to-glass",
+      "missing_requirements": [
+        {
+          "field": "external_camera_timebase_ready",
+          "requirement": "capture Mac stimulus/result and Android display/input in one 120 FPS or higher external-camera timebase"
+        },
+        {
+          "field": "raw_camera_recording_retained",
+          "requirement": "retain the raw high-frame-rate camera recording in the evidence directory"
+        },
+        {
+          "field": "sample_annotations_retained",
+          "requirement": "retain latency samples derived from the same camera timebase"
+        },
+        {
+          "field": "minimum_sample_count_ready",
+          "requirement": "annotate at least five valid samples for the selected profile"
+        },
+        {
+          "field": "formal_manifest_retained",
+          "requirement": "write a formal latency manifest bound to the raw recording, samples, device, host, and build"
+        },
+        {
+          "field": "lan_transport_ready",
+          "requirement": "record LAN network preflight plus active trusted-LAN stream proof for the run"
+        }
+      ],
+      "profile": "lan-glass-to-glass-sub80",
+      "status": "blocked",
+      "transport": "lan"
+    },
+    {
+      "artifact_paths": [],
+      "can_attempt_formal_gate": false,
+      "can_close_performance_gate": false,
+      "checks": {
+        "device_identity_recorded": true,
+        "formal_manifest_retained": false,
+        "host_build_identity_recorded": true,
+        "measurement_timebase_ready": false,
+        "minimum_sample_count_ready": false,
+        "physical_input_actuation_ready": false,
+        "sample_annotations_retained": false,
+        "visible_mac_input_result_ready": false
+      },
+      "latency_kind": "input",
+      "missing_requirements": [
+        {
+          "field": "measurement_timebase_ready",
+          "requirement": "retain external-camera evidence or synchronized-clock proof with total error budget below 5 ms"
+        },
+        {
+          "field": "sample_annotations_retained",
+          "requirement": "retain direct latency samples or samples derived from the measurement timebase"
+        },
+        {
+          "field": "minimum_sample_count_ready",
+          "requirement": "annotate at least five valid samples for the selected profile"
+        },
+        {
+          "field": "formal_manifest_retained",
+          "requirement": "write a formal latency manifest bound to samples, device, host, build, and timing provenance"
+        },
+        {
+          "field": "physical_input_actuation_ready",
+          "requirement": "use real physical Android input actuation visible to, or timestamped by, the measurement setup"
+        },
+        {
+          "field": "visible_mac_input_result_ready",
+          "requirement": "record the first visible Mac-side result for each physical input sample"
+        }
+      ],
+      "profile": "input-p95-sub50",
+      "status": "blocked",
+      "transport": null
+    }
+  ],
+  "kind": "latency_gate_preflight",
+  "notes": [
+    "The connected device identity was refreshed as nubia P0110 / pacific / Android 16 / SDK 36.",
+    "Current Mac host and installed Host binary identity were recorded for this preflight.",
+    "USB reverse and a local Host listener were visible during this preflight, but no formal active-stream latency package was retained.",
+    "The device wlan0 interface reported NO-CARRIER/state DOWN, so no trusted-LAN stream or LAN latency capture was available.",
+    "No external-camera or optical single-timebase package is retained for USB or LAN glass-to-glass latency.",
+    "No synchronized-clock input package with sub-5 ms total error budget is retained for input latency.",
+    "Unsynchronized host/client telemetry, decoder timings, RTT, screenshots, and ADB-generated input remain diagnostics only and cannot close these gates."
+  ],
+  "repository_revision": "dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e",
+  "run_id": "2026-08-28-nubia-p0110-latency-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "blocked"
+}

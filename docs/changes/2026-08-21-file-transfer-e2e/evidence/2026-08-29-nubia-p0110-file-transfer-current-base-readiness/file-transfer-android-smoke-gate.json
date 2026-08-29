@@ -1,0 +1,117 @@
+{
+  "blockers": [
+    "host_readiness: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "host_readiness: source repository is dirty after collecting this readiness evidence; rerun a closing device pass from a clean current-base checkout",
+    "host_readiness: installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+    "host_readiness: cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "host_readiness: Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "host_readiness: login/headless readiness: Launch at Login is not verified enabled: unverified",
+    "real_transport_ready: at least one real Protocol v1 USB or trusted-LAN path must be ready before file-transfer smoke can pass",
+    "real_transport_ready: usb: macOS Host stable-signing/TCC preflight failed: Host signing prerequisite",
+    "real_transport_ready: trusted_lan: missing trusted-LAN preflight: trusted-lan-preflight.json",
+    "bidirectional_product_e2e: missing product E2E evidence: file-transfer-product-e2e.json",
+    "cancel_cleanup: missing product E2E evidence: file-transfer-product-e2e.json"
+  ],
+  "can_close_file_transfer_android_smoke_gate": false,
+  "checks": [
+    {
+      "evidence": [],
+      "identity": {
+        "android_release": "16",
+        "codename": "pacific",
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "sdk": 36
+      },
+      "name": "device_identity",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "host_readiness",
+      "reasons": [
+        "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+        "source repository is dirty after collecting this readiness evidence; rerun a closing device pass from a clean current-base checkout",
+        "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+        "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+        "Host is missing com.apple.developer.hid.virtual.device entitlement",
+        "login/headless readiness: Launch at Login is not verified enabled: unverified"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "usb-smoke-preflight.json"
+      ],
+      "name": "usb_preflight",
+      "reasons": [
+        "macOS Host stable-signing/TCC preflight failed: Host signing prerequisite"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "trusted_lan_preflight",
+      "reasons": [
+        "missing trusted-LAN preflight: trusted-lan-preflight.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "real_transport_ready",
+      "reasons": [
+        "at least one real Protocol v1 USB or trusted-LAN path must be ready before file-transfer smoke can pass",
+        "usb: macOS Host stable-signing/TCC preflight failed: Host signing prerequisite",
+        "trusted_lan: missing trusted-LAN preflight: trusted-lan-preflight.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "android-file-transfer-instrumentation.txt"
+      ],
+      "name": "android_file_transfer_smoke",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [],
+      "name": "bidirectional_product_e2e",
+      "reasons": [
+        "missing product E2E evidence: file-transfer-product-e2e.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "cancel_cleanup",
+      "reasons": [
+        "missing product E2E evidence: file-transfer-product-e2e.json"
+      ],
+      "status": "blocked"
+    }
+  ],
+  "gate_closed": false,
+  "generated_at": "2026-08-29T02:20:37.896111Z",
+  "interpretation": "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, a current Android file-transfer smoke log, and retained bidirectional product E2E evidence showing file offer/request/content packets, source file read, explicit user action, receiver approval, remote file write, positive session epoch, final SHA-256 equality, and cancel/cleanup behavior. Offline or synthetic coverage alone remains readiness evidence.",
+  "kind": "android_macos_file_transfer_smoke",
+  "not_proven": [
+    "Android -> macOS single-file transfer over Protocol v1 USB/LAN",
+    "macOS -> Android single-file transfer over Protocol v1 USB/LAN",
+    "receiver approval, session epoch, cancel cleanup, and end-to-end SHA-256 on retained product evidence"
+  ],
+  "result": "blocked",
+  "safety": {
+    "offline_tests_do_not_close_gate": true,
+    "public_output_sanitized": true,
+    "raw_serial_redacted": true,
+    "synthetic_evidence_do_not_close_gate": true
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "serial_label": "REDACTED_P0110_USB_SERIAL",
+  "verdict": "blocked"
+}

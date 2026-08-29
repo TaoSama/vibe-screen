@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import multiprocessing
 import os
@@ -47,10 +48,8 @@ SYSTEM_SETTINGS_PATH = (
     "and Accessibility"
 )
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
-    "Login item not probed by default; probe not run. Run readiness with "
-    "--include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or "
-    "--probe-login-items during an attended diagnostic session to inspect it with "
-    "/usr/bin/sfltool dumpbtm."
+    "Login item not probed by default; probe not run. Use an attended "
+    "diagnostic session outside default readiness to inspect login-item state."
 )
 
 @dataclass(frozen=True)
@@ -404,6 +403,7 @@ TCC_QUERY_TIMEOUT_SECONDS = 5
 DEFAULTS_PREFIX = "Telemachus_"
 STARTUP_MODES = {"usb", "wireless", "lan"}
 DEFAULT_HOST_LOG_PATH = Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log"
+IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(:[0-9]{1,5})?(?![0-9.])")
 
 
 def redact_local_report_text(value: str) -> str:
@@ -414,6 +414,17 @@ def redact_local_report_text(value: str) -> str:
     if home != "/":
         redacted = redacted.replace(home, "<user-home>")
     return redacted
+
+
+def redact_network_endpoints(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        try:
+            ipaddress.ip_address(match.group(1))
+        except ValueError:
+            return match.group(0)
+        return "<redacted-ipv4>" + (match.group(2) or "")
+
+    return IPV4_ENDPOINT_RE.sub(replace, value)
 
 
 def parse_defaults_output(output: str) -> dict[str, str]:
@@ -787,7 +798,7 @@ def redact_lsof_user_columns(output: str) -> str:
             redacted_lines.append(line)
             continue
         redacted_lines.append(re.sub(r"^(\S+\s+\d+\s+)(\S+)(\s+)", r"\1<redacted-user>\3", line))
-    return "\n".join(redacted_lines)
+    return redact_network_endpoints("\n".join(redacted_lines))
 
 
 def inspect_entitlements(app_path: Path) -> EntitlementStatus:
@@ -1022,9 +1033,9 @@ def inspect_listener(port: int) -> ListenerStatus:
     except subprocess.CalledProcessError as error:
         detail = (error.stdout or "").strip()
         return ListenerStatus(port=port, observed=False, output=detail, error="listener not observed")
-    output = redact_lsof_user_columns(output)
     lines = [line for line in output.splitlines() if line.strip()]
     observed = any(f":{port}" in line and "LISTEN" in line for line in lines)
+    output = redact_lsof_user_columns(output)
     return ListenerStatus(port=port, observed=observed, output=output, error=None if observed else "listener not observed")
 
 
@@ -1137,7 +1148,10 @@ def format_report(
         verification = "valid on disk (codesign --verify --deep --strict)"
     rows = "\n".join(format_permission_row(row) for row in permissions.rows)
     if not rows:
-        rows = "(no matching rows)"
+        if permissions.error:
+            rows = f"(TCC rows unavailable: {permissions.error})"
+        else:
+            rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
     return f"""Host bundle
@@ -1232,6 +1246,10 @@ def command_report_line(label: str, exit_code: int, output: str) -> str:
     clean_output = ascii_report_text(output or "<empty>")
     return f"{label}: exit_code={exit_code}\n{clean_output}"
 
+def effective_sign_identity(expected_sign_identity: str | None) -> str:
+    return expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+
+
 def xctest_preflight_command(args: argparse.Namespace) -> int:
     report_path = getattr(args, "report", None)
     json_output = getattr(args, "json_output", None)
@@ -1270,10 +1288,15 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     )
 
     errors: list[str] = []
+    xctest_framework_available = False
     if developer_status != 0:
         errors.append("xcode-select did not report a selected developer directory")
     elif "CommandLineTools" in developer_dir or ".app/Contents/Developer" not in developer_dir:
         errors.append("full Xcode is not selected; Command Line Tools cannot run this XCTest suite")
+    else:
+        xctest_framework_available = has_xctest_framework(Path(developer_dir.strip()))
+        if not xctest_framework_available:
+            errors.append("XCTest.framework was not found in the selected developer directory")
     if swift_path_status != 0 or swift_version_status != 0:
         errors.append("Swift toolchain is not available through xcrun and /usr/bin/swift")
     if xcodebuild_path_status != 0 or xcodebuild_version_status != 0:
@@ -1289,6 +1312,7 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
             command_report_line("swift --version", swift_version_status, swift_version),
             command_report_line("xcrun --find xcodebuild", xcodebuild_path_status, xcodebuild_path),
             command_report_line("xcodebuild -version", xcodebuild_version_status, xcodebuild_version),
+            f"XCTest.framework present: {str(xctest_framework_available).lower()}",
             "Blocking issues:",
             "\n".join(f"- {error}" for error in errors) if errors else "- none",
             "Safety: read-only; does not build, install, sign, modify TCC, or touch devices.",
@@ -1310,6 +1334,7 @@ def xctest_preflight_command(args: argparse.Namespace) -> int:
     print("macOS Host XCTest toolchain preflight passed")
     return 0
 
+
 def missing_permission_status(error: str) -> PermissionStatus:
     return PermissionStatus(database_path="not inspected", rows=(), readable=False, error=error)
 
@@ -1330,14 +1355,15 @@ def inspect_host_without_throwing(
     except SystemExit as error:
         source_identity = None
         errors.append(str(error))
-    if expected_sign_identity == "-":
+    configured_sign_identity = effective_sign_identity(expected_sign_identity)
+    if configured_sign_identity == "-":
         errors.append(
             "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
         )
     elif validate_configured_identity:
         try:
             resolved_identity = package_macos.resolve_sign_identity(
-                expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                configured_sign_identity
             )
         except SystemExit as error:
             errors.append(str(error))
@@ -1362,7 +1388,7 @@ def inspect_host_without_throwing(
             metadata,
             permissions,
             install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
+            expected_sign_identity=configured_sign_identity,
             source_identity=source_identity,
             allow_source_mismatch=allow_source_mismatch,
         )
@@ -1604,14 +1630,15 @@ def metadata_and_permissions(
 ) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
     errors: list[str] = []
     if validate_configured_identity:
-        if expected_sign_identity == "-":
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
+        if configured_sign_identity == "-":
             errors.append(
                 "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
             )
         else:
             try:
                 resolved_identity = package_macos.resolve_sign_identity(
-                    expected_sign_identity or package_macos.DEFAULT_SIGN_IDENTITY
+                    configured_sign_identity
                 )
             except SystemExit as error:
                 errors.append(str(error))
@@ -1621,6 +1648,8 @@ def metadata_and_permissions(
                         "configured signing identity did not resolve exactly: "
                         f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
                     )
+    else:
+        configured_sign_identity = effective_sign_identity(expected_sign_identity)
     metadata = collect_signing_metadata(install_path)
     source_identity = current_source_identity(source_root)
     permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
@@ -1629,7 +1658,7 @@ def metadata_and_permissions(
             metadata,
             permissions,
             install_path=install_path,
-            expected_sign_identity=expected_sign_identity,
+            expected_sign_identity=configured_sign_identity,
             source_identity=source_identity,
             allow_source_mismatch=allow_source_mismatch,
         )

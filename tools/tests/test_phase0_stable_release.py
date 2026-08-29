@@ -36,6 +36,7 @@ COMPLETE_MANIFEST_STRENGTHS = {
     "host_rss_2h_no_growth": "current-real-device",
     "native_pointer_hid_mouse": "current-real-device",
     "controller_runtime_acceptance": "current-real-device",
+    "file_transfer_android_product_e2e": "current-real-device",
     "module_ownership_extraction": "current-source",
 }
 
@@ -55,7 +56,13 @@ def complete_manifest() -> dict[str, object]:
         "schema_version": "vibescreen.evidence/v1",
         "kind": "phase0_stable_release_closure",
         "phase": "phase0",
-        "source": {"base_commit": "abc123"},
+        "source": {
+            "base_commit": "abc123",
+            "base_ref": "origin/main",
+            "audit_date": "2026-08-22",
+            "owner": "Vibe Screen core team",
+            "audit_source": "docs/audit.md",
+        },
         "required_gates": [
             {
                 "id": gate_id,
@@ -81,6 +88,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["aggregate_verdict"], "pass")
         self.assertTrue(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["blocking_required_gates"], [])
+        self.assertEqual(summary["source_guard"]["verdict"], "pass")
 
     def test_open_sub_gate_blocks_aggregate_without_failing_readme_guard(self) -> None:
         manifest = complete_manifest()
@@ -99,6 +107,10 @@ class Phase0StableReleaseTest(unittest.TestCase):
             ["host_rss_2h_no_growth"],
         )
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
+        self.assertIn(
+            "host_rss_2h_no_growth: host_rss_gate has no current-source pass",
+            summary["reasons"],
+        )
 
     def test_readme_guard_fails_on_premature_shipped_claim(self) -> None:
         manifest = complete_manifest()
@@ -198,6 +210,24 @@ class Phase0StableReleaseTest(unittest.TestCase):
             summary["blocking_required_gates"][0]["issues"],
         )
 
+    def test_non_pass_required_gate_must_explain_blocker(self) -> None:
+        manifest = complete_manifest()
+        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+        gate["verdict"] = "blocked"
+        gate["blockers"] = []
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertIn(
+            "non-pass required gate must list at least one blocker",
+            summary["blocking_required_gates"][0]["issues"],
+        )
+        self.assertIn(
+            "host_rss_2h_no_growth: non-pass required gate must list at least one blocker",
+            summary["reasons"],
+        )
+
     def test_required_gate_cannot_be_marked_optional_to_close_aggregate(self) -> None:
         manifest = complete_manifest()
         gate = gate_by_id(manifest, "host_rss_2h_no_growth")
@@ -224,6 +254,55 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         self.assertEqual(summary["aggregate_verdict"], "insufficient")
         self.assertEqual(summary["missing_required_gate_ids"], ["module_ownership_extraction"])
+
+    def test_expected_source_commit_must_match_manifest_base_commit(self) -> None:
+        summary = evaluate_manifest(
+            complete_manifest(),
+            readme_text=GUARDED_README_TEXT,
+            expected_source_commit="def456",
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+        self.assertIn("source.base_commit", summary["reasons"][0])
+        self.assertEqual(summary["readme_guard"]["verdict"], "pass")
+
+    def test_manifest_source_requires_traceable_fields(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"] = {"base_commit": "abc123", "audit_date": "20260822"}
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+        self.assertIn("manifest source.base_ref must be a non-empty string", summary["reasons"])
+        self.assertIn("manifest source.owner must be a non-empty string", summary["reasons"])
+        self.assertIn("manifest source.audit_source must be a non-empty string", summary["reasons"])
+        self.assertIn("manifest source.audit_date must use YYYY-MM-DD format", summary["reasons"])
+
+    def test_stale_manifest_requires_readme_guard_even_when_sub_gates_pass(self) -> None:
+        summary = evaluate_manifest(
+            complete_manifest(),
+            readme_text="Phase 0 is stable.",
+            expected_source_commit="def456",
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "fail")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+        self.assertEqual(summary["readme_guard"]["verdict"], "fail")
+
+    def test_expected_source_commit_allows_matching_manifest_base_commit(self) -> None:
+        summary = evaluate_manifest(
+            complete_manifest(),
+            readme_text="Phase 0 stable-release summary",
+            expected_source_commit="abc123",
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "pass")
+        self.assertTrue(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(summary["source_guard"]["verdict"], "pass")
 
     def test_hardware_compatibility_matrix_is_required(self) -> None:
         manifest = complete_manifest()
@@ -368,7 +447,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
 class Phase0StableReleaseCliTest(unittest.TestCase):
     def test_cli_allows_open_aggregate_by_default_but_writes_summary(self) -> None:
         manifest = complete_manifest()
-        gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
+        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+        gate["verdict"] = "blocked"
+        gate["blockers"] = ["host_rss_gate has no current-source pass"]
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
             manifest_path = directory / "manifest.json"

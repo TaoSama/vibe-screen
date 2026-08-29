@@ -136,6 +136,39 @@ class ParserTests(unittest.TestCase):
         self.assertIn("29380", filtered)
         self.assertNotIn("11111", filtered)
 
+    def test_filter_logcat_by_pids_keeps_pidless_lines_only_with_current_pid_context(self):
+        text = (
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"event":"stream_stats","fps":59.8}\n'
+            'I VibeScreenTelemetry: {"event":"stream_stats","fps":58.2}\n'
+            'D VD      : setupDecoder: 1512x982, decoder=c2.qti.hevc.decoder\n'
+            'D VD      : Output #60: decoder latency avg=5.8ms max=31.3ms over 60 samples, input bufs avail=9, dropped=0\n'
+            'I OtherTag: unrelated line\n'
+        )
+
+        filtered = filter_logcat_by_pids(text, [29380])
+
+        self.assertIn("29380", filtered)
+        self.assertIn("c2.qti.hevc.decoder", filtered)
+        self.assertIn("Output #60", filtered)
+        self.assertNotIn("OtherTag", filtered)
+        self.assertLess(filtered.index('"fps":59.8'), filtered.index('"fps":58.2'))
+
+        stale_filtered = filter_logcat_by_pids(text.replace(" 29380 ", " 11111 "), [29380])
+        self.assertEqual(stale_filtered, "")
+
+    def test_filter_logcat_by_pids_drops_pidless_lines_before_current_pid_context(self):
+        text = (
+            "D VD      : Output #60: decoder latency avg=5.8ms max=31.3ms "
+            "over 60 samples, input bufs avail=9, dropped=0\n"
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"event":"stream_stats","fps":59.8}\n'
+            "D VD      : Decode stats: input=120, output=120, dropped=0, availBufs=9\n"
+        )
+
+        filtered = filter_logcat_by_pids(text, [29380])
+
+        self.assertIn('"fps":59.8', filtered)
+        self.assertIn("Decode stats", filtered)
+        self.assertNotIn("Output #60", filtered)
 
 class LabelGuardTests(unittest.TestCase):
     def test_p0110_is_not_fuxi(self):
@@ -194,7 +227,7 @@ class CollectionTests(unittest.TestCase):
             ("shell", "pidof", "dev.telemachus.display"): "29380",
             ("shell", "dumpsys", "window"): WINDOW_SAMPLE,
             ("shell", "dumpsys", "activity", "activities"): ACTIVITY_SAMPLE,
-            ("logcat", "-d", "-t", "1500", "-s", *LOGCAT_TAGS): LOGCAT_SAMPLE,
+            ("logcat", "-d", "-v", "threadtime", "-t", "1500", "-s", *LOGCAT_TAGS): LOGCAT_SAMPLE,
             ("exec-out", "run-as", "dev.telemachus.display", "sh", "-c", DIAG_LOG_COMMAND): "",
         }
         # identity uses shell getprop
@@ -229,6 +262,64 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(document["verdict"], "pass")
         self.assertEqual(document["logs"]["decoder"]["latest_output_counter"], 646320)
         self.assertFalse(document["logs"]["decoder"]["first_output_frame_observed"])
+
+    def test_current_stream_stats_and_decoder_plain_logs_can_pass(self):
+        logcat = (
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"schema_version":1,"event":"stream_stats",'
+            '"session_epoch":1,"fps":58.1,"mbps":32.1}\n'
+            "08-20 18:00:57.471 29380   686 D VD      : setupDecoder: 1512x982, decoder=c2.qti.hevc.decoder\n"
+            "08-20 18:00:57.472 29380   702 D VD      : Output #60: decoder latency avg=5.8ms max=31.3ms "
+            "over 60 samples, input bufs avail=9, dropped=0\n"
+            "08-20 18:00:57.473 29380   702 D VD      : Decode stats: input=120, output=120, dropped=0, availBufs=9\n"
+        )
+        responses = self._passing_responses(logcat)
+        client, _ = self._client(responses)
+        client.identity = self._p0110_identity
+
+        document = collect_usb_live_smoke(client)
+
+        self.assertEqual(document["verdict"], "pass")
+        self.assertEqual(document["logs"]["decoder"]["decoder"], "c2.qti.hevc.decoder")
+        self.assertEqual(document["logs"]["decoder"]["latest_output_counter"], 60)
+        self.assertEqual(document["logs"]["decoder"]["latest_decode_stats"]["output"], 120)
+        self.assertEqual(document["logs"]["telemetry"]["stream_stats"]["positive_fps_count"], 1)
+
+    def test_current_stream_stats_and_pidless_decoder_logcat_can_pass(self):
+        logcat = (
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"schema_version":1,"event":"stream_stats",'
+            '"session_epoch":1,"fps":58.1,"mbps":32.1}\n'
+            "D VD      : setupDecoder: 1512x982, decoder=c2.qti.hevc.decoder\n"
+            "D VD      : Output #60: decoder latency avg=5.8ms max=31.3ms "
+            "over 60 samples, input bufs avail=9, dropped=0\n"
+            "D VD      : Decode stats: input=120, output=120, dropped=0, availBufs=9\n"
+        )
+        responses = self._passing_responses(logcat)
+        client, _ = self._client(responses)
+        client.identity = self._p0110_identity
+
+        document = collect_usb_live_smoke(client)
+
+        self.assertEqual(document["verdict"], "pass")
+        self.assertEqual(document["logs"]["decoder"]["decoder"], "c2.qti.hevc.decoder")
+        self.assertEqual(document["logs"]["decoder"]["latest_output_counter"], 60)
+        self.assertEqual(document["logs"]["decoder"]["latest_decode_stats"]["output"], 120)
+
+    def test_current_stream_stats_without_decoder_evidence_is_insufficient(self):
+        logcat = (
+            '08-20 18:00:57.468 29380   670 I VibeScreenTelemetry: {"schema_version":1,"event":"stream_stats",'
+            '"session_epoch":1,"fps":58.1,"mbps":32.1}\n'
+        )
+        responses = self._passing_responses(logcat)
+        client, _ = self._client(responses)
+        client.identity = self._p0110_identity
+
+        document = collect_usb_live_smoke(client)
+
+        self.assertEqual(document["verdict"], "insufficient")
+        fields = [b["field"] for b in document["blocking_reasons"]]
+        self.assertIn("logs.decoder.decoder", fields)
+        self.assertIn("logs.decoder.first_output_frame", fields)
+        self.assertIn("logs.decoder.counters", fields)
 
     def test_missing_numeric_positive_fps_is_insufficient(self):
         logcat = (
@@ -312,7 +403,7 @@ class CollectionTests(unittest.TestCase):
             ("shell", "pidof", "dev.telemachus.display"): "29380",
             ("shell", "dumpsys", "window"): WINDOW_SAMPLE,
             ("shell", "dumpsys", "activity", "activities"): ACTIVITY_SAMPLE,
-            ("logcat", "-d", "-t", "1500", "-s", *LOGCAT_TAGS): logcat,
+            ("logcat", "-d", "-v", "threadtime", "-t", "1500", "-s", *LOGCAT_TAGS): logcat,
             ("exec-out", "run-as", "dev.telemachus.display", "sh", "-c", DIAG_LOG_COMMAND): "",
         }
 

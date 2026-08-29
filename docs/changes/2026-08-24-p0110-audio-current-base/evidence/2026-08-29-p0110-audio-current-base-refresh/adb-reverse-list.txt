@@ -1,0 +1,5 @@
+$ adb -s <ANDROID_SERIAL> reverse --list
+exit=0
+--- stdout ---
+UsbFfs tcp:54321 tcp:54321
+--- stderr ---

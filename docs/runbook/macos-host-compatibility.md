@@ -16,7 +16,7 @@ from a built-in or external-display run.
 
 | Matrix area | Current repository status | What can be claimed | Open implementation path |
 | --- | --- | --- | --- |
-| Apple silicon | Local Apple silicon development and historical device evidence exist, but no row has been summarized by `macos-hardware-compatibility-gate` yet. | Apple silicon has been locally exercised. Do not claim a published compatibility row until a gate summary passes for the exact host. | Collect one row per Mac model family, macOS build, display topology, and transport. |
+| Apple silicon | Local Apple silicon development and historical device evidence exist, and blocked `macos-hardware-compatibility-gate` summaries are published for Mac16,8 current-base readiness. No passing row exists. | Apple silicon has been locally exercised. Do not claim a compatibility row until a gate summary passes for the exact host. | Collect one row per Mac model family, macOS build, display topology, and transport. |
 | Intel Mac | No retained Intel Host compatibility row is published. | Open gate only. | Run the same build, package, TCC, capture, input, reconnect, and evidence summary on an Intel Mac. |
 | macOS versions | Source minimum is macOS 13. CI currently runs macOS Host checks on `macos-15`; retained device evidence includes specific local macOS builds. | macOS 13+ is a build/runtime requirement, not proof that every 13+ release is compatible. | Add rows for each supported macOS major/minor build before broadening support text. |
 | Display hardware | Physical/current-main, private virtual display, mirroring fallback, and headless/dummy behavior are topology-specific. | Only the topology actually recorded in a passing row is accepted. | Record built-in, single external, multi-display, dummy/headless, and Screen Sharing rows separately as needed. |
@@ -134,6 +134,18 @@ CLI exits `0` for `pass`, `1` for `blocked` or `insufficient`, and `2` for
 failed target while still leaving the summary JSON behind. Treat the row as
 accepted only when the summary contains `verdict=pass` and
 `can_close_macos_host_compatibility_row=true`.
+
+Use the generated `closure_checklist` to continue a blocked current-base row in
+order. `source_and_host_identity` must pass before runtime evidence can be used
+for support claims: it covers clean-source provenance, stable non-ad-hoc Host
+signing, the expected bundle id, authorized Screen Recording and Accessibility
+TCC states, and same-commit Host self-test provenance. `runtime_acceptance` then
+tracks packaged Host launch, Protocol v1 stream, display selection, physical or
+current-main capture, input smoke, and reconnect. `display_and_encoder_capability`
+and `scope_and_artifacts` are still exact-row checks; a pass in those groups does
+not override a blocked identity/TCC or runtime group. The
+`extrapolation_guard` group must remain `pass`; if it is `failed`, fix the input
+claim instead of treating the row as blocked readiness.
 
 ## Gate input
 

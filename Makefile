@@ -15,6 +15,7 @@ EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
 PHASE0_STABLE_RELEASE_REQUIRE_PASS ?=
+PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT ?=
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
@@ -31,6 +32,8 @@ STYLUS_OBSERVED_PHYSICAL_DRAWING_ARG ?=
 STYLUS_HOST_READY_ARG ?=
 ANDROID_AUDIO_PLAYBACK_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-observations.json
 ANDROID_AUDIO_PLAYBACK_GATE_JSON ?= $(EVIDENCE_DIR)/android-audio-playback-summary.json
+ANDROID_AUDIO_READINESS_LOGCAT_LINES ?= 2000
+ANDROID_AUDIO_READINESS_MAX_LOG_BYTES ?= 262144
 HARMONY_AVCODEC_HDC_TARGET ?=
 HARMONY_AVCODEC_HAP ?=
 PHASE2_DEVICE_CLASS ?=
@@ -100,7 +103,9 @@ TOUCH_RERUN_PREFLIGHT ?= $(EVIDENCE_DIR)/touch-rerun-preflight.json
 TOUCH_RERUN_INSTRUMENTATION ?= $(EVIDENCE_DIR)/touch-gesture-instrumentation.txt
 TOUCH_RERUN_HOST_LOG ?= $(EVIDENCE_DIR)/host-log-touch-gesture-window.log
 TOUCH_RERUN_EVENT_TAP ?= $(EVIDENCE_DIR)/listen-only-event-tap.log
-RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / <device-serial>
+RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / SDK 36 / $(EVIDENCE_SERIAL)
+RECONNECT_TIMING_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/reconnect-timing-observations.json
+RECONNECT_TIMING_REQUIRE_DISRUPTIONS ?=
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
 RECONNECT_TIMING_ARTIFACT_ARGS ?=
 RECONNECT_TIMING_NOTES_ARG ?=
@@ -207,6 +212,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
+	baseline-android-protocol-side-effect-owner \
 	baseline-android-transport-boundary \
 	baseline-android-check \
 	baseline-android-apk \
@@ -224,10 +230,13 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
 	trusted-lan-smoke-evidence-check \
+	evidence-reconnect-timing-gate \
 	evidence-reconnect-timing-blocked \
 	evidence-latency-preflight \
 	evidence-latency-gate \
+	android-audio-current-base-readiness \
 	android-audio-playback-gate \
+	android-audio-playback-owner-record \
 	native-pointer-hid-acceptance \
 	native-pointer-hid-gate \
 	physical-stylus-acceptance \
@@ -261,6 +270,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-macos-startup-recovery-gate \
 	phase2-aggregate-owner \
 	ios-app-signing-readiness-gate \
+	ios-app-signing-current-base-gate \
 	ios-device-acceptance-gate \
 	ios-hdr-edr-gate \
 	ios-native-input-gate \
@@ -273,6 +283,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-device-environment-summary \
 	phase2-device-environment-gate \
 	phase3-android-current-base-interop-gate \
+	phase3-internet-soak-manifest \
+	phase3-internet-soak-gate \
 	host-display-rotation-gate \
 	host-display-rotation-current-base-manifest \
 	host-display-rotation-current-base-gate \
@@ -475,6 +487,7 @@ baseline-macos-self-test: baseline-macos-build
 		"$$host_bin" --transport-self-test; \
 		"$$host_bin" --reliability-self-test; \
 		"$$host_bin" --protocol-v1-self-test; \
+		"$$host_bin" --audio-capture-self-test; \
 		"$$host_bin" --video-encoder-self-test; \
 		"$$host_bin" --phase3-real-media-self-test
 
@@ -536,6 +549,7 @@ phase0-stable-release-gate:
 		--manifest "$(PHASE0_STABLE_RELEASE_MANIFEST)" \
 		--readme README.md \
 		--output "$(PHASE0_STABLE_RELEASE_SUMMARY)" \
+		$(if $(strip $(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)),--expected-source-commit "$(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)",) \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_REQUIRE_PASS)),--require-pass,)
 
 require-evidence-serial:
@@ -612,7 +626,19 @@ trusted-lan-smoke-evidence-check:
 		--evidence-dir $(EVIDENCE_DIR) \
 		--output $(EVIDENCE_DIR)/trusted-lan-smoke-verdict.json
 
-evidence-reconnect-timing-blocked:
+evidence-reconnect-timing-gate:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a reconnect timing evidence directory" >&2; exit 2)
+	@test -f "$(RECONNECT_TIMING_OBSERVATIONS_JSON)" || (echo "error: missing reconnect timing observations: $(RECONNECT_TIMING_OBSERVATIONS_JSON)" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+		python3 -m vibescreen_evidence.reconnect_timing \
+		$(RECONNECT_TIMING_OBSERVATIONS_JSON) \
+		$(foreach disruption,$(RECONNECT_TIMING_REQUIRE_DISRUPTIONS),--require-disruption $(disruption)) \
+		--base-dir $(EVIDENCE_DIR) \
+		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json
+
+evidence-reconnect-timing-blocked: require-evidence-serial
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a reconnect timing evidence directory" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.reconnect_timing \
@@ -665,10 +691,25 @@ physical-stylus-gate:
 	@test -f "$(EVIDENCE_DIR)/stylus-evidence.json" || (echo "error: collect $(EVIDENCE_DIR)/stylus-evidence.json before physical-stylus-gate" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.stylus "$(EVIDENCE_DIR)/stylus-evidence.json" --output "$(EVIDENCE_DIR)/stylus-summary.json" --require-pass
 
+android-audio-current-base-readiness: require-evidence-serial
+	mkdir -p "$(EVIDENCE_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/android_audio_current_base_readiness.py \
+		--serial "$(EVIDENCE_SERIAL)" \
+		--evidence-dir "$(EVIDENCE_DIR)" \
+		--package "$(EVIDENCE_PACKAGE)" \
+		--port "$(EVIDENCE_PORT)" \
+		--logcat-lines "$(ANDROID_AUDIO_READINESS_LOGCAT_LINES)" \
+		--max-log-bytes "$(ANDROID_AUDIO_READINESS_MAX_LOG_BYTES)"
+
 android-audio-playback-gate:
 	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-gate" >&2; exit 2)
 	mkdir -p "$(dir $(ANDROID_AUDIO_PLAYBACK_GATE_JSON))"
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.android_audio_playback "$(ANDROID_AUDIO_PLAYBACK_JSON)" --evidence-dir "$(dir $(ANDROID_AUDIO_PLAYBACK_JSON))" --output "$(ANDROID_AUDIO_PLAYBACK_GATE_JSON)" --require-pass
+
+android-audio-playback-owner-record:
+	@test -f "$(ANDROID_AUDIO_PLAYBACK_JSON)" || (echo "error: collect $(ANDROID_AUDIO_PLAYBACK_JSON) before android-audio-playback-owner-record" >&2; exit 2)
+	mkdir -p "$(dir $(ANDROID_AUDIO_PLAYBACK_GATE_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.android_audio_playback "$(ANDROID_AUDIO_PLAYBACK_JSON)" --evidence-dir "$(dir $(ANDROID_AUDIO_PLAYBACK_JSON))" --output "$(ANDROID_AUDIO_PLAYBACK_GATE_JSON)"
 
 actionable-error-states-gate:
 	mkdir -p $(EVIDENCE_DIR)
@@ -813,6 +854,8 @@ ios-app-signing-readiness-gate:
 		--readiness "$(IOS_APP_SIGNING_READINESS_JSON)" \
 		--evidence-root "$$(dirname "$(IOS_APP_SIGNING_READINESS_JSON)")" \
 		--output "$(IOS_APP_SIGNING_READINESS_GATE_JSON)"
+
+ios-app-signing-current-base-gate: ios-app-signing-readiness-gate
 
 define SOAK_RECIPE
 	mkdir -p $(EVIDENCE_DIR)/$@
@@ -981,7 +1024,7 @@ clipboard-e2e-gate:
 		$(if $(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS)),--require-pass,); \
 	status=$$?; \
 	if [ $$status -ne 0 ]; then \
-		if [ -z "$(strip $(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		if [ -z "$(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
 

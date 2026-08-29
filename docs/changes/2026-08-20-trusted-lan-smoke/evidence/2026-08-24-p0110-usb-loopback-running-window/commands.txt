@@ -1,6 +1,7 @@
 # Commands run from <repo-worktree>
 # Date: 2026-08-24 UTC
 # All Android commands used the explicit target serial <device-serial>.
+DEVICE_SERIAL='<device-serial>'
 
 $ git fetch origin --prune
 $ git pull --ff-only
@@ -12,35 +13,35 @@ $ git remote get-url origin
 $ test ! -e /tmp/vibe-screen-device-android.lock
 $ test ! -e /tmp/vibe-screen-device-soak.lock
 
-$ adb -s <device-serial> get-state
-$ adb -s <device-serial> devices -l
-$ adb -s <device-serial> shell getprop ro.product.manufacturer
-$ adb -s <device-serial> shell getprop ro.product.model
-$ adb -s <device-serial> shell getprop ro.product.device
-$ adb -s <device-serial> shell getprop ro.build.version.release
-$ adb -s <device-serial> shell getprop ro.build.version.sdk
+$ adb -s "$DEVICE_SERIAL" get-state
+$ adb -s "$DEVICE_SERIAL" devices -l
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.manufacturer
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.model
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.product.device
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.build.version.release
+$ adb -s "$DEVICE_SERIAL" shell getprop ro.build.version.sdk
 
-$ make evidence-usb-live-smoke EVIDENCE_SERIAL=<device-serial> EVIDENCE_PACKAGE=dev.telemachus.display EVIDENCE_PORT=54321 EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window
+$ make evidence-usb-live-smoke EVIDENCE_SERIAL="$DEVICE_SERIAL" EVIDENCE_PACKAGE=dev.telemachus.display EVIDENCE_PORT=54321 EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window
 # Exit code 2. The default 1500-line logcat window did not contain
 # current-process telemetry, so the output was superseded by the wider
 # read-only collector run below.
 
-$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial <device-serial> --package dev.telemachus.display --port 54321 --logcat-lines 50000 --max-log-bytes 1048576 --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window/usb-live-smoke.json
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial "$DEVICE_SERIAL" --package dev.telemachus.display --port 54321 --logcat-lines 50000 --max-log-bytes 1048576 --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-24-p0110-usb-loopback-running-window/usb-live-smoke.json
 # Exit code 0; final read-only USB live smoke verdict is pass.
 
-$ adb -s <device-serial> logcat -d -v threadtime -t 50000 --pid=15457
-$ adb -s <device-serial> logcat -d -v threadtime -t 20000 -s VibeScreenTelemetry MediaCodec MA VD StreamClient
-$ adb -s <device-serial> exec-out run-as dev.telemachus.display sh -c "tail -n 2500 files/diag.log.old 2>/dev/null; tail -n 2500 files/diag.log 2>/dev/null"
-$ adb -s <device-serial> reverse --list
-$ adb -s <device-serial> shell pidof dev.telemachus.display
-$ adb -s <device-serial> shell dumpsys window
+$ adb -s "$DEVICE_SERIAL" logcat -d -v threadtime -t 50000 --pid=15457
+$ adb -s "$DEVICE_SERIAL" logcat -d -v threadtime -t 20000 -s VibeScreenTelemetry MediaCodec MA VD StreamClient
+$ adb -s "$DEVICE_SERIAL" exec-out run-as dev.telemachus.display sh -c "tail -n 2500 files/diag.log.old 2>/dev/null; tail -n 2500 files/diag.log 2>/dev/null"
+$ adb -s "$DEVICE_SERIAL" reverse --list
+$ adb -s "$DEVICE_SERIAL" shell pidof dev.telemachus.display
+$ adb -s "$DEVICE_SERIAL" shell dumpsys window
 # The retained window-focus.txt artifact keeps only foreground/focus lines from
 # the full dumpsys output; the full dump was discarded to reduce unrelated app
 # metadata in committed evidence.
 
-$ adb -s <device-serial> shell cmd wifi status
-$ adb -s <device-serial> shell ip addr show wlan0
-$ adb -s <device-serial> shell ip route
+$ adb -s "$DEVICE_SERIAL" shell cmd wifi status
+$ adb -s "$DEVICE_SERIAL" shell ip addr show wlan0
+$ adb -s "$DEVICE_SERIAL" shell ip route
 
 $ lsof -nP -iTCP:54321 -sTCP:LISTEN
 $ ps -p 22385 -o pid,ppid,comm,args

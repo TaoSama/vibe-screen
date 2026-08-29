@@ -23,6 +23,7 @@ import package_macos
 import prepare_release
 import android_stylus_acceptance
 from phase3.evidence_privacy import scan_content as scan_phase3_evidence_content
+import macos_dev_host
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -855,6 +856,32 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("soak-2h-host-rss-gate: require-evidence-serial require-host-pid", makefile)
         self.assertIn("vibescreen_evidence.host_rss_gate", makefile)
 
+    def test_reconnect_timing_make_targets_are_fail_closed(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / SDK 36 / $(EVIDENCE_SERIAL)",
+            makefile,
+        )
+        self.assertIn("RECONNECT_TIMING_REQUIRE_DISRUPTIONS ?=", makefile)
+        self.assertIn(
+            "RECONNECT_TIMING_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/reconnect-timing-observations.json",
+            makefile,
+        )
+        self.assertRegex(
+            makefile,
+            r"(?m)^evidence-reconnect-timing-blocked:\s+require-evidence-serial\s*$",
+        )
+        self.assertIn("evidence-reconnect-timing-gate:", makefile)
+        self.assertIn(
+            "error: set EVIDENCE_DIR to a reconnect timing evidence directory",
+            makefile,
+        )
+        self.assertIn("missing reconnect timing observations", makefile)
+        self.assertIn("$(foreach disruption,$(RECONNECT_TIMING_REQUIRE_DISRUPTIONS),--require-disruption $(disruption))", makefile)
+        self.assertIn("--base-dir $(EVIDENCE_DIR)", makefile)
+        self.assertEqual(makefile.count("python3 -m vibescreen_evidence.reconnect_timing"), 2)
+
     def test_harmony_readiness_make_target_uses_fail_closed_collector(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
         target_match = re.search(
@@ -1205,6 +1232,21 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         resolve_mock.assert_called_once_with("Vibe Screen Dev")
         validate_mock.assert_not_called()
         run_mock.assert_not_called()
+
+    def test_host_report_marks_tcc_rows_unavailable_when_database_read_fails(self) -> None:
+        report = macos_dev_host.format_report(
+            metadata=None,
+            permissions=macos_dev_host.PermissionStatus(
+                database_path="<user-tcc-db>",
+                rows=(),
+                readable=False,
+                error="unable to open database file",
+            ),
+            errors=["cannot verify TCC permissions read-only: unable to open database file"],
+        )
+
+        self.assertIn("(TCC rows unavailable: unable to open database file)", report)
+        self.assertNotIn("(no matching rows)", report)
 
 
 class PrepareReleaseTests(unittest.TestCase):

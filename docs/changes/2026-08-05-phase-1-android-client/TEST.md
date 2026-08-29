@@ -911,3 +911,43 @@ returns `result=pass`.
 Evidence:
 
 - [`evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/`](evidence/2026-08-28-p0110-host-display-rotation-current-base-tooling-refresh/)
+
+## P0110 rotated host-display current-base blocked refresh
+
+On 2026-08-29, the rotated physical/virtual host-display current-base record
+was refreshed from current `origin/main` at
+`1435825b02362626341e0143509811591b2bbf15`. The run then used tooling commit
+`ee88f9a299855d3705cf5edd877ed70213d6458b`, which fixes the current-base
+manifest so its own evidence output directory no longer makes the recorded
+source state appear dirty. The resulting manifest records `dirty=false` and an
+empty `status_porcelain` for that source revision.
+
+The safety checks at the start and end found no `sfltool` process. This run did
+not execute `/usr/bin/sfltool dumpbtm` and did not pass any login-item
+diagnostic opt-in flag. The attached Android device was sampled with an explicit
+serial before retained evidence redacted it; the device identified as nubia
+P0110 / pacific / Android 16 / SDK 36, with `dev.telemachus.display` installed.
+This is P0110 substitute evidence only and must not be relabeled as Xiaomi
+13/fuxi evidence.
+
+The attempt remains blocked before any real rotated host-display acceptance
+run. The installed Host bundle identifier is proven as `dev.telemachus.display`,
+but the strict Host preflight still cannot prove the stable `Vibe Screen Dev`
+signing identity, Screen Recording, Accessibility, signed Host/TCC match, or a
+display-rotation restoration plan. No Android install, launch, force-stop, ADB
+reverse mutation, Host start/stop, macOS display rotation, or input injection
+was performed.
+
+The retained `host-display-rotation.json` intentionally contains no completed
+physical or virtual run. The formal evidence gate output remains
+`status=failed` with missing non-empty `runs[]`, missing physical and virtual
+host-display evidence, and missing 90/180/270 coverage. The current-base
+aggregate gate returns `verdict=blocked`,
+`can_close_host_display_rotation_acceptance=false`,
+`can_close_current_base_aggregate=false`, and
+`can_claim_real_device_pass=false`. The retained public evidence privacy scan
+returns `result=pass`. Rotated host-display acceptance remains open.
+
+Evidence:
+
+- [`evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-29-p0110-host-display-rotation-current-base-blocked/)

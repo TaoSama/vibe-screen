@@ -1,0 +1,3 @@
+08-28 20:58:27.355 23514  8167 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787921907355,"event":"stream_stats","session_epoch":2,"fps":29.940119760479043,"mbps":0.06893413173652695}
+08-28 20:58:28.653 23514  8167 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787921908653,"event":"stream_stats","session_epoch":2,"fps":10.007698229407236,"mbps":0.025533487297921476}
+08-28 20:58:29.721 23514  8167 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787921909721,"event":"stream_stats","session_epoch":2,"fps":30.927835051546392,"mbps":0.07602624179943768}

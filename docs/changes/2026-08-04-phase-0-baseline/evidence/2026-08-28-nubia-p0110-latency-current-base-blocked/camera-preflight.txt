@@ -1,0 +1,28 @@
+# Camera and formal latency package preflight
+
+## Commands
+
+```bash
+system_profiler SPCameraDataType
+find docs/changes/2026-08-04-phase-0-baseline/evidence -maxdepth 2 \( -name raw-camera.mov -o -name manifest.json -o -name samples.csv -o -name latency-evidence-report.json \) -print | sort
+```
+
+## Result
+
+Only the built-in MacBook Pro camera was visible locally during this preflight:
+
+```text
+Camera:
+
+    MacBook Pro相机:
+
+      Model ID: MacBook Pro相机
+      Unique ID: [redacted-camera-unique-id]
+```
+
+The Phase 0 evidence tree scan found no retained `raw-camera.mov`,
+`manifest.json`, `samples.csv`, or `latency-evidence-report.json` package for
+the three README latency profiles. There is no retained 120 FPS+ external-camera
+timebase framing both the Mac endpoint and Nubia P0110/pacific Android endpoint,
+and no synchronized-clock input package with a documented sub-5 ms total error
+budget.
