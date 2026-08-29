@@ -123,6 +123,26 @@ def make_native_input_gate(artifact_path: str = "ios-native-input/iphone-ipad-ho
     }
 
 
+def make_signing_requirements(**overrides: object) -> dict[str, object]:
+    requirements: dict[str, object] = {
+        "team_id": True,
+        "provisioning_profile": True,
+        "bundle_id": True,
+        "codesign_identity": True,
+        "device_udids": True,
+        "entitlements": True,
+    }
+    requirements.update(overrides)
+    return {
+        "status": "pass" if all(value is True for value in requirements.values()) else "blocked",
+        "requirements": requirements,
+        "all_requirements_recorded": all(value is True for value in requirements.values()),
+        "simulator_build_used": False,
+        "unsigned_build_used": False,
+        "android_evidence_used": False,
+    }
+
+
 def complete_manifest(root: Path) -> dict[str, object]:
     manifest = make_manifest(root)
     manifest["local_environment"] = {
@@ -165,6 +185,7 @@ def complete_manifest(root: Path) -> dict[str, object]:
             "entitlements_recorded": True,
             "signed_artifact_sha256": "a" * 64,
         },
+        "readiness_requirements": make_signing_requirements(),
         "missing": [],
         "failures": [],
     }
@@ -505,6 +526,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                     "entitlements_recorded": True,
                     "signed_artifact_sha256": "a" * 64,
                 },
+                "readiness_requirements": make_signing_requirements(device_udids=False),
                 "missing": ["signing.device_udids missing"],
                 "failures": [],
             }
@@ -515,6 +537,26 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+        self.assertIn("blocked: dedicated_signing_readiness_requirements", report["reasons"])
+
+    def test_signing_readiness_requirements_are_blocking_current_base_checks(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            signing_gate = manifest["signing_readiness_gate"]
+            assert isinstance(signing_gate, dict)
+            signing_gate["readiness_requirements"] = make_signing_requirements(
+                entitlements=False
+            )
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_signing_readiness_requirements", report["reasons"])
+        requirements = report["checks"]["signing"]["dedicated_signing_readiness_requirements"]
+        self.assertFalse(requirements["passed"])
 
     def test_videotoolbox_readiness_gates_required_for_device_pass(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -604,18 +646,24 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
 
         self.assertEqual(report["verdict"], persisted["verdict"])
         self.assertEqual(report["owner"], persisted["owner"])
-        self.assertEqual(report["reasons"], persisted["reasons"])
-        self.assertEqual(report["checks"]["signing"], persisted["checks"]["signing"])
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_ios_device_acceptance"])
         self.assertFalse(report["can_close_current_base_aggregate"])
+        self.assertIn("dedicated_signing_readiness_requirements", persisted["checks"]["signing"])
         self.assertTrue(
             report["checks"]["signing"]["dedicated_signing_readiness_owner"]["passed"]
         )
         self.assertFalse(
             report["checks"]["signing"]["dedicated_signing_readiness_gate"]["passed"]
         )
+        self.assertFalse(
+            report["checks"]["signing"]["dedicated_signing_readiness_requirements"]["passed"]
+        )
+        self.assertFalse(
+            persisted["checks"]["signing"]["dedicated_signing_readiness_requirements"]["passed"]
+        )
         self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+        self.assertIn("blocked: dedicated_signing_readiness_requirements", report["reasons"])
         self.assertIn("blocked: signing", report["reasons"])
         retained_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertIn(

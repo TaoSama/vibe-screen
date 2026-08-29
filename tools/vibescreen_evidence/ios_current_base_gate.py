@@ -64,11 +64,20 @@ REQUIRED_SIGNING_GATE_FIELDS = {
     "owner",
     "current_base",
     "signing_summary",
+    "readiness_requirements",
     "kind",
     "verdict",
     "can_close_ios_app_signing_readiness",
     "missing",
     "failures",
+}
+REQUIRED_SIGNING_REQUIREMENT_FIELDS = {
+    "team_id",
+    "provisioning_profile",
+    "bundle_id",
+    "codesign_identity",
+    "device_udids",
+    "entitlements",
 }
 REQUIRED_NATIVE_INPUT_GATE_FIELDS = {
     "provided",
@@ -257,6 +266,31 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
         REQUIRED_SIGNING_GATE_FIELDS,
         "signing_readiness_gate",
     )
+    readiness_requirements = _require_object(
+        signing_readiness_gate.get("readiness_requirements"),
+        "signing_readiness_gate.readiness_requirements",
+    )
+    _require_fields(
+        readiness_requirements,
+        {
+            "status",
+            "requirements",
+            "all_requirements_recorded",
+            "simulator_build_used",
+            "unsigned_build_used",
+            "android_evidence_used",
+        },
+        "signing_readiness_gate.readiness_requirements",
+    )
+    requirements = _require_object(
+        readiness_requirements.get("requirements"),
+        "signing_readiness_gate.readiness_requirements.requirements",
+    )
+    _require_fields(
+        requirements,
+        REQUIRED_SIGNING_REQUIREMENT_FIELDS,
+        "signing_readiness_gate.readiness_requirements.requirements",
+    )
     native_input_gate = _require_object(
         manifest.get("native_input_gate"), "native_input_gate"
     )
@@ -408,6 +442,16 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if isinstance(signing_gate.get("signing_summary"), dict)
         else {}
     )
+    readiness_requirements = (
+        signing_gate.get("readiness_requirements")
+        if isinstance(signing_gate.get("readiness_requirements"), dict)
+        else {}
+    )
+    requirements = (
+        readiness_requirements.get("requirements")
+        if isinstance(readiness_requirements.get("requirements"), dict)
+        else {}
+    )
     repository = manifest.get("repository") if isinstance(manifest.get("repository"), dict) else {}
     gate_commit = signing_gate_current_base.get("commit")
     repository_revision = repository.get("revision")
@@ -445,6 +489,14 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "entitlements_recorded": True,
         "signed_archive_sha256": summary_sha,
     }
+    requirements_complete = (
+        readiness_requirements.get("status") == "pass"
+        and readiness_requirements.get("all_requirements_recorded") is True
+        and readiness_requirements.get("simulator_build_used") is False
+        and readiness_requirements.get("unsigned_build_used") is False
+        and readiness_requirements.get("android_evidence_used") is False
+        and all(requirements.get(field) is True for field in REQUIRED_SIGNING_REQUIREMENT_FIELDS)
+    )
     return {
         "dedicated_signing_readiness_gate": _check(
             signing_gate.get("kind") == "ios_app_signing_readiness_gate"
@@ -483,6 +535,16 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             evidence=[str(signing_summary.get("status"))]
             if signing_summary.get("status")
             else _string_list(signing_gate.get("missing")),
+            blocking=True,
+        ),
+        "dedicated_signing_readiness_requirements": _check(
+            requirements_complete,
+            "ios-app-signing-readiness-gate.json explicitly records Team ID, provisioning profile, bundle ID, codesign identity, physical-device UDID hashes, and entitlements",
+            evidence=[
+                field
+                for field in sorted(REQUIRED_SIGNING_REQUIREMENT_FIELDS)
+                if requirements.get(field) is True
+            ],
             blocking=True,
         ),
         "signing_matches_readiness_summary": _check(

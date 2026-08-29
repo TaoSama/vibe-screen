@@ -47,7 +47,7 @@ Required retained evidence remains open for sanitized coverage of:
 Run from the repository root with a sanitized readiness JSON:
 
 ```bash
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 
 make ios-current-base-gate \
@@ -61,7 +61,7 @@ declares `owner.role=ios_app_signing_readiness_current_base_owner`,
 `owner.repository=TaoSama/vibe-screen`, and a complete sanitized
 `signing_summary` from a clean current-base commit.
 
-For this blocked record, `make ios-app-signing-readiness-gate` exits nonzero
+For this blocked record, `make ios-app-signing-current-base-gate` exits nonzero
 after writing the gate JSON because signing material is absent. The aggregate
 command also exits nonzero as expected: it consumes the dedicated owner JSON and
 keeps `can_close_ios_device_acceptance=false` and
