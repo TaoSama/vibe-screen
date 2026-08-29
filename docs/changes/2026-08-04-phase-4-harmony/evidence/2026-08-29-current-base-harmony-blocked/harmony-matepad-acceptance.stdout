@@ -1,0 +1,9 @@
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 scripts/harmony_matepad_acceptance.py \
+		--evidence-dir "docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked" \
+		--write-blocked
+HarmonyOS MatePad Mini acceptance package: blocked
+package: docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/harmony-matepad-acceptance.json
+- HarmonyOS readiness preflight is not pass
+- toolchain.deveco_studio_version: blocked placeholder is not evidence
+- HarmonyOS current-base owner gate is not pass
+- blocked acceptance domains: toolchain_and_source, hap_install_signing, avcodec_decode, secure_pairing_huks, host_resume_interop, ui_device_identity, sustained_operation

@@ -1,0 +1,138 @@
+{
+  "can_close_hap_lifecycle_readiness": false,
+  "missing_requirements": [
+    {
+      "detail": "",
+      "evidence": [],
+      "field": "deveco_studio_available",
+      "requirement": "DevEco Studio installed or version recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "project compatibleSdkVersion=5.0.0(12)",
+      "evidence": [],
+      "field": "harmony_sdk_api_recorded",
+      "requirement": "HarmonyOS SDK API 12+ version recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "ohpm not found",
+      "evidence": [],
+      "field": "ohpm_available",
+      "requirement": "DevEco-managed ohpm is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "hvigor not found",
+      "evidence": [],
+      "field": "hvigor_available",
+      "requirement": "DevEco-managed hvigor/hvigorw is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "hdc not found",
+      "evidence": [],
+      "field": "hdc_available",
+      "requirement": "Harmony Device Connector is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "build not requested",
+      "evidence": [],
+      "field": "release_build_completed",
+      "requirement": "make release completed in apps/harmony",
+      "status": "insufficient"
+    },
+    {
+      "detail": "signingConfigs is empty",
+      "evidence": [],
+      "field": "signing_config_present",
+      "requirement": "non-empty Harmony signingConfigs present",
+      "status": "blocked"
+    },
+    {
+      "detail": "HAP missing",
+      "evidence": [],
+      "field": "signed_hap_present",
+      "requirement": "signed release HAP archive with signature entries and SHA256SUMS linkage",
+      "status": "blocked"
+    },
+    {
+      "detail": "pass --signature-certificate or --signature-certificate-sha256",
+      "evidence": [],
+      "field": "signature_certificate_recorded",
+      "requirement": "signing certificate SHA-256 recorded without sensitive signing inputs",
+      "status": "insufficient"
+    },
+    {
+      "detail": "# hdc list targets failed with exit 127\n# no HDC target listed",
+      "evidence": [],
+      "field": "hdc_target_selected",
+      "requirement": "exactly one HarmonyOS target selected or --hdc-target matched",
+      "status": "blocked"
+    },
+    {
+      "detail": "HDC target unavailable",
+      "evidence": [],
+      "field": "matepad_mini_identity_recorded",
+      "requirement": "HarmonyOS MatePad Mini device identity recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "HDC target unavailable",
+      "evidence": [],
+      "field": "package_prestate_recorded",
+      "requirement": "package state captured before install/upgrade/rollback/uninstall",
+      "status": "blocked"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "install_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for install",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "upgrade_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for upgrade",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "rollback_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for rollback",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "uninstall_cleanup_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for uninstall cleanup",
+      "status": "insufficient"
+    }
+  ],
+  "observed_fields": {
+    "deveco_studio_available": "blocked",
+    "harmony_sdk_api_recorded": "blocked",
+    "hdc_available": "blocked",
+    "hdc_target_selected": "blocked",
+    "hvigor_available": "blocked",
+    "install_evidence_recorded": "insufficient",
+    "matepad_mini_identity_recorded": "blocked",
+    "ohpm_available": "blocked",
+    "package_prestate_recorded": "blocked",
+    "release_build_completed": "insufficient",
+    "repository_clean": "pass",
+    "rollback_evidence_recorded": "insufficient",
+    "signature_certificate_recorded": "insufficient",
+    "signed_hap_present": "blocked",
+    "signing_config_present": "blocked",
+    "uninstall_cleanup_evidence_recorded": "insufficient",
+    "upgrade_evidence_recorded": "insufficient"
+  },
+  "run_id": "20260828T205652Z",
+  "verdict": "blocked"
+}
