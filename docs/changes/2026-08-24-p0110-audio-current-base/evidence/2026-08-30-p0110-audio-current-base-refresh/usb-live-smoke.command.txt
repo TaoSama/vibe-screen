@@ -1,0 +1,5 @@
+$ /opt/homebrew/opt/python@3.11/bin/python3.11 -m vibescreen_evidence.usb_live_smoke --allow-existing-device-lock --serial <ANDROID_SERIAL> --package dev.telemachus.display --port 54321 --output docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-30-p0110-audio-current-base-refresh/usb-live-smoke.raw.json
+exit=1
+--- stdout ---
+
+--- stderr ---
