@@ -37,7 +37,8 @@ Host readiness state. That is still not an audio pass: no Host listener was
 observed, the installed Host bundle did not prove current-source stable signing
 plus Microphone/TCC readiness, and retained logs show no `CAPABILITY_AUDIO`,
 accepted `AudioConfig`, Host channel `3` packet flow, Android `AudioTrack`
-writes, audible output, or cleanup evidence.
+writes, audible output, Protocol v1 session proof from the current refresh, or
+cleanup evidence.
 Trusted-LAN audio remains blocked separately because no usable `wlan0` IPv4
 route evidence was retained.
 
