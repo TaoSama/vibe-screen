@@ -1,0 +1,11 @@
+Android device identity sampled by serial-scoped ADB and redacted for public
+evidence.
+
+manufacturer: nubia
+model: P0110
+codename: pacific
+android_release: 16
+sdk: 36
+adb_serial: <redacted-adb-serial>
+role: general Android substitute only; not Xiaomi 13/fuxi evidence
+package_status: dev.telemachus.display installed
