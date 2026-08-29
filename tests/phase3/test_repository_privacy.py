@@ -33,7 +33,9 @@ PUBLIC_RELAY_SSH_ALIAS_PLACEHOLDER = b"<relay-host-ssh-alias>"
 RAW_ANDROID_SERIAL_PROPERTY_PATTERN = re.compile(
     rb"(?im)^ro\.serialno=(?:[0-9a-f]{8}|EP[0-9A-Z]{16})$"
 )
-RAW_XIAOMI_EVIDENCE_PATH_PATTERN = re.compile(rb"xiaomi13-[0-9a-f]{8}-", re.IGNORECASE)
+RAW_XIAOMI_EVIDENCE_PATH_PATTERN = re.compile(
+    rb"xiaomi(?:12|13)-fuxi-[0-9a-f]{8}(?:[-/]|\b)", re.IGNORECASE
+)
 RAW_ANDROID_SERIAL_TOKEN_PATTERN = re.compile(rb"(?:[0-9a-f]{8}|EP[0-9A-Z]{16})", re.IGNORECASE)
 CARRIER_GRADE_NAT = ipaddress.ip_network("100." + "64.0.0/10")
 IPV4_ENDPOINT_PATTERN = re.compile(
@@ -161,7 +163,8 @@ class RepositoryPrivacyTests(unittest.TestCase):
             b"adb -s " + long_serial + b" shell get-state",
             b"ro.serialno=" + hex_serial,
             b"ro.serialno=" + long_serial,
-            b"evidence/2026-08-10-xiaomi13-" + hex_serial + b"-30m/README.md",
+            b"evidence/2026-08-08-xiaomi12-fuxi-" + hex_serial + b"/README.md",
+            b"evidence/2026-08-10-xiaomi13-fuxi-" + hex_serial + b"-30m/README.md",
         )
         for content in prohibited:
             with self.subTest(content=content):
@@ -179,7 +182,8 @@ class RepositoryPrivacyTests(unittest.TestCase):
             b"adb -s test-p0110-adb-serial shell get-state",
             b"ro.serialno=<redacted-adb-serial>",
             b"ro.serialno=REDACTED_P0110_USB_SERIAL",
-            b"evidence/2026-08-10-xiaomi13-redacted-30m/README.md",
+            b"evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md",
+            b"evidence/2026-08-10-xiaomi13-fuxi-redacted-30m/README.md",
         )
         for content in allowed:
             with self.subTest(content=content):
