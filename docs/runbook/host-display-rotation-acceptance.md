@@ -219,11 +219,13 @@ evidence directory.
 
 ## Current Status
 
-The 2026-08-23 P0110/pacific current-base record is readiness evidence only:
-draft PR #262 owns the current-base boundary, but the local Host signing/TCC
-preflight was blocked, the Android client package was not installed on the
-device at sampling time, and no rotated physical or virtual host-display run was
-started. The evidence gate remains status=failed; the current-base aggregate
-gate remains verdict=blocked, can_close_current_base_aggregate=false, and
-can_claim_real_device_pass=false. Rotated host-display acceptance remains open
+The 2026-08-29 P0110/pacific current-base record is readiness evidence only. It
+starts from current `origin/main` and records nubia P0110 / pacific / Android 16
+/ SDK 36 as a general Android substitute, with the ADB serial redacted. The
+installed Android package was visible, but the Host signing/TCC preflight was
+still blocked, no display-rotation restoration plan existed, and no rotated
+physical or virtual host-display run was started. The formal evidence gate
+remains `status=failed`; the current-base aggregate gate remains
+`verdict=blocked`, `can_close_current_base_aggregate=false`, and
+`can_claim_real_device_pass=false`. Rotated host-display acceptance remains open
 until a fresh real-device run satisfies this runbook and the offline gates.
