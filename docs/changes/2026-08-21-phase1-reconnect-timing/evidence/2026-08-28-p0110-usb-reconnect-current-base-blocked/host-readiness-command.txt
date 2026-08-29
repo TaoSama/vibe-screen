@@ -26,7 +26,7 @@ python3 scripts/macos_dev_host.py readiness \
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-29T00:28:02.417289+00:00",
+  "generated_at": "2026-08-29T01:27:36.967833+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [
@@ -36,9 +36,9 @@ python3 scripts/macos_dev_host.py readiness \
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
     "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
     "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
-    "current_source_commit": "b59d4049cfb4a596e72e73a208d1e39fd3868502",
+    "current_source_commit": "7deda66b9ad2149c750f034cb6b7aeba5dc318eb",
     "current_source_dirty": false,
-    "current_source_tree": "ee4ad8660f85e33dd8e231240b2e528bb80841cb",
+    "current_source_tree": "b434f9e922c2c574edba8c0dcbdf77387bb52e78",
     "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
     "identifier": "dev.telemachus.display",
     "identity": "Vibe Screen Dev",

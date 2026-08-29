@@ -10,7 +10,7 @@
   "attempts": [],
   "blocked_reasons": [
     "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
-    "Installed Host lacks source commit/tree provenance for current source commit b59d4049cfb4a596e72e73a208d1e39fd3868502",
+    "Installed Host lacks source commit/tree provenance for current source commit 7deda66b9ad2149c750f034cb6b7aeba5dc318eb",
     "TCC permissions could not be verified read-only for the installed Host"
   ],
   "can_close_requested_scope": false,
@@ -31,11 +31,11 @@
   "host": {},
   "kind": "reconnect_timing_gate",
   "missing_required_disruptions": [],
-  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 703f96fae3536fed2216bcae6cae0a7e71bf0158; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
+  "notes": "Current-base blocked readiness refresh after updating PR #390 onto origin/main 567dae75da22b2faa49ab59e5d95b4a642be1d97; no client kill, ADB reverse removal/restoration, or trusted-LAN interruption was run.",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
     "Vibe Screen Dev signing identity is unavailable in the current keychain for rebuilding source-bound Host evidence",
-    "Installed Host lacks source commit/tree provenance for current source commit b59d4049cfb4a596e72e73a208d1e39fd3868502",
+    "Installed Host lacks source commit/tree provenance for current source commit 7deda66b9ad2149c750f034cb6b7aeba5dc318eb",
     "TCC permissions could not be verified read-only for the installed Host"
   ],
   "required_disruptions": [
@@ -43,7 +43,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "fb1a1b9e-27e6-45e4-b7b3-4ff3a33260af",
+  "run_id": "ff0f230f-b157-48cd-89b8-4d34b7eff9d2",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"
