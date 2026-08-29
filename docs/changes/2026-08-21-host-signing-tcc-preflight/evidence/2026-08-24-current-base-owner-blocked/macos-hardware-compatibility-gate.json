@@ -116,6 +116,97 @@
     }
   ],
   "can_close_macos_host_compatibility_row": false,
+  "closure_checklist": [
+    {
+      "id": "source_and_host_identity",
+      "missing_fields": [
+        "cpu_architecture_recorded",
+        "host_build_identity_recorded",
+        "host_model_recorded",
+        "host_self_test_provenance_recorded",
+        "macos_version_build_recorded",
+        "signing_and_tcc_state_recorded",
+        "source_bound_host_recorded",
+        "xcode_swift_recorded"
+      ],
+      "next_steps": [
+        "record the exact Mac model identifier and marketing family when available",
+        "record whether the Host is Apple silicon or Intel",
+        "record macOS product version and build number",
+        "record Xcode and Swift versions used for local build/test evidence",
+        "record Host app commit, binary SHA-256, bundle id, and signing identity",
+        "record signing stability plus Screen Recording and Accessibility state",
+        "record installed Host source commit/tree provenance and require it to match this current-base row",
+        "record Host self-test provenance from the same current-base source revision",
+        "record a non-empty Mac model identifier",
+        "record apple_silicon or intel CPU architecture",
+        "record a non-empty macOS product version",
+        "record a non-empty macOS build number",
+        "record a non-empty Xcode version",
+        "record a non-empty Swift version",
+        "record a non-empty Host build identity",
+        "record the packaged Host bundle identifier",
+        "record the concrete non-ad-hoc Host signing identity",
+        "record the source commit embedded in the installed Host bundle",
+        "record the source tree embedded in the installed Host bundle",
+        "record whether the installed Host was packaged from a clean source tree",
+        "record the commit used for Host self-test output",
+        "Screen Recording TCC must be authorized for the packaged Host",
+        "Accessibility TCC must be authorized for the packaged Host"
+      ],
+      "status": "blocked",
+      "title": "Source and Host identity"
+    },
+    {
+      "id": "display_and_encoder_capability",
+      "missing_fields": [
+        "display_topology_recorded"
+      ],
+      "next_steps": [
+        "record built-in, external, multi-display, dummy/headless, or Screen Sharing topology",
+        "record a concrete display topology"
+      ],
+      "status": "blocked",
+      "title": "Display and encoder capability"
+    },
+    {
+      "id": "runtime_acceptance",
+      "missing_fields": [
+        "automated_macos_checks_passed",
+        "display_selection_observed",
+        "input_smoke_observed",
+        "packaged_host_launch_observed",
+        "physical_display_capture_observed",
+        "protocol_v1_stream_observed",
+        "reconnect_observed"
+      ],
+      "next_steps": [
+        "run baseline macOS build, XCTest, and self-test commands for this source",
+        "launch the packaged Host on the recorded Mac row",
+        "observe a Protocol v1 USB or trusted-LAN stream on this Host row",
+        "exercise display list and selected-display start on this Host row",
+        "observe physical or current-main display capture on this Host row",
+        "observe at least touch plus keyboard or scroll input through the Host path",
+        "observe a client/process reconnect while the Host PID survives"
+      ],
+      "status": "blocked",
+      "title": "Runtime acceptance"
+    },
+    {
+      "id": "scope_and_artifacts",
+      "missing_fields": [],
+      "next_steps": [],
+      "status": "pass",
+      "title": "Scope and retained artifacts"
+    },
+    {
+      "id": "extrapolation_guard",
+      "missing_fields": [],
+      "next_steps": [],
+      "status": "pass",
+      "title": "No extrapolated support claims"
+    }
+  ],
   "invalid_claim_observations": {
     "ci_runner_only": false,
     "claims_display_topology_from_different_setup": false,
@@ -321,7 +412,7 @@
     "virtual_display_result": "unavailable",
     "xcode_version": ""
   },
-  "run_id": "772a53b4-f1af-4074-8c9a-216864b7c66f",
+  "run_id": "ad6253f3-2bc5-45fe-8304-499ffd6a3e91",
   "schema_version": "vibescreen.evidence/v1",
   "verdict": "blocked"
 }
