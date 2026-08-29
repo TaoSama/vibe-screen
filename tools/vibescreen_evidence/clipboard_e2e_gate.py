@@ -268,12 +268,12 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
     if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
     byte_length = direction.get("byte_length")
-    if not isinstance(byte_length, int) or byte_length <= 0:
+    if not isinstance(byte_length, int) or isinstance(byte_length, bool) or byte_length <= 0:
         reasons.append(f"{label}.byte_length must be a positive integer")
     elif byte_length > LOCAL_MAXIMUM_CLIPBOARD_BYTES:
         reasons.append(f"{label}.byte_length must not exceed 1048576 bytes")
     session_epoch = direction.get("session_epoch")
-    if not isinstance(session_epoch, int) or session_epoch <= 0:
+    if not isinstance(session_epoch, int) or isinstance(session_epoch, bool) or session_epoch <= 0:
         reasons.append(f"{label}.session_epoch must be a positive integer")
     transport = direction.get("transport")
     if transport not in {"usb", "trusted_lan"}:

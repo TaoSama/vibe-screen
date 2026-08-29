@@ -356,6 +356,37 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_rejects_boolean_integer_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["byte_length"] = True
+            android_to_macos["session_epoch"] = True
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.byte_length must be a positive integer",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.session_epoch must be a positive integer",
+            result["blockers"],
+        )
+
     def test_product_e2e_requires_distinct_direction_markers(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)

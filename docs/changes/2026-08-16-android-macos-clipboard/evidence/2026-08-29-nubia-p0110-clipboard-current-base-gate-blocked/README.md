@@ -1,7 +1,7 @@
 # Nubia P0110 Clipboard Current-Base Gate Blocked
 
 Date: 2026-08-29 (local, Asia/Shanghai)
-Source base: `origin/main` at `334063329e64cb6bded5e91d3dbd1c8e2bee958c`
+Source base: `origin/main` at `f4d578bd1c5591d0e841efbb7e68f5e064fbbf14`
 Branch: `codex/clipboard-e2e-current-base`
 Device target: nubia P0110 / pacific / Android 16 / SDK 36
 Serial label: `REDACTED_P0110_USB_SERIAL`

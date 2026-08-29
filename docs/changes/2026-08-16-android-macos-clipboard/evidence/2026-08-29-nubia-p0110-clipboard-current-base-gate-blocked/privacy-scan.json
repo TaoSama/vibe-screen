@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "0fc0211e5ddbb0e124c96c2fc19942ff834cbcf4e5931635046f4aa72028d2aa"
+      "sha256": "6d61d8289ebf3ee8736fb0e98cc60599aece4d79b5007cdafe71b82a13c09443"
     },
     {
       "bytes": 2,
@@ -76,7 +76,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "488dc816d886e1cc488a2147648b2d72163b5bd64e8ec61e5257b687ec8b5854"
+      "sha256": "09393f31ac8716a18b2e2b3e230266a0644526dbe65cc429464c9f534ee6fb19"
     },
     {
       "bytes": 41,
@@ -89,7 +89,7 @@
       ],
       "path": "git-head.txt",
       "result": "pass",
-      "sha256": "395319a5116dead4e75250ec2852a550221616688bbca54ce5d7032b854cf1d4"
+      "sha256": "19dab37c0df8a501a4e61fc0c7611b4525445e37cbc757bb3f6924d4537362d4"
     },
     {
       "bytes": 41,
@@ -102,7 +102,7 @@
       ],
       "path": "git-origin-main.txt",
       "result": "pass",
-      "sha256": "395319a5116dead4e75250ec2852a550221616688bbca54ce5d7032b854cf1d4"
+      "sha256": "19dab37c0df8a501a4e61fc0c7611b4525445e37cbc757bb3f6924d4537362d4"
     },
     {
       "bytes": 39,
@@ -128,7 +128,7 @@
       ],
       "path": "git-status.txt",
       "result": "pass",
-      "sha256": "0512cc4ef0fe38bfea4a244ee7c89a12bf9d097ef89c5d55873b3db9c28d498f"
+      "sha256": "30cf179b25a1f7dc281262e685d3f0bb6735f779e028fc666e62dc56c786e2be"
     },
     {
       "bytes": 2,
@@ -154,7 +154,7 @@
       ],
       "path": "host-readiness.json",
       "result": "pass",
-      "sha256": "c3d40e93ee4fd1f255e28b9318006749f52168e7e436440153a714dd446f8523"
+      "sha256": "6f4c09ba019efc1207828e7e04b8323251cb497b7a9600790e3a7ac799583f29"
     },
     {
       "bytes": 6300,
@@ -167,7 +167,7 @@
       ],
       "path": "host-readiness.stderr",
       "result": "pass",
-      "sha256": "c3d40e93ee4fd1f255e28b9318006749f52168e7e436440153a714dd446f8523"
+      "sha256": "6f4c09ba019efc1207828e7e04b8323251cb497b7a9600790e3a7ac799583f29"
     },
     {
       "bytes": 175,
@@ -180,7 +180,7 @@
       ],
       "path": "host-readiness.stdout",
       "result": "pass",
-      "sha256": "84a29a27d608bbd6f87c785e87bac1ef31b5e24024293cabb4f866e2db67278d"
+      "sha256": "5f1a2875f233035df041988bdc5d821d0048053bb2c1ed0e2d9b9ee14c8a3b7c"
     },
     {
       "bytes": 1489,

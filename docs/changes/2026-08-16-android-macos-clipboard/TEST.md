@@ -271,7 +271,7 @@ Evidence:
 [evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked](evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md).
 
 Status remains open. The run refreshed the fail-closed `clipboard-e2e-gate`
-tooling from `origin/main` at `334063329e64cb6bded5e91d3dbd1c8e2bee958c`. The
+tooling from `origin/main` at `f4d578bd1c5591d0e841efbb7e68f5e064fbbf14`. The
 gate now rejects product evidence that omits exact source/destination system
 clipboard endpoints, reuses one marker for both directions, omits verified
 session epoch/origin, omits a 16-byte change ID or SHA-256 digest, exceeds the

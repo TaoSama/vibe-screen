@@ -1,7 +1,7 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-29
-Base: origin/main at 334063329e64cb6bded5e91d3dbd1c8e2bee958c
+Base: origin/main at f4d578bd1c5591d0e841efbb7e68f5e064fbbf14
 Status: open. This document does not close Phase 0 and does not change product
 status.
 
@@ -80,8 +80,8 @@ make phase0-stable-release-gate \
 ```
 
 The 2026-08-29 manifest refresh binds the aggregate source guard to
-`334063329e64cb6bded5e91d3dbd1c8e2bee958c` and adds the Android/macOS
-clipboard product E2E gate as a required blocked Phase 0 gate. The last retained
+`f4d578bd1c5591d0e841efbb7e68f5e064fbbf14` and adds the Android/macOS
+clipboard product E2E gate as a required Phase 0 gate that is blocked. The last retained
 summary bundle remains under `evidence/2026-08-28-current-main-gate-blocked/` and
 should be regenerated after this manifest change is merged.
 
