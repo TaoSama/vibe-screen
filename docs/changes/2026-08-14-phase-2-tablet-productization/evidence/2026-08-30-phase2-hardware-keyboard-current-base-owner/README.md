@@ -1,14 +1,14 @@
 # Phase 2 hardware-keyboard current-base owner refresh
 
 Result: blocked. This record refreshes the Phase 2 hardware-keyboard owner on
-current `origin/main` (`97ec5a60c10199bea5d7da1cfbfb2d95348c5ad7`) and keeps
+current `origin/main` (`8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`) and keeps
 the README Phase 2 gates open.
 
 Input summaries used by the aggregate report:
 
 - `../2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json`
 - `../2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json`
-- `../2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
+- `../2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
 - `../2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
 - `../2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
 - `../2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json`
@@ -37,5 +37,5 @@ Generation command is recorded in `phase2-aggregate-owner-command.txt`.
 Validation:
 
 - `make phase2-aggregate-owner ...` generated `phase2-aggregate-owner.json` with
-  `source_baseline=origin/main 97ec5a60c10199bea5d7da1cfbfb2d95348c5ad7`,
+  `source_baseline=origin/main 8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`,
   `verdict=blocked`, and `can_close_readme_phase2_gates=false`.

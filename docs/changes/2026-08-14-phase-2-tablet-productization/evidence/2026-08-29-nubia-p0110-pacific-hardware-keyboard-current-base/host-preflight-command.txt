@@ -1,4 +1,4 @@
-$ <python3.11> <repo-root>/scripts/macos_dev_host.py preflight --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/host-signing-and-permissions.txt
+$ <python3.11> <repo-root>/scripts/macos_dev_host.py preflight --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/host-signing-and-permissions.txt
 stderr:
 Host signing prerequisite
 -------------------------

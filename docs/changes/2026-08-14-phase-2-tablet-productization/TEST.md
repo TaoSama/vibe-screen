@@ -645,9 +645,9 @@ Validation performed for this update:
 ## 2026-08-30 hardware-keyboard current-base refresh
 
 This follow-up refreshes the Android-attached hardware-keyboard owner on current
-`origin/main` (`97ec5a60c10199bea5d7da1cfbfb2d95348c5ad7`) without claiming a
+`origin/main` (`8bdde8a2ab2ebd7255635ad5f22f79b37dd7bc25`) without claiming a
 workflow pass. Evidence is under
-[`evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
+[`evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
 
 The readiness collector used explicit ADB serial `<device-serial>`, redacted
 it to `<device-serial>` in public artifacts, and recorded the device as nubia
@@ -672,10 +672,11 @@ open after this refresh.
 
 Validation performed for this update:
 
-- `make hardware-keyboard-readiness EVIDENCE_SERIAL='<device-serial>' EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base` (blocked readiness; summary records `verdict=blocked`)
-- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base` (expected non-pass for blocked evidence)
-- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json PHASE2_DEVICE_ENVIRONMENT=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json PHASE2_SOAK_READINESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
+- `make hardware-keyboard-readiness EVIDENCE_SERIAL='<device-serial>' EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base` (blocked readiness; summary records `verdict=blocked`)
+- `make hardware-keyboard-gate EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base` (expected non-pass for blocked evidence)
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner PHASE2_TABLET_GATE=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json PHASE2_TABLET_MANIFEST=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json PHASE2_HARDWARE_KEYBOARD=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json PHASE2_DEVICE_MEMORY=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json PHASE2_DEVICE_ENVIRONMENT=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json PHASE2_SOAK_READINESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
 - `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/hardware_keyboard_readiness.py scripts/macos_dev_host.py`
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest scripts.tests.test_hardware_keyboard_readiness scripts.tests.test_hardware_keyboard_readiness_redaction scripts.tests.test_macos_dev_host tools.tests.test_hardware_keyboard tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
-- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-30 evidence directories
+- `shasum -a 256 -c SHA256SUMS` in the 2026-08-29 hardware-keyboard
+  readiness and 2026-08-30 aggregate-owner evidence directories
 - `git diff --check`

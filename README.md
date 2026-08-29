@@ -584,7 +584,7 @@ not a gate pass because the device is a phone substitute and no stand-mounted
 tablet setup, controlled thermal-load recovery, or eight-hour window was
 available. The latest P0110/pacific hardware-keyboard current-base readiness
 record
-[2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/README.md)
+[2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md)
 captures the real device identity and fails closed on current
 `origin/main` because no external Android-attached keyboard, macOS Host
 listener, or stable signed/TCC-ready Host was available; readiness alone is not
