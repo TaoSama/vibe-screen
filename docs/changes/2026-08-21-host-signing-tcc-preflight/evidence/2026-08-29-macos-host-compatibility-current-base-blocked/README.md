@@ -78,7 +78,14 @@ Observed blockers:
   unverified in the default no-`sfltool` path.
 
 The retained compatibility summary reports `verdict=blocked` and
-`can_close_macos_host_compatibility_row=false`.
+`can_close_macos_host_compatibility_row=false`. Its generated
+`closure_checklist` keeps the next work fail-closed: `source_and_host_identity`
+is blocked by missing stable signing/TCC and source/self-test provenance,
+`runtime_acceptance` is blocked because no packaged Host launch, Protocol v1
+stream, display-selection, input, or reconnect probe ran,
+`display_and_encoder_capability` and `scope_and_artifacts` are satisfied only as
+recorded-readiness fields for this blocked package, and `extrapolation_guard`
+passes with no invalid support claim.
 
 ## Boundaries
 

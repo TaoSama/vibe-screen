@@ -89,6 +89,16 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertEqual(summary["row_scope"]["virtual_display_result"], "created_online_captured")
         self.assertEqual(summary["missing_requirements"], [])
         self.assertEqual(summary["invalid_claims"], [])
+        self.assertEqual(
+            {item["id"]: item["status"] for item in summary["closure_checklist"]},
+            {
+                "source_and_host_identity": "pass",
+                "display_and_encoder_capability": "pass",
+                "runtime_acceptance": "pass",
+                "scope_and_artifacts": "pass",
+                "extrapolation_guard": "pass",
+            },
+        )
         self.assertTrue(summary["artifact_file_check"]["enabled"])
 
     def test_blocks_when_intel_or_other_required_row_evidence_is_missing(self) -> None:
@@ -120,6 +130,17 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertEqual(summary["blocking_reasons"], [])
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+        checklist = {item["id"]: item for item in summary["closure_checklist"]}
+        self.assertEqual(checklist["display_and_encoder_capability"]["status"], "insufficient")
+        self.assertEqual(checklist["runtime_acceptance"]["status"], "insufficient")
+        self.assertIn(
+            "video_encoder_path_recorded",
+            checklist["display_and_encoder_capability"]["missing_fields"],
+        )
+        self.assertIn(
+            "input_smoke_observed",
+            checklist["runtime_acceptance"]["missing_fields"],
+        )
 
     def test_required_metadata_must_be_non_empty_even_when_boolean_is_true(self) -> None:
         record = self.complete_record()
@@ -267,6 +288,9 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "failed")
         self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+        checklist = {item["id"]: item for item in summary["closure_checklist"]}
+        self.assertEqual(checklist["extrapolation_guard"]["status"], "failed")
+        self.assertIn("ci_runner_only", checklist["extrapolation_guard"]["missing_fields"])
         self.assertEqual(
             {item["field"] for item in summary["invalid_claims"]},
             {
