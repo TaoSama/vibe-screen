@@ -108,7 +108,7 @@
           "required": ["role", "head_ref", "repository", "scope"],
           "properties": {
             "role": {"const": "ios_app_signing_readiness_current_base_owner"},
-            "head_ref": {"const": "codex/phase5-ios-signing-readiness"},
+            "head_ref": {"const": "codex/ios-app-signing-readiness-current-base-20260829"},
             "repository": {"const": "TaoSama/vibe-screen"},
             "scope": {"type": "string", "minLength": 1}
           }

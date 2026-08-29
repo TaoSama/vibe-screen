@@ -1,0 +1,44 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "ios_app_signing_readiness",
+  "platform": "ios",
+  "status": "blocked",
+  "repository": {
+    "commit": "3508f229a5fb1218388e9e9ee5fec919d6b5bebf",
+    "branch": "codex/ios-app-signing-readiness-current-base-20260829",
+    "dirty": false
+  },
+  "xcode": {
+    "version": "",
+    "selected_developer_dir": "",
+    "ios_sdk": ""
+  },
+  "signing": {
+    "status": "blocked",
+    "team_id_recorded": false,
+    "team_id_sha256": "",
+    "provisioning_profile_recorded": false,
+    "provisioning_profile_uuid_sha256": "",
+    "bundle_id": "",
+    "codesign_identity_recorded": false,
+    "codesign_identity_sha256": "",
+    "device_udid_hashes": [],
+    "entitlements": {
+      "application_identifier_matches_team_and_bundle": false,
+      "team_identifier_matches_team_id": false,
+      "bundle_identifier_matches_bundle_id": false,
+      "keychain_access_groups_include_application_identifier": false,
+      "raw_entitlements_sha256": ""
+    },
+    "signed_artifact_sha256": ""
+  },
+  "artifacts": [],
+  "simulator_build": false,
+  "unsigned_build": false,
+  "android_evidence_used_for_ios_signing": false,
+  "notes": [
+    "Dedicated current-base owner record only; no retained iOS app-signing material is present.",
+    "This input is intentionally blocked and cannot close iOS signing, install, launch, decode, input, reconnect, audio, HDR, or device acceptance gates.",
+    "Future pass evidence must use sanitized iPhoneOS signing summaries from a clean current-base commit and must not use Simulator, unsigned, ad-hoc, or Android-derived material."
+  ]
+}
