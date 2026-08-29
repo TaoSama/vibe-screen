@@ -456,8 +456,11 @@ make evidence-real-device-gate-preflight EVIDENCE_SERIAL="$ADB_ENDPOINT" \
 The runner still never starts the macOS Host, changes TCC, changes Keychain
 state, or clears Android app data. A `ready` result means the session is ready
 for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
-physical-input gates by itself. Use `--require-soak-summary` or
-`--require-host-rss-gate` to require soak evidence, and pass
+physical-input gates by itself. Use `--require-soak-summary` to require a
+complete soak summary. Use `--require-host-rss-gate` only with
+`--soak-summary`, `--soak-samples`, and `--host-rss-exact-window-report`; the
+Host RSS gate must consume the same exact-window telemetry report used by the
+formal `host-rss-gate` target. Pass
 `--require-latency-report <count>` or `--require-input-summary <count>` to make
 missing retained latency/input evidence explicit in the same JSON report.
 Additional `--lock-glob` values are checked in addition to the default
@@ -929,8 +932,9 @@ mailbox tests remain the authoritative checks for the two-frame VideoToolbox
 admission bound and the single-latest-frame mailbox bound.
 
 Exit status follows the `verdict`: `0` for `pass`, `2` for `fail`, and `1` for
-`insufficient`. None of these statuses is a formal two-hour gate result; a
-short-window `pass` does not close the release gate. Automation must use
+`insufficient`. None of these statuses is a formal two-hour gate result; every
+short diagnostic report also carries
+`gate.can_close_host_rss_no_growth_gate=false`. Automation must use
 `host_rss_gate` for the formal two-hour no-growth decision.
 
 There is currently no Xiaomi 13 short-window diagnostic evidence built against
