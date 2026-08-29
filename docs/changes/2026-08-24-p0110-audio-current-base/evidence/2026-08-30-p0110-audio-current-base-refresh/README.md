@@ -3,7 +3,7 @@
 Status: blocked before real USB/LAN audio playback acceptance
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 ADB serial: <ANDROID_SERIAL>
-Source commit: 757e5ccae0c2b06db02e6ed6c44c43f5ed9660d0 (origin/main at current-base refresh)
+Source commit: 89eb7bbdfc45ad8f62abbfc7a3c84b914c39bdfb (origin/main at current-base refresh)
 
 ## Goal
 
@@ -40,9 +40,9 @@ android-audio-playback-summary.json reports:
 
 - verdict=blocked
 - can_close_android_audio_playback_gate=false
-- blocking fields: host_stable_signed_tcc_ready, host_listener_observed
+- blocking fields: host_stable_signed_tcc_ready, host_listener_observed, protocol_v1_session_observed
 
-Missing requirements include: host_build_identity_recorded, host_stable_signed_tcc_ready, host_listener_observed, audio_capability_negotiated, audio_config_accepted, host_microphone_capture_started, host_audio_packets_sent, android_audio_track_started, android_audio_packets_written, playback_output_confirmed, disconnect_cleanup_observed.
+Missing requirements include: host_build_identity_recorded, host_stable_signed_tcc_ready, host_listener_observed, protocol_v1_session_observed, audio_capability_negotiated, audio_config_accepted, host_microphone_capture_started, host_audio_packets_sent, android_audio_track_started, android_audio_packets_written, playback_output_confirmed, disconnect_cleanup_observed.
 
 This is a fail-closed current-base readiness record only. It does not close the
 real USB or trusted-LAN audio playback gate, and it must not be cited as Android

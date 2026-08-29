@@ -150,7 +150,7 @@
     "No retained production session evidence proves CAPABILITY_AUDIO, accepted AudioConfig, Host channel 3 packets, Android AudioTrack writes, playback output, or cleanup.",
     "Trusted-LAN playback remains blocked because usable wlan0 IPv4 route evidence is missing.",
     "pgrep -x sfltool was captured at start and end; no forbidden login-item database dump command or login-item diagnostic opt-in was run.",
-    "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not satisfy the Host stable signing, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation requirements. This record does not close the real USB or trusted-LAN playback gate."
+    "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not provide a successful current-run Protocol v1 session, Host stable signing, Microphone/TCC readiness, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation. This record does not close the real USB or trusted-LAN playback gate."
   ],
   "blocking_reasons": [
     {
@@ -160,6 +160,10 @@
     {
       "field": "host_listener_observed",
       "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "protocol_v1_session_observed",
+      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
     }
   ],
   "can_close_android_audio_playback_gate": false,
@@ -186,6 +190,10 @@
     {
       "field": "host_listener_observed",
       "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "protocol_v1_session_observed",
+      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
     },
     {
       "field": "audio_capability_negotiated",
@@ -220,7 +228,7 @@
       "requirement": "retain Host and Android audio cleanup after disconnect or reconfiguration"
     }
   ],
-  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not satisfy the Host stable signing, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation requirements. This record does not close the real USB or trusted-LAN playback gate.",
+  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not provide a successful current-run Protocol v1 session, Host stable signing, Microphone/TCC readiness, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation. This record does not close the real USB or trusted-LAN playback gate.",
   "observations": {
     "android_audio_packets_written": false,
     "android_audio_track_started": false,
@@ -241,7 +249,7 @@
     "host_stable_signed_tcc_ready": false,
     "no_synthetic_or_loopback_markers": true,
     "playback_output_confirmed": false,
-    "protocol_v1_session_observed": true,
+    "protocol_v1_session_observed": false,
     "retained_artifacts_available": true,
     "transport_supported": true
   },

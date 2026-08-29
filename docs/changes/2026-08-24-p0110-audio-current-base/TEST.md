@@ -4,7 +4,7 @@ Status: current-base Android owner recorded; real USB/LAN audio playback blocked
 Date: 2026-08-30
 Previous record: 2026-08-29
 Source branch: `codex/audio-playback-current-base-subagent`
-Base commit: `757e5ccae0c2b06db02e6ed6c44c43f5ed9660d0` (`origin/main` at current-base refresh)
+Base commit: `89eb7bbdfc45ad8f62abbfc7a3c84b914c39bdfb` (`origin/main` at current-base refresh)
 
 ## Scope
 

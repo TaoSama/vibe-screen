@@ -72,7 +72,31 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
 
     def test_loopback_usb_transport_log_is_not_synthetic_audio_marker(self) -> None:
         self.assertFalse(readiness.has_non_product_audio_marker("Client connected via loopback (USB)"))
+        self.assertFalse(readiness.has_non_product_audio_marker("Client connected via loopback USB"))
         self.assertTrue(readiness.has_non_product_audio_marker("synthetic audio harness accepted"))
+
+    def test_loopback_v1_markers_do_not_prove_protocol_session(self) -> None:
+        observations = readiness.build_observations(
+            run_id="run-1",
+            device={
+                "adb_serial": "<ANDROID_SERIAL>",
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "device": "pacific",
+                "android_release": "16",
+                "sdk": 36,
+                "build_fingerprint": "nubia/pacific/pacific:16/example:userdebug/test-keys",
+            },
+            package={"package": "dev.telemachus.display"},
+            host_readiness={"signing_tcc_status": "blocked", "listener": {"observed": False}},
+            android_text="Protocol v1 selected for connection epoch 1",
+            host_text="Client connected via loopback (USB) -- skipping auth, Protocol v1 selected for connection epoch 1",
+            adb_state="device",
+            network_text="wlan0: <NO-CARRIER> state DOWN",
+        )
+
+        self.assertFalse(observations["protocol_v1_session_observed"])
+        self.assertTrue(observations["no_synthetic_or_loopback_markers"])
 
     def test_build_observations_stays_blocked_without_real_audio_markers(self) -> None:
         observations = readiness.build_observations(
@@ -98,6 +122,7 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
         self.assertTrue(observations["device_identity_matches_claim"])
         self.assertFalse(observations["host_stable_signed_tcc_ready"])
         self.assertFalse(observations["host_listener_observed"])
+        self.assertFalse(observations["protocol_v1_session_observed"])
         self.assertFalse(observations["audio_capability_negotiated"])
         self.assertFalse(observations["android_audio_track_started"])
         self.assertFalse(observations["android_audio_packets_written"])
@@ -144,6 +169,25 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
             content = (evidence_dir / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("# P0110 Android audio current-base refresh - 2026-08-30", content)
+
+    def test_write_readme_does_not_truncate_non_iso_label_with_two_hyphens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / "release-notes-v2"
+            evidence_dir.mkdir()
+            readiness.write_readme(
+                evidence_dir,
+                commit="3508f229a5fb1218388e9e9ee5fec919d6b5bebf",
+                summary={
+                    "verdict": "blocked",
+                    "can_close_android_audio_playback_gate": False,
+                    "missing_requirements": [],
+                    "blocking_reasons": [],
+                },
+            )
+
+            content = (evidence_dir / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("# P0110 Android audio current-base refresh - release-notes-v2", content)
 
     def test_source_does_not_call_forbidden_sfltool_dump(self) -> None:
         source = Path(readiness.__file__).read_text(encoding="utf-8")
