@@ -1,0 +1,6 @@
+$ adb -s <ANDROID_SERIAL> shell ip addr show wlan0
+exit=0
+--- stdout ---
+23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000
+    link/ether <mac-address> brd <mac-address>
+--- stderr ---
