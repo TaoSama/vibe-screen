@@ -1,0 +1,94 @@
+# Command log
+
+Initial commit: 9e6621b7194bf5aa051a07944afb6e2b1ccf2232
+Refreshed current-base commit: 7c7c2d43568cd452f7a430cbd9657bbada6be3ff
+Started: 2026-08-29T04:29:00Z
+Refreshed: 2026-08-29T13:11:52Z
+
+- `git fetch origin`: confirmed `HEAD` and `origin/main` both at
+  `9e6621b7194bf5aa051a07944afb6e2b1ccf2232` before the latest clean-tree
+  readiness refresh.
+- After PR #409 merged, fetched `origin/main` at
+  `869ef6d0a05f19f707b100b8a3c5ff78c5a28021`, rebased the PR, and resolved
+  the README conflict by preserving the file-transfer E2E blocked wording and
+  the Host RSS gate link.
+- After PR #401 merged, fetched `origin/main` at
+  `dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts.
+- After PR #394 merged, fetched `origin/main` at
+  `ffad74700baf80092507f2f8e158f8a1dec62488`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- After PR #402 merged, fetched `origin/main` at
+  `34501490aefcec086137291a597e5ddff9fc04a4`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- After PR #388 merged, fetched `origin/main` at
+  `3508f229a5fb1218388e9e9ee5fec919d6b5bebf`, rebased the PR, resolved the
+  Phase 0 aggregate README/manifest conflict by preserving the latest
+  aggregate gate refresh while retaining the Host RSS fail-closed readiness
+  evidence path, and refreshed the Host RSS current-base readiness artifacts
+  again.
+- After PR #413 merged, fetched `origin/main` at
+  `1435825b02362626341e0143509811591b2bbf15`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- After PR #416 merged, fetched `origin/main` at
+  `b22b9b5f92249cb484bdf71fef22f8f479f575f3`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- After PR #407 merged, fetched `origin/main` at
+  `f5b5491a90d9e023dbdaf33a511f0f8df11c3cc0`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- After PR #419 merged, fetched `origin/main` at
+  `7c7c2d43568cd452f7a430cbd9657bbada6be3ff`, rebased the PR without further
+  conflicts, and refreshed the Host RSS current-base readiness artifacts again.
+- `pgrep -x sfltool || true` before readiness: no output.
+- `make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/...`: exit 2.
+- `make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/...` from a detached,
+  clean `origin/main` checkout after the latest rebase: exit 2; refreshed
+  `host-readiness.json` records
+  `host.current_source_commit=7c7c2d43568cd452f7a430cbd9657bbada6be3ff`,
+  `host.current_source_dirty=false`, and
+  `can_start_host_rss_gate=false`.
+- `pgrep -x sfltool || true` after readiness: no output.
+- `python3 scripts/macos_dev_host.py xctest-preflight --report /tmp/... --json-output /tmp/...`:
+  exit 2.
+- `python3 scripts/macos_dev_host.py xctest-preflight --report /tmp/... --json-output docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/xctest-toolchain.json`:
+  exit 2 after the rebase to `7c7c2d43568cd452f7a430cbd9657bbada6be3ff`.
+- `pgrep -x sfltool || true` after XCTest preflight: no output.
+- `pgrep -x sfltool || true` before focused tests: no output.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_soak_report tools.tests.test_phase0_stable_release scripts.tests.test_macos_dev_host -v`:
+  exit 0; 142 tests passed.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_soak_report tools.tests.test_phase0_stable_release tools.tests.test_file_transfer_android_smoke scripts.tests.test_macos_dev_host -v`
+  after rebasing onto `origin/main`
+  `7c7c2d43568cd452f7a430cbd9657bbada6be3ff`: exit 0; 159 focused
+  tests passed.
+- `pgrep -x sfltool || true` after focused tests: no output.
+- `pgrep -x sfltool || true` before Phase 0 aggregate gates: no output.
+- `make phase0-stable-release-gate`: exit 0; README guard passed and the
+  aggregate remained blocked.
+- Earlier pre-rebase `make evidence-tools-test`: exit 0; 1082 tests passed.
+  The post-rebase validation used the focused 159-test suite above plus the
+  aggregate gates below.
+- `make phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1`:
+  expected nonzero exit, observed wrapper `require_pass_exit=2`, because
+  required gates remain open or blocked.
+- `pgrep -x sfltool || true` after Phase 0 aggregate gates: no output.
+- Structured JSON assertions reported Host RSS readiness
+  `status=blocked`, `can_start_host_rss_gate=false`,
+  `host.current_source_commit=7c7c2d43568cd452f7a430cbd9657bbada6be3ff`,
+  `host.current_source_dirty=false`, and `login_item.state=unverified`; XCTest
+  preflight `status=blocked`, `can_run_swiftpm_xctest=false`,
+  `developer_dir_kind=command_line_tools`, and `has_xctest=false`; Phase 0
+  aggregate `aggregate_verdict=blocked`, `can_mark_phase0_stable_release=false`,
+  README guard `pass`, and Host RSS sub-gate `blocked` with
+  `historical-fail` evidence strength.
+- `git diff --check`: exit 0.
+- `shasum -a 256 -c SHA256SUMS`: all retained evidence files verified OK.
+- Changed-file sensitive-content scan for local home paths, raw IPs, long
+  uppercase device identifiers, Team ID/provisioning/UDID/private-key/token
+  patterns returned only existing documentation category labels, public commit
+  SHA values, localhost references, and checksum hashes; no actual sensitive
+  values were found in this PR's evidence directory.
+- `pgrep -x sfltool || true` after structural and privacy checks: no output.
+
+Forbidden commands/options were not used: `/usr/bin/sfltool dumpbtm`,
+`--include-login-item-diagnostic`, `--inspect-login-items`,
+`--probe-login-item`, or `--probe-login-items`.
