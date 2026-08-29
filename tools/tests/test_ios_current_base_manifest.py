@@ -13,6 +13,7 @@ from vibescreen_evidence.ios_current_base_manifest import (
     GATE_OWNERS,
     SCOPE_PRS,
     SOURCE_DOCS,
+    _signing_probe,
     build_manifest,
     main,
 )
@@ -131,6 +132,47 @@ def make_docs(root: Path) -> None:
         target.write_text("fixture\n", encoding="utf-8")
 
 class IOSCurrentBaseManifestTests(unittest.TestCase):
+    @patch("vibescreen_evidence.ios_current_base_manifest._run_probe")
+    def test_signing_probe_redacts_raw_identity_output(self, run_probe):
+        identity_hash = "F" * 40
+        identity_name = "Apple Development: Redacted Fixture (FAKEID0000)"
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-p", "codesigning", "-v"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [f'  1) {identity_hash} "{identity_name}"', "     1 valid identities found"],
+        }
+
+        result = _signing_probe()
+        serialized = json.dumps(result, sort_keys=True)
+
+        self.assertEqual(result["valid_identity_count"], 1)
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertNotIn(identity_hash, serialized)
+        self.assertNotIn(identity_name, serialized)
+        self.assertNotIn("FAKEID0000", serialized)
+        self.assertEqual(
+            result["summary"],
+            ["codesigning identity output redacted; count retained only"],
+        )
+
+    @patch("vibescreen_evidence.ios_current_base_manifest._run_probe")
+    def test_signing_probe_redacts_blocked_probe_detail(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-p", "codesigning", "-v"],
+            "status": "blocked",
+            "detail": "/Users/redacted-fixture/Library/Keychains/login.keychain-db unavailable",
+        }
+
+        result = _signing_probe()
+        serialized = json.dumps(result, sort_keys=True)
+
+        self.assertEqual(result["valid_identity_count"], 0)
+        self.assertEqual(result["status"], "blocked")
+        self.assertNotIn("/Users/redacted-fixture", serialized)
+        self.assertEqual(result["detail"], "codesigning identity probe unavailable")
+
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
     def test_builds_current_base_manifest_with_fail_closed_defaults(self, state, environment):
