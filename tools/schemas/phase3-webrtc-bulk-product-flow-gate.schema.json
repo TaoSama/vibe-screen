@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-webrtc-bulk-product-flow-gate.schema.json",
+  "title": "Vibe Screen Phase 3 WebRTC bulk product-flow gate v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "generated_at",
+    "verdict",
+    "gate_closed",
+    "can_close_public_internet_bulk_product_flow_gate",
+    "gate_can_close_phase3_release",
+    "checks",
+    "closure_checklist",
+    "blockers",
+    "safety",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "vibescreen.evidence/v1"
+    },
+    "kind": {
+      "const": "phase3_webrtc_bulk_product_flow_gate"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "blocked"
+      ]
+    },
+    "gate_closed": {
+      "type": "boolean"
+    },
+    "can_close_public_internet_bulk_product_flow_gate": {
+      "type": "boolean"
+    },
+    "gate_can_close_phase3_release": {
+      "const": false
+    },
+    "checks": {
+      "type": "object"
+    },
+    "closure_checklist": {
+      "type": "object"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "not_proven": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safety": {
+      "type": "object"
+    },
+    "interpretation": {
+      "type": "string"
+    }
+  }
+}

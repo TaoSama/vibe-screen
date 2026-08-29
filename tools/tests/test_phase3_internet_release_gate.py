@@ -336,6 +336,33 @@ def datachannel_record_layer() -> dict:
     }
 
 
+def bulk_product_flow_gate() -> dict:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase3_webrtc_bulk_product_flow_gate",
+        "verdict": "pass",
+        "gate_closed": True,
+        "can_close_public_internet_bulk_product_flow_gate": True,
+        "gate_can_close_phase3_release": False,
+        "closure_checklist": {
+            "relay_production_prerequisites": {"passed": True, "evidence": ["public-nat-turn-preflight.json"]},
+            "real_capture_to_mediacodec": {"passed": True, "evidence": ["real-media-continuity.json"]},
+            "network_handoff": {"passed": True, "evidence": ["network-handoff.json"]},
+            "cross_service_revocation": {"passed": True, "evidence": ["revocation-evidence.json"]},
+            "external_camera_latency": {"passed": True, "evidence": ["latency/direct/latency-evidence.json", "latency/relay/latency-evidence.json"]},
+            "two_hour_mixed_route_soak": {"passed": True, "evidence": ["soak-2h/exact-window-report.json"]},
+            "packet_capture_confidentiality": {"passed": True, "evidence": ["packet-capture-confidentiality.json"]},
+        },
+        "safety": {
+            "relay_preflight_does_not_close_product_e2e": True,
+            "offline_tests_do_not_close_gate": True,
+            "usb_lan_evidence_do_not_close_internet_gate": True,
+            "synthetic_evidence_do_not_close_gate": True,
+            "public_output_sanitized": True,
+        },
+    }
+
+
 def status_pass(name: str) -> dict:
     requirements = {
         "network_handoff": (
@@ -462,6 +489,7 @@ def populate_bundle(root: Path) -> None:
     write_latency_package(root, "relay")
     write_json(root / "real-media-continuity.json", real_media_report())
     write_json(root / "datachannel-record-layer.json", datachannel_record_layer())
+    write_json(root / "webrtc-bulk-product-flow-gate.json", bulk_product_flow_gate())
     write_json(root / "network-handoff.json", status_pass("network_handoff"))
     write_json(root / "revocation-evidence.json", status_pass("cross_service_revocation"))
     write_json(root / "packet-capture-confidentiality.json", status_pass("packet_capture_confidentiality"))
@@ -738,6 +766,40 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
             gate["reasons"],
         )
         self.assertIn("datachannel channels.audio.product_flow_implemented must be False", gate["reasons"])
+
+    def test_missing_bulk_product_flow_child_gate_blocks_release(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            (root / "webrtc-bulk-product-flow-gate.json").unlink()
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_bulk_product_flow")
+        self.assertEqual(gate["status"], "blocked")
+        self.assertTrue(any("missing" in reason for reason in gate["reasons"]))
+
+    def test_blocked_bulk_product_flow_child_gate_blocks_release(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            report = bulk_product_flow_gate()
+            report["verdict"] = "blocked"
+            report["gate_closed"] = False
+            report["can_close_public_internet_bulk_product_flow_gate"] = False
+            report["closure_checklist"]["relay_production_prerequisites"]["passed"] = False
+            write_json(root / "webrtc-bulk-product-flow-gate.json", report)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(gate for gate in result["gates"] if gate["name"] == "webrtc_bulk_product_flow")
+        self.assertIn("bulk product-flow gate verdict must be pass", gate["reasons"])
+        self.assertIn(
+            "bulk product-flow closure_checklist.relay_production_prerequisites must pass",
+            gate["reasons"],
+        )
 
     def test_datachannel_rejects_usb_lan_loopback_and_local_turn(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

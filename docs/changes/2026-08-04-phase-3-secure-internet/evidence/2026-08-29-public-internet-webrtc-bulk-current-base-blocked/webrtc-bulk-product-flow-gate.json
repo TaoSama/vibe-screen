@@ -1,0 +1,290 @@
+{
+  "blockers": [
+    "blocked: source_current_base",
+    "blocked: real_macos_host",
+    "blocked: real_android_device",
+    "blocked: public_internet_path",
+    "blocked: deployed_remote_turn",
+    "blocked: webrtc_transport",
+    "blocked: identity_signed_host",
+    "blocked: screen_recording_granted",
+    "blocked: real_capture_to_mediacodec",
+    "blocked: no_plaintext_fallback",
+    "blocked: no_synthetic_peer",
+    "blocked: public_relay_webrtc_route",
+    "blocked: bulk_file_transfer_product_flow",
+    "blocked: bulk_backpressure_and_cleanup",
+    "blocked: secure_record_layer",
+    "blocked: claim_bulk_file_transfer",
+    "blocked: release_prerequisite.relay_production_prerequisites",
+    "blocked: release_prerequisite.real_capture_to_mediacodec",
+    "blocked: release_prerequisite.network_handoff",
+    "blocked: release_prerequisite.cross_service_revocation",
+    "blocked: release_prerequisite.external_camera_latency",
+    "blocked: release_prerequisite.two_hour_mixed_route_soak",
+    "blocked: release_prerequisite.packet_capture_confidentiality"
+  ],
+  "can_close_public_internet_bulk_product_flow_gate": false,
+  "checks": {
+    "bulk_backpressure_and_cleanup": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "bulk send/receive queues are bounded and cancel/disconnect cleanup is observed",
+      "passed": false
+    },
+    "bulk_file_transfer_product_flow": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "approved bidirectional file transfer uses vibescreen.bulk.v1 with chunks, progress, completion, and SHA-256 verification",
+      "passed": false
+    },
+    "claim_bulk_file_transfer": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "internet_webrtc_bulk_file_transfer_product_flow is true only when retained evidence supports it",
+      "passed": false
+    },
+    "claim_phase3_product_e2e": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "bulk child gate must not claim the broader Phase 3 public Internet product E2E gate",
+      "passed": true
+    },
+    "deployed_remote_turn": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "selected relay used a deployed remote TURN service",
+      "passed": false
+    },
+    "identity_signed_host": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "Host build was identity-signed",
+      "passed": false
+    },
+    "local_loopback_or_forced_local_coturn_used_as_public_internet": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "local loopback or forced local coturn cannot close public Internet relay scope",
+      "passed": true
+    },
+    "no_plaintext_fallback": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "no plaintext fallback was used",
+      "passed": false
+    },
+    "no_synthetic_peer": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "no synthetic peer was used as product evidence",
+      "passed": false
+    },
+    "owner": {
+      "blocking": true,
+      "evidence": [
+        "phase3_webrtc_bulk_product_flow_owner",
+        "TaoSama/vibe-screen"
+      ],
+      "expected": "dedicated current-base bulk product-flow owner is recorded",
+      "passed": true
+    },
+    "pr404_relay_owner_used_as_product_e2e": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "relay deployment preflight hardening cannot close public Internet product E2E",
+      "passed": true
+    },
+    "public_internet_path": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "route crossed a genuine public Internet path",
+      "passed": false
+    },
+    "public_relay_webrtc_route": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "real macOS and Android peers select a deployed public TURN relay WebRTC route",
+      "passed": false
+    },
+    "raw_bulk_hook_tests_used_as_product_flow": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "raw bulk-channel hook tests cannot close product-flow evidence",
+      "passed": true
+    },
+    "real_android_device": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "real Android device participated",
+      "passed": false
+    },
+    "real_capture_to_mediacodec": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "same run included real capture-to-MediaCodec continuity",
+      "passed": false
+    },
+    "real_macos_host": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "real macOS Host participated",
+      "passed": false
+    },
+    "schema": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "manifest is phase3_webrtc_bulk_product_flow_manifest v1",
+      "passed": true
+    },
+    "screen_recording_granted": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "Host Screen Recording was granted for the signed binary",
+      "passed": false
+    },
+    "secure_record_layer": {
+      "blocking": true,
+      "evidence": [
+        "missing structured retained evidence"
+      ],
+      "expected": "bulk traffic uses the Phase 3 AES-256-GCM record layer with channel/session/key separation",
+      "passed": false
+    },
+    "source_current_base": {
+      "blocking": true,
+      "evidence": [
+        "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
+        "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
+        "False"
+      ],
+      "expected": "manifest source commit matches a clean current checkout",
+      "passed": false
+    },
+    "usb_lan_file_transfer_used_for_internet": {
+      "blocking": false,
+      "evidence": [
+        "False"
+      ],
+      "expected": "USB/LAN file-transfer evidence cannot close Internet WebRTC bulk flow",
+      "passed": true
+    },
+    "webrtc_transport": {
+      "blocking": true,
+      "evidence": [
+        "False"
+      ],
+      "expected": "bulk bytes crossed WebRTC rather than TCP fallback",
+      "passed": false
+    }
+  },
+  "closure_checklist": {
+    "cross_service_revocation": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "Authority, signaling, TURN credential issuance, and active allocation all fail closed after revoke",
+      "passed": false
+    },
+    "external_camera_latency": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "direct and relay Internet paths have external-camera glass-to-glass latency evidence",
+      "passed": false
+    },
+    "network_handoff": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "public route handoff recovers with a fresh session and old-record rejection",
+      "passed": false
+    },
+    "packet_capture_confidentiality": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "direct and relay packet captures show no plaintext content, credentials, or pairing secrets",
+      "passed": false
+    },
+    "real_capture_to_mediacodec": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "real ScreenCaptureKit or CGDisplayStream frames reach Android MediaCodec",
+      "passed": false
+    },
+    "relay_production_prerequisites": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "production relay DNS, /readyz, disk, TLS, quota, and secret-source checks pass",
+      "passed": false
+    },
+    "two_hour_mixed_route_soak": {
+      "blocking": true,
+      "evidence": [],
+      "expected": "two-hour mixed direct/relay/network-change soak has bounded queues, memory, nonce, latency, and media behavior",
+      "passed": false
+    }
+  },
+  "gate_can_close_phase3_release": false,
+  "gate_closed": false,
+  "generated_at": "2026-08-29T11:25:00.149222Z",
+  "interpretation": "A pass requires retained evidence for a real public Internet WebRTC relay session, approved bidirectional file transfer over vibescreen.bulk.v1, bounded bulk backpressure and cleanup, AES-256-GCM record-layer separation, and every listed Phase 3 release prerequisite. Relay deployment preflight work, including PR #404-style readyz/DNS/disk hardening, is not product E2E evidence by itself.",
+  "kind": "phase3_webrtc_bulk_product_flow_gate",
+  "not_proven": [
+    "public Internet WebRTC relay route to a real Android device",
+    "approved bidirectional file transfer over vibescreen.bulk.v1",
+    "relay.taoai.site production DNS, /readyz, disk, TURN, and secret-source readiness",
+    "real ScreenCaptureKit/CGDisplayStream to Android MediaCodec continuity",
+    "network handoff, revocation, external-camera latency, packet-capture, and two-hour soak release evidence"
+  ],
+  "owner": {
+    "head_ref": "codex/phase3-public-internet-bulk-gate",
+    "pull_request": "pending",
+    "repository": "TaoSama/vibe-screen",
+    "role": "phase3_webrtc_bulk_product_flow_owner"
+  },
+  "safety": {
+    "offline_tests_do_not_close_gate": true,
+    "public_output_sanitized": true,
+    "relay_preflight_does_not_close_product_e2e": true,
+    "synthetic_evidence_do_not_close_gate": true,
+    "usb_lan_evidence_do_not_close_internet_gate": true
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "commit": "4de3b9f4d623e40a640b6646f4d65d6925d4be52",
+    "tree_status": "dirty"
+  },
+  "verdict": "blocked"
+}

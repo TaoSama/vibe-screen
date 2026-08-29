@@ -440,6 +440,37 @@ records, iOS trusted-LAN records, local loopback or forced local coturn, and raw
 channel hook unit tests fail closed if promoted as product-flow evidence. A pass
 is only this child gate; the public Internet release gate remains separate.
 
+## Phase 3 WebRTC bulk product-flow gate
+
+Use this gate for the narrower public Internet WebRTC file-transfer owner over
+vibescreen.bulk.v1:
+
+~~~sh
+make phase3-webrtc-bulk-product-flow \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_WEBRTC_BULK_MANIFEST_JSON=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/webrtc-bulk-product-flow-manifest.json
+~~~
+
+To create the default fail-closed baseline manifest first, run
+`make phase3-webrtc-bulk-product-flow-blocked-baseline`. A pass requires retained
+evidence for a real macOS Host and real Android device over a public Internet
+WebRTC relay route, an identity-signed Screen Recording-ready Host, approved
+bidirectional file transfer on `vibescreen.bulk.v1`, chunk/progress/completion
+observations, final SHA-256 equality, bounded bulk backpressure, cancel and
+disconnect cleanup, and AES-256-GCM record-layer separation. The same report
+also keeps a closure checklist for the broader release prerequisites: relay
+production readiness, real capture-to-MediaCodec continuity, network handoff,
+cross-service revocation, external-camera latency, two-hour mixed-route soak,
+and packet-capture confidentiality.
+
+Relay deployment preflight hardening is not product E2E evidence. A PR or run
+that only checks relay DNS, /readyz, disk, TLS, quotas, or secret-source wiring
+must remain a blocked prerequisite until paired with the product WebRTC bulk flow
+and the broader release evidence package. USB/LAN file-transfer evidence, local
+loopback, forced local coturn, synthetic peers, and raw bulk hook tests also fail
+closed if promoted as Internet product-flow evidence. This child gate never sets
+`gate_can_close_phase3_release=true`.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

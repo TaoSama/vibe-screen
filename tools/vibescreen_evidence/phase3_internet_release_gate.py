@@ -73,6 +73,7 @@ REQUIRED_RAW_ARTIFACTS = (
     "host.log",
     "raw-logcat.txt",
     "datachannel-record-layer.json",
+    "webrtc-bulk-product-flow-gate.json",
 )
 
 BUILD_SIGNING_PATTERNS = (
@@ -628,6 +629,52 @@ def _datachannel_record_layer_gate(root: Path, path: Path | None) -> dict[str, A
     )
 
 
+def _bulk_product_flow_gate(root: Path, path: Path | None) -> dict[str, Any]:
+    document, error = _read_optional_json(path, "WebRTC bulk product-flow evidence", root=root)
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate(
+            "webrtc_bulk_product_flow",
+            BLOCKED,
+            evidence=[item for item in evidence if item],
+            reasons=[error],
+        )
+    reasons: list[str] = []
+    if (document or {}).get("schema_version") != SCHEMA_VERSION:
+        reasons.append(f"bulk product-flow schema_version must be {SCHEMA_VERSION}")
+    if (document or {}).get("kind") != "phase3_webrtc_bulk_product_flow_gate":
+        reasons.append("bulk product-flow kind must be phase3_webrtc_bulk_product_flow_gate")
+    if _status_from_json(document) != PASS:
+        reasons.append("bulk product-flow gate verdict must be pass")
+    if (document or {}).get("can_close_public_internet_bulk_product_flow_gate") is not True:
+        reasons.append("bulk product-flow gate must report can_close_public_internet_bulk_product_flow_gate=true")
+    if (document or {}).get("gate_can_close_phase3_release") is not False:
+        reasons.append("bulk product-flow child gate must not directly close Phase 3 release")
+    safety = (document or {}).get("safety") if isinstance((document or {}).get("safety"), dict) else {}
+    for field in (
+        "relay_preflight_does_not_close_product_e2e",
+        "offline_tests_do_not_close_gate",
+        "usb_lan_evidence_do_not_close_internet_gate",
+        "synthetic_evidence_do_not_close_gate",
+        "public_output_sanitized",
+    ):
+        if safety.get(field) is not True:
+            reasons.append(f"bulk product-flow safety.{field} must be true")
+    checklist = (document or {}).get("closure_checklist")
+    if not isinstance(checklist, dict) or not checklist:
+        reasons.append("bulk product-flow closure_checklist is required")
+        checklist = {}
+    for name, check in checklist.items():
+        if not isinstance(check, dict) or check.get("passed") is not True:
+            reasons.append(f"bulk product-flow closure_checklist.{name} must pass")
+    return _gate(
+        "webrtc_bulk_product_flow",
+        PASS if not reasons else (BLOCKED if _status_from_json(document) == BLOCKED else INSUFFICIENT),
+        evidence=[item for item in evidence if item],
+        reasons=reasons,
+    )
+
+
 def _device_identity_gate(
     root: Path,
     manifest: dict[str, Any] | None,
@@ -1067,6 +1114,7 @@ def derive_gate(
         _device_identity_gate(root, manifest, device_info),
         _raw_artifacts_gate(root),
         _datachannel_record_layer_gate(root, root / "datachannel-record-layer.json"),
+        _bulk_product_flow_gate(root, root / "webrtc-bulk-product-flow-gate.json"),
         _latency_gate(root, "direct", direct_latency or root / "latency/direct/latency-evidence.json"),
         _latency_gate(root, "relay", relay_latency or root / "latency/relay/latency-evidence.json"),
         _real_media_gate(root, real_media or root / "real-media-continuity.json"),
@@ -1124,12 +1172,14 @@ def derive_gate(
             "decoded by Android MediaCodec, external-camera latency evidence for direct and "
             "relay routes, network handoff, cross-service revocation, packet-capture "
             "confidentiality, a four-channel AES-256-GCM DataChannel record-layer "
-            "contract, and a two-hour mixed-route soak. The DataChannel record-layer "
+            "contract, a public Internet WebRTC bulk product-flow child gate, and "
+            "a two-hour mixed-route soak. The DataChannel record-layer "
             "contract is transport-boundary evidence only: audio capture/playback, "
             "clipboard sync, and file-transfer product flows must remain not_claimed "
             "until real public Internet product evidence exists. Local loopback, USB, "
             "trusted LAN, forced local coturn, synthetic peers, synthetic media, missing "
-            "raw samples, or blocked attempts cannot close the Phase 3 release gate."
+            "raw samples, relay deployment preflights, or blocked attempts cannot close "
+            "the Phase 3 release gate."
         ),
     }
 
