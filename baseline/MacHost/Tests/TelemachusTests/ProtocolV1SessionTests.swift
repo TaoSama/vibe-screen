@@ -1594,12 +1594,38 @@ final class ProtocolV1SessionTests: XCTestCase {
             try envelope(id: 5, payload: .touchEvent(activeTargetTouch)).serializedData()
         ).containsTouch)
 
+        var streamOnlyTarget = VSInputTarget()
+        streamOnlyTarget.streamID = 1
+        var streamOnlyTargetTouch = touchEvent()
+        streamOnlyTargetTouch.target = streamOnlyTarget
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 6, payload: .touchEvent(streamOnlyTargetTouch)).serializedData()
+        ).containsTouch)
+
+        var displayOnlyTarget = VSInputTarget()
+        displayOnlyTarget.displayID = "active-display"
+        var displayOnlyTargetTouch = touchEvent()
+        displayOnlyTargetTouch.target = displayOnlyTarget
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 7, payload: .touchEvent(displayOnlyTargetTouch)).serializedData()
+        ).containsTouch)
+
+        var wrongDisplayTarget = VSInputTarget()
+        wrongDisplayTarget.displayID = "wrong-display"
+        var wrongDisplayTargetTouch = touchEvent()
+        wrongDisplayTargetTouch.target = wrongDisplayTarget
+        let rejectedDisplay = session.handleControl(
+            try envelope(id: 8, payload: .touchEvent(wrongDisplayTargetTouch)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejectedDisplay).code, .invalidState)
+        XCTAssertTrue(rejectedDisplay.containsClose)
+
         var wrongTarget = activeTarget
         wrongTarget.streamID = 2
         var wrongTargetTouch = touchEvent()
         wrongTargetTouch.target = wrongTarget
         let rejected = session.handleControl(
-            try envelope(id: 6, payload: .touchEvent(wrongTargetTouch)).serializedData()
+            try envelope(id: 9, payload: .touchEvent(wrongTargetTouch)).serializedData()
         )
         XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
         XCTAssertTrue(rejected.containsClose)
