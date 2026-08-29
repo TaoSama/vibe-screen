@@ -617,7 +617,13 @@ class VideoEncoder {
         // CBR causes over-quantization (blocky artifacts) when scene complexity spikes
         // Removed: kVTCompressionPropertyKey_ConstantBitRate
 
-        VTCompressionSessionPrepareToEncodeFrames(session)
+        let prepareStatus = VTCompressionSessionPrepareToEncodeFrames(session)
+        guard prepareStatus == noErr else {
+            debugLog("VideoToolbox prepare-to-encode failed: \(prepareStatus)")
+            VTCompressionSessionInvalidate(session)
+            compressionSession = nil
+            return
+        }
 
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
         debugLog("VideoToolbox encoder configured (\(codec == .hevc ? "H.265" : "H.264"), \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
@@ -667,6 +673,24 @@ class VideoEncoder {
             keyframeRequests.request()
         }
         return releasedFrames
+    }
+
+    @discardableResult
+    func registerPendingFrameForSelfTest(timestamp: UInt64 = 0, sessionEpoch: UInt64 = 1) -> Bool {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        let submissionResult = inFlightAdmission.submit { admissionLease in
+            _ = VideoEncoderFrameRegistry.shared.register(
+                FrameContext(
+                    timestamp: timestamp,
+                    sessionEpoch: sessionEpoch,
+                    admissionLease: admissionLease
+                ),
+                owner: callbackOwner
+            )
+            return noErr
+        }
+        return submissionResult == .submitted(noErr)
     }
 
     func encode(

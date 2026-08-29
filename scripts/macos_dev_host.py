@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import multiprocessing
 import os
@@ -43,10 +44,8 @@ SYSTEM_SETTINGS_PATH = (
     "and Accessibility"
 )
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
-    "Login item not probed by default; probe not run. Run readiness with "
-    "--include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or "
-    "--probe-login-items during an attended diagnostic session to inspect it with "
-    "/usr/bin/sfltool dumpbtm."
+    "Login item not probed by default; probe not run. Use an attended "
+    "diagnostic session outside default readiness to inspect login-item state."
 )
 
 @dataclass(frozen=True)
@@ -400,6 +399,7 @@ TCC_QUERY_TIMEOUT_SECONDS = 5
 DEFAULTS_PREFIX = "Telemachus_"
 STARTUP_MODES = {"usb", "wireless", "lan"}
 DEFAULT_HOST_LOG_PATH = Path.home() / "Library" / "Logs" / "Telemachus" / "telemachus.log"
+IPV4_ENDPOINT_RE = re.compile(r"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(:[0-9]{1,5})?(?![0-9.])")
 
 
 def redact_local_report_text(value: str) -> str:
@@ -410,6 +410,17 @@ def redact_local_report_text(value: str) -> str:
     if home != "/":
         redacted = redacted.replace(home, "<user-home>")
     return redacted
+
+
+def redact_network_endpoints(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        try:
+            ipaddress.ip_address(match.group(1))
+        except ValueError:
+            return match.group(0)
+        return "<redacted-ipv4>" + (match.group(2) or "")
+
+    return IPV4_ENDPOINT_RE.sub(replace, value)
 
 
 def parse_defaults_output(output: str) -> dict[str, str]:
@@ -790,7 +801,7 @@ def redact_lsof_user_columns(output: str) -> str:
             redacted_lines.append(line)
             continue
         redacted_lines.append(re.sub(r"^(\S+\s+\d+\s+)(\S+)(\s+)", r"\1<redacted-user>\3", line))
-    return "\n".join(redacted_lines)
+    return redact_network_endpoints("\n".join(redacted_lines))
 
 
 def inspect_entitlements(app_path: Path) -> EntitlementStatus:
@@ -1026,9 +1037,9 @@ def inspect_listener(port: int) -> ListenerStatus:
     except subprocess.CalledProcessError as error:
         detail = (error.stdout or "").strip()
         return ListenerStatus(port=port, observed=False, output=detail, error="listener not observed")
-    output = redact_lsof_user_columns(output)
     lines = [line for line in output.splitlines() if line.strip()]
     observed = any(f":{port}" in line and "LISTEN" in line for line in lines)
+    output = redact_lsof_user_columns(output)
     return ListenerStatus(port=port, observed=observed, output=output, error=None if observed else "listener not observed")
 
 
@@ -1141,7 +1152,10 @@ def format_report(
         verification = "valid on disk (codesign --verify --deep --strict)"
     rows = "\n".join(format_permission_row(row) for row in permissions.rows)
     if not rows:
-        rows = "(no matching rows)"
+        if permissions.error:
+            rows = f"(TCC rows unavailable: {permissions.error})"
+        else:
+            rows = "(no matching rows)"
     result = "PASS" if not errors else "FAIL"
     error_lines = "\n".join(f"- {error}" for error in errors) or "(none)"
     return f"""Host bundle

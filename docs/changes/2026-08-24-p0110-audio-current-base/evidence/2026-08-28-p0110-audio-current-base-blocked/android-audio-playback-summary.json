@@ -1,0 +1,242 @@
+{
+  "android_only_logs_are_not_playback_evidence": true,
+  "artifact_checks": [
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "device-info.json",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "usb-live-smoke.json",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "macos-dev-host-preflight-current-base.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "macos-dev-host-readiness-current-base.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-readiness.json",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-54321-listener.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-codesign.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-info-plist.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-binary-audio-symbols.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "host-audio-log.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-audio-logcat.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-audio-diag.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "audio-log-search.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "playback-confirmation-blocked.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "adb-reverse-list.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-network.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "device-lock-acquired.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "device-lock-adb-state.txt",
+      "under_evidence_dir": true
+    }
+  ],
+  "artifact_paths": [
+    "device-info.json",
+    "usb-live-smoke.json",
+    "macos-dev-host-preflight-current-base.txt",
+    "macos-dev-host-readiness-current-base.txt",
+    "host-readiness.json",
+    "host-54321-listener.txt",
+    "host-codesign.txt",
+    "host-info-plist.txt",
+    "host-binary-audio-symbols.txt",
+    "host-audio-log.txt",
+    "android-audio-logcat.txt",
+    "android-audio-diag.txt",
+    "audio-log-search.txt",
+    "playback-confirmation-blocked.txt",
+    "adb-reverse-list.txt",
+    "android-network.txt",
+    "device-lock-acquired.txt",
+    "device-lock-adb-state.txt"
+  ],
+  "blocking_notes": [
+    "Device identity is nubia P0110 / pacific / Android 16 / SDK 36 / <ANDROID_SERIAL>; this is not Xiaomi 13/fuxi evidence.",
+    "The Android device lock was acquired for read-only current-base evidence collection; ADB commands used the explicit device serial and public artifacts use <ANDROID_SERIAL>.",
+    "USB reverse tcp:54321 and an active app/video stream were observed on the P0110, but retained Android session diagnostics did not include CAPABILITY_AUDIO.",
+    "The installed /Applications/Vibe Screen.app is signed as Vibe Screen Dev with no TeamIdentifier and lacks source commit/tree provenance, so it cannot satisfy current-source Host identity for this gate.",
+    "The installed Host Info.plist lacks NSMicrophoneUsageDescription even though current source contains it, indicating the running Host bundle predates the current audio capture packaging path.",
+    "Read-only Host preflight/readiness could not prove stable signing or Microphone/TCC readiness, and the configured Vibe Screen Dev signing identity was not available in this keychain.",
+    "No Host audio_capture_started, accepted AudioConfig, Host channel 3 audio packet flow, Android AudioTrack start/write, audible or instrumented playback output, or disconnect cleanup evidence was observed.",
+    "Trusted-LAN playback was not attempted because wlan0 had no carrier/IPv4 route in the retained Android network preflight.",
+    "pgrep -x sfltool was captured at start and end; no /usr/bin/sfltool dumpbtm or login-item diagnostic opt-in was run.",
+    "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device had an active USB video stream and a Host listener, but the installed Host bundle is not the current-source audio-capable Host and no Protocol v1 USB/LAN audio playback was observed. This record does not close the real-device playback gate."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
+    }
+  ],
+  "can_close_android_audio_playback_gate": false,
+  "device": {
+    "adb_serial": "<ANDROID_SERIAL>",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "kind": "android_audio_playback_acceptance",
+  "loopback_or_synthetic_is_not_playback_evidence": true,
+  "missing_requirements": [
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record Host commit, binary hash, and signing identity"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
+    },
+    {
+      "field": "audio_capability_negotiated",
+      "requirement": "retain negotiated CAPABILITY_AUDIO and maximum_audio_streams from the active session"
+    },
+    {
+      "field": "audio_config_accepted",
+      "requirement": "retain AudioConfig and AudioConfigResult.accepted=true for PCM S16LE on the active session"
+    },
+    {
+      "field": "host_microphone_capture_started",
+      "requirement": "retain Host audio_capture_started telemetry/logs"
+    },
+    {
+      "field": "host_audio_packets_sent",
+      "requirement": "retain Host channel 3 audio packet/frame send evidence for the accepted stream"
+    },
+    {
+      "field": "android_audio_track_started",
+      "requirement": "retain Android production AudioTrack playback-start evidence for the accepted stream"
+    },
+    {
+      "field": "android_audio_packets_written",
+      "requirement": "retain Android AudioTrack write evidence for Protocol v1 audio packets"
+    },
+    {
+      "field": "playback_output_confirmed",
+      "requirement": "record audible output or instrumentation-backed Android playback confirmation from the real device"
+    },
+    {
+      "field": "disconnect_cleanup_observed",
+      "requirement": "retain Host and Android audio cleanup after disconnect or reconfiguration"
+    },
+    {
+      "field": "host_logs_retained",
+      "requirement": "retain Host logs covering negotiation, packet flow, and cleanup"
+    }
+  ],
+  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device had an active USB video stream and a Host listener, but the installed Host bundle is not the current-source audio-capable Host and no Protocol v1 USB/LAN audio playback was observed. This record does not close the real-device playback gate.",
+  "observations": {
+    "android_audio_packets_written": false,
+    "android_audio_track_started": false,
+    "android_device_lock_acquired": true,
+    "android_logs_retained": true,
+    "apk_identity_recorded": true,
+    "audio_capability_negotiated": false,
+    "audio_config_accepted": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "device_identity_structured": true,
+    "disconnect_cleanup_observed": false,
+    "host_audio_packets_sent": false,
+    "host_build_identity_recorded": false,
+    "host_listener_observed": true,
+    "host_logs_retained": false,
+    "host_microphone_capture_started": false,
+    "host_stable_signed_tcc_ready": false,
+    "no_synthetic_or_loopback_markers": true,
+    "playback_output_confirmed": false,
+    "protocol_v1_session_observed": true,
+    "retained_artifacts_available": true,
+    "transport_supported": true
+  },
+  "profile": "protocol-v1-android-usb-lan-audio-playback",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16/SDK 36 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_audible_or_instrumented_output": true,
+  "requires_real_android_device": true,
+  "run_id": "2026-08-28-p0110-audio-current-base-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "transport": "usb",
+  "verdict": "blocked"
+}

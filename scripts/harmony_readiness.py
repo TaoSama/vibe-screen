@@ -559,9 +559,11 @@ def build_report(
     host_commit: str | None,
     host_build_sha256: str | None,
     blocking_reasons: list[str],
+    evidence_dir: Path | None = None,
 ) -> dict[str, Any]:
     try:
-        repo_state = repository_state(repo.resolve())
+        ignore_paths = [evidence_dir] if evidence_dir is not None else []
+        repo_state = repository_state(repo.resolve(), ignore_paths=ignore_paths)
     except ManifestError as error:
         repo_state = {"revision": "unknown", "dirty": True, "status_porcelain": [str(error)]}
         blocking_reasons.append(str(error))
@@ -706,6 +708,8 @@ def collect_readiness(
         args.bundle_name,
         args.version_name,
     )
+    output = getattr(args, "output", None)
+    evidence_dir = output.parent if isinstance(output, Path) else None
     return build_report(
         command=command or ["scripts/harmony_readiness.py"],
         repo=args.repo,
@@ -719,6 +723,7 @@ def collect_readiness(
         host_commit=args.host_commit,
         host_build_sha256=args.host_build_sha256,
         blocking_reasons=[*hdc_reasons, *artifact_reasons],
+        evidence_dir=evidence_dir,
     )
 
 

@@ -28,7 +28,7 @@ COMPLETE = "complete"
 FAILED = "failed"
 DEFAULT_BUNDLE_ID = "dev.vibescreen.ios"
 OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
-OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+OWNER_BRANCH = "codex/ios-app-signing-readiness-current-base-20260829"
 REPOSITORY_FULL_NAME = "TaoSama/vibe-screen"
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 SHA256_PATTERN = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
@@ -49,15 +49,21 @@ REQUIRED_FALSE_FLAGS = (
 REQUIRED_REPOSITORY_FIELDS = ("commit", "branch", "dirty")
 REQUIRED_XCODE_FIELDS = ("version", "selected_developer_dir", "ios_sdk")
 REQUIRED_SIGNING_FIELDS = (
-    "team_id",
-    "provisioning_profile_uuid",
     "bundle_id",
-    "codesign_identity",
-    "device_udids",
-    "entitlements",
     "signed_artifact_sha256",
 )
-REQUIRED_ENTITLEMENTS_FIELDS = (
+SANITIZED_SIGNING_FIELDS = (
+    "team_id",
+    "provisioning_profile",
+    "codesign_identity",
+)
+SANITIZED_ENTITLEMENT_MATCH_FIELDS = (
+    "application_identifier_matches_team_and_bundle",
+    "team_identifier_matches_team_id",
+    "bundle_identifier_matches_bundle_id",
+    "keychain_access_groups_include_application_identifier",
+)
+RAW_ENTITLEMENTS_FIELDS = (
     "application_identifier",
     "team_identifier",
     "bundle_identifier",
@@ -66,8 +72,8 @@ REQUIRED_ENTITLEMENTS_FIELDS = (
 )
 
 INTERPRETATION = (
-    "A pass means retained signing-readiness evidence records Team ID, "
-    "provisioning profile UUID, unique bundle ID, non-ad-hoc codesign "
+    "A pass means retained signing-readiness evidence records sanitized Team "
+    "ID, provisioning profile, unique bundle ID, non-ad-hoc codesign "
     "identity, registered physical-device UDID hashes, and signed-app "
     "entitlements for an iPhoneOS artifact. It is not an install, launch, "
     "VideoToolbox, input, reconnect, audio, or full iOS device-acceptance pass."
@@ -76,6 +82,14 @@ REQUIRED_ARTIFACT_MARKERS = {
     "archive_command": ("archive", "xcodebuild"),
     "codesign_entitlements": ("codesign", "entitlement"),
     "provisioning_profile": ("profile", "provision"),
+}
+READINESS_REQUIREMENT_LABELS = {
+    "team_id": "Apple Team ID recorded as a SHA-256 digest or local-only raw value",
+    "provisioning_profile": "provisioning profile UUID recorded as a SHA-256 digest or local-only raw value",
+    "bundle_id": "unique non-default iPhoneOS bundle identifier",
+    "codesign_identity": "non-ad-hoc Apple codesign identity recorded as a SHA-256 digest or local-only raw value",
+    "device_udids": "registered physical iPhone/iPad UDID hashes retained from the provisioning profile",
+    "entitlements": "signed-app entitlements match Team ID and bundle ID with a retained entitlement plist SHA-256",
 }
 
 
@@ -135,6 +149,14 @@ def _normalized_sha256(value: Any) -> str | None:
     if text.lower().startswith("sha256:"):
         text = text.split(":", 1)[1]
     return text.lower()
+
+
+def _has_true_flag(record: dict[str, Any], field: str) -> bool:
+    return record.get(field) is True
+
+
+def _recorded_by_flag_and_hash(record: dict[str, Any], flag: str, digest: str) -> bool:
+    return _has_true_flag(record, flag) and _is_sha256(record.get(digest))
 
 
 def _is_path_within(path: Path, root: Path) -> bool:
@@ -242,6 +264,26 @@ def _signing_summary(document: dict[str, Any], recorded_fields: dict[str, bool],
     }
 
 
+def _readiness_requirements(recorded_fields: dict[str, bool], verdict: str) -> dict[str, Any]:
+    requirements = {
+        "team_id": recorded_fields["team_id"],
+        "provisioning_profile": recorded_fields["provisioning_profile"],
+        "bundle_id": recorded_fields["bundle_id"],
+        "codesign_identity": recorded_fields["codesign_identity"],
+        "device_udids": recorded_fields["device_udid"],
+        "entitlements": recorded_fields["entitlements"],
+    }
+    return {
+        "status": PASS if verdict == PASS else verdict,
+        "requirements": requirements,
+        "labels": dict(READINESS_REQUIREMENT_LABELS),
+        "all_requirements_recorded": all(requirements.values()),
+        "simulator_build_used": False,
+        "unsigned_build_used": False,
+        "android_evidence_used": False,
+    }
+
+
 def _validate_required_false_flags(document: dict[str, Any], missing: list[str], failures: list[str]) -> None:
     failure_messages = {
         "simulator_build": "simulator_build: Simulator output cannot close iOS app-signing readiness",
@@ -269,21 +311,33 @@ def _validate_xcode(document: dict[str, Any], missing: list[str]) -> None:
 
 def _validate_entitlements(
     signing: dict[str, Any], missing: list[str], failures: list[str]
-) -> None:
+) -> bool:
     entitlements = signing.get("entitlements")
     if not isinstance(entitlements, dict):
         missing.append("signing.entitlements: must be an object")
-        return
-    for field in REQUIRED_ENTITLEMENTS_FIELDS:
-        if field == "keychain_access_groups":
-            groups = entitlements.get(field)
-            if not isinstance(groups, list) or not any(_is_non_placeholder_string(item) for item in groups):
-                missing.append("signing.entitlements.keychain_access_groups: must list at least one group")
-        else:
-            _append_missing_string(missing, entitlements, "signing.entitlements", field)
+        return False
 
     if not _is_sha256(entitlements.get("raw_entitlements_sha256")):
         missing.append("signing.entitlements.raw_entitlements_sha256: must be a SHA-256 digest")
+    sanitized_fields_complete = all(
+        entitlements.get(field) is True for field in SANITIZED_ENTITLEMENT_MATCH_FIELDS
+    ) and _is_sha256(entitlements.get("raw_entitlements_sha256"))
+
+    has_raw_entitlement_fields = any(
+        field in entitlements for field in RAW_ENTITLEMENTS_FIELDS if field != "raw_entitlements_sha256"
+    )
+    if has_raw_entitlement_fields:
+        for field in RAW_ENTITLEMENTS_FIELDS:
+            if field == "keychain_access_groups":
+                groups = entitlements.get(field)
+                if not isinstance(groups, list) or not any(_is_non_placeholder_string(item) for item in groups):
+                    missing.append("signing.entitlements.keychain_access_groups: must list at least one group")
+            elif field != "raw_entitlements_sha256":
+                _append_missing_string(missing, entitlements, "signing.entitlements", field)
+    else:
+        for field in SANITIZED_ENTITLEMENT_MATCH_FIELDS:
+            if entitlements.get(field) is not True:
+                missing.append(f"signing.entitlements.{field}: must be true")
 
     bundle_id = signing.get("bundle_id")
     entitlement_bundle_id = entitlements.get("bundle_identifier")
@@ -325,17 +379,22 @@ def _validate_entitlements(
                 failures.append(
                     "signing.entitlements.keychain_access_groups: must include Team ID and bundle ID"
                 )
+    return sanitized_fields_complete or _has_complete_raw_entitlements(signing)
 
 
 def _validate_device_udids(signing: dict[str, Any], missing: list[str], failures: list[str]) -> list[str]:
-    udids = signing.get("device_udids")
+    udids = signing.get("device_udid_hashes")
+    field_name = "device_udid_hashes"
+    if udids is None and "device_udids" in signing:
+        udids = signing.get("device_udids")
+        field_name = "device_udids"
     if not isinstance(udids, list) or not udids:
-        missing.append("signing.device_udids: must include at least one registered physical-device UDID hash")
+        missing.append("signing.device_udid_hashes: must include at least one registered physical-device UDID hash")
         return []
 
     recorded: list[str] = []
     for index, value in enumerate(udids):
-        path = f"signing.device_udids[{index}]"
+        path = f"signing.{field_name}[{index}]"
         if not _is_non_placeholder_string(value):
             missing.append(f"{path}: must be a non-empty UDID hash")
             continue
@@ -350,13 +409,13 @@ def _validate_device_udids(signing: dict[str, Any], missing: list[str], failures
     return recorded
 
 
-def _has_complete_entitlements(signing: dict[str, Any]) -> bool:
+def _has_complete_raw_entitlements(signing: dict[str, Any]) -> bool:
     entitlements = signing.get("entitlements")
     if not isinstance(entitlements, dict):
         return False
     entitlement_text_fields = (
         field
-        for field in REQUIRED_ENTITLEMENTS_FIELDS
+        for field in RAW_ENTITLEMENTS_FIELDS
         if field != "keychain_access_groups"
     )
     if not all(_is_non_placeholder_string(entitlements.get(field)) for field in entitlement_text_fields):
@@ -383,8 +442,6 @@ def _validate_signing(
         return recorded
 
     for field in REQUIRED_SIGNING_FIELDS:
-        if field in {"device_udids", "entitlements"}:
-            continue
         _append_missing_string(missing, signing, "signing", field)
 
     if signing.get("status") == FAILED:
@@ -398,6 +455,10 @@ def _validate_signing(
             missing.append("signing.team_id: must be a 10-character Apple Team ID")
         else:
             recorded["team_id"] = True
+    elif _recorded_by_flag_and_hash(signing, "team_id_recorded", "team_id_sha256"):
+        recorded["team_id"] = True
+    else:
+        missing.append("signing.team_id_sha256: must be a SHA-256 digest with team_id_recorded=true")
 
     profile_uuid = signing.get("provisioning_profile_uuid")
     if _is_non_placeholder_string(profile_uuid):
@@ -405,6 +466,14 @@ def _validate_signing(
             missing.append("signing.provisioning_profile_uuid: must be a UUID")
         else:
             recorded["provisioning_profile"] = True
+    elif _recorded_by_flag_and_hash(
+        signing, "provisioning_profile_recorded", "provisioning_profile_uuid_sha256"
+    ):
+        recorded["provisioning_profile"] = True
+    else:
+        missing.append(
+            "signing.provisioning_profile_uuid_sha256: must be a SHA-256 digest with provisioning_profile_recorded=true"
+        )
 
     bundle_id = signing.get("bundle_id")
     if _is_non_placeholder_string(bundle_id):
@@ -422,6 +491,14 @@ def _validate_signing(
             failures.append("signing.codesign_identity: must be a real Apple signing identity, not ad-hoc")
         else:
             recorded["codesign_identity"] = True
+    elif _recorded_by_flag_and_hash(
+        signing, "codesign_identity_recorded", "codesign_identity_sha256"
+    ):
+        recorded["codesign_identity"] = True
+    else:
+        missing.append(
+            "signing.codesign_identity_sha256: must be a SHA-256 digest with codesign_identity_recorded=true"
+        )
 
     if _is_sha256(signing.get("signed_artifact_sha256")):
         recorded["signed_artifact"] = True
@@ -435,8 +512,7 @@ def _validate_signing(
         UDID_HASH_PATTERN.fullmatch(value) is not None for value in device_udids
     )
 
-    _validate_entitlements(signing, missing, failures)
-    recorded["entitlements"] = _has_complete_entitlements(signing)
+    recorded["entitlements"] = _validate_entitlements(signing, missing, failures)
 
     artifacts = document.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -509,6 +585,7 @@ def evaluate(
         "verdict": verdict,
         "signing_status": signing_status,
         "signing_summary": _signing_summary(document, recorded_fields, verdict),
+        "readiness_requirements": _readiness_requirements(recorded_fields, verdict),
         "can_close_ios_app_signing_readiness": verdict == PASS,
         "can_close_ios_device_acceptance": False,
         "recorded_fields": recorded_fields,

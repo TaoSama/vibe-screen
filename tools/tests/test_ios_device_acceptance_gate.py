@@ -94,7 +94,7 @@ def complete_document() -> dict:
             "kind": "ios_app_signing_readiness_gate",
             "owner": {
                 "role": "ios_app_signing_readiness_current_base_owner",
-                "head_ref": "codex/phase5-ios-signing-readiness",
+                "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
                 "repository": "TaoSama/vibe-screen",
                 "scope": "Phase 5 iOS app-signing readiness prerequisite only",
             },
@@ -104,7 +104,7 @@ def complete_document() -> dict:
             },
             "current_base": {
                 "commit": CURRENT_BASE_COMMIT,
-                "branch": "codex/phase5-ios-signing-readiness",
+                "branch": "codex/ios-app-signing-readiness-current-base-20260829",
                 "dirty": False,
             },
             "verdict": "pass",
@@ -119,6 +119,29 @@ def complete_document() -> dict:
                 "device_udid_hashes_recorded": True,
                 "entitlements_recorded": True,
                 "signed_artifact_sha256": SIGNED_ARTIFACT_SHA256,
+            },
+            "readiness_requirements": {
+                "status": "pass",
+                "requirements": {
+                    "team_id": True,
+                    "provisioning_profile": True,
+                    "bundle_id": True,
+                    "codesign_identity": True,
+                    "device_udids": True,
+                    "entitlements": True,
+                },
+                "labels": {
+                    "team_id": "Apple Team ID recorded as a SHA-256 digest or local-only raw value",
+                    "provisioning_profile": "provisioning profile UUID recorded as a SHA-256 digest or local-only raw value",
+                    "bundle_id": "unique non-default iPhoneOS bundle identifier",
+                    "codesign_identity": "non-ad-hoc Apple codesign identity recorded as a SHA-256 digest or local-only raw value",
+                    "device_udids": "registered physical iPhone/iPad UDID hashes retained from the provisioning profile",
+                    "entitlements": "signed-app entitlements match Team ID and bundle ID with a retained entitlement plist SHA-256",
+                },
+                "all_requirements_recorded": True,
+                "simulator_build_used": False,
+                "unsigned_build_used": False,
+                "android_evidence_used": False,
             },
             "can_close_ios_app_signing_readiness": True,
             "can_close_ios_device_acceptance": False,
@@ -225,11 +248,26 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertIn("owner", signing_gate["required"])
         self.assertIn("current_base", signing_gate["required"])
         self.assertIn("signing_summary", signing_gate["required"])
+        self.assertIn("readiness_requirements", signing_gate["required"])
         self.assertIn("recorded_fields", signing_gate["required"])
         summary = signing_gate["properties"]["signing_summary"]
         self.assertIn("codesign_identity_recorded", summary["required"])
         self.assertIn("device_udid_hashes_recorded", summary["required"])
         self.assertIn("entitlements_recorded", summary["required"])
+        requirements = signing_gate["properties"]["readiness_requirements"]["properties"]["requirements"]
+        labels = signing_gate["properties"]["readiness_requirements"]["properties"]["labels"]
+        self.assertIn("team_id", requirements["required"])
+        self.assertIn("provisioning_profile", requirements["required"])
+        self.assertIn("bundle_id", requirements["required"])
+        self.assertIn("codesign_identity", requirements["required"])
+        self.assertIn("device_udids", requirements["required"])
+        self.assertIn("entitlements", requirements["required"])
+        self.assertIn("team_id", labels["required"])
+        self.assertIn("provisioning_profile", labels["required"])
+        self.assertIn("bundle_id", labels["required"])
+        self.assertIn("codesign_identity", labels["required"])
+        self.assertIn("device_udids", labels["required"])
+        self.assertIn("entitlements", labels["required"])
 
     def test_input_schema_declares_host_advanced_adapter_broader_gate(self) -> None:
         schema = json.loads(INPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -519,7 +557,7 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "fail")
         self.assertIn(
-            "signing_readiness_gate.owner.head_ref: must be codex/phase5-ios-signing-readiness",
+            "signing_readiness_gate.owner.head_ref: must be codex/ios-app-signing-readiness-current-base-20260829",
             result["failures"],
         )
 
@@ -578,6 +616,69 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         self.assertIn(
             "signing_readiness_gate.recorded_fields.entitlements: must be true",
             result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_explicit_requirement_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_complete_artifacts(evidence_root)
+            document = complete_document()
+            readiness = document["signing_readiness_gate"]["readiness_requirements"]
+            readiness["all_requirements_recorded"] = False
+            readiness["requirements"]["provisioning_profile"] = False
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.requirements.provisioning_profile: must be true",
+            result["missing"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.all_requirements_recorded: must be true",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_requirement_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_complete_artifacts(evidence_root)
+            document = complete_document()
+            readiness = document["signing_readiness_gate"]["readiness_requirements"]
+            readiness.pop("labels")
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.labels: must be an object",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_rejects_simulator_unsigned_or_android_requirement_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_complete_artifacts(evidence_root)
+            document = complete_document()
+            readiness = document["signing_readiness_gate"]["readiness_requirements"]
+            readiness["simulator_build_used"] = True
+            readiness["unsigned_build_used"] = True
+            readiness["android_evidence_used"] = True
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.simulator_build_used: must be false",
+            result["failures"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.unsigned_build_used: must be false",
+            result["failures"],
+        )
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.android_evidence_used: must be false",
+            result["failures"],
         )
 
     def test_signing_readiness_gate_cannot_claim_device_acceptance(self) -> None:

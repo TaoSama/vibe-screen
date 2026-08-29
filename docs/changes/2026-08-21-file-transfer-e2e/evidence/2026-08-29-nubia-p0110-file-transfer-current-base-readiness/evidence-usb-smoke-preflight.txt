@@ -1,0 +1,7 @@
+make evidence-usb-smoke-preflight EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL EVIDENCE_DIR=docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness EVIDENCE_EXPECTED_MANUFACTURER=nubia EVIDENCE_EXPECTED_MODEL=P0110 EVIDENCE_EXPECTED_DEVICE=pacific EVIDENCE_EXPECTED_ANDROID_RELEASE=16 EVIDENCE_EXPECTED_SDK=36
+make: *** [evidence-usb-smoke-preflight] Error 2
+
+The generated usb-smoke-preflight.json retained the expected nubia P0110 /
+pacific / Android 16 / SDK 36 device identity, ADB reverse readiness, foreground
+Android app readiness, and Host listener observation. It stayed blocked because
+the Host stable-signing/TCC preflight failed.

@@ -1,0 +1,23 @@
+$ git fetch origin main --prune
+origin/main resolved to 3508f229a5fb1218388e9e9ee5fec919d6b5bebf before this branch was rebased.
+
+$ make ios-app-signing-readiness-gate IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/ios-app-signing-readiness.json IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json
+exit_code=2
+Expected fail-closed result. Missing coverage includes full Xcode/iPhoneOS SDK evidence, sanitized Apple Team ID digest, sanitized provisioning profile UUID digest, unique bundle ID, sanitized codesign identity digest, physical-device UDID hashes, entitlement relationship checks, signed-app/archive SHA-256, and retained signing command/profile/entitlements artifacts.
+
+$ EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked make ios-current-base-manifest
+exit_code=0
+Generated ios-current-base-manifest.json binding the dedicated app-signing readiness gate from current-base commit 3508f229a5fb1218388e9e9ee5fec919d6b5bebf.
+
+$ EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked make ios-current-base-gate
+exit_code=2
+Expected fail-closed result. The aggregate gate reports verdict=blocked, can_claim_device_pass=false, can_close_current_base_aggregate=false, and can_close_ios_device_acceptance=false. Dedicated signing owner identity passes, but signing materials, native input, physical iPhone/iPad install/launch, VideoToolbox hardware decode, protocol session, reconnect, audio, HDR, and secure-record real-network evidence remain blocked or insufficient.
+
+$ python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/privacy-scan.json
+exit_code=0
+
+$ python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked --check
+exit_code=0
+
+$ (cd docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked && shasum -a 256 README.md commands.txt ios-app-signing-readiness.json ios-app-signing-readiness-gate.json ios-current-base-manifest.json ios-current-base-gate.json privacy-scan.json > SHA256SUMS)
+exit_code=0

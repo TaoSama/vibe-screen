@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from vibescreen_evidence import SCHEMA_VERSION
-from vibescreen_evidence.ios_app_signing_readiness import READINESS_KIND, evaluate
+from vibescreen_evidence.ios_app_signing_readiness import OWNER_BRANCH, READINESS_KIND, evaluate
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +20,7 @@ BLOCKED_OWNER_EVIDENCE = (
     / "changes"
     / "2026-08-04-phase-5-ios-advanced"
     / "evidence"
-    / "2026-08-25-ios-signing-current-base-owner-blocked"
+    / "2026-08-29-ios-signing-current-base-blocked"
 )
 
 
@@ -49,16 +49,19 @@ def complete_document() -> dict[str, object]:
         },
         "signing": {
             "status": "complete",
-            "team_id": "ABCDE12345",
-            "provisioning_profile_uuid": "12345678-1234-1234-1234-1234567890AB",
+            "team_id_recorded": True,
+            "team_id_sha256": "4" * 64,
+            "provisioning_profile_recorded": True,
+            "provisioning_profile_uuid_sha256": "5" * 64,
             "bundle_id": "dev.example.vibescreen.acceptance",
-            "codesign_identity": "Apple Development: Example Developer (ABCDE12345)",
-            "device_udids": ["sha256:" + "1" * 64],
+            "codesign_identity_recorded": True,
+            "codesign_identity_sha256": "6" * 64,
+            "device_udid_hashes": ["sha256:" + "1" * 64],
             "entitlements": {
-                "application_identifier": "ABCDE12345.dev.example.vibescreen.acceptance",
-                "team_identifier": "ABCDE12345",
-                "bundle_identifier": "dev.example.vibescreen.acceptance",
-                "keychain_access_groups": ["ABCDE12345.dev.example.vibescreen.acceptance"],
+                "application_identifier_matches_team_and_bundle": True,
+                "team_identifier_matches_team_id": True,
+                "bundle_identifier_matches_bundle_id": True,
+                "keychain_access_groups_include_application_identifier": True,
                 "raw_entitlements_sha256": "2" * 64,
             },
             "signed_artifact_sha256": "3" * 64,
@@ -75,6 +78,27 @@ def complete_document() -> dict[str, object]:
     }
 
 
+def raw_complete_document() -> dict[str, object]:
+    document = complete_document()
+    document["signing"] = {
+        "status": "complete",
+        "team_id": "ABCDE12345",
+        "provisioning_profile_uuid": "12345678-1234-1234-1234-1234567890AB",
+        "bundle_id": "dev.example.vibescreen.acceptance",
+        "codesign_identity": "Apple Development: Example Developer (ABCDE12345)",
+        "device_udids": ["sha256:" + "1" * 64],
+        "entitlements": {
+            "application_identifier": "ABCDE12345.dev.example.vibescreen.acceptance",
+            "team_identifier": "ABCDE12345",
+            "bundle_identifier": "dev.example.vibescreen.acceptance",
+            "keychain_access_groups": ["ABCDE12345.dev.example.vibescreen.acceptance"],
+            "raw_entitlements_sha256": "2" * 64,
+        },
+        "signed_artifact_sha256": "3" * 64,
+    }
+    return document
+
+
 class IOSAppSigningReadinessTests(unittest.TestCase):
     def test_complete_signing_readiness_passes_without_claiming_device_acceptance(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -88,7 +112,7 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
             result["owner"]["role"],
             "ios_app_signing_readiness_current_base_owner",
         )
-        self.assertEqual(result["owner"]["head_ref"], "codex/phase5-ios-signing-readiness")
+        self.assertEqual(result["owner"]["head_ref"], OWNER_BRANCH)
         self.assertEqual(result["owner"]["repository"], "TaoSama/vibe-screen")
         self.assertEqual(
             result["current_base"],
@@ -112,6 +136,21 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
                 "signed_artifact_sha256": "3" * 64,
             },
         )
+        self.assertEqual(
+            result["readiness_requirements"]["requirements"],
+            {
+                "team_id": True,
+                "provisioning_profile": True,
+                "bundle_id": True,
+                "codesign_identity": True,
+                "device_udids": True,
+                "entitlements": True,
+            },
+        )
+        self.assertTrue(result["readiness_requirements"]["all_requirements_recorded"])
+        self.assertFalse(result["readiness_requirements"]["simulator_build_used"])
+        self.assertFalse(result["readiness_requirements"]["unsigned_build_used"])
+        self.assertFalse(result["readiness_requirements"]["android_evidence_used"])
         self.assertTrue(result["can_close_ios_app_signing_readiness"])
         self.assertFalse(result["can_close_ios_device_acceptance"])
         self.assertEqual(result["missing"], [])
@@ -120,7 +159,7 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
     def test_result_shape_matches_schema_required_fields(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
-            document = complete_document()
+            document = raw_complete_document()
             write_artifacts(evidence_root, list(document["artifacts"]))
             result = evaluate(document, evidence_root)
 
@@ -136,16 +175,19 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
         document["xcode"] = {"version": "", "selected_developer_dir": "", "ios_sdk": ""}
         document["signing"] = {
             "status": "blocked",
-            "team_id": "",
-            "provisioning_profile_uuid": "",
+            "team_id_recorded": False,
+            "team_id_sha256": "",
+            "provisioning_profile_recorded": False,
+            "provisioning_profile_uuid_sha256": "",
             "bundle_id": "",
-            "codesign_identity": "",
-            "device_udids": [],
+            "codesign_identity_recorded": False,
+            "codesign_identity_sha256": "",
+            "device_udid_hashes": [],
             "entitlements": {
-                "application_identifier": "",
-                "team_identifier": "",
-                "bundle_identifier": "",
-                "keychain_access_groups": [],
+                "application_identifier_matches_team_and_bundle": False,
+                "team_identifier_matches_team_id": False,
+                "bundle_identifier_matches_bundle_id": False,
+                "keychain_access_groups_include_application_identifier": False,
                 "raw_entitlements_sha256": "",
             },
             "signed_artifact_sha256": "",
@@ -176,16 +218,32 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
             result["owner"]["role"],
             "ios_app_signing_readiness_current_base_owner",
         )
-        self.assertEqual(result["owner"]["head_ref"], "codex/phase5-ios-signing-readiness")
+        self.assertEqual(result["owner"]["head_ref"], OWNER_BRANCH)
         self.assertFalse(result["can_close_ios_app_signing_readiness"])
         self.assertFalse(result["can_close_ios_device_acceptance"])
-        self.assertIn("signing.team_id: must be a non-empty recorded value", result["missing"])
+        self.assertIn(
+            "signing.team_id_sha256: must be a SHA-256 digest with team_id_recorded=true",
+            result["missing"],
+        )
         self.assertEqual(result["failures"], [])
+
+    def test_raw_operator_summary_remains_supported_locally(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            document = raw_complete_document()
+            write_artifacts(evidence_root, list(document["artifacts"]))
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertTrue(result["recorded_fields"]["team_id"])
+        self.assertTrue(result["recorded_fields"]["provisioning_profile"])
+        self.assertTrue(result["recorded_fields"]["codesign_identity"])
 
     def test_prefixed_signed_artifact_digest_is_normalized_in_summary(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
-            document = complete_document()
+            document = raw_complete_document()
             write_artifacts(evidence_root, list(document["artifacts"]))
             signing = document["signing"]
             assert isinstance(signing, dict)
@@ -198,11 +256,11 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
 
     def test_missing_critical_signing_fields_block(self) -> None:
         field_expectations = {
-            "team_id": "signing.team_id: must be a non-empty recorded value",
-            "provisioning_profile_uuid": "signing.provisioning_profile_uuid: must be a non-empty recorded value",
+            "team_id_sha256": "signing.team_id_sha256: must be a SHA-256 digest with team_id_recorded=true",
+            "provisioning_profile_uuid_sha256": "signing.provisioning_profile_uuid_sha256: must be a SHA-256 digest with provisioning_profile_recorded=true",
             "bundle_id": "signing.bundle_id: must be a non-empty recorded value",
-            "codesign_identity": "signing.codesign_identity: must be a non-empty recorded value",
-            "device_udids": "signing.device_udids: must include at least one registered physical-device UDID hash",
+            "codesign_identity_sha256": "signing.codesign_identity_sha256: must be a SHA-256 digest with codesign_identity_recorded=true",
+            "device_udid_hashes": "signing.device_udid_hashes: must include at least one registered physical-device UDID hash",
             "entitlements": "signing.entitlements: must be an object",
             "signed_artifact_sha256": "signing.signed_artifact_sha256: must be a non-empty recorded value",
         }
@@ -224,7 +282,7 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
     def test_invalid_shapes_and_default_bundle_block(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
-            document = complete_document()
+            document = raw_complete_document()
             write_artifacts(evidence_root, list(document["artifacts"]))
             signing = document["signing"]
             assert isinstance(signing, dict)
@@ -271,7 +329,7 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
     def test_entitlement_identity_mismatch_fails(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
-            document = complete_document()
+            document = raw_complete_document()
             write_artifacts(evidence_root, list(document["artifacts"]))
             signing = document["signing"]
             assert isinstance(signing, dict)
@@ -289,7 +347,7 @@ class IOSAppSigningReadinessTests(unittest.TestCase):
     def test_entitlements_must_belong_to_team_and_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             evidence_root = Path(raw_directory)
-            document = complete_document()
+            document = raw_complete_document()
             write_artifacts(evidence_root, list(document["artifacts"]))
             signing = document["signing"]
             assert isinstance(signing, dict)

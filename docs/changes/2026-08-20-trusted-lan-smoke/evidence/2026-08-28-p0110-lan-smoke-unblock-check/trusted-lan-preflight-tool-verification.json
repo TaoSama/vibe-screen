@@ -101,7 +101,7 @@
   "device_lock": {
     "acquired": true,
     "detail": "acquired",
-    "path": "/tmp/vibe-screen-501/trusted-lan-locks/vibe-screen-android-500ca033f6d0ccc26a771eae.lock"
+    "path": "<android-device-lock>"
   },
   "host": {
     "host_preflight_command": [
@@ -160,7 +160,7 @@
         "preflight"
       ],
       "returncode": 2,
-      "stderr": "Host signing prerequisite\n-------------------------\nConfigured identity: Vibe Screen Dev\nInstall path: /Applications/Vibe Screen.app\n\nResult\n------\nStatus: FAIL\nBlocking issues:\n- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.\n\nNext action\n-----------\nCreate or import the stable local codesigning identity, or set\n$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild\nand reinstall the Host before rerunning touch evidence. Do not use ad-hoc\nsigning for fixed-binary device reruns because it changes the code-signing hash\nand invalidates macOS Screen Recording/Accessibility grants.\n\nSafety\n------\nThis blocked operation did not start the Host, run Android instrumentation,\nmodify Keychain, edit privacy databases, clear Android app data, or change ADB state. This\nis a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi\nresult.\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility",
+      "stderr": "Host signing prerequisite\n-------------------------\nConfigured identity: Vibe Screen Dev\nInstall path: /Applications/Vibe Screen.app\n\nResult\n------\nStatus: FAIL\nBlocking issues:\n- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.\n\nNext action\n-----------\nCreate or import the stable local codesigning identity, or set\n$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild\nand reinstall the Host before rerunning touch evidence. Do not use ad-hoc\nsigning for fixed-binary device reruns because it changes the code-signing hash\nand invalidates macOS Screen Recording/Accessibility grants.\n\nSafety\n------\nThis blocked operation did not start the Host, run Android instrumentation,\nmodify Keychain, edit privacy databases, clear Android app data, or change ADB state. This\nis a Host signing prerequisite, not an Android device identity or alternate-device\nresult.\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility",
       "stdout": "",
       "timed_out": false
     },
@@ -214,7 +214,7 @@
     {
       "name": "device_lock",
       "status": "pass",
-      "summary": "Acquired Android device lock /tmp/vibe-screen-501/trusted-lan-locks/vibe-screen-android-500ca033f6d0ccc26a771eae.lock"
+      "summary": "Acquired Android device lock <android-device-lock>"
     },
     {
       "details": {

@@ -49,6 +49,7 @@ REQUIRED_GATE_CLOSING_EVIDENCE_STRENGTHS = {
     "host_rss_2h_no_growth": {"current-real-device"},
     "native_pointer_hid_mouse": {"current-real-device"},
     "controller_runtime_acceptance": {"current-real-device"},
+    "file_transfer_android_product_e2e": {"current-real-device"},
     "module_ownership_extraction": {"current-ci", "current-source"},
 }
 DEFAULT_README_GUARD_PHRASES = (
@@ -73,6 +74,7 @@ REQUIRED_GATE_IDS = (
     "host_rss_2h_no_growth",
     "native_pointer_hid_mouse",
     "controller_runtime_acceptance",
+    "file_transfer_android_product_e2e",
     "module_ownership_extraction",
 )
 
@@ -181,6 +183,8 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
                 "pass gate must use a closing evidence strength for this gate, "
                 f"got {evidence_strength!r}"
             )
+    elif required and not blockers:
+        issues.append("non-pass required gate must list at least one blocker")
     can_close = required and verdict == STATUS_PASS and not issues
     return {
         "id": gate_id,
@@ -261,7 +265,10 @@ def _readme_guard(
 
 
 def evaluate_manifest(
-    manifest: dict[str, Any], *, readme_text: str | None = None
+    manifest: dict[str, Any],
+    *,
+    readme_text: str | None = None,
+    expected_source_commit: str | None = None,
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise Phase0StableReleaseError("schema_version must be vibescreen.evidence/v1")
@@ -269,6 +276,11 @@ def evaluate_manifest(
         raise Phase0StableReleaseError(f"kind must be {KIND}")
     if manifest.get("phase") != "phase0":
         raise Phase0StableReleaseError("phase must be phase0")
+    source = manifest.get("source", {})
+    if not isinstance(source, dict):
+        raise Phase0StableReleaseError("source must be an object")
+
+    source_guard = _source_guard(source, expected_source_commit)
 
     gates_value = manifest.get("required_gates")
     if not isinstance(gates_value, list):
@@ -322,6 +334,7 @@ def evaluate_manifest(
     ]
     aggregate_passed = (
         not malformed_reasons
+        and source_guard["verdict"] == STATUS_PASS
         and not blocking_gates
         and not any(summary["issues"] for summary in gate_summaries)
     )
@@ -335,12 +348,17 @@ def evaluate_manifest(
         aggregate_verdict = STATUS_FAIL
     elif readme_guard["verdict"] == STATUS_INSUFFICIENT:
         aggregate_verdict = STATUS_INSUFFICIENT
-    elif malformed_reasons or any(summary["issues"] for summary in gate_summaries):
+    elif (
+        malformed_reasons
+        or source_guard["verdict"] == STATUS_INSUFFICIENT
+        or any(summary["issues"] for summary in gate_summaries)
+    ):
         aggregate_verdict = STATUS_INSUFFICIENT
     elif blocking_gates:
         aggregate_verdict = STATUS_BLOCKED
     else:
         aggregate_verdict = STATUS_PASS
+    gate_reasons = _gate_reasons(gate_summaries)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -356,9 +374,64 @@ def evaluate_manifest(
         "blocking_required_gates": blocking_gates,
         "gate_summaries": gate_summaries,
         "readme_guard": readme_guard,
-        "manifest_source": manifest.get("source", {}),
-        "reasons": [*malformed_reasons, *readme_guard["reasons"]],
+        "source_guard": source_guard,
+        "manifest_source": source,
+        "reasons": [
+            *malformed_reasons,
+            *source_guard["reasons"],
+            *gate_reasons,
+            *readme_guard["reasons"],
+        ],
     }
+
+
+def _source_guard(
+    source: dict[str, Any], expected_source_commit: str | None
+) -> dict[str, Any]:
+    base_commit = source.get("base_commit")
+    reasons: list[str] = []
+    if not isinstance(base_commit, str) or not base_commit.strip():
+        reasons.append("manifest source.base_commit must be a non-empty string")
+    elif expected_source_commit and base_commit != expected_source_commit:
+        reasons.append(
+            "manifest source.base_commit does not match the evaluated source "
+            f"commit: {base_commit} != {expected_source_commit}"
+        )
+    for field in ("base_ref", "owner", "audit_source"):
+        value = source.get(field)
+        if not isinstance(value, str) or not value.strip():
+            reasons.append(f"manifest source.{field} must be a non-empty string")
+    audit_date = source.get("audit_date")
+    if not isinstance(audit_date, str) or not re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}", audit_date
+    ):
+        reasons.append("manifest source.audit_date must use YYYY-MM-DD format")
+
+    return {
+        "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "expected_source_commit": expected_source_commit or None,
+        "manifest_base_commit": base_commit if isinstance(base_commit, str) else None,
+        "reasons": reasons,
+    }
+
+
+def _gate_reasons(gate_summaries: Sequence[dict[str, Any]]) -> list[str]:
+    reasons: list[str] = []
+    for summary in gate_summaries:
+        reasons.extend(
+            f"{summary['id']}: {issue}" for issue in summary["issues"]
+        )
+        if summary["id"] not in REQUIRED_GATE_IDS:
+            continue
+        if summary["can_close"] or summary["issues"]:
+            continue
+        if summary["blockers"]:
+            reasons.extend(
+                f"{summary['id']}: {blocker}" for blocker in summary["blockers"]
+            )
+        else:
+            reasons.append(f"{summary['id']}: verdict={summary['verdict']}")
+    return reasons
 
 
 def _write_summary(path: Path, summary: dict[str, Any]) -> None:
@@ -396,6 +469,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--readme", type=Path, default=Path("README.md"))
     parser.add_argument("--output", type=Path, help="summary JSON path")
     parser.add_argument(
+        "--expected-source-commit",
+        help="Fail closed unless manifest source.base_commit matches this commit",
+    )
+    parser.add_argument(
         "--require-pass",
         action="store_true",
         help="exit nonzero unless every aggregate Phase 0 stable-release gate passes",
@@ -409,7 +486,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         with args.manifest.open("r", encoding="utf-8") as stream:
             manifest = load_json(stream)
         readme_text = args.readme.read_text(encoding="utf-8")
-        summary = evaluate_manifest(manifest, readme_text=readme_text)
+        summary = evaluate_manifest(
+            manifest,
+            readme_text=readme_text,
+            expected_source_commit=args.expected_source_commit,
+        )
         if args.output:
             _write_summary(args.output, summary)
         else:

@@ -164,6 +164,58 @@ REQUIRED_METADATA_FIELDS = (
     ("compatibility_scope", "claim_scoped_to_exact_row", "record a non-empty exact-row compatibility scope"),
 )
 
+CLOSURE_CHECKLIST_GROUPS = (
+    (
+        "source_and_host_identity",
+        "Source and Host identity",
+        (
+            "owner_recorded",
+            "implementation_path_recorded",
+            "repository_commit_recorded",
+            "host_model_recorded",
+            "cpu_architecture_recorded",
+            "macos_version_build_recorded",
+            "xcode_swift_recorded",
+            "host_build_identity_recorded",
+            "signing_and_tcc_state_recorded",
+            "source_bound_host_recorded",
+            "host_self_test_provenance_recorded",
+        ),
+    ),
+    (
+        "display_and_encoder_capability",
+        "Display and encoder capability",
+        (
+            "display_topology_recorded",
+            "capture_backend_recorded",
+            "video_encoder_path_recorded",
+            "virtual_display_or_fallback_recorded",
+            "mirror_or_fallback_recorded",
+        ),
+    ),
+    (
+        "runtime_acceptance",
+        "Runtime acceptance",
+        (
+            "automated_macos_checks_passed",
+            "packaged_host_launch_observed",
+            "protocol_v1_stream_observed",
+            "display_selection_observed",
+            "physical_display_capture_observed",
+            "input_smoke_observed",
+            "reconnect_observed",
+        ),
+    ),
+    (
+        "scope_and_artifacts",
+        "Scope and retained artifacts",
+        (
+            "artifacts_retained",
+            "claim_scoped_to_exact_row",
+        ),
+    ),
+)
+
 
 class MacOSHardwareCompatibilityError(ValueError):
     """Raised when a compatibility evidence record is malformed."""
@@ -361,6 +413,38 @@ def _append_missing_once(
         missing.append({"field": field, "requirement": requirement})
 
 
+def _closure_checklist(
+    *,
+    missing: Sequence[dict[str, str]],
+    invalid_claims: Sequence[dict[str, str]],
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for checklist_id, title, fields in CLOSURE_CHECKLIST_GROUPS:
+        missing_for_group = [item for item in missing if item["field"] in fields]
+        if any(item["field"] in BLOCKING_FIELDS for item in missing_for_group):
+            status = STATUS_BLOCKED
+        elif missing_for_group:
+            status = STATUS_INSUFFICIENT
+        else:
+            status = STATUS_PASS
+        items.append({
+            "id": checklist_id,
+            "title": title,
+            "status": status,
+            "missing_fields": sorted({item["field"] for item in missing_for_group}),
+            "next_steps": [item["requirement"] for item in missing_for_group],
+        })
+
+    items.append({
+        "id": "extrapolation_guard",
+        "title": "No extrapolated support claims",
+        "status": STATUS_FAILED if invalid_claims else STATUS_PASS,
+        "missing_fields": [item["field"] for item in invalid_claims],
+        "next_steps": [item["reason"] for item in invalid_claims],
+    })
+    return items
+
+
 def summarize(
     record: dict[str, Any], *, run_id: str | None = None, evidence_dir: Path | None = None
 ) -> dict[str, Any]:
@@ -555,6 +639,10 @@ def summarize(
         "observations": field_values,
         "invalid_claims": invalid_claims,
         "invalid_claim_observations": invalid_claim_values,
+        "closure_checklist": _closure_checklist(
+            missing=missing,
+            invalid_claims=invalid_claims,
+        ),
         "missing_requirements": missing,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": artifact_paths,

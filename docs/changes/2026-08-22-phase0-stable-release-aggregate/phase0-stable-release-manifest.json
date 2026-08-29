@@ -3,11 +3,11 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "8471dd2bb65eae6bd7ac05b3ba09ef958526265a",
+    "base_commit": "1430c3cc18948b93b50b7054e992844f287b6fbc",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-22",
+    "audit_date": "2026-08-28",
     "owner": "Vibe Screen core team",
-    "audit_source": "docs/changes/2026-08-22-open-gates-coverage-audit/README.md"
+    "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/README.md"
   },
   "readme_guard": {
     "required_phrases": [
@@ -43,7 +43,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
       ],
       "owner_prs": [],
       "blockers": []
@@ -56,7 +56,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
       ],
       "owner_prs": [],
       "blockers": []
@@ -69,7 +69,8 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/31710918927"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
       "blockers": []
@@ -83,6 +84,7 @@
       "evidence_paths": [
         "README.md",
         "docs/runbook/macos-host-compatibility.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
@@ -117,14 +119,15 @@
       "evidence_strength": "partial",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md"
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/latency-preflight.json",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md",
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/latency-preflight.json"
       ],
       "owner_prs": [
-        167,
-        192
+        167
       ],
       "blockers": [
-        "Raw stream telemetry is archived, but no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
+        "The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },
     {
@@ -138,7 +141,8 @@
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-host-rss-short-window-readiness-blocked/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/README.md",
-        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md"
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md",
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md"
       ],
       "owner_prs": [
         158,
@@ -148,12 +152,13 @@
         237,
         260,
         329,
+        376,
         387
       ],
       "blockers": [
         "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
         "No current-source host_rss_gate pass exists.",
-        "The latest current-base readiness records are blocked before a stable-signed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage."
+        "The latest current-base readiness records are blocked before a stable-signed, TCC-ready, listener-observed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage and a USB/LAN stream window."
       ]
     },
     {
@@ -164,15 +169,16 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/testing.md",
-        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-21-p0110-native-pointer-hid-readiness/README.md"
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/native-pointer-hid-summary.json"
       ],
       "owner_prs": [
         232,
-        268
+        268,
+        361
       ],
       "blockers": [
         "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
-        "No retained Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window exist."
+        "The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window."
       ]
     },
     {
@@ -183,7 +189,7 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
-        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json"
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json"
       ],
       "owner_prs": [
         217,
@@ -196,6 +202,23 @@
       ]
     },
     {
+      "id": "file_transfer_android_product_e2e",
+      "title": "Android/macOS file-transfer product E2E",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json"
+      ],
+      "owner_prs": [],
+      "blockers": [
+        "Host readiness is blocked on stable signing, source provenance, read-only TCC verification, virtual HID entitlement, and login/headless readiness.",
+        "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup."
+      ]
+    },
+    {
       "id": "module_ownership_extraction",
       "title": "Phase 0 module ownership extraction",
       "required_for_stable_release": true,
@@ -203,17 +226,20 @@
       "evidence_strength": "partial-current-source",
       "evidence_paths": [
         "README.md",
-        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt"
       ],
       "owner_prs": [
         211,
         218,
         221,
-        259
+        259,
+        372
       ],
       "blockers": [
-        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 side-effect owner checks, but it still composes transport with local product-session behavior.",
-        "Broader protocol/session, full file-transfer and wake-host product ownership, UI, decoder, and renderer boundaries are not yet all enforced by current-base module contracts."
+        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
+        "Broader protocol/session, decoder, renderer, and UI ownership are not yet all enforced by current-base module contracts."
       ]
     }
   ],
@@ -222,7 +248,7 @@
       "id": "trusted_lan_current_worktree_stream_reconnect",
       "phase_scope": "phase1_local_android",
       "status": "open",
-      "reason": "Phase 0 PRD allows LAN to remain a buildable loopback path; README keeps current-worktree LAN evidence as an open Phase 1/local Android gate."
+      "reason": "Phase 0 PRD allows LAN to remain a buildable loopback path; README keeps current-worktree LAN evidence as an open Phase 1/local Android gate. The latest current-main unblock readiness record remains outside this Phase 0 stable-release prerequisite set."
     },
     {
       "id": "login_item_approval_and_headless_reboot",

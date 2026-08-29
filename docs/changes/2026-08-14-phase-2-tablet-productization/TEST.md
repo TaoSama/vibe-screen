@@ -78,7 +78,7 @@ runtime and synthetic configurations only.
 
 ## 2026-08-20 Nubia P0110 readiness result
 
-This follow-up used the attached Nubia P0110/pacific (`EP0110PZ0B9110300B`) as
+This follow-up used the attached Nubia P0110/pacific (`<device-serial>`) as
 an Android phone substitute only. It must not be relabeled as 8-9 inch tablet
 evidence and it does not replace the required eight-hour run. Evidence is under
 [`evidence/2026-08-20-nubia-p0110-readiness`](evidence/2026-08-20-nubia-p0110-readiness/README.md).
@@ -86,9 +86,9 @@ evidence and it does not replace the required eight-hour run. Evidence is under
 - `DeviceHealthMonitorTest` plus `assembleDebug`: `BUILD SUCCESSFUL in 35s`.
 - `assembleDebugAndroidTest`: `BUILD SUCCESSFUL in 9s`.
 - Target-device `SettingsDialogLayoutInstrumentedTest`: 7 tests, 0 failures,
-  `OK (7 tests)` from direct `adb -s EP0110PZ0B9110300B shell am instrument`.
+  `OK (7 tests)` from direct `adb -s <device-serial> shell am instrument`.
 - Sustained-use screenshot test: 1 test, 0 failures, `OK (1 test)` from direct
-  `adb -s EP0110PZ0B9110300B shell am instrument`.
+  `adb -s <device-serial> shell am instrument`.
 - The run captured the device identity, `wm size`/density, battery, power, and
   thermal dumps. The short sample read 100% battery, AC powered, power saver
   disabled, and thermal status `0`.
@@ -116,7 +116,7 @@ keyboard workflows, and the eight-hour sample series required by
 
 This follow-up added a schema-backed hardware-keyboard workflow evidence summary
 for the Phase 2 peripheral gate. The target serial for a future run is
-`EP0110PZ0B9110300B`, which must be recorded as nubia P0110 / pacific /
+`<device-serial>`, which must be recorded as nubia P0110 / pacific /
 Android 16 when used. The real-device workflow did not start because the shared
 Android lock already existed, no Host listener was present on TCP `54321`, and
 the local keychain reported `0 valid identities found` for code signing. No ADB
@@ -142,7 +142,7 @@ The preferred current-base readiness command is now:
 
 ```bash
 make hardware-keyboard-readiness \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<device-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/YYYY-MM-DD-nubia-p0110-pacific-hardware-keyboard-readiness
 ```
 
@@ -158,7 +158,7 @@ output is readiness evidence only and does not close the Phase 2 gate.
 
 Evidence is under
 [`evidence/2026-08-23-nubia-p0110-pacific-hardware-keyboard-readiness`](evidence/2026-08-23-nubia-p0110-pacific-hardware-keyboard-readiness/README.md).
-The collector ran against `EP0110PZ0B9110300B` and recorded the device as
+The collector ran against `<device-serial>` and recorded the device as
 nubia P0110 / pacific / Android 16 / SDK 36. It exited `2` with
 `verdict=blocked` and `can_close_hardware_keyboard_gate=false` because no
 external Android-attached hardware keyboard was visible in `dumpsys input`, no
@@ -207,7 +207,7 @@ device gates above remain open.
 
 ## 2026-08-21 Nubia P0110 lifecycle readiness result
 
-This follow-up used the attached Nubia P0110/pacific (`EP0110PZ0B9110300B`) as
+This follow-up used the attached Nubia P0110/pacific (`<device-serial>`) as
 an Android phone substitute only. Evidence is under
 [`evidence/2026-08-21-nubia-p0110-lifecycle-readiness`](evidence/2026-08-21-nubia-p0110-lifecycle-readiness/README.md).
 
@@ -228,9 +228,9 @@ Validation performed:
 
 - `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DeviceHealthMonitorTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.StreamingWindowStatePolicyTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest assembleDebug assembleDebugAndroidTest`: `BUILD SUCCESSFUL in 10s`.
 - Direct target-device install of the final debug APK with
-  `adb -s EP0110PZ0B9110300B install -r ...`.
+  `adb -s <device-serial> install -r ...`.
 - Direct target-device `SettingsDialogLayoutInstrumentedTest` with
-  `adb -s EP0110PZ0B9110300B shell am instrument`: 7 tests, 0 failures,
+  `adb -s <device-serial> shell am instrument`: 7 tests, 0 failures,
   `OK (7 tests)`.
 - Final debug APK SHA-256:
   `112ceac607210546dfd8f7a8d4e8f7c0644ef9e67f35e94f7d4de83770d3e1e5`.
@@ -328,7 +328,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2
   --host-build "no formal signed Phase 2 tablet host build; readiness evidence only" \
   --apk-sha256 "cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba" \
   -- make soak-8h \
-    EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+    EVIDENCE_SERIAL=<device-serial> \
     EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
 make phase2-tablet-preflight \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
@@ -373,7 +373,7 @@ close the 8-9 inch tablet, stand-mounted charging, login/headless recovery, or
 eight-hour sustained-use gates.
 
 A 2-second target-device preflight also ran against the attached Nubia
-P0110/pacific (`adb -s EP0110PZ0B9110300B`) and wrote evidence under
+P0110/pacific (`adb -s <device-serial>`) and wrote evidence under
 [`evidence/2026-08-21-nubia-p0110-phase2-soak-preflight`](evidence/2026-08-21-nubia-p0110-phase2-soak-preflight/README.md).
 The command returned exit code `2` by design because the readiness result is
 `blocked`. The runner captured device identity, battery, power, thermal dumps,
@@ -568,6 +568,43 @@ Validation performed for this update:
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
 - `shasum -a 256 -c SHA256SUMS` in both new 2026-08-28 evidence directories
 
+## 2026-08-29 P0110 tablet soak preflight current-base
+
+Evidence is under
+[`evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base`](evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
+and
+[`evidence/2026-08-29-phase2-tablet-current-base-owner`](evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
+The run used the attached Nubia P0110/pacific Android 16 device as a general
+Android phone substitute only. It is not Xiaomi/fuxi evidence and not physical
+8-9 inch tablet evidence.
+
+The soak preflight exited `2` and wrote `phase2-soak-readiness.json` with
+`result=blocked` and `can_close_phase2_gate=false` because APK identity, Host
+PID, Host telemetry JSONL, physical 8-9 inch tablet hardware, stand-mounted
+tablet setup, controlled thermal-load recovery, and an eight-hour stream window
+were not available. The bundle verifier also exited `2` and wrote
+`phase2-tablet-preflight.json` with `verdict=blocked`.
+
+The refreshed aggregate owner report consumes the 2026-08-29 P0110 manifest and
+soak-readiness files plus the retained device-environment, hardware-keyboard,
+and login/headless blocked summaries. It records
+`source_baseline=origin/main b22b9b5f92249cb484bdf71fef22f8f479f575f3`,
+`verdict=blocked`, and `can_close_readme_phase2_gates=false`.
+
+Validation performed for this current-base refresh:
+
+- `make phase2-tablet-soak-preflight ...` against `<device-serial>`: exit `2`,
+  expected blocked readiness.
+- `make phase2-tablet-preflight EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base`: exit `2`, expected blocked bundle verifier.
+- `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner ...`: exit `0`, expected blocked aggregate owner report.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_phase2_device_environment tools.tests.test_phase2_device_memory_gate tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_schemas -v`: 116 tests, `OK`.
+- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-29 evidence directories.
+- `pgrep -x sfltool || true` before and after the refresh: no residual process output.
+
+The Phase 2 tablet, stand-mounted charging, thermal/power, device-memory,
+recovery, hardware-keyboard, login/headless, and eight-hour soak gates remain
+open after this refresh.
+
 ## 2026-08-28 hardware-keyboard current-base refresh
 
 This follow-up refreshed the Android-attached hardware-keyboard owner on current
@@ -575,7 +612,7 @@ This follow-up refreshed the Android-attached hardware-keyboard owner on current
 workflow pass. Evidence is under
 [`evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-28-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
 
-The readiness collector used explicit ADB serial `EP0110PZ0B9110300B`, redacted
+The readiness collector used explicit ADB serial `<device-serial>`, redacted
 it to `<device-serial>` in public artifacts, and recorded the device as nubia
 P0110 / pacific / Android 16 / SDK 36. It produced `verdict=blocked` and
 `can_close_hardware_keyboard_gate=false` because no external Android-attached

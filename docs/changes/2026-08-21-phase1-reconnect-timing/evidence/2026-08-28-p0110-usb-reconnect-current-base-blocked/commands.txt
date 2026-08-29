@@ -1,0 +1,16 @@
+# Commands
+git fetch origin main codex/p0110-usb-reconnect-current-base
+pgrep -x sfltool || true
+git switch --detach origin/codex/p0110-usb-reconnect-current-base
+git rev-parse HEAD
+git rev-parse origin/main
+git status --short --branch
+make evidence-device-info EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked
+adb -s <device-serial> reverse --list
+adb -s <device-serial> shell pidof dev.telemachus.display
+adb -s <device-serial> shell dumpsys window | grep 'dev.telemachus.display'
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+git worktree add --detach .build/reconnect-source-c0d56a5d0-20260829143000 c0d56a5d09703273733119b7eb6f34d7e66fc78a
+make -C .build/reconnect-source-c0d56a5d0-20260829143000 baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked EVIDENCE_PORT=54321
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing --blocked --target-device 'nubia P0110 / pacific / Android 16 / SDK 36 / <device-serial>' --blocker <from-host-readiness.json> --artifact <retained-artifacts> --notes <current-base-blocked-note> --output docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/reconnect-timing-summary.json
+pgrep -x sfltool || true

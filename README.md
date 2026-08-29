@@ -14,9 +14,10 @@
 > clipboard forwarding is implemented for explicit Android/macOS text transfers
 > and covered by offline gates, but real Android ClipboardManager <-> macOS
 > NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
-> stable stream, but the host resident-memory no-growth gate and a native-pointer
-> HID confirmation remain open. Do not treat roadmap items below as shipped
-> features.
+> stable stream, but the host resident-memory no-growth gate (tracked in
+> [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md))
+> and a native-pointer HID confirmation remain open. Do not treat roadmap items
+> below as shipped features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -31,14 +32,15 @@ platform scaffolding under active development.
 | macOS Host compatibility | Compatibility matrix gate is open. Apple silicon has local exercise, historical device evidence, and published blocked `macos-hardware-compatibility-gate` summaries for Mac16,8 current-base readiness; no passing row exists because stable signing/TCC, source-bound Host provenance, full macOS checks, and runtime stream/input/reconnect evidence are missing. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence before support claims |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 only reserves CODEC_AV1, the current Host does not advertise AV1, Android does not offer AV1 in product sessions, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
-| Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture, and current-source real USB/LAN device playback evidence remains open pending Microphone/TCC, signing, and device-run validation |
+| Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture. The 2026-08-29 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Clipboard | Protocol v1 text clipboard forwarding is wired for Android <-> macOS with explicit send/get/overwrite actions, strict UTF-8 `text/plain`, SHA-256/origin/session-epoch validation, deny-wins managed-policy gating, and a 1 MiB negotiated size ceiling. Android JVM tests, Protocol v1 fixtures, and the Mac Protocol v1 self-test pass on current main. The 2026-08-27 Nubia P0110 current-base attempt adds a fail-closed clipboard E2E gate and local Android ClipboardManager smoke evidence, but real Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E remains open because Host readiness and real transport prerequisites are blocked and no bidirectional product transfer record exists |
+| File transfer | Protocol v1 includes a bounded single-file transfer path for Android/macOS USB/LAN sessions with explicit sender action, receiver approval, safe basenames, negotiated limits, chunk ordering, session-epoch checks, SHA-256 verification, deny-wins policy handling, and cancel/disconnect cleanup covered by offline and Android smoke tests. A dedicated fail-closed Phase 0 gate now tracks real Android/macOS product E2E readiness; the 2026-08-29 Nubia P0110 current-base record keeps it blocked because Host readiness is not satisfied and no bidirectional product transfer evidence exists |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
-| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-24 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
-| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard is implemented and offline-tested, but its real device/system-pasteboard E2E gate is still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-29 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard and file transfer are implemented and offline-tested, but their real device/system service or product E2E gates are still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the [host RSS no-growth gate](docs/changes/2026-08-10-host-rss-growth/TECH.md) and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost in a real two-process localhost loopback using the secure-record path by default; the loopback harness asks the Host to bind port `0` and passes the selected localhost port to the client. Explicit plaintext legacy fallback is regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
@@ -189,7 +191,8 @@ versions.
 
 ### Clients
 
-- Android uses Kotlin, Compose, and MediaCodec.
+- Android currently uses Kotlin, XML Views/ViewBinding, and MediaCodec;
+  Compose remains the target direction for UI work.
 - HarmonyOS NEXT uses ArkTS, ArkUI, and native hardware decoding APIs.
 - iOS uses SwiftUI and VideoToolbox.
 - Android and iOS currently use native Kotlin and Swift implementations backed
@@ -298,9 +301,10 @@ a +96.5 KiB/min second-half slope, so the two-hour no-growth gate stays open;
 see [docs/changes/2026-08-10-host-rss-growth/TECH.md](docs/changes/2026-08-10-host-rss-growth/TECH.md)
 and the v2 soak evidence at
 [docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md).
-Current-source rerun readiness remains blocked by stable-signing, TCC, and full
+Current-source rerun readiness remains blocked by stable-signing, installed
+Host integrity/provenance, TCC, listener, virtual-HID entitlement, and full
 Xcode/XCTest prerequisites; see
-[docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md).
+[docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md).
 The Xiaomi 13 baseline evidence is recorded under
 [docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md). The display-switch round-trip and offline self-tests are recorded under
 [docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch/roundtrip-verification.md).
@@ -474,7 +478,13 @@ and the blocked E2E evidence under
   automatic adaptation is a later-phase goal, not part of the Phase 1 USB/LAN path.
 - Protocol v1 USB/LAN now has an offline-tested, capability-gated PCM S16LE
   microphone-capture path from macOS Host to Android playback; real-device USB
-  and trusted-LAN audio playback evidence remains open.
+  and trusted-LAN audio playback evidence remains open. The latest Nubia
+  P0110/pacific current-base owner refresh is blocked before audio negotiation:
+  the read-only collector retained the exact device identity and existing ADB
+  reverse state, but no Host listener was observed, the installed Host bundle
+  did not prove current-source stable signing plus Microphone/TCC readiness, and
+  retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`
+  audio packets, Android `AudioTrack` writes, or playback confirmation.
 - Complete touch, keyboard, mouse, and peripheral input.
 - Harden window migration/return, disconnect recovery, automatic reconnect,
   permission onboarding, and actionable errors across supported system states.
@@ -500,22 +510,25 @@ evidence, while the input-latency gate requires external-camera evidence or a
 documented synchronized-clock setup with a reviewable sub-5 ms total error
 budget. The gate profiles are `usb-glass-to-glass-sub50`,
 `lan-glass-to-glass-sub80`, and `input-p95-sub50`; host and client telemetry
-are diagnostic only and cannot close these gates. As of the 2026-08-24 Nubia
+are diagnostic only and cannot close these gates. As of the 2026-08-28 Nubia
 P0110/pacific reconnect timing current-base owner record, the formal
 `phase1-reconnect-within-3s` summary remains blocked before any disruption
-scenario because the Host has no TCP `54321` listener, stable Host signing is
-unavailable, and the P0110 has no Wi-Fi association or wlan0 route for the
-trusted-LAN interruption scenario. That record has `can_close_timing_gate=false`
+scenario. The P0110 kept the USB reverse mapping, but no Host TCP `54321`
+listener was observed. Source-bound stable Host evidence is still blocked by
+the missing configured `Vibe Screen Dev` signing identity, failed installed
+Host codesign inspection, missing source commit/tree provenance, unverified
+read-only TCC authorization, missing virtual-HID entitlement, and unverified
+login/headless readiness. That record has `can_close_timing_gate=false`
 and does not close the three-second reconnect gate; see
-[the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-24-p0110-current-base-reconnect-blocked/README.md).
-As of the 2026-08-24 Nubia P0110/pacific latency preflight, the toolchain has
+[the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
+As of the 2026-08-28 Nubia P0110/pacific latency preflight, the toolchain has
 formal manifest/checker coverage for external-camera packages and
 synchronized-clock input packages,
 with profile-specific retained-artifact checks for USB, LAN, and physical-input
 claims. No raw camera package, annotated latency samples, or synchronized-clock
 proof from a real physical-input run is available in the repository. All three
 latency gates therefore remain open; see
-[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-24-nubia-p0110-latency-current-base-blocked/README.md).
+[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 
@@ -579,9 +592,9 @@ Host PID or Host telemetry JSONL was provided, no physical 8-9 inch tablet
 evidence exists, and no eight-hour soak gate artifact was produced. The current
 aggregate owner report consumes that blocked keyboard summary and blocked
 tablet preflight, and still reports `can_close_readme_phase2_gates=false`; see
-[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-nubia-p0110-phase2-soak-preflight-current-base/README.md)
+[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
-[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-28-phase2-tablet-current-base-owner/README.md).
+[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
@@ -926,7 +939,9 @@ increase it.
   readiness records cannot close those owner gates. The
   [current-base gate audit](docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md)
   records the open PR owner map and marks this gate as the current-base
-  aggregate owner path.
+  aggregate owner path. The latest current-base rerun remains blocked and is
+  archived at
+  [2026-08-29-current-base-harmony-blocked](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/README.md).
 - `make harmony-matepad-acceptance EVIDENCE_DIR=...` validates the final
   redacted MatePad Mini acceptance package after readiness, strict device-gate,
   and current-base owner manifests are present. Its `--write-blocked` dry run
@@ -1014,10 +1029,11 @@ increase it.
 - The iOS app-signing prerequisite now has its own dedicated fail-closed
   current-base owner, `ios-app-signing-readiness-gate`. The retained blocked
   owner record is
-  [2026-08-25-ios-signing-current-base-owner-blocked](docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md):
-  it requires Team ID, provisioning profile UUID, unique bundle ID, non-ad-hoc
-  codesign identity, physical-device UDID hashes, signed-app entitlements, signed
-  artifact SHA-256, and archive/profile/entitlements artifacts before the
+  [2026-08-29-ios-signing-current-base-blocked](docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/README.md):
+  it requires sanitized Team ID and provisioning profile UUID digests, a unique
+  bundle ID, sanitized non-ad-hoc codesign identity digest, physical-device UDID
+  hashes, signed-app entitlement relationship checks, signed artifact SHA-256,
+  and archive/profile/entitlements artifacts before the
   aggregate signing row can unblock. It still cannot close install, launch,
   VideoToolbox, input, reconnect, audio, HDR, or full iOS device acceptance.
 - The read-only `make phase5-multi-client-current-base-gate EVIDENCE_DIR=...`
@@ -1113,7 +1129,7 @@ returned `insufficient`. That record is retained under
 [2026-08-23-nubia-p0110-usb-current-base](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-23-nubia-p0110-usb-current-base/README.md).
 A 2026-08-24 follow-up on the same P0110 observed an already-running
 `/Applications/Vibe Screen.app` USB/loopback session at PR head `d2b9698f`: the
-Host listened only on `127.0.0.1:54321`, ADB reverse provided
+Host listened only on `<network-detail>:54321`, ADB reverse provided
 `UsbFfs tcp:54321 tcp:54321`, and the read-only USB smoke collector returned
 `pass` with current-process `stream_stats`, first output frame, and continuing
 decoder counters. That record is retained under

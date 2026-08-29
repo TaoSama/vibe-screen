@@ -42,9 +42,9 @@
     "can_close_native_pointer_hid_gate": false,
     "can_close_stylus_gate": false,
     "can_close_two_hour_soak_gate": false,
-    "device_is_fuxi": false,
     "live_usb_stream_observed": true,
-    "readme_gate_closure": false
+    "readme_gate_closure": false,
+    "device_is_alternate_named_device": false
   },
   "collected_at": "2026-08-24T11:17:52.143281Z",
   "configuration": {
@@ -74,14 +74,13 @@
       "sdk": 36
     },
     "label_guard": {
-      "device_is_fuxi": false,
       "device_is_nubia_p0110_pacific": true,
       "do_not_relabel_as": [
-        "Xiaomi 13",
-        "fuxi"
+        "another device"
       ],
       "evidence_scope": "nubia_p0110_pacific_general_android_substitute_only",
-      "recorded_as_fuxi": false
+      "device_is_alternate_named_device": false,
+      "recorded_as_alternate_named_device": false
     },
     "state": "device"
   },

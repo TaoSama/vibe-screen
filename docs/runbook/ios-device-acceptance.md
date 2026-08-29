@@ -48,7 +48,7 @@ fail-closed owner for the signing prerequisite only; it does not install the app
 or close any iOS device behavior gate:
 
 ```bash
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
@@ -72,15 +72,19 @@ make ios-current-base-gate \
 
 The current-base aggregate accepts this signing row only when the embedded gate
 declares `owner.role=ios_app_signing_readiness_current_base_owner`,
-`owner.head_ref=codex/phase5-ios-signing-readiness`, and
+`owner.head_ref=codex/ios-app-signing-readiness-current-base-20260829`, and
 `owner.repository=TaoSama/vibe-screen`. Its `signing_summary` is the source for
 the aggregate `signing` fields, including UDID-hash and entitlements coverage;
-hand-written manifest fields without that dedicated owner stay blocked.
+the same gate's `readiness_requirements` booleans must explicitly cover Team ID,
+provisioning profile, bundle ID, codesign identity, physical-device UDID hashes,
+and entitlements. Hand-written manifest fields without that dedicated owner and
+requirements block stay blocked.
 Embed the same passing `ios-app-signing-readiness-gate.json` as
 `signing_readiness_gate` in any later `acceptance.json`. The device acceptance
-gate binds the simplified signing row back to that owner output, so an ad-hoc
-signature, missing physical-device UDID hashes, missing entitlements, or a
-mismatched signed artifact digest cannot close the device gate.
+gate binds the simplified signing row and requirement booleans back to that
+owner output, so an ad-hoc signature, missing physical-device UDID hashes,
+missing entitlements, simulator or unsigned output, Android-derived evidence, or
+a mismatched signed artifact digest cannot close the device gate.
 
 ## Open gates
 
@@ -289,7 +293,7 @@ gate.
     "kind": "ios_app_signing_readiness_gate",
     "owner": {
       "role": "ios_app_signing_readiness_current_base_owner",
-      "head_ref": "codex/phase5-ios-signing-readiness",
+      "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
       "repository": "TaoSama/vibe-screen",
       "scope": "Phase 5 iOS app-signing readiness prerequisite only"
     },
@@ -299,7 +303,7 @@ gate.
     },
     "current_base": {
       "commit": null,
-      "branch": "codex/phase5-ios-signing-readiness",
+      "branch": "codex/ios-app-signing-readiness-current-base-20260829",
       "dirty": false
     },
     "verdict": "blocked",

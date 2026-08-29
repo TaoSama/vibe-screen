@@ -391,13 +391,16 @@ def build_manifest(
     owner_pr = _normalize_pr(aggregate_owner_pr)
     source_docs = _ensure_source_docs(repo, SOURCE_DOCS)
     environment = collect_environment(repo, host_preflight_report)
+    ignored_repository_paths: list[Path] = []
+    if host_preflight_report is not None:
+        ignored_repository_paths.append(host_preflight_report.parent)
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "run_id": str(uuid.uuid4()),
         "created_at": _utc_timestamp(),
         "command": list(command),
-        "repository": repository_state(repo),
+        "repository": repository_state(repo, ignore_paths=ignored_repository_paths),
         "source_root": REDACTED_SOURCE_ROOT,
         "owner": {
             "aggregate": AGGREGATE_OWNER,

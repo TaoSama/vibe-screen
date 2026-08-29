@@ -224,6 +224,9 @@ Simulator on iOS 26.2; `VibeScreenAppUITests` executed 2 tests with 0 failures
 and ended with `** TEST SUCCEEDED **`. The unsigned iPhoneOS Release archive
 ended with `** ARCHIVE SUCCEEDED **`, passed the script's app/binary/license
 checks, and was uploaded as `VibeScreen-unsigned-xcarchive`.
+The simulator build and unsigned archive are build/readiness artifacts only;
+they cannot satisfy `ios-app-signing-readiness-gate` or any Phase 5 iOS
+device-acceptance gate.
 
 The portable self-test and HarmonyOS core test now consume the same exact
 `contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
@@ -361,10 +364,12 @@ only. It does not close host-side multi-client/display, audio, HDR,
 clipboard/file, file-transfer, wake, managed-configuration, native-input,
 reconnect, trusted-LAN, or other device/product-flow gates.
 
+## iOS app-signing readiness gate
+
 The signing row is now backed by a dedicated app-signing readiness owner:
 
 ```bash
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
@@ -380,13 +385,19 @@ those fields returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived
 material returns `fail`. A pass only unblocks the app-signing prerequisite for
 `ios-current-base-gate` when the resulting
 `ios-app-signing-readiness-gate.json` is bound into the generated manifest. The
+`ios-app-signing-current-base-gate` Makefile target is the dedicated
+current-base entry point and reuses the retained readiness-gate output file name
+for compatibility with existing manifests. The
 aggregate checks both `dedicated_signing_readiness_gate` and
-`dedicated_signing_readiness_owner`, then derives the signing row from the gate
-sanitized `signing_summary`; hand-written manifest signing fields without that
-owner remain blocked. It still cannot close install, launch, VideoToolbox,
-input, reconnect, audio, or full iOS device acceptance.
+`dedicated_signing_readiness_owner`, validates the gate's explicit
+`readiness_requirements` booleans for Team ID, provisioning profile, bundle ID,
+codesign identity, physical-device UDID hashes, and entitlements, then derives
+the signing row from the gate sanitized `signing_summary`; hand-written manifest
+signing fields without that owner and requirements block remain blocked. It
+still cannot close install, launch, VideoToolbox, input, reconnect, audio, or
+full iOS device acceptance.
 The current retained blocked owner record is
-[`2026-08-25-ios-signing-current-base-owner-blocked`](evidence/2026-08-25-ios-signing-current-base-owner-blocked/README.md).
+[`2026-08-29-ios-signing-current-base-blocked`](evidence/2026-08-29-ios-signing-current-base-blocked/README.md).
 
 The native-input row is also backed by a dedicated owner summary.
 `ios-current-base-manifest` binds `ios-native-input-gate.json` when supplied via

@@ -66,7 +66,15 @@ SOURCE_DOCS = [
 ]
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
-SIGNING_READINESS_OWNER_BRANCH = "codex/phase5-ios-signing-readiness"
+SIGNING_READINESS_OWNER_BRANCH = "codex/ios-app-signing-readiness-current-base-20260829"
+SIGNING_REQUIREMENT_FIELDS = (
+    "team_id",
+    "provisioning_profile",
+    "bundle_id",
+    "codesign_identity",
+    "device_udids",
+    "entitlements",
+)
 NATIVE_INPUT_KIND = "ios_native_input_behavior"
 NATIVE_INPUT_PROFILE = "ios-native-input-behavior"
 NATIVE_INPUT_GATE_OWNER = "phase5-ios-native-input-behavior"
@@ -98,7 +106,7 @@ BROADER_GATES = {
 DEFAULT_LIMITATIONS = [
     "This manifest does not claim an iOS device acceptance pass.",
     "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
-    "The signing gate requires Team ID, provisioning profile, bundle ID, codesign identity, device UDID, and entitlements evidence before it can pass.",
+    "The signing gate requires sanitized Team ID, provisioning profile, codesign identity, physical-device UDID hashes, unique bundle ID, and entitlements evidence before it can pass.",
     "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
     "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, while signed app/device and real-network LAN evidence remain open.",
 ]
@@ -308,6 +316,38 @@ def _signing_probe() -> dict[str, Any]:
     return sanitized
 
 
+def _blocked_signing_requirements() -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "requirements": {field: False for field in SIGNING_REQUIREMENT_FIELDS},
+        "all_requirements_recorded": False,
+        "simulator_build_used": False,
+        "unsigned_build_used": False,
+        "android_evidence_used": False,
+    }
+
+
+def _normalize_signing_requirements(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or not isinstance(value.get("requirements"), dict):
+        return _blocked_signing_requirements()
+
+    raw_requirements = value["requirements"]
+    requirements = {
+        field: raw_requirements.get(field) is True
+        for field in SIGNING_REQUIREMENT_FIELDS
+    }
+    status = value.get("status") if isinstance(value.get("status"), str) else None
+    return {
+        "status": status if status in {"pass", "blocked", "fail"} else "blocked",
+        "requirements": requirements,
+        "all_requirements_recorded": value.get("all_requirements_recorded") is True
+        and all(requirements.values()),
+        "simulator_build_used": value.get("simulator_build_used") is True,
+        "unsigned_build_used": value.get("unsigned_build_used") is True,
+        "android_evidence_used": value.get("android_evidence_used") is True,
+    }
+
+
 def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return {
@@ -316,6 +356,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "owner": None,
             "current_base": None,
             "signing_summary": None,
+            "readiness_requirements": _blocked_signing_requirements(),
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
@@ -331,6 +372,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "owner": None,
             "current_base": None,
             "signing_summary": None,
+            "readiness_requirements": _blocked_signing_requirements(),
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
@@ -344,6 +386,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "owner": None,
             "current_base": None,
             "signing_summary": None,
+            "readiness_requirements": _blocked_signing_requirements(),
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
@@ -363,6 +406,20 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         document.get("signing_summary")
         if isinstance(document.get("signing_summary"), dict)
         else {}
+    )
+    readiness_requirements = _normalize_signing_requirements(
+        document.get("readiness_requirements")
+    )
+    requirements_complete = (
+        readiness_requirements.get("status") == "pass"
+        and readiness_requirements.get("all_requirements_recorded") is True
+        and readiness_requirements.get("simulator_build_used") is False
+        and readiness_requirements.get("unsigned_build_used") is False
+        and readiness_requirements.get("android_evidence_used") is False
+        and all(
+            readiness_requirements.get("requirements", {}).get(field) is True
+            for field in SIGNING_REQUIREMENT_FIELDS
+        )
     )
     summary_complete = (
         signing_summary.get("status") == "pass"
@@ -391,6 +448,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         and current_base_dirty is False
         and repository_dirty is False
         and summary_complete
+        and requirements_complete
     )
     missing = document.get("missing", []) if isinstance(document.get("missing"), list) else []
     failures = document.get("failures", []) if isinstance(document.get("failures"), list) else []
@@ -411,6 +469,8 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             missing = [*missing, "repository dirty state is not clean for iOS signing readiness"]
         if not summary_complete:
             missing = [*missing, "ios app-signing readiness gate signing_summary is incomplete"]
+        if not requirements_complete:
+            missing = [*missing, "ios app-signing readiness gate readiness_requirements are incomplete"]
 
     return {
         "provided": True,
@@ -422,6 +482,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         "signing_summary": document.get("signing_summary")
         if isinstance(document.get("signing_summary"), dict)
         else None,
+        "readiness_requirements": readiness_requirements,
         "kind": document.get("kind"),
         "verdict": "pass" if can_close else "blocked",
         "can_close_ios_app_signing_readiness": can_close,
