@@ -1,17 +1,13 @@
 {
   "artifact_paths": [
-    "android-ip-route.txt",
-    "android-wifi-status.txt",
-    "android-wlan0.txt",
-    "host-54321-listener.txt",
     "host-readiness.json",
     "trusted-lan-preflight.json"
   ],
   "attempts": [],
   "blocked_reasons": [
-    "Android Wi-Fi is enabled but not associated, wlan0 has no carrier or IPv4 route to the Mac LAN candidate",
-    "Host stable signing/TCC readiness did not pass for the current evidence-grade Host bundle",
-    "Only loopback TCP 54321 listener was observed; no Mac LAN listener or trusted-LAN session was started"
+    "Android Wi-Fi is not associated",
+    "wlan0 has no IPv4 route to the Mac LAN candidate",
+    "Host stable signing is blocked before trusted-LAN evidence can start"
   ],
   "can_close_requested_scope": false,
   "can_close_timing_gate": false,
@@ -31,12 +27,12 @@
   "host": {},
   "kind": "reconnect_timing_gate",
   "missing_required_disruptions": [],
-  "notes": "Blocked readiness record only; no real trusted-LAN Protocol v1 reconnect timing attempt was run.",
+  "notes": "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
-    "Android Wi-Fi is enabled but not associated, wlan0 has no carrier or IPv4 route to the Mac LAN candidate",
-    "Host stable signing/TCC readiness did not pass for the current evidence-grade Host bundle",
-    "Only loopback TCP 54321 listener was observed; no Mac LAN listener or trusted-LAN session was started"
+    "Android Wi-Fi is not associated",
+    "wlan0 has no IPv4 route to the Mac LAN candidate",
+    "Host stable signing is blocked before trusted-LAN evidence can start"
   ],
   "required_disruptions": [
     "client-kill",

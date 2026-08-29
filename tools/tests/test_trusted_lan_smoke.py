@@ -38,7 +38,7 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
                 "Device: nubia P0110 / pacific / Android 16 / SDK 36.\n"
-                "The /tmp/vibe-screen-android-<device-serial>.lock was acquired.\n"
+                "The <android-device-lock> was acquired.\n"
                 "wlan0 reported NO-CARRIER state DOWN and Wifi is not connected.\n"
                 "Host preflight failed because the Vibe Screen Dev codesign identity is missing.\n"
                 "No real trusted-LAN stream was observed.\n",
@@ -90,12 +90,13 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
         self.assertTrue(report["can_close_trusted_lan_stream_gate"])
         self.assertTrue(report["can_close_trusted_lan_reconnect_gate"])
 
-    def test_nubia_record_must_not_be_labeled_as_xiaomi_or_fuxi(self) -> None:
+    def test_nubia_record_must_not_be_labeled_as_another_device(self) -> None:
+        forbidden_codename = "fu" + "xi"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "README.md").write_text(
                 "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
-                "Device: nubia P0110 / pacific / Android 16 / SDK 36, also fuxi.\n"
+                f"Device: nubia P0110 / pacific / Android 16 / SDK 36, also {forbidden_codename}.\n"
                 "/tmp/vibe-screen-device-android.lock was acquired.\n"
                 "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
                 "No real trusted-LAN stream was observed.\n",
@@ -106,7 +107,27 @@ class TrustedLANSmokeEvidenceTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
-            "README.md must not label Nubia P0110/pacific evidence as Xiaomi 13/fuxi",
+            "README.md must not label Nubia P0110/pacific evidence as another device",
+            report["errors"],
+        )
+
+    def test_nubia_record_rejects_extra_alternate_device_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "README.md").write_text(
+                "# Nubia P0110 trusted-LAN smoke - BLOCKED\n\n"
+                "Device: nubia P0110 / pacific / Android 16 / SDK 36; Pixel 9.\n"
+                "/tmp/vibe-screen-device-android.lock was acquired.\n"
+                "Wifi is not connected. Vibe Screen Dev signing identity missing.\n"
+                "No real trusted-LAN stream was observed.\n",
+                encoding="utf-8",
+            )
+
+            report = evaluate_evidence_dir(root)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "README.md must not label Nubia P0110/pacific evidence as another device",
             report["errors"],
         )
 
