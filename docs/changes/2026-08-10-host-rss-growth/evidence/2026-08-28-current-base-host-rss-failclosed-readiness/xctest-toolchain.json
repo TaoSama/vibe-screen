@@ -1,0 +1,26 @@
+{
+  "blockers": [
+    "Full Xcode is required for SwiftPM XCTest; Command Line Tools are insufficient",
+    "xcodebuild -version failed: xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance",
+    "XCTest.framework was not found in the selected developer directory"
+  ],
+  "can_run_swiftpm_xctest": false,
+  "developer_dir": "/Library/Developer/CommandLineTools",
+  "developer_dir_kind": "command_line_tools",
+  "generated_at": "2026-08-28T12:15:43.957921+00:00",
+  "has_xctest": false,
+  "is_full_xcode": false,
+  "kind": "macos_xctest_preflight",
+  "safety": {
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.macos-xctest-preflight/v1",
+  "sdk_path": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+  "status": "blocked",
+  "xcode_build": null,
+  "xcode_version": null
+}

@@ -307,6 +307,7 @@ def _failure_report(pid: int, reason: str) -> dict[str, Any]:
         "sufficiency": _incomplete_sufficiency(),
         "metrics": {},
         "telemetry": {},
+        "gate": {"can_close_host_rss_no_growth_gate": False},
         "errors": [reason],
         "reasons": ["the short-run diagnostic could not be completed"],
         "interpretation": INTERPRETATION,
@@ -377,6 +378,7 @@ def _build_report(
         "watched_heap_class_substrings": list(watched_classes),
         "thresholds": thresholds(),
         **analysis,
+        "gate": {"can_close_host_rss_no_growth_gate": False},
         "interpretation": INTERPRETATION,
     }
     if interruption_signal is not None:
