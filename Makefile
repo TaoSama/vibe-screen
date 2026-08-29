@@ -207,6 +207,7 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
+	baseline-android-protocol-side-effect-owner \
 	baseline-android-transport-boundary \
 	baseline-android-check \
 	baseline-android-apk \
@@ -273,6 +274,8 @@ PHASE3_ADVANCED_DATACHANNEL_TREE_STATUS ?= $(shell if test -z "$$(git status --p
 	phase2-device-environment-summary \
 	phase2-device-environment-gate \
 	phase3-android-current-base-interop-gate \
+	phase3-internet-soak-manifest \
+	phase3-internet-soak-gate \
 	host-display-rotation-gate \
 	host-display-rotation-current-base-manifest \
 	host-display-rotation-current-base-gate \
@@ -981,7 +984,7 @@ clipboard-e2e-gate:
 		$(if $(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS)),--require-pass,); \
 	status=$$?; \
 	if [ $$status -ne 0 ]; then \
-		if [ -z "$(strip $(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		if [ -z "$(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
 

@@ -168,6 +168,57 @@ class IOSNativeInputEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(IOSNativeInputEvidenceError, "evidence bundle"):
             summarize(record)
 
+    def test_rejects_android_or_simulator_artifact_references(self) -> None:
+        for artifact in (
+            "logs/android-fuxi-adb.txt",
+            "logs/nubia-p0110-pacific.txt",
+            "logs/iphonesimulator-ui-smoke.log",
+            "logs/unsigned-archive.log",
+        ):
+            with self.subTest(artifact=artifact):
+                record = self.complete_record()
+                record["artifact_paths"] = [artifact]
+
+                summary = summarize(record)
+
+                self.assertEqual(summary["verdict"], "fail")
+                self.assertFalse(summary["can_close_ios_native_input_gate"])
+                self.assertIn(
+                    "public native-input evidence text must be sanitized and iOS-only",
+                    summary["disallowed_evidence"][0]["reason"],
+                )
+                self.assertEqual(summary["artifact_paths"], [])
+
+    def test_rejects_sensitive_run_id_notes_or_blocking_notes(self) -> None:
+        cases = (
+            ("run_id", "8a" + "023e3a"),
+            (
+                "notes",
+                "/Users/example/Library/"
+                + "Application Support/"
+                + "com.apple."
+                + "TCC/"
+                + "TCC"
+                + ".db",
+            ),
+            ("notes", "access" + "_token=redacted-value"),
+            ("blocking_notes", ["private" + "_key=redacted-value"]),
+        )
+        for field, value in cases:
+            with self.subTest(field=field):
+                record = self.complete_record()
+                record[field] = value
+
+                summary = summarize(record)
+
+                self.assertEqual(summary["verdict"], "fail")
+                self.assertFalse(summary["can_close_ios_native_input_gate"])
+                self.assertIn(field, {item["field"] for item in summary["disallowed_evidence"]})
+                if field == "notes":
+                    self.assertEqual(summary["notes"], "")
+                if field == "blocking_notes":
+                    self.assertEqual(summary["blocking_notes"], [])
+
     def test_rejects_empty_run_id(self) -> None:
         record = self.complete_record()
         record["run_id"] = ""
