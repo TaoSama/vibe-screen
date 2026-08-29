@@ -926,7 +926,9 @@ increase it.
   readiness records cannot close those owner gates. The
   [current-base gate audit](docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md)
   records the open PR owner map and marks this gate as the current-base
-  aggregate owner path.
+  aggregate owner path. The latest current-base rerun remains blocked and is
+  archived at
+  [2026-08-29-current-base-harmony-blocked](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/README.md).
 - `make harmony-matepad-acceptance EVIDENCE_DIR=...` validates the final
   redacted MatePad Mini acceptance package after readiness, strict device-gate,
   and current-base owner manifests are present. Its `--write-blocked` dry run
