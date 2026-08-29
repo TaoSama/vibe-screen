@@ -71,8 +71,8 @@ This record is Nubia P0110/pacific evidence and must not be relabeled as Xiaomi
   camera recording, no annotated samples, no formal manifest, and no formal USB
   active-stream artifact retained in a latency evidence package.
 - LAN glass-to-glass: no external camera or optical single-timebase, no raw
-  camera recording, no annotated samples, no formal manifest, and no LAN
-  network/active trusted-LAN stream artifact; the device Wi-Fi interface also
+  camera recording, no annotated samples, no formal manifest, and no
+  trusted-LAN stream artifact; the device Wi-Fi interface also
   had no carrier or route.
 - Input P95: no external-camera package and no synchronized-clock package with
   before/after skew checks, drift check, and total error budget below 5 ms; no

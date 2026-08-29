@@ -17,7 +17,7 @@ Camera:
     MacBook Pro相机:
 
       Model ID: MacBook Pro相机
-      Unique ID: 6C707041-05AC-0010-0008-000000000001
+      Unique ID: [redacted-camera-unique-id]
 ```
 
 The Phase 0 evidence tree scan found no retained `raw-camera.mov`,
