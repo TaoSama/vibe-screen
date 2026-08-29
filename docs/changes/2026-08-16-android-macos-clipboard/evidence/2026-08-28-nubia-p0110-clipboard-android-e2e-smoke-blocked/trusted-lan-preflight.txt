@@ -1,0 +1,1 @@
+$ python3 -m vibescreen_evidence.trusted_lan_preflight --serial REDACTED_P0110_USB_SERIAL --repo . --host-port 54321 --host-preflight-command python3 scripts/macos_dev_host.py preflight --output <WORKSPACE>/.build/private-clipboard-e2e-20260828/trusted-lan-preflight.json

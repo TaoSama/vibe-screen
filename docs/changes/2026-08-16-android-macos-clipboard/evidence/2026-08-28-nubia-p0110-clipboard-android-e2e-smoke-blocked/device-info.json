@@ -1,0 +1,11 @@
+{
+  "identity": {
+    "android_release": "16",
+    "codename": "pacific",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "serial_label": "REDACTED_P0110_USB_SERIAL"
+}

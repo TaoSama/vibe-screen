@@ -1,0 +1,299 @@
+{
+  "android_device": {
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "[redacted]",
+      "android_release": "16",
+      "build_fingerprint": "[redacted]",
+      "device": "pacific",
+      "device_serial": "[redacted]",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "product": "pacific",
+      "sdk": 36
+    },
+    "network": {
+      "has_route": false,
+      "route_to_mac": {
+        "<redacted-cgnat-ipv4>": {
+          "command": [
+            "adb",
+            "-s",
+            "REDACTED_P0110_USB_SERIAL",
+            "shell",
+            "ip",
+            "route",
+            "get",
+            "<redacted-cgnat-ipv4>"
+          ],
+          "returncode": 2,
+          "stderr": "RTNETLINK answers: Network is unreachable",
+          "stdout": "",
+          "timed_out": false
+        }
+      },
+      "routes": {
+        "command": [
+          "adb",
+          "-s",
+          "REDACTED_P0110_USB_SERIAL",
+          "shell",
+          "ip",
+          "route"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false
+      },
+      "wifi_associated": false,
+      "wifi_status": {
+        "command": [
+          "adb",
+          "-s",
+          "REDACTED_P0110_USB_SERIAL",
+          "shell",
+          "cmd",
+          "wifi",
+          "status"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "Wifi is enabled\nWifi scanning is always available\n==== ClientModeManager instance: ConcreteClientModeManager{id=623838927 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====\nWifi is not connected",
+        "timed_out": false
+      },
+      "wlan0": {
+        "command": [
+          "adb",
+          "-s",
+          "REDACTED_P0110_USB_SERIAL",
+          "shell",
+          "ip",
+          "addr",
+          "show",
+          "wlan0"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000\n    link/ether <redacted> brd ff:ff:ff:ff:ff:ff",
+        "timed_out": false
+      },
+      "wlan0_ipv4": [],
+      "wlan0_up": false
+    }
+  },
+  "blockers": [
+    "android_wifi_association: Wi-Fi is not associated",
+    "android_wlan_ipv4: wlan0 is down, has no carrier, or has no IPv4 address",
+    "route_to_mac_lan: Android has no wlan0 route to any Mac LAN IPv4 candidate",
+    "host_stable_signing: Host stable signing is blocked before trusted-LAN evidence can start"
+  ],
+  "claims": {
+    "can_start_trusted_lan_smoke": false,
+    "latency": false,
+    "legacy_plaintext": false,
+    "real_lan_stream": false,
+    "reconnect": false,
+    "stability": false,
+    "trusted_lan_encrypted": false
+  },
+  "collected_at": "2026-08-27T16:38:21.772953+00:00",
+  "host": {
+    "host_preflight_command": [
+      "python3",
+      "scripts/macos_dev_host.py",
+      "preflight"
+    ],
+    "network": {
+      "default_interface": "en0",
+      "default_route": {
+        "command": [
+          "route",
+          "-n",
+          "get",
+          "default"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "<omitted; parsed into default_interface>",
+        "timed_out": false
+      },
+      "has_lan_listener": false,
+      "has_loopback_listener": false,
+      "host_port": 54321,
+      "ifconfig": {
+        "command": [
+          "ifconfig"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "<omitted; parsed into mac_ipv4_candidates>",
+        "timed_out": false
+      },
+      "listener": {
+        "command": [
+          "lsof",
+          "-nP",
+          "-iTCP:54321",
+          "-sTCP:LISTEN"
+        ],
+        "returncode": 1,
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false
+      },
+      "mac_ipv4_candidates": [
+        "<redacted-cgnat-ipv4>"
+      ],
+      "machine": "arm64",
+      "platform": "macOS-26.4.1-arm64-arm-64bit"
+    },
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/macos_dev_host.py",
+        "preflight"
+      ],
+      "returncode": 2,
+      "stderr": "Host signing prerequisite\n-------------------------\nConfigured identity: Vibe Screen Dev\nInstall path: /Applications/Vibe Screen.app\n\nResult\n------\nStatus: FAIL\nBlocking issues:\n- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.\n\nNext action\n-----------\nCreate or import the stable local codesigning identity, or set\n$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild\nand reinstall the Host before rerunning touch evidence. Do not use ad-hoc\nsigning for fixed-binary device reruns because it changes the code-signing hash\nand invalidates macOS Screen Recording/Accessibility grants.\n\nSafety\n------\nThis blocked operation did not start the Host, run Android instrumentation,\nmodify Keychain, edit privacy databases, clear Android app data, or change ADB state. This\nis a Host signing prerequisite, not an Android device identity or Xiaomi/fuxi\nresult.\nSystem permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility",
+      "stdout": "",
+      "timed_out": false
+    },
+    "require_host_listener": false
+  },
+  "kind": "trusted_lan_preflight",
+  "profile": "trusted-lan-current-worktree-preflight",
+  "repository": {
+    "dirty": true,
+    "revision": "27d2b0e493e807ae439fbd43b06b4c2f0ce9c503",
+    "status_porcelain": [
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-device.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-device.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-devices.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-devices.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-get-state.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-get-state.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-install-app.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-install-app.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-install-test.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-install-test.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-manufacturer.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-manufacturer.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-model.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-model.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-release.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-release.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-reverse-list.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-reverse-list.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-reverse.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-reverse.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-sdk.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/adb-sdk.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-clipboard-instrumentation.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/android-clipboard-instrumentation.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/device-info.json",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/device-lock-acquired.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/host-readiness.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/host-readiness.json",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/host-signing-and-permissions.txt",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/usb-smoke-preflight.exit",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/usb-smoke-preflight.json",
+      "?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/usb-smoke-preflight.txt"
+    ]
+  },
+  "result": "blocked",
+  "safety": {
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "modifies_wifi_credentials": false,
+    "read_only": true,
+    "runs_instrumentation": false,
+    "starts_host": false,
+    "writes_pairing_token": false,
+    "writes_qr_payload": false
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "stages": [
+    {
+      "details": {
+        "expected_serial": "REDACTED_P0110_USB_SERIAL"
+      },
+      "name": "device_identity",
+      "status": "pass",
+      "summary": "Nubia P0110/pacific/Android 16 identity confirmed"
+    },
+    {
+      "name": "android_wifi_association",
+      "status": "blocked",
+      "summary": "Wi-Fi is not associated"
+    },
+    {
+      "name": "android_wlan_ipv4",
+      "status": "blocked",
+      "summary": "wlan0 is down, has no carrier, or has no IPv4 address"
+    },
+    {
+      "name": "mac_lan_ipv4_candidate",
+      "status": "pass",
+      "summary": "Mac LAN IPv4 candidate(s): <redacted-cgnat-ipv4>"
+    },
+    {
+      "name": "route_to_mac_lan",
+      "status": "blocked",
+      "summary": "Android has no wlan0 route to any Mac LAN IPv4 candidate"
+    },
+    {
+      "details": {
+        "host_preflight_returncode": 2
+      },
+      "name": "host_stable_signing",
+      "status": "blocked",
+      "summary": "Host stable signing is blocked before trusted-LAN evidence can start"
+    },
+    {
+      "name": "screen_recording_tcc",
+      "status": "not_run",
+      "summary": "TCC authorization was not evaluated because stable signing failed"
+    },
+    {
+      "name": "accessibility_tcc",
+      "status": "not_run",
+      "summary": "TCC authorization was not evaluated because stable signing failed"
+    },
+    {
+      "name": "host_listener",
+      "status": "not_run",
+      "summary": "TCP 54321 LAN listener was not required for this pre-launch preflight"
+    },
+    {
+      "name": "qr_token_admission",
+      "status": "not_run",
+      "summary": "Preflight stopped before QR/token admission"
+    },
+    {
+      "name": "secure_record_negotiation",
+      "status": "not_run",
+      "summary": "Preflight stopped before secure-record negotiation"
+    },
+    {
+      "name": "protocol_v1_lan",
+      "status": "not_run",
+      "summary": "Preflight stopped before Protocol v1 LAN upgrade"
+    },
+    {
+      "name": "first_decoder_output",
+      "status": "not_run",
+      "summary": "Preflight stopped before stream decode"
+    },
+    {
+      "name": "reconnect_preserved_host_pid",
+      "status": "not_run",
+      "summary": "Preflight stopped before reconnect exercise"
+    },
+    {
+      "name": "latency_external_camera",
+      "status": "not_run",
+      "summary": "External-camera LAN latency is a separate gate"
+    }
+  ]
+}
