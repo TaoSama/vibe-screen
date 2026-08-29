@@ -1,0 +1,24 @@
+$ /usr/bin/plutil -p /Applications/Vibe Screen.app/Contents/Info.plist
+exit=0
+--- stdout ---
+{
+  "CFBundleDisplayName" => "Vibe Screen"
+  "CFBundleExecutable" => "Vibe Screen"
+  "CFBundleGetInfoString" => "Vibe Screen — a fork of SideScreen"
+  "CFBundleIconFile" => "AppIcon"
+  "CFBundleIdentifier" => "dev.telemachus.display"
+  "CFBundleName" => "Vibe Screen"
+  "CFBundlePackageType" => "APPL"
+  "CFBundleShortVersionString" => "0.12.0"
+  "CFBundleVersion" => "0.12.0"
+  "LSMinimumSystemVersion" => "13.0"
+  "NSHighResolutionCapable" => true
+  "NSHumanReadableCopyright" => "Vibe Screen contributors, 2026. Forked from SideScreen by Tran Vuong Quoc Dat and contributors."
+  "NSLocalNetworkUsageDescription" => "Vibe Screen uses the local network when Wireless mode is selected."
+  "NSMicrophoneUsageDescription" => "Vibe Screen needs microphone access when Mac audio capture is enabled for a connected client."
+  "NSScreenCaptureUsageDescription" => "Vibe Screen needs screen recording access to stream a Mac display to your Android tablet."
+  "VibeScreenSourceCommit" => "567dae75da22b2faa49ab59e5d95b4a642be1d97"
+  "VibeScreenSourceDirty" => true
+  "VibeScreenSourceTree" => "5cddaca756816defc053d4630d5b0bad9d5ea582"
+}
+--- stderr ---
