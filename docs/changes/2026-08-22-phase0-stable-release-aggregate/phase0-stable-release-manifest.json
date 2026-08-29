@@ -3,9 +3,9 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "f4d578bd1c5591d0e841efbb7e68f5e064fbbf14",
+    "base_commit": "49fc0ff9ca86caf81602743048471745f04e0cd5",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-29",
+    "audit_date": "2026-08-30",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
