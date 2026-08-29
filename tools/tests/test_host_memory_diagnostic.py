@@ -1259,6 +1259,9 @@ raise SystemExit(1)
                 self.assertEqual(report["interruption_signal"], "SIGINT")
                 self.assertEqual(report["window"]["sample_count"], len(sample_lines))
                 self.assertFalse(report["sufficiency"]["collection_complete"])
+                self.assertFalse(
+                    report["gate"]["can_close_host_rss_no_growth_gate"]
+                )
 
     def test_sample_commit_rolls_disk_back_when_interrupted(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -1460,6 +1463,7 @@ raise SystemExit(1)
         self.assertTrue(
             all(value is False for value in report["sufficiency"].values())
         )
+        self.assertFalse(report["gate"]["can_close_host_rss_no_growth_gate"])
 
     def test_cli_catches_unexpected_exception_and_writes_failure_report(self):
         import contextlib
@@ -1492,6 +1496,7 @@ raise SystemExit(1)
         self.assertEqual(report["derivation_status"], "failed")
         self.assertEqual(report["verdict"], "insufficient")
         self.assertEqual(report["attribution"], "inconclusive")
+        self.assertFalse(report["gate"]["can_close_host_rss_no_growth_gate"])
 
     def test_cli_uses_distinct_exit_code_for_attributed_growth(self):
         import contextlib
@@ -1532,6 +1537,7 @@ raise SystemExit(1)
                 "verdict": "pass",
                 "sufficiency": {"complete": True},
                 "telemetry": {"anomalies": []},
+                "gate": {"can_close_host_rss_no_growth_gate": False},
             }
             with patch(
                 "vibescreen_evidence.host_memory_diagnostic.collect",
@@ -1548,6 +1554,43 @@ raise SystemExit(1)
                 )
 
         self.assertEqual(exit_code, 0)
+
+    def test_collect_report_cannot_close_formal_host_rss_gate(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            telemetry_path = root / "telemetry.jsonl"
+            samples_path = root / "samples.jsonl"
+            output_path = root / "diagnostic.json"
+            telemetry_path.write_text(
+                "\n".join(json.dumps(record) for record in telemetry()) + "\n",
+                encoding="utf-8",
+            )
+            clock = iter([0.0, 600.0, 600.0])
+            with patch.object(
+                host_memory_diagnostic, "_run_command", return_value="123\n"
+            ), patch.object(
+                host_memory_diagnostic,
+                "_capture_sample",
+                side_effect=memory_records("flat"),
+            ), patch.object(
+                host_memory_diagnostic,
+                "_utc_now",
+                side_effect=[timestamp(STARTED), timestamp(FINISHED)],
+            ):
+                report = collect(
+                    pid=123,
+                    duration_seconds=600,
+                    interval_seconds=30,
+                    telemetry_path=telemetry_path,
+                    samples_path=samples_path,
+                    output_path=output_path,
+                    watched_classes=DEFAULT_WATCHED_CLASSES,
+                    monotonic=lambda: next(clock, 600.0),
+                    sleep=lambda _seconds: None,
+                )
+
+        self.assertEqual(report["derivation_status"], "complete")
+        self.assertFalse(report["gate"]["can_close_host_rss_no_growth_gate"])
 
 
 if __name__ == "__main__":
