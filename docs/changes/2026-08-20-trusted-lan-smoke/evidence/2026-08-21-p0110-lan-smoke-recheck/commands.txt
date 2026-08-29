@@ -1,33 +1,34 @@
 # Commands
 
-Working directory: <codex-worktrees>/39c2/vibe-screen
+Working directory: <worktree>
 Date UTC: 2026-08-20T19:32:05Z
 Branch: codex/lan-trusted-p0110-smoke
 HEAD: cc26a84c829016fa61c721f73a128284fdf64f92
 
-All ADB commands used explicit -s <redacted-adb-serial>.
+All ADB commands used explicit -s <device-serial>.
+DEVICE_SERIAL='<device-serial>'
 
 git fetch origin
 git switch -c codex/lan-trusted-p0110-smoke origin/main
 test ! -e /tmp/vibe-screen-device-soak.lock && test ! -e /tmp/vibe-screen-device-android.lock
 adb devices -l
-adb -s <redacted-adb-serial> shell getprop ro.serialno
-adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
-adb -s <redacted-adb-serial> shell getprop ro.product.model
-adb -s <redacted-adb-serial> shell getprop ro.product.device
-adb -s <redacted-adb-serial> shell getprop ro.build.version.release
-adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
-adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
-adb -s <redacted-adb-serial> shell wm size
-adb -s <redacted-adb-serial> shell wm density
-adb -s <redacted-adb-serial> shell dumpsys battery
-adb -s <redacted-adb-serial> shell getprop sys.boot_completed
-adb -s <redacted-adb-serial> shell ip addr show wlan0
-adb -s <redacted-adb-serial> shell cmd wifi status
-adb -s <redacted-adb-serial> shell ip route
+adb -s "$DEVICE_SERIAL" shell getprop ro.serialno
+adb -s "$DEVICE_SERIAL" shell getprop ro.product.manufacturer
+adb -s "$DEVICE_SERIAL" shell getprop ro.product.model
+adb -s "$DEVICE_SERIAL" shell getprop ro.product.device
+adb -s "$DEVICE_SERIAL" shell getprop ro.build.version.release
+adb -s "$DEVICE_SERIAL" shell getprop ro.build.version.sdk
+adb -s "$DEVICE_SERIAL" shell getprop ro.build.fingerprint
+adb -s "$DEVICE_SERIAL" shell wm size
+adb -s "$DEVICE_SERIAL" shell wm density
+adb -s "$DEVICE_SERIAL" shell dumpsys battery
+adb -s "$DEVICE_SERIAL" shell getprop sys.boot_completed
+adb -s "$DEVICE_SERIAL" shell ip addr show wlan0
+adb -s "$DEVICE_SERIAL" shell cmd wifi status
+adb -s "$DEVICE_SERIAL" shell ip route
 lsof -nP -iTCP:54321 -sTCP:LISTEN
 python3 scripts/macos_dev_host.py preflight
 cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest
 make protocol
 python3 contracts/fixtures/messages/v1/generate.py --check
-shasum -a 256 -c docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/SHA256SUMS
+(cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck && shasum -a 256 -c SHA256SUMS)

@@ -2,11 +2,11 @@
   "android_device": {
     "identity": {
       "abi": "arm64-v8a",
-      "adb_serial": "<redacted-adb-serial>",
+      "adb_serial": "<device-serial>",
       "android_release": "16",
       "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
       "device": "pacific",
-      "device_serial": "<redacted-adb-serial>",
+      "device_serial": "<device-serial>",
       "manufacturer": "nubia",
       "model": "P0110",
       "product": "pacific",
@@ -19,7 +19,7 @@
           "command": [
             "adb",
             "-s",
-            "<redacted-adb-serial>",
+            "<device-serial>",
             "shell",
             "ip",
             "route",
@@ -36,7 +36,7 @@
         "command": [
           "adb",
           "-s",
-          "<redacted-adb-serial>",
+          "<device-serial>",
           "shell",
           "ip",
           "route"
@@ -51,7 +51,7 @@
         "command": [
           "adb",
           "-s",
-          "<redacted-adb-serial>",
+          "<device-serial>",
           "shell",
           "cmd",
           "wifi",
@@ -66,7 +66,7 @@
         "command": [
           "adb",
           "-s",
-          "<redacted-adb-serial>",
+          "<device-serial>",
           "shell",
           "ip",
           "addr",
@@ -183,7 +183,7 @@
   "stages": [
     {
       "details": {
-        "expected_serial": "<redacted-adb-serial>"
+        "expected_serial": "<device-serial>"
       },
       "name": "device_identity",
       "status": "pass",

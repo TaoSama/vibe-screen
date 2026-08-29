@@ -4,7 +4,7 @@ Date: 2026-08-22
 Initial target baseline: `a8346626f07de98a54508c2d05ba138d0c969ef0`; the
 retained JSON records the exact repository revision and dirty state at the
 latest sanitized capture.
-Target device serial: `<redacted-adb-serial>`
+Target device serial: `<device-serial>`
 Repository status: the captured JSON reports a dirty worktree because this
 branch adds the trusted-LAN preflight tool and this evidence package.
 
@@ -43,7 +43,7 @@ observed. This package cannot close the trusted-LAN stream or reconnect gate.
 - `trusted-lan-preflight.json`: machine-readable fail-closed preflight result.
 - `device-lock.txt`: local Android device lock acquisition record.
 - `commands.txt`: command summary. Every ADB command used `-s
-  <redacted-adb-serial>`.
+  <device-serial>`.
 - `SHA256SUMS`: hashes for retained artifacts.
 
 No pairing token, QR payload, Wi-Fi credential, SSID, public address, or private

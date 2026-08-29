@@ -1,3 +1,3 @@
-Acquired /tmp/vibe-screen-device-android.lock for <redacted-adb-serial> at 2026-08-20T11:20:47Z.
+Acquired /tmp/vibe-screen-device-android.lock for <device-serial> at 2026-08-20T11:20:47Z.
 Released /tmp/vibe-screen-device-android.lock after LAN preflight blocker capture at 2026-08-20T11:32:00Z.
-No ADB command was run without -s <redacted-adb-serial> while the lock was held.
+No ADB command was run without -s <device-serial> while the lock was held.

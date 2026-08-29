@@ -21,6 +21,7 @@ from vibescreen_evidence.trusted_lan_preflight import (
     _route_result_reaches_wifi,
     _validated_mac_candidates,
     build_document,
+    redact_local_runtime_paths,
     redact_network_endpoints,
     redact_lsof_user_columns,
     main,
@@ -32,8 +33,8 @@ MODULE = "vibescreen_evidence.trusted_lan_preflight"
 
 
 DEVICE_IDENTITY = {
-    "adb_serial": "<redacted-adb-serial>",
-    "device_serial": "<redacted-adb-serial>",
+    "adb_serial": "P0110_SERIAL_PLACEHOLDER",
+    "device_serial": "P0110_SERIAL_PLACEHOLDER",
     "manufacturer": "nubia",
     "model": "P0110",
     "device": "pacific",
@@ -61,7 +62,12 @@ class FakeDeviceLock:
         self.serial = serial
 
     def __enter__(self) -> DeviceLockSnapshot:
-        return DeviceLockSnapshot(f"/tmp/vibe-screen-android-<device-serial>.lock", True, "acquired")
+        return DeviceLockSnapshot(
+            "/tmp/vibe-screen-<runtime>/trusted-lan-locks/"
+            "vibe-screen-android-<serial-hash>.lock",
+            True,
+            "acquired",
+        )
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         return None
@@ -79,13 +85,20 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertIn("BSSID: <redacted>", text)
         self.assertNotIn("Office-WiFi", text)
 
-    def test_redacts_cgnat_lan_endpoints_from_public_output(self) -> None:
+    def test_redacts_ipv4_endpoints_from_public_output(self) -> None:
         private_endpoint = "100." + "72.239.103"
-        redacted = redact_network_endpoints(f"route to {private_endpoint}:54321 via 10.0.0.1")
+        other_endpoint = "10." + "0.0.1"
+        redacted = redact_network_endpoints(f"route to {private_endpoint}:54321 via {other_endpoint}")
 
-        self.assertIn("<redacted-cgnat-ipv4>", redacted)
-        self.assertIn("10.0.0.1", redacted)
+        self.assertEqual(redacted.count("<redacted-ipv4>"), 2)
+        self.assertIn("<redacted-ipv4>:54321", redacted)
         self.assertNotIn(private_endpoint, redacted)
+        self.assertNotIn(other_endpoint, redacted)
+
+    def test_redacts_serial_specific_runtime_lock_path(self) -> None:
+        path = "/tmp/vibe-screen-<runtime>/trusted-lan-locks/vibe-screen-android-<serial-hash>.lock"
+
+        self.assertEqual(redact_local_runtime_paths(path), "<android-device-lock>")
 
     def test_redacts_lsof_user_column_from_listener_output(self) -> None:
         redacted = redact_lsof_user_columns(
@@ -149,7 +162,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
             _validated_mac_candidates(["8.8.8.8"], ["10.0.0.5"])
 
     def test_identity_stage_requires_exact_p0110_identity(self) -> None:
-        stage = _identity_stage(dict(DEVICE_IDENTITY, model="2211133C", device="fuxi"), "<redacted-adb-serial>")
+        stage = _identity_stage(dict(DEVICE_IDENTITY, model="OTHER_MODEL", device="other_device"), "P0110_SERIAL_PLACEHOLDER")
 
         self.assertEqual(stage["status"], "blocked")
         self.assertIn("device model is not P0110", stage["summary"])
@@ -183,7 +196,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
                     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def test_device_lock_rejects_preexisting_symlink_without_following(self) -> None:
-        serial = "<redacted-adb-serial>"
+        serial = "P0110_SERIAL_PLACEHOLDER"
         with tempfile.TemporaryDirectory() as directory:
             with patch("vibescreen_evidence.trusted_lan_preflight.DEVICE_LOCK_DIR", Path(directory)):
                 path = device_lock_path(serial)
@@ -236,7 +249,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         }
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -251,7 +264,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         self.assertFalse(document["claims"]["real_lan_stream"])
         self.assertFalse(document["claims"]["trusted_lan_encrypted"])
         self.assertIn("android_wifi_association: Wi-Fi is not associated", document["blockers"])
-        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertEqual(document["device_lock"]["path"], "<android-device-lock>")
         self.assertEqual(document["android_device"]["identity"]["adb_serial"], "<device-serial>")
         self.assertEqual(document["safety"]["starts_host"], False)
         self.assertEqual(document["safety"]["writes_pairing_token"], False)
@@ -294,7 +307,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         }
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -341,7 +354,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
             "has_route": False,
             "route_to_mac": {
                 private_endpoint: {
-                    "command": ["adb", "-s", "<redacted-adb-serial>", "shell", "ip", "route", "get", private_endpoint],
+                    "command": ["adb", "-s", "P0110_SERIAL_PLACEHOLDER", "shell", "ip", "route", "get", private_endpoint],
                     "returncode": 2,
                     "stdout": "",
                     "stderr": "RTNETLINK answers: Network is unreachable",
@@ -358,7 +371,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         }
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -370,8 +383,8 @@ class TrustedLANPreflightTests(unittest.TestCase):
         encoded = json.dumps(document)
 
         self.assertNotIn(private_endpoint, encoded)
-        self.assertNotIn("<redacted-adb-serial>", encoded)
-        self.assertIn("<redacted-cgnat-ipv4>", encoded)
+        self.assertNotIn("P0110_SERIAL_PLACEHOLDER", encoded)
+        self.assertIn("<redacted-ipv4>", encoded)
 
     @patch("vibescreen_evidence.trusted_lan_preflight.repository_state")
     @patch("vibescreen_evidence.trusted_lan_preflight.ADBClient")
@@ -381,7 +394,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         sfltool_processes.return_value = CommandCapture(["pgrep", "-x", "sfltool"], 0, "123\n", "").as_json()
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -403,7 +416,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
         sfltool_processes.return_value = CommandCapture(["pgrep", "-x", "sfltool"], 2, "", "pgrep failed").as_json()
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -425,12 +438,12 @@ class TrustedLANPreflightTests(unittest.TestCase):
         repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
         sfltool_processes.return_value = clean_sfltool_processes()
         device_lock.return_value.__enter__.side_effect = DeviceLockError(
-            path=Path("/tmp/vibe-screen-android-<redacted-adb-serial>.lock"),
-            detail="owner=other pid=1 serial=<redacted-adb-serial>",
+            path=Path("/tmp/vibe-screen-android-P0110_SERIAL_PLACEHOLDER.lock"),
+            detail="owner=other pid=1 serial=P0110_SERIAL_PLACEHOLDER",
         )
 
         document = build_document(
-            serial="<redacted-adb-serial>",
+            serial="P0110_SERIAL_PLACEHOLDER",
             adb_path="adb",
             adb_timeout=1,
             repo=Path("."),
@@ -442,7 +455,7 @@ class TrustedLANPreflightTests(unittest.TestCase):
 
         self.assertEqual(document["result"], "blocked")
         self.assertIn("device_lock", document["blockers"][0])
-        self.assertEqual(document["device_lock"]["path"], "/tmp/vibe-screen-android-<device-serial>.lock")
+        self.assertEqual(document["device_lock"]["path"], "<android-device-lock>")
         self.assertIn("serial=<device-serial>", document["device_lock"]["detail"])
         adb_client.assert_not_called()
 
@@ -456,7 +469,7 @@ class TrustedLANPreflightCliTests(unittest.TestCase):
                 exit_code = main(
                     [
                         "--serial",
-                        "<redacted-adb-serial>",
+                        "P0110_SERIAL_PLACEHOLDER",
                         "--output",
                         str(output),
                     ]

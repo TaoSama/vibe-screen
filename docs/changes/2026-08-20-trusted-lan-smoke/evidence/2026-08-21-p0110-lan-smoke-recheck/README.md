@@ -3,7 +3,7 @@
 Date: 2026-08-21
 Source commit at preflight: `cc26a84c829016fa61c721f73a128284fdf64f92`
 Branch: `codex/lan-trusted-p0110-smoke`
-Target device serial: `<redacted-adb-serial>`
+Target device serial: `<device-serial>`
 
 ## Intended gate
 
@@ -37,7 +37,7 @@ latency or stability evidence. It does not close any README trusted-LAN gate.
 ## Captured artifacts
 
 - `commands.txt`: commands used for this recheck. Every ADB command targets
-  `<redacted-adb-serial>` explicitly with `-s`.
+  `<device-serial>` explicitly with `-s`.
 - `device-info.txt`: device identity, Android version, display, battery, and boot
   state.
 - `android-network-blocker-sanitized.txt`: Wi-Fi and route preflight showing no
