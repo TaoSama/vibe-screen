@@ -2,25 +2,28 @@ import XCTest
 @testable import Telemachus
 
 final class ADBDeviceSelectionPolicyTests: XCTestCase {
+    private let configuredDevice = "fixture-configured-adb-device"
+    private let otherDevice = "fixture-other-adb-device"
+
     func testConfiguredOnlineDeviceWinsRegardlessOfEnumerationOrder() {
         for connectedSerials in [
-            ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"],
-            ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"]
+            [otherDevice, configuredDevice],
+            [configuredDevice, otherDevice]
         ] {
             XCTAssertEqual(
                 ADBDeviceSelectionPolicy.resolveTargetSerial(
-                    configuredSerial: "<redacted-xiaomi-adb-serial>",
+                    configuredSerial: configuredDevice,
                     connectedSerials: connectedSerials
                 ),
-                "<redacted-xiaomi-adb-serial>"
+                configuredDevice
             )
         }
     }
 
     func testConfiguredOfflineDeviceDoesNotFallBackToAnotherDevice() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
-            configuredSerial: "<redacted-xiaomi-adb-serial>",
-            connectedSerials: ["<redacted-xiaomi-adb-serial>"]
+            configuredSerial: configuredDevice,
+            connectedSerials: [otherDevice]
         ))
     }
 
@@ -28,16 +31,16 @@ final class ADBDeviceSelectionPolicyTests: XCTestCase {
         XCTAssertEqual(
             ADBDeviceSelectionPolicy.resolveTargetSerial(
                 configuredSerial: "",
-                connectedSerials: ["<redacted-xiaomi-adb-serial>"]
+                connectedSerials: [configuredDevice]
             ),
-            "<redacted-xiaomi-adb-serial>"
+            configuredDevice
         )
     }
 
     func testUnconfiguredHostRequiresSelectionWhenSeveralDevicesAreOnline() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
             configuredSerial: "",
-            connectedSerials: ["<redacted-xiaomi-adb-serial>", "<redacted-xiaomi-adb-serial>"]
+            connectedSerials: [configuredDevice, otherDevice]
         ))
     }
 
