@@ -205,6 +205,15 @@ def sanitized_public_copy(value: Any, *serials: str) -> Any:
     return value
 
 
+def device_info_serial_values(device_info: dict[str, Any] | None, *extra_serials: object) -> tuple[str, ...]:
+    serials: list[object] = list(extra_serials)
+    if isinstance(device_info, dict):
+        device = device_info.get("device")
+        if isinstance(device, dict):
+            serials.extend([device.get("adb_serial"), device.get("device_serial")])
+    return redaction_values(*serials)
+
+
 def sanitize_evidence_file(path: Path, *serials: str) -> None:
     try:
         original = path.read_text(encoding="utf-8", errors="replace")
@@ -384,9 +393,11 @@ def collect_static_artifacts(
         from .device_info import collect_device_info
 
         device_info = collect_device_info(client, packages=[package_name])
-        write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, serial))
+        public_serials = device_info_serial_values(device_info, serial)
+        write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, *public_serials))
         artifacts.append({"path": "device-info.json", "kind": "device_info"})
     except (ADBError, OSError, ValueError) as error:
+        public_serials = device_info_serial_values(device_info, serial)
         errors.append("device-info: " + str(error))
 
     adb_commands = [
@@ -410,6 +421,8 @@ def collect_static_artifacts(
         artifacts.append({"path": stdout_name, "kind": "raw_adb", "returncode": record["returncode"]})
         if stderr_name:
             artifacts.append({"path": stderr_name, "kind": "raw_adb_stderr"})
+            sanitize_evidence_file(output_dir / stderr_name, *public_serials)
+        sanitize_evidence_file(output_dir / stdout_name, *public_serials)
         if record["returncode"] != 0 and stdout_name != "android-pid.txt":
             errors.append(stdout_name + ": " + shlex.join(command) + " exited " + str(record["returncode"]))
 
@@ -467,6 +480,7 @@ def collect_after_artifacts(
     adb_timeout: float,
     package_name: str,
     artifacts: list[dict[str, Any]],
+    redaction_serials: Sequence[str] = (),
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> list[str]:
     errors: list[str] = []
@@ -488,6 +502,8 @@ def collect_after_artifacts(
         artifacts.append({"path": stdout_name, "kind": "raw_adb", "returncode": record["returncode"]})
         if stderr_name:
             artifacts.append({"path": stderr_name, "kind": "raw_adb_stderr"})
+            sanitize_evidence_file(output_dir / stderr_name, serial, *redaction_serials)
+        sanitize_evidence_file(output_dir / stdout_name, serial, *redaction_serials)
         if record["returncode"] != 0 and stdout_name != "android-pid-after.txt":
             errors.append(stdout_name + ": " + shlex.join(command) + " exited " + str(record["returncode"]))
     return errors
@@ -776,7 +792,10 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
             apk_sha256=apk_sha256_argument if has_valid_apk_sha256_argument else None,
         )
         if device_info is not None:
-            write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, arguments.serial))
+            public_serials = device_info_serial_values(device_info, arguments.serial)
+            write_json(output_dir / "device-info.json", sanitized_public_copy(device_info, *public_serials))
+        else:
+            public_serials = device_info_serial_values(device_info, arguments.serial)
         blockers.extend(setup_errors)
         artifacts.extend(setup_artifacts)
         if arguments.mode == "preflight" and apk_sha256 is None:
@@ -790,7 +809,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         )
         if device_info is not None:
             try:
-                public_device_info = sanitized_public_copy(device_info, arguments.serial)
+                public_device_info = sanitized_public_copy(device_info, *public_serials)
                 manifest_duration_seconds = (
                     int(arguments.duration)
                     if arguments.mode == "run"
@@ -825,7 +844,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     apk_sha256=apk_sha256,
                     notes=arguments.notes,
                 )
-                manifest = sanitized_public_copy(manifest, arguments.serial)
+                manifest = sanitized_public_copy(manifest, *public_serials)
                 manifest["run_id"] = execution_run_id
                 manifest["required_artifacts"] = runner_required_artifacts(
                     arguments.mode,
@@ -857,9 +876,9 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                         run_id=execution_run_id,
                     )
                     soak_summary = runner.run()
-                    sanitize_evidence_file(soak_dir / "samples.jsonl", arguments.serial)
-                    sanitize_evidence_file(soak_dir / "summary.json", arguments.serial)
-                    soak_summary = sanitized_public_copy(soak_summary, arguments.serial)
+                    sanitize_evidence_file(soak_dir / "samples.jsonl", *public_serials)
+                    sanitize_evidence_file(soak_dir / "summary.json", *public_serials)
+                    soak_summary = sanitized_public_copy(soak_summary, *public_serials)
                     artifacts.extend([
                         {"path": str(soak_dir.relative_to(output_dir) / "samples.jsonl"), "kind": "soak_samples"},
                         {"path": str(soak_dir.relative_to(output_dir) / "summary.json"), "kind": "soak_summary"},
@@ -873,7 +892,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                                 arguments.host_telemetry_jsonl,
                                 soak_dir / "host-telemetry.jsonl",
                                 artifacts,
-                                arguments.serial,
+                                *public_serials,
                             )
                             report = derive_report(
                                 soak_dir / "summary.json",
@@ -905,14 +924,14 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                     "frame-drops.log",
                     "host.log",
                 ):
-                    sanitize_evidence_file(output_dir / relative, arguments.serial)
+                    sanitize_evidence_file(output_dir / relative, *public_serials)
                 artifacts.extend([
                     {"path": "raw-logcat.txt", "kind": "android_logcat"},
                     {"path": "decoder-telemetry.jsonl", "kind": "android_telemetry"},
                     {"path": "reconnects.log", "kind": "android_log_filter"},
                     {"path": "frame-drops.log", "kind": "android_log_filter"},
                 ])
-                copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts, arguments.serial)
+                copy_optional_log(arguments.host_log, output_dir / "host.log", artifacts, *public_serials)
                 blockers.extend(
                     collect_after_artifacts(
                         output_dir=output_dir,
@@ -921,6 +940,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
                         adb_timeout=arguments.adb_timeout,
                         package_name=arguments.package,
                         artifacts=artifacts,
+                        redaction_serials=public_serials,
                         command_runner=subprocess.run,
                     )
                 )
@@ -936,7 +956,7 @@ def run_or_preflight(arguments: argparse.Namespace, command: Sequence[str]) -> d
         android_log_metrics=android_log_metrics,
         run_id=execution_run_id,
     )
-    readiness = sanitized_public_copy(readiness, arguments.serial)
+    readiness = sanitized_public_copy(readiness, *public_serials)
     write_json(output_dir / "phase2-soak-readiness.json", readiness)
     write_readme(output_dir, readiness)
     return readiness
