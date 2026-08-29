@@ -119,7 +119,11 @@ same gate JSON is bound into `ios-current-base-manifest`;
 accepting the gate's sanitized `signing_summary` as the aggregate `signing` row,
 including UDID-hash and entitlements coverage. It still reports
 `can_close_ios_device_acceptance=false` because install, launch, decode, input,
-reconnect, and audio behavior require real iPhone and iPad runs.
+reconnect, and audio behavior require real iPhone and iPad runs. The
+current-base manifest's local codesigning probe records only status and the
+number of valid identities; raw certificate hashes, identity names, Team IDs,
+profile UUIDs, device UDIDs, and local paths must stay out of committed
+evidence and PR text.
 
 ## Phase 5 multi-client/display current-base gate
 
