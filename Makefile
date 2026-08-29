@@ -15,6 +15,7 @@ EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
 PHASE0_STABLE_RELEASE_REQUIRE_PASS ?=
+PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT ?=
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
@@ -540,6 +541,7 @@ phase0-stable-release-gate:
 		--manifest "$(PHASE0_STABLE_RELEASE_MANIFEST)" \
 		--readme README.md \
 		--output "$(PHASE0_STABLE_RELEASE_SUMMARY)" \
+		$(if $(strip $(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)),--expected-source-commit "$(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)",) \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_REQUIRE_PASS)),--require-pass,)
 
 require-evidence-serial:
