@@ -130,6 +130,14 @@ def complete_document() -> dict:
                     "device_udids": True,
                     "entitlements": True,
                 },
+                "labels": {
+                    "team_id": "Apple Team ID recorded as a SHA-256 digest or local-only raw value",
+                    "provisioning_profile": "provisioning profile UUID recorded as a SHA-256 digest or local-only raw value",
+                    "bundle_id": "unique non-default iPhoneOS bundle identifier",
+                    "codesign_identity": "non-ad-hoc Apple codesign identity recorded as a SHA-256 digest or local-only raw value",
+                    "device_udids": "registered physical iPhone/iPad UDID hashes retained from the provisioning profile",
+                    "entitlements": "signed-app entitlements match Team ID and bundle ID with a retained entitlement plist SHA-256",
+                },
                 "all_requirements_recorded": True,
                 "simulator_build_used": False,
                 "unsigned_build_used": False,
@@ -628,6 +636,22 @@ class IOSDeviceAcceptanceGateTest(unittest.TestCase):
         )
         self.assertIn(
             "signing_readiness_gate.readiness_requirements.all_requirements_recorded: must be true",
+            result["missing"],
+        )
+
+    def test_signing_readiness_gate_requires_requirement_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            evidence_root = Path(raw_directory)
+            write_complete_artifacts(evidence_root)
+            document = complete_document()
+            readiness = document["signing_readiness_gate"]["readiness_requirements"]
+            readiness.pop("labels")
+
+            result = evaluate(document, evidence_root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn(
+            "signing_readiness_gate.readiness_requirements.labels: must be an object",
             result["missing"],
         )
 

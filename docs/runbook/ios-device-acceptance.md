@@ -48,7 +48,7 @@ fail-closed owner for the signing prerequisite only; it does not install the app
 or close any iOS device behavior gate:
 
 ```bash
-make ios-app-signing-readiness-gate \
+make ios-app-signing-current-base-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 

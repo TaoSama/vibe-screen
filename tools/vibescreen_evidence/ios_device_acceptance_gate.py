@@ -466,6 +466,18 @@ def _validate_signing_readiness_gate(
                     missing.append(
                         f"signing_readiness_gate.readiness_requirements.requirements.{field}: must be true"
                     )
+        labels = _require_gate_object(
+            readiness_requirements,
+            "labels",
+            "signing_readiness_gate.readiness_requirements",
+            missing,
+        )
+        if labels is not None:
+            for field in REQUIRED_SIGNING_REQUIREMENT_FIELDS:
+                if not isinstance(labels.get(field), str) or not labels[field].strip():
+                    missing.append(
+                        f"signing_readiness_gate.readiness_requirements.labels.{field}: must be present"
+                    )
         if readiness_requirements.get("all_requirements_recorded") is not True:
             missing.append(
                 "signing_readiness_gate.readiness_requirements.all_requirements_recorded: must be true"
