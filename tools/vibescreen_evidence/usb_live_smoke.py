@@ -169,6 +169,8 @@ def collect_usb_live_smoke(
         lambda: client.command(
             "logcat",
             "-d",
+            "-v",
+            "threadtime",
             "-t",
             str(logcat_lines),
             "-s",
