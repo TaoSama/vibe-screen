@@ -135,6 +135,18 @@ failed target while still leaving the summary JSON behind. Treat the row as
 accepted only when the summary contains `verdict=pass` and
 `can_close_macos_host_compatibility_row=true`.
 
+Use the generated `closure_checklist` to continue a blocked current-base row in
+order. `source_and_host_identity` must pass before runtime evidence can be used
+for support claims: it covers clean-source provenance, stable non-ad-hoc Host
+signing, the expected bundle id, authorized Screen Recording and Accessibility
+TCC states, and same-commit Host self-test provenance. `runtime_acceptance` then
+tracks packaged Host launch, Protocol v1 stream, display selection, physical or
+current-main capture, input smoke, and reconnect. `display_and_encoder_capability`
+and `scope_and_artifacts` are still exact-row checks; a pass in those groups does
+not override a blocked identity/TCC or runtime group. The
+`extrapolation_guard` group must remain `pass`; if it is `failed`, fix the input
+claim instead of treating the row as blocked readiness.
+
 ## Gate input
 
 Start from this shape and set each observation only after the corresponding

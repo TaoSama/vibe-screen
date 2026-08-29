@@ -48,7 +48,11 @@ Login remains unverified in the default no-`sfltool` path. No Android runtime
 probe was started. The retained matrix summary is under
 [`evidence/2026-08-29-macos-host-compatibility-current-base-blocked`](evidence/2026-08-29-macos-host-compatibility-current-base-blocked/README.md)
 and reports `verdict=blocked`, `invalid_claims=[]`, and
-`can_close_macos_host_compatibility_row=false`.
+`can_close_macos_host_compatibility_row=false`. The refreshed summary also
+includes a generated `closure_checklist`: source/Host identity and runtime
+acceptance are blocked, display/encoder and retained artifact scope are only
+recorded for this blocked readiness package, and the extrapolation guard remains
+passing.
 
 ## Verification
 
@@ -80,6 +84,17 @@ make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/macos-host-compa
 make macos-hardware-compatibility-gate EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_hardware_compatibility -v
 make phase0-stable-release-gate
+git diff --check
+pgrep -x sfltool || true
+```
+
+The focused checks for the closure-checklist gate refresh are:
+
+```bash
+pgrep -x sfltool || true
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_hardware_compatibility -v
+python3 -m py_compile tools/vibescreen_evidence/macos_hardware_compatibility.py tools/tests/test_macos_hardware_compatibility.py
+make macos-hardware-compatibility-gate EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked
 git diff --check
 pgrep -x sfltool || true
 ```
