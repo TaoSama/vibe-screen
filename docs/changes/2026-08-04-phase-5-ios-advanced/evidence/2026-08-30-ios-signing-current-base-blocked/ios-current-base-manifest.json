@@ -1,0 +1,496 @@
+{
+  "android_evidence_used_for_ios_gates": false,
+  "build_evidence": {
+    "ios_selftest": {
+      "evidence": [],
+      "status": "open"
+    },
+    "machost_loopback": {
+      "evidence": [],
+      "status": "open"
+    },
+    "simulator_smoke": {
+      "evidence": [],
+      "status": "open"
+    },
+    "swift_build": {
+      "evidence": [],
+      "status": "open"
+    },
+    "unsigned_archive": {
+      "evidence": [],
+      "status": "open"
+    }
+  },
+  "command": [
+    "make",
+    "ios-current-base-gate",
+    "EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked"
+  ],
+  "created_at": "2026-08-30T05:38:38Z",
+  "devices": [
+    {
+      "evidence": [],
+      "install_status": "open",
+      "role": "iphone",
+      "runtime_class": "missing"
+    },
+    {
+      "evidence": [],
+      "install_status": "open",
+      "role": "ipad",
+      "runtime_class": "missing"
+    }
+  ],
+  "gates": {
+    "advanced_adapters": {
+      "blocking": false,
+      "category": "broader_phase5",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#253",
+      "requirement": "iOS app/product adapters for multi-client/display, audio, clipboard, files, HDR/color, actions, wake, and managed policy",
+      "status": "open"
+    },
+    "audio_playback": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#209",
+      "requirement": "PCM S16LE AVAudioEngine playback with audible confirmation",
+      "status": "open"
+    },
+    "device_install": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#290",
+      "requirement": "signed app installed and launched on both iPhone and iPad-class hardware",
+      "status": "open"
+    },
+    "hdr_output": {
+      "blocking": false,
+      "category": "broader_phase5",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#196",
+      "requirement": "dedicated ios-hdr-edr-gate pass for HDR/EDR output on iOS hardware, not SDR fallback only",
+      "status": "open"
+    },
+    "host_advanced_adapters": {
+      "blocking": false,
+      "category": "broader_phase5",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#253",
+      "requirement": "MacHost advanced adapters for multi-client/display streams, audio capture, clipboard/file handlers, HDR/color retry, host actions, wake helper, and managed policy",
+      "status": "open"
+    },
+    "input": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#257",
+      "requirement": "touch, drag, keyboard modifiers, and pointer/hover behavior with host acknowledgement",
+      "status": "open"
+    },
+    "protocol_session": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#290",
+      "requirement": "real iOS app/device trusted-LAN session envelopes against the host",
+      "status": "open"
+    },
+    "reconnect": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#238",
+      "requirement": "network interruption and heartbeat reconnect with stale-epoch rejection",
+      "status": "open"
+    },
+    "signing": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#290",
+      "requirement": "signed archive, unique bundle ID, team, certificate, and provisioning profile",
+      "status": "open"
+    },
+    "trusted_lan_secure_records": {
+      "blocking": false,
+      "category": "broader_phase5",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#208",
+      "requirement": "secure-record trusted-LAN evidence; explicit plaintext legacy fallback is not enough",
+      "status": "open"
+    },
+    "videotoolbox_h264": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#251",
+      "requirement": "hardware H.264 VideoToolbox decode on iOS hardware",
+      "status": "open"
+    },
+    "videotoolbox_hevc": {
+      "blocking": true,
+      "category": "device_acceptance",
+      "evidence": [],
+      "notes": [],
+      "owner_pr": "#251",
+      "requirement": "hardware HEVC VideoToolbox decode on iOS hardware",
+      "status": "open"
+    }
+  },
+  "kind": "ios_current_base_readiness_manifest",
+  "limitations": [
+    "This manifest does not claim an iOS device acceptance pass.",
+    "Simulator builds, unsigned archives, MacHost loopback, and Android evidence do not close iOS device gates.",
+    "The signing gate requires sanitized Team ID, provisioning profile, codesign identity, physical-device UDID hashes, unique bundle ID, and entitlements evidence before it can pass.",
+    "The VideoToolbox gate requires physical iPhone and iPad readiness summaries with retained hardware decode artifacts.",
+    "The current iOS trusted-LAN Core loopback has secure-record readiness evidence, while signed app/device and real-network LAN evidence remain open."
+  ],
+  "local_environment": {
+    "signing_identities": {
+      "command": [
+        "security",
+        "find-identity",
+        "-p",
+        "codesigning",
+        "-v"
+      ],
+      "exit_code": 0,
+      "status": "blocked",
+      "summary": [
+        "codesigning identity output redacted; count retained only"
+      ],
+      "valid_identity_count": 0
+    },
+    "swift_version": {
+      "command": [
+        "swift",
+        "--version"
+      ],
+      "exit_code": 0,
+      "status": "pass",
+      "summary": [
+        "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)",
+        "Target: arm64-apple-macosx26.0"
+      ]
+    },
+    "xcode_sdks": {
+      "command": [
+        "xcodebuild",
+        "-showsdks"
+      ],
+      "exit_code": 1,
+      "status": "blocked",
+      "summary": [
+        "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance"
+      ]
+    },
+    "xcode_select": {
+      "command": [
+        "xcode-select",
+        "-p"
+      ],
+      "exit_code": 0,
+      "status": "pass",
+      "summary": [
+        "/Library/Developer/CommandLineTools"
+      ]
+    },
+    "xcodebuild_version": {
+      "command": [
+        "xcodebuild",
+        "-version"
+      ],
+      "exit_code": 1,
+      "status": "blocked",
+      "summary": [
+        "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance"
+      ]
+    }
+  },
+  "native_input_gate": {
+    "android_evidence_is_not_ios_input_evidence": true,
+    "artifact_paths": [],
+    "blocking_reasons": [
+      {
+        "field": "ios_device_lock_acquired",
+        "requirement": "exclusively reserve the iPhone and iPad used for this run"
+      },
+      {
+        "field": "device_identity_recorded",
+        "requirement": "record iPhone and iPad model, OS/build, and device family"
+      },
+      {
+        "field": "device_is_iphone_or_ipad",
+        "requirement": "run on real iPhone and iPad hardware, not Simulator"
+      },
+      {
+        "field": "iphone_native_input_observed",
+        "requirement": "record native-input behavior from a signed iPhone app run"
+      },
+      {
+        "field": "ipad_native_input_observed",
+        "requirement": "record native-input behavior from a signed iPad app run"
+      },
+      {
+        "field": "signed_app_installed",
+        "requirement": "install a signed app build on the recorded iOS device"
+      },
+      {
+        "field": "baseline_machost_listener_observed",
+        "requirement": "record the baseline MacHost listener and build identity"
+      },
+      {
+        "field": "hardware_keyboard_attached",
+        "requirement": "attach and identify a physical iOS hardware keyboard"
+      },
+      {
+        "field": "hover_pointer_accessory_attached",
+        "requirement": "attach and identify a real iOS hover/pointer accessory"
+      },
+      {
+        "field": "native_input_gate",
+        "requirement": "ios-native-input-gate.json not provided"
+      }
+    ],
+    "can_close_ios_native_input_gate": false,
+    "current_base": null,
+    "disallowed_evidence": [],
+    "gate_owner": "phase5-ios-native-input-behavior",
+    "kind": "ios_native_input_behavior",
+    "missing_requirements": [
+      "exclusively reserve the iPhone and iPad used for this run",
+      "record iPhone and iPad model, OS/build, and device family",
+      "run on real iPhone and iPad hardware, not Simulator",
+      "record native-input behavior from a signed iPhone app run",
+      "record native-input behavior from a signed iPad app run",
+      "record the iOS app source revision and dirty-tree state",
+      "install a signed app build on the recorded iOS device",
+      "record the Local Network permission result",
+      "record the baseline MacHost listener and build identity",
+      "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
+      "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
+      "record the selected display ID and stream ID used by input events",
+      "observe a real touch tap forwarded from the iOS app",
+      "observe a real touch drag forwarded from the iOS app",
+      "attach and identify a physical iOS hardware keyboard",
+      "prove key-down and key-up forwarding for the same USB HID usage",
+      "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
+      "prove modifiers clear after release and do not leak into a later plain key",
+      "attach and identify a real iOS hover/pointer accessory",
+      "observe hover or pointer movement over the selected stream",
+      "retain Host-side acknowledgements or logs for every input family",
+      "retain sanitized iOS app/device logs for the input workflow",
+      "retain sanitized Host logs for the input workflow",
+      "ios-native-input-gate.json not provided"
+    ],
+    "observations": {
+      "android_evidence_used_for_ios_input": false,
+      "app_revision_recorded": false,
+      "baseline_machost_listener_observed": false,
+      "device_identity_recorded": false,
+      "device_is_iphone_or_ipad": false,
+      "display_stream_binding_recorded": false,
+      "hardware_keyboard_attached": false,
+      "host_input_acknowledgements_retained": false,
+      "host_logs_retained": false,
+      "hover_pointer_accessory_attached": false,
+      "hover_pointer_move_observed": false,
+      "input_capabilities_negotiated": false,
+      "ios_device_lock_acquired": false,
+      "ios_logs_retained": false,
+      "ipad_native_input_observed": false,
+      "iphone_native_input_observed": false,
+      "keyboard_modifier_observed": false,
+      "keyboard_modifier_release_no_leak_observed": false,
+      "keyboard_press_release_observed": false,
+      "local_network_permission_recorded": false,
+      "offline_tests_used_as_device_evidence": false,
+      "protocol_session_negotiated": false,
+      "signed_app_installed": false,
+      "simulator_evidence_used_for_ios_input": false,
+      "touch_drag_observed": false,
+      "touch_tap_observed": false
+    },
+    "offline_tests_are_readiness_only": true,
+    "owner": null,
+    "path": null,
+    "profile": "ios-native-input-behavior",
+    "provided": false,
+    "requires_hover_or_pointer_accessory": true,
+    "requires_physical_keyboard": true,
+    "requires_real_ios_device": true,
+    "requires_signed_app": true,
+    "simulator_is_not_ios_input_evidence": true,
+    "verdict": "blocked"
+  },
+  "notes": null,
+  "owner": {
+    "aggregate": "current-base-ios-acceptance",
+    "aggregate_pr": "#290",
+    "device_acceptance_pr": "#290",
+    "repository": "TaoSama/vibe-screen"
+  },
+  "repository": {
+    "dirty": true,
+    "revision": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
+    "status_porcelain": [
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/README.md",
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/commands.txt",
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json",
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness.json"
+    ]
+  },
+  "run_id": "86bf4b14-8d4c-4d37-a673-bb7267785b03",
+  "schema_version": "vibescreen.evidence/v1",
+  "scope_prs": [
+    "#182",
+    "#196",
+    "#207",
+    "#208",
+    "#209",
+    "#238",
+    "#251",
+    "#253",
+    "#257",
+    "#279",
+    "#282"
+  ],
+  "signing": {
+    "bundle_id": null,
+    "certificate_identity_recorded": false,
+    "device_udid_hashes_recorded": false,
+    "entitlements_recorded": false,
+    "provisioning_profile_recorded": false,
+    "signed_archive_sha256": null,
+    "status": "blocked",
+    "team_id_redacted": false,
+    "unique_bundle_id": false
+  },
+  "signing_readiness_gate": {
+    "can_close_ios_app_signing_readiness": false,
+    "current_base": {
+      "branch": "codex/ios-signing-readiness-current-base-20260830",
+      "commit": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
+      "dirty": false
+    },
+    "failures": [],
+    "kind": "ios_app_signing_readiness_gate",
+    "missing": [
+      "status: must be complete",
+      "xcode.version: must be a non-empty recorded value",
+      "xcode.selected_developer_dir: must be a non-empty recorded value",
+      "xcode.ios_sdk: must be a non-empty recorded value",
+      "signing.bundle_id: must be a non-empty recorded value",
+      "signing.signed_artifact_sha256: must be a non-empty recorded value",
+      "signing.status: must be complete",
+      "signing.team_id_sha256: must be a SHA-256 digest with team_id_recorded=true",
+      "signing.provisioning_profile_uuid_sha256: must be a SHA-256 digest with provisioning_profile_recorded=true",
+      "signing.codesign_identity_sha256: must be a SHA-256 digest with codesign_identity_recorded=true",
+      "signing.signed_artifact_sha256: must be a SHA-256 digest",
+      "signing.device_udid_hashes: must include at least one registered physical-device UDID hash",
+      "signing.entitlements.raw_entitlements_sha256: must be a SHA-256 digest",
+      "signing.entitlements.application_identifier_matches_team_and_bundle: must be true",
+      "signing.entitlements.team_identifier_matches_team_id: must be true",
+      "signing.entitlements.bundle_identifier_matches_bundle_id: must be true",
+      "signing.entitlements.keychain_access_groups_include_application_identifier: must be true",
+      "artifacts: must include retained signing command/profile/entitlements output",
+      "repository dirty state is not clean for iOS signing readiness",
+      "ios app-signing readiness gate signing_summary is incomplete",
+      "ios app-signing readiness gate readiness_requirements are incomplete"
+    ],
+    "owner": {
+      "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+      "repository": "TaoSama/vibe-screen",
+      "role": "ios_app_signing_readiness_current_base_owner",
+      "scope": "Phase 5 iOS app-signing readiness prerequisite only"
+    },
+    "path": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json",
+    "provided": true,
+    "readiness_requirements": {
+      "all_requirements_recorded": false,
+      "android_evidence_used": false,
+      "requirements": {
+        "bundle_id": false,
+        "codesign_identity": false,
+        "device_udids": false,
+        "entitlements": false,
+        "provisioning_profile": false,
+        "team_id": false
+      },
+      "simulator_build_used": false,
+      "status": "blocked",
+      "unsigned_build_used": false
+    },
+    "signing_summary": {
+      "bundle_id": null,
+      "codesign_identity_recorded": false,
+      "device_udid_hashes_recorded": false,
+      "entitlements_recorded": false,
+      "provisioning_profile_recorded": false,
+      "signed_artifact_sha256": null,
+      "status": "blocked",
+      "team_id_recorded": false,
+      "unique_bundle_id": false
+    },
+    "verdict": "blocked"
+  },
+  "source_docs": [
+    "docs/changes/2026-08-04-phase-5-ios-advanced/PRD.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md",
+    "docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md",
+    "docs/runbook/ios-device-acceptance.md",
+    "docs/runbook/hdr-color-acceptance.md"
+  ],
+  "source_root": "../../../../..",
+  "videotoolbox_readiness_gates": [
+    {
+      "artifact_checks": [],
+      "artifact_paths": [],
+      "blocking_reasons": [
+        {
+          "field": "artifact_paths",
+          "requirement": "retain physical iPhone VideoToolbox hardware decode artifacts"
+        }
+      ],
+      "can_close_device_family_videotoolbox_gate": false,
+      "can_close_phase5_hardware_videotoolbox_gate": false,
+      "kind": "ios_hardware_videotoolbox_readiness",
+      "profile": "ios-hardware-videotoolbox-readiness",
+      "runtime_class": "physical_iphone",
+      "schema_version": "vibescreen.evidence/v1",
+      "verdict": "blocked"
+    },
+    {
+      "artifact_checks": [],
+      "artifact_paths": [],
+      "blocking_reasons": [
+        {
+          "field": "artifact_paths",
+          "requirement": "retain physical iPad VideoToolbox hardware decode artifacts"
+        }
+      ],
+      "can_close_device_family_videotoolbox_gate": false,
+      "can_close_phase5_hardware_videotoolbox_gate": false,
+      "kind": "ios_hardware_videotoolbox_readiness",
+      "profile": "ios-hardware-videotoolbox-readiness",
+      "runtime_class": "physical_ipad",
+      "schema_version": "vibescreen.evidence/v1",
+      "verdict": "blocked"
+    }
+  ]
+}

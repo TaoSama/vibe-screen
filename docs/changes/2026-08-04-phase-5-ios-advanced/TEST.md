@@ -397,7 +397,7 @@ signing fields without that owner and requirements block remain blocked. It
 still cannot close install, launch, VideoToolbox, input, reconnect, audio, or
 full iOS device acceptance.
 The current retained blocked owner record is
-[`2026-08-29-ios-signing-current-base-blocked`](evidence/2026-08-29-ios-signing-current-base-blocked/README.md).
+[`2026-08-30-ios-signing-current-base-blocked`](evidence/2026-08-30-ios-signing-current-base-blocked/README.md).
 
 The native-input row is also backed by a dedicated owner summary.
 `ios-current-base-manifest` binds `ios-native-input-gate.json` when supplied via
