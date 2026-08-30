@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2453,
+      "bytes": 2391,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,10 +11,10 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "b05d8cb6373027c4dc5cdedadb0d5f308904ddcf805d894248b9f6d52f077b90"
+      "sha256": "6610977e4450faa3e4dc32f28089f0c5d70ae17153eadeddacc81c0d077e9951"
     },
     {
-      "bytes": 406,
+      "bytes": 744,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,10 +24,10 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "f31fe5bd43cd6f38c9f8717dcdc6705a4d4e3b81e7c01387ced40c4e2c591aa0"
+      "sha256": "633d4179dfaf6add2577de75d035551ec102540f744fa9edd51285b37aa6954c"
     },
     {
-      "bytes": 9735,
+      "bytes": 9697,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,7 +37,7 @@
       ],
       "path": "webrtc-relay-e2e-current-base-gate.json",
       "result": "pass",
-      "sha256": "d0737f8133fc6ccd3061effe68bbc00d9da2cf534251b64457ec2451caa1ab29"
+      "sha256": "f196422d79b8d53dc6b6e0461f33caa8fc4cbbe7678967e268fd34531793891c"
     },
     {
       "bytes": 3838,
@@ -50,7 +50,7 @@
       ],
       "path": "webrtc-relay-e2e-current-base-manifest.json",
       "result": "pass",
-      "sha256": "a6d2dc35af7b30c08b0b1e35605e5610f3c3708255a68662672334bb921fc618"
+      "sha256": "5be4abff20c2eb52abc4b858829d9fbed0b053a42799e5cf1eafc35723481b72"
     }
   ],
   "categories": [

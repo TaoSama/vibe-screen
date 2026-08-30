@@ -1,6 +1,5 @@
 {
   "blockers": [
-    "blocked: source_current_base",
     "blocked: real_macos_host",
     "blocked: real_android_device",
     "blocked: public_internet_path",
@@ -170,12 +169,12 @@
     "source_current_base": {
       "blocking": true,
       "evidence": [
-        "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
-        "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
-        "False"
+        "dcea868bf20318908107a3ec7d4acc3bc8f6d5e0",
+        "dcea868bf20318908107a3ec7d4acc3bc8f6d5e0",
+        "True"
       ],
       "expected": "manifest source commit matches a clean current checkout",
-      "passed": false
+      "passed": true
     },
     "synthetic_slice_used_as_product_e2e": {
       "blocking": false,
@@ -254,7 +253,7 @@
   },
   "gate_can_close_phase3_release": false,
   "gate_closed": false,
-  "generated_at": "2026-08-30T07:31:48.559103Z",
+  "generated_at": "2026-08-30T08:12:15.603938Z",
   "interpretation": "A pass requires retained evidence for a real public Internet WebRTC session between macOS Host and Android product peers through a deployed remote TURN relay, with real capture-to-MediaCodec continuity and AES-256-GCM record-layer protection. Relay deployment preflight hardening, local loopback, forced local coturn, synthetic peers, synthetic media, USB, and trusted-LAN records cannot close this child gate or the broader Phase 3 release gate.",
   "kind": "phase3_webrtc_relay_e2e_current_base_gate",
   "not_proven": [
@@ -278,8 +277,8 @@
   },
   "schema_version": "vibescreen.evidence/v1",
   "source": {
-    "commit": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
-    "tree_status": "dirty"
+    "commit": "dcea868bf20318908107a3ec7d4acc3bc8f6d5e0",
+    "tree_status": "clean"
   },
   "verdict": "blocked"
 }

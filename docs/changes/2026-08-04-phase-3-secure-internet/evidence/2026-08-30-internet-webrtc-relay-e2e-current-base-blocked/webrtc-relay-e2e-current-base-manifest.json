@@ -30,7 +30,7 @@
       "status": "open"
     }
   },
-  "created_at": "2026-08-30T07:31:48.556888Z",
+  "created_at": "2026-08-30T08:12:15.599683Z",
   "evidence_context": {
     "deployed_remote_turn": false,
     "identity_signed_host": false,
@@ -89,8 +89,8 @@
   },
   "schema_version": "vibescreen.evidence/v1",
   "source": {
-    "commit": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
-    "tree_status": "dirty"
+    "commit": "dcea868bf20318908107a3ec7d4acc3bc8f6d5e0",
+    "tree_status": "clean"
   },
   "substitutions": {
     "local_loopback_or_forced_local_coturn_used_as_public_internet": false,

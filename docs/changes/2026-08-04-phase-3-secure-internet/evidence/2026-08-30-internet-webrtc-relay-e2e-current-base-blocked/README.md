@@ -15,11 +15,10 @@ The generated `webrtc-relay-e2e-current-base-gate.json` keeps:
 - `gate_can_close_phase3_release=false`
 
 The archived source manifest records commit
-`87e16d8bea4446c1ca449045678f1bafc7fd6cb2` with `tree_status=dirty` because it
-was generated while this owner worktree contained the new gate and evidence
-files. Rerun the same target on a clean final checkout before citing
-current-base source status; missing runtime product evidence keeps the gate
-blocked either way.
+`dcea868bf20318908107a3ec7d4acc3bc8f6d5e0` with `tree_status=clean`, matching
+the PR head source used to generate this blocked gate. Missing runtime product
+evidence keeps the gate blocked; this clean current-base provenance does not
+close any release gate.
 
 ## Missing product E2E evidence
 
