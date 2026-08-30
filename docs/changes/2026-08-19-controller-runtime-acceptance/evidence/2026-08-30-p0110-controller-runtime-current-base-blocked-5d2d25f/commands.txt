@@ -1,0 +1,71 @@
+# Current-base sync and safety checks
+git fetch origin main codex/controller-runtime-acceptance-20260829 --prune
+git merge --no-edit origin/main
+git rev-parse origin/main
+# origin/main: 5d2d25fcaeef6060ee4916bdea02afbc859d02fe
+
+pgrep -x sfltool || true
+
+# Host readiness was collected from a detached origin/main worktree into a
+# temporary directory outside the repository before copying the public artifacts
+# here. This keeps host-readiness.json bound to the refreshed current-base
+# source commit rather than the PR head. The default Makefile path did not pass
+# --include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or
+# --probe-login-items.
+main_wt=$(mktemp -d /tmp/vibe-screen-main-readiness-5d2d25f-XXXXXX)
+rmdir "$main_wt"
+git worktree add --detach "$main_wt" 5d2d25fcaeef6060ee4916bdea02afbc859d02fe
+tmp_host_dir=$(mktemp -d /tmp/vibe-screen-host-readiness-origin-main-5d2d25f-XXXXXX)
+set +e
+( cd "$main_wt" && make baseline-macos-host-readiness EVIDENCE_DIR="$tmp_host_dir" ) \
+  >"$tmp_host_dir/baseline-macos-host-readiness.stdout" \
+  2>"$tmp_host_dir/baseline-macos-host-readiness.stderr"
+host_status=$?
+printf '%s\n' "$host_status" >"$tmp_host_dir/baseline-macos-host-readiness.exit"
+set -e
+
+# Controller readiness used a local authorized ADB device serial internally, but
+# public artifacts and replay docs use only the quoted redacted placeholder.
+tmp_controller_dir=$(mktemp -d /tmp/vibe-screen-controller-runtime-5d2d25f-XXXXXX)
+(
+  cd "$main_wt"
+  python3 scripts/controller_runtime_readiness.py \
+    --serial "<device-serial>" \
+    --host-log "~/Library/Logs/Telemachus/telemachus.log" \
+    --host-app "/Applications/Vibe Screen.app" \
+    --allow-existing-device-lock \
+    --write-blocked-on-lock \
+    --redact-identifiers \
+    --source-commit 5d2d25fcaeef6060ee4916bdea02afbc859d02fe \
+    --run-id 20260830Tcurrentbase5d2d25f \
+    --evidence-dir "$tmp_controller_dir"
+)
+git worktree remove "$main_wt"
+pgrep -x sfltool || true
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
+  docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-5d2d25f/controller-runtime-observations.json \
+  --run-id 20260830Tcurrentbase5d2d25f \
+  --output /tmp/controller-runtime-summary-20260830-5d2d25f-check.json
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_controller_runtime_readiness_redaction scripts.tests.test_macos_dev_host.MacOSDevHostMetadataTests.test_parse_entitlement_keys_detects_true_virtual_hid_entitlement scripts.tests.test_macos_dev_host.MacOSDevHostMetadataTests.test_readiness_document_keeps_controller_blocked_without_virtual_hid_entitlement -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release -v
+
+git diff --check origin/main...HEAD
+
+# Public evidence privacy scan: set any known raw local values as environment
+# variables before replaying. Empty values are skipped so public redaction
+# placeholders in this file are not treated as secrets.
+for marker_name in RAW_DEVICE_SERIAL LOCAL_HOME_PATH SIGNING_OUTPUT_MARKER CREDENTIAL_OUTPUT_MARKER KEY_MATERIAL_OUTPUT_MARKER DEVICE_IDENTIFIER_MARKER PROFILE_IDENTIFIER_MARKER HOST_ALIAS; do
+  marker=$(printenv "$marker_name" || true)
+  test -n "$marker" || continue
+  if rg -q --fixed-strings "$marker" docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-5d2d25f; then
+    printf 'privacy marker present: %s\n' "$marker_name" >&2
+    exit 1
+  fi
+done
+if rg -n '([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-5d2d25f; then
+  exit 1
+fi
+
+( cd docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-5d2d25f && shasum -a 256 -c SHA256SUMS )

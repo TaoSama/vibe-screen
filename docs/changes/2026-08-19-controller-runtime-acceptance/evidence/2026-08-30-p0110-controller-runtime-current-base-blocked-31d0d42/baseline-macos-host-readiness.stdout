@@ -3,6 +3,6 @@ python3 scripts/macos_dev_host.py readiness \
 		--report /tmp/vibe-screen-host-readiness-origin-main-31d0d42-Ttfdxk/host-signing-and-permissions.txt \
 		--json-output /tmp/vibe-screen-host-readiness-origin-main-31d0d42-Ttfdxk/host-readiness.json \
 		--port 54321 \
-		
+
 Wrote /tmp/vibe-screen-host-readiness-origin-main-31d0d42-Ttfdxk/host-signing-and-permissions.txt
 Wrote /tmp/vibe-screen-host-readiness-origin-main-31d0d42-Ttfdxk/host-readiness.json
