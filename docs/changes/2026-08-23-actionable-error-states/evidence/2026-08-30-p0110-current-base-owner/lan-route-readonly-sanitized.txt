@@ -1,0 +1,8 @@
+Read-only trusted-LAN route preflight excerpt, sanitized for saved Wi-Fi identifiers.
+
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>
+Observed state: Wi-Fi enabled but disconnected or not associated.
+wlan0: DOWN or NO-CARRIER.
+ip route: no output.
+
+Privacy note: raw dumpsys/route output can contain SSIDs or local network addresses and is intentionally summarized only.
