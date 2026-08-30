@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "4884d80813a7f674a10d574a96f8dfcf5723c6e7",
+    "base_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
     "base_ref": "origin/main",
     "audit_date": "2026-08-30",
     "owner": "Vibe Screen core team",
@@ -189,12 +189,13 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
-        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-25-p0110-controller-runtime-current-base-blocked-87605d6/controller-runtime-summary.json"
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-e647b6d/controller-runtime-summary.json"
       ],
       "owner_prs": [
         217,
         220,
-        270
+        270,
+        411
       ],
       "blockers": [
         "No physical Android controller runtime run is recorded.",

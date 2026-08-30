@@ -1,0 +1,8 @@
+mkdir -p /tmp/vibe-screen-host-readiness-origin-main-4884d80-OLg0GC
+python3 scripts/macos_dev_host.py readiness \
+		--report /tmp/vibe-screen-host-readiness-origin-main-4884d80-OLg0GC/host-signing-and-permissions.txt \
+		--json-output /tmp/vibe-screen-host-readiness-origin-main-4884d80-OLg0GC/host-readiness.json \
+		--port 54321 \
+
+Wrote /tmp/vibe-screen-host-readiness-origin-main-4884d80-OLg0GC/host-signing-and-permissions.txt
+Wrote /tmp/vibe-screen-host-readiness-origin-main-4884d80-OLg0GC/host-readiness.json

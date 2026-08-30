@@ -1,0 +1,64 @@
+# Current-base sync and safety checks
+git fetch origin main codex/controller-runtime-acceptance-20260829 --prune
+git merge --ff-only origin/codex/controller-runtime-acceptance-20260829
+git rev-parse origin/main
+# origin/main: 1217c585f5a0185402bdc47fc588ac8092066067
+# PR head after update-branch: 318e1f4235aab0f52eefb182cfd636dfb63a778f
+
+pgrep -x sfltool || true
+
+# Host readiness was collected from a detached origin/main worktree into a
+# temporary directory outside the repository before copying the public artifacts
+# here. This keeps host-readiness.json bound to the refreshed current-base
+# source commit rather than the PR head. The default Makefile path did not pass
+# --include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or
+# --probe-login-items.
+main_wt=$(mktemp -d /tmp/vibe-screen-main-readiness-XXXXXX)
+git worktree add --detach "$main_wt" 1217c585f5a0185402bdc47fc588ac8092066067
+tmp_host_dir=$(mktemp -d /tmp/vibe-screen-host-readiness-origin-main-XXXXXX)
+( cd "$main_wt" && make baseline-macos-host-readiness EVIDENCE_DIR="$tmp_host_dir" )
+
+# Controller readiness used a local authorized ADB device serial internally, but
+# public artifacts and replay docs use only the quoted redacted placeholder.
+tmp_controller_dir=$(mktemp -d /tmp/vibe-screen-controller-runtime-XXXXXX)
+(
+  cd "$main_wt"
+  python3 scripts/controller_runtime_readiness.py \
+    --serial "<device-serial>" \
+    --host-log "~/Library/Logs/Telemachus/telemachus.log" \
+    --host-app "/Applications/Vibe Screen.app" \
+    --allow-existing-device-lock \
+    --redact-identifiers \
+    --source-commit 1217c585f5a0185402bdc47fc588ac8092066067 \
+    --run-id 20260829T220100Z \
+    --evidence-dir "$tmp_controller_dir"
+)
+git worktree remove "$main_wt"
+pgrep -x sfltool || true
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
+  docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/controller-runtime-observations.json \
+  --run-id 20260829T220100Z \
+  --output /tmp/controller-runtime-summary-20260829-1217c58-check.json
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_controller_runtime_readiness_redaction scripts.tests.test_macos_dev_host.MacOSDevHostMetadataTests.test_parse_entitlement_keys_detects_true_virtual_hid_entitlement scripts.tests.test_macos_dev_host.MacOSDevHostMetadataTests.test_readiness_document_keeps_controller_blocked_without_virtual_hid_entitlement -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release -v
+
+git diff --check
+
+# Public evidence privacy scan: set any known raw local values as environment
+# variables before replaying. Empty values are skipped so public redaction
+# placeholders in this file are not treated as secrets.
+for marker_name in RAW_DEVICE_SERIAL LOCAL_HOME_PATH SIGNING_OUTPUT_MARKER CREDENTIAL_OUTPUT_MARKER KEY_MATERIAL_OUTPUT_MARKER DEVICE_IDENTIFIER_MARKER PROFILE_IDENTIFIER_MARKER HOST_ALIAS; do
+  marker=$(printenv "$marker_name" || true)
+  test -n "$marker" || continue
+  if rg -q --fixed-strings "$marker" docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58; then
+    printf 'privacy marker present: %s\n' "$marker_name" >&2
+    exit 1
+  fi
+done
+if rg -n '([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58; then
+  exit 1
+fi
+
+( cd docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58 && shasum -a 256 -c SHA256SUMS )
