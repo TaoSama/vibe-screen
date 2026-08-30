@@ -645,7 +645,7 @@ Validation performed for this update:
 ## 2026-08-30 hardware-keyboard current-base refresh
 
 This follow-up refreshes the Android-attached hardware-keyboard owner on current
-`origin/main` (`32146152100477660eaf0ddb10befa8af48ea4fd`) without claiming a
+`origin/main` (`e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`) without claiming a
 workflow pass. Evidence is under
 [`evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base`](evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md).
 

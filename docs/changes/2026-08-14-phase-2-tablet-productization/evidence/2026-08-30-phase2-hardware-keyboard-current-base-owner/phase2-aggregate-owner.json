@@ -305,7 +305,7 @@
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main 32146152100477660eaf0ddb10befa8af48ea4fd",
+  "source_baseline": "origin/main e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
   "stale_prs": [
     {
       "pr_number": 240,

@@ -1,7 +1,7 @@
 # Phase 2 hardware-keyboard current-base owner refresh
 
 Result: blocked. This record refreshes the Phase 2 hardware-keyboard owner on
-current `origin/main` (`32146152100477660eaf0ddb10befa8af48ea4fd`) and keeps
+current `origin/main` (`e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`) and keeps
 the README Phase 2 gates open.
 
 Input summaries used by the aggregate report:
@@ -38,5 +38,5 @@ Generation command is recorded in `phase2-aggregate-owner-command.txt`.
 Validation:
 
 - `make phase2-aggregate-owner ...` generated `phase2-aggregate-owner.json` with
-  `source_baseline=origin/main 32146152100477660eaf0ddb10befa8af48ea4fd`,
+  `source_baseline=origin/main e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`,
   `verdict=blocked`, and `can_close_readme_phase2_gates=false`.
