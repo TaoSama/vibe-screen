@@ -545,8 +545,10 @@ def _device_environment_observations_gate(root: Path) -> dict[str, Any]:
     if not isinstance(observations, dict):
         observations = {}
     for field, _requirement in DEVICE_ENVIRONMENT_REQUIRED_FIELDS:
-        if observations.get(field) is None:
+        if field not in observations:
             reasons.append(f"device-environment observations missing boolean field {field}")
+        elif observations[field] is not True:
+            reasons.append(f"device-environment observations field {field} is not true")
     return _gate(
         "device_environment_observations",
         INSUFFICIENT if reasons else PASS,

@@ -484,6 +484,21 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(gate["status"], "insufficient")
         self.assertTrue(any("controlled_thermal_load_observed" in reason for reason in gate["reasons"]))
 
+    def test_device_environment_observations_flag_false_required_field_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            observations = device_environment_observations()
+            observations["observations"]["physical_8_9_inch_tablet_observed"] = False
+            write_json(root / "phase2-device-environment-observations.json", observations)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        gate = next(item for item in result["gates"] if item["name"] == "device_environment_observations")
+        self.assertEqual(gate["status"], "insufficient")
+        self.assertTrue(any("physical_8_9_inch_tablet_observed is not true" in reason for reason in gate["reasons"]))
+
     def test_cli_writes_report_and_returns_nonzero_for_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             root = Path(raw_directory)
