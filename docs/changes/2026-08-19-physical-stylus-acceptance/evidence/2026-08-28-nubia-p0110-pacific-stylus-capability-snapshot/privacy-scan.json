@@ -40,7 +40,7 @@
       "sha256": "8a5e02ee7754158837c5faa7301df009606d45eeb964b620020d2381a0ff1d76"
     },
     {
-      "bytes": 5128,
+      "bytes": 4983,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -50,7 +50,7 @@
       ],
       "path": "getevent-lp.txt",
       "result": "pass",
-      "sha256": "756f893b75262051b9fa4329c48c657c4bc73ed548b8efd7738b7243ef6a3dec"
+      "sha256": "c08bba3c4377c0960141694835f61306909b4f3bf3c8cac6068f1bd1977cf49d"
     },
     {
       "bytes": 2203,
