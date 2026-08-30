@@ -5,7 +5,7 @@
   ],
   "baseline_pr": 225,
   "blocking_notes": [
-    "pgrep -x sfltool || true produced no output before this current-base audit.",
+    "The explicit pgrep -x sfltool absence check observed no sfltool process before this current-base audit.",
     "No login-item diagnostic path was invoked: /usr/bin/sfltool dumpbtm, --include-login-item-diagnostic, --inspect-login-items, and --probe-login-items were not run.",
     "No real sleeping Mac, identity-signed Host TCC readiness, WOL-capable network path, packet capture, or post-wake Host availability evidence was collected for this current-base audit."
   ],
@@ -33,7 +33,7 @@
   ],
   "can_claim_sleeping_mac_wake": false,
   "can_close_wake_host_current_base_gate": false,
-  "current_main_sha": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
+  "current_main_sha": "bf0e1aca424af3db0f9da435fefd56aea5eea40c",
   "failure_reasons": [],
   "kind": "wake_host_current_base_gate",
   "missing_requirements": [
@@ -82,7 +82,7 @@
       "requirement": "retain client logs covering the authorized and negative WakeHost attempts"
     }
   ],
-  "notes": "Current-base audit records origin/main 87e16d8bea4446c1ca449045678f1bafc7fd6cb2 and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained.",
+  "notes": "Current-base audit records origin/main bf0e1aca424af3db0f9da435fefd56aea5eea40c and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained.",
   "observations": {
     "client_logs_retained": false,
     "current_main_verified": true,

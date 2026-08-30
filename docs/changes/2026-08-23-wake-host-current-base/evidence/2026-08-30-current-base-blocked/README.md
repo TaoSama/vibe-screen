@@ -5,7 +5,7 @@
 Status: blocked. Gate closed: false.
 
 This package refreshes the WakeHost current-base owner against origin/main
-`87e16d8bea4446c1ca449045678f1bafc7fd6cb2`. The runtime baseline still
+`bf0e1aca424af3db0f9da435fefd56aea5eea40c`. The runtime baseline still
 contains the authenticated Protocol v1 WakeHost request path and UDP
 Wake-on-LAN magic-packet sender. Focused offline checks cover the evidence gate
 and the fail-closed verification path.
@@ -18,11 +18,12 @@ Host availability evidence.
 
 ## Safety boundary
 
-`pgrep -x sfltool || true` produced no output before the run; no residual
-`sfltool` process was observed. This audit did not run `/usr/bin/sfltool
-dumpbtm`, `--include-login-item-diagnostic`, `--inspect-login-items`, or
-`--probe-login-items`. WakeHost current-base evidence requires Host TCC and real
-sleep/wake proof, but it does not require Launch at Login inspection.
+The explicit `pgrep -x sfltool` absence check observed no `sfltool` process
+before the run; no residual `sfltool` process was observed. This audit did not
+run `/usr/bin/sfltool dumpbtm`, `--include-login-item-diagnostic`,
+`--inspect-login-items`, or `--probe-login-items`. WakeHost current-base
+evidence requires Host TCC and real sleep/wake proof, but it does not require
+Launch at Login inspection.
 
 ## Boundary
 
