@@ -265,8 +265,10 @@ enum VideoEncoderSelfTest {
                 if callbackCount() > 0 {
                     break
                 }
+                sleep(pollInterval)
+
+                let currentTime = now()
                 if availableCapacity() == 0 {
-                    let currentTime = now()
                     if capacityFullSince == nil {
                         capacityFullSince = currentTime
                     }
@@ -278,7 +280,6 @@ enum VideoEncoderSelfTest {
                 } else {
                     capacityFullSince = nil
                 }
-                sleep(pollInterval)
             }
 
             return Result(
