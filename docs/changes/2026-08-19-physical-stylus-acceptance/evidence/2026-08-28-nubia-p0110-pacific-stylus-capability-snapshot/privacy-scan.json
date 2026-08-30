@@ -1,0 +1,100 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1694,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "e20879a3736d3d70165d614c136eb95987b74b306fb3d55c48c2ff7cea237b3a"
+    },
+    {
+      "bytes": 3253,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "be4ce1fd838139f68763f6f2478c307b8c6eef2e39e5bd2964dce2da617e8836"
+    },
+    {
+      "bytes": 42067,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "dumpsys-input.txt",
+      "result": "pass",
+      "sha256": "8a5e02ee7754158837c5faa7301df009606d45eeb964b620020d2381a0ff1d76"
+    },
+    {
+      "bytes": 4983,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "getevent-lp.txt",
+      "result": "pass",
+      "sha256": "c08bba3c4377c0960141694835f61306909b4f3bf3c8cac6068f1bd1977cf49d"
+    },
+    {
+      "bytes": 2304,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "stylus-evidence.json",
+      "result": "pass",
+      "sha256": "df6edc64a9fe262d123ccebcd030cc7d4c0709ead8429a220f4a9e8379be26e8"
+    },
+    {
+      "bytes": 3506,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "stylus-summary.json",
+      "result": "pass",
+      "sha256": "93f22e0da61178f5b1434d07f14f5ea6b9d46a4768b03b56f21fca688b4fb796"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

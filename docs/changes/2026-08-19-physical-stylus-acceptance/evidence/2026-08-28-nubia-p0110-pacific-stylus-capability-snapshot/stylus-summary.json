@@ -1,0 +1,82 @@
+{
+  "artifact_paths": [
+    "commands.txt",
+    "dumpsys-input.txt",
+    "getevent-lp.txt",
+    "README.md",
+    "stylus-evidence.json"
+  ],
+  "blocking_notes": [
+    "collector_status=blocked_physical_stylus_not_observed"
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_drawing_observed",
+      "requirement": "observe a real physical stylus contacting the Android device during the active Protocol v1 session"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    }
+  ],
+  "can_close_physical_stylus_gate": false,
+  "collector_status": "blocked_physical_stylus_not_observed",
+  "inconsistent_observations": [],
+  "kind": "physical_stylus_drawing_app",
+  "missing_requirements": [
+    {
+      "field": "physical_drawing_observed",
+      "requirement": "observe a real physical stylus contacting the Android device during the active Protocol v1 session"
+    },
+    {
+      "field": "android_stylus_forwarding_observed",
+      "requirement": "retain same-session Android diagnostic logs with Stylus forwarded samples from a stylus or eraser tool"
+    },
+    {
+      "field": "host_stylus_injection_observed",
+      "requirement": "retain newly appended Host Stylus injected logs with contact, pressure, and signed two-axis tilt"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    },
+    {
+      "field": "visible_drawing_result_observed",
+      "requirement": "record the visible macOS drawing-app result of the physical stylus stroke"
+    },
+    {
+      "field": "android_diag_log_retained",
+      "requirement": "retain the bounded Android diagnostic log window for the drawing attempt"
+    },
+    {
+      "field": "host_log_window_retained",
+      "requirement": "retain the newly appended Host log observation window for the drawing attempt"
+    },
+    {
+      "field": "collector_reported_passed",
+      "requirement": "use a collector result whose own status is pass, not blocked or failed"
+    }
+  ],
+  "notes": "Capability-only Nubia P0110/pacific snapshot. getevent-lp.txt records the stylus event device with BTN_STYLUS, BTN_STYLUS2, ABS_PRESSURE, ABS_TILT_X, and ABS_TILT_Y. Separately, ABS_DISTANCE appears on the STM VL53L1 proximity sensor and is not counted as a stylus capability. BTN_TOOL_PEN and BTN_TOOL_RUBBER were not exposed in this snapshot. No physical drawing observation window was attempted.",
+  "observations": {
+    "adb_was_run": true,
+    "android_diag_log_retained": false,
+    "android_stylus_forwarding_observed": false,
+    "collector_reported_passed": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "host_log_window_retained": false,
+    "host_stable_signed_tcc_ready": false,
+    "host_stylus_injection_observed": false,
+    "pass_eligible_stylus_capability": true,
+    "physical_drawing_observed": false,
+    "visible_drawing_result_observed": false
+  },
+  "profile": "physical-stylus-drawing-app",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_physical_stylus": true,
+  "run_id": "52d51f30-1e90-4092-9f6e-8751a610829e",
+  "schema_version": "vibescreen.evidence/v1",
+  "synthetic_adb_stylus_is_not_physical_stylus_evidence": true,
+  "verdict": "blocked"
+}
