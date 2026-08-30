@@ -529,14 +529,17 @@ read-only TCC authorization, missing virtual-HID entitlement, and unverified
 login/headless readiness. That record has `can_close_timing_gate=false`
 and does not close the three-second reconnect gate; see
 [the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
-As of the 2026-08-28 Nubia P0110/pacific latency preflight, the toolchain has
+As of the 2026-08-30 current-base owner refresh, the latest retained evidence
+for external latency performance remains the 2026-08-28 Nubia P0110/pacific
+latency preflight; the toolchain has
 formal manifest/checker coverage for external-camera packages and
 synchronized-clock input packages,
 with profile-specific retained-artifact checks for USB, LAN, and physical-input
 claims. No raw camera package, annotated latency samples, or synchronized-clock
 proof from a real physical-input run is available in the repository. All three
 latency gates therefore remain open; see
-[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md).
+[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md)
+and the [2026-08-30 fail-closed owner record](docs/changes/2026-08-30-external-latency-owner/README.md).
 
 ### Phase 2 — Tablet productization
 
