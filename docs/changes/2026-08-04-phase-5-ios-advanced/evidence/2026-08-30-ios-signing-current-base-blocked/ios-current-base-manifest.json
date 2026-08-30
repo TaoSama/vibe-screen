@@ -27,7 +27,7 @@
     "ios-current-base-gate",
     "EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked"
   ],
-  "created_at": "2026-08-30T04:42:27Z",
+  "created_at": "2026-08-30T05:38:38Z",
   "devices": [
     {
       "evidence": [],
@@ -264,7 +264,7 @@
       },
       {
         "field": "native_input_gate",
-        "requirement": "ios native-input gate is unreadable"
+        "requirement": "ios-native-input-gate.json not provided"
       }
     ],
     "can_close_ios_native_input_gate": false,
@@ -296,7 +296,7 @@
       "retain Host-side acknowledgements or logs for every input family",
       "retain sanitized iOS app/device logs for the input workflow",
       "retain sanitized Host logs for the input workflow",
-      "ios native-input gate is unreadable"
+      "ios-native-input-gate.json not provided"
     ],
     "observations": {
       "android_evidence_used_for_ios_input": false,
@@ -328,9 +328,9 @@
     },
     "offline_tests_are_readiness_only": true,
     "owner": null,
-    "path": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-native-input-gate.json",
+    "path": null,
     "profile": "ios-native-input-behavior",
-    "provided": true,
+    "provided": false,
     "requires_hover_or_pointer_accessory": true,
     "requires_physical_keyboard": true,
     "requires_real_ios_device": true,
@@ -349,11 +349,13 @@
     "dirty": true,
     "revision": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
     "status_porcelain": [
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/README.md",
+      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/commands.txt",
       "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json",
       "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness.json"
     ]
   },
-  "run_id": "6c97e3fa-9977-40c1-8af7-25efba423a44",
+  "run_id": "86bf4b14-8d4c-4d37-a673-bb7267785b03",
   "schema_version": "vibescreen.evidence/v1",
   "scope_prs": [
     "#182",
