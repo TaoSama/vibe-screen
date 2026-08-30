@@ -606,11 +606,14 @@ and
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
-verification is unavailable, Launch at Login could not be machine-verified, the
-Virtual HID entitlement is absent, and no reboot/login, headless display,
-client-render, bounded recovery, or window-restore artifact was collected. It
-therefore does not close login startup or headless Mac mini acceptance; see
-[the blocked current-base record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/README.md).
+verification is unavailable, Launch at Login remains unverified on the default
+non-`sfltool` path, the Virtual HID entitlement is absent, and no reboot/login,
+headless display, client-render, bounded recovery, or window-restore artifact
+was collected. The retained readiness JSON records
+`sfltool_dumpbtm_was_run=false`, and start/end `pgrep -x sfltool || true`
+checks were empty. It therefore does not close login startup or headless Mac
+mini acceptance; see
+[the blocked current-base record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked/README.md).
 See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 

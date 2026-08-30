@@ -1,0 +1,163 @@
+{
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py",
+    "cannot verify TCC permissions read-only: <user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified"
+  ],
+  "can_close_runtime_gates": false,
+  "can_start_controller_runtime_gate": false,
+  "can_start_hardware_keyboard_gate": false,
+  "can_start_headless_login_gate": false,
+  "can_start_host_rss_gate": false,
+  "can_start_native_hid_gate": false,
+  "can_start_stylus_gate": false,
+  "can_start_trusted_lan_gate": false,
+  "entitlements": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "error": null,
+    "keys": [],
+    "virtual_hid": false
+  },
+  "generated_at": "2026-08-28T20:57:42.812923+00:00",
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "authorities": [
+      "Vibe Screen Dev",
+      "Vibe Screen Dev Root"
+    ],
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "current_source_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
+    "current_source_dirty": false,
+    "current_source_tree": "794fe2ca90de2a80396b34f8f6507181948d0c55",
+    "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",
+    "identifier": "dev.telemachus.display",
+    "identity": "Vibe Screen Dev",
+    "is_ad_hoc": false,
+    "source_commit": null,
+    "source_dirty": null,
+    "source_tree": null,
+    "team_identifier": "not set"
+  },
+  "kind": "macos_host_shared_prerequisite_readiness",
+  "listener": {
+    "error": null,
+    "observed": true,
+    "output": "COMMAND    PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nVibe\\x20S 4810 <redacted-user>    7u  IPv4 0x1df65b55c1a8548a      0t0  TCP 127.0.0.1:54321 (LISTEN)",
+    "port": 54321
+  },
+  "listener_status": "ready",
+  "login_headless": {
+    "blockers": [
+      "Launch at Login is not verified enabled: unverified"
+    ],
+    "display_inventory": {
+      "active_display_count": 2,
+      "display_count": 2,
+      "displays": [
+        {
+          "id": "1",
+          "logical": "1512 x 982 @ 120.00Hz",
+          "main": "1",
+          "name": "Color LCD",
+          "physical": "3024 x 1964",
+          "source": "system_profiler"
+        },
+        {
+          "id": "2",
+          "logical": "1920 x 1080 @ 60.00Hz",
+          "main": "0",
+          "name": "DELL U2723QE",
+          "physical": "3840 x 2160",
+          "source": "system_profiler"
+        }
+      ],
+      "error": null,
+      "readable": true
+    },
+    "does_not_prove": [
+      "macOS launched Vibe Screen after logout/login or reboot",
+      "a headless Mac mini exposes a capturable display after reboot",
+      "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+      "USB or LAN streaming rendered on an Android client",
+      "unattended recovery succeeded or exhausted during a real listener/capture/display failure"
+    ],
+    "host_log": {
+      "error": null,
+      "path": "<user-host-log>",
+      "readable": true,
+      "startup_recovery_markers": []
+    },
+    "login_item": {
+      "detail": "Login item not probed by default; probe not run. Run readiness with --include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or --probe-login-items during an attended diagnostic session to inspect it with /usr/bin/sfltool dumpbtm.",
+      "evidence": [],
+      "matched": false,
+      "sfltool_dumpbtm_was_run": false,
+      "state": "unverified"
+    },
+    "recommended_next_evidence": [
+      "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+      "record the intended headless display setup and first successful capture after login",
+      "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs"
+    ],
+    "startup_settings": {
+      "auto_start_streaming_on_launch": true,
+      "defaults_used": [],
+      "display_source": "selectedDisplay",
+      "domain": "dev.telemachus.display",
+      "error": null,
+      "has_completed_onboarding": true,
+      "readable": true,
+      "selected_display_id": 2,
+      "selected_display_uuid": "<display-uuid>",
+      "startup_mode": "usb",
+      "stored_keys": [
+        "Telemachus_adbDeviceSerial",
+        "Telemachus_autoStartStreamingOnLaunch",
+        "Telemachus_bitrate",
+        "Telemachus_connectionMode",
+        "Telemachus_dismissedPostUpdatePermissionHintFingerprint",
+        "Telemachus_displaySource",
+        "Telemachus_hasCompletedOnboarding",
+        "Telemachus_hasPosition_1446320657_60_0",
+        "Telemachus_hiDPI",
+        "Telemachus_internetHostDeviceID",
+        "Telemachus_lastKnownBinaryFingerprint",
+        "Telemachus_pendingPostUpdatePermissionHintFingerprint",
+        "Telemachus_positionX_1446320657_60_0",
+        "Telemachus_positionY_1446320657_60_0",
+        "Telemachus_quality",
+        "Telemachus_refreshRate",
+        "Telemachus_rotation",
+        "Telemachus_selectedDisplayID",
+        "Telemachus_selectedDisplayUUID",
+        "Telemachus_startupMode"
+      ]
+    },
+    "status": "blocked"
+  },
+  "login_headless_status": "blocked",
+  "permissions": {
+    "accessibility_granted": false,
+    "database_path": "<user-tcc-db>; <system-tcc-db>",
+    "error": "<user-tcc-db>: unable to open database file; <system-tcc-db>: unable to open database file",
+    "readable": false,
+    "rows": [],
+    "screen_recording_granted": false
+  },
+  "safety": {
+    "closes_runtime_gates": false,
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "read_only": true,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.host-readiness/v1",
+  "signing_tcc_status": "blocked",
+  "status": "blocked",
+  "virtual_hid_status": "blocked"
+}
