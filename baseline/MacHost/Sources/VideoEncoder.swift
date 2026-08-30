@@ -693,15 +693,16 @@ class VideoEncoder {
         return submissionResult == .submitted(noErr)
     }
 
+    @discardableResult
     func encode(
         pixelBuffer: CVPixelBuffer,
         presentationTimeStamp: CMTime,
         sessionEpoch: UInt64
-    ) {
+    ) -> Bool {
         sessionLock.lock()
         guard let session = compressionSession else {
             sessionLock.unlock()
-            return
+            return false
         }
 
         let duration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
@@ -746,6 +747,10 @@ class VideoEncoder {
             }
             debugLog("VideoToolbox frame submission failed: \(encodeStatus)")
         }
+        if case .submitted(noErr) = submissionResult {
+            return true
+        }
+        return false
     }
 
     deinit {

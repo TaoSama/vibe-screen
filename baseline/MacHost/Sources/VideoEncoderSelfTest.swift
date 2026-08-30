@@ -229,7 +229,7 @@ enum VideoEncoderSelfTest {
         func run(
             availableCapacity: () -> Int,
             callbackCount: () -> Int,
-            submitFrame: (Int) -> Void,
+            submitFrame: (Int) -> Bool,
             completeFrames: () -> OSStatus,
             drainFrames: () -> Int,
             sleep: (TimeInterval) -> Void,
@@ -245,7 +245,9 @@ enum VideoEncoderSelfTest {
             while now() < deadline, callbackCount() == 0 {
                 var submittedThisPass = false
                 while submittedFrames < frameCount, availableCapacity() > 0 {
-                    submitFrame(submittedFrames)
+                    guard submitFrame(submittedFrames) else {
+                        break
+                    }
                     submittedFrames += 1
                     submittedThisPass = true
                     capacityFullSince = nil

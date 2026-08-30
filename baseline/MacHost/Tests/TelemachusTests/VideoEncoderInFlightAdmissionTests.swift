@@ -446,6 +446,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 retainedInFlight += 1
                 maximumObservedInFlight = max(maximumObservedInFlight, retainedInFlight)
+                return true
             },
             completeFrames: {
                 if retainedInFlight > 0 {
@@ -486,6 +487,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             submitFrame: { index in
                 submittedFrames.append(index)
                 retainedInFlight += 1
+                return true
             },
             completeFrames: {
                 completionCallCount += 1
@@ -526,6 +528,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 retainedInFlight += 1
                 maximumObservedInFlight = max(maximumObservedInFlight, retainedInFlight)
+                return true
             },
             completeFrames: {
                 completions += 1
@@ -544,6 +547,46 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(result, .init(submittedFrames: 4, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
         XCTAssertEqual(submittedFrames, [0, 1, 2, 3])
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
+    }
+
+    func testWarmupPumpDoesNotCountAdmissionRejectedFramesAsSubmitted() {
+        let admission = VideoEncoderInFlightAdmission(capacity: 2)
+        let videoToolbox = FakeVideoToolbox()
+        let warmup = VideoEncoderSelfTest.WarmupPump(
+            frameCount: 4,
+            timeout: 0.001,
+            pollInterval: 0,
+            drainDelay: 0
+        )
+        var attemptedFrames: [Int] = []
+        var drainCallCount = 0
+
+        let result = warmup.run(
+            availableCapacity: { 1 },
+            callbackCount: { 0 },
+            submitFrame: { index in
+                attemptedFrames.append(index)
+                return admission.submit(videoToolbox.submit) == .submitted(noErr)
+            },
+            completeFrames: { noErr },
+            drainFrames: {
+                drainCallCount += 1
+                return 0
+            },
+            sleep: Thread.sleep(forTimeInterval:)
+        )
+
+        XCTAssertEqual(result.submittedFrames, 2)
+        XCTAssertEqual(result.drainedFrames, 0)
+        XCTAssertEqual(result.callbacks, 0)
+        XCTAssertEqual(result.completionStatus, noErr)
+        XCTAssertEqual(attemptedFrames.prefix(2), [0, 1])
+        XCTAssertEqual(attemptedFrames.last, 2)
+        XCTAssertEqual(videoToolbox.submissionCount, 2)
+        XCTAssertEqual(drainCallCount, 0)
+
+        while videoToolbox.completeFirstFrame() {}
+        XCTAssertEqual(admission.inFlightCount, 0)
     }
 
     func testWarmupPumpRefillsAdmissionWindowUntilFakeVideoToolboxProducesCallback() {
@@ -571,6 +614,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
                 maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+                return true
             },
             completeFrames: {
                 completionCallCount += 1
@@ -623,6 +667,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
                 maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+                return true
             },
             completeFrames: {
                 completionCallCount += 1
@@ -676,6 +721,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
                 maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+                return true
             },
             completeFrames: {
                 completionCallCount += 1
@@ -732,6 +778,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             submitFrame: { index in
                 submittedFrames.append(index)
                 XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
+                return true
             },
             completeFrames: {
                 completionCallCount += 1
@@ -785,6 +832,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
                 submittedFrames.append(index)
                 XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
                 maximumObservedInFlight = max(maximumObservedInFlight, admission.inFlightCount)
+                return true
             },
             completeFrames: { kVTInvalidSessionErr },
             drainFrames: {
@@ -821,6 +869,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             submitFrame: { index in
                 submittedFrames.append(index)
                 retainedInFlight += 1
+                return true
             },
             completeFrames: { -1 },
             drainFrames: {
@@ -852,6 +901,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             submitFrame: { index in
                 submittedFrames.append(index)
                 retainedInFlight += 1
+                return true
             },
             completeFrames: { noErr },
             drainFrames: {
