@@ -859,6 +859,11 @@ fixture and fail-closed checks; it records that no production TLS/public-Interne
 deployment or real Android camera QR scan was available in this environment.
 Current fail-closed Internet soak evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked/README.md).
+The current-base public Internet WebRTC/TURN relay E2E owner record is
+[`2026-08-30-internet-webrtc-relay-e2e-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked/README.md);
+it stays blocked until retained product E2E evidence proves a real public
+Internet WebRTC relay session with deployed remote TURN and
+ScreenCaptureKit-to-MediaCodec continuity.
 Mac/Android automatic invocation of Authority session-profile issuance, real QR
 scan request/acceptance, real encoded ScreenCaptureKit output through the
 device, automatic fresh-session

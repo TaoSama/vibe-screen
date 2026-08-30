@@ -471,6 +471,28 @@ loopback, forced local coturn, synthetic peers, and raw bulk hook tests also fai
 closed if promoted as Internet product-flow evidence. This child gate never sets
 `gate_can_close_phase3_release=true`.
 
+## Phase 3 WebRTC/TURN relay E2E current-base gate
+
+Use this gate for the dedicated current-base owner of public Internet
+WebRTC/TURN relay product E2E closure:
+
+```sh
+make phase3-webrtc-relay-e2e-current-base \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run> \
+  PHASE3_WEBRTC_RELAY_E2E_MANIFEST_JSON=docs/changes/2026-08-04-phase-3-secure-internet/evidence/<run>/webrtc-relay-e2e-current-base-manifest.json
+```
+
+To create the default fail-closed blocked baseline manifest first, run
+`make phase3-webrtc-relay-e2e-blocked-baseline`. A pass requires retained
+evidence that real macOS Host and Android peers used a genuine public Internet
+path, selected a deployed remote TURN relay WebRTC route, and delivered real
+ScreenCaptureKit/CGDisplayStream frames to Android MediaCodec through that
+session, with AES-256-GCM record-layer protection and no plaintext fallback.
+Local loopback, forced local coturn, synthetic peers, synthetic media, USB, and
+trusted-LAN TCP evidence fail closed if promoted as public Internet product
+E2E. A pass closes only this child gate; the broader Phase 3 release gate remains
+separate and `gate_can_close_phase3_release` stays `false`.
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

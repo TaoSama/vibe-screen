@@ -1,0 +1,101 @@
+{
+  "claims": {
+    "internet_webrtc_turn_relay_product_e2e": false,
+    "phase3_public_internet_product_e2e": false
+  },
+  "core_gates": {
+    "public_internet_webrtc_relay_route": {
+      "evidence": [],
+      "requirement": "real macOS and Android peers select a deployed remote TURN relay WebRTC route over a genuine public Internet path",
+      "status": "open"
+    },
+    "real_media_continuity": {
+      "evidence": [],
+      "requirement": "real ScreenCaptureKit/CGDisplayStream frames reach Android MediaCodec through the WebRTC relay session",
+      "status": "open"
+    },
+    "secure_record_layer": {
+      "evidence": [],
+      "requirement": "Phase 3 AES-256-GCM application records are used above WebRTC with session/key/channel separation and no plaintext fallback",
+      "status": "open"
+    },
+    "source_current_base": {
+      "evidence": [],
+      "requirement": "manifest source commit matches a clean current checkout",
+      "status": "open"
+    },
+    "webrtc_transport": {
+      "evidence": [],
+      "requirement": "control and media bytes crossed WebRTC DataChannels or media channels, not trusted-LAN TCP or USB fallback",
+      "status": "open"
+    }
+  },
+  "created_at": "2026-08-30T08:49:48.753386Z",
+  "evidence_context": {
+    "deployed_remote_turn": false,
+    "identity_signed_host": false,
+    "no_plaintext_fallback": false,
+    "no_synthetic_peer": false,
+    "public_internet_path": false,
+    "real_android_device": false,
+    "real_capture_to_mediacodec": false,
+    "real_macos_host": false,
+    "screen_recording_granted": false,
+    "webrtc_transport": false
+  },
+  "kind": "phase3_webrtc_relay_e2e_current_base_manifest",
+  "limitations": [
+    "No public Internet WebRTC/TURN relay product E2E pass is claimed.",
+    "Relay deployment preflight hardening is not product E2E evidence.",
+    "Local loopback, forced local coturn, synthetic peers, synthetic media, USB, and trusted-LAN records are readiness evidence only."
+  ],
+  "owner": {
+    "head_ref": "codex/internet-webrtc-relay-e2e-20260830",
+    "pull_request": "pending",
+    "repository": "TaoSama/vibe-screen",
+    "role": "phase3_webrtc_relay_e2e_current_base_owner"
+  },
+  "release_prerequisites": {
+    "cross_service_revocation": {
+      "evidence": [],
+      "requirement": "Authority, signaling, TURN credential issuance, and active allocation all fail closed after revoke",
+      "status": "blocked"
+    },
+    "external_camera_latency": {
+      "evidence": [],
+      "requirement": "direct and relay Internet paths have external-camera glass-to-glass latency evidence",
+      "status": "blocked"
+    },
+    "network_handoff": {
+      "evidence": [],
+      "requirement": "public route handoff recovers with a fresh session and old-record rejection",
+      "status": "blocked"
+    },
+    "packet_capture_confidentiality": {
+      "evidence": [],
+      "requirement": "direct and relay packet captures show no plaintext content, credentials, or pairing secrets",
+      "status": "blocked"
+    },
+    "relay_production_prerequisites": {
+      "evidence": [],
+      "requirement": "production relay DNS, /readyz, disk, TLS, quota, and secret-source checks pass",
+      "status": "blocked"
+    },
+    "two_hour_mixed_route_soak": {
+      "evidence": [],
+      "requirement": "two-hour mixed direct/relay/network-change soak has bounded queues, memory, nonce, latency, and media behavior",
+      "status": "blocked"
+    }
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "commit": "68508398914ae6f129a53175e5afb190cd8fcc73",
+    "tree_status": "clean"
+  },
+  "substitutions": {
+    "local_loopback_or_forced_local_coturn_used_as_public_internet": false,
+    "relay_preflight_used_as_product_e2e": false,
+    "synthetic_slice_used_as_product_e2e": false,
+    "usb_lan_evidence_used_for_internet": false
+  }
+}
