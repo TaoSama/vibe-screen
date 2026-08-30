@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "49fc0ff9ca86caf81602743048471745f04e0cd5",
+    "base_commit": "fe58cb6715cf203405820bd0eab352d0a93f56d9",
     "base_ref": "origin/main",
     "audit_date": "2026-08-30",
     "owner": "Vibe Screen core team",

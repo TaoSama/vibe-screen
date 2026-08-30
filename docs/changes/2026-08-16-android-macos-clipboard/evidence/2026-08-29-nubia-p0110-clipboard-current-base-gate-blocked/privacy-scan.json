@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "1984c5951f115d01265a286a4d2731b01448a56331706de9b69bbd5d3cf53a07"
+      "sha256": "218360563c69980ffc56000492d23ed05f33efe290311440ef573fcee80b949d"
     },
     {
       "bytes": 2,
@@ -76,7 +76,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "6919fadc619c4f97280dc1f473c43b58c52a6bf2ca54ba83619b4ff298eb85fd"
+      "sha256": "461fea08526b66f430a23e28b9cd27392769fb08c3c0ae4dd7c1392294695a32"
     },
     {
       "bytes": 41,
@@ -89,7 +89,7 @@
       ],
       "path": "git-head.txt",
       "result": "pass",
-      "sha256": "249e8cfb165ec9cca95c5c7f3234e5c8abdcba305f4c0c1de45741f5543403b8"
+      "sha256": "3c75919ea2c9f4b8968ba4f6be7bd4d30004810f86b860f9628271ba21803e37"
     },
     {
       "bytes": 41,
@@ -102,7 +102,7 @@
       ],
       "path": "git-origin-main.txt",
       "result": "pass",
-      "sha256": "249e8cfb165ec9cca95c5c7f3234e5c8abdcba305f4c0c1de45741f5543403b8"
+      "sha256": "3c75919ea2c9f4b8968ba4f6be7bd4d30004810f86b860f9628271ba21803e37"
     },
     {
       "bytes": 39,
@@ -118,7 +118,7 @@
       "sha256": "493320ee2fe177361e6967cf278a09b09c90a3ada4c0979baad2286370e4dd78"
     },
     {
-      "bytes": 1072,
+      "bytes": 1052,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -128,7 +128,7 @@
       ],
       "path": "git-status.txt",
       "result": "pass",
-      "sha256": "b7cfb04dc8da01dd7bd080b911c7a218588991597315320c45890bb933bf618a"
+      "sha256": "fb570f48b12eb59a62cdd94a5424109954a5ebebd58784febb40f091eabc5a74"
     },
     {
       "bytes": 2,
@@ -154,7 +154,7 @@
       ],
       "path": "host-readiness.json",
       "result": "pass",
-      "sha256": "d190f8414a06cd797979e1d37d42a52453300c4d05a4bfcff9b30304a02aba2a"
+      "sha256": "86befca54d72b90e4aad3c1e08a2762b28c78f1b14246a61c3d7b945a73f9517"
     },
     {
       "bytes": 6189,
@@ -167,7 +167,7 @@
       ],
       "path": "host-readiness.stderr",
       "result": "pass",
-      "sha256": "d190f8414a06cd797979e1d37d42a52453300c4d05a4bfcff9b30304a02aba2a"
+      "sha256": "86befca54d72b90e4aad3c1e08a2762b28c78f1b14246a61c3d7b945a73f9517"
     },
     {
       "bytes": 173,
@@ -180,7 +180,7 @@
       ],
       "path": "host-readiness.stdout",
       "result": "pass",
-      "sha256": "5e6148a3b8027713a218bdc95d9fb6bb8782cc72da3ab427a8105636606c6810"
+      "sha256": "cd2b36b532326ed32e1ee276f0230da1f880c2a53276302cb6ebe98bc9033e9c"
     },
     {
       "bytes": 1489,

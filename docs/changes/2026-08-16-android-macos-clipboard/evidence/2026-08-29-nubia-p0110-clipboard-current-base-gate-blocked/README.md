@@ -2,7 +2,7 @@
 
 Date: 2026-08-29 (local, Asia/Shanghai)
 Last refreshed: 2026-08-30 against current `origin/main`
-Source base: `origin/main` at `49fc0ff9ca86caf81602743048471745f04e0cd5`
+Source base: `origin/main` at `fe58cb6715cf203405820bd0eab352d0a93f56d9`
 Branch: `codex/clipboard-e2e-current-base`
 Device target: nubia P0110 / pacific / Android 16 / SDK 36
 Serial label: `REDACTED_P0110_USB_SERIAL`
