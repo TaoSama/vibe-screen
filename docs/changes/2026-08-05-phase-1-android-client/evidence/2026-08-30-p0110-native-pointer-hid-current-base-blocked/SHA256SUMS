@@ -1,0 +1,16 @@
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/android-logcat-native-pointer.txt
+0dd86bb9243c6686a54fda658b2f70ad9ab2060584a6f36992586579141600cd  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/commands.txt
+99f8847d10f6d57b75fc74188d54de1d8fdd8a9941e1c06e1b371737663d9f46  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/dumpsys-input.txt
+ba874e67f557e4e7dad27a3b7074d7e2a7bd0b389fbe638396563bd0c925e89c  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/gate-exit.txt
+eb967780fa8c71cc28f8a613418b377801961673c74191611830194326386691  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/gate.stderr
+b40b9b247d1b87905aa5a7e722106ba79858c9ba250b86201e32f27f3360eb40  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/gate.stdout
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/host-log-appended.txt
+ba874e67f557e4e7dad27a3b7074d7e2a7bd0b389fbe638396563bd0c925e89c  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/host-readiness-make.exit
+b256d72f3fb3ffc556d777ffa985fb7b7632ae22865ead9499626fed255a4b00  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/host-readiness.json
+525adbf1b701cb2aff4bf50e04b57e8d515b033ea936b1830e961f3734284b05  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/host-signing-and-permissions.txt
+ba874e67f557e4e7dad27a3b7074d7e2a7bd0b389fbe638396563bd0c925e89c  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/make-exit.txt
+2f7a6758670d24d30797cbed09cc03aa2d48a5b9ca02c75446121e020b1ae1c1  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/native-pointer-hid-summary.json
+026c5934308300b191ca5f7d4aef7c576be7d3544234e587f2b53c3a18c758d9  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/README.md
+b28a1c265540b73195d16aae09d0bc41a573415d560a14113abe797127f9e073  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/result.json
+08fecd907a54bafecc6583d23d939263132c032c135dbdd75b3886100fcfc8ad  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/sfltool-end.txt
+08fecd907a54bafecc6583d23d939263132c032c135dbdd75b3886100fcfc8ad  docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked/sfltool-start.txt
