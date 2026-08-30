@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2391,
+      "bytes": 2443,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "a9e22d4b3dd88fe0252aa2579bedd980cdd82c6a5b2e420f0a69fdaa5ac0f84b"
+      "sha256": "22a7acc9cdc26e30319d963adca07cf1ca6cd778ce73fc13a99757a78d696d97"
     },
     {
       "bytes": 744,
