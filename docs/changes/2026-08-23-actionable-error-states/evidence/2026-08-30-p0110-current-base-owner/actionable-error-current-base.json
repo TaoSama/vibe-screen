@@ -1,0 +1,260 @@
+{
+  "can_close_readme_phase1_actionable_errors_gate": false,
+  "created_at": "2026-08-30T07:45:00Z",
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36"
+  },
+  "evidence_boundary": "Current-base device owner record with current Android debug APK installed on Nubia P0110/pacific. It captures a missing ADB reverse / Mac-listener-absent observation with user-visible recovery copy plus blocked state boundaries; it intentionally cannot close the README Phase 1 actionable-errors gate.",
+  "kind": "phase1_actionable_error_current_base",
+  "notes": [
+    "This manifest is the current-base owner record for the requested Phase 1 actionable-error states.",
+    "It intentionally keeps the README gate open until every state has retained real-device evidence and per-state user-visible recovery copy.",
+    "The raw Android ADB serial is used only in commands during collection and is redacted from public artifacts.",
+    "2026-08-30 refresh adds a user-visible missing-route state where reverse removal produced ECONNREFUSED and the app showed Mac app unavailable plus ADB reverse recovery copy."
+  ],
+  "repository": {
+    "baseline": "origin/main",
+    "branch": "codex/actionable-error-state-p0110-20260830",
+    "collected_at_commit": "8626c760c0a2c9a519bef38bbf0d1725401f3e79",
+    "evaluated_at_commit": "8626c760c0a2c9a519bef38bbf0d1725401f3e79",
+    "name": "TaoSama/vibe-screen",
+    "notes": [
+      "Started from clean current origin/main 8626c760c.",
+      "Android app was already installed; no rebuild was performed for this evidence-only refresh.",
+      "The retained evidence is public-safe and redacts the raw ADB serial and loopback addresses."
+    ]
+  },
+  "run_id": "2026-08-30-p0110-current-base-owner",
+  "schema_version": "vibescreen.evidence/v1",
+  "states": [
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for repository-current-base.txt.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "658508acab7086254f58e0fc530cc6098ba7656eb63c65bbe9ba6366bfbdfc29"
+        }
+      ],
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Screen Recording/TCC state"
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Stable-signed Host run with Screen Recording denied or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Screen Recording blocker",
+        "Android connection UI/log evidence showing the resulting user-facing recovery path without closing the stream gate"
+      ],
+      "id": "host_screen_recording_denied",
+      "notes": [
+        "No TCC mutation was performed for this current-base record.",
+        "2026-08-30 refresh preserves the fail-closed blocked boundary; no real Screen Recording denied device/UI evidence was added."
+      ],
+      "observed_on_device": false,
+      "owner": "macOS Host permission runbook and future TCC-denied Host log/device UI evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for repository-current-base.txt.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "658508acab7086254f58e0fc530cc6098ba7656eb63c65bbe9ba6366bfbdfc29"
+        }
+      ],
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Accessibility/TCC state"
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Stable-signed Host run with Accessibility denied, limited, or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Accessibility blocker",
+        "Device-side evidence that streaming state and input/window actions remain correctly classified"
+      ],
+      "id": "accessibility_denied_or_limited",
+      "notes": [
+        "This record intentionally avoids TCC mutation and does not prove real Accessibility denial UI.",
+        "2026-08-30 refresh preserves the fail-closed blocked boundary."
+      ],
+      "observed_on_device": false,
+      "owner": "macOS Host permission runbook and future Accessibility-denied Host log/device UI evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for repository-current-base.txt.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "658508acab7086254f58e0fc530cc6098ba7656eb63c65bbe9ba6366bfbdfc29"
+        }
+      ],
+      "blockers": [
+        "A local Vibe Screen process was already listening on TCP 54321 during the current-base run, so the missing-listener state could not be reproduced without interrupting a shared Host process."
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Retained Host-not-listening or port-conflict evidence paired with the exact Android user-facing error UI",
+        "Proof that bounded retry does not become a successful stream without a listener",
+        "A closing run must be collected on current source after the Host/UI surface under test is selected"
+      ],
+      "id": "tcp_54321_unavailable",
+      "notes": [
+        "The 2026-08-24 record retains historical missing-listener logs, but this 2026-08-30 current-base run does not relabel them as current-source acceptance."
+      ],
+      "observed_on_device": false,
+      "owner": "Android USB connection guidance and Host listener readiness evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for device-identity.txt.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf"
+        },
+        {
+          "description": "Sanitized current-base P0110 evidence for adb-reverse-missing-before.txt.",
+          "kind": "adb_reverse",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/adb-reverse-missing-before.txt",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        },
+        {
+          "description": "Sanitized current-base P0110 evidence for adb-reverse-restored-after.txt.",
+          "kind": "adb_reverse",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/adb-reverse-restored-after.txt",
+          "sha256": "efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c"
+        },
+        {
+          "description": "Sanitized current-base P0110 evidence for usb-adb-route-missing-ui.xml.",
+          "kind": "android_ui_dump",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/usb-adb-route-missing-ui.xml",
+          "sha256": "4ae588468656a94f159629554e58d0ff018cf6b845f64de5b3d17aa3e68bf263"
+        },
+        {
+          "description": "Sanitized current-base P0110 evidence for logcat-route-missing-current-base.txt.",
+          "kind": "android_logcat",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/logcat-route-missing-current-base.txt",
+          "sha256": "a9ca64250d75b56dc58a55626527cf0ea35dc8e1b3326576e2db8cf9bd5636b1"
+        }
+      ],
+      "blockers": [
+        "The current-source device run removed tcp:54321 and restored it afterwards; with no Host listener available the app showed Mac app unavailable guidance, which is actionable but is not yet ADB-route-unavailable or a complete closing matrix pass."
+      ],
+      "can_close_state": false,
+      "classification": "current_device_observed_but_host_not_running_guidance",
+      "closure_requirements": [
+        "Controlled run that removes or omits tcp:54321 reverse mapping under a held device lease",
+        "Retained before/after adb reverse --list output and Android user-facing recovery surface",
+        "Proof that the Host recreates the reverse rule or presents a concrete manual recovery action"
+      ],
+      "id": "adb_reverse_missing",
+      "notes": [
+        "This run retained current-source P0110 identity, missing reverse output, ECONNREFUSED bounded retry logs, and user-visible recovery copy about opening Vibe Screen/ADB reverse on the Mac.",
+        "It still does not prove a dedicated ADB-route-unavailable user-visible state distinct from Host-not-listening, so the README gate remains open."
+      ],
+      "observed_on_device": true,
+      "owner": "Android USB transport and Host ADB reverse recovery evidence",
+      "status": "insufficient"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for device-identity.txt.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf"
+        }
+      ],
+      "blockers": [
+        "A physical USB disconnect drops the only ADB control channel, so this run could not retain reliable same-window UI/log evidence without external capture."
+      ],
+      "can_close_state": false,
+      "classification": "unsafe_to_observe_with_adb_only",
+      "closure_requirements": [
+        "External camera or independent observer record of the Android USB-disconnected UI after cable removal",
+        "Host log showing USB disconnect classification and bounded recovery",
+        "Proof the ADB serial and device identity are restored after reconnect"
+      ],
+      "id": "usb_disconnected",
+      "notes": [
+        "No cable pull was performed for this current-base record."
+      ],
+      "observed_on_device": false,
+      "owner": "Android USB disconnected surface and Host transport recovery evidence",
+      "status": "not_run"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for device-identity.txt.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/device-identity.txt",
+          "sha256": "659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf"
+        },
+        {
+          "description": "Sanitized current-base P0110 evidence for lan-route-readonly-sanitized.txt.",
+          "kind": "lan_route_preflight",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/lan-route-readonly-sanitized.txt",
+          "sha256": "e59d8ee7e0be7082fd5908f9a50bd73971abc8b8e8614525a8ea04f2a53fa3d0"
+        }
+      ],
+      "blockers": [
+        "P0110 had no retained usable trusted-LAN route evidence, so no full LAN connection attempt could exercise the complete UI matrix."
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_observed",
+      "closure_requirements": [
+        "Retained trusted-LAN preflight JSON or equivalent sanitized artifacts with no device Wi-Fi route",
+        "Android LAN user-facing recovery surface for the same attempt",
+        "Separate encrypted LAN stream/reconnect evidence before any reconnect acceptance claim"
+      ],
+      "id": "lan_route_unavailable",
+      "notes": [
+        "Raw dumpsys/route output is summarized to avoid saving SSIDs or local network addresses.",
+        "The 2026-08-30 refresh reused the sanitized LAN preflight boundary; no LAN attempt was run."
+      ],
+      "observed_on_device": true,
+      "owner": "Trusted-LAN preflight and Android connection guidance evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Sanitized current-base P0110 evidence for repository-current-base.txt.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/repository-current-base.txt",
+          "sha256": "658508acab7086254f58e0fc530cc6098ba7656eb63c65bbe9ba6366bfbdfc29"
+        }
+      ],
+      "blockers": [
+        "No Protocol v1 stream or stale epoch/session fault was available in the current environment."
+      ],
+      "can_close_state": false,
+      "classification": "no_protocol_v1_stream_or_epoch_fault",
+      "closure_requirements": [
+        "Protocol v1 stream with retained accepted epoch/session identity",
+        "Injected or naturally observed stale epoch/session message after disconnect, reconnect, or display renegotiation",
+        "Android and Host logs proving stale media/input/control delivery was rejected without rendering old frames or accepting old input"
+      ],
+      "id": "stale_epoch_or_session_errors",
+      "notes": [
+        "USB waiting and missing-reverse observations are not stale epoch/session evidence.",
+        "Offline JVM/Protocol v1 tests already provide fail-closed coverage, but this device owner record keeps the state not-run."
+      ],
+      "observed_on_device": false,
+      "owner": "Protocol v1 session/epoch rejection and Android stale-delivery UI/log evidence",
+      "status": "not_run"
+    }
+  ]
+}
