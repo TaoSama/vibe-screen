@@ -1,0 +1,14 @@
+{
+  "android_release": "16",
+  "battery_summary": "Current Battery Service state:; AC powered: true; USB powered: false; Wireless powered: false; Dock powered: false; Max charging current: 3000000; Time when the latest updated value of the Max charging current was sent via battery changed broadcast: +23d0h57m45s297ms; Max charging voltage: 5000000; Charge counter: 6228000; status: 5; health: 2; present: true",
+  "boot_completed": "1",
+  "device": "pacific",
+  "display_density": "Physical density: 560",
+  "display_size": "Physical size: 1264x2800",
+  "endpoint": "redacted adb endpoint product:pacific model:P0110 device:pacific",
+  "fingerprint_sha256": "redacted-build-fingerprint-sha256",
+  "manufacturer": "nubia",
+  "model": "P0110",
+  "sdk": "36",
+  "serial": "<device-serial>"
+}

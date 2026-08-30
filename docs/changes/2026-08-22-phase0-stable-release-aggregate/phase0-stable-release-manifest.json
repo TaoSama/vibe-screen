@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "4884d80813a7f674a10d574a96f8dfcf5723c6e7",
+    "base_commit": "32146152100477660eaf0ddb10befa8af48ea4fd",
     "base_ref": "origin/main",
     "audit_date": "2026-08-30",
     "owner": "Vibe Screen core team",
@@ -189,7 +189,7 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
-        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/controller-runtime-summary.json"
+        "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-3214615/controller-runtime-summary.json"
       ],
       "owner_prs": [
         217,
