@@ -120,10 +120,12 @@
       "repository_current_base": {
         "blocking": false,
         "evidence": [
-          "4dfe22676f19e50bbc3192ec86e1dd4b1b56f523",
-          "dirty=False"
+          "6deacba493737d809a8672e60e83e9a6f931f501",
+          "dirty=False",
+          "origin_main=a7a14ca95c431b68a56908cb231d0b869a190b50",
+          "origin_main_ancestor_exit=0"
         ],
-        "expected": "current-base evidence records a clean repository source revision",
+        "expected": "current-base evidence records a clean repository source revision containing retained origin/main when present",
         "passed": true
       },
       "schema_version": {
@@ -183,7 +185,7 @@
     "blocked: physical_host_display_rotation",
     "blocked: virtual_host_display_rotation"
   ],
-  "run_id": "11dd1899-ec7b-40f2-9432-0d560292b47f",
+  "run_id": "388f4f31-4759-464e-80d5-3c0cb0484019",
   "schema_version": "vibescreen.evidence/v1",
   "source": {
     "manifest": "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-host-display-rotation-current-base-blocked/host-display-rotation-current-base-manifest.json"

@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "c4453d878032b2c20856a7e322032ffbd863534f244925760643ea33f1f8bcd5"
+      "sha256": "b86caf3100a47abebadfe1569710444f57d396457e5dbb59102d9ff2f54e7d18"
     },
     {
       "bytes": 30,
@@ -27,7 +27,7 @@
       "sha256": "0ad30eb1563c325d77f4dc564c5d96851d5a39205307f5cdd7d762b59688f87a"
     },
     {
-      "bytes": 2740,
+      "bytes": 2796,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,7 +37,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "0673f457d5ceba59ba6d693ef468560c118f043b39769e6231b815c885aa1592"
+      "sha256": "5b2855ff29e65928543e73e02fe0d0753a11fdcfec2500c85613320d1ce019c1"
     },
     {
       "bytes": 317,
@@ -63,7 +63,7 @@
       ],
       "path": "git-head.txt",
       "result": "pass",
-      "sha256": "c1ef30c29816988e7298d65d4aa9913328ea8fe108f140db9ba3ea113a5989ff"
+      "sha256": "d2c07864abe384aaf6d30e02b2f0e9df70cd9e7774ecbd9e081404d368cb9445"
     },
     {
       "bytes": 2,
@@ -89,7 +89,7 @@
       ],
       "path": "git-origin-main.txt",
       "result": "pass",
-      "sha256": "c2fd03e3c5b67bb6c368ccdeeee067fd56cd10bcaca8da33cd6ee163ec7456a0"
+      "sha256": "f3bc5317b1ad23cd6e690a998c36b7705173b49399bed60e7b81d887a4cd8dd8"
     },
     {
       "bytes": 2,
@@ -105,7 +105,7 @@
       "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
     },
     {
-      "bytes": 6335,
+      "bytes": 6487,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -115,7 +115,7 @@
       ],
       "path": "host-display-rotation-current-base-gate.json",
       "result": "pass",
-      "sha256": "68f08319301ef69f47e47d1eddeb544ed1728ac55901da64e7008ece47762d84"
+      "sha256": "b973cf20ee85996a273838eaec23d263dfa3c46fc6e899525aafeea4641f1b82"
     },
     {
       "bytes": 60,
@@ -131,7 +131,7 @@
       "sha256": "07895cc1cbf7e2047e14b64f336f40a3ea3eb03699ab75eb70bd8908695d1536"
     },
     {
-      "bytes": 4953,
+      "bytes": 5085,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -141,7 +141,7 @@
       ],
       "path": "host-display-rotation-current-base-gate.stdout",
       "result": "pass",
-      "sha256": "26fee4006b0867dac1d69083f1a068d4cc2d6f10b2ae38f07a6a134780d12263"
+      "sha256": "580ced3574295a753dc319ac4ea705f174ad59b5887b482e25ee5a9b4f20b203"
     },
     {
       "bytes": 2,
@@ -167,7 +167,7 @@
       ],
       "path": "host-display-rotation-current-base-manifest.json",
       "result": "pass",
-      "sha256": "bcf4a4c3440603749bc030c6eae620fc0f7645093f7e32a2e29926950fce3143"
+      "sha256": "76e6feccc88ed288a99b5683c7c1ea191c006f7da2d63be291e3715380039aed"
     },
     {
       "bytes": 0,
@@ -287,7 +287,7 @@
       "sha256": "74440d6b3c966f214f37a8a5b75b0a0144122f71f147b9a4a932233954565123"
     },
     {
-      "bytes": 967,
+      "bytes": 936,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -297,7 +297,7 @@
       ],
       "path": "installed-host-codesign.txt",
       "result": "pass",
-      "sha256": "b2fcb0fad5fa52362de9f57117808538f30f2de7cca79b5e5b40a373cb51af65"
+      "sha256": "eba44b7a0d1648517eed8d56882c72bd3c3f068e5a87539fb8a31f445d13fb37"
     },
     {
       "bytes": 1006,
@@ -310,7 +310,7 @@
       ],
       "path": "repository-state.txt",
       "result": "pass",
-      "sha256": "416b1686c771f46b64e90ea953acc68b2affd7ec70d41a35640f6b621b0feab3"
+      "sha256": "0e98ec1d8204b1f1fddf5c9416c498fea19108fc6594dcc074efad211acd1a06"
     },
     {
       "bytes": 0,

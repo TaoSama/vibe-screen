@@ -1,26 +1,25 @@
 Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 Identifier=dev.telemachus.display
 Format=app bundle with Mach-O thin (arm64)
-CodeDirectory v=20400 size=22575 flags=0x0(none) hashes=695+7 location=embedded
+CodeDirectory v=20400 size=25199 flags=0x0(none) hashes=781+3 location=embedded
 VersionPlatform=1
 VersionMin=851968
-VersionSDK=1704960
+VersionSDK=1705216
 Hash type=sha256 size=32
-CandidateCDHash sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2
-CandidateCDHashFull sha256=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+CandidateCDHash sha256=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced7
+CandidateCDHashFull sha256=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced72ca05433e5e1114184e232d3
 Hash choices=sha256
-CMSDigest=2fe65fd5cd69c80249140da3f139cfa68037c5c2de22cf9676a340f5d31ab08a
+CMSDigest=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced72ca05433e5e1114184e232d3
 CMSDigestType=2
 Executable Segment base=0
-Executable Segment limit=4423680
+Executable Segment limit=5226496
 Executable Segment flags=0x1
 Page size=16384
-CDHash=2fe65fd5cd69c80249140da3f139cfa68037c5c2
-Signature size=3186
+CDHash=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced7
+Signature size=1795
 Authority=Vibe Screen Dev
-Authority=Vibe Screen Dev Root
-Signed Time=Aug 15, 2026 at 22:57:00
-Info.plist entries=14
+Signed Time=Aug 29, 2026 at 10:18:01
+Info.plist entries=18
 TeamIdentifier=not set
 Sealed Resources version=2 rules=13 files=10
 Internal requirements count=1 size=100

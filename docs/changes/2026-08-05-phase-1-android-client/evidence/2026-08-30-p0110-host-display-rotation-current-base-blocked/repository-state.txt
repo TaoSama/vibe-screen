@@ -2,11 +2,11 @@ Repository and PR state captured for this blocked current-base owner record.
 
 The branch was synchronized with origin/main at:
 
-  a9791336a105d234609ab55dad0a2713957a142a
+  a7a14ca95c431b68a56908cb231d0b869a190b50
 
 The current-base manifest was then refreshed from clean evidence-source commit:
 
-  4dfe22676f19e50bbc3192ec86e1dd4b1b56f523
+  6deacba493737d809a8672e60e83e9a6f931f501
 
 At capture time, git merge-base --is-ancestor origin/main HEAD returned 0, so
 that evidence-source commit already contained the recorded origin/main base.

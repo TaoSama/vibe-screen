@@ -190,6 +190,8 @@ def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str,
     owner = manifest.get("owner") if isinstance(manifest.get("owner"), dict) else {}
     scope_prs = set(_string_list(manifest.get("scope_prs")))
     source_docs = set(_string_list(manifest.get("source_docs")))
+    repository_revision = str(repository.get("revision")) if repository.get("revision") else ""
+    retained_origin_main_passed, retained_origin_main_evidence = _retained_origin_main_check(manifest_path)
     source_root_value = str(manifest.get("source_root"))
     if source_root_value == REDACTED_SOURCE_ROOT:
         source_root = Path.cwd()
@@ -208,15 +210,17 @@ def _metadata_checks(manifest: dict[str, Any], manifest_path: Path) -> dict[str,
 
     return {
         "repository_current_base": _check(
-            _non_empty_string(repository.get("revision"))
-            and len(str(repository.get("revision"))) == 40
-            and all(character in "0123456789abcdefABCDEF" for character in str(repository.get("revision")))
+            _non_empty_string(repository_revision)
+            and len(repository_revision) == 40
+            and all(character in "0123456789abcdefABCDEF" for character in repository_revision)
             and repository.get("dirty") is False
-            and repository.get("status_porcelain") == [],
-            "current-base evidence records a clean repository source revision",
+            and repository.get("status_porcelain") == []
+            and retained_origin_main_passed,
+            "current-base evidence records a clean repository source revision containing retained origin/main when present",
             evidence=[
-                str(repository.get("revision")) if repository.get("revision") else "<missing-revision>",
+                repository_revision or "<missing-revision>",
                 f"dirty={repository.get('dirty')}",
+                *retained_origin_main_evidence,
             ],
         ),
         "schema_version": _check(manifest.get("schema_version") == SCHEMA_VERSION, SCHEMA_VERSION),
@@ -325,6 +329,29 @@ def _substitution_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
             blocking=True,
         )
     }
+
+
+def _retained_origin_main_check(manifest_path: Path) -> tuple[bool, list[str]]:
+    origin_main_path = manifest_path.parent / "git-origin-main.txt"
+    if not origin_main_path.exists():
+        return True, ["origin_main=<not-retained>"]
+    try:
+        origin_main = origin_main_path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, UnicodeDecodeError, IndexError):
+        return False, ["origin_main=<unreadable>"]
+    origin_main_valid = (
+        len(origin_main) == 40
+        and all(character in "0123456789abcdefABCDEF" for character in origin_main)
+    )
+    ancestor_path = manifest_path.parent / "git-origin-main-ancestor.exit-code"
+    try:
+        ancestor_exit = ancestor_path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, UnicodeDecodeError, IndexError):
+        ancestor_exit = "<unreadable>"
+    return origin_main_valid and ancestor_exit == "0", [
+        f"origin_main={origin_main or '<empty>'}",
+        f"origin_main_ancestor_exit={ancestor_exit or '<empty>'}",
+    ]
 
 
 def derive_gate(manifest_path: Path) -> dict[str, Any]:

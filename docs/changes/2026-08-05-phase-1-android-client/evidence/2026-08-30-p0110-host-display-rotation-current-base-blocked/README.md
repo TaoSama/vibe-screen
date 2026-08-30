@@ -4,8 +4,8 @@ Date: 2026-08-30
 
 This is a current-base blocked record for the rotated physical/virtual
 host-display acceptance gate. It starts from current `origin/main` commit
-`a9791336a105d234609ab55dad0a2713957a142a`. The manifest was refreshed from
-clean evidence-source commit `4dfe22676f19e50bbc3192ec86e1dd4b1b56f523`, which
+`a7a14ca95c431b68a56908cb231d0b869a190b50`. The manifest was refreshed from
+clean evidence-source commit `6deacba493737d809a8672e60e83e9a6f931f501`, which
 already contains that current base. The current-base manifest records
 `dirty=false` and an empty `status_porcelain` after ignoring its own evidence
 output directory. The final PR head can differ from the manifest source
