@@ -39,7 +39,7 @@ stable-release claim is allowed:
 | Controller runtime acceptance | blocked | #217, #220, #270 | Latest current-base readiness remains blocked: no physical controller, identity-signed Host with approved virtual HID entitlement, Mac-side response, and neutral disconnect release are recorded in one pass bundle. |
 | Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, but Host readiness is blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |
 | Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, and protocol fixtures pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
-| Phase 0 module ownership extraction | open | #211, #218, #221, #259, #372 | Android TCP transport plus `StreamClient` local session, input, protocol-action, media-routing, and Protocol v1 side-effect owner slices are extracted; broader protocol/session, decoder, renderer, and UI boundaries are not all enforced on current main. |
+| Phase 0 module ownership extraction | open | #211, #218, #221, #259, #372 | The current-base module ownership manifest closes Android TCP transport plus several `StreamClient` owner slices, but protocol/session, file-transfer and WakeHost product ownership, decoder/renderer, and UI/product session boundaries remain partial or open. |
 
 Trusted LAN current-worktree stream/reconnect, login-item/headless reboot, and
 Developer ID notarized distribution remain important release-readiness items,
@@ -58,6 +58,19 @@ The command writes
 .build/evidence/phase0-stable-release/phase0-stable-release-summary.json and
 exits zero when README guard language is consistent with the manifest, even if
 the aggregate is still blocked.
+
+Evaluate the module ownership sub-gate directly with:
+
+```bash
+make phase0-module-ownership-gate
+```
+
+The command writes
+.build/evidence/phase0-module-ownership/phase0-module-ownership-summary.json.
+It exits zero while the manifest is well formed, even when the summary verdict
+is blocked. Use `PHASE0_MODULE_OWNERSHIP_REQUIRE_PASS=1` only before attempting
+to close the module ownership sub-gate; current main must fail that stricter
+mode until every required boundary is closed with focused evidence.
 
 Run the release-claim gate before changing README to any completed/stable Phase
 0 wording:

@@ -1,0 +1,274 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "phase0_module_ownership_current_base_manifest",
+  "phase": "phase0",
+  "source": {
+    "base_commit": "1217c585f5a0185402bdc47fc588ac8092066067",
+    "base_ref": "origin/main",
+    "audit_date": "2026-08-29",
+    "owner": "Phase 0 module ownership extraction owner"
+  },
+  "module_boundaries": [
+    {
+      "id": "transport_dependency_direction",
+      "title": "Android TCP transport dependency direction",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/transport",
+      "evidence_paths": [
+        "baseline/AndroidClient/transport/src/test/kotlin/dev/telemachus/display/transport/StreamTransportOwnerTest.kt",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "focused_tests": [
+        "make baseline-android-transport-boundary"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "transport_resource_lifecycle",
+      "title": "Android TCP transport resource lifecycle",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/transport",
+      "evidence_paths": [
+        "baseline/AndroidClient/transport/src/test/kotlin/dev/telemachus/display/transport/StreamTransportOwnerTest.kt",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "focused_tests": [
+        "make baseline-android-transport-boundary"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "stream_client_local_session_state",
+      "title": "StreamClient local product-session lifecycle owner",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientLocalSessionStateTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamClientLocalSessionStateTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "stream_client_protocol_action_dispatch",
+      "title": "StreamClient Protocol v1 action dispatch owner",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolActionDispatcher.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolActionDispatcher.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
+      ],
+      "focused_tests": [
+        "make baseline-android-protocol-side-effect-owner"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "stream_client_input_envelope_routing",
+      "title": "StreamClient input envelope routing owner",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.StreamInputBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "stream_client_media_frame_routing",
+      "title": "StreamClient media-frame routing owner",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamMediaFrameRouterTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "protocol_side_effect_admission",
+      "title": "Protocol v1 side-effect admission owner",
+      "required_for_phase0_stable": true,
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
+      ],
+      "focused_tests": [
+        "make baseline-android-protocol-side-effect-owner"
+      ],
+      "blockers": [],
+      "fail_closed_checklist": []
+    },
+    {
+      "id": "protocol_session_ownership",
+      "title": "Protocol and session ownership boundary",
+      "required_for_phase0_stable": true,
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest"
+      ],
+      "blockers": [
+        "StreamClient still composes transport, legacy fallback, Protocol v1 session setup, retry state, and product callbacks in one application-layer owner.",
+        "No current-base module contract proves protocol/session ownership is isolated from transport and UI product-session orchestration end to end."
+      ],
+      "fail_closed_checklist": [
+        "Extract a product-session/session-orchestration owner that owns Protocol v1 session lifecycle, epochs, cleanup, and retry transition admission.",
+        "Add dependency-direction tests proving the session owner does not import Android UI, concrete sockets, MediaCodec, file transfer side effects, or WakeHost packet senders.",
+        "Add stale epoch and disconnect cleanup contract coverage against the extracted owner rather than StreamClient internals."
+      ]
+    },
+    {
+      "id": "file_transfer_product_ownership",
+      "title": "File-transfer product ownership boundary",
+      "required_for_phase0_stable": true,
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/FileTransferSession.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/FileTransferSession.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/FileTransferSessionTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept"
+      ],
+      "blockers": [
+        "The session-level file-transfer protocol has focused tests, and stale host offers are gated by StreamProtocolSideEffectOwner, but the product file-transfer workflow still reaches UI callbacks through StreamClient composition.",
+        "No module contract owns Android picker/storage/UI side effects separately from protocol admission and session lifecycle."
+      ],
+      "fail_closed_checklist": [
+        "Introduce a file-transfer product owner that owns Android storage and user-decision callbacks behind a protocol-neutral port.",
+        "Prove stale offer decisions, disconnect cleanup, denied writes, and duplicate transfer IDs fail closed at the product owner boundary.",
+        "Keep Protocol v1 framing/session tests separate from Android UI/storage acceptance tests."
+      ]
+    },
+    {
+      "id": "wake_host_product_ownership",
+      "title": "WakeHost product ownership boundary",
+      "required_for_phase0_stable": true,
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHost.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHost.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WakeHostTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+        "tools/vibescreen_evidence/wake_host_current_base.py"
+      ],
+      "focused_tests": [
+        "make baseline-android-protocol-side-effect-owner",
+        "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base -v"
+      ],
+      "blockers": [
+        "WakeHost authorization and packet construction have focused offline tests, and pending requests are side-effect-owner gated, but sleeping-Mac product ownership remains evidence-gated outside the Android session owner.",
+        "No current-base module contract owns identity-signed Host/TCC readiness, WOL delivery evidence, and product callback lifecycle as one WakeHost owner."
+      ],
+      "fail_closed_checklist": [
+        "Keep offline WakeHost protocol tests as prerequisite only, not acceptance.",
+        "Bind WakeHost product ownership to the current-base hardware gate summary before allowing sleeping-Mac wake claims.",
+        "Add a product owner boundary for request lifecycle, UI callback delivery, and packet sender admission independent of StreamClient."
+      ]
+    },
+    {
+      "id": "decoder_ownership",
+      "title": "Android decoder ownership boundary",
+      "required_for_phase0_stable": true,
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/VideoDecoder.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/VideoDecoder.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ActiveDecoderCallbackBinding.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ActiveDecoderCallbackBindingTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderStartupGateTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt"
+      ],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.ActiveDecoderCallbackBindingTest --tests dev.telemachus.display.DecoderStartupGateTest --tests dev.telemachus.display.DecoderSelectionTest"
+      ],
+      "blockers": [
+        "Decoder selection and stale callback binding have focused tests, but MediaCodec lifecycle and decode recovery still live in the baseline app module rather than an extracted decoder module with dependency-direction enforcement.",
+        "No current-base contract proves decoder lifecycle is isolated from StreamClient product-session orchestration and renderer state."
+      ],
+      "fail_closed_checklist": [
+        "Extract decoder lifecycle ownership behind a decoder port or module with MediaCodec as the only platform adapter dependency.",
+        "Add tests for active-generation delivery, stale callback rejection, startup cleanup, codec fallback, and decoder release exactly once at the owner boundary.",
+        "Prove decoder owner does not import UI controls, transport sockets, or protocol side-effect owners."
+      ]
+    },
+    {
+      "id": "renderer_ownership",
+      "title": "Android renderer ownership boundary",
+      "required_for_phase0_stable": true,
+      "status": "open",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "focused_tests": [],
+      "blockers": [
+        "Renderer presentation, rotation, letterboxing, Surface lifecycle, and product UI state are not represented by an extracted owner with standalone contract tests.",
+        "MainActivity still coordinates rendering with local and Internet product sessions."
+      ],
+      "fail_closed_checklist": [
+        "Extract renderer state ownership for Surface lifecycle, frame presentation, rotation, letterboxing, and stale-frame rejection.",
+        "Add contract tests that feed accepted/stale media frames without requiring Android UI instrumentation.",
+        "Prove renderer owner does not own protocol negotiation, transport connection state, or product side effects."
+      ]
+    },
+    {
+      "id": "ui_product_session_boundaries",
+      "title": "Android UI and product-session boundary",
+      "required_for_phase0_stable": true,
+      "status": "open",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+      ],
+      "focused_tests": [],
+      "blockers": [
+        "MainActivity still coordinates local USB/LAN and Internet product sessions, UI controls, renderer callbacks, file-transfer prompts, and connection lifecycle.",
+        "No current-base contract proves UI owns only presentation and intent production while session owners own state transitions and side effects."
+      ],
+      "fail_closed_checklist": [
+        "Extract a product-session coordinator consumed by UI intent handlers instead of allowing MainActivity to own session internals.",
+        "Add tests for UI intent to session-command mapping, disconnect cleanup, and ignored stale callbacks.",
+        "Keep renderer, decoder, protocol/session, file-transfer, WakeHost, and Internet session ownership in separate modules or owner classes with dependency-direction checks."
+      ]
+    }
+  ]
+}

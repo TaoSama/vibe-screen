@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase0-module-ownership.schema.json",
+  "title": "Vibe Screen Phase 0 module ownership current-base summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "phase",
+    "source",
+    "verdict",
+    "can_close_phase0_module_ownership_extraction",
+    "required_boundary_count",
+    "closed_required_boundary_count",
+    "missing_required_boundary_ids",
+    "open_required_boundaries",
+    "boundary_summaries",
+    "reasons"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase0_module_ownership_current_base_summary"},
+    "phase": {"const": "phase0"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_commit", "base_ref", "audit_date", "owner"],
+      "properties": {
+        "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "base_ref": {"type": "string", "minLength": 1},
+        "audit_date": {"type": "string", "format": "date"},
+        "owner": {"type": "string", "minLength": 1}
+      }
+    },
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "can_close_phase0_module_ownership_extraction": {"type": "boolean"},
+    "required_boundary_count": {"type": "integer", "minimum": 0},
+    "closed_required_boundary_count": {"type": "integer", "minimum": 0},
+    "missing_required_boundary_ids": {"type": "array", "items": {"type": "string"}},
+    "open_required_boundaries": {"type": "array", "items": {"$ref": "#/$defs/boundary_summary"}},
+    "boundary_summaries": {"type": "array", "items": {"$ref": "#/$defs/boundary_summary"}},
+    "reasons": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "boundary_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_for_phase0_stable",
+        "status",
+        "can_close",
+        "owner_surface",
+        "evidence_paths",
+        "focused_tests",
+        "blockers",
+        "fail_closed_checklist",
+        "missing_evidence_paths",
+        "issues"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "required_for_phase0_stable": {"type": "boolean"},
+        "status": {"enum": ["closed", "partial", "open", "blocked", "insufficient", "fail"]},
+        "can_close": {"type": "boolean"},
+        "owner_surface": {"type": "string", "minLength": 1},
+        "evidence_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "focused_tests": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "fail_closed_checklist": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "missing_evidence_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "issues": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}
