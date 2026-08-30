@@ -1146,7 +1146,13 @@ record and current-base owner tooling. A
 the device identity, USB reverse, installed packages, and local TCP `54321`
 listener were present, but the Host stable-signing/TCC/source-provenance
 preflight was unavailable, so no physical or virtual 90/180/270 display stream
-or inverse-touch matrix was claimed. A
+or inverse-touch matrix was claimed. A 2026-08-31 P0110/pacific current-base
+owner refresh again kept that gate blocked: the device identity was nubia P0110 /
+pacific / Android 16 / SDK 36, the current-base manifest recorded a clean source
+revision, but the installed Host was not a current-source stable-signed/TCC-ready
+bundle with proven Screen Recording, Accessibility, signing/TCC match, and
+rotation restoration plan, so no physical or virtual 90/180/270 display
+rotation run was started. A
 post-fix 30-minute preference run completed 60/60 connected samples with no
 reconnect or sample error; it is a short regression run, not a replacement for
 the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the
