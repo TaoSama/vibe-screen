@@ -21,6 +21,7 @@ class HardwareKeyboardReadinessRedactionTests(unittest.TestCase):
             f"adb -s {SAMPLE_SERIAL} shell input keyevent A\n"
             f"{readiness.REPO_ROOT}/scripts/macos_dev_host.py\n"
             f"{Path.home()}/Library/Android/sdk/platform-tools/adb\n"
+            "/tmp/vibe-screen-p0110-runtime-gates-clean-evidence/hardware-keyboard/host-signing-and-permissions.txt\n"
         )
 
         redacted = readiness.redact_text(raw, SAMPLE_SERIAL)
@@ -28,9 +29,11 @@ class HardwareKeyboardReadinessRedactionTests(unittest.TestCase):
         self.assertIn("adb -s <device-serial> shell input keyevent A", redacted)
         self.assertIn("<repo-root>/scripts/macos_dev_host.py", redacted)
         self.assertIn("<android-sdk>/platform-tools/adb", redacted)
+        self.assertIn("<tmp-evidence>", redacted)
         self.assertNotIn(SAMPLE_SERIAL, redacted)
         self.assertNotIn(str(readiness.REPO_ROOT), redacted)
         self.assertNotIn(str(Path.home()), redacted)
+        self.assertNotIn("/tmp/vibe-screen-p0110-runtime-gates-clean-evidence", redacted)
 
     def test_redact_text_replaces_longer_overlapping_serials_first(self) -> None:
         redacted = readiness.redact_text("device ABC123 also has prefix ABC", "ABC", "ABC123")
@@ -58,6 +61,24 @@ class HardwareKeyboardReadinessRedactionTests(unittest.TestCase):
         self.assertNotIn("test-emulator-endpoint", redacted_devices)
         self.assertIn("Vibe\\x20S 22385 <user>", redacted_lsof)
         self.assertNotIn("localuser", redacted_lsof)
+
+    def test_android_dumpsys_redaction_removes_window_tokens_and_serials(self) -> None:
+        raw = (
+            f"{SAMPLE_SERIAL} token=0xb400007b62b3a410 "
+            "applicationInfo.token=<null> "
+            "inputChannelToken=android.os.BinderProxy@55c37ef\n"
+        )
+
+        redacted = readiness.redact_android_dumpsys_text(raw, SAMPLE_SERIAL)
+
+        self.assertEqual(
+            redacted,
+            "<device-serial> token=<redacted> applicationInfo.token=<redacted> "
+            "inputChannelToken=<redacted>",
+        )
+        self.assertNotIn(SAMPLE_SERIAL, redacted)
+        self.assertNotIn("0xb400007b62b3a410", redacted)
+        self.assertNotIn("BinderProxy@55c37ef", redacted)
 
     def test_device_info_document_can_store_redacted_device_identity(self) -> None:
         raw_device = readiness.DeviceIdentity(

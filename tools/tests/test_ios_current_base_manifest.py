@@ -255,7 +255,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios-native-input-gate.json not provided",
+            {"field": "native_input_gate", "requirement": "ios-native-input-gate.json not provided"},
             manifest["native_input_gate"]["missing_requirements"],
         )
         self.assertEqual(
@@ -332,7 +332,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios native-input gate current-base commit does not match repository HEAD",
+            {"field": "native_input_gate", "requirement": "ios native-input gate current-base commit does not match repository HEAD"},
             manifest["native_input_gate"]["missing_requirements"],
         )
 
@@ -375,7 +375,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
         self.assertFalse(native_gate["observations"]["signed_app_installed"])
         self.assertIn(
-            "ios native-input gate observation signed_app_installed must be true: install a signed app build on the recorded iOS device",
+            {"field": "native_input_gate", "requirement": "ios native-input gate observation signed_app_installed must be true: install a signed app build on the recorded iOS device"},
             native_gate["missing_requirements"],
         )
 
@@ -471,11 +471,11 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["native_input_gate"]["verdict"], "blocked")
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios native-input gate owner role is not the dedicated current-base owner",
+            {"field": "native_input_gate", "requirement": "ios native-input gate owner role is not the dedicated current-base owner"},
             manifest["native_input_gate"]["missing_requirements"],
         )
         self.assertIn(
-            "ios native-input gate requires_signed_app must be true",
+            {"field": "native_input_gate", "requirement": "ios native-input gate requires_signed_app must be true"},
             manifest["native_input_gate"]["missing_requirements"],
         )
 
@@ -510,9 +510,18 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         self.assertTrue(native_gate["provided"])
         self.assertEqual(native_gate["verdict"], "blocked")
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
-        self.assertIn("ios native-input gate kind is not ios_native_input_behavior", native_gate["missing_requirements"])
-        self.assertIn("ios native-input gate profile is not ios-native-input-behavior", native_gate["missing_requirements"])
-        self.assertIn("ios native-input gate requires_signed_app must be true", native_gate["missing_requirements"])
+        self.assertIn(
+            {"field": "native_input_gate", "requirement": "ios native-input gate kind is not ios_native_input_behavior"},
+            native_gate["missing_requirements"],
+        )
+        self.assertIn(
+            {"field": "native_input_gate", "requirement": "ios native-input gate profile is not ios-native-input-behavior"},
+            native_gate["missing_requirements"],
+        )
+        self.assertIn(
+            {"field": "native_input_gate", "requirement": "ios native-input gate requires_signed_app must be true"},
+            native_gate["missing_requirements"],
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -529,7 +538,10 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         native_gate = manifest["native_input_gate"]
         self.assertEqual(native_gate["verdict"], "blocked")
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
-        self.assertEqual(native_gate["blocking_reasons"], ["still missing physical-device trace"])
+        self.assertEqual(
+            native_gate["blocking_reasons"],
+            [{"field": "native_input_gate", "requirement": "still missing physical-device trace"}],
+        )
 
     @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
@@ -551,15 +563,15 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         native_gate = manifest["native_input_gate"]
         self.assertFalse(native_gate["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios native-input gate missing_requirements must be an explicit empty list",
+            {"field": "native_input_gate", "requirement": "ios native-input gate missing_requirements must be an explicit empty list"},
             native_gate["blocking_reasons"],
         )
         self.assertIn(
-            "ios native-input gate blocking_reasons must be an explicit empty list",
+            {"field": "native_input_gate", "requirement": "ios native-input gate blocking_reasons must be an explicit empty list"},
             native_gate["blocking_reasons"],
         )
         self.assertIn(
-            "ios native-input gate disallowed_evidence must be an explicit empty list",
+            {"field": "native_input_gate", "requirement": "ios native-input gate disallowed_evidence must be an explicit empty list"},
             native_gate["blocking_reasons"],
         )
 
@@ -741,7 +753,7 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios native-input gate current-base commit does not match repository HEAD",
+            {"field": "native_input_gate", "requirement": "ios native-input gate current-base commit does not match repository HEAD"},
             manifest["native_input_gate"]["missing_requirements"],
         )
 
@@ -807,11 +819,11 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertFalse(manifest["native_input_gate"]["can_close_ios_native_input_gate"])
         self.assertIn(
-            "ios native-input gate verdict does not close the native-input gate",
+            {"field": "native_input_gate", "requirement": "ios native-input gate verdict does not close the native-input gate"},
             manifest["native_input_gate"]["missing_requirements"],
         )
         self.assertIn(
-            "ios native-input gate must retain sanitized iOS/Host artifacts",
+            {"field": "native_input_gate", "requirement": "ios native-input gate must retain sanitized iOS/Host artifacts"},
             manifest["native_input_gate"]["missing_requirements"],
         )
         self.assertIsInstance(manifest["native_input_gate"]["can_close_ios_native_input_gate"], bool)

@@ -47,6 +47,13 @@ REDACTED_REPO_ROOT_PATH = "<repo-root>"
 REDACTED_ANDROID_SDK_PATH = "<android-sdk>"
 REDACTED_HOME_PATH = "<home>"
 REDACTED_PYTHON_EXECUTABLE = "<python3.11>"
+REDACTED_TMP_EVIDENCE_PATH = "<tmp-evidence>"
+ANDROID_DUMPSYS_TOKEN_RE = re.compile(
+    r"\b(?:applicationInfo\.)?token=(?:0x[0-9a-fA-F]+|<null>)"
+    r"|\binputChannelToken=android\.os\.BinderProxy@[0-9a-fA-F]+"
+)
+ADB_TCP_ENDPOINT_RE = re.compile(r"^[^\s:]+:[0-9]+$")
+TMP_EVIDENCE_PATH_RE = re.compile(r"/tmp/vibe-screen-[^\s\n]+")
 
 
 class ReadinessError(Exception):
@@ -365,16 +372,40 @@ def package_identity_recorded(package: PackageIdentity | None) -> bool:
     )
 
 
+def is_adb_tcp_endpoint(serial: str) -> bool:
+    return ADB_TCP_ENDPOINT_RE.fullmatch(serial) is not None
+
+
+def adb_endpoint_matches_claim(serial: str, endpoint: str) -> bool:
+    return bool(endpoint) and endpoint.split(maxsplit=1)[0] == serial
+
+
 def device_identity_matches_claim(serial: str, device: DeviceIdentity | None) -> bool:
     if device is None:
         return False
-    if serial == REDACTED_DEVICE_SERIAL:
-        return is_nubia_p0110_android16(device)
-    if is_nubia_p0110_android16(device):
-        return True
-    if serial != device.serial and serial != device.device_serial:
+    if not all(
+        (
+            serial,
+            device.serial,
+            device.device_serial,
+            device.manufacturer,
+            device.model,
+            device.device,
+            device.android_release,
+            device.sdk,
+        )
+    ):
         return False
-    return all((device.manufacturer, device.model, device.device, device.android_release, device.sdk))
+    if device.serial != serial:
+        return False
+    if is_adb_tcp_endpoint(serial):
+        if not adb_endpoint_matches_claim(serial, device.endpoint):
+            return False
+    elif device.device_serial != serial:
+        return False
+    if device.model == "P0110" or device.device == "pacific" or device.product == "pacific":
+        return is_nubia_p0110_android16(device)
+    return True
 
 
 def inspect_host(port: int, preflight_report: Path, *serials: str) -> HostPreflight:
@@ -446,6 +477,7 @@ def redact_local_paths(value: str) -> str:
     repo_root = str(REPO_ROOT)
     if repo_root:
         redacted = redacted.replace(repo_root, REDACTED_REPO_ROOT_PATH)
+    redacted = TMP_EVIDENCE_PATH_RE.sub(REDACTED_TMP_EVIDENCE_PATH, redacted)
     home = str(Path.home())
     if home:
         redacted = redacted.replace(home, REDACTED_HOME_PATH)
@@ -461,6 +493,11 @@ def redact_text(value: str, *serials: str) -> str:
     ):
         redacted = redacted.replace(serial, REDACTED_DEVICE_SERIAL)
     return redact_lsof_user_columns(redact_local_paths(redacted))
+
+
+def redact_android_dumpsys_text(value: str, *serials: str) -> str:
+    redacted = redact_text(value, *serials)
+    return ANDROID_DUMPSYS_TOKEN_RE.sub(lambda match: match.group(0).split("=", 1)[0] + "=<redacted>", redacted)
 
 
 def redact_adb_devices_text(value: str, *serials: str) -> str:
@@ -800,7 +837,7 @@ def collect_readiness(args: argparse.Namespace, *, created_at: str, run_id: str)
                 package=package,
             ),
         )
-        write_text(args.evidence_dir / "dumpsys-input.txt", redact_text(dumpsys_input, device.serial, device.device_serial))
+        write_text(args.evidence_dir / "dumpsys-input.txt", redact_android_dumpsys_text(dumpsys_input, device.serial, device.device_serial))
         write_text(args.evidence_dir / "dumpsys-package.txt", redact_text(package_text, device.serial, device.device_serial))
         write_text(args.evidence_dir / "host-listener.txt", host.listener_output)
         write_text(args.evidence_dir / "codesign-identities.txt", host.codesign_identities_output)
