@@ -95,9 +95,11 @@ snapshot.
 The device identified as nubia P0110 / pacific / Android 16 / SDK 36. The raw
 `adb -s <device-serial> shell getevent -lp` snapshot records
 `/dev/input/event7` named `goodix_stylus_input` with `BTN_TOUCH`,
-`BTN_STYLUS`, `BTN_STYLUS2`, `ABS_PRESSURE`, signed `ABS_TILT_X` /
-`ABS_TILT_Y`, and `ABS_DISTANCE`. The raw snapshot did not expose
-`BTN_TOOL_PEN` or `BTN_TOOL_RUBBER`, so eraser runtime support was not observed.
+`BTN_STYLUS`, `BTN_STYLUS2`, `ABS_PRESSURE`, and signed `ABS_TILT_X` /
+`ABS_TILT_Y`. `ABS_DISTANCE` appears on `/dev/input/event6`, named
+`STM VL53L1 proximity sensor`, so it is not counted as a Goodix stylus
+capability. The raw snapshot did not expose `BTN_TOOL_PEN` or
+`BTN_TOOL_RUBBER`, so eraser runtime support was not observed.
 The collector still found one pass-eligible Android candidate declaring
 `KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure and tilt axes. No physical
 stylus was available for drawing, no Host stylus-injection excerpt was supplied,

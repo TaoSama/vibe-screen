@@ -78,7 +78,10 @@ Capability observations:
 - `getevent-lp.txt` records `/dev/input/event7` named
   `goodix_stylus_input`.
 - The raw event device exposes `BTN_TOUCH`, `BTN_STYLUS`, `BTN_STYLUS2`,
-  `ABS_PRESSURE`, `ABS_TILT_X`, `ABS_TILT_Y`, and `ABS_DISTANCE`.
+  `ABS_PRESSURE`, `ABS_TILT_X`, and `ABS_TILT_Y`.
+- `ABS_DISTANCE` appears on `/dev/input/event6`, named
+  `STM VL53L1 proximity sensor`, and is not counted as a Goodix stylus
+  capability.
 - The raw event device does not expose `BTN_TOOL_PEN` or `BTN_TOOL_RUBBER` in
   this snapshot; eraser runtime support was not observed.
 - `dumpsys-input.txt` records `goodix_stylus_input` with `ABS_PRESSURE`,

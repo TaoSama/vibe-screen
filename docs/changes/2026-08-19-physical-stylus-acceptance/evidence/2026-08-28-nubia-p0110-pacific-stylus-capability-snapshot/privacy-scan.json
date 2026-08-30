@@ -14,7 +14,7 @@
       "sha256": "e20879a3736d3d70165d614c136eb95987b74b306fb3d55c48c2ff7cea237b3a"
     },
     {
-      "bytes": 3129,
+      "bytes": 3253,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,7 +24,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "550b400031e62d449f51330db63d0df4bb64bb5cd6e577de6b77e4a70ec95007"
+      "sha256": "be4ce1fd838139f68763f6f2478c307b8c6eef2e39e5bd2964dce2da617e8836"
     },
     {
       "bytes": 42067,
@@ -53,7 +53,7 @@
       "sha256": "c08bba3c4377c0960141694835f61306909b4f3bf3c8cac6068f1bd1977cf49d"
     },
     {
-      "bytes": 2203,
+      "bytes": 2304,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -63,10 +63,10 @@
       ],
       "path": "stylus-evidence.json",
       "result": "pass",
-      "sha256": "83ba8a6c77e3dc884643261e8f35cbb5caa54eb8e337d00c719f44f6372face6"
+      "sha256": "df6edc64a9fe262d123ccebcd030cc7d4c0709ead8429a220f4a9e8379be26e8"
     },
     {
-      "bytes": 3405,
+      "bytes": 3506,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -76,7 +76,7 @@
       ],
       "path": "stylus-summary.json",
       "result": "pass",
-      "sha256": "0028baf55300bfa8073d224da9c778ccf63f44c31625066c0e8e3f2d1c580032"
+      "sha256": "93f22e0da61178f5b1434d07f14f5ea6b9d46a4768b03b56f21fca688b4fb796"
     }
   ],
   "categories": [
