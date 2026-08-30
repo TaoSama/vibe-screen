@@ -1,0 +1,12 @@
+# Verification: controller runtime current-base blocked readiness (20260830Tcurrentbase31d0d42)
+
+Current base: 31d0d42558e8a6749e24936e9a8c4b821d94847e
+PR head while collecting: 874af2297be99363c39f66c3fee0674ef44cc402
+
+Host readiness exited 2 and wrote host-readiness.json with status=blocked and can_start_controller_runtime_gate=false.
+Controller readiness exited 2 and wrote controller-runtime-summary.json with verdict=blocked and can_close_runtime_gate=false.
+The readiness command used an authorized local Android serial internally, but public artifacts and replay docs use --serial "<device-serial>" only.
+
+The run did not pass --include-login-item-diagnostic, --inspect-login-items, --probe-login-item, or --probe-login-items. pgrep -x sfltool || true was checked before and after critical commands and produced no residual process output.
+
+The blocked verdict is expected: no physical Android controller, no identity-signed Host with the approved virtual HID entitlement, no Host virtual gamepad availability, no visible Mac-side controller response, and no neutral release on disconnect were observed.

@@ -31,7 +31,7 @@ BLOCKED_OWNER_EVIDENCE = (
     / "changes"
     / "2026-08-04-phase-5-ios-advanced"
     / "evidence"
-    / "2026-08-29-ios-signing-current-base-blocked"
+    / "2026-08-30-ios-signing-current-base-blocked"
 )
 
 
