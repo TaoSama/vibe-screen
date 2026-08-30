@@ -108,14 +108,13 @@ artifact SHA-256, and retained local artifacts for the
 archive command, codesign entitlements, and provisioning profile output.
 
 ```sh
-make ios-app-signing-current-base-gate \
+make ios-app-signing-readiness-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
-`ios-app-signing-current-base-gate` is the dedicated current-base entry point
-and aliases the retained `ios-app-signing-readiness-gate` implementation for
-compatibility. The target writes `ios-app-signing-readiness-gate.json` next to
-the input. The
+`ios-app-signing-readiness-gate` is the dedicated current-base entry point, and
+`ios-app-signing-current-base-gate` remains a compatibility alias. Either
+target writes `ios-app-signing-readiness-gate.json` next to the input. The
 gate output declares `owner.role=ios_app_signing_readiness_current_base_owner`
 and records `current_base.commit`, `current_base.branch`, and
 `current_base.dirty`. `blocked` means required signing material, clean commit

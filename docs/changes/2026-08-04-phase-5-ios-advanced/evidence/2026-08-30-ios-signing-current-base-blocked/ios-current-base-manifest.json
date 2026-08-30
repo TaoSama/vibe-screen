@@ -27,7 +27,7 @@
     "ios-current-base-gate",
     "EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked"
   ],
-  "created_at": "2026-08-30T05:38:38Z",
+  "created_at": "2026-08-30T09:47:08Z",
   "devices": [
     {
       "evidence": [],
@@ -273,30 +273,102 @@
     "gate_owner": "phase5-ios-native-input-behavior",
     "kind": "ios_native_input_behavior",
     "missing_requirements": [
-      "exclusively reserve the iPhone and iPad used for this run",
-      "record iPhone and iPad model, OS/build, and device family",
-      "run on real iPhone and iPad hardware, not Simulator",
-      "record native-input behavior from a signed iPhone app run",
-      "record native-input behavior from a signed iPad app run",
-      "record the iOS app source revision and dirty-tree state",
-      "install a signed app build on the recorded iOS device",
-      "record the Local Network permission result",
-      "record the baseline MacHost listener and build identity",
-      "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
-      "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
-      "record the selected display ID and stream ID used by input events",
-      "observe a real touch tap forwarded from the iOS app",
-      "observe a real touch drag forwarded from the iOS app",
-      "attach and identify a physical iOS hardware keyboard",
-      "prove key-down and key-up forwarding for the same USB HID usage",
-      "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
-      "prove modifiers clear after release and do not leak into a later plain key",
-      "attach and identify a real iOS hover/pointer accessory",
-      "observe hover or pointer movement over the selected stream",
-      "retain Host-side acknowledgements or logs for every input family",
-      "retain sanitized iOS app/device logs for the input workflow",
-      "retain sanitized Host logs for the input workflow",
-      "ios-native-input-gate.json not provided"
+      {
+        "field": "ios_device_lock_acquired",
+        "requirement": "exclusively reserve the iPhone and iPad used for this run"
+      },
+      {
+        "field": "device_identity_recorded",
+        "requirement": "record iPhone and iPad model, OS/build, and device family"
+      },
+      {
+        "field": "device_is_iphone_or_ipad",
+        "requirement": "run on real iPhone and iPad hardware, not Simulator"
+      },
+      {
+        "field": "iphone_native_input_observed",
+        "requirement": "record native-input behavior from a signed iPhone app run"
+      },
+      {
+        "field": "ipad_native_input_observed",
+        "requirement": "record native-input behavior from a signed iPad app run"
+      },
+      {
+        "field": "app_revision_recorded",
+        "requirement": "record the iOS app source revision and dirty-tree state"
+      },
+      {
+        "field": "signed_app_installed",
+        "requirement": "install a signed app build on the recorded iOS device"
+      },
+      {
+        "field": "local_network_permission_recorded",
+        "requirement": "record the Local Network permission result"
+      },
+      {
+        "field": "baseline_machost_listener_observed",
+        "requirement": "record the baseline MacHost listener and build identity"
+      },
+      {
+        "field": "protocol_session_negotiated",
+        "requirement": "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start"
+      },
+      {
+        "field": "input_capabilities_negotiated",
+        "requirement": "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable"
+      },
+      {
+        "field": "display_stream_binding_recorded",
+        "requirement": "record the selected display ID and stream ID used by input events"
+      },
+      {
+        "field": "touch_tap_observed",
+        "requirement": "observe a real touch tap forwarded from the iOS app"
+      },
+      {
+        "field": "touch_drag_observed",
+        "requirement": "observe a real touch drag forwarded from the iOS app"
+      },
+      {
+        "field": "hardware_keyboard_attached",
+        "requirement": "attach and identify a physical iOS hardware keyboard"
+      },
+      {
+        "field": "keyboard_press_release_observed",
+        "requirement": "prove key-down and key-up forwarding for the same USB HID usage"
+      },
+      {
+        "field": "keyboard_modifier_observed",
+        "requirement": "prove a modifier or shortcut uses the negotiated USB HID modifier byte"
+      },
+      {
+        "field": "keyboard_modifier_release_no_leak_observed",
+        "requirement": "prove modifiers clear after release and do not leak into a later plain key"
+      },
+      {
+        "field": "hover_pointer_accessory_attached",
+        "requirement": "attach and identify a real iOS hover/pointer accessory"
+      },
+      {
+        "field": "hover_pointer_move_observed",
+        "requirement": "observe hover or pointer movement over the selected stream"
+      },
+      {
+        "field": "host_input_acknowledgements_retained",
+        "requirement": "retain Host-side acknowledgements or logs for every input family"
+      },
+      {
+        "field": "ios_logs_retained",
+        "requirement": "retain sanitized iOS app/device logs for the input workflow"
+      },
+      {
+        "field": "host_logs_retained",
+        "requirement": "retain sanitized Host logs for the input workflow"
+      },
+      {
+        "field": "native_input_gate",
+        "requirement": "ios-native-input-gate.json not provided"
+      }
     ],
     "observations": {
       "android_evidence_used_for_ios_input": false,
@@ -346,16 +418,11 @@
     "repository": "TaoSama/vibe-screen"
   },
   "repository": {
-    "dirty": true,
-    "revision": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
-    "status_porcelain": [
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/README.md",
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/commands.txt",
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json",
-      "?? docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness.json"
-    ]
+    "dirty": false,
+    "revision": "da6a4389501dcb78ab739c8351c76a32a4b9a471",
+    "status_porcelain": []
   },
-  "run_id": "86bf4b14-8d4c-4d37-a673-bb7267785b03",
+  "run_id": "0e3db0b6-ba34-4c80-9970-935451ab636f",
   "schema_version": "vibescreen.evidence/v1",
   "scope_prs": [
     "#182",
@@ -384,8 +451,8 @@
   "signing_readiness_gate": {
     "can_close_ios_app_signing_readiness": false,
     "current_base": {
-      "branch": "codex/ios-signing-readiness-current-base-20260830",
-      "commit": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
+      "branch": "codex/ios-signing-readiness-owner-20260830",
+      "commit": "da6a4389501dcb78ab739c8351c76a32a4b9a471",
       "dirty": false
     },
     "failures": [],
@@ -409,12 +476,11 @@
       "signing.entitlements.bundle_identifier_matches_bundle_id: must be true",
       "signing.entitlements.keychain_access_groups_include_application_identifier: must be true",
       "artifacts: must include retained signing command/profile/entitlements output",
-      "repository dirty state is not clean for iOS signing readiness",
       "ios app-signing readiness gate signing_summary is incomplete",
       "ios app-signing readiness gate readiness_requirements are incomplete"
     ],
     "owner": {
-      "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+      "head_ref": "codex/ios-signing-readiness-owner-20260830",
       "repository": "TaoSama/vibe-screen",
       "role": "ios_app_signing_readiness_current_base_owner",
       "scope": "Phase 5 iOS app-signing readiness prerequisite only"

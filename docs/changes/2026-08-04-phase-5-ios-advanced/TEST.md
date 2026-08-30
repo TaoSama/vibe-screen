@@ -369,7 +369,7 @@ reconnect, trusted-LAN, or other device/product-flow gates.
 The signing row is now backed by a dedicated app-signing readiness owner:
 
 ```bash
-make ios-app-signing-current-base-gate \
+make ios-app-signing-readiness-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 ```
 
@@ -385,9 +385,9 @@ those fields returns `blocked`; Simulator, unsigned, ad-hoc, or Android-derived
 material returns `fail`. A pass only unblocks the app-signing prerequisite for
 `ios-current-base-gate` when the resulting
 `ios-app-signing-readiness-gate.json` is bound into the generated manifest. The
-`ios-app-signing-current-base-gate` Makefile target is the dedicated
-current-base entry point and reuses the retained readiness-gate output file name
-for compatibility with existing manifests. The
+`ios-app-signing-readiness-gate` is the dedicated current-base entry point, and
+`ios-app-signing-current-base-gate` remains a compatibility alias; both write
+the retained readiness-gate output file name for existing manifests. The
 aggregate checks both `dedicated_signing_readiness_gate` and
 `dedicated_signing_readiness_owner`, validates the gate's explicit
 `readiness_requirements` booleans for Team ID, provisioning profile, bundle ID,

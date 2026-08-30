@@ -2,29 +2,23 @@ $ git fetch origin main --prune
 exit_code=0
 
 $ git rev-parse origin/main
-5d2d25fcaeef6060ee4916bdea02afbc859d02fe
+da6a4389501dcb78ab739c8351c76a32a4b9a471
 
-$ git worktree add --detach <repo-worktree> 5d2d25fcaeef6060ee4916bdea02afbc859d02fe
-exit_code=0
-
-$ git -C <repo-worktree> rev-parse HEAD
-5d2d25fcaeef6060ee4916bdea02afbc859d02fe
-
-$ git -C <repo-worktree> status --porcelain=v1
-exit_code=0
-
-$ cp -R docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked <repo-worktree>/docs/changes/2026-08-04-phase-5-ios-advanced/evidence/
-exit_code=0
-
-$ make -C <repo-worktree> ios-app-signing-current-base-gate IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness.json
-exit_code=2
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_app_signing_readiness \
+    --readiness docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness.json \
+    --evidence-root docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked \
+    --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json
+exit_code=1
 Expected fail-closed result. Missing coverage includes full Xcode/iPhoneOS SDK evidence, sanitized Apple Team ID digest, sanitized provisioning profile UUID digest, unique bundle ID, sanitized codesign identity digest, physical-device UDID hashes, entitlement relationship checks, signed-app/archive SHA-256, and retained signing command/profile/entitlements artifacts.
 
-$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<repo-worktree>/tools python3 -m vibescreen_evidence.ios_current_base_manifest --repo <repo-worktree> --output <repo-worktree>/docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-current-base-manifest.json --signing-readiness-gate <repo-worktree>/docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json -- make ios-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked
+$ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_manifest \
+    --repo <clean-origin-main-worktree> \
+    --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-current-base-manifest.json \
+    --signing-readiness-gate docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json \
+    -- make ios-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked
 exit_code=0
-Generated ios-current-base-manifest.json from <repo-worktree> at the recorded base commit. No ios-native-input-gate.json was supplied, so native_input_gate records provided=false and remains blocked.
 
-$ make -C <repo-worktree> ios-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked
+$ set +e; make ios-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked; code=$?; echo "exit=$code"; exit 0
 exit_code=2
 Expected fail-closed result. The aggregate gate reports verdict=blocked, can_claim_device_pass=false, can_close_current_base_aggregate=false, and can_close_ios_device_acceptance=false. Dedicated signing owner identity passes, but signing materials, native input, physical iPhone/iPad install/launch, VideoToolbox hardware decode, protocol session, reconnect, audio, HDR, and secure-record real-network evidence remain blocked or insufficient.
 

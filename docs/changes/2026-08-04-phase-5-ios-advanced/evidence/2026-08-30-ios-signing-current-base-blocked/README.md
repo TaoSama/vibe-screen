@@ -7,15 +7,15 @@ Verdict: blocked
 ## Owner identity
 
 - Owner role: `ios_app_signing_readiness_current_base_owner`
-- Gate owner branch: `codex/ios-app-signing-readiness-current-base-20260829`
-- Retry branch: `codex/ios-signing-readiness-current-base-20260830`
+- Gate owner branch: `codex/ios-signing-readiness-owner-20260830`
+- Retry branch: `codex/ios-signing-readiness-owner-20260830`
 - Repository: `TaoSama/vibe-screen`
 
 ## Current-base state
 
 This record re-establishes the dedicated fail-closed owner shape from clean
-current-base commit `5d2d25fcaeef6060ee4916bdea02afbc859d02fe` after the
-previous blocked record was recorded against an older mainline commit. It does
+current-base commit `da6a4389501dcb78ab739c8351c76a32a4b9a471` after syncing
+to the latest origin/main used by this owner branch. It does
 not include retained signing material and therefore cannot close the signing
 prerequisite. A passing evidence bundle must be generated from a clean
 current-base commit and must include only sanitized public summaries.
@@ -49,7 +49,7 @@ Required retained evidence remains open for sanitized coverage of:
 Run from the repository root with a sanitized readiness JSON:
 
 ```bash
-make ios-app-signing-current-base-gate \
+make ios-app-signing-readiness-gate \
   IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-signing/ios-app-signing-readiness.json
 
 make ios-current-base-gate \
@@ -59,11 +59,11 @@ make ios-current-base-gate \
 
 The aggregate gate accepts the signing row only when the bound readiness gate
 declares `owner.role=ios_app_signing_readiness_current_base_owner`,
-`owner.head_ref=codex/ios-app-signing-readiness-current-base-20260829`,
+`owner.head_ref=codex/ios-signing-readiness-owner-20260830`,
 `owner.repository=TaoSama/vibe-screen`, and a complete sanitized
 `signing_summary` from the clean current-base commit recorded in the retry.
 
-For this blocked record, `make ios-app-signing-current-base-gate` exits nonzero
+For this blocked record, `make ios-app-signing-readiness-gate` exits nonzero
 after writing the gate JSON because signing material is absent. The aggregate
 command also exits nonzero as expected: it consumes the dedicated owner JSON and
 keeps `can_close_ios_device_acceptance=false` and

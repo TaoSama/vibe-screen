@@ -2,8 +2,8 @@
   "can_close_ios_app_signing_readiness": false,
   "can_close_ios_device_acceptance": false,
   "current_base": {
-    "branch": "codex/ios-signing-readiness-current-base-20260830",
-    "commit": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
+    "branch": "codex/ios-signing-readiness-owner-20260830",
+    "commit": "da6a4389501dcb78ab739c8351c76a32a4b9a471",
     "dirty": false
   },
   "evidence": [],
@@ -31,7 +31,7 @@
     "artifacts: must include retained signing command/profile/entitlements output"
   ],
   "owner": {
-    "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+    "head_ref": "codex/ios-signing-readiness-owner-20260830",
     "repository": "TaoSama/vibe-screen",
     "role": "ios_app_signing_readiness_current_base_owner",
     "scope": "Phase 5 iOS app-signing readiness prerequisite only"

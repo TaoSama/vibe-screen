@@ -66,7 +66,7 @@ SOURCE_DOCS = [
 ]
 SIGNING_READINESS_GATE_KIND = "ios_app_signing_readiness_gate"
 SIGNING_READINESS_OWNER_ROLE = "ios_app_signing_readiness_current_base_owner"
-SIGNING_READINESS_OWNER_BRANCH = "codex/ios-app-signing-readiness-current-base-20260829"
+SIGNING_READINESS_OWNER_BRANCH = "codex/ios-signing-readiness-owner-20260830"
 SIGNING_REQUIREMENT_FIELDS = (
     "team_id",
     "provisioning_profile",

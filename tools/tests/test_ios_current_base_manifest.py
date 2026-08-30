@@ -129,13 +129,13 @@ def make_signing_readiness_gate(**overrides: object) -> dict[str, object]:
     gate: dict[str, object] = {
         "owner": {
             "role": "ios_app_signing_readiness_current_base_owner",
-            "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+            "head_ref": "codex/ios-signing-readiness-owner-20260830",
             "repository": "TaoSama/vibe-screen",
             "scope": "Phase 5 iOS app-signing readiness prerequisite only",
         },
         "current_base": {
             "commit": CURRENT_BASE_COMMIT,
-            "branch": "codex/ios-app-signing-readiness-current-base-20260829",
+            "branch": "codex/ios-signing-readiness-owner-20260830",
             "dirty": False,
         },
         "kind": "ios_app_signing_readiness_gate",

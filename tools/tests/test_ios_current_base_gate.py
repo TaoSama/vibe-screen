@@ -162,13 +162,13 @@ def complete_manifest(root: Path) -> dict[str, object]:
         "path": str(root / "ios-app-signing-readiness-gate.json"),
         "owner": {
             "role": "ios_app_signing_readiness_current_base_owner",
-            "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+            "head_ref": "codex/ios-signing-readiness-owner-20260830",
             "repository": "TaoSama/vibe-screen",
             "scope": "Phase 5 iOS app-signing readiness prerequisite only",
         },
         "current_base": {
             "commit": CURRENT_BASE_COMMIT,
-            "branch": "codex/ios-app-signing-readiness-current-base-20260829",
+            "branch": "codex/ios-signing-readiness-owner-20260830",
             "dirty": False,
         },
         "kind": "ios_app_signing_readiness_gate",
@@ -503,13 +503,13 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                 "path": "ios-app-signing-readiness-gate.json",
                 "owner": {
                     "role": "ios_app_signing_readiness_current_base_owner",
-                    "head_ref": "codex/ios-app-signing-readiness-current-base-20260829",
+                    "head_ref": "codex/ios-signing-readiness-owner-20260830",
                     "repository": "TaoSama/vibe-screen",
                     "scope": "Phase 5 iOS app-signing readiness prerequisite only",
                 },
                 "current_base": {
                     "commit": "0123456789abcdef0123456789abcdef01234567",
-                    "branch": "codex/ios-app-signing-readiness-current-base-20260829",
+                    "branch": "codex/ios-signing-readiness-owner-20260830",
                     "dirty": False,
                 },
                 "kind": "ios_app_signing_readiness_gate",

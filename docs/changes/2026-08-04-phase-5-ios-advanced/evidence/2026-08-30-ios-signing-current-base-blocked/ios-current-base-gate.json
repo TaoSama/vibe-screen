@@ -242,125 +242,25 @@
       },
       "dedicated_native_input_current_base": {
         "blocking": true,
-        "evidence": [
-          "exclusively reserve the iPhone and iPad used for this run",
-          "record iPhone and iPad model, OS/build, and device family",
-          "run on real iPhone and iPad hardware, not Simulator",
-          "record native-input behavior from a signed iPhone app run",
-          "record native-input behavior from a signed iPad app run",
-          "record the iOS app source revision and dirty-tree state",
-          "install a signed app build on the recorded iOS device",
-          "record the Local Network permission result",
-          "record the baseline MacHost listener and build identity",
-          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
-          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
-          "record the selected display ID and stream ID used by input events",
-          "observe a real touch tap forwarded from the iOS app",
-          "observe a real touch drag forwarded from the iOS app",
-          "attach and identify a physical iOS hardware keyboard",
-          "prove key-down and key-up forwarding for the same USB HID usage",
-          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
-          "prove modifiers clear after release and do not leak into a later plain key",
-          "attach and identify a real iOS hover/pointer accessory",
-          "observe hover or pointer movement over the selected stream",
-          "retain Host-side acknowledgements or logs for every input family",
-          "retain sanitized iOS app/device logs for the input workflow",
-          "retain sanitized Host logs for the input workflow",
-          "ios-native-input-gate.json not provided"
-        ],
+        "evidence": [],
         "expected": "ios-native-input-gate.json current_base matches clean repository HEAD",
         "passed": false
       },
       "dedicated_native_input_gate": {
         "blocking": true,
-        "evidence": [
-          "exclusively reserve the iPhone and iPad used for this run",
-          "record iPhone and iPad model, OS/build, and device family",
-          "run on real iPhone and iPad hardware, not Simulator",
-          "record native-input behavior from a signed iPhone app run",
-          "record native-input behavior from a signed iPad app run",
-          "record the iOS app source revision and dirty-tree state",
-          "install a signed app build on the recorded iOS device",
-          "record the Local Network permission result",
-          "record the baseline MacHost listener and build identity",
-          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
-          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
-          "record the selected display ID and stream ID used by input events",
-          "observe a real touch tap forwarded from the iOS app",
-          "observe a real touch drag forwarded from the iOS app",
-          "attach and identify a physical iOS hardware keyboard",
-          "prove key-down and key-up forwarding for the same USB HID usage",
-          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
-          "prove modifiers clear after release and do not leak into a later plain key",
-          "attach and identify a real iOS hover/pointer accessory",
-          "observe hover or pointer movement over the selected stream",
-          "retain Host-side acknowledgements or logs for every input family",
-          "retain sanitized iOS app/device logs for the input workflow",
-          "retain sanitized Host logs for the input workflow",
-          "ios-native-input-gate.json not provided"
-        ],
+        "evidence": [],
         "expected": "ios-native-input-gate.json passes and is bound into current-base readiness",
         "passed": false
       },
       "dedicated_native_input_owner": {
         "blocking": true,
-        "evidence": [
-          "exclusively reserve the iPhone and iPad used for this run",
-          "record iPhone and iPad model, OS/build, and device family",
-          "run on real iPhone and iPad hardware, not Simulator",
-          "record native-input behavior from a signed iPhone app run",
-          "record native-input behavior from a signed iPad app run",
-          "record the iOS app source revision and dirty-tree state",
-          "install a signed app build on the recorded iOS device",
-          "record the Local Network permission result",
-          "record the baseline MacHost listener and build identity",
-          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
-          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
-          "record the selected display ID and stream ID used by input events",
-          "observe a real touch tap forwarded from the iOS app",
-          "observe a real touch drag forwarded from the iOS app",
-          "attach and identify a physical iOS hardware keyboard",
-          "prove key-down and key-up forwarding for the same USB HID usage",
-          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
-          "prove modifiers clear after release and do not leak into a later plain key",
-          "attach and identify a real iOS hover/pointer accessory",
-          "observe hover or pointer movement over the selected stream",
-          "retain Host-side acknowledgements or logs for every input family",
-          "retain sanitized iOS app/device logs for the input workflow",
-          "retain sanitized Host logs for the input workflow",
-          "ios-native-input-gate.json not provided"
-        ],
+        "evidence": [],
         "expected": "ios-native-input-gate.json declares the dedicated current-base native-input owner",
         "passed": false
       },
       "dedicated_native_input_readiness_flags": {
         "blocking": true,
-        "evidence": [
-          "exclusively reserve the iPhone and iPad used for this run",
-          "record iPhone and iPad model, OS/build, and device family",
-          "run on real iPhone and iPad hardware, not Simulator",
-          "record native-input behavior from a signed iPhone app run",
-          "record native-input behavior from a signed iPad app run",
-          "record the iOS app source revision and dirty-tree state",
-          "install a signed app build on the recorded iOS device",
-          "record the Local Network permission result",
-          "record the baseline MacHost listener and build identity",
-          "capture SSWA/SSWR, upgrade, Hello, SessionAccepted, and display start",
-          "negotiate touch, keyboard, pointer, and USB HID modifier-byte capabilities as applicable",
-          "record the selected display ID and stream ID used by input events",
-          "observe a real touch tap forwarded from the iOS app",
-          "observe a real touch drag forwarded from the iOS app",
-          "attach and identify a physical iOS hardware keyboard",
-          "prove key-down and key-up forwarding for the same USB HID usage",
-          "prove a modifier or shortcut uses the negotiated USB HID modifier byte",
-          "prove modifiers clear after release and do not leak into a later plain key",
-          "attach and identify a real iOS hover/pointer accessory",
-          "observe hover or pointer movement over the selected stream",
-          "retain Host-side acknowledgements or logs for every input family",
-          "retain sanitized iOS app/device logs for the input workflow",
-          "retain sanitized Host logs for the input workflow",
-          "ios-native-input-gate.json not provided"
-        ],
+        "evidence": [],
         "expected": "ios-native-input-gate.json declares real-device readiness flags with no outstanding or disallowed evidence",
         "passed": false
       }
@@ -381,10 +281,10 @@
       "dedicated_signing_readiness_current_base": {
         "blocking": true,
         "evidence": [
-          "5d2d25fcaeef6060ee4916bdea02afbc859d02fe"
+          "da6a4389501dcb78ab739c8351c76a32a4b9a471"
         ],
         "expected": "ios-app-signing-readiness-gate.json current_base matches clean repository HEAD",
-        "passed": false
+        "passed": true
       },
       "dedicated_signing_readiness_gate": {
         "blocking": true,
@@ -398,7 +298,7 @@
         "blocking": true,
         "evidence": [
           "ios_app_signing_readiness_current_base_owner",
-          "codex/ios-app-signing-readiness-current-base-20260829"
+          "codex/ios-signing-readiness-owner-20260830"
         ],
         "expected": "ios-app-signing-readiness-gate.json declares the dedicated current-base signing owner",
         "passed": true
@@ -526,7 +426,6 @@
     "blocked: xcodebuild_available",
     "blocked: ios_sdk_available",
     "blocked: dedicated_signing_readiness_gate",
-    "blocked: dedicated_signing_readiness_current_base",
     "blocked: dedicated_signing_readiness_summary",
     "blocked: dedicated_signing_readiness_requirements",
     "blocked: signing_matches_readiness_summary",
@@ -565,7 +464,7 @@
     "insufficient: host_advanced_adapters",
     "insufficient: trusted_lan_secure_records"
   ],
-  "run_id": "86bf4b14-8d4c-4d37-a673-bb7267785b03",
+  "run_id": "0e3db0b6-ba34-4c80-9970-935451ab636f",
   "schema_version": "vibescreen.evidence/v1",
   "source": {
     "manifest": "docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/ios-current-base-manifest.json"

@@ -4,8 +4,8 @@
   "platform": "ios",
   "status": "blocked",
   "repository": {
-    "commit": "5d2d25fcaeef6060ee4916bdea02afbc859d02fe",
-    "branch": "codex/ios-signing-readiness-current-base-20260830",
+    "commit": "da6a4389501dcb78ab739c8351c76a32a4b9a471",
+    "branch": "codex/ios-signing-readiness-owner-20260830",
     "dirty": false
   },
   "xcode": {
