@@ -1,0 +1,2 @@
+Android device coordination lock exists; no ADB command was run and native pointer HID acceptance could not start.
+make: *** [native-pointer-hid-acceptance] Error 2
