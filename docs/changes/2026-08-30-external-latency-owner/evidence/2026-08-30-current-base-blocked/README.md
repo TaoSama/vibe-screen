@@ -27,9 +27,16 @@ record. No forbidden `/usr/bin/sfltool dumpbtm` command was executed.
 
 ```bash
 pgrep -x sfltool || true
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest tools.tests.test_external_latency_current_base -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest tools.tests.test_latency_preflight -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest tools.tests.test_reconnect_timing -v
+pgrep -x sfltool || true
 ```
 
-The sfltool process probe returned no matching process.
+Both sfltool process probes returned no matching process.
 
 ## Boundary
 

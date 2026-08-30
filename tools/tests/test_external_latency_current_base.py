@@ -4,6 +4,13 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DOCS_ROOT = REPOSITORY_ROOT / "docs"
+EXPECTED_LATENCY_SOURCE_COMMIT = "dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e"
+EXPECTED_LATENCY_PROFILES = {
+    "usb-glass-to-glass-sub50",
+    "lan-glass-to-glass-sub80",
+    "input-p95-sub50",
+}
 LATENCY_EVIDENCE_FILENAMES = (
     "raw-camera.mov",
     "raw-camera.mp4",
@@ -22,12 +29,10 @@ RECONNECT_BLOCKED_DIRS = (
 
 class ExternalLatencyCurrentBaseOwnerTest(unittest.TestCase):
     def test_no_raw_camera_latency_packages_under_docs(self) -> None:
-        for path in REPOSITORY_ROOT.rglob("*"):
+        for path in DOCS_ROOT.rglob("*"):
             if not path.is_file():
                 continue
             if path.name not in LATENCY_EVIDENCE_FILENAMES:
-                continue
-            if path.is_relative_to(REPOSITORY_ROOT / "tools" / "fixtures"):
                 continue
             self.fail(
                 f"unexpected committed latency evidence artifact: {path.relative_to(REPOSITORY_ROOT)}"
@@ -38,6 +43,11 @@ class ExternalLatencyCurrentBaseOwnerTest(unittest.TestCase):
         self.assertTrue(preflight_path.is_file(), preflight_path)
         document = json.loads(preflight_path.read_text(encoding="utf-8"))
         self.assertEqual(document["status"], "blocked")
+        self.assertEqual(document["repository_revision"], EXPECTED_LATENCY_SOURCE_COMMIT)
+        self.assertEqual(
+            {profile["profile"] for profile in document["gate_profiles"]},
+            EXPECTED_LATENCY_PROFILES,
+        )
         self.assertEqual(len(document["gate_profiles"]), 3)
         for profile in document["gate_profiles"]:
             self.assertFalse(profile["can_attempt_formal_gate"])
