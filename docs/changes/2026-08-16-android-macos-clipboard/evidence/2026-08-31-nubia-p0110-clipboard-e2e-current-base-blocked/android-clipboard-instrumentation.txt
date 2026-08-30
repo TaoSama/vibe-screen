@@ -1,0 +1,6 @@
+
+dev.telemachus.display.ClipboardManagerInstrumentedTest:...
+
+Time: 1.485
+
+OK (3 tests)
