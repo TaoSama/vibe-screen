@@ -199,6 +199,18 @@ addresses, or device identifiers. `--allow-blocked` is only for archiving a
 blocked readiness artifact in environments without a public deployment; omitting
 it returns non-zero while the gate is blocked.
 
+`vibescreen_evidence.phase3_webrtc_relay_e2e_current_base` is the dedicated
+current-base owner gate for the public Internet WebRTC/TURN relay product E2E
+boundary. It consumes
+`webrtc-relay-e2e-current-base-manifest.json` and writes
+`webrtc-relay-e2e-current-base-gate.json`. It fails closed unless retained
+evidence proves real macOS Host and Android product peers over a genuine public
+Internet path through a deployed remote TURN relay route, with real
+ScreenCaptureKit/CGDisplayStream-to-MediaCodec continuity and AES-256-GCM
+record-layer protection. Local loopback, forced local coturn, synthetic peers,
+synthetic media, USB, trusted-LAN TCP, and relay deployment preflights never
+close this child gate; `gate_can_close_phase3_release` remains false.
+
 The aggregate owner is PR #258 (`codex/phase3-current-base-gates`). Keep that PR
 as the only current-base source of truth for overall Phase 3 public Internet
 release-gate status; child PRs own bounded evidence packages instead of
@@ -206,7 +218,10 @@ duplicating aggregate status. The summary records #194 as the public Internet an
 real remote TURN owner, #173 as the ScreenCaptureKit-to-Android-decoder owner,
 PRs #224 and #171 as the network-handoff/recovery owners, #190 as the revocation
 propagation owner, #214 as the soak owner, and #254 as the production enforcement
-owner. The merged #241 coverage audit is a docs-only baseline that informs this
+owner, with production relay deployment preflight ownership as a prerequisite only and the
+`phase3_webrtc_relay_e2e_current_base_owner` child gate as the current product
+E2E owner record for the public Internet WebRTC/TURN relay boundary. The merged
+#241 coverage audit is a docs-only baseline that informs this
 ownership map, not an executable aggregate verifier. Older broad
 manifest/contract candidates such as #164 and #188 should be
 narrowed or superseded for aggregate ownership. None of those child gates can

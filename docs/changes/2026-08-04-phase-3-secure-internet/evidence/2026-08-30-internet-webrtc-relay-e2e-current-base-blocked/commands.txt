@@ -1,0 +1,3 @@
+EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked make phase3-webrtc-relay-e2e-blocked-baseline
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked/privacy-scan.json
+cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked && shasum -a 256 README.md commands.txt webrtc-relay-e2e-current-base-manifest.json webrtc-relay-e2e-current-base-gate.json > SHA256SUMS
