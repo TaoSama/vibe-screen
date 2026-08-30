@@ -75,11 +75,22 @@ dig +short relay.taoai.site A relay.taoai.site AAAA
 ssh <relay-host-ssh-alias> 'docker --version && docker compose version'
 ssh <relay-host-ssh-alias> 'df -h / && docker system df'
 ssh <relay-host-ssh-alias> 'ss -ltnup | sed -n "1,160p"'
+python3 scripts/phase3/relay_deployment_readiness.py \
+  --relay-host relay.taoai.site \
+  --ready-url https://relay.taoai.site/readyz \
+  --ssh-alias <relay-host-ssh-alias> \
+  --output /tmp/vibe-screen-phase3/relay-deployment-readiness.json \
+  --allow-blocked
 ~~~
 
 Report production as blocked if DNS, TLS, disk headroom, image digest, database
 secrets, or required port exposure are missing. Do not weaken TLS, readiness,
 database, authentication, or storage checks to force a deployment through.
+
+The scripted relay readiness preflight never writes the SSH alias, endpoint
+details, usernames, tokens, or operator paths into its report. In CI or public
+automation, run it without `--ssh-alias` so remote host checks fail closed
+instead of using private operator configuration.
 
 ## Local Mode
 

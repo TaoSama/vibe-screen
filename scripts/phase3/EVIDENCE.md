@@ -15,6 +15,9 @@ python3 scripts/phase3/public_nat_turn_preflight.py \
   --skip-dns-resolution \
   --output /tmp/vibe-screen-phase3/public-nat-turn-preflight.json \
   --allow-blocked
+python3 scripts/phase3/relay_deployment_readiness.py \
+  --output /tmp/vibe-screen-phase3/relay-deployment-readiness.json \
+  --allow-blocked
 python3 scripts/phase3/session_authority_readiness.py \
   --report /tmp/vibe-screen-phase3/session-authority-readiness.json \
   --write-summary /tmp/vibe-screen-phase3/session-authority-summary.json
@@ -198,6 +201,26 @@ endpoint-like values and must not contain TURN credentials, raw endpoint
 addresses, or device identifiers. `--allow-blocked` is only for archiving a
 blocked readiness artifact in environments without a public deployment; omitting
 it returns non-zero while the gate is blocked.
+
+`relay_deployment_readiness.py` is a public, fail-closed deployment readiness
+preflight that checks DNS, the public relay `/readyz`, and, only when an operator
+supplies a local SSH alias, Docker/Compose, disk headroom, listening ports,
+existing containers, and local readiness behind the reverse proxy. It is
+intended to be run from CI as a blocked readiness artifact when production
+material or operator local configuration is unavailable. The report never
+contains the SSH alias, raw relay hostname/endpoint values, usernames, tokens,
+or operator filesystem paths; DNS results are reduced to counts and SHA-256
+hashes. Use `<relay-host-ssh-alias>` in public references and pass the real
+local alias only on the private operator machine:
+
+```bash
+python3 scripts/phase3/relay_deployment_readiness.py \
+  --relay-host relay.taoai.site \
+  --ready-url https://relay.taoai.site/readyz \
+  --ssh-alias <relay-host-ssh-alias> \
+  --output /tmp/vibe-screen-phase3/relay-deployment-readiness.json \
+  --allow-blocked
+```
 
 `vibescreen_evidence.phase3_webrtc_relay_e2e_current_base` is the dedicated
 current-base owner gate for the public Internet WebRTC/TURN relay product E2E
