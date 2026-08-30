@@ -1,0 +1,422 @@
+{
+  "client_local_matrix_used_for_host_rotation": false,
+  "command": [
+    "make",
+    "host-display-rotation-current-base-gate",
+    "EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-host-display-rotation-current-base-blocked",
+    "EVIDENCE_SERIAL=<redacted-adb-serial>"
+  ],
+  "created_at": "2026-08-30T15:53:37Z",
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "codename": "pacific",
+    "evidence": [
+      "device-identity.txt"
+    ],
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "package_status": "installed",
+    "probes": {
+      "adb_get_state": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "get-state"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "device"
+        ]
+      },
+      "android_release": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.build.version.release"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "16"
+        ]
+      },
+      "codename": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.product.device"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "pacific"
+        ]
+      },
+      "fingerprint": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.build.fingerprint"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys"
+        ]
+      },
+      "manufacturer": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.product.manufacturer"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "nubia"
+        ]
+      },
+      "model": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.product.model"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "P0110"
+        ]
+      },
+      "package_path": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "pm",
+          "path",
+          "dev.telemachus.display"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "package:/data/app/~~L6EeRAHv4KU7ip854tC4HQ==/dev.telemachus.display-DVa_6dZHmMamnDUJndafPg==/base.apk"
+        ]
+      },
+      "sdk": {
+        "command": [
+          "adb",
+          "-s",
+          "<redacted-adb-serial>",
+          "shell",
+          "getprop",
+          "ro.build.version.sdk"
+        ],
+        "exit_code": 0,
+        "status": "pass",
+        "summary": [
+          "36"
+        ]
+      }
+    },
+    "runtime_class": "physical_android_device",
+    "sdk": 36,
+    "status": "pass"
+  },
+  "gates": {
+    "client_local_fit_fill_rotation_matrix": {
+      "blocking": false,
+      "category": "supporting_client_local",
+      "evidence": [
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-viewport-input/"
+      ],
+      "notes": [
+        "hostRotation=0 evidence only; not a host display rotation pass"
+      ],
+      "requirement": "client-local Fit/Fill and Follow Mac/90/180/270 matrix stays separate from host display rotation",
+      "status": "pass"
+    },
+    "physical_host_display_rotation": {
+      "blocking": true,
+      "category": "real_host_display_rotation",
+      "covered_host_rotations": [],
+      "evidence": [],
+      "notes": [
+        "no retained physical or virtual 90/180/270 host-display run is present"
+      ],
+      "required_host_rotations": [
+        90,
+        180,
+        270
+      ],
+      "requirement": "physical Mac display rotated through 90/180/270 with retained real-device visual and inverse-touch evidence",
+      "status": "blocked"
+    },
+    "virtual_host_display_rotation": {
+      "blocking": true,
+      "category": "real_host_display_rotation",
+      "covered_host_rotations": [],
+      "evidence": [],
+      "notes": [
+        "no retained physical or virtual 90/180/270 host-display run is present"
+      ],
+      "required_host_rotations": [
+        90,
+        180,
+        270
+      ],
+      "requirement": "virtual Mac display rotated through 90/180/270 with retained real-device visual and inverse-touch evidence",
+      "status": "blocked"
+    }
+  },
+  "host_preflight": {
+    "accessibility_tcc": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "host-preflight.txt"
+      ],
+      "notes": [
+        "TCC Accessibility grant was not proven"
+      ],
+      "requirement": "Accessibility grant is recorded for the signed Host bundle",
+      "status": "blocked"
+    },
+    "bundle_identifier": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "host-preflight.txt",
+        "installed-host-codesign.txt"
+      ],
+      "notes": [],
+      "requirement": "installed Host bundle identifier matches dev.telemachus.display",
+      "status": "pass"
+    },
+    "rotation_restoration_plan": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "host-displays-before.txt"
+      ],
+      "notes": [
+        "no host display rotation run was started"
+      ],
+      "requirement": "operator retained a restoration plan for original macOS display rotation",
+      "status": "blocked"
+    },
+    "screen_recording_tcc": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "host-preflight.txt"
+      ],
+      "notes": [
+        "TCC Screen Recording grant was not proven"
+      ],
+      "requirement": "Screen Recording grant is recorded for the signed Host bundle",
+      "status": "blocked"
+    },
+    "signing_identity": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "codesigning-identities.txt"
+      ],
+      "notes": [
+        "Vibe Screen Dev signing identity was not visible"
+      ],
+      "requirement": "stable non-ad-hoc Host signing identity is available",
+      "status": "blocked"
+    },
+    "signing_tcc_match": {
+      "blocking": true,
+      "category": "host_preflight",
+      "evidence": [
+        "host-preflight.txt"
+      ],
+      "notes": [
+        "signed Host identity and TCC rows could not be matched"
+      ],
+      "requirement": "the signed bundle identity matches the TCC rows being used",
+      "status": "blocked"
+    }
+  },
+  "kind": "host_display_rotation_current_base_manifest",
+  "limitations": [
+    "This manifest does not claim rotated host-display acceptance by itself.",
+    "Client-local Fit/Fill/rotation evidence with hostRotation=0 cannot close real host display rotation.",
+    "Physical and virtual Mac displays must each have retained 90/180/270 real-device runs before this aggregate can pass."
+  ],
+  "local_environment": {
+    "codesigning_identities": {
+      "command": [
+        "security",
+        "find-identity",
+        "-v",
+        "-p",
+        "codesigning"
+      ],
+      "exit_code": 0,
+      "status": "blocked",
+      "summary": [
+        "0 valid identities found"
+      ],
+      "target_identity": "Vibe Screen Dev",
+      "target_identity_available": false,
+      "valid_identity_count": 0
+    },
+    "host_displays": {
+      "command": [
+        "system_profiler",
+        "SPDisplaysDataType"
+      ],
+      "exit_code": 0,
+      "status": "pass",
+      "summary": [
+        "Graphics/Displays:",
+        "",
+        "    Apple M4 Pro:",
+        "",
+        "      Chipset Model: Apple M4 Pro",
+        "      Type: GPU",
+        "      Bus: Built-In",
+        "      Total Number of Cores: 20",
+        "      Vendor: Apple (0x106b)",
+        "      Metal Support: Metal 4",
+        "      Displays:",
+        "        Color LCD:",
+        "          Display Type: Built-in Liquid Retina XDR Display",
+        "          Resolution: 3024 x 1964 Retina",
+        "          Main Display: Yes",
+        "          Mirror: Off",
+        "          Online: Yes",
+        "          Automatically Adjust Brightness: No",
+        "          Display Asleep: Yes",
+        "          Connection Type: Internal"
+      ]
+    },
+    "host_preflight": {
+      "command": [
+        "/opt/homebrew/opt/python@3.11/bin/python3.11",
+        "scripts/macos_dev_host.py",
+        "preflight",
+        "--install-path",
+        "/Applications/Vibe Screen.app",
+        "--report",
+        "[redacted-path]"
+      ],
+      "exit_code": 2,
+      "status": "blocked",
+      "summary": [
+        "Host signing prerequisite",
+        "-------------------------",
+        "Configured identity: Vibe Screen Dev",
+        "Install path: /Applications/Vibe Screen.app",
+        "",
+        "Result",
+        "------",
+        "Status: FAIL",
+        "Blocking issues:",
+        "- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+        "",
+        "Next action",
+        "-----------",
+        "Create or import the stable local codesigning identity, or set",
+        "$VIBE_SCREEN_SIGN_IDENTITY to an existing stable identity, then rebuild",
+        "and reinstall the Host before rerunning device evidence. Do not use ad-hoc",
+        "signing for fixed-binary device reruns because it changes the code-signing hash",
+        "and invalidates macOS Screen Recording/Accessibility grants.",
+        "",
+        "Safety"
+      ]
+    },
+    "installed_host_codesign": {
+      "command": [
+        "codesign",
+        "-dv",
+        "--verbose=4",
+        "/Applications/Vibe Screen.app"
+      ],
+      "exit_code": 0,
+      "status": "pass",
+      "summary": [
+        "Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen",
+        "Identifier=dev.telemachus.display",
+        "Format=app bundle with Mach-O thin (arm64)",
+        "CodeDirectory v=20400 size=25199 flags=0x0(none) hashes=781+3 location=embedded",
+        "VersionPlatform=1",
+        "VersionMin=851968",
+        "VersionSDK=1705216",
+        "Hash type=sha256 size=32",
+        "CandidateCDHash sha256=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced7",
+        "CandidateCDHashFull sha256=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced72ca05433e5e1114184e232d3",
+        "Hash choices=sha256",
+        "CMSDigest=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced72ca05433e5e1114184e232d3",
+        "CMSDigestType=2",
+        "Executable Segment base=0",
+        "Executable Segment limit=5226496",
+        "Executable Segment flags=0x1",
+        "Page size=16384",
+        "CDHash=729fbc6d6ab00c73b1e0aebb2aa4ea3196c2ced7",
+        "Signature size=1795",
+        "Authority=Vibe Screen Dev"
+      ]
+    },
+    "tcc_dev_telemachus_display": {
+      "command": [
+        "host-readiness/preflight",
+        "signed-host-tcc-check"
+      ],
+      "status": "blocked",
+      "summary": [
+        "TCC grant evidence is not collected by this public current-base manifest"
+      ]
+    }
+  },
+  "notes": null,
+  "owner": {
+    "aggregate": "current-base-host-display-rotation",
+    "aggregate_pr": "#262",
+    "repository": "TaoSama/vibe-screen"
+  },
+  "repository": {
+    "dirty": false,
+    "revision": "6deacba493737d809a8672e60e83e9a6f931f501",
+    "status_porcelain": []
+  },
+  "run_id": "388f4f31-4759-464e-80d5-3c0cb0484019",
+  "schema_version": "vibescreen.evidence/v1",
+  "scope_prs": [
+    "#162",
+    "#243",
+    "#262",
+    "#272"
+  ],
+  "source_docs": [
+    "README.md",
+    "docs/testing.md",
+    "docs/runbook/host-display-rotation-acceptance.md",
+    "docs/changes/2026-08-05-phase-1-android-client/TEST.md"
+  ],
+  "source_root": "<repository-root>"
+}

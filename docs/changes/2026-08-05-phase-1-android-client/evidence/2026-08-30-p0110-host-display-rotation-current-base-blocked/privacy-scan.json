@@ -1,0 +1,360 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2528,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "b86caf3100a47abebadfe1569710444f57d396457e5dbb59102d9ff2f54e7d18"
+    },
+    {
+      "bytes": 30,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "codesigning-identities.txt",
+      "result": "pass",
+      "sha256": "0ad30eb1563c325d77f4dc564c5d96851d5a39205307f5cdd7d762b59688f87a"
+    },
+    {
+      "bytes": 2796,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "5b2855ff29e65928543e73e02fe0d0753a11fdcfec2500c85613320d1ce019c1"
+    },
+    {
+      "bytes": 317,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-identity.txt",
+      "result": "pass",
+      "sha256": "39623b22ad24bd679a0098c9d9c40aff90b4f9bec3dd94fadf4876cd055e631e"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-head.txt",
+      "result": "pass",
+      "sha256": "d2c07864abe384aaf6d30e02b2f0e9df70cd9e7774ecbd9e081404d368cb9445"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-origin-main-ancestor.exit-code",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-origin-main.txt",
+      "result": "pass",
+      "sha256": "f3bc5317b1ad23cd6e690a998c36b7705173b49399bed60e7b81d887a4cd8dd8"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-gate.exit-code",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 6487,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-gate.json",
+      "result": "pass",
+      "sha256": "b973cf20ee85996a273838eaec23d263dfa3c46fc6e899525aafeea4641f1b82"
+    },
+    {
+      "bytes": 60,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-gate.stderr",
+      "result": "pass",
+      "sha256": "07895cc1cbf7e2047e14b64f336f40a3ea3eb03699ab75eb70bd8908695d1536"
+    },
+    {
+      "bytes": 5085,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-gate.stdout",
+      "result": "pass",
+      "sha256": "580ced3574295a753dc319ac4ea705f174ad59b5887b482e25ee5a9b4f20b203"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-manifest.exit-code",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 12386,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-manifest.json",
+      "result": "pass",
+      "sha256": "76e6feccc88ed288a99b5683c7c1ea191c006f7da2d63be291e3715380039aed"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-manifest.stderr",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-current-base-manifest.stdout",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-gate.exit-code",
+      "result": "pass",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "bytes": 1701,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-gate.json",
+      "result": "pass",
+      "sha256": "ceaf80a8ef00973c8374ca89806a1d2bcb9ecbc4272220affb6cc2767824913b"
+    },
+    {
+      "bytes": 371,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-gate.stderr",
+      "result": "pass",
+      "sha256": "9e718ac1aa65b9abd9546be5058794e36a0c0ade6ffa047d7197b18342e75c52"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation-gate.stdout",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 109,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-display-rotation.json",
+      "result": "pass",
+      "sha256": "16d6b2ede37c4ea0d423f704f3dd1831120ee8792268af4b707cde9c92219df2"
+    },
+    {
+      "bytes": 382,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-displays-before.txt",
+      "result": "pass",
+      "sha256": "55f424a4316bd5f6caee1a7679bb82a85456016a684609a7543f899b46f2a364"
+    },
+    {
+      "bytes": 1308,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-preflight.txt",
+      "result": "pass",
+      "sha256": "74440d6b3c966f214f37a8a5b75b0a0144122f71f147b9a4a932233954565123"
+    },
+    {
+      "bytes": 936,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "installed-host-codesign.txt",
+      "result": "pass",
+      "sha256": "eba44b7a0d1648517eed8d56882c72bd3c3f068e5a87539fb8a31f445d13fb37"
+    },
+    {
+      "bytes": 1006,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "repository-state.txt",
+      "result": "pass",
+      "sha256": "0e98ec1d8204b1f1fddf5c9416c498fea19108fc6594dcc074efad211acd1a06"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "sfltool-pgrep-end.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "sfltool-pgrep-start.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

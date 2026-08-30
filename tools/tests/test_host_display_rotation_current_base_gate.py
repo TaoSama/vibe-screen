@@ -165,6 +165,33 @@ class HostDisplayRotationCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(report["can_claim_real_device_pass"])
         self.assertIn("metadata: repository_current_base", report["reasons"])
 
+    def test_retained_origin_main_ancestor_check_allows_pr_head_source(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest_path = write_manifest(root, manifest)
+            (root / "git-origin-main.txt").write_text("b" * 40 + chr(10), encoding="utf-8")
+            (root / "git-origin-main-ancestor.exit-code").write_text("0" + chr(10), encoding="utf-8")
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertTrue(report["can_claim_real_device_pass"])
+
+    def test_retained_origin_main_non_ancestor_blocks_current_base_gate(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            manifest_path = write_manifest(root, manifest)
+            (root / "git-origin-main.txt").write_text("b" * 40 + chr(10), encoding="utf-8")
+            (root / "git-origin-main-ancestor.exit-code").write_text("1" + chr(10), encoding="utf-8")
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_claim_real_device_pass"])
+        self.assertIn("metadata: repository_current_base", report["reasons"])
+
     def test_client_local_substitution_is_a_failure(self):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
