@@ -12,10 +12,10 @@
   "app": {
     "foreground": {
       "focus_lines": [
-        "mCurrentFocus=Window{73a75ce u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
-        "mFocusedApp=ActivityRecord{241006275 u0 dev.telemachus.display/.MainActivity t666}",
-        "topResumedActivity=ActivityRecord{241006275 u0 dev.telemachus.display/.MainActivity t666}",
-        "ResumedActivity: ActivityRecord{241006275 u0 dev.telemachus.display/.MainActivity t666}"
+        "mCurrentFocus=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}",
+        "mFocusedApp=ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}",
+        "topResumedActivity=ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}",
+        "ResumedActivity: ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}"
       ],
       "foreground": true,
       "foreground_component": "dev.telemachus.display/dev.telemachus.display.MainActivity",
@@ -24,13 +24,13 @@
     "package": {
       "first_install_time": "2026-08-29 10:00:50",
       "installed": true,
-      "last_update_time": "2026-08-29 10:00:50",
+      "last_update_time": "2026-08-30 02:52:12",
       "package": "dev.telemachus.display",
       "version_code": 100000,
       "version_name": "0.0.0"
     },
     "pids": [
-      12141
+      28435
     ],
     "running": true
   },
@@ -67,7 +67,7 @@
     "live_usb_stream_observed": false,
     "readme_gate_closure": false
   },
-  "collected_at": "2026-08-29T17:35:51.325600Z",
+  "collected_at": "2026-08-30T07:07:55.492572Z",
   "configuration": {
     "logcat_lines": 1500,
     "logcat_tags": [
@@ -168,25 +168,25 @@
     },
     "live_evidence": {
       "current_pids": [
-        12141
+        28435
       ],
-      "matched_line_count": 46,
+      "matched_line_count": 115,
       "source": "logcat_current_pid"
     },
     "sources": [
       {
         "available": true,
-        "bytes": 5839,
+        "bytes": 14557,
         "error": null,
-        "line_count": 47,
+        "line_count": 116,
         "name": "logcat",
         "truncated": false
       },
       {
         "available": true,
-        "bytes": 262131,
+        "bytes": 262078,
         "error": null,
-        "line_count": 3692,
+        "line_count": 3691,
         "name": "diag_log",
         "truncated": true
       }
@@ -197,10 +197,10 @@
         "latest_closed": null,
         "latest_opened": null,
         "opened_count": 0,
-        "reconnect_scheduled_count": 2
+        "reconnect_scheduled_count": 5
       },
       "event_counts": {
-        "reconnect_scheduled": 2
+        "reconnect_scheduled": 5
       },
       "frame_drops": {
         "event_count": 0,
@@ -209,8 +209,11 @@
       },
       "malformed_lines": 0,
       "session_epochs": [
-        35451,
-        35452
+        28879,
+        28880,
+        28881,
+        28882,
+        28883
       ],
       "stream_stats": {
         "count": 0,
@@ -224,7 +227,7 @@
         "non_positive_fps_count": 0,
         "positive_fps_count": 0
       },
-      "total_events": 2
+      "total_events": 5
     }
   },
   "safety": {
@@ -233,10 +236,10 @@
     "clears_logcat": false,
     "existing_locks": [
       {
-        "detail": "android-audio-current-base-readiness pid=6815\n",
-        "modified_at": "2026-08-29T17:35:48.375840Z",
+        "detail": "android-audio-current-base-readiness pid=94035\n",
+        "modified_at": "2026-08-30T07:07:52.945376Z",
         "path": "/tmp/vibe-screen-device-android.lock",
-        "size_bytes": 46
+        "size_bytes": 47
       }
     ],
     "injects_input": false,

@@ -20,16 +20,16 @@
     "keys": [],
     "virtual_hid": false
   },
-  "generated_at": "2026-08-30T01:35:53.502925+00:00",
+  "generated_at": "2026-08-30T07:07:56.691843+00:00",
   "host": {
     "app_path": "/Applications/Vibe Screen.app",
     "authorities": [],
     "binary_sha256": null,
     "cdhash": null,
     "certificate_sha1": null,
-    "current_source_commit": "757e5ccae0c2b06db02e6ed6c44c43f5ed9660d0",
+    "current_source_commit": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
     "current_source_dirty": true,
-    "current_source_tree": "089dcdeec27186251f830eaf4b08272d67279154",
+    "current_source_tree": "3876110ef137887daa444293e1dc646d7100e9b1",
     "designated_requirement": null,
     "identifier": null,
     "identity": null,
@@ -89,9 +89,10 @@
       "startup_recovery_markers": []
     },
     "login_item": {
-      "detail": "Login item not probed by default; probe not run. Run readiness with <login-item-diagnostic-flag>, <login-item-diagnostic-flag>, <login-item-diagnostic-flag>, or <login-item-diagnostic-flag> during an attended diagnostic session to inspect it with <forbidden-login-item-diagnostic>.",
+      "detail": "Login item not probed by default; probe not run. Use an attended diagnostic session outside default readiness to inspect login-item state.",
       "evidence": [],
       "matched": false,
+      "sfltool_dumpbtm_was_run": false,
       "state": "unverified"
     },
     "recommended_next_evidence": [
