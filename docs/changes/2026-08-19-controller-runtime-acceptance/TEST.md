@@ -128,3 +128,32 @@ acceptance and does not change the README-facing open gate status.
 - [2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/controller-runtime-summary.json](evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/controller-runtime-summary.json)
 - [2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/controller-runtime-readiness.json](evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/controller-runtime-readiness.json)
 - [2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/host-readiness.json](evidence/2026-08-29-p0110-controller-runtime-current-base-blocked-1217c58/host-readiness.json)
+
+## 2026-08-30 current-base refresh
+
+The 2026-08-30 current-base readiness run refreshed the controller owner gate
+from origin/main commit 4884d80813a7f674a10d574a96f8dfcf5723c6e7 after
+origin/main advanced again. Host readiness was collected from a detached
+current-base worktree into a temporary directory first, so host-readiness.json
+records current_source_dirty=false for that source commit before the public
+evidence bundle was copied into docs/. The run used adb -s <device-serial>,
+recorded the connected device as nubia P0110 / pacific / Android 16 / SDK 36,
+and found no physical SOURCE_GAMEPAD or SOURCE_JOYSTICK controller.
+
+The shared Host readiness snapshot remained blocked: the configured development
+codesign identity was unavailable, /Applications/Vibe Screen.app failed codesign
+inspection because a sealed WebRTC.framework resource is missing or invalid, no
+Host listener was observed on TCP 54321, the installed Host did not expose
+com.apple.developer.hid.virtual.device, and Host availability had no controller
+forwarding line. The readiness command did not opt into login-item diagnostics,
+so /usr/bin/sfltool dumpbtm was not requested. pgrep -x sfltool || true was
+checked before and after the critical readiness commands and found no residual
+process.
+
+The resulting controller-runtime-summary.json is intentionally blocked with
+can_close_runtime_gate=false; this record does not close controller runtime
+acceptance and does not change the README-facing open gate status.
+
+- [2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/controller-runtime-summary.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/controller-runtime-summary.json)
+- [2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/controller-runtime-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/controller-runtime-readiness.json)
+- [2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/host-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-4884d80/host-readiness.json)
