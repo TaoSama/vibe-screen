@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase0-module-ownership-manifest.schema.json",
+  "title": "Vibe Screen Phase 0 module ownership current-base manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "phase", "source", "module_boundaries"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase0_module_ownership_current_base_manifest"},
+    "phase": {"const": "phase0"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_commit", "base_ref", "audit_date", "owner"],
+      "properties": {
+        "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "base_ref": {"type": "string", "minLength": 1},
+        "audit_date": {"type": "string", "format": "date"},
+        "owner": {"type": "string", "minLength": 1}
+      }
+    },
+    "module_boundaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/module_boundary"}
+    }
+  },
+  "$defs": {
+    "module_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_for_phase0_stable",
+        "status",
+        "owner_surface",
+        "evidence_paths",
+        "focused_tests",
+        "blockers",
+        "fail_closed_checklist"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "transport_dependency_direction",
+            "transport_resource_lifecycle",
+            "stream_client_local_session_state",
+            "stream_client_protocol_action_dispatch",
+            "stream_client_input_envelope_routing",
+            "stream_client_media_frame_routing",
+            "protocol_side_effect_admission",
+            "protocol_session_ownership",
+            "file_transfer_product_ownership",
+            "wake_host_product_ownership",
+            "decoder_ownership",
+            "renderer_ownership",
+            "ui_product_session_boundaries"
+          ]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "required_for_phase0_stable": {"type": "boolean"},
+        "status": {"enum": ["closed", "partial", "open", "blocked", "insufficient", "fail"]},
+        "owner_surface": {"type": "string", "minLength": 1},
+        "evidence_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "focused_tests": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "fail_closed_checklist": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}
