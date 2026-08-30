@@ -1,8 +1,8 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-29
-Last refreshed: 2026-08-30
-Base: origin/main at 4884d80813a7f674a10d574a96f8dfcf5723c6e7
+Last refreshed: 2026-08-31
+Base: origin/main at 075dc157c36ba71df9f757e571015905881a7154
 Status: open. This document does not close Phase 0 and does not change product
 status.
 
@@ -34,7 +34,7 @@ stable-release claim is allowed:
 | macOS Host hardware compatibility matrix | open | none | Published current-base `macos-hardware-compatibility-gate` summaries exist for Mac16,8 readiness, but they are `blocked` by missing stable signing/TCC proof, source-bound Host provenance, full macOS checks, packaged runtime launch, Protocol v1 stream, input, and reconnect evidence. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence. |
 | Android USB stream, reconnect, stale epoch, and codec fallback | pass | none | Closed by retained historical real-device baseline evidence; current-base insufficient attempts remain boundary records and do not claim a fresh USB pass. |
 | Telemetry and external latency artifact archive | insufficient | #167, #192 | Raw telemetry and the latest current-base latency preflight remain insufficient; no external-camera latency sample package or synchronized-clock physical-input proof is archived for this aggregate. |
-| Host RSS two-hour no-growth | blocked | #158, #195, #222, #230, #237, #260, #329, #376, #387 | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-30 current-base readiness record proves fail-closed diagnostics only and is still blocked before a stable-signed, TCC-ready, listener-observed current-source Host can produce native telemetry and a current-source two-hour `host_rss_gate` pass. |
+| Host RSS two-hour no-growth | blocked | #158, #195, #222, #230, #237, #260, #329, #376, #387 | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-31 current-base readiness record proves fail-closed diagnostics only and is still blocked before a stable-signed, TCC-ready, listener-observed current-source Host can produce native telemetry and a current-source two-hour `host_rss_gate` pass. |
 | Native pointer HID mouse move/click acceptance | blocked | #232, #268, #361 | Latest current-base summaries remain blocked because no physical Android mouse/touchpad/trackball pass retains Android forwarding logs, Host pointer-injection logs, and visible Mac evidence from one run. |
 | Controller runtime acceptance | blocked | #217, #220, #270 | Latest current-base readiness remains blocked: no physical controller, identity-signed Host with approved virtual HID entitlement, Mac-side response, and neutral disconnect release are recorded in one pass bundle. |
 | Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, but Host readiness is blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |

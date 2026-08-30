@@ -3,9 +3,9 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
+    "base_commit": "075dc157c36ba71df9f757e571015905881a7154",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-30",
+    "audit_date": "2026-08-31",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
@@ -143,7 +143,8 @@
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-27-current-base-build-fix-readiness-blocked/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md",
-        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md"
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md",
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md"
       ],
       "owner_prs": [
         158,

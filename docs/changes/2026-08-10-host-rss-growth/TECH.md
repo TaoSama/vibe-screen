@@ -138,6 +138,16 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 的路径。
 
 ## 状态
+- 2026-08-31 current-base readiness 在 `origin/main` commit
+  `075dc157c36ba71df9f757e571015905881a7154` 的 clean checkout 上重跑，同一约束下
+  `pgrep -x sfltool || true` 在检查前后均无输出，且没有使用 `/usr/bin/sfltool dumpbtm`
+  或任何 login-item 诊断 opt-in 参数。结果仍为 `status=blocked`、
+  `can_start_host_rss_gate=false`、`host.current_source_dirty=false`：本机仍缺
+  少 `Vibe Screen Dev` stable signing identity，已安装 Host 的 WebRTC framework
+  sealed resource 校验失败，Host listener 未出现在 TCP 54321，Host 缺少
+  `com.apple.developer.hid.virtual.device` entitlement，Launch at Login 未验证，
+  且 Command Line Tools 仍无法运行 SwiftPM XCTest。见
+  [`evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md)。
 
 - 已记录 pitfall（见 docs/pitfall/index.md）。
 - 已完成不中断会话的 heap 类型与引用链归因，并实现针对 SwiftUI Observation
