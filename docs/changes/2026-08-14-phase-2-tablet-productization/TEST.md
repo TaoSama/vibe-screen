@@ -683,3 +683,47 @@ Validation performed for this update:
 - `shasum -a 256 -c SHA256SUMS` in the 2026-08-30 hardware-keyboard
   readiness and 2026-08-30 aggregate-owner evidence directories
 - `git diff --check`
+
+## 2026-08-30 tablet sustained-use current-base owner and preflight
+
+This update strengthens the final `phase2-tablet-preflight` bundle gate and
+refreshes the Phase 2 tablet sustained-use / physical 8-9 inch tablet current-base
+owner. No physical tablet run, stand-mounted charging run, thermal-load run,
+eight-hour soak, recovery run, hardware-keyboard pass, or login/headless pass was
+performed; the gate remains blocked.
+
+Preflight changes:
+
+- `phase2-tablet-preflight` now requires `phase2-device-environment-observations.json`
+  with all schema-backed environment observation fields present.
+- `phase2-tablet-preflight` now requires `soak-8h/phase2-device-memory-gate.json`
+  to report `kind=phase2_device_memory_gate` and `verdict=pass`.
+- `phase2-tablet-preflight` now requires
+  `soak-8h/phase2-device-environment-summary.json` to report
+  `kind=phase2_device_environment_gate`, `verdict=pass`, and both
+  `can_close_device_environment_gate=true` and `can_close_stand_charging_gate=true`.
+- The interpretation now states that device-memory and device-environment derived
+  artifacts are mandatory before a physical tablet evidence bundle can pass.
+
+Current-base owner evidence is under
+[`evidence/2026-08-30-phase2-tablet-current-base-owner`](evidence/2026-08-30-phase2-tablet-current-base-owner/README.md).
+It consumes the 2026-08-29 Nubia P0110 soak preflight, the retained
+device-environment blocked summary, the 2026-08-29 hardware-keyboard blocked
+summary, and the 2026-08-29 login/headless blocked summary. The aggregate report
+records `source_baseline=origin/main 8626c760c0a2c9a519bef38bbf0d1725401f3e79`,
+`verdict=blocked`, and `can_close_readme_phase2_gates=false`.
+
+No `/usr/bin/sfltool dumpbtm` command was run and no login-item diagnostic opt-in
+flag was used. The `pgrep -x sfltool || true` start/end records in the owner
+evidence directory are empty.
+
+Validation:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`
+- `make phase2-aggregate-owner ...`: exit `0`, expected blocked aggregate owner report.
+- `shasum -a 256 -c SHA256SUMS` in the new 2026-08-30 owner evidence directory.
+- `git diff --check`
+
+The Phase 2 tablet, stand-mounted charging, thermal/power, device-memory,
+recovery, hardware-keyboard, login/headless, and eight-hour soak gates remain
+open after this refresh.

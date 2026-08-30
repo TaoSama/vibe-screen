@@ -94,6 +94,47 @@ def soak_gate(verdict: str = "pass") -> dict:
     }
 
 
+def device_environment_observations() -> dict:
+    observations = {
+        "android_device_lock_checked": True,
+        "device_identity_recorded": True,
+        "device_identity_matches_claim": True,
+        "physical_8_9_inch_tablet_observed": True,
+        "stand_mounted_setup_observed": True,
+        "eight_hour_environment_window_observed": True,
+        "battery_power_samples_retained": True,
+        "thermal_samples_retained": True,
+        "raw_platform_dumps_retained": True,
+        "controlled_thermal_load_observed": True,
+        "thermal_load_recovery_observed": True,
+        "settings_status_matches_platform": True,
+        "run_readme_retained": True,
+    }
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_device_environment_observations",
+        "observations": observations,
+    }
+
+
+def device_memory_gate(verdict: str = "pass") -> dict:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_device_memory_gate",
+        "verdict": verdict,
+    }
+
+
+def device_environment_summary(verdict: str = "pass", *, can_close: bool = True) -> dict:
+    return {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_device_environment_gate",
+        "verdict": verdict,
+        "can_close_device_environment_gate": can_close,
+        "can_close_stand_charging_gate": can_close,
+    }
+
+
 def hardware_keyboard_summary(verdict: str = "pass") -> dict:
     observed = verdict == "pass"
     observations = {
@@ -191,6 +232,9 @@ def populate_complete_bundle(root: Path, *, device_class: str = "physical_8_9_in
         {"status": "pass", "observed_physical_keyboard": True, "host_input_observed": True},
     )
     write_json(root / "soak-8h" / "phase2-tablet-gate.json", soak_gate(soak_verdict))
+    write_json(root / "phase2-device-environment-observations.json", device_environment_observations())
+    write_json(root / "soak-8h" / "phase2-device-memory-gate.json", device_memory_gate())
+    write_json(root / "soak-8h" / "phase2-device-environment-summary.json", device_environment_summary())
     write_json(
         root / "recovery-evidence.json",
         {
@@ -394,6 +438,51 @@ class Phase2TabletPreflightTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "fail")
         soak = next(gate for gate in result["gates"] if gate["name"] == "eight_hour_sustained_stream")
         self.assertEqual(soak["status"], "fail")
+
+    def test_missing_derived_gates_are_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            (root / "soak-8h" / "phase2-device-memory-gate.json").unlink()
+            (root / "soak-8h" / "phase2-device-environment-summary.json").unlink()
+            (root / "phase2-device-environment-observations.json").unlink()
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertTrue(any("device-memory" in reason for reason in result["reasons"]))
+        self.assertTrue(any("device-environment summary" in reason for reason in result["reasons"]))
+        self.assertTrue(any("device-environment observations" in reason for reason in result["reasons"]))
+
+    def test_blocked_device_environment_summary_keeps_bundle_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            write_json(
+                root / "soak-8h" / "phase2-device-environment-summary.json",
+                device_environment_summary("blocked", can_close=False),
+            )
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = next(item for item in result["gates"] if item["name"] == "stand_charging_thermal_power")
+        self.assertEqual(gate["status"], "blocked")
+
+    def test_device_environment_observations_require_all_boolean_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_complete_bundle(root)
+            observations = device_environment_observations()
+            del observations["observations"]["controlled_thermal_load_observed"]
+            write_json(root / "phase2-device-environment-observations.json", observations)
+
+            result = derive_preflight(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        gate = next(item for item in result["gates"] if item["name"] == "device_environment_observations")
+        self.assertEqual(gate["status"], "insufficient")
+        self.assertTrue(any("controlled_thermal_load_observed" in reason for reason in gate["reasons"]))
 
     def test_cli_writes_report_and_returns_nonzero_for_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
