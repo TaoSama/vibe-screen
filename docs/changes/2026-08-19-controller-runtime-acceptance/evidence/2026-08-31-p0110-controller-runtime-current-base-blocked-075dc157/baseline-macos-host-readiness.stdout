@@ -1,0 +1,8 @@
+mkdir -p /tmp/vibe-screen-controller-runtime-clean-20260831-evidence
+python3 scripts/macos_dev_host.py readiness \
+		--report /tmp/vibe-screen-controller-runtime-clean-20260831-evidence/host-signing-and-permissions.txt \
+		--json-output /tmp/vibe-screen-controller-runtime-clean-20260831-evidence/host-readiness.json \
+		--port 54321 \
+
+Wrote /tmp/vibe-screen-controller-runtime-clean-20260831-evidence/host-signing-and-permissions.txt
+Wrote /tmp/vibe-screen-controller-runtime-clean-20260831-evidence/host-readiness.json

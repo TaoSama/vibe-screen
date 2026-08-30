@@ -1,0 +1,16 @@
+# Controller runtime P0110 owner current-base blocked readiness 2026-08-31
+
+# From a clean detached worktree at 075dc157c36ba71df9f757e571015905881a7154.
+set +e
+pgrep -x sfltool || true
+make baseline-macos-host-readiness EVIDENCE_DIR="$EVID" EVIDENCE_PORT=54321 2>&1 | tee baseline-macos-host-readiness.stdout
+python3 /path/to/merged/scripts/controller_runtime_readiness.py \
+  --serial "$ADB_SERIAL" \
+  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --host-app "/Applications/Vibe Screen.app" \
+  --host-readiness "$EVID/host-readiness.json" \
+  --redact-identifiers \
+  --evidence-dir /tmp/vibe-screen-controller-runtime-clean-20260831-evidence/controller-readiness \
+  --run-id 20260831-p0110-controller-runtime-current-base-blocked
+set -e
+# Copy controller-readiness artifacts and host-readiness files into $EVID for the retained bundle.

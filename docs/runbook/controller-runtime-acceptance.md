@@ -44,6 +44,7 @@ bundle:
       --serial "$ADB_SERIAL" \
       --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
       --host-app "/path/to/Vibe Screen.app" \
+      --host-readiness docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness/host-readiness.json \
       --write-blocked-on-lock \
       --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 
@@ -54,6 +55,12 @@ remain `blocked`. Do not turn that into a runtime pass. If
 already exists and you do not own it, the collector must not run ADB; use
 --write-blocked-on-lock to preserve the lock state as blocked readiness
 evidence.
+
+When `--host-readiness` points at the shared `host-readiness.json` produced by
+`baseline-macos-host-readiness`, the controller bundle records the shared
+`can_start_controller_runtime_gate` state and blockers. That keeps the
+controller readiness summary from looking less blocked than the shared Host
+signing/TCC/listener/entitlement snapshot already is.
 
 ## Runtime Run
 
