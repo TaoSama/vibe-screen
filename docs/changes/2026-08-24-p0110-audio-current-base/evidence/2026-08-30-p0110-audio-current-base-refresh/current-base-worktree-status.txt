@@ -1,7 +1,5 @@
 $ git status --short --branch
 exit=0
 --- stdout ---
-## codex/audio-playback-current-base-subagent...origin/main
- M scripts/android_audio_current_base_readiness.py
-?? docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-30-p0110-audio-current-base-refresh/
+## codex/android-audio-playback-p0110-20260830...origin/main
 --- stderr ---

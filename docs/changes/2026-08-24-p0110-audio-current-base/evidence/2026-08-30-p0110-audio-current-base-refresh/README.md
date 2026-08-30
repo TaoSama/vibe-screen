@@ -3,7 +3,7 @@
 Status: blocked before real USB/LAN audio playback acceptance
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 ADB serial: <ANDROID_SERIAL>
-Source commit: 89eb7bbdfc45ad8f62abbfc7a3c84b914c39bdfb (origin/main at current-base refresh)
+Source commit: 87e16d8bea4446c1ca449045678f1bafc7fd6cb2 (origin/main at current-base refresh)
 
 ## Goal
 
@@ -22,11 +22,8 @@ playback confirmation, and cleanup on disconnect or reconfiguration.
 - adb-devices.txt, adb-reverse-list.txt, and usb-live-smoke.json retain the
   read-only Android/USB state using <ANDROID_SERIAL> in public artifacts.
 - host-readiness.json and the macOS Host reports were collected without any
-  login-item diagnostic opt-in. They are a fail-closed readiness snapshot
-  recorded for the 2026-08-30 owner refresh; the underlying host-readiness
-  artifact was generated from the retained 2026-08-29 UTC state and does not
-  prove a stable signed, current-source, Microphone/TCC-ready Host for this
-  audio gate.
+  login-item diagnostic opt-in. They do not prove a stable signed,
+  current-source, Microphone/TCC-ready Host for this audio gate.
 - android-audio-logcat.txt, android-audio-diag.txt, host-audio-log.txt, and
   audio-log-search.txt do not contain enough retained production evidence for
   CAPABILITY_AUDIO, accepted AudioConfig, Host channel 3 packet flow, Android
