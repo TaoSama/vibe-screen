@@ -1,6 +1,6 @@
-$ adb -s EP0110PZ0B9110300B logcat -c
+$ adb -s <redacted-adb-serial> logcat -c
 sleep 20
-$ adb -s EP0110PZ0B9110300B logcat -d --pid 27526 | grep -E VibeScreenTelemetry|Decode stats|AndroidRuntime|FATAL|E/|error|fail|disconnect
+$ adb -s <redacted-adb-serial> logcat -d --pid 27526 | grep -E VibeScreenTelemetry|Decode stats|AndroidRuntime|FATAL|E/|error|fail|disconnect
 08-22 02:11:21.710 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335881710,"event":"stream_stats","session_epoch":2,"fps":59.58291956305859,"mbps":0.3684131082423039}
 08-22 02:11:21.774 27526  1763 D VD      : Decode stats: input=20100, output=20099, dropped=0, availBufs=10
 08-22 02:11:22.711 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335882710,"event":"stream_stats","session_epoch":2,"fps":57.0,"mbps":0.365232}

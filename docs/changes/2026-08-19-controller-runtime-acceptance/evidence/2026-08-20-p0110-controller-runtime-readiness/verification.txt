@@ -25,6 +25,6 @@ Blocked:
 
 Device readiness result:
 
-- Controller readiness collection was run under /tmp/vibe-screen-device-android.lock with adb -s EP0110PZ0B9110300B.
+- Controller readiness collection was run under /tmp/vibe-screen-device-android.lock with adb -s <redacted-adb-serial>.
 - The script returned exit code 2 by design because the evidence verdict is blocked.
 - Blocking reasons: no physical Android controller source, Host is not Apple identity-signed, Host lacks com.apple.developer.hid.virtual.device, and Host virtual gamepad availability is false.

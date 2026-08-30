@@ -11,15 +11,15 @@ from vibescreen_evidence import host_socket_fd
 
 LSOF_WITH_CLOSED = r"""$ bash -lc lsof -nP -iTCP:54321 | head -80
 COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Vibe\x20S 92943 luwentao    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
-Vibe\x20S 92943 luwentao    8u  IPv4 0x76b74def0ce56e3c      0t0  TCP 127.0.0.1:54321->127.0.0.1:57649 (CLOSED)
-Vibe\x20S 92943 luwentao   52u  IPv4 0xd6f64fa7a6e5a8e4      0t0  TCP 127.0.0.1:54321->127.0.0.1:56321 (ESTABLISHED)
+Vibe\x20S 92943 <user>    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
+Vibe\x20S 92943 <user>    8u  IPv4 0x76b74def0ce56e3c      0t0  TCP 127.0.0.1:54321->127.0.0.1:57649 (CLOSED)
+Vibe\x20S 92943 <user>   52u  IPv4 0xd6f64fa7a6e5a8e4      0t0  TCP 127.0.0.1:54321->127.0.0.1:56321 (ESTABLISHED)
 """
 
 
 LSOF_WITHOUT_CLOSED = r"""COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Vibe\x20S 92943 luwentao    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
-Vibe\x20S 92943 luwentao   52u  IPv4 0xd6f64fa7a6e5a8e4      0t0  TCP 127.0.0.1:54321->127.0.0.1:56321 (ESTABLISHED)
+Vibe\x20S 92943 <user>    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
+Vibe\x20S 92943 <user>   52u  IPv4 0xd6f64fa7a6e5a8e4      0t0  TCP 127.0.0.1:54321->127.0.0.1:56321 (ESTABLISHED)
 """
 
 

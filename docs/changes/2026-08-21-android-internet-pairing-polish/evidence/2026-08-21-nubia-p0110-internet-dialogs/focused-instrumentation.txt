@@ -1,5 +1,5 @@
 Command:
-cd baseline/AndroidClient && ANDROID_SERIAL=EP0110PZ0B9110300B ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest
+cd baseline/AndroidClient && ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest
 
 Result:
 Starting 2 tests on P0110 - 16

@@ -13,7 +13,7 @@ mergeable, but still blocked by queued iOS required checks. No failing required
 check and no unresolved review thread was present at the refresh time.
 
 The connected Android device was identified with explicit ADB serial
-EP0110PZ0B9110300B as nubia / P0110 / pacific, Android 16, SDK 36. The device
+<redacted-adb-serial> as nubia / P0110 / pacific, Android 16, SDK 36. The device
 snapshot is preserved in device-info.json.
 
 ## Blocking Conditions
@@ -39,11 +39,11 @@ snapshot is preserved in device-info.json.
 
 Device identity commands:
 
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-    adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+    adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+    adb -s <redacted-adb-serial> shell getprop ro.product.model
+    adb -s <redacted-adb-serial> shell getprop ro.product.device
+    adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+    adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
 
 Output:
 
@@ -55,7 +55,7 @@ Output:
 
 Device snapshot command:
 
-    make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-22-host-rss-closed-socket-cleanup/evidence/2026-08-22-p0110-readiness-blocked
+    make evidence-device-info EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=docs/changes/2026-08-22-host-rss-closed-socket-cleanup/evidence/2026-08-22-p0110-readiness-blocked
 
 Result: pass, wrote device-info.json.
 

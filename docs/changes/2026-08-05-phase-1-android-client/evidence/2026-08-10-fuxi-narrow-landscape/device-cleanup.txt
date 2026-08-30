@@ -1,4 +1,4 @@
-serial=bac5b092
+serial=<redacted-xiaomi-adb-serial>
 model=2211133C
 device=fuxi
 android=16
@@ -7,6 +7,6 @@ physical_size=1080x2400
 physical_density=420
 debug.vibescreen.allow_capture=0
 adb_reverse=empty
-streaming_device_8a023e3a_pid=17640
+streaming_device_<redacted-xiaomi-adb-serial>_pid=17640
 mac_host_pid=27437
 mac_host_command=/Applications/Telemachus.app/Contents/MacOS/Telemachus

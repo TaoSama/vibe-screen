@@ -17,7 +17,7 @@ Observed result:
 Operator-provided P0110 availability update
 
   Device: nubia P0110 / pacific / Android 16 / SDK 36.
-  ADB serial: EP0110PZ0B9110300B.
+  ADB serial: <redacted-adb-serial>.
   Current USB smoke: adb reverse tcp:54321 healthy, dev.telemachus.display
   foreground, device-side 127.0.0.1:54321 ESTABLISHED, stream_stats fps
   55-61, decoder dropped=0, and no current process E-level errors.
@@ -47,18 +47,18 @@ Observed result:
 Read-only Android sampling under the exclusive lock
 
   adb devices -l
-  adb -s EP0110PZ0B9110300B get-state
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-  adb -s EP0110PZ0B9110300B reverse --list
-  adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
-  adb -s EP0110PZ0B9110300B shell dumpsys activity activities
-  adb -s EP0110PZ0B9110300B shell netstat -an
-  adb -s EP0110PZ0B9110300B logcat -d --pid 27526
-  adb -s EP0110PZ0B9110300B exec-out screencap -p
+  adb -s <redacted-adb-serial> get-state
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> reverse --list
+  adb -s <redacted-adb-serial> shell pidof dev.telemachus.display
+  adb -s <redacted-adb-serial> shell dumpsys activity activities
+  adb -s <redacted-adb-serial> shell netstat -an
+  adb -s <redacted-adb-serial> logcat -d --pid 27526
+  adb -s <redacted-adb-serial> exec-out screencap -p
 
 Observed result:
 

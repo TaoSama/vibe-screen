@@ -11,31 +11,31 @@ soak, native-pointer, stylus, controller, or Xiaomi 13/fuxi evidence.
 - Codename: pacific
 - Android: 16
 - SDK: 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Physical display: 1264x2800 at 560 dpi
 
 ## Commands
 
 ```sh
-adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-adb -s EP0110PZ0B9110300B shell wm size
-adb -s EP0110PZ0B9110300B shell wm density
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell wm size
+adb -s <redacted-adb-serial> shell wm density
 cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebug
-adb -s EP0110PZ0B9110300B install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B shell am start -n dev.telemachus.display/.MainActivity
-adb -s EP0110PZ0B9110300B exec-out screencap -p > screen-disconnected-portrait.png
-adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/vibe-screen-ui.xml
-adb -s EP0110PZ0B9110300B pull /sdcard/vibe-screen-ui.xml window-disconnected-portrait.xml
-adb -s EP0110PZ0B9110300B shell settings put system accelerometer_rotation 0
-adb -s EP0110PZ0B9110300B shell settings put system user_rotation 1
-adb -s EP0110PZ0B9110300B exec-out screencap -p > screen-disconnected-landscape.png
-adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/vibe-screen-ui-land.xml
-adb -s EP0110PZ0B9110300B pull /sdcard/vibe-screen-ui-land.xml window-disconnected-landscape.xml
-adb -s EP0110PZ0B9110300B shell settings put system user_rotation 0
+adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity
+adb -s <redacted-adb-serial> exec-out screencap -p > screen-disconnected-portrait.png
+adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibe-screen-ui.xml
+adb -s <redacted-adb-serial> pull /sdcard/vibe-screen-ui.xml window-disconnected-portrait.xml
+adb -s <redacted-adb-serial> shell settings put system accelerometer_rotation 0
+adb -s <redacted-adb-serial> shell settings put system user_rotation 1
+adb -s <redacted-adb-serial> exec-out screencap -p > screen-disconnected-landscape.png
+adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibe-screen-ui-land.xml
+adb -s <redacted-adb-serial> pull /sdcard/vibe-screen-ui-land.xml window-disconnected-landscape.xml
+adb -s <redacted-adb-serial> shell settings put system user_rotation 0
 cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.DisplayCapsulePolicyTest :app:assembleDebug :app:compileDebugAndroidTestKotlin
 git diff --check
 ```

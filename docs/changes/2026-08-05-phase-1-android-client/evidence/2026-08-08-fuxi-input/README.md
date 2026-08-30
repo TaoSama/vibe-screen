@@ -1,4 +1,4 @@
-# 2026-08-08 fuxi 键盘 / 滚轮原生输入真机验证（小米 13 (2211133C), 8a023e3a, USB）
+# 2026-08-08 fuxi 键盘 / 滚轮原生输入真机验证（小米 13 (2211133C), <redacted-xiaomi-adb-serial>, USB）
 
 ## 结论
 - 键盘注入端到端已验证：客户端 dispatchKeyEvent 捕获 → Protocol v1 转发 → host CGEvent 键盘注入成功。
@@ -11,7 +11,7 @@
 
 ## 键盘验证
 注入（在客户端前台、连接态下）：
-    adb -s 8a023e3a shell input keyevent 29 30 31   # A B C
+    adb -s <redacted-xiaomi-adb-serial> shell input keyevent 29 30 31   # A B C
 
 host 日志（~/Library/Logs/Telemachus/telemachus.log）:
     Key injected: hid=4 pressed=true modifiers=0   # A (USB HID usage 4)
@@ -24,7 +24,7 @@ Android KeyEvent → USB HID usage 的映射正确（A=4/B=5/C=6/Down=81），�
 
 ## 滚轮验证
 注入：
-    adb -s 8a023e3a shell input mouse scroll 1000 500 --axis VSCROLL,-3
+    adb -s <redacted-xiaomi-adb-serial> shell input mouse scroll 1000 500 --axis VSCROLL,-3
 
 host 日志:
     Scroll injected: dx=0.0 dy=-3.0

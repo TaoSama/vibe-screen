@@ -1,7 +1,7 @@
 # 2026-08-19 Nubia P0110 Short USB Status - BLOCKED
 
 This minimal evidence record covers only the 2026-08-19 short USB E2E attempt
-for device serial `EP0110PZ0B9110300B`. The device is Nubia `P0110`, codename
+for device serial `<redacted-adb-serial>`. The device is Nubia `P0110`, codename
 `pacific`, running Android 16. It is not Xiaomi 13 or `fuxi` evidence.
 
 ## Verdict
@@ -21,14 +21,14 @@ other passing gate.
 
 - Local evidence date: `2026-08-19` in `Asia/Shanghai` (`UTC+08:00`).
 - Device: Nubia `P0110` / `pacific` / Android `16`.
-- Device serial: `EP0110PZ0B9110300B`.
+- Device serial: `<redacted-adb-serial>`.
 - Android APK: package `dev.telemachus.display`, `versionCode 100000`,
   `versionName 0.0.0`, `lastUpdate 2026-08-19 00:07:12` local time.
 - ADB reverse: `UsbFfs tcp:54321 tcp:54321` was present for the target serial.
 - Host binary: `/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen`.
 - Host binary SHA-256:
   `c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996`.
-- Host defaults originally pointed at `bac5b092`; during the attempt they were
+- Host defaults originally pointed at `<redacted-xiaomi-adb-serial>`; during the attempt they were
   temporarily changed to `P0110` and then restored.
 - Screen Recording remained blocked for the current Host identity; TCC was not
   reset.

@@ -1,8 +1,8 @@
 # 2026-08-09 Xiaomi Fuxi 两小时 soak 结论（v2，真机带流遥测）
 
-- 设备：Xiaomi fuxi（Android 16，USB，serial 8a023e3a），交流供电，全程 100% 电量。
+- 设备：Xiaomi fuxi（Android 16，USB，serial <redacted-xiaomi-adb-serial>），交流供电，全程 100% 电量。
 - 主机：Telemachus.app（pid 27437），运行中未重启；未以 VIBE_SCREEN_TELEMETRY_PATH 启动，故沿用既有做法：用 host_log_telemetry.py 把主机已打印的 Pipeline 日志行忠实再编码为 stream_stats 遥测（非合成数据）。
-- 窗口：2h（240 个 30s 采样），run_id=xiaomi-fuxi-8a023e3a-2h-v2。
+- 窗口：2h（240 个 30s 采样），run_id=xiaomi-fuxi-<redacted-xiaomi-adb-serial>-2h-v2。
 
 ## 判定：两小时「无增长」门禁仍未关闭（主机 RSS 净增加）
 

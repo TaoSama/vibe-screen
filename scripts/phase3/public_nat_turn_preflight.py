@@ -28,6 +28,8 @@ from urllib import request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
+_OPENSSL_RUN = subprocess.run
+
 SCHEMA = "dev.vibescreen.phase3-public-nat-turn-preflight/v1"
 CONNECTIVITY_SCHEMA = "dev.vibescreen.phase3-public-nat-turn-connectivity/v1"
 DEPLOYMENT_SCHEMA = "dev.vibescreen.phase3-public-nat-turn-deployment/v1"
@@ -56,8 +58,14 @@ REQUIRED_COTURN_DENIES = {
     "denied-peer-ip=169.254.0.0-169.254.255.255",
     "denied-peer-ip=172.16.0.0-172.31.255.255",
     "denied-peer-ip=192.0.0.0-192.0.0.255",
+    "denied-peer-ip=192.0.2.0-192.0.2.255",
     "denied-peer-ip=192.168.0.0-192.168.255.255",
     "denied-peer-ip=198.18.0.0-198.19.255.255",
+    "denied-peer-ip=198.51.100.0-198.51.100.255",
+    "denied-peer-ip=203.0.113.0-203.0.113.255",
+    "denied-peer-ip=240.0.0.0-255.255.255.255",
+    "denied-peer-ip=::",
+    "denied-peer-ip=::1",
     "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
     "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -338,6 +346,14 @@ def validate_relay_config(path: Path, *, resolve_dns: bool) -> dict[str, Any]:
     }
 
 
+def relay_turn_realm(path: Path) -> str:
+    config = read_json(path, "relay production config")
+    turn_realm = config.get("turn_realm")
+    if not isinstance(turn_realm, str) or not turn_realm.strip():
+        raise PreflightError("turn_realm must be configured before TLS validation")
+    return turn_realm.strip().rstrip(".").lower()
+
+
 def _positive_int(config: dict[str, Any], key: str) -> int:
     value = config.get(key)
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -454,6 +470,66 @@ def validate_pem_file(path: Path | None, label: str, marker: str, *, require_pri
     if marker not in text:
         raise PreflightError(f"{label} must contain PEM {marker.lower()} material")
     return digest
+
+
+def _openssl(args: Sequence[str], *, input_text: str | None = None, timeout_seconds: float = 10.0) -> str:
+    try:
+        completed = _OPENSSL_RUN(
+            ["openssl", *args],
+            input=input_text,
+            text=True,
+            check=False,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise PreflightError("openssl validation could not run") from error
+    if completed.returncode != 0:
+        raise PreflightError("openssl validation failed")
+    return completed.stdout
+
+
+def _certificate_names(certificate: Path) -> set[str]:
+    text = _openssl(["x509", "-in", str(certificate), "-noout", "-subject", "-ext", "subjectAltName"])
+    names: set[str] = set()
+    for match in re.finditer(r"DNS:([^,\s]+)", text):
+        names.add(match.group(1).strip().rstrip(".").lower())
+    subject_match = re.search(r"(?:^|[,/=])\s*CN\s*=\s*([^,/]*)", text, flags=re.MULTILINE)
+    if subject_match:
+        names.add(subject_match.group(1).strip().rstrip(".").lower())
+    return names
+
+
+def _hostname_matches_certificate_name(hostname: str, candidate: str) -> bool:
+    if not candidate:
+        return False
+    if candidate.startswith("*."):
+        suffix = candidate[1:]
+        return hostname.endswith(suffix) and hostname.count(".") == candidate.count(".")
+    return hostname == candidate
+
+
+def validate_tls_identity(certificate: Path | None, private_key: Path | None, turn_realm: str) -> dict[str, bool]:
+    if certificate is None:
+        raise PreflightError("TLS certificate must be provided")
+    if private_key is None:
+        raise PreflightError("TLS private key must be provided")
+    assert certificate is not None
+    assert private_key is not None
+
+    names = _certificate_names(certificate)
+    if not any(_hostname_matches_certificate_name(turn_realm, name) for name in names):
+        raise PreflightError("TLS certificate SAN/CN does not match turn_realm")
+
+    certificate_pubkey = _openssl(["x509", "-in", str(certificate), "-pubkey", "-noout"])
+    private_key_pubkey = _openssl(["pkey", "-in", str(private_key), "-pubout"])
+    if stable_hash(certificate_pubkey) != stable_hash(private_key_pubkey):
+        raise PreflightError("TLS certificate and private key do not match")
+
+    return {
+        "tls_certificate_hostname_matched": True,
+        "tls_key_pair_matched": True,
+    }
 
 
 def validate_external_ip(value: str | None) -> str:
@@ -751,6 +827,7 @@ def build_report(
         ("turn_secret_file", lambda: validate_secret_file(turn_secret_file, "turn secret file")),
         ("tls_certificate", lambda: validate_pem_file(tls_certificate, "TLS certificate", "CERTIFICATE", require_private_mode=False)),
         ("tls_private_key", lambda: validate_pem_file(tls_private_key, "TLS private key", "PRIVATE KEY", require_private_mode=True)),
+        ("tls_certificate_identity", lambda: validate_tls_identity(tls_certificate, tls_private_key, relay_turn_realm(relay_config))),
         ("coturn_external_ip", lambda: validate_external_ip(coturn_external_ip)),
         ("authority_readiness", lambda: check_ready_url(authority_ready_url, "authority", resolve_dns=resolve_dns, timeout_seconds=timeout_seconds)),
         ("relay_readiness", lambda: check_ready_url(relay_ready_url, "relay", resolve_dns=resolve_dns, timeout_seconds=timeout_seconds)),
@@ -775,6 +852,8 @@ def build_report(
                 safe_connectivity["canary_evidence"] = value
             elif name == "deployment_evidence":
                 safe_deployment = value
+            elif name == "tls_certificate_identity":
+                safe_coturn.update(value)
         elif check["result"] == PASS_RESULT and isinstance(value, str):
             if name == "turn_secret_file":
                 safe_coturn["turn_secret_sha256"] = value

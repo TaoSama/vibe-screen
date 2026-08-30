@@ -1,17 +1,17 @@
 ## host process/listener after current-tree launch
-luwentao         97995   3.0  0.2 443157456 121488 s012  Ss+   6:00PM   0:01.52 .build/release/Vibe Screen
+<user>         97995   3.0  0.2 443157456 121488 s012  Ss+   6:00PM   0:01.52 .build/release/Vibe Screen
 
 COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Vibe\x20S 97995 luwentao    7u  IPv4 0xd61c0623b72d6bcf      0t0  TCP 127.0.0.1:54321 (LISTEN)
+Vibe\x20S 97995 <user>    7u  IPv4 0xd61c0623b72d6bcf      0t0  TCP 127.0.0.1:54321 (LISTEN)
 
 ## host artifact
--rw-r--r--@ 1 luwentao  staff  56955527 Aug 20 17:58 baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
--rwxr-xr-x@ 1 luwentao  staff  14334600 Aug 20 17:59 baseline/MacHost/.build/release/Vibe Screen
+-rw-r--r--@ 1 <user>  staff  56955527 Aug 20 17:58 baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+-rwxr-xr-x@ 1 <user>  staff  14334600 Aug 20 17:59 baseline/MacHost/.build/release/Vibe Screen
 89af29b97e314ac510f79128cdd975e810bea33bce2e5062fe3a5db3524411a9  baseline/MacHost/.build/release/Vibe Screen
 987c6ee5bfc05fd4fbaeabf090db95ae78f0f277f530478ce257c292b171fe4b  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 
 ## codesign host executable
-Executable=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/2c35/vibe-screen/baseline/MacHost/.build/arm64-apple-macosx/release/Vibe Screen
+Executable=<codex-worktrees>/2c35/vibe-screen/baseline/MacHost/.build/arm64-apple-macosx/release/Vibe Screen
 Identifier=Vibe Screen
 Format=Mach-O thin (arm64)
 CodeDirectory v=20400 size=111236 flags=0x20002(adhoc,linker-signed) hashes=3473+0 location=embedded

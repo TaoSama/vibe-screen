@@ -3,7 +3,7 @@
 - 日期: 2026-08-08 (Asia/Shanghai)
 - 设备: Xiaomi 2211133C / 代号 fuxi / Android 16 / SDK 36 / LineageOS
   fingerprint Xiaomi/fuxi/fuxi:16/BP2A.250605.031.A3/OS3.0.2.0.WMCCNXM:user/release-keys
-- ADB endpoint / 硬件序列号: 8a023e3a (USB)
+- ADB endpoint / 硬件序列号: <redacted-xiaomi-adb-serial> (USB)
 - 显示: Physical size 1080x2400, density 420
 - Host: baseline/MacHost/.build/release/Telemachus (macOS 26.4.1), 监听 127.0.0.1:54321
 - 客户端: dev.telemachus.display, versionName 0.0.0, debug 签名 (CN=Android Debug,

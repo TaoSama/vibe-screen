@@ -1,6 +1,6 @@
 # Nubia P0110 PR272 convergence instrumentation
 timestamp_utc=2026-08-22T15:09:57Z
-serial=EP0110PZ0B9110300B
+serial=<redacted-adb-serial>
 device_state=device
 manufacturer=nubia
 model=P0110

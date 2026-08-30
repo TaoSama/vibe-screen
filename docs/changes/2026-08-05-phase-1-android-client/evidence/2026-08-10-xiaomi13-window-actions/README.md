@@ -2,7 +2,7 @@
 
 Date: 2026-08-10  
 Device: Xiaomi 13 (`2211133C`, `fuxi`, Android 16)  
-ADB serial used for this run: `bac5b092`  
+ADB serial used for this run: `<redacted-xiaomi-adb-serial>`
 Transport: USB through `adb reverse tcp:54321 tcp:54321`  
 Application name on both platforms: `Vibe Screen`
 
@@ -94,9 +94,9 @@ are not treated as soak evidence.
 
 The clean APK SHA-256 was
 `66eaa6f7175d102dad55a94f1c983aaff3ffbcc32365c581c222e7ec46b7ed71`.
-It was installed on `bac5b092` at `2026-08-10 22:00:21 +08:00`.
+It was installed on `<redacted-xiaomi-adb-serial>` at `2026-08-10 22:00:21 +08:00`.
 
-After pinning the Host ADB target to `bac5b092` and cold-starting both sides
+After pinning the Host ADB target to `<redacted-xiaomi-adb-serial>` and cold-starting both sides
 with `displaySource=extended`, the Host created virtual display `38`. The
 first client directory and configuration were:
 

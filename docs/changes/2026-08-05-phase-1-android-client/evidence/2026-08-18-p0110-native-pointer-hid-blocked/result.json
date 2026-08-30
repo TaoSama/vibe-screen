@@ -4,8 +4,8 @@
   "created_at": "2026-08-18T16:51:08Z",
   "observation_seconds": 0.0,
   "device": {
-    "serial": "EP0110PZ0B9110300B",
-    "endpoint": "EP0110PZ0B9110300B     device usb:1-1 product:pacific model:P0110 device:pacific transport_id:6",
+    "serial": "<redacted-adb-serial>",
+    "endpoint": "<redacted-adb-serial>     device usb:1-1 product:pacific model:P0110 device:pacific transport_id:6",
     "manufacturer": "nubia",
     "model": "P0110",
     "device": "pacific",
@@ -18,7 +18,7 @@
     "boot_completed": "1"
   },
   "external_mouse_devices": [],
-  "host_log": "/Users/luwentao/Library/Logs/Telemachus/telemachus.log",
+  "host_log": "<user-home>/Library/Logs/Telemachus/telemachus.log",
   "host_log_appended_bytes": 0,
   "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "required_pointer_events": [

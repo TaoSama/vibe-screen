@@ -6,7 +6,7 @@
   "rebased_validation_head_sha": "38752d65a3dca02699500836dccf35aaaf34b409",
   "branch": "codex/phase2-p0110-readiness-recovery",
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",

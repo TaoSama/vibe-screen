@@ -19,7 +19,7 @@ with lock_path.open("w") as lock:
         sys.executable,
         "scripts/controller_runtime_readiness.py",
         "--serial",
-        "EP0110PZ0B9110300B",
+        "<redacted-adb-serial>",
         "--host-log",
         str(pathlib.Path.home() / "Library/Logs/Telemachus/telemachus.log"),
         "--host-app",

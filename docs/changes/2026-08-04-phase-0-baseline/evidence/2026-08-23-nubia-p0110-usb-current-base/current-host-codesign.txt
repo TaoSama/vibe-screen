@@ -1,4 +1,4 @@
-Executable=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen/baseline/MacHost/.build/arm64-apple-macosx/release/Vibe Screen
+Executable=<codex-worktrees>/f186/vibe-screen/baseline/MacHost/.build/arm64-apple-macosx/release/Vibe Screen
 Identifier=Vibe Screen
 Format=Mach-O thin (arm64)
 CodeDirectory v=20400 size=112964 flags=0x20002(adhoc,linker-signed) hashes=3527+0 location=embedded

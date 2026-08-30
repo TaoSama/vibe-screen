@@ -7,7 +7,7 @@
 
 ## Device
 
-ADB was not run. Requested serial: EP0110PZ0B9110300B.
+ADB was not run. Requested serial: <redacted-adb-serial>.
 
 ## Device coordination locks
 

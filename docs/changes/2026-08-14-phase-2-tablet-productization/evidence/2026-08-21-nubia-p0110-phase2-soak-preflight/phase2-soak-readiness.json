@@ -125,7 +125,7 @@
     "-m",
     "vibescreen_evidence.phase2_tablet_soak",
     "--serial",
-    "EP0110PZ0B9110300B",
+    "<redacted-adb-serial>",
     "--output-dir",
     "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-nubia-p0110-phase2-soak-preflight",
     "--mode",

@@ -8,7 +8,7 @@
 
 ## Target device
 
-- Requested serial for a future run: `EP0110PZ0B9110300B`.
+- Requested serial for a future run: `<redacted-adb-serial>`.
 - Required identity label when observed: nubia P0110 / pacific / Android 16.
 - ADB was not run because `/tmp/vibe-screen-device-android.lock` already existed
   before this preflight could start.
@@ -38,7 +38,7 @@
 ## Next passing run requirements
 
 A passing run needs the shared Android lock, a real attached hardware keyboard,
-Nubia P0110/pacific/Android 16 identity evidence for `EP0110PZ0B9110300B`, an
+Nubia P0110/pacific/Android 16 identity evidence for `<redacted-adb-serial>`, an
 active Protocol v1 session with keyboard and USB HID modifier-byte capabilities,
 Android production forwarding logs, Host `Key injected:` CGEvent logs, paired
 press/release and shortcut/modifier evidence, no modifier leak into a later plain

@@ -62,7 +62,7 @@ def adaptive_report(
             "codename": "pacific",
             "android_version": "16",
             "sdk": 36,
-            "hardware_serial": "EP0110PZ0B9110300B",
+            "hardware_serial": "<redacted-adb-serial>",
         }
     if profile_events is None:
         profile_events = [
@@ -287,7 +287,7 @@ class Phase3AdaptiveMediaCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: android_device_identity", result["reasons"])
         serialized = json.dumps(result, sort_keys=True)
         self.assertIn("P0110", serialized)
-        self.assertNotIn("EP0110PZ0B9110300B", serialized)
+        self.assertNotIn("<redacted-adb-serial>", serialized)
 
     def test_xiaomi_identity_must_stay_fuxi(self) -> None:
         cases = {

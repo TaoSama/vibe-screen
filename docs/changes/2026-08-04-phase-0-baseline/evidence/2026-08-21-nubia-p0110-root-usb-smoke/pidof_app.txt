@@ -1,2 +1,2 @@
-$ adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display
+$ adb -s <redacted-adb-serial> shell pidof dev.telemachus.display
 22447

@@ -5,12 +5,12 @@ This follow-up records additional Android UI/UX evidence for PR #272 on the conn
 ## Device And Lock
 
 - Device identity: nubia P0110 / pacific / Android 16 / SDK 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Physical size: 1264x2800
 - Physical density: 560
 - Device lock: `/tmp/vibe-screen-device-android.lock`, task `android-ui-ux-p0110-e2e-pr272-followup`
 
-`commands.txt` contains the exact device identity, ADB serial listing, foreground window, installed package, and ADB reverse state. An emulator was also connected, so every ADB command in this run used `adb -s EP0110PZ0B9110300B`.
+`commands.txt` contains the exact device identity, ADB serial listing, foreground window, installed package, and ADB reverse state. An emulator was also connected, so every ADB command in this run used `adb -s <redacted-adb-serial>`.
 
 ## Initial Blocker Captured
 

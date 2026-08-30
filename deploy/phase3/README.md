@@ -214,7 +214,10 @@ docker compose down
 
 Delete the named `relay-data` volume only when deliberately discarding local
 quota/revocation state. Secret files under `secrets/` and TLS files under
-`tls/` are ignored by Git; `generate-secrets.sh` refuses to overwrite them.
+`tls/` are ignored by Git; `generate-secrets.sh` refuses to overwrite them and
+sets local generated files read-only so the non-root containers can read Compose
+secrets. Production operators should still provision secrets through the
+deployment secret manager with the ownership/mode required by the target host.
 
 ## Relay production configuration
 
@@ -348,11 +351,11 @@ or the local Compose profile into public Internet evidence by itself.
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
 allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies
 unspecified, RFC1918, CGNAT, loopback, IPv4/IPv6 link-local, ULA, deprecated
-IPv6 site-local, protocol-assignment, and benchmark/internal ranges; multicast
-peers are also denied. Add every provider VPC, metadata, container, Pod,
-Service, and overlay range visible in the host routing table, with a host egress
-firewall as a second layer. Never add a broad `allowed-peer-ip`, which takes
-precedence over denies.
+IPv6 site-local, documentation/test networks, IPv4 reserved/broadcast space,
+protocol-assignment, and benchmark/internal ranges; multicast peers are also
+denied. Add every provider VPC, metadata, container, Pod, Service, and overlay
+range visible in the host routing table, with a host egress firewall as a second
+layer. Never add a broad `allowed-peer-ip`, which takes precedence over denies.
 
 ## Upgrade, rollback, and rotation
 

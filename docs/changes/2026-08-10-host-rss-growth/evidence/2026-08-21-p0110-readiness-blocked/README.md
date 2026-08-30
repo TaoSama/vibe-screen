@@ -1,7 +1,7 @@
 # 2026-08-21 P0110 Host RSS readiness: blocked
 
 Created: 2026-08-20T16:45:00Z
-Device: nubia P0110 / pacific / Android 16 / serial EP0110PZ0B9110300B
+Device: nubia P0110 / pacific / Android 16 / serial <redacted-adb-serial>
 Repository: be9381179a7f5b6a9ea5e97d6a77ad486a026ca7 (origin/main)
 
 ## Verdict
@@ -22,13 +22,13 @@ gate evidence.
 
 ## Readiness facts
 
-- Worktree: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/1287/vibe-screen on branch
+- Worktree: <codex-worktrees>/1287/vibe-screen on branch
   codex/host-rss-readiness, synced to origin/main at
   be9381179a7f5b6a9ea5e97d6a77ad486a026ca7.
-- Main worktree /Users/luwentao/Workspaces/vibe-screen was not modified.
+- Main worktree <workspace-root> was not modified.
 - Device lock: /tmp/vibe-screen-device-android.lock was acquired with Python
   fcntl.flock(LOCK_EX | LOCK_NB) for read-only checks and released.
-- Device: EP0110PZ0B9110300B, manufacturer nubia, model P0110, device pacific,
+- Device: <redacted-adb-serial>, manufacturer nubia, model P0110, device pacific,
   Android 16, SDK 36, fingerprint
   nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys.
 - Display/power: 1264x2800, density 560, boot completed, AC powered,
@@ -108,14 +108,14 @@ to use those targets.
 - make protocol: passed; 36 contract tests OK.
 - PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s
   tools/tests -v: passed; 191 tests OK.
-- make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence
+- make -n soak-2h EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence
   HOST_PID=12345: dry-run now includes --host-pid 12345.
 - make -n host-rss-gate EVIDENCE_DIR=.build/evidence: dry-run derives the
   exact-window report and then runs the fail-closed Host RSS gate evaluator.
-- make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B
+- make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=<redacted-adb-serial>
   EVIDENCE_DIR=.build/evidence HOST_PID=12345: dry-run now chains the two-hour
   soak and the fail-closed Host RSS gate target.
-- make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B
+- make soak-2h-host-rss-gate EVIDENCE_SERIAL=<redacted-adb-serial>
   EVIDENCE_DIR=.build/evidence: exits before the two-hour run when HOST_PID is
   unset.
 - git diff --check: passed.

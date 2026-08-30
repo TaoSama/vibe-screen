@@ -1,1 +1,1 @@
-pid=92903 user=luwentao task=2026-08-20-p0110-usb-smoke created=2026-08-20T17:57:06+08:00
+pid=92903 user=<user> task=2026-08-20-p0110-usb-smoke created=2026-08-20T17:57:06+08:00

@@ -10,6 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 
 SCHEMA = "dev.vibescreen.evidence-privacy-scan/v1"
@@ -92,13 +93,14 @@ def _is_safe_credential_value(value: bytes) -> bool:
         return True
     if re.fullmatch(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", stripped):
         return True
-    normalized = stripped.strip(b"\"\'").strip().lower()
+    normalized = stripped.strip(b"`\"\'").strip().lower()
     if normalized in {
         b"",
         b"none",
         b"redacted",
         b"<redacted>",
         b"[redacted]",
+        b"<device-serial>",
         b"...",
     }:
         return True
@@ -130,6 +132,14 @@ def _credential_violations(content: bytes) -> list[str]:
     return violations
 
 
+def _is_safe_public_documentation_url(value: bytes) -> bool:
+    try:
+        parsed = urlsplit(value.decode("ascii"))
+    except UnicodeDecodeError:
+        return False
+    return parsed.scheme == "https" and parsed.netloc == "docs.gradle.org" and parsed.path.startswith("/")
+
+
 def scan_content(content: bytes) -> dict[str, list[str]]:
     findings = {
         "network_endpoint": _network_violations(content),
@@ -143,6 +153,7 @@ def scan_content(content: bytes) -> dict[str, list[str]]:
         "url": [
             finding_id(match.group())
             for match in URL_PATTERN.finditer(content)
+            if not _is_safe_public_documentation_url(match.group())
         ],
         "user_absolute_path": [
             finding_id(match.group())

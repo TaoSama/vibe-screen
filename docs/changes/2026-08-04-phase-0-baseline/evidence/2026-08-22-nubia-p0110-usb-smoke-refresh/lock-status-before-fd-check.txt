@@ -1,7 +1,7 @@
 $ ls -ld /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-android-test.lock
 ls: /tmp/vibe-screen-device-android.lock: No such file or directory
 ls: /tmp/vibe-screen-device-soak.lock: No such file or directory
--rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+-rw-r--r--@ 1 <user>  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
 $ lsof /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-android-test.lock
 lsof: status error on /private/tmp/vibe-screen-device-soak.lock: No such file or directory
 lsof: status error on /private/tmp/vibe-screen-device-android.lock: No such file or directory

@@ -1,4 +1,4 @@
-device=bac5b092 model=2211133C host_pid=24536 android_pid=29430
+device=<redacted-xiaomi-adb-serial> model=2211133C host_pid=24536 android_pid=29430
 
 [fit-270]
 TL global=(50,419) cursor=1467,45 D/VibeScreenTouchMap(29430): raw=50.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.9699157476425171,0.046052783727645874

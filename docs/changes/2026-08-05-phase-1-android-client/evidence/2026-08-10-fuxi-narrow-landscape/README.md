@@ -2,7 +2,7 @@
 
 ## 结论
 
-2026-08-10（Asia/Shanghai）在 Xiaomi 13 `bac5b092` 上安装提交 `21162a0` 的
+2026-08-10（Asia/Shanghai）在 Xiaomi 13 `<redacted-xiaomi-adb-serial>` 上安装提交 `21162a0` 的
 debug APK。全屏横屏可用宽度 914dp 时，连接页保持 40/60 左右两栏；临时把验证
 显示尺寸改为 `1080x1200` 后，横屏窗口为 1200x1080、可用宽度 457dp，连接页自动
 回退为纵向单列。窄窗口没有横向挤压，向上滚动后模式选择、`Try Again`、状态和连接
@@ -33,6 +33,6 @@ debug APK 构建。
 
 ## 清理
 
-验证只操作 `bac5b092`。显示尺寸已恢复为物理 `1080x2400`，截图开关为 `0`，ADB
-reverse 为空。持续串流设备 `8a023e3a` 和 MacHost PID 27437 未重启、未覆盖。
+验证只操作 `<redacted-xiaomi-adb-serial>`。显示尺寸已恢复为物理 `1080x2400`，截图开关为 `0`，ADB
+reverse 为空。持续串流设备 `<redacted-xiaomi-adb-serial>` 和 MacHost PID 27437 未重启、未覆盖。
 清理状态见 `device-cleanup.txt`。

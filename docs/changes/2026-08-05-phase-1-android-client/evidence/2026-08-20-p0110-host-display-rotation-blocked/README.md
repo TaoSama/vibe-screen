@@ -1,7 +1,7 @@
 # P0110 rotated host-display acceptance: blocked
 
 Created: 2026-08-20T12:27:45Z
-Device: nubia P0110 / pacific / Android 16 / serial EP0110PZ0B9110300B
+Device: nubia P0110 / pacific / Android 16 / serial <redacted-adb-serial>
 Repository: b9d768e55c75f03cd3cb5d20939576bc8d24ff27 (origin/main)
 
 ## Verdict
@@ -10,7 +10,7 @@ Blocked. This is readiness evidence only; it does not close the Phase 1 rotated
 physical/virtual host-display acceptance gate.
 
 The target P0110 was online and reachable with explicit
-adb -s EP0110PZ0B9110300B, but the real-device run was not started because the
+adb -s <redacted-adb-serial>, but the real-device run was not started because the
 Android device coordination lock became occupied before the acceptance sequence,
 and the current-main Host could not pass the stable signed Host preflight.
 
@@ -20,7 +20,7 @@ and the current-main Host could not pass the stable signed Host preflight.
   b9d768e55c75f03cd3cb5d20939576bc8d24ff27, equal to origin/main, with no
   source diff.
 - Device: adb devices -l reported
-  EP0110PZ0B9110300B device usb:1-1 product:pacific model:P0110 device:pacific.
+  <redacted-adb-serial> device usb:1-1 product:pacific model:P0110 device:pacific.
 - Identity: nubia / P0110 / pacific, Android 16, SDK 36, fingerprint
   nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys.
 - Display and power: 1264x2800, density 560, boot completed, AC powered,
@@ -28,9 +28,9 @@ and the current-main Host could not pass the stable signed Host preflight.
 - ADB reverse already existed: UsbFfs tcp:54321 tcp:54321.
 - Final lock check found /tmp/vibe-screen-device-android.lock occupied by
   owner=codex-touch-fixed-binary-readiness, PID 29081, in worktree
-  /Users/luwentao/Workspaces/dotfiles/codex/worktrees/9b47/vibe-screen.
+  <codex-worktrees>/9b47/vibe-screen.
 - No Host listener was observed on TCP 54321 during the final readiness check.
-- adb -s EP0110PZ0B9110300B shell dumpsys package dev.telemachus.display
+- adb -s <redacted-adb-serial> shell dumpsys package dev.telemachus.display
   returned Unable to find package: dev.telemachus.display.
 
 ## Host preflight blocker
@@ -73,9 +73,9 @@ build and install the current main artifacts and run the real acceptance pass:
     make baseline-macos-dev-install
     python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
     make baseline-android-apk
-    adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
-    adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-    adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+    adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321
+    adb -s <redacted-adb-serial> install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+    adb -s <redacted-adb-serial> shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
 
 For both an existing physical Mac display and a virtual display, rotate the host
 display itself to 90, 180, or 270 degrees, keep the client transform
