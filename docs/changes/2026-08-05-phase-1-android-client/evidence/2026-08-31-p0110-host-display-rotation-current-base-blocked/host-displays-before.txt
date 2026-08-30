@@ -1,0 +1,8 @@
+macOS display snapshot captured before any display rotation action.
+
+No rotated physical or virtual host-display run was started. This record did
+not rotate a macOS display and therefore has no original-rotation restoration
+plan or before/rotated host-display snapshot evidence.
+
+Preflight status: blocked on stable signing identity, Screen Recording grant,
+Accessibility grant, signed Host/TCC match, and rotation restoration plan.
