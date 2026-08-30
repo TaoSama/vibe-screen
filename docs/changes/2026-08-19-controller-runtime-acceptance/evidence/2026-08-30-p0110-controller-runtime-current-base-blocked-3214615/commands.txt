@@ -46,10 +46,19 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_
 
 git diff --check
 
-# Public evidence privacy scan: every match is a failure. Empty marker variables
-# are not accepted in the scan source.
-for marker in '<raw-device-serial>' '<local-home-path>' '<signing-output-marker>' '<credential-output-marker>' '<key-material-output-marker>' '<device-identifier-marker>' '<profile-identifier-marker>' '<host-alias>'; do
-  test -n "$marker"
+# Public evidence privacy scan: set any known raw local values as environment
+# variables before replaying. Empty values are skipped so public redaction
+# placeholders in this file are not treated as secrets.
+for marker in \
+  "${RAW_DEVICE_SERIAL:-}" \
+  "${LOCAL_HOME_PATH:-}" \
+  "${SIGNING_OUTPUT_MARKER:-}" \
+  "${CREDENTIAL_OUTPUT_MARKER:-}" \
+  "${KEY_MATERIAL_OUTPUT_MARKER:-}" \
+  "${DEVICE_IDENTIFIER_MARKER:-}" \
+  "${PROFILE_IDENTIFIER_MARKER:-}" \
+  "${HOST_ALIAS:-}"; do
+  test -n "$marker" || continue
   if rg -n --fixed-strings "$marker" docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-3214615; then
     exit 1
   fi
