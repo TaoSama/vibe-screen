@@ -1,0 +1,111 @@
+package dev.telemachus.display
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class RendererViewportStateTest {
+    @Test
+    fun `fit layout matches parent-bounded rotated video`() {
+        val state =
+            RendererViewportState(
+                scaleMode = { VideoScaleMode.FIT },
+                renderRotation = { ClientRotation.CLOCKWISE_90 },
+            )
+        state.updateDisplaySize(2_000, 1_000)
+        state.updateParentSize(1_200, 1_200)
+
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(600, 1_200),
+                surface = ViewportPolicy.Size(1_200, 600),
+            ),
+            state.currentLayout,
+        )
+    }
+
+    @Test
+    fun `fill layout covers parent and swaps surface for quarter turn`() {
+        val state =
+            RendererViewportState(
+                scaleMode = { VideoScaleMode.FILL },
+                renderRotation = { ClientRotation.CLOCKWISE_90 },
+            )
+        state.updateDisplaySize(2_000, 1_000)
+        state.updateParentSize(1_200, 800)
+
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(1_200, 800),
+                surface = ViewportPolicy.Size(800, 1_200),
+            ),
+            state.currentLayout,
+        )
+    }
+
+    @Test
+    fun `parent size change recalculates without touching display geometry`() {
+        var scaleReads = 0
+        var rotationReads = 0
+        val state =
+            RendererViewportState(
+                scaleMode = {
+                    scaleReads++
+                    VideoScaleMode.FIT
+                },
+                renderRotation = {
+                    rotationReads++
+                    ClientRotation.FOLLOW_HOST
+                },
+            )
+        state.updateDisplaySize(1_920, 1_080)
+        state.updateParentSize(2_400, 1_080)
+        assertEquals(1, scaleReads)
+        assertEquals(1, rotationReads)
+
+        state.updateParentSize(2_000, 1_000)
+
+        assertEquals(
+            ViewportPolicy.layout(
+                parentWidth = 2_000,
+                parentHeight = 1_000,
+                videoWidth = 1_920,
+                videoHeight = 1_080,
+                scaleMode = VideoScaleMode.FIT,
+                renderRotation = ClientRotation.FOLLOW_HOST.degrees,
+            ),
+            state.currentLayout,
+        )
+        assertEquals(2, scaleReads)
+        assertEquals(2, rotationReads)
+    }
+
+    @Test
+    fun `stale display geometry is blank and cannot produce layout`() {
+        val state = RendererViewportState()
+        assertFalse(state.isReady)
+        assertNull(state.currentLayout)
+        state.updateParentSize(1_200, 1_200)
+        assertFalse(state.isReady)
+        assertNull(state.currentLayout)
+    }
+
+    @Test
+    fun `clear resets presentation state without crashing`() {
+        val state =
+            RendererViewportState(
+                scaleMode = { VideoScaleMode.FILL },
+                renderRotation = { ClientRotation.UPSIDE_DOWN },
+            )
+        state.updateDisplaySize(1_920, 1_080)
+        state.updateParentSize(1_200, 1_200)
+        assertTrue(state.isReady)
+
+        state.clear()
+
+        assertFalse(state.isReady)
+        assertNull(state.currentLayout)
+    }
+}
