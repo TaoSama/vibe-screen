@@ -138,12 +138,12 @@
   },
   "login_headless_status": "blocked",
   "permissions": {
-    "accessibility_granted": false,
+    "accessibility_granted": null,
     "database_path": "not inspected",
     "error": "Host bundle signing was not inspected",
     "readable": false,
     "rows": [],
-    "screen_recording_granted": false
+    "screen_recording_granted": null
   },
   "safety": {
     "closes_runtime_gates": false,

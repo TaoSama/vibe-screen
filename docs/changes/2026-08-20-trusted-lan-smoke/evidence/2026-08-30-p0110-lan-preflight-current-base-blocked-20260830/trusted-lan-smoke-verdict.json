@@ -13,7 +13,8 @@
     "preflight-command.exit",
     "reconnect-timing-command.exit",
     "reconnect-timing-summary.json",
-    "trusted-lan-preflight.json"
+    "trusted-lan-preflight.json",
+    "trusted-lan-smoke-evidence-check.exit"
   ],
   "kind": "trusted_lan_smoke_evidence",
   "profile": "trusted-lan-current-worktree-smoke",
