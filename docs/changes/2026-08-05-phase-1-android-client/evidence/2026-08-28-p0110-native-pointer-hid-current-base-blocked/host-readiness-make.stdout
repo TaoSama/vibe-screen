@@ -1,0 +1,7 @@
+mkdir -p <repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked
+python3 scripts/macos_dev_host.py readiness \
+		--report <repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/host-signing-and-permissions.txt \
+		--json-output <repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/host-readiness.json \
+		--port 54321
+Wrote <repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/host-signing-and-permissions.txt
+Wrote <repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/host-readiness.json

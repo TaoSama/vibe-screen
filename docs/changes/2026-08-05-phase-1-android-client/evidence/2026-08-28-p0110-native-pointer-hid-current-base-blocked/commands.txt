@@ -1,0 +1,15 @@
+git fetch origin main --prune
+git worktree add -b codex/native-pointer-hid-current-base ../vibe-screen-native-pointer-hid origin/main
+git fetch origin main --prune
+git rebase origin/main
+pgrep -x sfltool || true
+git worktree add --detach ../vibe-screen-native-pointer-clean-readiness origin/main
+make baseline-macos-host-readiness EVIDENCE_DIR=<repo-root>/docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked
+# exit 2; see host-readiness-make.exit
+make native-pointer-hid-acceptance EVIDENCE_SERIAL=<redacted-p0110-serial> NATIVE_POINTER_HOST_LOG=$HOME/Library/Logs/Telemachus/telemachus.log NATIVE_POINTER_VISIBLE_RESULT_NOTE="not recorded; readiness blocked before a physical HID mouse observation window" EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked
+# exit 2 due to device coordination lock; see make-exit.txt
+make native-pointer-hid-gate EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked
+# exit 2; see gate-exit.txt
+pgrep -x sfltool || true
+# no output; see sfltool-end.txt for the retained final check
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools:scripts python3 -m unittest tools.tests.test_native_pointer_hid scripts.tests.test_native_pointer_hid_acceptance scripts.tests.test_peripheral_host_ready_fail_closed

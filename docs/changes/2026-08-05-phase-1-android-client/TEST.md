@@ -840,9 +840,10 @@ precheck found no `sfltool` process, and the run did not execute `sfltool
 dumpbtm` or any login-item opt-in diagnostic.
 
 The connected Android device was sampled only under the
-`/tmp/vibe-screen-android-<redacted-adb-serial>.lock` lease, and every ADB command
-used the explicit P0110 serial before the public evidence was redacted. The
-device identified as nubia P0110 / pacific / Android 16 / SDK 36, the Android
+`/tmp/vibe-screen-android-<redacted-adb-serial>.lock` serial-scoped Android device
+lease, and every ADB command used an explicit P0110 device selector before the
+public evidence was redacted. The device identified as nubia P0110 / pacific /
+Android 16 / SDK 36, the Android
 packages were installed, and `adb reverse --list` retained
 `UsbFfs tcp:54321 tcp:54321`. No install, launch, force-stop, reverse mutation,
 Host start/stop, display rotation, or input injection was performed.
@@ -866,6 +867,46 @@ the rotated host-display acceptance gate is still open.
 Evidence:
 
 - [`evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-28-p0110-host-display-rotation-current-base-blocked/)
+
+## P0110 native pointer HID current-base readiness refresh
+
+On 2026-08-28, the native pointer HID gate owner was refreshed from clean
+`origin/main` at `1430c3cc18948b93b50b7054e992844f287b6fbc` before creating
+the `codex/native-pointer-hid-current-base` evidence branch. The start and
+finish safety checks found no `sfltool` process, and the run did not execute
+`sfltool dumpbtm` or any login-item opt-in diagnostic.
+
+The shared Host readiness preflight was retained first. It reports
+`can_start_native_hid_gate=false`: the `Vibe Screen Dev` signing identity was
+not available in the current keychain, the installed Host lacks source
+commit/tree provenance for the current checkout, Screen Recording and
+Accessibility could not be verified through read-only TCC probes, and the
+installed Host is missing `com.apple.developer.hid.virtual.device`. The Host
+listener was observed on TCP `54321`, but that does not satisfy the native HID
+runtime prerequisites.
+
+The native pointer collector was invoked with the explicit serial-scoped
+`adb -s <android-device>` endpoint, but it found the shared
+`/tmp/vibe-screen-device-android.lock` coordination lock before running ADB and
+wrote `status=blocked_device_coordination_lock`. The latest collector result
+therefore does not re-collect device identity, input inventory, Android logs,
+or Host pointer logs. The intended target remains the local Nubia
+P0110/pacific Android 16 substitute named by that serial, but this bundle is
+device-lock readiness evidence only. No Android install, launch, ADB reverse
+mutation, Host start/stop, synthetic pointer injection, or physical mouse
+move/click attempt was performed.
+
+The independent summary reports `verdict=blocked` and
+`can_close_native_pointer_hid_gate=false`. A strict
+`make native-pointer-hid-gate` rerun rejected the bundle as expected. This is
+current-source fail-closed readiness evidence only: the README native mouse
+pointer move/click gate remains open until a real Android-visible HID mouse or
+equivalent pointer source, Host pointer injection logs, and visible Mac
+move/click result are captured from the same observation window.
+
+Evidence:
+
+- [`evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/`](evidence/2026-08-28-p0110-native-pointer-hid-current-base-blocked/)
 
 ## P0110 rotated host-display current-base tooling refresh
 
