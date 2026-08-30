@@ -1,0 +1,6 @@
+error: evidence.runs: must contain at least 1 item(s)
+error: runs: must be a non-empty array
+error: runs: missing rotated physical host-display evidence
+error: runs: missing rotated virtual host-display evidence
+error: runs: missing physical host-display rotation coverage for [90, 180, 270]
+error: runs: missing virtual host-display rotation coverage for [90, 180, 270]
