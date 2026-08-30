@@ -1,0 +1,5 @@
+repository=TaoSama/vibe-screen
+branch=codex/actionable-error-state-p0110-20260830
+head=8626c760c0a2c9a519bef38bbf0d1725401f3e79
+origin_main=8626c760c0a2c9a519bef38bbf0d1725401f3e79
+status_short=
