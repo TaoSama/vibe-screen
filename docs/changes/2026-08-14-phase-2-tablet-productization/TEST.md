@@ -510,22 +510,25 @@ Validation recorded for this update:
 - `make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-25-phase2-aggregate-owner-current-base ...`
 - `shasum -a 256 -c SHA256SUMS`
 
-## 2026-08-27 login/headless current-base readiness
+## 2026-08-29 login/headless current-base readiness
 
 Evidence is under
-[`evidence/2026-08-27-macos-login-headless-current-base-blocked`](evidence/2026-08-27-macos-login-headless-current-base-blocked/README.md).
+[`evidence/2026-08-29-macos-login-headless-current-base-blocked`](evidence/2026-08-29-macos-login-headless-current-base-blocked/README.md).
 The passive macOS startup/recovery verifier reports `verdict=blocked` and
 `can_close_login_headless_gate=false`. It observed a local Host listener and
 startup defaults, but no current-source installed Host provenance, read-only TCC
-verification, Launch at Login machine verification, Virtual HID entitlement,
-reboot/login launch, headless display, client-rendered first frame, bounded
-recovery, or window-restore artifact was available.
+verification, Launch at Login verification on the default non-`sfltool` path,
+Virtual HID entitlement, reboot/login launch, headless display, client-rendered
+first frame, bounded recovery, or window-restore artifact was available.
 
 This evidence did not run `/usr/bin/sfltool dumpbtm`, did not pass any
-login-item diagnostic opt-in flag, did not touch ADB, and did not close login
-startup or headless Mac mini acceptance. The local `phase2-aggregate-owner.json`
-inside the same directory consumes only the login/headless blocked summary and
-keeps `can_close_readme_phase2_gates=false`.
+login-item diagnostic opt-in flag, records
+`login_headless.login_item.sfltool_dumpbtm_was_run=false`, retains empty start
+and end `pgrep -x sfltool || true` outputs, did not touch ADB, and did not close
+login startup or headless Mac mini acceptance. The local
+`phase2-aggregate-owner.json` inside the same directory consumes only the
+login/headless blocked summary and keeps
+`can_close_readme_phase2_gates=false`.
 
 ## 2026-08-28 P0110 tablet soak preflight current-base
 
