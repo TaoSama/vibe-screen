@@ -1,0 +1,10 @@
+b42272933660a1b1d7189e14c08cd665a1a7a7071f204bf62237f737daf88e1c  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/README.md
+619293578ff9667f2b11bbffe345ff0d11956b56c2f9a7c169f43b9ac2bb0276  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/actionable-error-current-base-gate.json
+d0ed84a4f5afcb3478a922ea2db9fcb2bde19bc6efbd5b95999e5f159c9c2737  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/actionable-error-current-base.json
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/adb-reverse-missing-before.txt
+efa31a7419f49804136033d94f952d41eaa1e55fb15a4473a2cdf0b94b9d7b3c  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/adb-reverse-restored-after.txt
+659b8ec6880d68f0cf3fd08c93f7a43d5ed1fb9467282a8f11f308333d62facf  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/device-identity.txt
+e59d8ee7e0be7082fd5908f9a50bd73971abc8b8e8614525a8ea04f2a53fa3d0  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/lan-route-readonly-sanitized.txt
+a9ca64250d75b56dc58a55626527cf0ea35dc8e1b3326576e2db8cf9bd5636b1  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/logcat-route-missing-current-base.txt
+658508acab7086254f58e0fc530cc6098ba7656eb63c65bbe9ba6366bfbdfc29  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/repository-current-base.txt
+4ae588468656a94f159629554e58d0ff018cf6b845f64de5b3d17aa3e68bf263  docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/usb-adb-route-missing-ui.xml
