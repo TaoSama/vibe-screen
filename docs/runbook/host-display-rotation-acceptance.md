@@ -219,6 +219,8 @@ evidence directory.
 
 ## Current Status
 
+The 2026-08-31 P0110/pacific current-base owner refresh keeps the gate blocked with the same fail-closed result: the device identity is nubia P0110 / pacific / Android 16 / SDK 36, the installed Host bundle identifier is proven as dev.telemachus.display, but stable Host signing, Screen Recording, Accessibility, signed Host/TCC match, and a display-rotation restoration plan are still not proven. No physical or virtual 90/180/270 host-display rotation run was started.
+
 The 2026-08-29 P0110/pacific current-base record is readiness evidence only. It
 starts from current `origin/main` and records nubia P0110 / pacific / Android 16
 / SDK 36 as a general Android substitute, with the ADB serial redacted. The
