@@ -325,7 +325,9 @@ input envelope routing, and media-frame routing to focused boundary owners with
 offline contract coverage. This is still not completion of Phase 0 module
 ownership: broader protocol/session ownership, full file-transfer and wake-host
 product ownership, decoder/renderer ownership, and UI/product session
-boundaries are still being extracted.
+boundaries are still being extracted. The current-base owner state is tracked by
+`make phase0-module-ownership-gate`, which must remain blocked until every
+required boundary is closed with focused evidence.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.

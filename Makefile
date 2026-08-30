@@ -16,6 +16,9 @@ PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
 PHASE0_STABLE_RELEASE_REQUIRE_PASS ?=
 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT ?=
+PHASE0_MODULE_OWNERSHIP_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-module-ownership-manifest.json
+PHASE0_MODULE_OWNERSHIP_SUMMARY ?= .build/evidence/phase0-module-ownership/phase0-module-ownership-summary.json
+PHASE0_MODULE_OWNERSHIP_REQUIRE_PASS ?=
 TRUSTED_LAN_HOST_PORT ?= 54321
 TRUSTED_LAN_HOST_IPV4 ?=
 TRUSTED_LAN_REQUIRE_HOST_LISTENER ?=
@@ -226,6 +229,7 @@ PHASE3_WEBRTC_BULK_TREE_STATUS ?= $(shell if test -z "$$(git status --porcelain)
 	evidence-tools-test \
 	release-tools-test \
 	file-transfer-android-smoke \
+	phase0-module-ownership-gate \
 	phase0-stable-release-gate \
 	require-evidence-serial \
 	require-host-pid \
@@ -581,6 +585,15 @@ phase0-stable-release-gate:
 		--output "$(PHASE0_STABLE_RELEASE_SUMMARY)" \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)),--expected-source-commit "$(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)",) \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_REQUIRE_PASS)),--require-pass,)
+
+phase0-module-ownership-gate:
+	@test -f "$(PHASE0_MODULE_OWNERSHIP_MANIFEST)" || (echo "error: missing Phase 0 module ownership manifest: $(PHASE0_MODULE_OWNERSHIP_MANIFEST)" >&2; exit 2)
+	mkdir -p "$(dir $(PHASE0_MODULE_OWNERSHIP_SUMMARY))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase0_module_ownership \
+		--manifest "$(PHASE0_MODULE_OWNERSHIP_MANIFEST)" \
+		--repo-root . \
+		--output "$(PHASE0_MODULE_OWNERSHIP_SUMMARY)" \
+		$(if $(strip $(PHASE0_MODULE_OWNERSHIP_REQUIRE_PASS)),--require-pass,)
 
 require-evidence-serial:
 	@test -n "$(strip $(EVIDENCE_SERIAL))" || (echo "error: set EVIDENCE_SERIAL explicitly" >&2; exit 2)
