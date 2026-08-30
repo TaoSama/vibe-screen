@@ -291,3 +291,27 @@ preflight, Android ClipboardManager instrumentation log, or bidirectional
 `product-e2e.json` was supplied, and no Android ClipboardManager <-> macOS
 NSPasteboard product-flow evidence exists. The P0110 evidence must not be
 relabeled as Xiaomi 13/fuxi evidence.
+
+## 2026-08-30 Nubia P0110 current-base clipboard E2E blocked evidence
+
+Evidence:
+[evidence/2026-08-30-nubia-p0110-clipboard-e2e-current-base-blocked](evidence/2026-08-30-nubia-p0110-clipboard-e2e-current-base-blocked/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`87e16d8bea4446c1ca449045678f1bafc7fd6cb2` inside the dedicated
+`codex/clipboard-e2e-p0110-usb-20260830` worktree. The device was confirmed as
+nubia P0110 / pacific / Android 16 / API 36 while holding the shared Android
+device lock, and every ADB command used `adb -s REDACTED_P0110_USB_SERIAL`.
+
+The current-source Android debug and androidTest APKs were built and installed,
+and the Android local `ClipboardManagerInstrumentedTest` passed on the handset
+with `OK (3 tests)`. This remains local Android system-clipboard evidence only;
+it does not create or prove any Android ClipboardManager <-> macOS NSPasteboard
+USB/LAN transfer.
+
+The generated `clipboard-e2e-gate.json` is intentionally `blocked` and
+`gate_closed=false`: Host readiness is blocked, the USB preflight is blocked by
+the missing stable-signed/TCC-ready Host and missing TCP `54321` listener, the
+trusted-LAN preflight is blocked by missing device Wi-Fi/route plus Host
+signing, and no bidirectional `product-e2e.json` record exists. The P0110
+evidence must not be relabeled as Xiaomi 13/fuxi evidence.
