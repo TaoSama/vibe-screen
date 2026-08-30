@@ -185,10 +185,26 @@ class RelayDeploymentReadinessTests(unittest.TestCase):
             result, detail = ssh_alias_available("relay")
 
         self.assertEqual(result, PASS_RESULT)
-        self.assertEqual(detail, "SSH alias config is available")
+        self.assertEqual(detail, "SSH alias config lookup passed")
         args = run.call_args.args[0]
         self.assertEqual(args[:2], ["ssh", "-G"])
         self.assertEqual(args[2], "relay")
+
+    @mock.patch("scripts.phase3.relay_deployment_readiness.subprocess.run")
+    def test_ssh_alias_available_blocks_stderr_without_recording_remote_output(self, run) -> None:
+        run.return_value = subprocess.CompletedProcess(
+            [],
+            0,
+            b"hostname relay.example.internal\nuser private-operator\n",
+            b"Warning: remote host identification has changed!\nprivate-operator@relay.example.internal\n",
+        )
+
+        result, detail = ssh_alias_available("relay")
+
+        self.assertEqual(result, BLOCKED_RESULT)
+        self.assertEqual(detail, "SSH alias config lookup reported stderr")
+        self.assertNotIn("relay.example.internal", detail)
+        self.assertNotIn("private-operator", detail)
 
     def test_ssh_alias_available_blocks_missing_alias(self) -> None:
         result, detail = ssh_alias_available(None)
