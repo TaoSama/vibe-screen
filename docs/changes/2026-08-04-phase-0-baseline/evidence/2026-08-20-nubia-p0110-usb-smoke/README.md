@@ -1,7 +1,7 @@
 # 2026-08-20 Nubia P0110 USB smoke
 
 This evidence record covers a short USB end-to-end smoke on the connected
-Nubia P0110 (pacific) device, serial EP0110PZ0B9110300B, running Android
+Nubia P0110 (pacific) device, serial <redacted-adb-serial>, running Android
 16 / SDK 36. It is P0110/pacific evidence only; it is not Xiaomi 13/fuxi
 evidence.
 
@@ -31,7 +31,7 @@ No Accessibility/input result is claimed.
 - Display and battery during capture: 1264x2800, density 560, AC powered,
   battery 100%, temperature 31.0 C.
 - A second Android emulator was connected, so every device command used
-  adb -s EP0110PZ0B9110300B explicitly.
+  adb -s <redacted-adb-serial> explicitly.
 - Current-tree Host executable: baseline/MacHost/.build/release/Vibe Screen,
   SHA-256 89af29b97e314ac510f79128cdd975e810bea33bce2e5062fe3a5db3524411a9.
 - Current-tree debug APK: baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk,
@@ -109,14 +109,14 @@ No Accessibility/input result is claimed.
 
 Representative commands used for this evidence:
 
-    make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-nubia-p0110-usb-smoke
+    make evidence-device-info EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-nubia-p0110-usb-smoke
     cd baseline/MacHost && swift build -c release
     cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug
-    adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
-    adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-    adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
-    adb -s EP0110PZ0B9110300B shell am force-stop dev.telemachus.display
-    adb -s EP0110PZ0B9110300B shell am start -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+    adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321
+    adb -s <redacted-adb-serial> install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+    adb -s <redacted-adb-serial> shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+    adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+    adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
 
 The full command/output ledger is split across the files listed above.
 

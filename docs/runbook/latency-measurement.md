@@ -26,7 +26,7 @@ Before the run, lock the camera exposure, focus, shutter mode, frame rate, and
 white balance so frame boundaries stay readable across the full sample window.
 Mount the camera, Mac display, and Android device so both endpoint events are in
 one stable frame; do not hand-hold the camera or move either display after the
-first calibration clip. Record `adb -s EP0110PZ0B9110300B shell getprop` or the
+first calibration clip. Record `adb -s <redacted-adb-serial> shell getprop` or the
 equivalent device-info helper output next to the run, and keep the device label
 as Nubia P0110/pacific/Android 16 when that serial is used.
 

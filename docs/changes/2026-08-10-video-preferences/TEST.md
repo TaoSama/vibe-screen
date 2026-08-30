@@ -24,7 +24,7 @@ VideoConfig、不推进 epoch 的契约。
 
 ## 真机验证
 
-验证机为 Xiaomi 13（2211133C、fuxi、Android 16、ADB `bac5b092`）。最终
+验证机为 Xiaomi 13（2211133C、fuxi、Android 16、ADB `<redacted-xiaomi-adb-serial>`）。最终
 Host SHA-256 为
 `a1a656b7c53b99e8bcf91fc3432066055c2048b64a649ad53c95c1f02663878a`，
 Debug APK SHA-256 为
@@ -47,7 +47,7 @@ Auto 和 30 FPS 组合有离线协议/编码器覆盖，但本目录没有足以
 
 ```text
 REPO="$(git rev-parse --show-toplevel)"
-EVIDENCE_DIR="$REPO/docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-bac5b092-30m"
+EVIDENCE_DIR="$REPO/docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-redacted-30m"
 : "${ADB_SERIAL:?Set ADB_SERIAL to the exact device serial}"
 : "${HOST_PID:?Set HOST_PID to the Vibe Screen host PID}"
 
@@ -64,13 +64,13 @@ PYTHONPATH="$REPO/tools" python3 -m vibescreen_evidence.soak \
   --require-stream-telemetry \
   --output-jsonl "$EVIDENCE_DIR/samples.jsonl" \
   --summary-json "$EVIDENCE_DIR/summary.json" \
-  --run-id xiaomi13-bac5b092-video-preferences-30m
+  --run-id xiaomi13-redacted-video-preferences-30m
 ```
 
 结果：60/60 connected、60/60 进程存活、0 reconnect、0 sample error；平均
 59.93 FPS，Host 报告 350 个丢帧。Host RSS 93,728 -> 64,240 KiB，客户端 PSS
 78,631 -> 76,682 KiB。完整记录见
-[`evidence/2026-08-10-xiaomi13-bac5b092-30m`](evidence/2026-08-10-xiaomi13-bac5b092-30m/README.md)。
+[`evidence/2026-08-10-xiaomi13-redacted-30m`](evidence/2026-08-10-xiaomi13-redacted-30m/README.md)。
 
 该 30 分钟记录只关闭本变更的短时真机回归，不关闭两小时 Host RSS no-growth
 门禁。`exact-window-report.json` 因没有 `heartbeat_received` 事件保持 `partial`

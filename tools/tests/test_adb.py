@@ -75,11 +75,11 @@ class ADBClientTest(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, "device\n", "")
 
-        client = ADBClient("8a023e3a", command_runner=run)
+        client = ADBClient("<redacted-xiaomi-adb-serial>", command_runner=run)
         result = client.connect()
 
-        self.assertEqual(result, "already connected to 8a023e3a")
-        self.assertEqual(commands, [["adb", "-s", "8a023e3a", "get-state"]])
+        self.assertEqual(result, "already connected to <redacted-xiaomi-adb-serial>")
+        self.assertEqual(commands, [["adb", "-s", "<redacted-xiaomi-adb-serial>", "get-state"]])
 
     def test_command_and_exec_out_are_scoped_to_explicit_serial(self):
         commands = []
@@ -88,18 +88,18 @@ class ADBClientTest(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, "ok\n", "")
 
-        client = ADBClient("EP0110PZ0B9110300B", command_runner=run)
+        client = ADBClient("<redacted-adb-serial>", command_runner=run)
 
         self.assertEqual(client.command("reverse", "--list"), "ok")
         self.assertEqual(client.exec_out("run-as", "dev.telemachus.display", "id"), "ok")
         self.assertEqual(
             commands,
             [
-                ["adb", "-s", "EP0110PZ0B9110300B", "reverse", "--list"],
+                ["adb", "-s", "<redacted-adb-serial>", "reverse", "--list"],
                 [
                     "adb",
                     "-s",
-                    "EP0110PZ0B9110300B",
+                    "<redacted-adb-serial>",
                     "exec-out",
                     "run-as",
                     "dev.telemachus.display",

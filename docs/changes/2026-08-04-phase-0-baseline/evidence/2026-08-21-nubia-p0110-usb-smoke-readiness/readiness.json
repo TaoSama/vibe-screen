@@ -15,7 +15,7 @@
     "codename": "pacific",
     "android_release": "16",
     "sdk": 36,
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "recorded_as_fuxi": false,
     "state": "device",
     "adb_reverse": "UsbFfs tcp:54321 tcp:54321",

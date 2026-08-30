@@ -25,7 +25,7 @@ $ adb -s <redacted-p0110-serial> shell getprop ro.build.version.sdk
 $ ls -ld /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-android-test.lock
 ls: /tmp/vibe-screen-device-android.lock: No such file or directory
 ls: /tmp/vibe-screen-device-soak.lock: No such file or directory
--rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+-rw-r--r--@ 1 <user>  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
 $ pgrep -af "Vibe Screen|Telemachus"
 10959
 22385

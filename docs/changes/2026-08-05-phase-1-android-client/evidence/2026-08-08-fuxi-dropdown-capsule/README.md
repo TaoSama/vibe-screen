@@ -1,6 +1,6 @@
 # 2026-08-08 fuxi 下拉胶囊真机验证（稳定签名 + Protocol v1 能力协商）
 
-设备：小米 13 (2211133C, fuxi, Android 16, USB) adb=8a023e3a（电量 100% 那台，唯一使用）
+设备：小米 13 (2211133C, fuxi, Android 16, USB) adb=<redacted-xiaomi-adb-serial>（电量 100% 那台，唯一使用）
 Host：/Applications/Telemachus.app，稳定自签 Telemachus Dev，CDHash d0679aec（重建不变）
 分支：codex/phase1-display-selection-capsule
 
@@ -13,7 +13,7 @@ host 日志 ~/Library/Logs/Telemachus/telemachus.log：
 稳定 60fps、0 丢帧、帧龄 ~5.8ms。
 
 ### 2. 下拉胶囊真机可见（新交互）
-adb -s 8a023e3a shell dumpsys activity top（controlBar/胶囊几何）：
+adb -s <redacted-xiaomi-adb-serial> shell dumpsys activity top（controlBar/胶囊几何）：
     CardView ... 851,53-1550,185 app:id/controlBar
       LinearLayout ... 8,8-486,124 app:id/displayCapsuleGroup   (V = 可见)
         AppCompatImageView ... 21,31-74,84  app:id/controlDisplaysButton (显示器图标)
@@ -41,7 +41,7 @@ adb -s 8a023e3a shell dumpsys activity top（controlBar/胶囊几何）：
 
 ## 2026-08-08 真机切换往返验证（发现方向不对称断连 bug）
 
-真机 8a023e3a，唤出控制条后点胶囊弹 PopupMenu（窗口几何 mAttrs=(880,145)(853x252)，两项各 126px 高）。
+真机 <redacted-xiaomi-adb-serial>，唤出控制条后点胶囊弹 PopupMenu（窗口几何 mAttrs=(880,145)(853x252)，两项各 126px 高）。
 
 ### 物理屏 -> 虚拟扩展屏：成功
 客户端 logcat：capsule selectDisplay target=telemachus-virtual-extended from=1
@@ -91,7 +91,7 @@ host 源码改动后重新打包，二进制 cdhash 从 d0679aec 变为 e22f0f26
 安装新构建后 open 启动，日志直接 Pipeline: 60fps 捕获，无权限请求、无重新授权 —— TCC 按签名
 designated requirement（而非 cdhash）匹配，证明稳定自签根治了"每次重建都要重新授权"。
 
-### 双向往返（8a023e3a，两轮均通过）
+### 双向往返（<redacted-xiaomi-adb-serial>，两轮均通过）
 清爽会话 onDisplaysAvailable count=2（物理主屏 + 虚拟扩展屏），negotiated 含 KEYBOARD/POINTER/MULTI_DISPLAY。
 Round 1:
   capsule selectDisplay target=telemachus-virtual-extended from=1

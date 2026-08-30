@@ -57,6 +57,7 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("create_host_path: false", compose)
         self.assertIn("--healthcheck", compose)
         self.assertIn("http://127.0.0.1:8090/readyz", compose)
+        self.assertIn("${VIBE_RELAY_CONFIG_FILE:-./config/relay.production.json}:/etc/vibe-relay/config.json:ro", compose)
 
     def test_relay_production_registry_state_is_ignored_and_precreated(self):
         gitignore = (ROOT / "deploy" / "phase3" / ".gitignore").read_text()

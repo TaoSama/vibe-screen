@@ -227,8 +227,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
             Path(__file__),
         ]
         forbidden_values = [
-            "EP" + "0110PZ0B9110300B",
-            "/Users/" + "luwentao",
+            "/Users/" + "localuser",
             "Application Support/" + "com.apple.TCC",
             "TCC" + ".db",
             "BEGIN " + "RSA PRIVATE KEY",

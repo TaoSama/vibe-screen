@@ -267,8 +267,8 @@ class Phase3RealMediaCurrentBaseGateTests(unittest.TestCase):
 
     def test_device_info_collector_shape_is_normalized_without_unique_ids(self) -> None:
         device = {
-            "adb_serial": "EP0110PZ0B9110300B",
-            "device_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "<redacted-adb-serial>",
+            "device_serial": "<redacted-adb-serial>",
             "manufacturer": "nubia",
             "model": "P0110",
             "device": "pacific",
@@ -291,7 +291,7 @@ class Phase3RealMediaCurrentBaseGateTests(unittest.TestCase):
             },
         )
         serialized = json.dumps(result, sort_keys=True)
-        self.assertNotIn("EP0110PZ0B9110300B", serialized)
+        self.assertNotIn("<redacted-adb-serial>", serialized)
         self.assertNotIn("fingerprint", serialized)
 
     def test_decoder_errors_fail_after_required_stages_are_present(self) -> None:

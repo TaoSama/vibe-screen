@@ -1,5 +1,5 @@
 date=2026-08-22T20:55:20+0800
-serial=EP0110PZ0B9110300B
+serial=<redacted-adb-serial>
 state=device
 manufacturer=nubia
 model=P0110

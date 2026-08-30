@@ -1,2 +1,2 @@
 stale lock observed; current task taking short validation ownership at 2026-08-22T18:42:46Z
--rw-r--r--@ 1 luwentao  wheel  92 Aug 23 02:42 /tmp/vibe-screen-device-android.lock
+-rw-r--r--@ 1 <user>  wheel  92 Aug 23 02:42 /tmp/vibe-screen-device-android.lock

@@ -19,7 +19,7 @@ OpenJDK 64-Bit Server VM Homebrew (build 17.0.19+0, mixed mode, sharing)
 ## adb
 Android Debug Bridge version 1.0.41
 Version 37.0.0-14910828
-Installed as /Users/luwentao/Library/Android/sdk/platform-tools/adb
+Installed as <android-sdk>/platform-tools/adb
 Running on Darwin 25.4.0 (arm64)
 ## android sdk
 android-33

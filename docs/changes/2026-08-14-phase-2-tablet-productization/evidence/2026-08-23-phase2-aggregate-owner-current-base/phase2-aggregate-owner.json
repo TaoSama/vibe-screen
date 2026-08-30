@@ -331,11 +331,11 @@
     "device_class": "android_substitute",
     "device_identity": {
       "abi": "arm64-v8a",
-      "adb_serial": "EP0110PZ0B9110300B",
+      "adb_serial": "<redacted-adb-serial>",
       "android_release": "16",
       "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
       "codename": "pacific",
-      "device_serial": "EP0110PZ0B9110300B",
+      "device_serial": "<redacted-adb-serial>",
       "manufacturer": "nubia",
       "model": "P0110",
       "sdk": 36

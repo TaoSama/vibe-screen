@@ -1,7 +1,7 @@
 requested_at_utc=2026-08-20T19:32:32Z
 lock_path=/tmp/vibe-screen-device-android.lock
 holder_pid=47298
-preexisting_lock_stat=/tmp/vibe-screen-device-android.lock Regular File luwentao wheel -rw-r--r-- 1787254352
+preexisting_lock_stat=/tmp/vibe-screen-device-android.lock Regular File <user> wheel -rw-r--r-- 1787254352
 preexisting_lock_contents_begin
 preexisting_lock_contents_end
 lockf_status=acquired

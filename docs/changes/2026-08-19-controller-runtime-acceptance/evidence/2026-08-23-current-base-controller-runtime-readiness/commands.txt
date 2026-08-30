@@ -18,7 +18,7 @@ lock.write_text(
 try:
     sys.exit(subprocess.run([
         "python3", "scripts/controller_runtime_readiness.py",
-        "--serial", "EP0110PZ0B9110300B",
+        "--serial", "<redacted-adb-serial>",
         "--allow-existing-device-lock",
         "--host-log", str(Path.home() / "Library/Logs/Telemachus/telemachus.log"),
         "--host-app", "/Applications/Vibe Screen.app",

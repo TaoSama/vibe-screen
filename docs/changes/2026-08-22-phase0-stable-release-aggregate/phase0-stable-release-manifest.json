@@ -106,7 +106,7 @@
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md",
-        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md"
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-<redacted-xiaomi-adb-serial>/README.md"
       ],
       "owner_prs": [],
       "blockers": []

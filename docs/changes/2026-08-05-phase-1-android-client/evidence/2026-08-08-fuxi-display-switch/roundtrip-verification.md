@@ -1,6 +1,6 @@
-# 2026-08-08 小米 13 (2211133C, fuxi, 8a023e3a) — display 切换往返真机验证（主 Agent 独立复核）
+# 2026-08-08 小米 13 (2211133C, fuxi, <redacted-xiaomi-adb-serial>) — display 切换往返真机验证（主 Agent 独立复核）
 
-设备：小米 13 (2211133C) fuxi，adb 8a023e3a，Android 16 LineageOS，USB。
+设备：小米 13 (2211133C) fuxi，adb <redacted-xiaomi-adb-serial>，Android 16 LineageOS，USB。
 Host：/Applications/Telemachus.app（ad-hoc，CDHash 21ba793849f5650cc905571d35cae2142ec281fb），open -a 前台 GUI 启动，屏幕录制已授权。
 构建含四处修复：host in-place 切换(f9444ea) + 客户端 StartDisplay 重协商(f4c864a) + 客户端切换期丢帧(a8e8d4e) + host CGError/settle/mirror 容错(272bbc8)；客户端下拉菜单(2d8a843)。
 

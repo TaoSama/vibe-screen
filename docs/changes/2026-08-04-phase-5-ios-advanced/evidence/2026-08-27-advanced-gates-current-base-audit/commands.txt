@@ -10,7 +10,7 @@ cd baseline/MacHost && "./.build/release/Vibe Screen" --protocol-v1-self-test
 cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.WakeHostTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
 xcode-select -p; xcrun --find xctest || true; swift --version
 cd baseline/MacHost && swift test --filter ProtocolV1SessionTests
-rg -q "E[P]0110PZ0B9110300B|/[U]sers/luwentao|Application Support/com.apple.TC[C]|TC[C].db|BEGIN .*KE[Y]|private ke[y]|tokens/credentials/private ke[y]s" docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-27-advanced-gates-current-base-audit docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked
+rg -q "<redacted-adb-serial>|/[U]sers/<user>|Application Support/com.apple.TC[C]|TC[C].db|BEGIN .*KE[Y]|private ke[y]|tokens/credentials/private ke[y]s" docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-27-advanced-gates-current-base-audit docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-22-nubia-p0110-file-transfer-readiness-blocked docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-27-current-base-blocked
 status=$?
 case "$status" in
   0) echo REDACTION_SCAN_FAILED >&2; exit 1 ;;

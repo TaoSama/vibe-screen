@@ -1,5 +1,5 @@
 # user and system TCC rows for dev.telemachus.display
-## /Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db
+## <user-application-support>/com.apple.TCC/TCC.db
 (no rows)
 ## /Library/Application Support/com.apple.TCC/TCC.db
 kTCCServiceAccessibility|dev.telemachus.display|0|2|4|1787122391
