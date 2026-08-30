@@ -1,0 +1,8 @@
+mkdir -p <redacted-temp-dir>
+python3 scripts/macos_dev_host.py readiness \
+		--report <redacted-temp-dir>/host-signing-and-permissions.txt \
+		--json-output <redacted-temp-dir>/host-readiness.json \
+		--port 54321 \
+
+Wrote <redacted-temp-dir>/host-signing-and-permissions.txt
+Wrote <redacted-temp-dir>/host-readiness.json
