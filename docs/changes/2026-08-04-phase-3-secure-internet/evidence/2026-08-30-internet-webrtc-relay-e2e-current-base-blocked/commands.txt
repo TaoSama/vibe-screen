@@ -1,0 +1,2 @@
+EVIDENCE_DIR=docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked make phase3-webrtc-relay-e2e-blocked-baseline
+cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-30-internet-webrtc-relay-e2e-current-base-blocked && shasum -a 256 webrtc-relay-e2e-current-base-manifest.json webrtc-relay-e2e-current-base-gate.json > SHA256SUMS

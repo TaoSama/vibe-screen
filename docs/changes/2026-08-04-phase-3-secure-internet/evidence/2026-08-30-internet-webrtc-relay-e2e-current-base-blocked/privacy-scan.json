@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2453,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "b05d8cb6373027c4dc5cdedadb0d5f308904ddcf805d894248b9f6d52f077b90"
+    },
+    {
+      "bytes": 406,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "f31fe5bd43cd6f38c9f8717dcdc6705a4d4e3b81e7c01387ced40c4e2c591aa0"
+    },
+    {
+      "bytes": 9735,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "webrtc-relay-e2e-current-base-gate.json",
+      "result": "pass",
+      "sha256": "d0737f8133fc6ccd3061effe68bbc00d9da2cf534251b64457ec2451caa1ab29"
+    },
+    {
+      "bytes": 3838,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "webrtc-relay-e2e-current-base-manifest.json",
+      "result": "pass",
+      "sha256": "a6d2dc35af7b30c08b0b1e35605e5610f3c3708255a68662672334bb921fc618"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
