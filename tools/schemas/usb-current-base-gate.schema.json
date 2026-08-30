@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/usb-current-base-gate.schema.json",
+  "title": "Vibe Screen Android USB current-base gate summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "derivation_status",
+    "verdict",
+    "run_id",
+    "owner_pr",
+    "current_main_sha",
+    "can_close_readme_android_usb_current_base_gate",
+    "can_claim_current_base_usb_pass",
+    "requirements",
+    "missing_requirements",
+    "blockers",
+    "errors",
+    "reasons",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "android_usb_current_base_gate"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "run_id": {"type": ["string", "null"], "minLength": 1},
+    "owner_pr": {"type": "integer", "minimum": 0},
+    "current_main_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "can_close_readme_android_usb_current_base_gate": {"type": "boolean"},
+    "can_claim_current_base_usb_pass": {"type": "boolean"},
+    "requirements": {
+      "type": "object",
+      "required": [
+        "repository_current_main_verified",
+        "device_identity_recorded",
+        "required_artifacts_available",
+        "public_evidence_sanitized",
+        "state_observed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "repository_current_main_verified": {"type": "boolean"},
+        "device_identity_recorded": {"type": "boolean"},
+        "required_artifacts_available": {"type": "boolean"},
+        "public_evidence_sanitized": {"type": "boolean"},
+        "state_observed": {"type": "boolean"}
+      }
+    },
+    "missing_requirements": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "errors": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

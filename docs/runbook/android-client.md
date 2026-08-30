@@ -124,6 +124,14 @@ reconnect, input, latency, soak, or host RSS pass. For the Nubia substitute
 device, retain the identity as Nubia P0110 / pacific / Android 16 / SDK 36; never
 relabel it as Xiaomi 13/fuxi evidence.
 
+## Android USB current-base owner gate
+
+Use `make usb-current-base-owner-record EVIDENCE_DIR=<evidence-dir>` to derive
+`usb-current-base-gate.json` from retained USB smoke preflight, USB live-smoke,
+Host readiness, device identity, and repository snapshot artifacts. The gate is
+evidence-only and fail-closed. A blocked owner record does not close the README
+USB/Protocol v1 gate.
+
 ## Read-only USB live-stream smoke
 
 Use this helper after the Host and Android app are already connected and

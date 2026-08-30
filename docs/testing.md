@@ -257,6 +257,24 @@ prerequisite is blocked. A blocked preflight is a readiness record only; it
 does not prove USB streaming, reconnect, input, latency, soak, Host RSS, native
 pointer, stylus, controller, or Xiaomi/fuxi behavior.
 
+### Android USB current-base owner gate
+
+The Android USB current-base owner gate is a fail-closed, read-only evidence
+summary. It consumes a retained `usb-current-base.json` manifest that references
+the existing USB smoke preflight, USB live-smoke, Host readiness, device
+identity, and repository snapshot artifacts, then writes
+`usb-current-base-gate.json`.
+
+```bash
+make usb-current-base-owner-record EVIDENCE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+A pass requires current-base USB smoke preflight ready, current-source Host
+readiness, positive current-process USB live-smoke evidence, and exact P0110
+identity. For blocked records, keep the generated gate JSON and use
+`USB_CURRENT_BASE_ALLOW_BLOCKED=1` only when preserving a fail-closed owner
+record; that does not close the README gate.
+
 ### Read-only USB live-stream smoke
 
 When a Host and Android client are already streaming over USB, capture a

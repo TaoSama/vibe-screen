@@ -1,0 +1,38 @@
+{
+  "blockers": [
+    "Android app process is not running",
+    "Android app is not foreground",
+    "Mac Host is not listening on TCP 54321",
+    "macOS Host stable-signing/TCC preflight failed",
+    "no current-process USB live smoke evidence was collected"
+  ],
+  "can_claim_current_base_usb_pass": false,
+  "can_close_readme_android_usb_current_base_gate": false,
+  "current_main_sha": "0d58960970c7b8f1e1a8b3671a79752a4bf8470a",
+  "derivation_status": "complete",
+  "errors": [],
+  "interpretation": "A pass means the current base has retained real-device USB evidence from the exact Nubia P0110/pacific Android 16 device: strict USB smoke preflight ready, read-only USB live smoke pass, current-source Host readiness, and retained structured device identity with public serial redaction. Blocked, insufficient, historical, offline, or relabeled evidence cannot close the README Android USB current-base / Protocol v1 general Android gate.",
+  "kind": "android_usb_current_base_gate",
+  "missing_requirements": [
+    "state_observed"
+  ],
+  "owner_pr": 457,
+  "reasons": [
+    "blocked: Android app process is not running",
+    "blocked: Android app is not foreground",
+    "blocked: Mac Host is not listening on TCP 54321",
+    "blocked: macOS Host stable-signing/TCC preflight failed",
+    "blocked: no current-process USB live smoke evidence was collected",
+    "insufficient: state_observed"
+  ],
+  "requirements": {
+    "device_identity_recorded": true,
+    "public_evidence_sanitized": true,
+    "repository_current_main_verified": true,
+    "required_artifacts_available": true,
+    "state_observed": false
+  },
+  "run_id": "2026-08-31-current-base-usb-owner-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

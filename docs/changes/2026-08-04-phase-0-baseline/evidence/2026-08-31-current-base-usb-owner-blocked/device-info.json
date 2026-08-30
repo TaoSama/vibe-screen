@@ -1,0 +1,23 @@
+{
+  "adb_version": "Android Debug Bridge version 1.0.41\nVersion 37.0.0-14910828\nInstalled as <HOME>/Library/Android/sdk/platform-tools/adb\nRunning on Darwin 25.4.0 (arm64)",
+  "collected_at": "2026-08-30T20:53:38.992636+00:00",
+  "connection": "already connected to <ANDROID_SERIAL>",
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "product": "pacific",
+    "sdk": 36
+  },
+  "kind": "android_device_info",
+  "packages": [
+    {
+      "package": "dev.telemachus.display",
+      "version_code": 100000,
+      "version_name": "0.0.0"
+    }
+  ],
+  "schema_version": "vibescreen.evidence/v1"
+}

@@ -1,0 +1,31 @@
+Repository: <WORKSPACE>
+Base: origin/main 0d58960970c7b8f1e1a8b3671a79752a4bf8470a
+Branch: codex/usb-current-base-owner-20260831b
+Target serial: <P0110_USB_SERIAL>
+Expected identity: nubia P0110 / pacific / Android 16 / SDK 36
+
+Startup safety check:
+pgrep -x sfltool > sfltool-start.txt || true (exit recorded in sfltool-start.exit)
+
+Host readiness (read-only, no login-item diagnostic):
+python3 scripts/macos_dev_host.py readiness --report host-signing-and-permissions.txt --json-output host-readiness.json --port 54321
+Exit: 2
+
+USB preflight with this task holding the stale serial-scoped lock:
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight   --serial <P0110_USB_SERIAL>   --serial-label REDACTED_P0110_USB_SERIAL   --expected-manufacturer nubia   --expected-model P0110   --expected-device pacific   --expected-android-release 16   --expected-sdk 36   --host-preflight-report usb-host-preflight.txt   --held-lock /tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock   --output usb-smoke-preflight.json
+Exit: 2
+
+End safety check:
+pgrep -x sfltool > sfltool-end.txt || true
+Exit: 0
+
+Read-only USB live-smoke collector (allowed even though blocked, recorded as insufficient):
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial <P0110_USB_SERIAL> --package dev.telemachus.display --port 54321 --output usb-live-smoke.json
+Exit: 1
+
+USB current-base owner gate:
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_current_base_gate \
+  --manifest usb-current-base.json \
+  --repository-root . \
+  --output usb-current-base-gate.json
+Exit: 1 (blocked owner record preserved; README gate not closed)
