@@ -17,7 +17,7 @@ package for any of these profiles:
 No Android device action was run for this record. The missing dependency is the
 external-camera or documented synchronized-clock measurement package, not an
 ADB preflight. A future Android run must still use the exclusive Android device
-lock and `adb -s EP0110PZ0B9110300B` when it involves the connected Nubia P0110.
+lock and `adb -s <redacted-adb-serial>` when it involves the connected Nubia P0110.
 
 ## What was verified
 

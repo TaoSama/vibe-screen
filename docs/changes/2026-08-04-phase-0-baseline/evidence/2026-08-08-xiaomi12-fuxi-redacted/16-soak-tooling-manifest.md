@@ -16,7 +16,7 @@
 ## 最小适配（仅为适配本机 USB 真机，不另起炉灶）
 
 1. tools/vibescreen_evidence/adb.py：ADBClient.connect() 改为端点感知。
-   - 原实现对任意 serial 执行 `adb connect <serial>`；对 USB 序列号 8a023e3a 会失败（"failed to resolve host"），污染 environment/每样本 errors。
+   - 原实现对任意 serial 执行 `adb connect <serial>`；对 USB 序列号 <redacted-xiaomi-adb-serial> 会失败（"failed to resolve host"），污染 environment/每样本 errors。
    - 适配：新增 _is_tcp_endpoint(serial)（判定 host:port 形态）。USB 序列号跳过 adb connect，仅 require_device() 校验就绪；TCP 端点保持原 adb connect 行为不变。
 2. tools/tests/test_adb.py：
    - 将 test_connect_requires_adb_confirmation_and_ready_state 的 serial 由裸 "serial" 改为 "device.example:5555"（贴合 TCP 语义，裸串本就不是合法 adb connect 目标）。
@@ -28,7 +28,7 @@
   - 这是"忠实再编码器"而非数据源：不合成任何流数据；仅因运行中的主机未以 VIBE_SCREEN_TELEMETRY_PATH 启动、无法回填结构化遥测而需要。
   - CLI 使用 argparse，支持 --help；错误（读日志失败、参数非法）均已处理。
 
-## 运行命令（可复现，设备一律 -s 8a023e3a）
+## 运行命令（可复现，设备一律 -s <redacted-xiaomi-adb-serial>）
 
 主机流遥测再编码（后台，与采样器同窗）：
   PYTHONPATH=tools python3 -m vibescreen_evidence.host_log_telemetry \
@@ -38,11 +38,11 @@
 
 设备+主机 soak 采样（30 分钟）：
   PYTHONPATH=tools python3 -m vibescreen_evidence.soak \
-    --serial 8a023e3a --duration 30m --interval 60s \
+    --serial <redacted-xiaomi-adb-serial> --duration 30m --interval 60s \
     --package dev.telemachus.display --host-pid 89286 \
     --telemetry-jsonl <ev>/11b-host-stream-telemetry.jsonl --require-stream-telemetry \
     --output-jsonl <ev>/11-soak-samples.jsonl --summary-json <ev>/11-soak-summary.json \
-    --run-id xiaomi12-fuxi-8a023e3a-2026-08-08-30m
+    --run-id xiaomi12-fuxi-<redacted-xiaomi-adb-serial>-2026-08-08-30m
 
 派生报告：
   PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \

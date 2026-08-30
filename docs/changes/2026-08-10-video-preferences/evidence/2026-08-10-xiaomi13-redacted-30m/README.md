@@ -3,7 +3,7 @@
 ## Scope
 
 - Device: Xiaomi 13, model `2211133C`, codename `fuxi`, Android 16
-- ADB serial: `bac5b092`
+- ADB serial: `<redacted-xiaomi-adb-serial>`
 - Transport: USB ADB reverse on TCP `54321`, Protocol v1
 - Host PID: `24536`
 - Window: `2026-08-10T07:37:47.401664Z` to

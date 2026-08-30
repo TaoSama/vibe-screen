@@ -14,21 +14,21 @@ Observed result:
 Device readiness checks
 
   adb devices -l
-  adb -s EP0110PZ0B9110300B get-state
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
-  adb -s EP0110PZ0B9110300B shell wm size
-  adb -s EP0110PZ0B9110300B shell wm density
-  adb -s EP0110PZ0B9110300B reverse --list
-  adb -s EP0110PZ0B9110300B shell dumpsys package dev.telemachus.display
+  adb -s <redacted-adb-serial> get-state
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
+  adb -s <redacted-adb-serial> shell wm size
+  adb -s <redacted-adb-serial> shell wm density
+  adb -s <redacted-adb-serial> reverse --list
+  adb -s <redacted-adb-serial> shell dumpsys package dev.telemachus.display
 
 Observed result:
 
-  EP0110PZ0B9110300B was online as product pacific, model P0110, device pacific.
+  <redacted-adb-serial> was online as product pacific, model P0110, device pacific.
   get-state returned device.
   Identity was nubia / P0110 / pacific / Android 16 / SDK 36.
   Fingerprint was nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys.
@@ -52,7 +52,7 @@ Observed result:
   Final lock check found /tmp/vibe-screen-device-android.lock occupied:
     owner=codex-touch-fixed-binary-readiness
     pid=29081
-    cwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/9b47/vibe-screen
+    cwd=<codex-worktrees>/9b47/vibe-screen
     created_at=2026-08-20T12:27:45Z
   Stable Host preflight failed because codesign identity 'Vibe Screen Dev' was not found.
   Ad-hoc preflight was refused for local device reruns.

@@ -1,4 +1,4 @@
-Executable=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/f186/vibe-screen/.build/current-usb-host-app/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Executable=<codex-worktrees>/f186/vibe-screen/.build/current-usb-host-app/Vibe Screen.app/Contents/MacOS/Vibe Screen
 Identifier=dev.telemachus.display
 Format=app bundle with Mach-O thin (arm64)
 CodeDirectory v=20400 size=24623 flags=0x2(adhoc) hashes=759+7 location=embedded

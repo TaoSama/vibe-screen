@@ -1,4 +1,4 @@
-# 30 分钟真机 soak 派生总结（小米 13 (2211133C) / fuxi / 8a023e3a，Android 16）
+# 30 分钟真机 soak 派生总结（小米 13 (2211133C) / fuxi / <redacted-xiaomi-adb-serial>，Android 16）
 
 - 采样窗口（UTC）：2026-08-07T17:26:05.812Z → 17:56:05.874Z，时长 1800.1s（≈30 分钟）。
 - 采样间隔：60s。样本数：30 条（sample_index 0..29，soak.py 精确落盘）。

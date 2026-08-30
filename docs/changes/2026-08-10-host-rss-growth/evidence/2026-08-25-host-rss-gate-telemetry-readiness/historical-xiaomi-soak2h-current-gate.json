@@ -52,7 +52,7 @@
     "telemetry insufficient: latest_pixel_buffer_metrics_present",
     "telemetry insufficient: capture_state_booleans_present"
   ],
-  "run_id": "xiaomi-fuxi-8a023e3a-2h-v2",
+  "run_id": "xiaomi-fuxi-<redacted-xiaomi-adb-serial>-2h-v2",
   "schema_version": "vibescreen.evidence/v1",
   "source_summary": {
     "error_count": 960,

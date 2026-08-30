@@ -23,5 +23,5 @@ package:/data/app/~~VThC1AX7oEHRi0cJRGTimA==/dev.telemachus.display.test-kJYlRYv
 UsbFfs tcp:54321 tcp:54321
 ## targeted route-toggle instrumentation rerun
 2026-08-22T21:45:22+0800
-adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 OK (1 test)

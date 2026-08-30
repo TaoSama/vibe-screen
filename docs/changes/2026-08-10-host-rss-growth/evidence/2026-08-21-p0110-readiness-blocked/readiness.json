@@ -6,14 +6,14 @@
   "accepted_for_short_diagnostic": false,
   "accepted_for_two_hour_gate": false,
   "repository": {
-    "worktree": "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/1287/vibe-screen",
+    "worktree": "<codex-worktrees>/1287/vibe-screen",
     "branch": "codex/host-rss-readiness",
     "head": "be9381179a7f5b6a9ea5e97d6a77ad486a026ca7",
     "origin_main": "be9381179a7f5b6a9ea5e97d6a77ad486a026ca7",
     "main_worktree_modified": false
   },
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "brand": "nubia",
     "model": "P0110",
@@ -71,10 +71,10 @@
   "makefile_readiness_fix": {
     "status": "implemented",
     "summary": "soak-30m, soak-2h, and soak-8h now accept optional HOST_PID and pass it to vibescreen_evidence.soak as --host-pid; host-rss-gate derives the exact-window report and evaluates host_rss_gate for an existing 2h evidence package; soak-2h-host-rss-gate fails fast when HOST_PID is unset before a formal run.",
-    "dry_run_command": "make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345",
+    "dry_run_command": "make -n soak-2h EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence HOST_PID=12345",
     "dry_run_observed_host_pid_argument": "--host-pid 12345",
     "formal_gate_target": "make host-rss-gate EVIDENCE_DIR=.build/evidence",
-    "combined_formal_run_target": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=$HOST_PID"
+    "combined_formal_run_target": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence HOST_PID=$HOST_PID"
   },
   "verification": [
     {"command": "git fetch origin --prune", "status": "passed"},
@@ -86,10 +86,10 @@
     {"command": "make baseline-android-apk", "status": "passed"},
     {"command": "make protocol", "status": "passed", "details": "36 contract tests OK"},
     {"command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v", "status": "passed", "details": "191 tests OK"},
-    {"command": "make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run includes --host-pid 12345"},
+    {"command": "make -n soak-2h EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run includes --host-pid 12345"},
     {"command": "make -n host-rss-gate EVIDENCE_DIR=.build/evidence", "status": "passed", "details": "dry-run derives exact-window report and runs host_rss_gate"},
-    {"command": "make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run chains soak-2h and host-rss-gate"},
-    {"command": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence", "status": "passed", "details": "exits before the two-hour run when HOST_PID is unset"},
+    {"command": "make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run chains soak-2h and host-rss-gate"},
+    {"command": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence", "status": "passed", "details": "exits before the two-hour run when HOST_PID is unset"},
     {"command": "git diff --check", "status": "passed"}
   ],
   "non_claims": [
@@ -105,7 +105,7 @@
     "python3 scripts/macos_dev_host.py preflight --install-path '/Applications/Vibe Screen.app'",
     "export VIBE_SCREEN_TELEMETRY_PATH=.build/evidence/memory-short/host-telemetry.jsonl",
     "PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic --host-pid '$HOST_PID' --duration-seconds 900 --interval-seconds 30 --telemetry-jsonl .build/evidence/memory-short/host-telemetry.jsonl --samples .build/evidence/memory-short/samples.jsonl --output .build/evidence/memory-short/diagnostic.json",
-    "make soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID='$HOST_PID'",
+    "make soak-2h EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=.build/evidence HOST_PID='$HOST_PID'",
     "PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary .build/evidence/soak-2h/summary.json --samples .build/evidence/soak-2h/samples.jsonl --output .build/evidence/soak-2h/host-rss-gate.json"
   ]
 }

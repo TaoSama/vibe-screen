@@ -1,7 +1,7 @@
 $ python3 scripts/android_stylus_acceptance.py \
-  --serial EP0110PZ0B9110300B \
+  --serial <redacted-adb-serial> \
   --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-nubia-p0110-pacific-stylus-drawing-blocked \
   --allow-existing-device-lock
 
-# The script ran explicit adb -s EP0110PZ0B9110300B commands to collect
+# The script ran explicit adb -s <redacted-adb-serial> commands to collect
 # get-state, getprop identity, dumpsys input, and app-private diag logs.

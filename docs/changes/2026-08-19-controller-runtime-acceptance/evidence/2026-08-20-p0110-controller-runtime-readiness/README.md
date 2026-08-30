@@ -2,7 +2,7 @@
 
 Created: 2026-08-20T17:29:50Z
 Run ID: 2026-08-20-p0110-controller-runtime-readiness
-Device: nubia P0110 / pacific / Android 16 / serial EP0110PZ0B9110300B
+Device: nubia P0110 / pacific / Android 16 / serial <redacted-adb-serial>
 APK: dev.telemachus.display 0.0.0 (100000)
 Physical controller devices: 0
 Host identity signed: false

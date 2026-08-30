@@ -1,7 +1,7 @@
-Reported by the main controller on 2026-08-21 for serial EP0110PZ0B9110300B.
+Reported by the main controller on 2026-08-21 for serial <redacted-adb-serial>.
 
 Device identity: nubia P0110 / pacific / Android 16.
-adb reverse command: adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321 succeeded.
+adb reverse command: adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321 succeeded.
 adb reverse --list: UsbFfs tcp:54321 tcp:54321.
 Android launch: adb start of dev.telemachus.display/.MainActivity succeeded.
 Android PID: 11385.

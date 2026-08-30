@@ -17,7 +17,7 @@
   "observation_seconds": 0.0,
   "observed_physical_drawing": false,
   "pass_eligible_stylus_candidates": [],
-  "requested_serial": "EP0110PZ0B9110300B",
+  "requested_serial": "<redacted-adb-serial>",
   "status": "blocked_device_coordination_lock",
   "stylus_candidates": []
 }

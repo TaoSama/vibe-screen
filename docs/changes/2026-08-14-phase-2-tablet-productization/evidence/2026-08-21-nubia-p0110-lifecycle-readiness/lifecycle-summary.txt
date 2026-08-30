@@ -1,4 +1,4 @@
-Source: app-filtered logcat plus activity/window/power dumps collected with adb -s EP0110PZ0B9110300B.
+Source: app-filtered logcat plus activity/window/power dumps collected with adb -s <redacted-adb-serial>.
 
 Device:
 - manufacturer: nubia

@@ -6,7 +6,7 @@
   "collected_at_local": "2026-08-22T02:11:21+08:00",
   "observation_window_seconds": 20,
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "ro.product.manufacturer": "nubia",
     "ro.product.model": "P0110",
     "ro.product.device": "pacific",

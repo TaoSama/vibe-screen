@@ -15,7 +15,7 @@ identifies the attached Android substitute as:
 - Model: P0110
 - Codename: pacific
 - Android release: 16
-- ADB serial: EP0110PZ0B9110300B
+- ADB serial: <redacted-adb-serial>
 
 The manifest intentionally uses `PHASE2_DEVICE_CLASS=android_substitute`. This
 device must not be relabeled as Xiaomi 13/fuxi or as physical 8-9 inch tablet
@@ -24,7 +24,7 @@ evidence.
 ## Commands
 
 No ADB command was run for this smoke. If a future run uses the Nubia P0110, all
-ADB commands must use `adb -s EP0110PZ0B9110300B ...`.
+ADB commands must use `adb -s <redacted-adb-serial> ...`.
 
 ```bash
 cp ../2026-08-20-nubia-p0110-readiness/device-info.json device-info.json
@@ -47,7 +47,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
   --host-build "not tested in this smoke" \
   --apk-sha256 "not-tested" \
   --notes "Tooling smoke only. Uses retained Nubia P0110/pacific Android 16 identity as android_substitute and does not claim physical 8-9 inch tablet, stand-mounted charging, thermal-load, power, recovery, or eight-hour acceptance." \
-  -- make soak-8h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness
+  -- make soak-8h EVIDENCE_SERIAL=<redacted-adb-serial> EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m \
   vibescreen_evidence.phase2_tablet_gate \
   --report docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/exact-window-report.json \

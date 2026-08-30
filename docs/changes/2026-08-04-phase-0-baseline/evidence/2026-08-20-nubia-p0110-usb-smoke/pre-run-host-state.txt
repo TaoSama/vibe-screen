@@ -66,7 +66,7 @@ baseline/MacHost/.build/repositories/WebRTC-7712468d/hooks/sendemail-validate.sa
 baseline/MacHost/.build/repositories/WebRTC-7712468d/hooks/update.sample
 ## current port owner before cleanup
 COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Vibe\x20S 89494 luwentao    7u  IPv4 0xe5362aa0ad8c9b3d      0t0  TCP 127.0.0.1:54321 (LISTEN)
+Vibe\x20S 89494 <user>    7u  IPv4 0xe5362aa0ad8c9b3d      0t0  TCP 127.0.0.1:54321 (LISTEN)
 ## matching processes before cleanup
-luwentao         89494   2.7  0.1 443405168  70832   ??  S     4:56PM   1:56.95 .build/release/Vibe Screen --help
-luwentao         89491   0.0  0.0 442199248   5072   ??  Ss    4:56PM   0:00.02 /opt/homebrew/bin/bash -c cd /Users/luwentao/.codex/worktrees/0e07/vibe-screen/baseline/MacHost && ".build/release/Vibe Screen" --help 2>&1 | head -30
+<user>         89494   2.7  0.1 443405168  70832   ??  S     4:56PM   1:56.95 .build/release/Vibe Screen --help
+<user>         89491   0.0  0.0 442199248   5072   ??  Ss    4:56PM   0:00.02 /opt/homebrew/bin/bash -c cd <codex-worktrees>/0e07/vibe-screen/baseline/MacHost && ".build/release/Vibe Screen" --help 2>&1 | head -30

@@ -20,7 +20,7 @@ the expected Command-modified scroll event.
 - Source base: `b9d768e55c75f03cd3cb5d20939576bc8d24ff27`
   (`origin/main` at the start of the run).
 - Android device: nubia P0110, codename `pacific`, serial
-  `EP0110PZ0B9110300B`.
+  `<redacted-adb-serial>`.
 - Android version: 16 / API 36.
 - Build fingerprint:
   `nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys`.
@@ -75,27 +75,27 @@ rerun gate.
 ## Commands
 
 The device was protected by `/tmp/vibe-screen-device-android.lock`, and every
-ADB command used the explicit serial `EP0110PZ0B9110300B`. The core commands
+ADB command used the explicit serial `<redacted-adb-serial>`. The core commands
 were:
 
 ```bash
 make evidence-touch-rerun-preflight \
-  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_SERIAL=<redacted-adb-serial> \
   EVIDENCE_DIR=docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/2026-08-20-p0110-pacific-fixed-binary-rerun \
   TOUCH_RERUN_EXPECTED_HOST_SHA256=c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
 
 cd baseline/AndroidClient
 ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
 
-adb -s EP0110PZ0B9110300B install -r -t \
+adb -s <redacted-adb-serial> install -r -t \
   app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r -t \
+adb -s <redacted-adb-serial> install -r -t \
   app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
-adb -s EP0110PZ0B9110300B shell am start -S -W \
+adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321
+adb -s <redacted-adb-serial> shell am start -S -W \
   -n dev.telemachus.display/.MainActivity \
   --ez auto_connect true
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class dev.telemachus.display.TouchGestureAcceptanceDriverInstrumentedTest \
   -e vibeScreenTouchE2E true \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner

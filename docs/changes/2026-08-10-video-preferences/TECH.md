@@ -54,7 +54,7 @@
 
 ## 真机证据
 
-2026-08-10 在 Xiaomi 13（2211133C、fuxi、ADB `bac5b092`）真实 USB
+2026-08-10 在 Xiaomi 13（2211133C、fuxi、ADB `<redacted-xiaomi-adb-serial>`）真实 USB
 Protocol v1 会话中完成：
 
 - Smooth、Balanced、Sharp、Auto 分别映射 Host LOW、MEDIUM、HIGH、ULTRALOW；
@@ -68,7 +68,7 @@ Protocol v1 会话中完成：
   PSS 78,631 -> 76,682 KiB，后半段斜率均为负。
 
 证据位于
-[`evidence/2026-08-10-xiaomi13-bac5b092-30m`](evidence/2026-08-10-xiaomi13-bac5b092-30m/README.md)。
+[`evidence/2026-08-10-xiaomi13-redacted-30m`](evidence/2026-08-10-xiaomi13-redacted-30m/README.md)。
 
 ## 剩余门禁
 
