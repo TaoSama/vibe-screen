@@ -1,0 +1,1 @@
+make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked PHASE2_LOGIN_HEADLESS=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json
