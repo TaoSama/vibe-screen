@@ -234,9 +234,42 @@
         "simulator_is_not_ios_input_evidence": {"type": "boolean"},
         "offline_tests_are_readiness_only": {"type": "boolean"},
         "observations": {"type": "object"},
-        "missing_requirements": {"type": "array", "items": {"type": ["string", "object"]}},
-        "blocking_reasons": {"type": "array", "items": {"type": ["string", "object"]}},
-        "disallowed_evidence": {"type": "array", "items": {"type": ["string", "object"]}},
+        "missing_requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "requirement"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "requirement": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "requirement"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "requirement": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "disallowed_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "reason"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        },
         "artifact_paths": {"type": "array", "items": {"type": "string"}}
       }
     },

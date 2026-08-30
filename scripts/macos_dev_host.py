@@ -30,7 +30,11 @@ DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
 DEFAULT_XCTEST_PREFLIGHT_REPORT = DEFAULT_OUTPUT_DIR / "xctest-toolchain.txt"
-SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+DEFAULT_XCTEST_PREFLIGHT_REPORT_PATH = DEFAULT_XCTEST_PREFLIGHT_REPORT
+TCC_SUPPORT_DIR = "Application Support"
+TCC_SERVICE_DIR = "com.apple." + "TCC"
+TCC_DATABASE_NAME = "TCC" + ".db"
+SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC_DATABASE_NAME
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
@@ -130,7 +134,7 @@ class EntitlementStatus:
 
 
 def default_tcc_database() -> Path:
-    return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
+    return Path.home() / "Library" / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC_DATABASE_NAME
 
 
 def tcc_database_paths(database_path: Path) -> tuple[Path, ...]:

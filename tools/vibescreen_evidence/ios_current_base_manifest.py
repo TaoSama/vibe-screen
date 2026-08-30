@@ -241,6 +241,13 @@ def _sanitize_native_input_list(value: Any, field: str) -> tuple[list[Any], list
     for item in value:
         if _contains_disallowed_native_input_text(item):
             redactions.append({**NATIVE_INPUT_REDACTED_METADATA, "source_field": field})
+        elif isinstance(item, str):
+            if field in {"missing_requirements", "blocking_reasons"}:
+                sanitized.append({"field": "native_input_gate", "requirement": item})
+            elif field == "disallowed_evidence":
+                sanitized.append({"field": "native_input_gate", "reason": item})
+            else:
+                sanitized.append(item)
         else:
             sanitized.append(item)
     return sanitized, redactions
@@ -519,7 +526,10 @@ def _default_native_input_gate(
     failures: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     observations = {field: False for field in ios_native_input.BOOLEAN_FIELDS}
-    field_missing = [requirement for _, requirement in ios_native_input.REQUIRED_FIELDS]
+    field_missing = [
+        {"field": field, "requirement": requirement}
+        for field, requirement in ios_native_input.REQUIRED_FIELDS
+    ]
     reason_missing = list(reasons or ["ios-native-input-gate.json not provided"])
     field_blocking = [
         {"field": field, "requirement": requirement}
@@ -544,7 +554,10 @@ def _default_native_input_gate(
         "simulator_is_not_ios_input_evidence": True,
         "offline_tests_are_readiness_only": True,
         "observations": observations,
-        "missing_requirements": [*field_missing, *reason_missing],
+        "missing_requirements": [
+            *field_missing,
+            *({"field": "native_input_gate", "requirement": reason} for reason in reason_missing),
+        ],
         "blocking_reasons": [
             *field_blocking,
             *(
@@ -716,13 +729,25 @@ def _load_native_input_gate(
         if not safe_artifact_paths:
             missing = [*missing, "ios native-input gate must retain sanitized iOS/Host artifacts"]
 
-    blocking_reasons = blocking_reasons if blocking_reasons else list(missing)
+    missing_requirements = [
+        item if isinstance(item, dict) else {"field": "native_input_gate", "requirement": str(item)}
+        for item in missing
+    ]
+    blocking_reasons = _sanitize_native_input_list(
+        blocking_reasons if blocking_reasons else missing_requirements, "blocking_reasons"
+    )[0]
+    disallowed_evidence = [
+        item
+        if isinstance(item, dict) and {"field", "reason"}.issubset(item)
+        else {"field": "native_input_gate", "reason": str(item)}
+        for item in [*disallowed_evidence, *metadata_redactions]
+    ]
     normalized = _default_native_input_gate(
         provided=True,
         path=path,
         repo=repo,
-        reasons=missing,
-        failures=[*disallowed_evidence, *metadata_redactions],
+        reasons=missing_requirements,
+        failures=disallowed_evidence,
     )
     normalized.update(
         {
@@ -741,9 +766,9 @@ def _load_native_input_gate(
             "simulator_is_not_ios_input_evidence": document.get("simulator_is_not_ios_input_evidence") is True,
             "offline_tests_are_readiness_only": document.get("offline_tests_are_readiness_only") is True,
             "observations": observations,
-            "missing_requirements": missing,
+            "missing_requirements": missing_requirements,
             "blocking_reasons": blocking_reasons,
-            "disallowed_evidence": [*disallowed_evidence, *metadata_redactions],
+            "disallowed_evidence": disallowed_evidence,
             "artifact_paths": safe_artifact_paths,
         }
     )
