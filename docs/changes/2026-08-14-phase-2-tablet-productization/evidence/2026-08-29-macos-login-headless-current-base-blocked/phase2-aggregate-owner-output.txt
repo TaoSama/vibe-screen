@@ -305,7 +305,7 @@ make phase2-aggregate-owner EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-
     }
   ],
   "schema_version": "vibescreen.evidence/v1",
-  "source_baseline": "origin/main 6fe5b9cfae8d14b4a47449dfa63bc96226e3ecaf",
+  "source_baseline": "origin/main 32146152100477660eaf0ddb10befa8af48ea4fd",
   "stale_prs": [
     {
       "pr_number": 240,

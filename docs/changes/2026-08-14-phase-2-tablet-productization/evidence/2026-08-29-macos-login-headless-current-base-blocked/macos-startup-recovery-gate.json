@@ -177,7 +177,7 @@
   "source_evidence": {
     "kind": "macos_startup_recovery_evidence",
     "run_id": "2026-08-29-macos-login-headless-current-base-blocked",
-    "source_commit": "6fe5b9cfae8d14b4a47449dfa63bc96226e3ecaf"
+    "source_commit": "32146152100477660eaf0ddb10befa8af48ea4fd"
   },
   "verdict": "blocked"
 }
