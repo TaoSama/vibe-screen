@@ -8,7 +8,11 @@ Owner worktree branch: codex/external-latency-owner-subagent-20260830.
 
 ## What this records
 
-- Current base: origin/main `fe58cb6715cf203405820bd0eab352d0a93f56d9`.
+- Current base: origin/main `32146152100477660eaf0ddb10befa8af48ea4fd`.
+- Sync note: this worktree merged origin/main after #417 (clipboard E2E gate
+  hardening) and preserved the fail-closed owner record; no new external
+  camera, synchronized-clock, USB/LAN latency, input, or reconnect timing
+  measurement was run.
 - The latest retained latency preflight remains
   `docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked`.
   Its generated `latency-preflight.json` keeps all three README latency profiles

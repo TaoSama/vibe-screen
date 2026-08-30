@@ -10,7 +10,7 @@
 
 ## 状态
 
-截至 2026-08-30 origin/main `fe58cb6715cf203405820bd0eab352d0a93f56d9`，
+截至 2026-08-30 origin/main `32146152100477660eaf0ddb10befa8af48ea4fd`，
 仓库内没有可关闭 USB/LAN glass-to-glass 的外部相机 raw recording、annotated
 samples、formal manifest 和 profile-specific transport 证据；也没有可关闭
 input P95 的 external-camera 或 synchronized-clock physical-input 证据。
