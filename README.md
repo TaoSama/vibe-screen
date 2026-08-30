@@ -1047,7 +1047,7 @@ increase it.
 - The iOS app-signing prerequisite now has its own dedicated fail-closed
   current-base owner, `ios-app-signing-readiness-gate`. The retained blocked
   owner record is
-  [2026-08-29-ios-signing-current-base-blocked](docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-29-ios-signing-current-base-blocked/README.md):
+  [2026-08-30-ios-signing-current-base-blocked](docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-30-ios-signing-current-base-blocked/README.md):
   it requires sanitized Team ID and provisioning profile UUID digests, a unique
   bundle ID, sanitized non-ad-hoc codesign identity digest, physical-device UDID
   hashes, signed-app entitlement relationship checks, signed artifact SHA-256,
