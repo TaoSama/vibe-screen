@@ -1,5 +1,5 @@
 Purpose: fail-closed physical stylus drawing-app observation attempt while another Android-device lease was present.
-Target serial: EP0110PZ0B9110300B.
+Target serial: <redacted-adb-serial>.
 Required evidence identity for any later device run: Nubia P0110 / pacific / Android 16 / SDK 36.
 
 Repository setup:
@@ -19,7 +19,7 @@ Observed lock:
 
 Fail-closed evidence command:
   python3 scripts/android_stylus_acceptance.py \
-    --serial EP0110PZ0B9110300B \
+    --serial <redacted-adb-serial> \
     --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-22-155532-nubia-p0110-pacific-stylus-raw-observation-blocked \
     --write-blocked-on-lock
 

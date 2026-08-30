@@ -8,7 +8,7 @@
   "base_commit": "baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38",
   "installed_binary_provenance_revalidated": false,
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",

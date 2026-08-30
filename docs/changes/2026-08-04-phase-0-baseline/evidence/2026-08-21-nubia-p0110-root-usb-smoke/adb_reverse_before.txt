@@ -1,2 +1,2 @@
-$ adb -s EP0110PZ0B9110300B reverse --list
+$ adb -s <redacted-adb-serial> reverse --list
 UsbFfs tcp:54321 tcp:54321

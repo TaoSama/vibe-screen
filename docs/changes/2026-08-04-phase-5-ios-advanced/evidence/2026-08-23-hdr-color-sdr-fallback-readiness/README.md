@@ -105,4 +105,4 @@ A future real-device pass must follow `docs/runbook/hdr-color-acceptance.md` and
 must record exact hardware identity, negotiated envelopes, decoder output format,
 and display/HDR evidence. The shared Android device, when used, must be recorded
 as Nubia P0110 / pacific / Android 16 / SDK 36 and every ADB command must use
-`adb -s EP0110PZ0B9110300B ...`.
+`adb -s <redacted-adb-serial> ...`.

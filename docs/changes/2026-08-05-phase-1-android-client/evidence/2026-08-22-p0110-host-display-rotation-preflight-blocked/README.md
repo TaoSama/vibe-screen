@@ -1,7 +1,7 @@
 # P0110 rotated host-display acceptance: preflight blocked
 
 Created: 2026-08-21T16:58:19Z
-Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial EP0110PZ0B9110300B
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
 Repository: e948b96550a5e9288ea8fa6a04d9d9c6fc61251c
 Base: origin/main cb87c6afa94d54a928e873b1bb2d5f4a5d5d5a3b
 
@@ -36,7 +36,7 @@ change ADB reverse mappings, rotate a host display, or send device input.
   running as PID 92943 and listening on TCP 54321.
 - Android sampling: held `/tmp/vibe-screen-device-android.lock` as
   `owner=codex-pr162-host-display-rotation`; `adb devices -l`, explicit
-  `adb -s EP0110PZ0B9110300B` identity probes, reverse listing, foreground
+  `adb -s <redacted-adb-serial>` identity probes, reverse listing, foreground
   activity, loopback connection state, app log tail, and screenshot capture were
   recorded. The device was nubia P0110 / pacific / Android 16 / SDK 36.
 - Lock release: `device-lock-release.txt` records that PID 77019 was terminated,
@@ -64,5 +64,5 @@ Restore the stable `Vibe Screen Dev` signing identity and a visible matching
 TCC state, then rerun the runbook from
 `docs/runbook/host-display-rotation-acceptance.md` during a fresh exclusive
 device window. All ADB commands for this hardware must use
-`adb -s EP0110PZ0B9110300B`, and the device identity must remain nubia P0110 /
+`adb -s <redacted-adb-serial>`, and the device identity must remain nubia P0110 /
 pacific / Android 16 / SDK 36.

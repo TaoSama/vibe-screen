@@ -14,7 +14,7 @@ or any README acceptance gate.
 
 ## Device
 
-- Serial: `EP0110PZ0B9110300B`
+- Serial: `<redacted-adb-serial>`
 - Manufacturer/model: `nubia P0110`
 - Codename: `pacific`
 - Android: `16`, API `36`
@@ -26,7 +26,7 @@ focused UI run. It is not Xiaomi 13/fuxi evidence.
 
 ```bash
 cd baseline/AndroidClient
-ANDROID_SERIAL=EP0110PZ0B9110300B ./gradlew --no-daemon :app:connectedDebugAndroidTest \
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest
 ```
 

@@ -6,7 +6,7 @@ not be used to close the README gate.
 
 ## Target
 
-- Device target: nubia P0110 / pacific / Android 16 / SDK 36 / `EP0110PZ0B9110300B`
+- Device target: nubia P0110 / pacific / Android 16 / SDK 36 / `<redacted-adb-serial>`
 - Gate profile: `phase1-reconnect-within-3s`
 - Required disruption scenarios: `client-kill`, `adb-reverse-disconnect`,
   `lan-network-interrupt`
@@ -15,7 +15,7 @@ not be used to close the README gate.
 
 ## Readiness observations
 
-Read-only device probes used explicit `adb -s EP0110PZ0B9110300B ...` commands.
+Read-only device probes used explicit `adb -s <redacted-adb-serial> ...` commands.
 `device-info.json` records manufacturer `nubia`, model `P0110`, device/product
 `pacific`, Android `16`, and SDK `36`. `adb-reverse.txt` records the existing
 USB reverse mapping `UsbFfs tcp:54321 tcp:54321`, and `android-pid.txt` plus

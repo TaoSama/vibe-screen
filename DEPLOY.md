@@ -7,9 +7,10 @@ credentials, certificates, database URLs, image digests, and infrastructure
 details stay outside Git.
 
 The default relay hostname is `relay.taoai.site`. Operators may keep a local SSH
-alias named `lumina-vps` for the relay host, but the alias is local machine
-configuration and must not be expanded into an address, username, or credential
-inside this repository.
+alias for the relay host, but the alias is local machine configuration and must
+not be written to tracked files, expanded into an address or username, or copied
+into PR text, commit messages, or public logs. Use `<relay-host-ssh-alias>` as
+the public placeholder.
 
 ## Safety Rules
 
@@ -31,9 +32,9 @@ Run these checks before any production rollout:
 
 ```bash
 dig +short relay.taoai.site A relay.taoai.site AAAA
-ssh lumina-vps 'docker --version && docker compose version'
-ssh lumina-vps 'df -h / && docker system df'
-ssh lumina-vps 'ss -ltnup | sed -n "1,160p"'
+ssh <relay-host-ssh-alias> 'docker --version && docker compose version'
+ssh <relay-host-ssh-alias> 'df -h / && docker system df'
+ssh <relay-host-ssh-alias> 'ss -ltnup | sed -n "1,160p"'
 ```
 
 Production deployment is blocked until all of these are true:
@@ -95,6 +96,7 @@ secret manager:
 cd deploy/phase3
 cp config/relay.production.example.json config/relay.production.json
 install -d -m 0700 secrets tls
+install -d -m 0700 -o 65532 -g 65532 coturn-state
 ```
 
 Review `config/relay.production.json` and set `turn_realm` to
@@ -139,10 +141,11 @@ Deploy only after the preflight checklist is green:
 
 ```bash
 cd deploy/phase3
-docker compose -f docker-compose.production.yml pull relay coturn
-docker compose -f docker-compose.production.yml up -d --wait relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
+docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
 
 The `relay-migrate` job runs database migration first. Relay startup is valid only
@@ -163,6 +166,6 @@ database/schema readiness.
 ## Current Public Host Status
 
 At the time this document was added, the deployment host was reachable through
-the local `lumina-vps` alias and had Docker/Compose installed, but production
+an operator-local SSH alias and had Docker/Compose installed, but production
 rollout remained blocked by unresolved DNS/TLS readiness and low system-disk
 headroom. Re-run the preflight checklist before treating the relay as deployed.

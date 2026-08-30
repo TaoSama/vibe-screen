@@ -32,8 +32,8 @@ Input Reader State (Nums of device: 2):
 class ControllerRuntimeReadinessTests(unittest.TestCase):
     def sample_device(self) -> readiness.DeviceIdentity:
         return readiness.DeviceIdentity(
-            serial="EP0110PZ0B9110300B",
-            endpoint="EP0110PZ0B9110300B device product:pacific model:P0110 device:pacific",
+            serial="<redacted-adb-serial>",
+            endpoint="<redacted-adb-serial> device product:pacific model:P0110 device:pacific",
             manufacturer="nubia",
             model="P0110",
             device="pacific",
@@ -169,7 +169,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        "<redacted-adb-serial>",
                         "--host-log",
                         str(host_log),
                         "--evidence-dir",
@@ -201,7 +201,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        "<redacted-adb-serial>",
                         "--evidence-dir",
                         str(evidence_dir),
                     ]
@@ -222,7 +222,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
                 exit_code = readiness.main(
                     [
                         "--serial",
-                        "EP0110PZ0B9110300B",
+                        "<redacted-adb-serial>",
                         "--evidence-dir",
                         str(evidence_dir),
                         "--run-id",
@@ -235,7 +235,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
             readiness_record = json.loads((evidence_dir / "controller-runtime-readiness.json").read_text(encoding="utf-8"))
             summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
             self.assertTrue(readiness_record["lock_blocked"])
-            self.assertEqual(readiness_record["requested_serial"], "EP0110PZ0B9110300B")
+            self.assertEqual(readiness_record["requested_serial"], "<redacted-adb-serial>")
             self.assertEqual(readiness_record["existing_locks"][0]["path"], str(lock))
             self.assertEqual(summary["run_id"], "lock-run")
             self.assertEqual(summary["verdict"], "blocked")

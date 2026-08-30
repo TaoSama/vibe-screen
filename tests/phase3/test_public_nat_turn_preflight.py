@@ -25,7 +25,11 @@ from scripts.phase3.public_nat_turn_preflight import (
     validate_coturn_config,
     validate_deployment_evidence,
     validate_external_ip,
+    validate_tls_identity,
 )
+
+
+_REAL_SUBPROCESS_RUN = subprocess.run
 
 
 def write(path: Path, value: str, mode: int = 0o600) -> Path:
@@ -84,8 +88,14 @@ def valid_coturn_config(extra: str = "") -> str:
             "denied-peer-ip=169.254.0.0-169.254.255.255",
             "denied-peer-ip=172.16.0.0-172.31.255.255",
             "denied-peer-ip=192.0.0.0-192.0.0.255",
+            "denied-peer-ip=192.0.2.0-192.0.2.255",
             "denied-peer-ip=192.168.0.0-192.168.255.255",
             "denied-peer-ip=198.18.0.0-198.19.255.255",
+            "denied-peer-ip=198.51.100.0-198.51.100.255",
+            "denied-peer-ip=203.0.113.0-203.0.113.255",
+            "denied-peer-ip=240.0.0.0-255.255.255.255",
+            "denied-peer-ip=::",
+            "denied-peer-ip=::1",
             "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
             "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -97,6 +107,47 @@ def valid_coturn_config(extra: str = "") -> str:
 
 def fake_private_key_fixture() -> str:
     return "-----BEGIN " + "PRIVATE KEY-----\nredacted\n-----END " + "PRIVATE KEY-----\n"
+
+
+def write_tls_pair(directory: Path, common_name: str = "relay.production.invalidname.net", *, add_san: bool = True) -> tuple[Path, Path]:
+    directory.mkdir(parents=True, exist_ok=True)
+    key = directory / "privkey.pem"
+    certificate = directory / "fullchain.pem"
+    command = [
+        "openssl",
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-days",
+        "1",
+        "-subj",
+        f"/CN={common_name}",
+    ]
+    if add_san:
+        command.extend(["-addext", f"subjectAltName=DNS:{common_name}"])
+    command.extend(["-keyout", str(key), "-out", str(certificate)])
+    completed = _REAL_SUBPROCESS_RUN(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(completed.stderr)
+    key.chmod(0o600)
+    certificate.chmod(0o644)
+    return certificate, key
+
+
+def fake_canary_run(_command, **_kwargs):
+    return subprocess.CompletedProcess(
+        ["external-canary"],
+        0,
+        stdout=json.dumps(valid_connectivity_evidence()),
+        stderr="",
+    )
 
 
 def fake_bearer_header_fixture() -> str:
@@ -250,6 +301,40 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
                     with self.assertRaisesRegex(PreflightError, "required TLS/auth lines"):
                         validate_coturn_config(path)
 
+    def test_coturn_config_requires_complete_private_peer_deny_list(self) -> None:
+        config = valid_coturn_config().replace("denied-peer-ip=203.0.113.0-203.0.113.255\n", "")
+        with tempfile.TemporaryDirectory() as directory_name:
+            path = write(Path(directory_name) / "production.conf", config)
+            with self.assertRaisesRegex(PreflightError, "private peer denies"):
+                validate_coturn_config(path)
+
+    def test_tls_identity_requires_turn_realm_hostname_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            certificate, private_key = write_tls_pair(Path(directory_name), "other.production.invalidname.net")
+            with self.assertRaisesRegex(PreflightError, "SAN/CN does not match"):
+                validate_tls_identity(certificate, private_key, "relay.production.invalidname.net")
+
+    def test_tls_identity_accepts_matching_common_name_when_san_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            certificate, private_key = write_tls_pair(
+                Path(directory_name),
+                "relay.production.invalidname.net",
+                add_san=False,
+            )
+
+            result = validate_tls_identity(certificate, private_key, "relay.production.invalidname.net")
+
+        self.assertTrue(result["tls_certificate_hostname_matched"])
+        self.assertTrue(result["tls_key_pair_matched"])
+
+    def test_tls_identity_requires_certificate_private_key_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            certificate, _private_key = write_tls_pair(directory / "first")
+            _other_certificate, other_private_key = write_tls_pair(directory / "second")
+            with self.assertRaisesRegex(PreflightError, "private key do not match"):
+                validate_tls_identity(certificate, other_private_key, "relay.production.invalidname.net")
+
     def test_read_json_error_detail_omits_filesystem_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             broken = Path(directory_name) / "sensitive-path-connectivity.json"
@@ -313,6 +398,7 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         urlopen.return_value.__enter__.return_value.read.return_value = b'{"status":"ok"}'
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
@@ -349,12 +435,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8/10.0.0.5",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -389,12 +476,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8/10.0.0.5",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -427,12 +515,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         deployment["remote_observers"] = [deployment["remote_observers"][0]]  # type: ignore[index]
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8/10.0.0.5",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -473,12 +562,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         connectivity["synthetic_peer"] = True
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -501,12 +591,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         urlopen.return_value.__enter__.return_value.read.return_value = b'{"status":"ok"}'
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -539,12 +630,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -574,12 +666,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(valid_relay_config())),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -603,12 +696,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         config["daily_bytes_per_device"] = 1
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(config)),
                 coturn_config=write(directory / "production.conf", valid_coturn_config("user-quota=1")),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://authority.production.invalidname.net/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",
@@ -634,12 +728,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         config["authority_url"] = "https://10.0.0.5"
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
+            tls_certificate, tls_private_key = write_tls_pair(directory)
             report = build_report(
                 relay_config=write(directory / "relay.json", json.dumps(config)),
                 coturn_config=write(directory / "production.conf", valid_coturn_config()),
                 turn_secret_file=write(directory / "turn-secret", "x" * 32),
-                tls_certificate=write(directory / "fullchain.pem", "-----BEGIN CERTIFICATE-----\nredacted\n-----END CERTIFICATE-----\n", mode=0o644),
-                tls_private_key=write(directory / "privkey.pem", fake_private_key_fixture()),
+                tls_certificate=tls_certificate,
+                tls_private_key=tls_private_key,
                 coturn_external_ip="8.8.8.8",
                 authority_ready_url="https://10.0.0.6/readyz",
                 relay_ready_url="https://relay.production.invalidname.net/readyz",

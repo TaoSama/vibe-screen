@@ -3,37 +3,37 @@ before_ps:
   PID  PPID STAT COMMAND
 77019 77016 S    /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python -
 before_lock:
--rw-r--r--@ 1 luwentao  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
+-rw-r--r--@ 1 <user>  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
 owner=codex-pr162-host-display-rotation
 pid=77019
-cwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/pr162-host-display-rotation/vibe-screen
+cwd=<codex-worktrees>/pr162-host-display-rotation/vibe-screen
 created_at=2026-08-21T17:03:16Z
 before_lsof:
 COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF      NODE NAME
-Python  77019 luwentao    3u   REG   1,13      178 171682606 /private/tmp/vibe-screen-device-android.lock
+Python  77019 <user>    3u   REG   1,13      178 171682606 /private/tmp/vibe-screen-device-android.lock
 after_ps:
   PID  PPID STAT COMMAND
 after_lock:
--rw-r--r--@ 1 luwentao  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
+-rw-r--r--@ 1 <user>  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
 owner=codex-pr162-host-display-rotation
 pid=77019
-cwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/pr162-host-display-rotation/vibe-screen
+cwd=<codex-worktrees>/pr162-host-display-rotation/vibe-screen
 created_at=2026-08-21T17:03:16Z
 after_lsof:
 test_lock_left_untouched:
--rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+-rw-r--r--@ 1 <user>  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
 pre-existing lock
 cleanup_at_utc=2026-08-21T17:11:48Z
 pre_cleanup_lock:
--rw-r--r--@ 1 luwentao  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
+-rw-r--r--@ 1 <user>  wheel  178 Aug 22 01:03 /tmp/vibe-screen-device-android.lock
 owner=codex-pr162-host-display-rotation
 pid=77019
-cwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/pr162-host-display-rotation/vibe-screen
+cwd=<codex-worktrees>/pr162-host-display-rotation/vibe-screen
 created_at=2026-08-21T17:03:16Z
 pre_cleanup_lsof:
 cleanup_action=removed_owned_stale_lock_after_holder_exit
 post_cleanup_lock:
 ls: /tmp/vibe-screen-device-android.lock: No such file or directory
 test_lock_left_untouched:
--rw-r--r--@ 1 luwentao  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+-rw-r--r--@ 1 <user>  wheel  18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
 pre-existing lock

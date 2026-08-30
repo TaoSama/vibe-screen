@@ -6,7 +6,7 @@ not be used to close the README gate.
 
 ## Target
 
-- Device target: Nubia P0110 / pacific / Android 16 / `EP0110PZ0B9110300B`
+- Device target: Nubia P0110 / pacific / Android 16 / `<redacted-adb-serial>`
 - Gate profile: `phase1-reconnect-within-3s`
 - Required disruption scenarios: `client-kill`, `adb-reverse-disconnect`,
   `lan-network-interrupt`
@@ -22,7 +22,7 @@ environment failed preflight:
   -sTCP:LISTEN` probe, exit status `1`, and no process listening on TCP
   `54321`.
 
-No `adb -s EP0110PZ0B9110300B ...` disruption command was run for this blocked
+No `adb -s <redacted-adb-serial> ...` disruption command was run for this blocked
 record, so there is no client-kill, ADB reverse removal/restoration, or LAN
 network-interruption timing sample.
 
@@ -35,7 +35,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m vibescreen_evidence.reconnect_timing \
   --blocked \
   --run-id dc16b339-f79c-44c7-a2d9-9596629cb7b6 \
-  --target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
+  --target-device "Nubia P0110 / pacific / Android 16 / <redacted-adb-serial>" \
   --blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" \
   --blocker "Host is not listening on 127.0.0.1:54321 in this worktree" \
   --artifact docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-21-p0110-reconnect-timing-blocked/host-54321-listener.txt \

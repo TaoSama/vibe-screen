@@ -1,6 +1,6 @@
 2026-08-22T15:58:00+0800
-Device: nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B
-Command: adb -s EP0110PZ0B9110300B shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>
+Command: adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest#internetRouteToggleDoesNotAutosizeBelowReadableText dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 INSTRUMENTATION_RESULT: stream=
 
 Time: 0

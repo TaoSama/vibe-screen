@@ -10,7 +10,7 @@ was available, and no eight-hour sample series was collected.
 
 ## Device and build
 
-- Device: nubia P0110, codename pacific, serial EP0110PZ0B9110300B.
+- Device: nubia P0110, codename pacific, serial <redacted-adb-serial>.
 - OS: Android 16, SDK 36, build fingerprint
   nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys.
 - Display state: wm size reported 1264x2800; wm density reported 560.
@@ -23,7 +23,7 @@ was available, and no eight-hour sample series was collected.
 
 ## Commands
 
-The device was targeted explicitly with adb -s EP0110PZ0B9110300B for all device
+The device was targeted explicitly with adb -s <redacted-adb-serial> for all device
 operations.
 
 Local build and focused unit test:
@@ -42,25 +42,25 @@ cd baseline/AndroidClient
 Target-device install, settings instrumentation, and lifecycle sampling:
 
 ~~~bash
-adb -s EP0110PZ0B9110300B install -r \
+adb -s <redacted-adb-serial> install -r \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r \
+adb -s <redacted-adb-serial> install -r \
   baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class 'dev.telemachus.display.SettingsDialogLayoutInstrumentedTest' \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B shell am force-stop dev.telemachus.display
-adb -s EP0110PZ0B9110300B shell am start -n dev.telemachus.display/.MainActivity
-adb -s EP0110PZ0B9110300B shell dumpsys activity activities
-adb -s EP0110PZ0B9110300B shell dumpsys window
-adb -s EP0110PZ0B9110300B shell input keyevent HOME
-adb -s EP0110PZ0B9110300B shell dumpsys activity activities
-adb -s EP0110PZ0B9110300B shell dumpsys window
-adb -s EP0110PZ0B9110300B shell am start -n dev.telemachus.display/.MainActivity
-adb -s EP0110PZ0B9110300B shell dumpsys battery
-adb -s EP0110PZ0B9110300B shell dumpsys power
-adb -s EP0110PZ0B9110300B shell dumpsys thermalservice
-adb -s EP0110PZ0B9110300B logcat -d -s MA StreamClient VibeScreenTelemetry
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity
+adb -s <redacted-adb-serial> shell dumpsys activity activities
+adb -s <redacted-adb-serial> shell dumpsys window
+adb -s <redacted-adb-serial> shell input keyevent HOME
+adb -s <redacted-adb-serial> shell dumpsys activity activities
+adb -s <redacted-adb-serial> shell dumpsys window
+adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity
+adb -s <redacted-adb-serial> shell dumpsys battery
+adb -s <redacted-adb-serial> shell dumpsys power
+adb -s <redacted-adb-serial> shell dumpsys thermalservice
+adb -s <redacted-adb-serial> logcat -d -s MA StreamClient VibeScreenTelemetry
 ~~~
 
 ## Evidence
