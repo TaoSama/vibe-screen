@@ -465,14 +465,20 @@ the negotiated 1 MiB ceiling plus origin, session epoch, UTF-8 and SHA-256
 checks. This path is covered by Android JVM tests, protocol fixtures, MacHost
 clipboard XCTest sources, and the Mac Protocol v1 executable self-test; the
 MacHost clipboard XCTest run itself is blocked in this local Command Line Tools
-environment. The 2026-08-27 Nubia P0110 current-base run records a blocked
+environment. The latest Nubia P0110 current-base records preserve a blocked
 `clipboard-e2e-gate` verdict with local Android ClipboardManager smoke passing,
-but no bidirectional system-pasteboard product transfer. The real Android
-ClipboardManager <-> macOS NSPasteboard USB/LAN E2E gate remains open pending a
-signed Host/device run; see the
+but no bidirectional system-pasteboard product transfer. The gate now requires
+retained product evidence for exact Android ClipboardManager and macOS
+NSPasteboard endpoints, verified session epoch, change ID, SHA-256 digest,
+bounded byte length, and distinct markers for both transfer directions. The real
+Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E gate remains open
+pending a signed Host/device run; see the
 [clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
 and the blocked E2E evidence under
-[2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/README.md).
+[2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md),
+[2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md)
+and
+[2026-08-28-p0110-pacific-usb-e2e-current-source](docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and

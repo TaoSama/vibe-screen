@@ -1,0 +1,8 @@
+## codex/clipboard-e2e-current-base...origin/codex/clipboard-e2e-current-base [ahead 2]
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/git-head.txt
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/git-origin-main.txt
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/git-status.txt
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/host-readiness.json
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/host-readiness.stderr
+ M docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/host-readiness.stdout
+rebase-refresh note: status includes this evidence bundle while it is being regenerated; final repository cleanliness is checked after commit/push.

@@ -18,6 +18,7 @@ Started: 2026-08-16
 | 隐私 | Android 仅在用户选择“发送到 Mac”时读取；可信 LAN 在发送前警告“已认证但未加密” | Mac 仅在用户点击分享菜单时读取；可信 LAN 在传输前显示同等警告 | USB 无应用层 E2E；可信 LAN 正文明文可见；不覆盖 Internet E2EE |
 | 大小 | 严格 UTF-8，发送与接收均以字节计；上限为 `min(本地 1 MiB, 对端非零上限)` | 同左 | 对端 `maximum_clipboard_bytes == 0` 表示未声明，不能放宽本地 1 MiB 硬上限 |
 | 方向 | Offer → 用户获取 → Request → Content；直接 Content 只暂存 | 同左 | 剪贴板是会话级数据，不带 display / stream target |
+| 产品证据 | 必须记录 Android `ClipboardManager` 作为源端点、macOS `NSPasteboard` 作为目标端点、正 session epoch、16 字节 change ID、SHA-256、字节长度和最终 marker 匹配 | 必须记录 macOS `NSPasteboard` 作为源端点、Android `ClipboardManager` 作为目标端点、正 session epoch、16 字节 change ID、SHA-256、字节长度和最终 marker 匹配 | 两个方向必须使用不同 marker，单次传输或本地 smoke 不能同时满足双向 E2E |
 | 用户确认 | 发送点击才读；收到 Offer 不自动 Request；用户点击获取后，匹配 Content 才覆盖；直接 Content 需二次确认 | 同左 | 未协商能力或旧 peer 不显示可用入口；禁止后台静默抓取或覆盖 |
 
 ## 协议现状
@@ -93,3 +94,6 @@ Started: 2026-08-16
 - 离线协议、UI 策略、调度和服务集成结果记录在 `TEST.md`。
 - 真机 USB / LAN、真实 Android `ClipboardManager`、真实 `NSPasteboard`、
   TalkBack 以及长时内存稳定性仍需单独证据。
+- 真实产品 E2E 必须由 `clipboard-e2e-gate` 读取 retained product JSON 判定；
+  该 JSON 必须区分 local ClipboardManager smoke、protocol/offline pass 和真实
+  Android `ClipboardManager` <-> macOS `NSPasteboard` 双向 product transfer。
