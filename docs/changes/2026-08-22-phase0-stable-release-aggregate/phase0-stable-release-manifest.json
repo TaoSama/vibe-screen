@@ -3,11 +3,11 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "1430c3cc18948b93b50b7054e992844f287b6fbc",
+    "base_commit": "4884d80813a7f674a10d574a96f8dfcf5723c6e7",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-28",
+    "audit_date": "2026-08-30",
     "owner": "Vibe Screen core team",
-    "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-08-28-current-main-gate-blocked/README.md"
+    "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "readme_guard": {
     "required_phrases": [
@@ -199,6 +199,27 @@
       "blockers": [
         "No physical Android controller runtime run is recorded.",
         "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
+      ]
+    },
+    {
+      "id": "clipboard_android_macos_product_e2e",
+      "title": "Android/macOS clipboard product E2E",
+      "required_for_stable_release": true,
+      "verdict": "blocked",
+      "evidence_strength": "readiness",
+      "evidence_paths": [
+        "docs/changes/2026-08-16-android-macos-clipboard/TEST.md",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/clipboard-e2e-gate.json",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/clipboard-e2e-gate.json",
+        "docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/clipboard-e2e-gate.json"
+      ],
+      "owner_prs": [],
+      "blockers": [
+        "Host readiness is blocked on stable signing, installed Host source provenance, read-only TCC verification, Host listener availability, virtual HID entitlement, and login/headless readiness.",
+        "No retained bidirectional Android ClipboardManager -> macOS NSPasteboard and macOS NSPasteboard -> Android ClipboardManager product transfer evidence exists with exact system clipboard endpoints, explicit user action, Protocol v1 session ownership, verified session epoch, verified origin device ID, 16-byte change ID, SHA-256 digest, bounded byte length, final digest match, distinct markers, and final marker equality.",
+        "Existing P0110 evidence proves only local Android ClipboardManager smoke and offline/protocol readiness; it must not be relabeled as Xiaomi 13/fuxi evidence."
       ]
     },
     {

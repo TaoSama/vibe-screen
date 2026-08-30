@@ -1,7 +1,8 @@
 # Phase 0 stable-release aggregate owner
 
-Date: 2026-08-28
-Base: origin/main at 1430c3cc18948b93b50b7054e992844f287b6fbc
+Date: 2026-08-29
+Last refreshed: 2026-08-30
+Base: origin/main at 4884d80813a7f674a10d574a96f8dfcf5723c6e7
 Status: open. This document does not close Phase 0 and does not change product
 status.
 
@@ -36,6 +37,7 @@ stable-release claim is allowed:
 | Host RSS two-hour no-growth | blocked | #158, #195, #222, #230, #237, #260, #329, #376, #387 | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-29 current-base readiness record proves fail-closed diagnostics only and is still blocked before a stable-signed, TCC-ready, listener-observed current-source Host can produce native telemetry and a current-source two-hour `host_rss_gate` pass. |
 | Native pointer HID mouse move/click acceptance | blocked | #232, #268, #361 | Latest current-base summaries remain blocked because no physical Android mouse/touchpad/trackball pass retains Android forwarding logs, Host pointer-injection logs, and visible Mac evidence from one run. |
 | Controller runtime acceptance | blocked | #217, #220, #270 | Latest current-base readiness remains blocked: no physical controller, identity-signed Host with approved virtual HID entitlement, Mac-side response, and neutral disconnect release are recorded in one pass bundle. |
+| Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, but Host readiness is blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |
 | Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, and protocol fixtures pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
 | Phase 0 module ownership extraction | open | #211, #218, #221, #259, #372 | The current-base module ownership manifest closes Android TCP transport plus several `StreamClient` owner slices, but protocol/session, file-transfer and WakeHost product ownership, decoder/renderer, and UI/product session boundaries remain partial or open. |
 
@@ -91,11 +93,11 @@ make phase0-stable-release-gate \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
-The 2026-08-28 current-main refresh is retained under
-`evidence/2026-08-28-current-main-gate-blocked/`. It reports
-`aggregate_verdict=blocked`, `can_mark_phase0_stable_release=false`, six
-blocking required gates, and `source_guard.verdict=pass` for
-`1430c3cc18948b93b50b7054e992844f287b6fbc`.
+The 2026-08-30 manifest refresh binds the aggregate source guard to
+`4884d80813a7f674a10d574a96f8dfcf5723c6e7` and keeps the Android/macOS
+clipboard product E2E gate as a required Phase 0 gate that is blocked. The last retained
+summary bundle remains under `evidence/2026-08-28-current-main-gate-blocked/` and
+should be regenerated after this manifest change is merged.
 
 ## Update rules
 

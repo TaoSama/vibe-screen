@@ -36,6 +36,7 @@ COMPLETE_MANIFEST_STRENGTHS = {
     "host_rss_2h_no_growth": "current-real-device",
     "native_pointer_hid_mouse": "current-real-device",
     "controller_runtime_acceptance": "current-real-device",
+    "clipboard_android_macos_product_e2e": "current-real-device",
     "file_transfer_android_product_e2e": "current-real-device",
     "module_ownership_extraction": "current-source",
 }
@@ -319,6 +320,23 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(
             summary["missing_required_gate_ids"],
             ["macos_host_hardware_compatibility_matrix"],
+        )
+
+    def test_clipboard_product_e2e_is_required(self) -> None:
+        manifest = complete_manifest()
+        manifest["required_gates"] = [
+            gate
+            for gate in manifest["required_gates"]
+            if gate["id"] != "clipboard_android_macos_product_e2e"
+        ]
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertFalse(summary["can_mark_phase0_stable_release"])
+        self.assertEqual(
+            summary["missing_required_gate_ids"],
+            ["clipboard_android_macos_product_e2e"],
         )
 
     def test_readme_guard_fails_on_phase0_has_shipped_claim(self) -> None:
