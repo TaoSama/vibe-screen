@@ -30,7 +30,7 @@
     "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
     "cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
     "certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
-    "current_source_commit": "32146152100477660eaf0ddb10befa8af48ea4fd",
+    "current_source_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
     "current_source_dirty": false,
     "current_source_tree": "794fe2ca90de2a80396b34f8f6507181948d0c55",
     "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9aae572bf6d764e3436a6109197d345b5a87998c\"",

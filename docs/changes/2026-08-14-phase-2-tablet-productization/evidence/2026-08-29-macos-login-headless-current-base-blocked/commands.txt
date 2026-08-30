@@ -2,7 +2,7 @@ Current-base source setup:
 
   git fetch origin main --prune
   git rev-parse origin/main
-  # 32146152100477660eaf0ddb10befa8af48ea4fd
+  # e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd
 
   git worktree add --detach <redacted-source-worktree> origin/main
   git -C <redacted-source-worktree> status --short --branch

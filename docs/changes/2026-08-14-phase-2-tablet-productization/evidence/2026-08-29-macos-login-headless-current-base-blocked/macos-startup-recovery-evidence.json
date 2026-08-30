@@ -79,7 +79,7 @@
   },
   "run_id": "2026-08-29-macos-login-headless-current-base-blocked",
   "schema_version": "vibescreen.evidence/v1",
-  "source_commit": "32146152100477660eaf0ddb10befa8af48ea4fd",
+  "source_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd",
   "unattended_recovery": {
     "bounded_exhaustion_observed": false,
     "full_speed_loop_observed": false,

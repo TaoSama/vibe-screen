@@ -2,7 +2,7 @@
 
 Result: blocked. This package refreshes the macOS login-startup, headless Mac
 mini, and unattended-recovery readiness state from current `origin/main` commit
-`32146152100477660eaf0ddb10befa8af48ea4fd`. It is prerequisite evidence only;
+`e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`. It is prerequisite evidence only;
 no macOS logout/login, reboot, headless display run, Android reconnect run, or
 window-recovery run was performed.
 
