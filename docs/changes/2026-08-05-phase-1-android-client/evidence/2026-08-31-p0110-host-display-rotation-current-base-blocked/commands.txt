@@ -1,0 +1,16 @@
+# 2026-08-31 host display rotation current-base blocked commands
+pgrep -x sfltool || true
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base --is-ancestor origin/main HEAD
+EVIDENCE_SERIAL="${EVIDENCE_SERIAL:?set the captured ADB serial}" make host-display-rotation-current-base-manifest EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked
+EVIDENCE_SERIAL="${EVIDENCE_SERIAL:?set the captured ADB serial}" make host-display-rotation-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked/host-display-rotation.json --check-artifacts --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked/host-display-rotation-gate.json
+pgrep -x sfltool || true
+
+# Post-refresh metadata binding
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked/privacy-scan.json
+(cd docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked && shasum -a 256 README.md codesigning-identities.txt commands.txt device-identity.txt git-head.txt git-origin-main-ancestor.exit-code git-origin-main.txt host-display-rotation-current-base-gate.exit-code host-display-rotation-current-base-gate.json host-display-rotation-current-base-gate.stderr host-display-rotation-current-base-gate.stdout host-display-rotation-current-base-manifest.exit-code host-display-rotation-current-base-manifest.json host-display-rotation-current-base-manifest.stderr host-display-rotation-current-base-manifest.stdout host-display-rotation-gate.exit-code host-display-rotation-gate.json host-display-rotation-gate.stderr host-display-rotation-gate.stdout host-display-rotation.json host-displays-before.txt host-preflight.txt installed-host-codesign.txt privacy-scan.json repository-state.txt sfltool-pgrep-end.txt sfltool-pgrep-start.txt > SHA256SUMS)
+(cd docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked && shasum -a 256 -c SHA256SUMS)
+python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked --check
+pgrep -x sfltool || true
