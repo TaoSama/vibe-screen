@@ -1,7 +1,7 @@
 {
   "run_id": "2026-08-30-current-base-blocked",
   "current_main_verified": true,
-  "current_main_sha": "bf0e1aca424af3db0f9da435fefd56aea5eea40c",
+  "current_main_sha": "a9791336a105d234609ab55dad0a2713957a142a",
   "magic_packet_path_baseline_merged": true,
   "paired_authorization_offline_passed": true,
   "device_identity_recorded": false,
@@ -29,5 +29,5 @@
     "No login-item diagnostic path was invoked: /usr/bin/sfltool dumpbtm, --include-login-item-diagnostic, --inspect-login-items, and --probe-login-items were not run.",
     "No real sleeping Mac, identity-signed Host TCC readiness, WOL-capable network path, packet capture, or post-wake Host availability evidence was collected for this current-base audit."
   ],
-  "notes": "Current-base audit records origin/main bf0e1aca424af3db0f9da435fefd56aea5eea40c and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained."
+  "notes": "Current-base audit records origin/main a9791336a105d234609ab55dad0a2713957a142a and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained."
 }

@@ -33,7 +33,7 @@
   ],
   "can_claim_sleeping_mac_wake": false,
   "can_close_wake_host_current_base_gate": false,
-  "current_main_sha": "bf0e1aca424af3db0f9da435fefd56aea5eea40c",
+  "current_main_sha": "a9791336a105d234609ab55dad0a2713957a142a",
   "failure_reasons": [],
   "kind": "wake_host_current_base_gate",
   "missing_requirements": [
@@ -82,7 +82,7 @@
       "requirement": "retain client logs covering the authorized and negative WakeHost attempts"
     }
   ],
-  "notes": "Current-base audit records origin/main bf0e1aca424af3db0f9da435fefd56aea5eea40c and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained.",
+  "notes": "Current-base audit records origin/main a9791336a105d234609ab55dad0a2713957a142a and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained.",
   "observations": {
     "client_logs_retained": false,
     "current_main_verified": true,

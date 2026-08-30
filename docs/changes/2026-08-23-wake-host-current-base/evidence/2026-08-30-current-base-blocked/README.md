@@ -5,7 +5,7 @@
 Status: blocked. Gate closed: false.
 
 This package refreshes the WakeHost current-base owner against origin/main
-`bf0e1aca424af3db0f9da435fefd56aea5eea40c`. The runtime baseline still
+`a9791336a105d234609ab55dad0a2713957a142a`. The runtime baseline still
 contains the authenticated Protocol v1 WakeHost request path and UDP
 Wake-on-LAN magic-packet sender. Focused offline checks cover the evidence gate
 and the fail-closed verification path.
