@@ -18,6 +18,7 @@ import sys
 from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
+from .phase2_device_environment import REQUIRED_FIELDS as DEVICE_ENVIRONMENT_REQUIRED_FIELDS
 from .phase2_tablet_manifest import NUBIA_P0110_CODENAME
 from .phase2_tablet_manifest import NUBIA_P0110_MODEL
 
@@ -91,6 +92,18 @@ EMPTY_ALLOWED_ARTIFACTS = {
     "thermal-before.err",
     "thermal-after.err",
 }
+
+DEFAULT_DEVICE_ENVIRONMENT_OBSERVATIONS = (
+    "phase2-device-environment-observations.json",
+)
+DEFAULT_DEVICE_MEMORY_GATE = (
+    "soak-8h/phase2-device-memory-gate.json",
+    "phase2-device-memory-gate.json",
+)
+DEFAULT_DEVICE_ENVIRONMENT_SUMMARY = (
+    "soak-8h/phase2-device-environment-summary.json",
+    "phase2-device-environment-summary.json",
+)
 
 REQUIRED_RECOVERY_SCENARIOS = (
     "foreground_background",
@@ -475,6 +488,75 @@ def _thermal_power_gate(root: Path, soak_gate: dict[str, Any], soak_document: di
     return _gate("thermal_power_stand_charging", status, evidence=evidence, reasons=reasons)
 
 
+def _device_memory_gate(root: Path) -> dict[str, Any]:
+    path = _existing_path(root, DEFAULT_DEVICE_MEMORY_GATE)
+    document, error = _read_optional_json(path, "Phase 2 device-memory gate")
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate("device_memory", MISSING, evidence=[item for item in evidence if item], reasons=[error])
+    kind = (document or {}).get("kind")
+    verdict = (document or {}).get("verdict")
+    reasons: list[str] = []
+    if kind != "phase2_device_memory_gate":
+        reasons.append(f"device-memory gate kind is {kind!r}, expected phase2_device_memory_gate")
+    if verdict != PASS:
+        reasons.append(f"device-memory gate verdict is {verdict!r}, not 'pass'")
+    return _gate(
+        "device_memory",
+        INSUFFICIENT if reasons else PASS,
+        evidence=[item for item in evidence if item],
+        reasons=reasons,
+    )
+
+
+def _device_environment_summary_gate(root: Path) -> dict[str, Any]:
+    path = _existing_path(root, DEFAULT_DEVICE_ENVIRONMENT_SUMMARY)
+    document, error = _read_optional_json(path, "Phase 2 device-environment summary")
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate("stand_charging_thermal_power", MISSING, evidence=[item for item in evidence if item], reasons=[error])
+    reasons: list[str] = []
+    if (document or {}).get("kind") != "phase2_device_environment_gate":
+        reasons.append(f"device-environment summary kind is {(document or {}).get('kind')!r}, expected phase2_device_environment_gate")
+    if (document or {}).get("verdict") != PASS:
+        reasons.append(f"device-environment summary verdict is {(document or {}).get('verdict')!r}, not 'pass'")
+    for field in ("can_close_device_environment_gate", "can_close_stand_charging_gate"):
+        if (document or {}).get(field) is not True:
+            reasons.append(f"device-environment summary {field} is not true")
+    status = BLOCKED if str((document or {}).get("verdict", "")).startswith("blocked") else INSUFFICIENT
+    return _gate(
+        "stand_charging_thermal_power",
+        status if reasons else PASS,
+        evidence=[item for item in evidence if item],
+        reasons=reasons,
+    )
+
+
+def _device_environment_observations_gate(root: Path) -> dict[str, Any]:
+    path = _existing_path(root, DEFAULT_DEVICE_ENVIRONMENT_OBSERVATIONS)
+    document, error = _read_optional_json(path, "Phase 2 device-environment observations")
+    evidence = [_relative(root, path)] if path is not None else []
+    if error is not None:
+        return _gate("device_environment_observations", MISSING, evidence=[item for item in evidence if item], reasons=[error])
+    reasons: list[str] = []
+    if (document or {}).get("kind") != "phase2_device_environment_observations":
+        reasons.append(f"device-environment observations kind is {(document or {}).get('kind')!r}, expected phase2_device_environment_observations")
+    observations = (document or {}).get("observations")
+    if not isinstance(observations, dict):
+        observations = {}
+    for field, _requirement in DEVICE_ENVIRONMENT_REQUIRED_FIELDS:
+        if field not in observations:
+            reasons.append(f"device-environment observations missing boolean field {field}")
+        elif observations[field] is not True:
+            reasons.append(f"device-environment observations field {field} is not true")
+    return _gate(
+        "device_environment_observations",
+        INSUFFICIENT if reasons else PASS,
+        evidence=[item for item in evidence if item],
+        reasons=reasons,
+    )
+
+
 def _recovery_gate(root: Path, explicit_path: Path | None) -> dict[str, Any]:
     path = explicit_path or _existing_path(root, DEFAULT_RECOVERY_EVIDENCE)
     document, error = _read_optional_json(path, "recovery evidence")
@@ -537,6 +619,9 @@ def derive_preflight(
     soak_result = _soak_gate(root, loaded_soak_path)
     gates.append(soak_result)
     gates.append(_thermal_power_gate(root, soak_result, loaded_soak))
+    gates.append(_device_memory_gate(root))
+    gates.append(_device_environment_summary_gate(root))
+    gates.append(_device_environment_observations_gate(root))
     gates.append(_recovery_gate(root, recovery_evidence_path))
 
     reasons: list[str] = []
@@ -574,8 +659,8 @@ def derive_preflight(
         "reasons": reasons,
         "interpretation": (
             "A pass means this evidence bundle contains the required physical 8-9 inch tablet, "
-            "portrait/landscape UI, stylus, hardware keyboard, recovery, thermal/power, and "
-            "eight-hour soak artifacts. A blocked verdict means the run cannot close Phase 2 "
+            "portrait/landscape UI, stylus, hardware keyboard, recovery, device-memory, "
+            "device-environment, thermal/power, and eight-hour soak artifacts. A blocked verdict means the run cannot close Phase 2 "
             "because the available device or setup is not the required tablet hardware."
         ),
     }
