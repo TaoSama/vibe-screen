@@ -14,7 +14,20 @@
       "sha256": "a12d490c236dedddacaafabdb510d8d6aff405c61ad1622cdfa106c4fadb5750"
     },
     {
-      "bytes": 1133,
+      "bytes": 30,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "codesigning-identities.txt",
+      "result": "pass",
+      "sha256": "0ad30eb1563c325d77f4dc564c5d96851d5a39205307f5cdd7d762b59688f87a"
+    },
+    {
+      "bytes": 1209,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,7 +37,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "ea5dc4ca2fca51982c05fe7b06b554f5684e3ec374221038853eaaa39f5e6832"
+      "sha256": "f2898509a95783d5176fa2e0c2d5949d61010b04be9eb2ee7ecf0bd1201c8270"
     },
     {
       "bytes": 317,
@@ -272,6 +285,19 @@
       "path": "host-preflight.txt",
       "result": "pass",
       "sha256": "74440d6b3c966f214f37a8a5b75b0a0144122f71f147b9a4a932233954565123"
+    },
+    {
+      "bytes": 967,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "installed-host-codesign.txt",
+      "result": "pass",
+      "sha256": "b2fcb0fad5fa52362de9f57117808538f30f2de7cca79b5e5b40a373cb51af65"
     },
     {
       "bytes": 0,
