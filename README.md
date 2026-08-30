@@ -479,6 +479,7 @@ pending a signed Host/device run; see the
 and the blocked E2E evidence under
 [2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md),
 [2026-08-30-nubia-p0110-clipboard-e2e-current-base-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-30-nubia-p0110-clipboard-e2e-current-base-blocked/README.md),
+[2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/README.md),
 [2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md)
 and
 [2026-08-28-p0110-pacific-usb-e2e-current-source](docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).

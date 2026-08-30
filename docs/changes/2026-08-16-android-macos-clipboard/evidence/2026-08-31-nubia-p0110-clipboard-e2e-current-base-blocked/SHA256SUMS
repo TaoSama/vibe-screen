@@ -1,0 +1,17 @@
+5bab4fb0a667e4a9377ed7f3241bb341c8d439dd998673ae3d376b8c9bdbb726  ./android-clipboard-instrumentation.txt
+04b7777dd24c2aac92d195d5728e32f0f5589f34b18ad0e0221e4b6b5269ec54  ./clipboard-e2e-gate.json
+c3f54f2d27f9d97dfd9fdc8731cba6a69ec79630923f66c04cc7d31e749fbb7d  ./commands.txt
+1879741f93a7172daee9bad4b72fdc2dc7504c6b11290270f484fb6a6fa02d1f  ./git-head.txt
+1879741f93a7172daee9bad4b72fdc2dc7504c6b11290270f484fb6a6fa02d1f  ./git-origin-main.txt
+c2678ac575e243b3fca9144ebe69b15dbd30761d7b3291a43de1b406cb403328  ./host-readiness.json
+525adbf1b701cb2aff4bf50e04b57e8d515b033ea936b1830e961f3734284b05  ./host-signing-and-permissions.txt
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./pgrep-sfltool-end.exit
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./pgrep-sfltool-end.txt
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./pgrep-sfltool-start.exit
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./pgrep-sfltool-start.txt
+2da3176c7112b18737b62ff2ab86a1019c9baff58e5ad6224812865269fa718d  ./privacy-scan.json
+a386b3f286e84c3dd85f46ecd5fd528eeb634ab01686c4d8d4cbc585f504a147  ./README.md
+961dc40be91d9fad3a5511f6428eb2b258fe21694a398cb6d0383f3ea0883a8e  ./source-baseline.txt
+e58fb8a1d0275271b65d894cdf6c4c77ce30528cafd6612f71ede26b85391223  ./trusted-lan-preflight.json
+74440d6b3c966f214f37a8a5b75b0a0144122f71f147b9a4a932233954565123  ./usb-host-preflight.txt
+79b03c5be13e811c8fe8ff913ed5eacea13eceb3e4f455f3d07421432f1c39d0  ./usb-smoke-preflight.json

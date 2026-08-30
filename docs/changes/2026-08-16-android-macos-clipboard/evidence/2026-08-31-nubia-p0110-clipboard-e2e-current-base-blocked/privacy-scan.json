@@ -1,0 +1,230 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4031,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "a386b3f286e84c3dd85f46ecd5fd528eeb634ab01686c4d8d4cbc585f504a147"
+    },
+    {
+      "bytes": 88,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation.txt",
+      "result": "pass",
+      "sha256": "5bab4fb0a667e4a9377ed7f3241bb341c8d439dd998673ae3d376b8c9bdbb726"
+    },
+    {
+      "bytes": 6881,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.json",
+      "result": "pass",
+      "sha256": "04b7777dd24c2aac92d195d5728e32f0f5589f34b18ad0e0221e4b6b5269ec54"
+    },
+    {
+      "bytes": 4101,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "c3f54f2d27f9d97dfd9fdc8731cba6a69ec79630923f66c04cc7d31e749fbb7d"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-head.txt",
+      "result": "pass",
+      "sha256": "1879741f93a7172daee9bad4b72fdc2dc7504c6b11290270f484fb6a6fa02d1f"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-origin-main.txt",
+      "result": "pass",
+      "sha256": "1879741f93a7172daee9bad4b72fdc2dc7504c6b11290270f484fb6a6fa02d1f"
+    },
+    {
+      "bytes": 6226,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness.json",
+      "result": "pass",
+      "sha256": "c2678ac575e243b3fca9144ebe69b15dbd30761d7b3291a43de1b406cb403328"
+    },
+    {
+      "bytes": 1489,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "525adbf1b701cb2aff4bf50e04b57e8d515b033ea936b1830e961f3734284b05"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "pgrep-sfltool-end.exit",
+      "result": "pass",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "pgrep-sfltool-end.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "pgrep-sfltool-start.exit",
+      "result": "pass",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "pgrep-sfltool-start.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 42,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "source-baseline.txt",
+      "result": "pass",
+      "sha256": "961dc40be91d9fad3a5511f6428eb2b258fe21694a398cb6d0383f3ea0883a8e"
+    },
+    {
+      "bytes": 9050,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "trusted-lan-preflight.json",
+      "result": "pass",
+      "sha256": "e58fb8a1d0275271b65d894cdf6c4c77ce30528cafd6612f71ede26b85391223"
+    },
+    {
+      "bytes": 1308,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-host-preflight.txt",
+      "result": "pass",
+      "sha256": "74440d6b3c966f214f37a8a5b75b0a0144122f71f147b9a4a932233954565123"
+    },
+    {
+      "bytes": 7263,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.json",
+      "result": "pass",
+      "sha256": "79b03c5be13e811c8fe8ff913ed5eacea13eceb3e4f455f3d07421432f1c39d0"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

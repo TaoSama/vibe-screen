@@ -1,0 +1,52 @@
+git fetch origin main --prune
+git rev-parse HEAD
+git rev-parse origin/main
+git branch --show-current
+pgrep -x sfltool || true
+python3 scripts/macos_dev_host.py readiness \
+  --source-root . \
+  --report docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/host-signing-and-permissions.txt \
+  --json-output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/host-readiness.json \
+  --port 54321
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --expected-manufacturer nubia \
+  --expected-model P0110 \
+  --expected-device pacific \
+  --expected-android-release 16 \
+  --expected-sdk 36 \
+  --host-preflight-report docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/usb-host-preflight.txt \
+  --held-lock /tmp/vibe-screen-android-REDACTED_P0110_USB_SERIAL.lock \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/usb-smoke-preflight.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_preflight \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --repo . \
+  --host-port 54321 \
+  --host-preflight-command python3 scripts/macos_dev_host.py preflight \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/trusted-lan-preflight.json
+cd baseline/AndroidClient && ./gradlew --no-daemon clean \
+  :app:testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest \
+  --tests dev.telemachus.display.ClientExperienceTest \
+  :app:assembleDebug :app:assembleDebugAndroidTest
+adb -s REDACTED_P0110_USB_SERIAL install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s REDACTED_P0110_USB_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s REDACTED_P0110_USB_SERIAL shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.clipboard_e2e_gate \
+  --host-readiness docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/host-readiness.json \
+  --usb-preflight docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/usb-smoke-preflight.json \
+  --trusted-lan-preflight docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/trusted-lan-preflight.json \
+  --android-clipboard-instrumentation-log docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/android-clipboard-instrumentation.txt \
+  --product-e2e docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/missing-product-e2e.json \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/clipboard-e2e-gate.json
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked/privacy-scan.json
+cd docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-31-nubia-p0110-clipboard-e2e-current-base-blocked
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
