@@ -1,0 +1,23 @@
+# Command log
+
+Started: 2026-08-30T07:08:20Z
+Current-base commit: 87e16d8bea4446c1ca449045678f1bafc7fd6cb2
+Current source tree: 3876110ef137887daa444293e1dc646d7100e9b1
+Cleaned current-base checkout: yes
+
+- `git fetch origin`: confirmed `HEAD` and `origin/main` both at
+  `87e16d8bea4446c1ca449045678f1bafc7fd6cb2`.
+- `pgrep -x sfltool || true` before readiness: no output.
+- `make baseline-macos-host-readiness EVIDENCE_DIR=<clean-output>` from a detached
+  clean `origin/main` checkout: exit 2; refreshed `host-readiness.json` records
+  `host.current_source_commit=87e16d8bea4446c1ca449045678f1bafc7fd6cb2`,
+  `host.current_source_dirty=false`, `status=blocked`,
+  `can_start_host_rss_gate=false`, and `login_item.state=unverified`.
+- `python3 scripts/macos_dev_host.py xctest-preflight --json-output <clean-output>/xctest-toolchain.json`:
+  exit 2; `developer_dir_kind=command_line_tools`, `has_xctest=false`,
+  `can_run_swiftpm_xctest=false`.
+- `pgrep -x sfltool || true` after checks: no output.
+
+Forbidden commands/options were not used: `/usr/bin/sfltool dumpbtm`,
+`--include-login-item-diagnostic`, `--inspect-login-items`,
+`--probe-login-item`, or `--probe-login-items`.

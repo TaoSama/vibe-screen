@@ -304,6 +304,8 @@ and the v2 soak evidence at
 Current-source rerun readiness remains blocked by stable-signing, installed
 Host integrity/provenance, TCC, listener, virtual-HID entitlement, and full
 Xcode/XCTest prerequisites; see
+[docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md)
+and the prior
 [docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md).
 The Xiaomi 13 baseline evidence is recorded under
 [docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-redacted](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md). The display-switch round-trip and offline self-tests are recorded under
