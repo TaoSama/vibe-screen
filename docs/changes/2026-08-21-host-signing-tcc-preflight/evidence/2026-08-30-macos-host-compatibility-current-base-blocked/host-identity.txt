@@ -1,0 +1,11 @@
+ProductName:		macOS
+ProductVersion:		26.4.1
+BuildVersion:		25E253
+arm64
+Mac16,8
+Apple M4 Pro
+87e16d8bea4446c1ca449045678f1bafc7fd6cb2
+87e16d8bea4446c1ca449045678f1bafc7fd6cb2
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+swift-driver version: 1.148.6 Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)
+Target: arm64-apple-macosx26.0

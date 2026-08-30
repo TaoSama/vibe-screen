@@ -1,9 +1,9 @@
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-app-apk-install.exit
 781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7  ./android-app-apk-install.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-clipboard-instrumentation.exit
-cdd62d514221d033c9134acb3423b5e00f698be6eba7eb6575f5d7293e7cdcf0  ./android-clipboard-instrumentation.txt
+8cdc694736bff2496d7dbe46428b304a3a4d92db7c45263e4b3f6afd18eb5610  ./android-clipboard-instrumentation.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-current-base-build-jvm.exit
-71fe143339c05b477e352a63af27b1189a3afbb4fe0d21aca39c6149207bd198  ./android-current-base-build-jvm.txt
+9da48a0a12309a015ed4208b7e61b8d170ba2e1153fc125645237cd98ebdfd68  ./android-current-base-build-jvm.txt
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./android-test-apk-install.exit
 781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7  ./android-test-apk-install.txt
 04b7777dd24c2aac92d195d5728e32f0f5589f34b18ad0e0221e4b6b5269ec54  ./clipboard-e2e-gate.json
