@@ -207,6 +207,40 @@ Focused checks for this current-base owner record:
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb -v` | PASS | Independent after packaging; covers trusted-LAN preflight redaction, blocked/pass evidence classification, and explicit-serial ADB boundaries. |
 | `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
 
+## 2026-08-30 current-base preflight recheck (trusted-lan-p0110)
+
+The `codex/trusted-lan-p0110-current-base-20260830` branch was created from the
+latest `origin/main` commit `87e16d8bea4446c1ca449045678f1bafc7fd6cb2` in a
+clean worktree. Open PRs were audited and no current open PR closes the
+trusted-LAN stream/reconnect gate for this base. The read-only trusted-LAN
+preflight ran on the Nubia P0110 / pacific / Android 16 / SDK 36 device
+(`<device-serial>`) without launching Host, pairing, streaming, reconnect, or
+timing disruption.
+
+The real trusted-LAN smoke remains blocked before Host launch or pairing:
+Wi-Fi is enabled but not associated, `wlan0` has no carrier or IPv4 address,
+Android has no `wlan0` route to a Mac LAN IPv4 candidate, and Host stable
+signing is blocked because the `Vibe Screen Dev` codesigning identity is
+unavailable. The shared Host readiness snapshot reports
+`can_start_trusted_lan_gate=false`; TCC was not evaluated because stable
+signing failed, and no TCP `54321` LAN listener was observed at preflight time.
+A blocked reconnect timing summary was retained with `can_close_timing_gate=false`
+and no required disruption exercised.
+
+No real trusted-LAN stream, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS evidence was observed. The retained
+artifact bundle is
+[`evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830/README.md`](evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830/README.md).
+
+Focused checks for this current-base owner record:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=/tmp/vibe-screen-trusted-lan-p0110-current-base-20260830/lan` | BLOCKED, exit 2 | Confirmed Nubia P0110/pacific identity, recorded Wi-Fi/wlan0/route blockers and Host signing blocker, and stopped before Host launch or pairing. |
+| `make baseline-macos-host-readiness EVIDENCE_DIR=/tmp/vibe-screen-trusted-lan-p0110-current-base-20260830/host` | BLOCKED, exit 2 | `can_start_trusted_lan_gate=false`; stable signing, TCC evaluation, Host listener, and evidence-grade Host readiness remained blocked. The default command did not probe login items. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing --blocked ...` | BLOCKED, exit 3 | Wrote `reconnect-timing-summary.json` with `can_close_timing_gate=false` and no disruption exercised. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
+
 ## 2026-08-22 fail-closed preflight
 
 The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`

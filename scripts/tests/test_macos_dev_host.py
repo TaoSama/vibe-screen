@@ -1233,6 +1233,39 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertFalse(document["can_start_native_hid_gate"])
         self.assertFalse(document["can_start_stylus_gate"])
         self.assertFalse(document["can_start_hardware_keyboard_gate"])
+        self.assertIsNone(document["permissions"]["screen_recording_granted"])
+        self.assertIsNone(document["permissions"]["accessibility_granted"])
+
+    def test_readiness_document_records_false_for_readable_denied_tcc_permissions(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=MacOSDevHostMetadataTests.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=macos_dev_host.USER_TCC_DATABASE_LABEL,
+                rows=(),
+                readable=True,
+            ),
+            errors=["Screen Recording is not authorized for the installed Host"],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=True,
+                keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                raw_output="",
+            ),
+            *self.login_ready_inputs(),
+        )
+
+        self.assertFalse(document["permissions"]["screen_recording_granted"])
+        self.assertFalse(document["permissions"]["accessibility_granted"])
         self.assertFalse(document["can_start_controller_runtime_gate"])
         self.assertFalse(document["can_start_headless_login_gate"])
         self.assertFalse(document["can_close_runtime_gates"])

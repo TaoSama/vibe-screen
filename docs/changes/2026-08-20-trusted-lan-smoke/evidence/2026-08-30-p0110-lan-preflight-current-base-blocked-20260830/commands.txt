@@ -1,0 +1,70 @@
+# Command summary
+
+Branch: `codex/trusted-lan-p0110-current-base-20260830`
+Head commit: `87e16d8bea4446c1ca449045678f1bafc7fd6cb2`
+Target device serial: `<device-serial>`
+Device: nubia P0110 / pacific / Android 16 / SDK 36
+DEVICE_SERIAL='<device-serial>'
+
+Initial safety check:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Trusted-LAN preflight, expected blocked exit `2`:
+
+```sh
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL="$DEVICE_SERIAL" \
+  EVIDENCE_DIR=/tmp/vibe-screen-trusted-lan-p0110-current-base-20260830/lan
+```
+
+Host readiness, expected blocked exit `2`; no login-item diagnostic option was
+passed:
+
+```sh
+make baseline-macos-host-readiness \
+  EVIDENCE_DIR=/tmp/vibe-screen-trusted-lan-p0110-current-base-20260830/host
+```
+
+Reconnect timing blocked summary, expected blocked exit `3` from the Python
+module before the wrapper records it:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36" \
+  --blocker "Android Wi-Fi is not associated" \
+  --blocker "wlan0 has no IPv4 route to the Mac LAN candidate" \
+  --blocker "Host stable signing is blocked before trusted-LAN evidence can start" \
+  --artifact trusted-lan-preflight.json \
+  --artifact host-readiness.json \
+  --notes "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise" \
+  --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830/reconnect-timing-summary.json
+```
+
+Evidence checker:
+
+```sh
+make trusted-lan-smoke-evidence-check \
+  EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830
+```
+
+Focused tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb -v
+```
+
+Post-review host-readiness serialization fix; no Host readiness probe or
+login-item diagnostic was run:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v
+make trusted-lan-smoke-evidence-check \
+  EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830
+(cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830 && \
+  shasum -a 256 commands.txt host-readiness-command.exit host-readiness.json host-signing-and-permissions.txt preflight-command.exit README.md reconnect-timing-command.exit reconnect-timing-summary.json trusted-lan-preflight.json trusted-lan-smoke-evidence-check.exit trusted-lan-smoke-verdict.json > SHA256SUMS)
+(cd docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-30-p0110-lan-preflight-current-base-blocked-20260830 && shasum -a 256 -c SHA256SUMS)
+```
