@@ -1,0 +1,33 @@
+{
+  "run_id": "2026-08-30-current-base-blocked",
+  "current_main_verified": true,
+  "current_main_sha": "a9791336a105d234609ab55dad0a2713957a142a",
+  "magic_packet_path_baseline_merged": true,
+  "paired_authorization_offline_passed": true,
+  "device_identity_recorded": false,
+  "identity_signed_host_tcc_ready": false,
+  "wake_for_network_access_enabled": false,
+  "host_sleep_state_recorded": false,
+  "router_broadcast_or_directed_wol_verified": false,
+  "magic_packet_emitted_after_authorization": false,
+  "network_packet_capture_retained": false,
+  "mac_woke_from_sleep_observed": false,
+  "post_wake_host_available_observed": false,
+  "negative_unpaired_rejected": true,
+  "negative_expired_authorization_rejected": true,
+  "negative_replayed_nonce_rejected": true,
+  "negative_wrong_key_or_signature_rejected": true,
+  "host_logs_retained": false,
+  "client_logs_retained": false,
+  "wake_attempt_failed_observed": false,
+  "artifact_paths": [
+    "commands.txt",
+    "wake-host-current-base-observations.json"
+  ],
+  "blocking_notes": [
+    "The explicit pgrep -x sfltool absence check observed no sfltool process before this current-base audit.",
+    "No login-item diagnostic path was invoked: /usr/bin/sfltool dumpbtm, --include-login-item-diagnostic, --inspect-login-items, and --probe-login-items were not run.",
+    "No real sleeping Mac, identity-signed Host TCC readiness, WOL-capable network path, packet capture, or post-wake Host availability evidence was collected for this current-base audit."
+  ],
+  "notes": "Current-base audit records origin/main a9791336a105d234609ab55dad0a2713957a142a and focused offline WakeHost coverage only. It remains blocked until real sleeping-Mac Wake-on-LAN evidence is retained."
+}

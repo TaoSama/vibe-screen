@@ -1,0 +1,14 @@
+set -euo pipefail
+if pgrep -x sfltool; then exit 1; else status=$?; test "$status" -eq 1; fi
+git fetch origin main --prune
+CURRENT_MAIN_SHA=$(git rev-parse origin/main)
+test "$CURRENT_MAIN_SHA" = "a9791336a105d234609ab55dad0a2713957a142a"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base -v
+EVIDENCE_DIR=.build/evidence/wake-host-current-base-smoke-20260830-2
+mkdir -p "$EVIDENCE_DIR"
+if make wake-host-current-base-gate EVIDENCE_DIR="$EVIDENCE_DIR"; then exit 1; else status=$?; test "$status" -eq 2; fi
+jq -e '.verdict == "blocked" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' "$EVIDENCE_DIR/wake-host-current-base-gate.json"
+if PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.wake_host_current_base docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-30-current-base-blocked/wake-host-current-base-observations.json --output docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-30-current-base-blocked/wake-host-current-base-gate.json; then exit 1; else status=$?; test "$status" -eq 1; fi
+jq -e '.verdict == "blocked" and .current_main_sha == "a9791336a105d234609ab55dad0a2713957a142a" and (.can_close_wake_host_current_base_gate == false) and (.can_claim_sleeping_mac_wake == false)' docs/changes/2026-08-23-wake-host-current-base/evidence/2026-08-30-current-base-blocked/wake-host-current-base-gate.json
+git diff --check
+if pgrep -x sfltool; then exit 1; else status=$?; test "$status" -eq 1; fi
