@@ -1,0 +1,53 @@
+{
+  "artifact_paths": [
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/adb-reverse-before.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/android-pid-before.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/device-info.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/host-54321-listener.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/host-readiness.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/host-signing-and-permissions.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/trusted-lan-preflight.json"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Host source-provenance stable signing is blocked: codesign identity 'Vibe Screen Dev' not found in the keychain and /Applications/Vibe Screen.app inspection failed",
+    "Host listener is not observed on TCP port 54321",
+    "TCC permissions were not evaluated because Host bundle signing inspection failed",
+    "trusted LAN preflight reports Android Wi-Fi association, wlan0 IPv4, and wlan0 route to Mac LAN IPv4 blocked; no LAN stream or reconnect was observed"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / SDK 36 / <device-serial>"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "P0110/pacific current-base reconnect within 3s owner blocker refresh. ADB reverse tcp:54321 and dev.telemachus.display were present, but Host source-provenance signing/listener/TCC prerequisites remain blocked; trusted-LAN preflight remains blocked before stream or reconnect. No client kill, ADB reverse removal/restoration, or trusted-LAN network interruption was run. Public evidence uses P0110/pacific identity only and does not claim Xiaomi/fuxi provenance.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Host source-provenance stable signing is blocked: codesign identity 'Vibe Screen Dev' not found in the keychain and /Applications/Vibe Screen.app inspection failed",
+    "Host listener is not observed on TCP port 54321",
+    "TCC permissions were not evaluated because Host bundle signing inspection failed",
+    "trusted LAN preflight reports Android Wi-Fi association, wlan0 IPv4, and wlan0 route to Mac LAN IPv4 blocked; no LAN stream or reconnect was observed"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "1111bf85-815c-4870-8d5c-3cdabd87a6e3",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}
