@@ -54,6 +54,24 @@ acceptance are blocked, display/encoder and retained artifact scope are only
 recorded for this blocked readiness package, and the extrapolation guard remains
 passing.
 
+The 2026-08-31 macOS Host compatibility owner pass refreshed the blocked matrix
+row on current `origin/main` commit `075dc157c36ba71df9f757e571015905881a7154`
+from a clean checkout. It retained the same exact local host identity for Apple
+silicon Mac16,8 / Apple M4 Pro on macOS 26.4.1 build 25E253 with the built-in
+Color LCD plus DELL U2723QE multi-display topology. The shared readiness
+snapshot remained blocked: the configured `Vibe Screen Dev` signing identity was
+not found, strict codesign inspection of the installed Host failed with sealing
+errors so installed binary/source provenance could not be read, Screen Recording
+and Accessibility could not be verified from read-only TCC evidence, the Host
+listener was not observed on TCP `54321`, the installed Host lacks the virtual
+HID entitlement, Launch at Login remains unverified in the default no-`sfltool`
+path, and full Xcode is unavailable because the active developer directory is
+Command Line Tools. No Android runtime probe was started. The retained matrix
+summary is under
+[`evidence/2026-08-31-macos-host-compatibility-current-base-blocked`](evidence/2026-08-31-macos-host-compatibility-current-base-blocked/README.md)
+and reports `verdict=blocked`, `invalid_claims=[]`, and
+`can_close_macos_host_compatibility_row=false`.
+
 The 2026-08-30 macOS Host compatibility owner pass refreshed the blocked matrix
 row on current `origin/main` commit `87e16d8bea4446c1ca449045678f1bafc7fd6cb2`
 from a clean checkout. It retained the same exact local host identity for Apple
@@ -123,6 +141,17 @@ The focused checks for the 2026-08-30 compatibility-matrix refresh are:
 pgrep -x sfltool || true
 make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/macos-host-compat-current-base-20260830-clean
 make macos-hardware-compatibility-gate EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-30-macos-host-compatibility-current-base-blocked
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_hardware_compatibility -v
+git diff --check
+pgrep -x sfltool || true
+```
+
+The focused checks for the 2026-08-31 compatibility-matrix refresh are:
+
+```bash
+pgrep -x sfltool || true
+make baseline-macos-host-readiness EVIDENCE_DIR=.build/evidence/macos-host-compat-owner-20260831b-clean
+make macos-hardware-compatibility-gate EVIDENCE_DIR=docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-blocked
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_macos_hardware_compatibility -v
 git diff --check
 pgrep -x sfltool || true
