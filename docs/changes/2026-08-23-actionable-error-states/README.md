@@ -106,6 +106,18 @@ than showing the ADB-route-unavailable recovery copy, so the state is retained a
 local TCP `54321` listener was present, so TCP-unavailable was not safely
 reproduced on 2026-08-27.
 
+The 2026-08-30 P0110 record is also intentionally `blocked`. It refreshes the
+current-base owner on `origin/main` after #429, records the exact P0110 device
+identity, safely removes and restores ADB reverse `tcp:54321`, and retains an
+Android UI dump plus bounded retry logs. In this run removing the reverse rule
+produced `ECONNREFUSED` and the app showed the `Mac app unavailable` guidance
+with concrete ADB reverse recovery copy. That proves a user-visible actionable
+missing-route state, but it is not yet a distinct ADB-route-unavailable copy or
+closure for the README gate; the same run records that a local TCP `54321`
+listener was present, so TCP-unavailable was not safely reproduced on
+2026-08-30. Screen Recording/Accessibility denial, USB-disconnect capture, and
+stale epoch/session rejection remain blocked/not-run.
+
 ## Device evidence boundary
 
 Future device runs may use Nubia P0110 / pacific / Android 16 / SDK 36 as a
