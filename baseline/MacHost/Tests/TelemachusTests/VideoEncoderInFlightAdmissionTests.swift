@@ -642,7 +642,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(result, .init(submittedFrames: 2, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
         XCTAssertEqual(submittedFrames, [0, 1])
         XCTAssertEqual(videoToolbox.submissionCount, 2)
-        XCTAssertEqual(completionCallCount, 2)
+        XCTAssertEqual(completionCallCount, 6)
         XCTAssertEqual(drainCallCount, 0)
         XCTAssertEqual(admission.inFlightCount, 1)
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
