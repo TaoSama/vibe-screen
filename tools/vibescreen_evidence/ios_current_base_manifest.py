@@ -133,10 +133,24 @@ NATIVE_INPUT_SENSITIVE_TEXT_PATTERNS = (
     re.compile(r"\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
     re.compile(r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_]{8,}", re.IGNORECASE),
 )
+PROBE_SENSITIVE_TEXT_REPLACEMENTS = (
+    (re.compile(r"/Applications/[^\s\"']+/Contents/Developer"), "[redacted-developer-dir]"),
+    (re.compile(r"/Library/Developer/CommandLineTools"), "[redacted-developer-dir]"),
+    (re.compile(r"/Users/[^/\s]+"), "[redacted-user-home]"),
+    (re.compile(r"/home/[^/\s]+"), "[redacted-user-home]"),
+    (re.compile(r"[A-Za-z]:\\Users\\[^\s]+", re.IGNORECASE), "[redacted-user-home]"),
+)
 
 
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _redact_probe_text(value: str) -> str:
+    redacted = value
+    for pattern, replacement in PROBE_SENSITIVE_TEXT_REPLACEMENTS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
 
 
 def _run_probe(command: Sequence[str], cwd: Path | None = None) -> dict[str, Any]:
@@ -153,14 +167,14 @@ def _run_probe(command: Sequence[str], cwd: Path | None = None) -> dict[str, Any
         return {
             "command": list(command),
             "status": "blocked",
-            "detail": str(error),
+            "detail": _redact_probe_text(str(error)),
         }
     output = (result.stdout.strip() or result.stderr.strip()).splitlines()
     return {
         "command": list(command),
         "status": "pass" if result.returncode == 0 else "blocked",
         "exit_code": result.returncode,
-        "summary": output[:8],
+        "summary": [_redact_probe_text(line) for line in output[:8]],
     }
 
 
@@ -367,6 +381,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
+            "can_close_ios_device_acceptance": False,
             "missing": ["ios-app-signing-readiness-gate.json not provided"],
             "failures": [],
         }
@@ -383,6 +398,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
+            "can_close_ios_device_acceptance": False,
             "missing": [f"ios app-signing readiness gate unreadable: {error}"],
             "failures": [],
         }
@@ -397,6 +413,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             "kind": None,
             "verdict": "blocked",
             "can_close_ios_app_signing_readiness": False,
+            "can_close_ios_device_acceptance": False,
             "missing": ["ios app-signing readiness gate must be a JSON object"],
             "failures": [],
         }
@@ -445,6 +462,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         document.get("kind") == SIGNING_READINESS_GATE_KIND
         and document.get("verdict") == "pass"
         and document.get("can_close_ios_app_signing_readiness") is True
+        and document.get("can_close_ios_device_acceptance") is False
         and owner_role == SIGNING_READINESS_OWNER_ROLE
         and owner_head_ref == SIGNING_READINESS_OWNER_BRANCH
         and owner_repository == REPOSITORY_FULL_NAME
@@ -478,6 +496,11 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
             missing = [*missing, "ios app-signing readiness gate signing_summary is incomplete"]
         if not requirements_complete:
             missing = [*missing, "ios app-signing readiness gate readiness_requirements are incomplete"]
+        if document.get("can_close_ios_device_acceptance") is not False:
+            missing = [
+                *missing,
+                "ios app-signing readiness gate must not claim iOS device acceptance closure",
+            ]
 
     return {
         "provided": True,
@@ -493,6 +516,7 @@ def _load_signing_readiness_gate(path: Path | None, repository: dict[str, Any]) 
         "kind": document.get("kind"),
         "verdict": "pass" if can_close else "blocked",
         "can_close_ios_app_signing_readiness": can_close,
+        "can_close_ios_device_acceptance": False,
         "missing": missing,
         "failures": failures,
     }

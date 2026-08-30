@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,6 +14,7 @@ from vibescreen_evidence.ios_current_base_manifest import (
     GATE_OWNERS,
     SCOPE_PRS,
     SOURCE_DOCS,
+    _run_probe,
     _signing_probe,
     build_manifest,
     main,
@@ -141,6 +143,7 @@ def make_signing_readiness_gate(**overrides: object) -> dict[str, object]:
         "kind": "ios_app_signing_readiness_gate",
         "verdict": "pass",
         "can_close_ios_app_signing_readiness": True,
+        "can_close_ios_device_acceptance": False,
         "signing_summary": {
             "status": "pass",
             "bundle_id": "dev.example.vibescreen.acceptance",
@@ -187,6 +190,25 @@ def make_docs(root: Path) -> None:
         target.write_text("fixture\n", encoding="utf-8")
 
 class IOSCurrentBaseManifestTests(unittest.TestCase):
+    @patch("vibescreen_evidence.ios_current_base_manifest.subprocess.run")
+    def test_run_probe_redacts_developer_paths(self, run):
+        run.return_value = SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr=(
+                "xcode-select: error: tool 'xcodebuild' requires Xcode, "
+                "but active developer directory '/Library/Developer/CommandLineTools' "
+                "is a command line tools instance"
+            ),
+        )
+
+        result = _run_probe(["xcodebuild", "-showsdks"])
+        serialized = json.dumps(result, sort_keys=True)
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("[redacted-developer-dir]", serialized)
+        self.assertNotIn("/Library/Developer/CommandLineTools", serialized)
+
     @patch("vibescreen_evidence.ios_current_base_manifest._run_probe")
     def test_signing_probe_redacts_raw_identity_output(self, run_probe):
         identity_hash = "F" * 40
@@ -660,6 +682,29 @@ class IOSCurrentBaseManifestTests(unittest.TestCase):
         )
         self.assertIn(
             "ios app-signing readiness gate readiness_requirements are incomplete",
+            manifest["signing_readiness_gate"]["missing"],
+        )
+        self.assertEqual(manifest["signing"]["status"], "blocked")
+
+    @patch("vibescreen_evidence.ios_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.ios_current_base_manifest.repository_state")
+    def test_signing_readiness_gate_cannot_claim_device_acceptance(self, state, environment):
+        state.return_value = {"revision": CURRENT_BASE_COMMIT, "dirty": False, "status_porcelain": []}
+        environment.return_value = {}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            signing_gate = write_signing_readiness_gate(
+                root,
+                can_close_ios_device_acceptance=True,
+            )
+
+            manifest = build_manifest(command=[], repo=root, signing_readiness_gate=signing_gate)
+
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_app_signing_readiness"])
+        self.assertFalse(manifest["signing_readiness_gate"]["can_close_ios_device_acceptance"])
+        self.assertIn(
+            "ios app-signing readiness gate must not claim iOS device acceptance closure",
             manifest["signing_readiness_gate"]["missing"],
         )
         self.assertEqual(manifest["signing"]["status"], "blocked")

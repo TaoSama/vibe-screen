@@ -1,0 +1,39 @@
+$ pgrep -fl sfltool || true
+exit_code=0
+No sfltool process was listed.
+
+$ git status --short --branch
+exit_code=0
+## codex/phase5-ios-app-signing-gate...origin/main
+
+$ git fetch origin main
+exit_code=0
+
+$ git rev-parse HEAD && git rev-parse origin/main && git branch --show-current
+exit_code=0
+b2bedc3946a1561b13864f6975fbe8d69d359739
+b2bedc3946a1561b13864f6975fbe8d69d359739
+codex/phase5-ios-app-signing-gate
+
+$ make ios-app-signing-current-base-gate IOS_APP_SIGNING_READINESS_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked/ios-app-signing-readiness.json
+exit_code=2
+Expected fail-closed result. Missing coverage includes full Xcode/iPhoneOS SDK evidence, sanitized Apple Team ID digest, sanitized provisioning profile UUID digest, unique bundle ID, sanitized codesign identity digest, physical-device UDID hashes, entitlement relationship checks, signed-app/archive SHA-256, and retained signing command/profile/entitlements artifacts.
+
+$ make ios-current-base-manifest EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json
+exit_code=0
+Generated ios-current-base-manifest.json from the repository root. No ios-native-input-gate.json was supplied, so native_input_gate records provided=true with an unreadable path and remains blocked.
+
+$ make ios-current-base-gate EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked IOS_APP_SIGNING_READINESS_GATE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked/ios-app-signing-readiness-gate.json
+exit_code=2
+Expected fail-closed result. The aggregate gate reports verdict=blocked, can_claim_device_pass=false, can_close_current_base_aggregate=false, and can_close_ios_device_acceptance=false. The signing readiness gate also reports can_close_ios_device_acceptance=false.
+
+$ python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked --output docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked/privacy-scan.json
+exit_code=0
+
+$ python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-5-ios-advanced/evidence/2026-08-31-ios-signing-current-base-blocked --check
+exit_code=0
+No privacy violations were reported.
+
+$ shasum -a 256 -c SHA256SUMS
+exit_code=0
+All retained evidence checksums matched.

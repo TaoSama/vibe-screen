@@ -72,6 +72,7 @@
         "kind",
         "verdict",
         "can_close_ios_app_signing_readiness",
+        "can_close_ios_device_acceptance",
         "missing",
         "failures"
       ],
@@ -167,6 +168,7 @@
         "kind": {"type": ["string", "null"]},
         "verdict": {"type": ["string", "null"]},
         "can_close_ios_app_signing_readiness": {"type": "boolean"},
+        "can_close_ios_device_acceptance": {"const": false},
         "missing": {"type": "array", "items": {"type": "string"}},
         "failures": {"type": "array", "items": {"type": "string"}}
       }

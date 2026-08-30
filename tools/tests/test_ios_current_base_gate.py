@@ -31,7 +31,7 @@ BLOCKED_OWNER_EVIDENCE = (
     / "changes"
     / "2026-08-04-phase-5-ios-advanced"
     / "evidence"
-    / "2026-08-30-ios-signing-current-base-blocked"
+    / "2026-08-31-ios-signing-current-base-blocked"
 )
 
 
@@ -174,6 +174,7 @@ def complete_manifest(root: Path) -> dict[str, object]:
         "kind": "ios_app_signing_readiness_gate",
         "verdict": "pass",
         "can_close_ios_app_signing_readiness": True,
+        "can_close_ios_device_acceptance": False,
         "signing_summary": {
             "status": "pass",
             "bundle_id": "dev.vibescreen.ios.acceptance.fixture",
@@ -515,6 +516,7 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
                 "kind": "ios_app_signing_readiness_gate",
                 "verdict": "blocked",
                 "can_close_ios_app_signing_readiness": False,
+                "can_close_ios_device_acceptance": False,
                 "signing_summary": {
                     "status": "blocked",
                     "bundle_id": "dev.vibescreen.ios.acceptance.fixture",
@@ -557,6 +559,24 @@ class IOSCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("blocked: dedicated_signing_readiness_requirements", report["reasons"])
         requirements = report["checks"]["signing"]["dedicated_signing_readiness_requirements"]
         self.assertFalse(requirements["passed"])
+
+    def test_signing_readiness_gate_cannot_claim_device_acceptance(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            signing_gate = manifest["signing_readiness_gate"]
+            assert isinstance(signing_gate, dict)
+            signing_gate["can_close_ios_device_acceptance"] = True
+            manifest_path = write_manifest(root, manifest)
+
+            report = derive_gate(manifest_path)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_ios_device_acceptance"])
+        self.assertIn("blocked: dedicated_signing_readiness_gate", report["reasons"])
+        self.assertFalse(
+            report["checks"]["signing"]["dedicated_signing_readiness_gate"]["passed"]
+        )
 
     def test_videotoolbox_readiness_gates_required_for_device_pass(self):
         with tempfile.TemporaryDirectory() as directory_name:
