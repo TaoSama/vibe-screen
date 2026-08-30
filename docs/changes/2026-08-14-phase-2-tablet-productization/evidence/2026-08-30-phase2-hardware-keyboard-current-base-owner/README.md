@@ -33,7 +33,9 @@ insufficient, hardware-keyboard evidence is blocked, device-memory evidence is
 insufficient, device-environment evidence is blocked, and recovery and tablet UI
 child outputs remain unavailable.
 
-Generation command is recorded in `phase2-aggregate-owner-command.txt`.
+Generation command and concise result output are recorded in
+`phase2-aggregate-owner-command.txt` and `phase2-aggregate-owner-output.txt`; the
+full structured JSON remains in `phase2-aggregate-owner.json`.
 
 Validation:
 
