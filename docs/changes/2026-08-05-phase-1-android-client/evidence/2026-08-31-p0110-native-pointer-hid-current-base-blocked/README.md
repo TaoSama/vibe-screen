@@ -1,6 +1,6 @@
 # Native pointer HID acceptance: blocked
 
-Created: 2026-08-30T20:48:10Z
+Created: 2026-08-30T20:48:10Z (2026-08-31 Asia/Shanghai local run date)
 Reason: No external Android input device with MOUSE, MOUSE_RELATIVE, TOUCHPAD, or TRACKBALL source is currently attached.
 Device: nubia P0110 / pacific / Android 16 / serial redacted-pacific-serial
 Requested serial: redacted-requested-serial
@@ -19,7 +19,7 @@ Host readiness: blocked from current `origin/main`; `host-readiness.json` report
 - `native-pointer-hid-summary.json`: independent gate summary with `can_close_native_pointer_hid_gate`.
 - `host-readiness.json`: shared Host prerequisite snapshot captured from the current source checkout.
 - `host-signing-and-permissions.txt`: human-readable Host signing/TCC readiness report.
-- `dumpsys-input.txt`: Android input-device snapshot with line-ending whitespace normalized.
+- `dumpsys-input.txt`: raw Android input-device inventory retained as an approved hardware-enumeration exception, with line-ending whitespace normalized.
 - `android-logcat-native-pointer.txt`: bounded Android logcat window for native pointer forwarding.
 - `host-log-appended.txt`: bounded Host log window for pointer injection.
 - `host-readiness-make.stdout`, `host-readiness-make.stderr`, `host-readiness-make.exit`: retained Host readiness command result; exit code `2` is expected for blocked readiness.
@@ -30,7 +30,7 @@ Host readiness: blocked from current `origin/main`; `host-readiness.json` report
 
 A pass also requires stable signed/TCC-ready Host evidence; pass `--host-stable-signed-tcc-ready` only after `scripts/macos_dev_host.py preflight` succeeds.
 This evidence must remain scoped to the exact device identity above.
-Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.
+Persistent device identifiers and local workstation paths are redacted in `result.json`. `dumpsys-input.txt` is the approved raw hardware-enumeration exception for this gate: it may retain Android input source masks, bus/vendor/product/location fields, and local display/window identifiers needed to prove that no external mouse-like HID was attached. Treat it as hardware inventory evidence, not user identity or credential material.
 
 ## Host readiness blockers
 

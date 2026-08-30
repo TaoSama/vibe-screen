@@ -1035,7 +1035,8 @@ Evidence:
 
 ## P0110 native pointer HID current-base blocked refresh
 
-On 2026-08-31, the native pointer HID gate owner was refreshed from current
+On 2026-08-31 Asia/Shanghai local run date (2026-08-30T20:48:10Z UTC capture
+timestamp), the native pointer HID gate owner was refreshed from current
 `origin/main` at `075dc157c36ba71df9f757e571015905881a7154`. The start and
 finish safety checks found no `sfltool` process, and the run did not execute
 `sfltool dumpbtm` or any login-item opt-in diagnostic.

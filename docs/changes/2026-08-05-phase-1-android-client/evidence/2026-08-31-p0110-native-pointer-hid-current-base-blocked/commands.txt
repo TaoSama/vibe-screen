@@ -1,4 +1,4 @@
-# Native pointer HID current-base blocked evidence 2026-08-31
+# Native pointer HID current-base blocked evidence 2026-08-31 Asia/Shanghai local run date; capture timestamp 2026-08-30T20:48:10Z UTC
 # Intentionally fail-closed: no physical USB/Bluetooth mouse-like input was available.
 # No real sfltool command was run; pgrep safety checks are retained separately.
 
