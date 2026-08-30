@@ -1,0 +1,49 @@
+{
+  "artifact_paths": [
+    "host-readiness.json",
+    "host-signing-and-permissions.txt",
+    "trusted-lan-preflight.json"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "android_wifi_association: Wi-Fi not associated",
+    "android_wlan_ipv4: wlan0 down/no IPv4",
+    "route_to_mac_lan: no wlan0 route to Mac LAN candidate",
+    "host_stable_signing: Vibe Screen Dev signing identity unavailable"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "nubia P0110 / pacific / Android 16 / SDK 36"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [],
+  "notes": "Blocked before LAN stream; no disruption exercised.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "android_wifi_association: Wi-Fi not associated",
+    "android_wlan_ipv4: wlan0 down/no IPv4",
+    "route_to_mac_lan: no wlan0 route to Mac LAN candidate",
+    "host_stable_signing: Vibe Screen Dev signing identity unavailable"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "37e7ab95-566c-4cd8-9316-8f6ba6dfe0c1",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}
