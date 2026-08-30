@@ -637,42 +637,42 @@ Input Dispatcher State:
     logicalSize=1264x2800
         transform (ROT_0) (IDENTITY)
     Windows:
-      0: name=obric_post_boot_anim_mask#66, id=66, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      0: name=obric_post_boot_anim_mask#66, id=66, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      1: name=[Gesture Monitor] swipe-up, id=11622, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=[Gesture Monitor] swipe-up, applicationInfo.token=<null>, touchableRegion=[0,0][1,1], ownerPid=29854, ownerUid=10169, dispatchingTimeout=5000ms, token=0xb400007b62b52910, touchOcclusionMode=BLOCK_UNTRUSTED
+      1: name=[Gesture Monitor] swipe-up, id=11622, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=[Gesture Monitor] swipe-up, applicationInfo.token=<null>, touchableRegion=[0,0][1,1], ownerPid=29854, ownerUid=10169, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      2: name=[Gesture Monitor] edge-swipe, id=7871, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=[Gesture Monitor] edge-swipe, applicationInfo.token=<null>, touchableRegion=[0,0][70,2716]|[1194,0][1264,2716], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0xb400007b62b3a410, touchOcclusionMode=BLOCK_UNTRUSTED
+      2: name=[Gesture Monitor] edge-swipe, id=7871, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=[Gesture Monitor] edge-swipe, applicationInfo.token=<null>, touchableRegion=[0,0][70,2716]|[1194,0][1264,2716], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      3: name=[Gesture Monitor] swipe-to-screenshot, id=111, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=[Gesture Monitor] swipe-to-screenshot, applicationInfo.token=<null>, touchableRegion=[-12640,-28000][12640,28000], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0xb400007b625fadd0, touchOcclusionMode=BLOCK_UNTRUSTED
+      3: name=[Gesture Monitor] swipe-to-screenshot, id=111, displayId=0, inputConfig=NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=[Gesture Monitor] swipe-to-screenshot, applicationInfo.token=<null>, touchableRegion=[-12640,-28000][12640,28000], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      4: name=6083da3 NavigationBar0, id=7885, displayId=0, inputConfig=NOT_VISIBLE | NOT_FOCUSABLE | TRUSTED_OVERLAY | WATCH_OUTSIDE_TOUCH | SLIPPERY, alpha=1, frame=[0,2800][1264,2856], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0xb400007b62ab0b90, touchOcclusionMode=BLOCK_UNTRUSTED
+      4: name=6083da3 NavigationBar0, id=7885, displayId=0, inputConfig=NOT_VISIBLE | NOT_FOCUSABLE | TRUSTED_OVERLAY | WATCH_OUTSIDE_TOUCH | SLIPPERY, alpha=1, frame=[0,2800][1264,2856], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (TRANSLATE)
           1.0000  0.0000  -0.0000
           0.0000  1.0000  -2800.0000
           0.0000  0.0000  1.0000
-      5: name=4d1baea StatusBar, id=91, displayId=0, inputConfig=NOT_VISIBLE | NOT_FOCUSABLE | TRUSTED_OVERLAY, alpha=1, frame=[0,-140][1264,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[0,-139][1264,1], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0xb400007b6265c190, touchOcclusionMode=BLOCK_UNTRUSTED
+      5: name=4d1baea StatusBar, id=91, displayId=0, inputConfig=NOT_VISIBLE | NOT_FOCUSABLE | TRUSTED_OVERLAY, alpha=1, frame=[0,-140][1264,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[0,-139][1264,1], ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (TRANSLATE)
           1.0000  0.0000  -0.0000
           0.0000  1.0000  140.0000
           0.0000  0.0000  1.0000
-      6: name=73a75ce dev.telemachus.display/dev.telemachus.display.MainActivity, id=11624, displayId=0, inputConfig=0x0, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=ActivityRecord{241006275 u0 dev.telemachus.display/.MainActivity t666}, applicationInfo.token=0xb400007a82735950, touchableRegion=[0,0][1264,2800], ownerPid=12141, ownerUid=10301, dispatchingTimeout=5000ms, token=0xb400007b62bb2110, touchOcclusionMode=BLOCK_UNTRUSTED, canOccludePresentation
+      6: name=73a75ce dev.telemachus.display/dev.telemachus.display.MainActivity, id=11624, displayId=0, inputConfig=0x0, alpha=1, frame=[0,0][1264,2800], globalScale=1, applicationInfo.name=ActivityRecord{241006275 u0 dev.telemachus.display/.MainActivity t666}, applicationInfo.token=<redacted-binder-token>, touchableRegion=[0,0][1264,2800], ownerPid=12141, ownerUid=10301, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED, canOccludePresentation
       transform (ROT_0) (IDENTITY)
-      7: name=Background for 6b56e49 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#11630, id=11630, displayId=0, inputConfig=NO_INPUT_CHANNEL, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=12141, ownerUid=10301, dispatchingTimeout=5000ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED, canOccludePresentation
+      7: name=Background for 6b56e49 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#11630, id=11630, displayId=0, inputConfig=NO_INPUT_CHANNEL, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=12141, ownerUid=10301, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED, canOccludePresentation
       transform (ROT_0) (IDENTITY)
-      8: name=478272 ActivityRecordInputSink dev.telemachus.display/.MainActivity, id=11619, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_FOCUSABLE, alpha=1, frame=[0,0][0,0], globalScale=0, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[-12640,-28000][12640,28000], ownerPid=3199, ownerUid=1000, dispatchingTimeout=0ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      8: name=478272 ActivityRecordInputSink dev.telemachus.display/.MainActivity, id=11619, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_FOCUSABLE, alpha=1, frame=[0,0][0,0], globalScale=0, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[-12640,-28000][12640,28000], ownerPid=3199, ownerUid=1000, dispatchingTimeout=0ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      9: name=Dim layer#62, id=62, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      9: name=Dim layer#62, id=62, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      10: name=Dim layer#60, id=60, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      10: name=Dim layer#60, id=60, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[0,0][0,0], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      11: name=8f7ea42 ActivityRecordInputSink com.android.launcher3/com.obric.feature.ObricLauncher, id=7683, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE, alpha=1, frame=[0,0][0,0], globalScale=0, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[0,0][1264,2800], ownerPid=3199, ownerUid=1000, dispatchingTimeout=0ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      11: name=8f7ea42 ActivityRecordInputSink com.android.launcher3/com.obric.feature.ObricLauncher, id=7683, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE, alpha=1, frame=[0,0][0,0], globalScale=0, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=[0,0][1264,2800], ownerPid=3199, ownerUid=1000, dispatchingTimeout=0ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (IDENTITY)
-      12: name=Wallpaper BBQ wrapper#69, id=69, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[-63,-140][1327,2940], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      12: name=Wallpaper BBQ wrapper#69, id=69, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE, alpha=1, frame=[-63,-140][1327,2940], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=5000ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (SCALE TRANSLATE)
           0.9091  -0.0000  57.2727
           -0.0000  0.9091  127.2727
           0.0000  0.0000  1.0000
-      13: name=c774921 com.android.systemui.wallpapers.ImageWallpaper, id=68, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE, alpha=1, frame=[-63,-140][-63,-140], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=0ms, token=0x0, touchOcclusionMode=BLOCK_UNTRUSTED
+      13: name=c774921 com.android.systemui.wallpapers.ImageWallpaper, id=68, displayId=0, inputConfig=NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE, alpha=1, frame=[-63,-140][-63,-140], globalScale=1, applicationInfo.name=, applicationInfo.token=<null>, touchableRegion=<empty>, ownerPid=4157, ownerUid=10156, dispatchingTimeout=0ms, token=<redacted-binder-token>, touchOcclusionMode=BLOCK_UNTRUSTED
       transform (ROT_0) (SCALE TRANSLATE)
           0.9091  -0.0000  57.2727
           -0.0000  0.9091  127.2727
@@ -748,9 +748,9 @@ Input Dispatcher State:
 
 Input Manager Service (Java) State:
   Gesture Monitors (implemented as spy windows):
-    0: name='[Gesture Monitor] edge-swipe', inputChannelToken=android.os.BinderProxy@55c37ef displayId=0
-    1: name='[Gesture Monitor] swipe-up', inputChannelToken=android.os.BinderProxy@2914959 displayId=0
-    2: name='[Gesture Monitor] swipe-to-screenshot', inputChannelToken=android.os.BinderProxy@fb7681c displayId=0
+    0: name='[Gesture Monitor] edge-swipe', inputChannelToken=<redacted-input-channel-token> displayId=0
+    1: name='[Gesture Monitor] swipe-up', inputChannelToken=<redacted-input-channel-token> displayId=0
+    2: name='[Gesture Monitor] swipe-to-screenshot', inputChannelToken=<redacted-input-channel-token> displayId=0
   mAdditionalDisplayInputProperties:
     <none>
   BatteryController:
