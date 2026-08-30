@@ -17,20 +17,23 @@ main_wt=$(mktemp -d /tmp/vibe-screen-main-readiness-XXXXXX)
 git worktree add --detach "$main_wt" 1217c585f5a0185402bdc47fc588ac8092066067
 tmp_host_dir=$(mktemp -d /tmp/vibe-screen-host-readiness-origin-main-XXXXXX)
 ( cd "$main_wt" && make baseline-macos-host-readiness EVIDENCE_DIR="$tmp_host_dir" )
-git worktree remove "$main_wt"
 
 # Controller readiness used a local authorized ADB device serial internally, but
 # public artifacts and replay docs use only the quoted redacted placeholder.
 tmp_controller_dir=$(mktemp -d /tmp/vibe-screen-controller-runtime-XXXXXX)
-python3 scripts/controller_runtime_readiness.py \
-  --serial "<device-serial>" \
-  --host-log "~/Library/Logs/Telemachus/telemachus.log" \
-  --host-app "/Applications/Vibe Screen.app" \
-  --allow-existing-device-lock \
-  --redact-identifiers \
-  --source-commit 1217c585f5a0185402bdc47fc588ac8092066067 \
-  --run-id 20260829T220100Z \
-  --evidence-dir "$tmp_controller_dir"
+(
+  cd "$main_wt"
+  python3 scripts/controller_runtime_readiness.py \
+    --serial "<device-serial>" \
+    --host-log "~/Library/Logs/Telemachus/telemachus.log" \
+    --host-app "/Applications/Vibe Screen.app" \
+    --allow-existing-device-lock \
+    --redact-identifiers \
+    --source-commit 1217c585f5a0185402bdc47fc588ac8092066067 \
+    --run-id 20260829T220100Z \
+    --evidence-dir "$tmp_controller_dir"
+)
+git worktree remove "$main_wt"
 pgrep -x sfltool || true
 
 PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
