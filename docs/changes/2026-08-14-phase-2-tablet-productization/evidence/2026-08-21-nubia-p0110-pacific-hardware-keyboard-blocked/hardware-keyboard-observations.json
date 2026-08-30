@@ -25,7 +25,7 @@
   "host_stable_signed_tcc_ready": false,
   "key_press_release_observed": false,
   "modifier_release_no_leak_observed": false,
-  "notes": "Target serial for a future run is EP0110PZ0B9110300B and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
+  "notes": "Target serial for a future run is <redacted-adb-serial> and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
   "physical_keyboard_attached": false,
   "protocol_keyboard_capability_negotiated": false,
   "protocol_usb_hid_modifier_capability_negotiated": false,

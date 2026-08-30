@@ -1,7 +1,27 @@
 name: vibe-screen-phase3-production
 
+x-vibe-service: &vibe-service
+  user: "65532:65532"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 1.0
+  stop_grace_period: 30s
+  tmpfs:
+    - /tmp:size=16m,mode=0700,uid=65532,gid=65532
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
   signaling-migrate:
+    <<: *vibe-service
     image: ${VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}@sha256:${VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}
     restart: "no"
     network_mode: host
@@ -13,10 +33,9 @@ services:
       VIBE_SIGNALING_DATABASE_TLS_MODE: verify-full
     secrets:
       - signaling_migration_database_url
-    security_opt:
-      - no-new-privileges:true
 
   signaling:
+    <<: *vibe-service
     image: ${VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}@sha256:${VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}
     restart: unless-stopped
     network_mode: host
@@ -44,10 +63,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    security_opt:
-      - no-new-privileges:true
+      start_period: 5s
 
   relay-migrate:
+    <<: *vibe-service
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: "no"
     network_mode: host
@@ -59,10 +78,9 @@ services:
       VIBE_RELAY_DATABASE_TLS_MODE: verify-full
     secrets:
       - relay_migration_database_url
-    security_opt:
-      - no-new-privileges:true
 
   relay:
+    <<: *vibe-service
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: unless-stopped
     network_mode: host
@@ -87,7 +105,7 @@ services:
       - authority_token
       - relay_database_url
     volumes:
-      - ./config/relay.production.json:/etc/vibe-relay/config.json:ro
+      - ${VIBE_RELAY_CONFIG_FILE:-./config/relay.production.json}:/etc/vibe-relay/config.json:ro
       - type: bind
         source: ${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}
         target: /var/lib/vibe-coturn
@@ -98,8 +116,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    security_opt:
-      - no-new-privileges:true
+      start_period: 5s
 
   coturn:
     image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978

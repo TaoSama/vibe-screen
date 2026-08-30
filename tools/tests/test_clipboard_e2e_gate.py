@@ -496,7 +496,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             paths = write_pass_inputs(root)
-            raw_serial = "EP0110" + "PZ0B9110300B"
+            raw_serial = "EPTESTSERIAL000000"
             user_path = "/Users/" + "localuser"
             tcc_path = "Application Support/" + "com.apple" + ".TCC/" + "TCC" + ".db"
             write_json(

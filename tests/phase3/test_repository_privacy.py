@@ -23,6 +23,20 @@ PHASE3_EVIDENCE = (
     / "2026-08-05-nubia-p0110-internet"
 )
 MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+ADB_SERIAL_COMMAND_PATTERN = re.compile(rb"\badb\s+-s\s+(?P<serial>\S+)", re.IGNORECASE)
+SSH_COMMAND_TARGET_PATTERN = re.compile(rb"\bssh\s+(?P<target>\S+)")
+PUBLIC_DEPLOYMENT_DOCS = (
+    Path("DEPLOY.md"),
+    Path(".claude/skills/deploy/SKILL.md"),
+)
+PUBLIC_RELAY_SSH_ALIAS_PLACEHOLDER = b"<relay-host-ssh-alias>"
+RAW_ANDROID_SERIAL_PROPERTY_PATTERN = re.compile(
+    rb"(?im)^ro\.serialno=(?:[0-9a-f]{8}|EP[0-9A-Z]{16})$"
+)
+RAW_XIAOMI_EVIDENCE_PATH_PATTERN = re.compile(
+    rb"xiaomi(?:12|13)-fuxi-[0-9a-f]{8}(?:[-/]|\b)", re.IGNORECASE
+)
+RAW_ANDROID_SERIAL_TOKEN_PATTERN = re.compile(rb"(?:[0-9a-f]{8}|EP[0-9A-Z]{16})", re.IGNORECASE)
 CARRIER_GRADE_NAT = ipaddress.ip_network("100." + "64.0.0/10")
 IPV4_ENDPOINT_PATTERN = re.compile(
     rb"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?:[:-][0-9]{1,5})?(?![0-9.])"
@@ -80,6 +94,16 @@ def remove_exact_cgnat_fixtures(relative_path: Path, content: bytes) -> tuple[by
     return b"".join(lines), errors
 
 
+def contains_raw_adb_serial_command(content: bytes) -> bool:
+    for match in ADB_SERIAL_COMMAND_PATTERN.finditer(content):
+        serial = match.group("serial").strip().strip(b"`\"'.,);")
+        if b"REDACTED" in serial.upper():
+            continue
+        if RAW_ANDROID_SERIAL_TOKEN_PATTERN.fullmatch(serial):
+            return True
+    return False
+
+
 class RepositoryPrivacyTests(unittest.TestCase):
     def test_current_tree_has_no_device_endpoint(self) -> None:
         violations = []
@@ -104,6 +128,68 @@ class RepositoryPrivacyTests(unittest.TestCase):
             if contains_cgnat_endpoint(content):
                 violations.append(f"endpoint-content:{relative_path}")
         self.assertEqual(violations, [])
+
+    def test_current_tree_has_no_raw_android_serial_contexts(self) -> None:
+        violations = []
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+        for raw_path in listed.split(b"\0"):
+            if not raw_path:
+                continue
+            relative_path = Path(raw_path.decode("utf-8"))
+            path = ROOT / relative_path
+            if RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(raw_path):
+                violations.append(f"xiaomi-serial-path:{relative_path}")
+            if not path.is_file():
+                continue
+            content = path.read_bytes()
+            if contains_raw_adb_serial_command(content):
+                violations.append(f"adb-serial-command:{relative_path}")
+            if RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content):
+                violations.append(f"android-serial-property:{relative_path}")
+            if RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content):
+                violations.append(f"xiaomi-serial-content:{relative_path}")
+        self.assertEqual(violations, [])
+
+    def test_android_serial_contexts_reject_raw_values(self) -> None:
+        hex_serial = b"dead" + b"beef"
+        long_serial = b"EP123456" + b"7890ABCDEF"
+        prohibited = (
+            b"adb -s " + hex_serial + b" shell get-state",
+            b"adb -s " + long_serial + b" shell get-state",
+            b"ro.serialno=" + hex_serial,
+            b"ro.serialno=" + long_serial,
+            b"evidence/2026-08-08-xiaomi12-fuxi-" + hex_serial + b"/README.md",
+            b"evidence/2026-08-10-xiaomi13-fuxi-" + hex_serial + b"-30m/README.md",
+        )
+        for content in prohibited:
+            with self.subTest(content=content):
+                self.assertTrue(
+                    contains_raw_adb_serial_command(content)
+                    or RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content)
+                    or RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content)
+                )
+
+        allowed = (
+            b"adb -s <redacted-adb-serial> shell get-state",
+            b"adb -s REDACTED_P0110_USB_SERIAL shell get-state",
+            b"adb -s $EVIDENCE_SERIAL shell get-state",
+            b"adb -s DEVICE_HOST:5555 shell get-state",
+            b"adb -s test-p0110-adb-serial shell get-state",
+            b"ro.serialno=<redacted-adb-serial>",
+            b"ro.serialno=REDACTED_P0110_USB_SERIAL",
+            b"evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md",
+            b"evidence/2026-08-10-xiaomi13-fuxi-redacted-30m/README.md",
+        )
+        for content in allowed:
+            with self.subTest(content=content):
+                self.assertFalse(contains_raw_adb_serial_command(content))
+                self.assertFalse(RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content))
+                self.assertFalse(RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content))
 
     def test_cgnat_endpoint_variants_are_rejected_without_version_false_positives(self) -> None:
         address = b"100." + b"72.1.2"
@@ -182,6 +268,33 @@ class RepositoryPrivacyTests(unittest.TestCase):
             with self.subTest(category=category):
                 expected_category = "hardware_identifier" if category == "adb_identifier" else category
                 self.assertIn(expected_category, scan_content(content))
+
+        for safe_hardware_identifier in (
+            b'{"adb_serial":"<device-serial>"}',
+            b'{"device_serial":"<device-serial>"}',
+            b'device serial: <device-serial>',
+            b'device serial: `<device-serial>`',
+        ):
+            with self.subTest(safe_hardware_identifier=safe_hardware_identifier):
+                self.assertNotIn("hardware_identifier", scan_content(safe_hardware_identifier))
+
+        self.assertEqual(
+            scan_content(
+                b"https://docs.gradle.org/8.6/userguide/gradle_daemon.html#sec:disabling_the_daemon"
+            ),
+            {},
+        )
+        self.assertIn("url", scan_content(b"https://private.example.invalid/session"))
+
+    def test_public_deployment_docs_use_placeholder_ssh_alias(self) -> None:
+        violations = []
+        for relative_path in PUBLIC_DEPLOYMENT_DOCS:
+            content = (ROOT / relative_path).read_bytes()
+            for match in SSH_COMMAND_TARGET_PATTERN.finditer(content):
+                target = match.group("target").strip(b"'\".,);")
+                if target != PUBLIC_RELAY_SSH_ALIAS_PLACEHOLDER:
+                    violations.append(f"ssh-target:{relative_path}")
+        self.assertEqual(violations, [])
         self.assertEqual(scan_content(b"swiftlang-6.3.1.1.2 and <redacted-ip>"), {})
 
     def test_phase3_privacy_rules_reject_project_credential_schemas(self) -> None:

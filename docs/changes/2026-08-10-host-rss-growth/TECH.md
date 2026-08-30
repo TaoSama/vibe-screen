@@ -3,7 +3,7 @@
 ## 背景
 
 Phase 1 目标之一是「两小时内无延迟或内存增长」。2026-08-09 在 Xiaomi Fuxi
-（8a023e3a，Android 16，USB）完成了首个带真机流遥测的有效 2h soak，证据见
+（<redacted-xiaomi-adb-serial>，Android 16，USB）完成了首个带真机流遥测的有效 2h soak，证据见
 docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md。
 
 结论：流质量与客户端内存均稳定，但主机 RSS 存在缓慢净增长，两小时无增长门禁**未关闭**。

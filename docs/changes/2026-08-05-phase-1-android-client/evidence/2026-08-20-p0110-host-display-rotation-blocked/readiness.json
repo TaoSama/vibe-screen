@@ -9,7 +9,7 @@
     "worktree_state": "detached HEAD; clean before evidence write"
   },
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "device": "pacific",
@@ -40,7 +40,7 @@
   "coordination": {
     "lock_path": "/tmp/vibe-screen-device-android.lock",
     "lock_status": "occupied during final readiness check",
-    "lock_contents": "owner=codex-touch-fixed-binary-readiness\npid=29081\ncwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/9b47/vibe-screen\ncreated_at=2026-08-20T12:27:45Z",
+    "lock_contents": "owner=codex-touch-fixed-binary-readiness\npid=29081\ncwd=<codex-worktrees>/9b47/vibe-screen\ncreated_at=2026-08-20T12:27:45Z",
     "exclusive_device_run_started": false
   },
   "blocking_reasons": [
@@ -57,9 +57,9 @@
     "make baseline-macos-dev-install",
     "python3 scripts/macos_dev_host.py preflight --install-path '/Applications/Vibe Screen.app'",
     "make baseline-android-apk",
-    "adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321",
-    "adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
-    "adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true",
+    "adb -s <redacted-adb-serial> reverse tcp:54321 tcp:54321",
+    "adb -s <redacted-adb-serial> install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "adb -s <redacted-adb-serial> shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true",
     "python3 -m tools.vibescreen_evidence.host_display_rotation_gate docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json"
   ]
 }

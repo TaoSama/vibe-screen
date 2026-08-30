@@ -211,7 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device-codename", default="pacific")
     parser.add_argument("--device-os-version", default="Android 16")
     parser.add_argument("--device-api-level", type=int, default=36)
-    parser.add_argument("--device-serial", default="EP0110PZ0B9110300B")
+    parser.add_argument("--device-serial", default="<device-serial>")
     parser.add_argument("--blocker", action="append", default=list(DEFAULT_BLOCKERS))
     return parser
 

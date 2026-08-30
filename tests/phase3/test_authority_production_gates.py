@@ -154,7 +154,7 @@ class AuthorityProductionGateTests(unittest.TestCase):
         self.assertIn("depends_on:", signaling)
         self.assertIn("signaling-migrate:", signaling)
         self.assertIn("http://127.0.0.1:8088/readyz", signaling)
-        self.assertIn("./config/signaling.production.json", signaling)
+        self.assertIn("${VIBE_SIGNALING_CONFIG_FILE:-./config/signaling.production.json}", signaling)
 
     def test_signaling_production_credentials_are_file_backed(self) -> None:
         text = SIGNALING_PRODUCTION_COMPOSE.read_text(encoding="utf-8")

@@ -15,7 +15,7 @@
     60
   ],
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "<redacted-adb-serial>",
     "ro.product.manufacturer": "nubia",
     "ro.product.model": "P0110",
     "ro.product.device": "pacific",

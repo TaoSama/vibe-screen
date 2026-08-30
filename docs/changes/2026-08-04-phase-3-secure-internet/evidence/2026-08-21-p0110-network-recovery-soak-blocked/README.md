@@ -1,6 +1,6 @@
 # Phase 3 network handoff and soak readiness - BLOCKED
 
-This is a blocked readiness record, not release evidence. No ADB command was run and no local network state was changed. The future Android command boundary must use `adb -s EP0110PZ0B9110300B ...`; that endpoint is recorded only as the intended shared device handle. The device identity for this run remains `nubia P0110 / pacific / Android 16`.
+This is a blocked readiness record, not release evidence. No ADB command was run and no local network state was changed. The future Android command boundary must use `adb -s <redacted-adb-serial> ...`; that endpoint is recorded only as the intended shared device handle. The device identity for this run remains `nubia P0110 / pacific / Android 16`.
 
 ## Result
 

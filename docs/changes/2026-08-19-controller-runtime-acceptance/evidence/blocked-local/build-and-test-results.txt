@@ -1,5 +1,5 @@
 Date: 2026-08-19
-Worktree: /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/controller-runtime-acceptance
+Worktree: <workspace-root>/.claude/worktrees/controller-runtime-acceptance
 Branch: codex/controller-runtime-acceptance
 
 Controller runtime evidence summary
@@ -53,7 +53,7 @@ cd baseline/MacHost && swift test --filter GameController --filter IOKitVirtualG
 
 Result: BLOCKED by local toolchain. SwiftPM could not import XCTest:
 
-/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/controller-runtime-acceptance/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
+<workspace-root>/.claude/worktrees/controller-runtime-acceptance/baseline/MacHost/Tests/TelemachusTests/ADBDeviceSelectionPolicyTests.swift:1:8: error: no such module 'XCTest'
 
 Environment:
 xcode-select -p => /Library/Developer/CommandLineTools

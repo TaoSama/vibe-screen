@@ -2,25 +2,28 @@ import XCTest
 @testable import Telemachus
 
 final class ADBDeviceSelectionPolicyTests: XCTestCase {
+    private let configuredDevice = "fixture-configured-adb-device"
+    private let otherDevice = "fixture-other-adb-device"
+
     func testConfiguredOnlineDeviceWinsRegardlessOfEnumerationOrder() {
         for connectedSerials in [
-            ["8a023e3a", "bac5b092"],
-            ["bac5b092", "8a023e3a"]
+            [otherDevice, configuredDevice],
+            [configuredDevice, otherDevice]
         ] {
             XCTAssertEqual(
                 ADBDeviceSelectionPolicy.resolveTargetSerial(
-                    configuredSerial: "bac5b092",
+                    configuredSerial: configuredDevice,
                     connectedSerials: connectedSerials
                 ),
-                "bac5b092"
+                configuredDevice
             )
         }
     }
 
     func testConfiguredOfflineDeviceDoesNotFallBackToAnotherDevice() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
-            configuredSerial: "bac5b092",
-            connectedSerials: ["8a023e3a"]
+            configuredSerial: configuredDevice,
+            connectedSerials: [otherDevice]
         ))
     }
 
@@ -28,16 +31,16 @@ final class ADBDeviceSelectionPolicyTests: XCTestCase {
         XCTAssertEqual(
             ADBDeviceSelectionPolicy.resolveTargetSerial(
                 configuredSerial: "",
-                connectedSerials: ["bac5b092"]
+                connectedSerials: [configuredDevice]
             ),
-            "bac5b092"
+            configuredDevice
         )
     }
 
     func testUnconfiguredHostRequiresSelectionWhenSeveralDevicesAreOnline() {
         XCTAssertNil(ADBDeviceSelectionPolicy.resolveTargetSerial(
             configuredSerial: "",
-            connectedSerials: ["8a023e3a", "bac5b092"]
+            connectedSerials: [configuredDevice, otherDevice]
         ))
     }
 

@@ -2,13 +2,13 @@
 
 ## 结论
 
-在第二台 Xiaomi 13 `bac5b092` 上安装提交 `c4f6800` 的 debug APK，验证离线连接页。
+在第二台 Xiaomi 13 `<redacted-xiaomi-adb-serial>` 上安装提交 `c4f6800` 的 debug APK，验证离线连接页。
 横屏 `2400x1080` 下 USB、LAN、Internet 三种模式均为左右两栏，主操作完整出现在首屏，
 没有文本溢出或控件重叠；USB 首连指引完整显示为三行，不再被单行省略号截断。竖屏恢复
 单列，竖屏再转回横屏后两栏几何正常恢复。
 
 本记录只证明连接页布局与交互可达性，不证明 LAN 或 Internet 会话建立。验证前移除了
-`bac5b092` 自身的 ADB reverse，未操作持续串流设备 `8a023e3a`，也未重启长期运行的
+`<redacted-xiaomi-adb-serial>` 自身的 ADB reverse，未操作持续串流设备 `<redacted-xiaomi-adb-serial>`，也未重启长期运行的
 MacHost PID 27437。
 
 ## 环境
@@ -40,7 +40,7 @@ MacHost PID 27437。
 
 ## 清理
 
-截图时仅在 `bac5b092` 临时设置 `debug.vibescreen.allow_capture=1`。完成后已恢复：
+截图时仅在 `<redacted-xiaomi-adb-serial>` 临时设置 `debug.vibescreen.allow_capture=1`。完成后已恢复：
 新增的 `landscape-usb-guidance-final.png/xml` 在恢复为 `0` 后采集，连接页本身仍可取证。
 
 - `debug.vibescreen.allow_capture=0`

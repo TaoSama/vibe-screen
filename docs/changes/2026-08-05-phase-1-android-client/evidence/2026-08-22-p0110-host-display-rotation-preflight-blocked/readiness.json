@@ -9,7 +9,7 @@
     "worktree_state": "codex/host-display-rotation-readiness clean; rebased onto origin/main before evidence write"
   },
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "<redacted-adb-serial>",
     "manufacturer": "nubia",
     "model": "P0110",
     "device": "pacific",
