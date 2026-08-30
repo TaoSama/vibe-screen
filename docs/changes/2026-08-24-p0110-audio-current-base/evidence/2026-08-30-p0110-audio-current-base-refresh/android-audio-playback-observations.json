@@ -54,7 +54,7 @@
   "host_microphone_capture_started": false,
   "host_stable_signed_tcc_ready": false,
   "no_synthetic_or_loopback_markers": true,
-  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not provide a successful current-run Protocol v1 session, Host stable signing, Microphone/TCC readiness, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation. This record does not close the real USB or trusted-LAN playback gate.",
+  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not satisfy the Host stable signing, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation requirements. This record does not close the real USB or trusted-LAN playback gate.",
   "playback_output_confirmed": false,
   "protocol_v1_session_observed": false,
   "run_id": "2026-08-30-p0110-audio-current-base-refresh",

@@ -150,7 +150,7 @@
     "No retained production session evidence proves CAPABILITY_AUDIO, accepted AudioConfig, Host channel 3 packets, Android AudioTrack writes, playback output, or cleanup.",
     "Trusted-LAN playback remains blocked because usable wlan0 IPv4 route evidence is missing.",
     "pgrep -x sfltool was captured at start and end; no forbidden login-item database dump command or login-item diagnostic opt-in was run.",
-    "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not provide a successful current-run Protocol v1 session, Host stable signing, Microphone/TCC readiness, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation. This record does not close the real USB or trusted-LAN playback gate."
+    "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not satisfy the Host stable signing, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation requirements. This record does not close the real USB or trusted-LAN playback gate."
   ],
   "blocking_reasons": [
     {
@@ -228,7 +228,7 @@
       "requirement": "retain Host and Android audio cleanup after disconnect or reconfiguration"
     }
   ],
-  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not provide a successful current-run Protocol v1 session, Host stable signing, Microphone/TCC readiness, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation. This record does not close the real USB or trusted-LAN playback gate.",
+  "notes": "Fail-closed current-base readiness record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device was visible to ADB, but the retained environment did not satisfy the Host stable signing, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, Android AudioTrack write, or playback confirmation requirements. This record does not close the real USB or trusted-LAN playback gate.",
   "observations": {
     "android_audio_packets_written": false,
     "android_audio_track_started": false,
