@@ -23,9 +23,7 @@ The run remains blocked before real rotated host-display acceptance. The Host
 bundle identifier was proven as `dev.telemachus.display`, but the preflight
 could not prove the stable `Vibe Screen Dev` signing identity, Screen Recording
 grant, Accessibility grant, signed Host/TCC match, or a display-rotation
-restoration plan. The installed Host codesign inspection also reported a sealed
-resource missing under `WebRTC.framework` (`WebRTC.cstemp`), so the same signed
-bundle was not considered valid for the gate. No physical or virtual Mac
+restoration plan. No physical or virtual Mac
 display was rotated, and no Android visual source-orientation, stream
 stability, no-teardown, or inverse touch-mapping artifact exists for host
 rotations 90/180/270.
