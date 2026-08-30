@@ -1,14 +1,14 @@
 # Phase 2 hardware-keyboard current-base owner refresh
 
 Result: blocked. This record refreshes the Phase 2 hardware-keyboard owner on
-current `origin/main` (`31d0d42558e8a6749e24936e9a8c4b821d94847e`) and keeps
+current `origin/main` (`87e16d8bea4446c1ca449045678f1bafc7fd6cb2`) and keeps
 the README Phase 2 gates open.
 
 Input summaries used by the aggregate report:
 
 - `../2026-08-21-phase2-gate-readiness/phase2-tablet-gate.json`
 - `../2026-08-21-phase2-gate-readiness/phase2-tablet-manifest.json`
-- `../2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
+- `../2026-08-30-nubia-p0110-pacific-hardware-keyboard-current-base/hardware-keyboard-summary.json`
 - `../2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
 - `../2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
 - `../2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json`
@@ -33,10 +33,12 @@ insufficient, hardware-keyboard evidence is blocked, device-memory evidence is
 insufficient, device-environment evidence is blocked, and recovery and tablet UI
 child outputs remain unavailable.
 
-Generation command is recorded in `phase2-aggregate-owner-command.txt`.
+Generation command and concise result output are recorded in
+`phase2-aggregate-owner-command.txt` and `phase2-aggregate-owner-output.txt`; the
+full structured JSON remains in `phase2-aggregate-owner.json`.
 
 Validation:
 
 - `make phase2-aggregate-owner ...` generated `phase2-aggregate-owner.json` with
-  `source_baseline=origin/main 31d0d42558e8a6749e24936e9a8c4b821d94847e`,
+  `source_baseline=origin/main 87e16d8bea4446c1ca449045678f1bafc7fd6cb2`,
   `verdict=blocked`, and `can_close_readme_phase2_gates=false`.
