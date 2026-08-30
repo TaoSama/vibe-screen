@@ -1,0 +1,59 @@
+Repository base: origin/main at 87e16d8bea4446c1ca449045678f1bafc7fd6cb2 on branch codex/stylus-drawing-p0110-20260830.
+
+Required start/end preflight:
+
+```bash
+pgrep -x sfltool || true
+```
+
+Result: no `sfltool` process was observed at start or end. No
+`/usr/bin/sfltool dumpbtm` command was executed, and no login-item diagnostic
+opt-in was used.
+
+Device and Host checks:
+
+```bash
+adb devices -l
+adb -s DEVICE_SERIAL shell getprop ro.product.manufacturer
+adb -s DEVICE_SERIAL shell getprop ro.product.model
+adb -s DEVICE_SERIAL shell getprop ro.product.device
+adb -s DEVICE_SERIAL shell getprop ro.build.version.release
+adb -s DEVICE_SERIAL shell getprop ro.build.version.sdk
+python3 scripts/macos_dev_host.py readiness \
+  --report docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-30-nubia-p0110-pacific-stylus-current-base-blocked/host-signing-and-permissions.txt \
+  --json-output docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-30-nubia-p0110-pacific-stylus-current-base-blocked/host-readiness.json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/android_stylus_acceptance.py \
+  --serial DEVICE_SERIAL \
+  --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-30-nubia-p0110-pacific-stylus-current-base-blocked
+```
+
+Result:
+
+- Android device: nubia P0110 / pacific / Android 16 / API 36.
+- Host readiness: blocked.
+  - `codesign identity 'Vibe Screen Dev' not found in the keychain`.
+  - Installed Host codesign inspection failed due to missing WebRTC resource.
+  - Host listener not observed on TCP port 54321.
+  - Host is missing `com.apple.developer.hid.virtual.device` entitlement.
+  - Screen Recording and Accessibility grants were not inspected because Host
+    signing was not ready.
+  - `can_start_stylus_gate=false`.
+- Stylus collector: `blocked_physical_stylus_not_observed`.
+  - `dumpsys input` still exposes a pass-eligible `goodix_stylus_input`
+    candidate with `KEYBOARD | TOUCHSCREEN | STYLUS` source and pressure,
+    orientation, tilt, X, and Y axes.
+  - No physical stylus drawing was performed.
+  - No same-session Android `Stylus forwarded:` samples from a physical stylus
+    drawing attempt are present.
+  - No Host `Stylus injected:` excerpt was supplied.
+  - No visible macOS drawing-app output was captured.
+  - `stylus-summary.json` reports `verdict=blocked` and
+    `can_close_physical_stylus_gate=false`.
+
+Notes:
+
+- `DEVICE_SERIAL` is intentionally redacted.
+- This evidence is labeled Nubia P0110/pacific/Android 16 / API 36 and must not
+  be relabeled as Xiaomi 13/fuxi evidence.
+- No `--observed-physical-drawing` argument was used because this run did not
+  have the required physical stylus drawing plus Host injection window.

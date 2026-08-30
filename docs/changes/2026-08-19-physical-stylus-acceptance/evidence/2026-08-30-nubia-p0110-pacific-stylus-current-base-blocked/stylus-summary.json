@@ -1,0 +1,82 @@
+{
+  "artifact_paths": [
+    "README.md",
+    "SHA256SUMS",
+    "android-diag.log",
+    "commands.txt",
+    "dumpsys-input.txt",
+    "host-readiness.json",
+    "host-readiness.stdout",
+    "host-signing-and-permissions.txt",
+    "stylus-evidence.json"
+  ],
+  "blocking_notes": [
+    "collector_status=blocked_physical_stylus_not_observed"
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_drawing_observed",
+      "requirement": "observe a real physical stylus contacting the Android device during the active Protocol v1 session"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    }
+  ],
+  "can_close_physical_stylus_gate": false,
+  "collector_status": "blocked_physical_stylus_not_observed",
+  "inconsistent_observations": [],
+  "kind": "physical_stylus_drawing_app",
+  "missing_requirements": [
+    {
+      "field": "physical_drawing_observed",
+      "requirement": "observe a real physical stylus contacting the Android device during the active Protocol v1 session"
+    },
+    {
+      "field": "android_stylus_forwarding_observed",
+      "requirement": "retain same-session Android diagnostic logs with Stylus forwarded samples from a stylus or eraser tool"
+    },
+    {
+      "field": "host_stylus_injection_observed",
+      "requirement": "retain newly appended Host Stylus injected logs with contact, pressure, and signed two-axis tilt"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    },
+    {
+      "field": "visible_drawing_result_observed",
+      "requirement": "record the visible macOS drawing-app result of the physical stylus stroke"
+    },
+    {
+      "field": "host_log_window_retained",
+      "requirement": "retain the newly appended Host log observation window for the drawing attempt"
+    },
+    {
+      "field": "collector_reported_passed",
+      "requirement": "use a collector result whose own status is pass, not blocked or failed"
+    }
+  ],
+  "notes": "Current-base Nubia P0110/pacific stylus blocked refresh. Host readiness is blocked: no stable Vibe Screen Dev codesigning identity, installed Host codesign inspection fails, listener is not running, and Screen Recording/Accessibility cannot be verified. The Android capability snapshot still exposes a pass-eligible goodix_stylus_input candidate, but no physical stylus drawing, Android forwarding samples, Host injection excerpt, or macOS drawing-app result was captured.",
+  "observations": {
+    "adb_was_run": true,
+    "android_diag_log_retained": true,
+    "android_stylus_forwarding_observed": false,
+    "collector_reported_passed": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "host_log_window_retained": false,
+    "host_stable_signed_tcc_ready": false,
+    "host_stylus_injection_observed": false,
+    "pass_eligible_stylus_capability": true,
+    "physical_drawing_observed": false,
+    "visible_drawing_result_observed": false
+  },
+  "profile": "physical-stylus-drawing-app",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_physical_stylus": true,
+  "run_id": "d953046e-7029-437e-9577-f078e7c3141c",
+  "schema_version": "vibescreen.evidence/v1",
+  "synthetic_adb_stylus_is_not_physical_stylus_evidence": true,
+  "verdict": "blocked"
+}
