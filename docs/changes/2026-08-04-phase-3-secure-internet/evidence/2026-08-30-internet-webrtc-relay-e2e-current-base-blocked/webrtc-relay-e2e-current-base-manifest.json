@@ -30,7 +30,7 @@
       "status": "open"
     }
   },
-  "created_at": "2026-08-30T08:34:11.437585Z",
+  "created_at": "2026-08-30T08:49:48.753386Z",
   "evidence_context": {
     "deployed_remote_turn": false,
     "identity_signed_host": false,
@@ -89,7 +89,7 @@
   },
   "schema_version": "vibescreen.evidence/v1",
   "source": {
-    "commit": "ae8f5c4fd32953e81b10a795517d593c34739787",
+    "commit": "68508398914ae6f129a53175e5afb190cd8fcc73",
     "tree_status": "clean"
   },
   "substitutions": {
