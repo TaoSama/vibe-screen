@@ -96,6 +96,11 @@ class PermissionStatus:
     def is_allowed(self, services: tuple[str, ...]) -> bool:
         return any(row.service in services and row.auth_value == ALLOWED_AUTH_VALUE for row in self.rows)
 
+    def allowed_state(self, services: tuple[str, ...]) -> bool | None:
+        if not self.readable:
+            return None
+        return self.is_allowed(services)
+
 
 @dataclass(frozen=True)
 class HostInspection:
@@ -1409,8 +1414,8 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "database_path": str(permissions.database_path),
         "readable": permissions.readable,
         "error": permissions.error,
-        "screen_recording_granted": permissions.is_allowed(SCREEN_CAPTURE_SERVICES),
-        "accessibility_granted": permissions.is_allowed((ACCESSIBILITY_SERVICE,)),
+        "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
+        "accessibility_granted": permissions.allowed_state((ACCESSIBILITY_SERVICE,)),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
