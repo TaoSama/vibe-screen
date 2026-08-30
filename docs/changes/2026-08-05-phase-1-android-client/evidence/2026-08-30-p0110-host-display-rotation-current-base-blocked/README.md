@@ -4,9 +4,13 @@ Date: 2026-08-30
 
 This is a current-base blocked record for the rotated physical/virtual
 host-display acceptance gate. It starts from current `origin/main` commit
-`87e16d8bea4446c1ca449045678f1bafc7fd6cb2`, matching this worktree HEAD. The
-current-base manifest records `dirty=false` and an empty `status_porcelain`
-after ignoring its own evidence output directory.
+`a9791336a105d234609ab55dad0a2713957a142a`. The manifest was refreshed from
+clean evidence-source commit `4dfe22676f19e50bbc3192ec86e1dd4b1b56f523`, which
+already contains that current base. The current-base manifest records
+`dirty=false` and an empty `status_porcelain` after ignoring its own evidence
+output directory. The final PR head can differ from the manifest source
+revision because README, repository-state, privacy-scan, checksum, and gate log
+files are updated after the manifest capture.
 
 The attached Android device is recorded as nubia P0110 / pacific / Android 16 /
 SDK 36 with the ADB serial redacted. This is general Android substitute

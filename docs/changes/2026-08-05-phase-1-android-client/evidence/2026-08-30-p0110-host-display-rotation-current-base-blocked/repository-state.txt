@@ -1,0 +1,23 @@
+Repository and PR state captured for this blocked current-base owner record.
+
+The branch was synchronized with origin/main at:
+
+  a9791336a105d234609ab55dad0a2713957a142a
+
+The current-base manifest was then refreshed from clean evidence-source commit:
+
+  4dfe22676f19e50bbc3192ec86e1dd4b1b56f523
+
+At capture time, git merge-base --is-ancestor origin/main HEAD returned 0, so
+that evidence-source commit already contained the recorded origin/main base.
+The manifest records dirty=false and an empty status_porcelain after ignoring
+only this evidence output directory.
+
+The final PR head can differ from the manifest source revision because retained
+evidence metadata is updated after manifest capture: README.md,
+repository-state.txt, privacy-scan.json, SHA256SUMS, and regenerated gate
+stdout/stderr/exit-code files.
+
+No Host run, Android install, Android launch, force-stop, ADB reverse mutation,
+macOS display rotation, input injection, or login-item diagnostic was performed
+after the manifest refresh.

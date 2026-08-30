@@ -6,7 +6,7 @@
     "EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-host-display-rotation-current-base-blocked",
     "EVIDENCE_SERIAL=<redacted-adb-serial>"
   ],
-  "created_at": "2026-08-30T07:13:04Z",
+  "created_at": "2026-08-30T14:06:20Z",
   "device": {
     "adb_serial": "<redacted-adb-serial>",
     "android_release": "16",
@@ -401,10 +401,10 @@
   },
   "repository": {
     "dirty": false,
-    "revision": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
+    "revision": "4dfe22676f19e50bbc3192ec86e1dd4b1b56f523",
     "status_porcelain": []
   },
-  "run_id": "01d4e01c-6085-4dc8-9aeb-d5d653fdf6e4",
+  "run_id": "11dd1899-ec7b-40f2-9432-0d560292b47f",
   "schema_version": "vibescreen.evidence/v1",
   "scope_prs": [
     "#162",
