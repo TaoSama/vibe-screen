@@ -393,11 +393,13 @@ aggregate checks both `dedicated_signing_readiness_gate` and
 `readiness_requirements` booleans for Team ID, provisioning profile, bundle ID,
 codesign identity, physical-device UDID hashes, and entitlements, then derives
 the signing row from the gate sanitized `signing_summary`; hand-written manifest
-signing fields without that owner and requirements block remain blocked. It
-still cannot close install, launch, VideoToolbox, input, reconnect, audio, or
+signing fields without that owner and requirements block remain blocked. The
+bound readiness gate must also keep `can_close_ios_device_acceptance=false`; a
+signing-only owner output that claims the full real-device gate stays blocked.
+It still cannot close install, launch, VideoToolbox, input, reconnect, audio, or
 full iOS device acceptance.
 The current retained blocked owner record is
-[`2026-08-30-ios-signing-current-base-blocked`](evidence/2026-08-30-ios-signing-current-base-blocked/README.md).
+[`2026-08-31-ios-signing-current-base-blocked`](evidence/2026-08-31-ios-signing-current-base-blocked/README.md).
 
 The native-input row is also backed by a dedicated owner summary.
 `ios-current-base-manifest` binds `ios-native-input-gate.json` when supplied via

@@ -68,6 +68,7 @@ REQUIRED_SIGNING_GATE_FIELDS = {
     "kind",
     "verdict",
     "can_close_ios_app_signing_readiness",
+    "can_close_ios_device_acceptance",
     "missing",
     "failures",
 }
@@ -499,9 +500,12 @@ def _signing_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     )
     return {
         "dedicated_signing_readiness_gate": _check(
-            signing_gate.get("kind") == "ios_app_signing_readiness_gate"
-            and signing_gate.get("verdict") == "pass"
-            and signing_gate.get("can_close_ios_app_signing_readiness") is True,
+            (
+                signing_gate.get("kind") == "ios_app_signing_readiness_gate"
+                and signing_gate.get("verdict") == "pass"
+                and signing_gate.get("can_close_ios_app_signing_readiness") is True
+                and signing_gate.get("can_close_ios_device_acceptance") is False
+            ),
             "ios-app-signing-readiness-gate.json passes and is bound into current-base readiness",
             evidence=[str(signing_gate.get("path"))]
             if signing_gate.get("path")
