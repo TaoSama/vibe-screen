@@ -1,7 +1,7 @@
 # Phase 2 hardware-keyboard current-base owner refresh
 
 Result: blocked. This record refreshes the Phase 2 hardware-keyboard owner on
-current `origin/main` (`e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`) and keeps
+current `origin/main` (`31d0d42558e8a6749e24936e9a8c4b821d94847e`) and keeps
 the README Phase 2 gates open.
 
 Input summaries used by the aggregate report:
@@ -12,7 +12,7 @@ Input summaries used by the aggregate report:
 - `../2026-08-21-device-memory-gate-blocked/soak-8h/phase2-device-memory-gate.json`
 - `../2026-08-25-p0110-device-environment-readiness/soak-8h/phase2-device-environment-summary.json`
 - `../2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/phase2-soak-readiness.json`
-- `../2026-08-27-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
+- `../2026-08-29-macos-login-headless-current-base-blocked/macos-startup-recovery-gate.json`
 
 The hardware-keyboard input summary records `verdict=blocked` and
 `can_close_hardware_keyboard_gate=false`. The child readiness bundle records the
@@ -38,5 +38,5 @@ Generation command is recorded in `phase2-aggregate-owner-command.txt`.
 Validation:
 
 - `make phase2-aggregate-owner ...` generated `phase2-aggregate-owner.json` with
-  `source_baseline=origin/main e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd`,
+  `source_baseline=origin/main 31d0d42558e8a6749e24936e9a8c4b821d94847e`,
   `verdict=blocked`, and `can_close_readme_phase2_gates=false`.
