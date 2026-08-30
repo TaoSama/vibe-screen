@@ -170,6 +170,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
     private val videoDecoderRef = AtomicReference<VideoDecoder?>()
+    private val rendererViewportState =
+        RendererViewportState(
+            scaleMode = { prefs.videoScaleMode },
+            renderRotation = { prefs.clientRotation },
+        )
     private val surfaceGeneration = AtomicLong()
     private val decoderConfigurationGeneration = AtomicLong()
     private var videoDecoder: VideoDecoder?
@@ -6179,15 +6184,12 @@ class MainActivity : AppCompatActivity() {
         val parentHeight = binding.root.height
         if (parentWidth <= 0 || parentHeight <= 0) return
 
-        val layout =
-            ViewportPolicy.layout(
-                parentWidth = parentWidth,
-                parentHeight = parentHeight,
-                videoWidth = displayWidth,
-                videoHeight = displayHeight,
-                scaleMode = prefs.videoScaleMode,
-                renderRotation = prefs.clientRotation.degrees,
-            )
+        rendererViewportState.updateDisplaySize(displayWidth, displayHeight)
+        rendererViewportState.updateParentSize(parentWidth, parentHeight)
+        rendererViewportState.updateScaleMode()
+        rendererViewportState.updateRenderRotation()
+        val layout = checkNotNull(rendererViewportState.currentLayout)
+
         val viewportParams =
             binding.videoViewport.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
         if (viewportParams.width != layout.viewport.width || viewportParams.height != layout.viewport.height) {

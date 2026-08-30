@@ -232,21 +232,25 @@
       "id": "renderer_ownership",
       "title": "Android renderer ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "open",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
       "evidence_paths": [
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
-        "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererViewportStateTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnershipBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt"
       ],
-      "focused_tests": [],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.RendererViewportStateTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest"
+      ],
       "blockers": [
-        "Renderer presentation, rotation, letterboxing, Surface lifecycle, and product UI state are not represented by an extracted owner with standalone contract tests.",
-        "MainActivity still coordinates rendering with local and Internet product sessions."
+        "Renderer viewport state is extracted but decoder surface mutation still happens directly in MainActivity.",
+        "Renderer presentation for Internet/local sessions still reaches MainActivity layout callbacks through one UI owner."
       ],
       "fail_closed_checklist": [
-        "Extract renderer state ownership for Surface lifecycle, frame presentation, rotation, letterboxing, and stale-frame rejection.",
-        "Add contract tests that feed accepted/stale media frames without requiring Android UI instrumentation.",
-        "Prove renderer owner does not own protocol negotiation, transport connection state, or product side effects."
+        "Keep RendererViewportState free of Android UI, transport sockets, decoder, and protocol dependencies.",
+        "Route viewport layout updates through RendererViewportState before touching Android layout params.",
+        "Expand contract tests to frame presentation/stale-frame rejection once decoder output is owned separately."
       ]
     },
     {
