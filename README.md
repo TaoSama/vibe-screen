@@ -570,7 +570,12 @@ an independent fail-closed device-environment verifier for stand-mounted
 charging, controlled thermal-load recovery, and power-source stability; and a
 bundle preflight that checks physical 8-9 inch tablet identity,
 portrait/landscape UI screenshots, physical stylus, hardware keyboard, recovery,
-thermal/power, and eight-hour soak artifacts. The package-aware tablet gate now
+thermal/power, device-memory, device-environment, and eight-hour soak artifacts.
+The same preflight now refuses to pass unless the bundle also retains
+`phase2-device-environment-observations.json`, a passing
+`soak-8h/phase2-device-memory-gate.json`, and a passing
+`soak-8h/phase2-device-environment-summary.json` with stand-charging and
+device-environment close signals. The package-aware tablet gate now
 requires a passing device-environment summary before it can close. These tools
 reject phone substitutes such as Nubia P0110/pacific/Android 16 for formal
 tablet acceptance and report missing evidence as blocked or insufficient. A
@@ -616,6 +621,12 @@ See
 [the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
 [the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
+The 2026-08-30 current-base owner refresh is under
+[the tablet sustained-use current-base owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-tablet-current-base-owner/README.md),
+which consumes the same blocked P0110 readiness and still reports
+`can_close_readme_phase2_gates=false`; no physical 8-9 inch tablet,
+eight-hour sustained-use, device-memory, device-environment, recovery,
+hardware-keyboard, or login/headless gate is closed by this refresh.
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
