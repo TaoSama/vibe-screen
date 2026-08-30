@@ -1,0 +1,26 @@
+{
+  "android_controller_source_observed": false,
+  "android_production_forwarding_observed": false,
+  "apk_identity_recorded": true,
+  "artifact_paths": [
+    "README.md",
+    "docs/testing.md",
+    "docs/runbook/android-client.md",
+    "docs/runbook/macos-host.md",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+    "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
+    "baseline/MacHost/Sources/GameControllerInput.swift"
+  ],
+  "controller_connected_state_disconnected_observed": false,
+  "device_identity_recorded": true,
+  "host_identity_signed": false,
+  "host_virtual_gamepad_available": false,
+  "host_virtual_hid_entitlement_present": false,
+  "mac_side_controller_response_observed": false,
+  "neutral_release_on_disconnect_observed": false,
+  "notes": "No physical Android gamepad/joystick source is visible in dumpsys input. This is readiness evidence only; a pass still requires live controller samples, Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect.",
+  "physical_controller_attached": false,
+  "protocol_controller_capability_negotiated": false
+}
