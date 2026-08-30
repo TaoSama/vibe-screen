@@ -1,0 +1,12 @@
+# Native pointer HID current-base blocked evidence 2026-08-30
+# Intentionally fail-closed: no physical USB/Bluetooth mouse-like input was available.
+# No real sfltool command was run; pgrep safety checks are retained separately.
+
+make baseline-macos-host-readiness EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked
+# exit 2; see host-readiness-make.exit
+
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/native_pointer_hid_acceptance.py   --serial <redacted-p0110-serial>   --host-log <user-host-log>   --observe-seconds 0   --visible-result-note "not recorded; Host readiness blocked and no physical HID mouse observation was run"   --write-blocked-on-lock   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked
+# exit 2; see make-exit.txt
+
+make native-pointer-hid-gate EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-30-p0110-native-pointer-hid-current-base-blocked
+# exit 2; see gate-exit.txt
